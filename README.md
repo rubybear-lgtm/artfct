@@ -46,8 +46,13 @@ Install the latest release:
 curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
-The installer downloads the right binary for macOS (Apple Silicon or Intel) or
-Linux (x86\_64 or ARM64) and installs it to `~/.local/bin/artfct` by default.
+The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent` to configure the MCP server for all detected AI agents (Cursor, Claude Desktop, Gemini, and Codex) without prompts.
+
+If you want to skip automatic MCP configuration during installation, set `ARTFCT_INSTALL_SETUP=0`:
+
+```sh
+ARTFCT_INSTALL_SETUP=0 curl -fsSL https://artfct.dev/install.sh | sh
+```
 
 If `~/.local/bin` is not on your `PATH`, add it:
 
@@ -82,6 +87,16 @@ Output:
 https://artfct.dev/p/<artifact-id>
 ```
 
+### Remove
+
+```sh
+# Delete an artifact by its 32-hex ID
+artfct remove abc123def456789012345678901234ab
+
+# Delete an artifact by its preview URL
+artfct remove https://artfct.dev/p/abc123def456789012345678901234ab
+```
+
 ### Options
 
 ```
@@ -97,16 +112,25 @@ Options:
   -h, --help                   Print help
 ```
 
-### MCP Server
+### MCP Server Setup
 
-Run the CLI as a local MCP server over stdio so AI agents can deploy HTML without
-leaving the session:
+You can automatically register `artfct` as a local MCP server for all detected clients:
+
+```sh
+# Automatically find and configure all client config files (silent mode)
+artfct setup --silent
+
+# Preview which configuration files would be written
+artfct setup --list
+```
+
+Or run the server manually over stdio:
 
 ```sh
 artfct mcp serve
 ```
 
-Wire it up in an MCP client (Claude Code, Cursor, etc.):
+To configure it manually in your client's settings file (Cursor's `mcp.json` or Claude Desktop's config file):
 
 ```json
 {
@@ -119,8 +143,7 @@ Wire it up in an MCP client (Claude Code, Cursor, etc.):
 }
 ```
 
-The server exposes a single tool — `deploy_to_canvas` — which accepts a complete
-HTML payload and returns a preview URL.
+The server exposes a single tool — `deploy_to_canvas` — which accepts a complete HTML payload and returns a preview URL.
 
 ### Diagnostics
 
@@ -129,6 +152,8 @@ artfct doctor       # check connectivity and configuration
 artfct --help
 artfct deploy --help
 artfct mcp --help
+artfct setup --help
+artfct remove --help
 ```
 
 ### Environment

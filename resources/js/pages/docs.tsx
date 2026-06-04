@@ -78,6 +78,12 @@ artfct deploy page.html
 cat page.html | artfct deploy --stdin
 echo '<h1>hello</h1>' | artfct deploy --stdin
 
+# remove an artifact by ID
+artfct remove abc123def456789012345678901234ab
+
+# remove an artifact by preview URL
+artfct remove https://artfct.dev/p/abc123def456789012345678901234ab
+
 # check connectivity
 artfct doctor`;
 
@@ -512,24 +518,22 @@ export default function Docs() {
                         >
                             deploy_to_canvas
                         </code>{' '}
-                        tool — Claude Code, Cursor, and other MCP-compatible
+                        tool — Claude Desktop, Claude Code, Cursor, and other MCP-compatible
                         agents can call it to publish HTML directly without
                         leaving the session.
                     </Prose>
                     <CodeBlock code={CLI_MCP} />
 
                     <Prose>
-                        To wire it up in Claude Code, add this to your{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            .mcp.json
-                        </code>
-                        :
+                        To configure the MCP server automatically for all detected agents (Cursor, Claude Desktop, Gemini, Codex, etc.), run:
+                    </Prose>
+                    <CodeBlock code="artfct setup" />
+                    <Prose>
+                        Pass <code>--silent</code> to execute without prompts, or <code>--list</code> to preview which configuration files will be modified.
+                    </Prose>
+
+                    <Prose>
+                        Alternatively, for manual setup, add this configuration block directly to your client's settings file:
                     </Prose>
                     <CodeBlock
                         code={`{

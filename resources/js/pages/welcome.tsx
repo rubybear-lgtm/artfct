@@ -291,6 +291,10 @@ export default function Welcome() {
     const [phase, setPhase] = useState<Phase>({ t: 'idle' });
     const [dragOver, setDragOver] = useState(false);
 
+    const [mcpExpanded, setMcpExpanded] = useState(false);
+    const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
+    const [copiedSelfInstall, setCopiedSelfInstall] = useState(false);
+
     const [cachedLinks, setCachedLinks] = useState<CachedLink[]>(() => {
         if (typeof window !== 'undefined') {
             const raw = localStorage.getItem('artfct_cached_links');
@@ -1360,7 +1364,7 @@ export default function Welcome() {
                         </span>
                     </footer>
 
-                    {/* ── cli callout ── */}
+                    {/* ── cli & mcp callout ── */}
                     <div
                         style={{
                             width: '100%',
@@ -1378,7 +1382,7 @@ export default function Welcome() {
                                 color: S.base00,
                             }}
                         >
-                            cli
+                            cli & mcp
                         </span>
                         <span
                             style={{
@@ -1387,23 +1391,141 @@ export default function Welcome() {
                                 color: S.base1,
                             }}
                         >
-                            deploy from your terminal, or run as an mcp server
-                            for claude code, cursor & more.
+                            install the CLI and automatically configure MCP for all detected agents (Cursor, Claude Desktop, Gemini, and Codex) in one step.
                         </span>
-                        <pre
+
+                        <div
                             style={{
-                                fontFamily: MONO,
-                                fontSize: '13px',
-                                color: S.base0,
-                                backgroundColor: S.base2,
-                                padding: '0.9rem 1rem',
-                                margin: 0,
-                                lineHeight: 1.7,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.6rem',
+                                marginTop: '0.25rem',
                             }}
                         >
-                            <span style={{ color: S.base1 }}>$ </span>curl -fsSL
-                            https://artfct.dev/install.sh | sh
-                        </pre>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <button
+                                    onClick={async () => {
+                                        const nextState = !mcpExpanded;
+                                        setMcpExpanded(nextState);
+                                        if (nextState) {
+                                            await navigator.clipboard.writeText(`Please install the artfct CLI and configure it as an MCP server on my machine by running:\ncurl -fsSL https://artfct.dev/install.sh | sh`);
+                                            setCopiedAgentPrompt(true);
+                                            setTimeout(() => setCopiedAgentPrompt(false), 2000);
+                                        }
+                                    }}
+                                    className="result-action-btn"
+                                    style={{
+                                        padding: '0.4rem 0.8rem',
+                                        fontFamily: MONO,
+                                        fontSize: '11px',
+                                        backgroundColor: mcpExpanded ? S.base1 : S.base2,
+                                        color: mcpExpanded ? S.base3 : S.base00,
+                                        border: `1px solid ${S.base1}`,
+                                        borderRadius: '3px',
+                                        cursor: 'pointer',
+                                        letterSpacing: '0.04em',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                    }}
+                                >
+                                    <span>ask an ai agent</span>
+                                    <span style={{ fontSize: '9px', opacity: 0.8 }}>
+                                        {mcpExpanded ? '▲' : '▼'}
+                                    </span>
+                                </button>
+                                {copiedAgentPrompt && (
+                                    <span
+                                        className="fade-in"
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.green,
+                                        }}
+                                    >
+                                        copied prompt to clipboard!
+                                    </span>
+                                )}
+                            </div>
+
+                            {mcpExpanded && (
+                                <div
+                                    className="fade-in"
+                                    style={{
+                                        padding: '0.9rem 1rem',
+                                        backgroundColor: S.base2,
+                                        border: `1px solid ${S.base1}`,
+                                        borderRadius: '3px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.4rem',
+                                    }}
+                                >
+                                    <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1 }}>
+                                        paste this prompt directly into your terminal-capable agent (e.g. Claude Code or Cursor Composer) to install and configure:
+                                    </span>
+                                    <pre
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.base0,
+                                            backgroundColor: S.base3,
+                                            padding: '0.75rem',
+                                            margin: 0,
+                                            borderRadius: '2px',
+                                            border: `1px solid ${S.base2}`,
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word',
+                                            lineHeight: 1.5,
+                                        }}
+                                    >
+{`Please install the artfct CLI and configure it as an MCP server on my machine by running:
+curl -fsSL https://artfct.dev/install.sh | sh`}
+                                    </pre>
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1 }}>
+                                    or run the command to install it yourself:
+                                </span>
+                                <div style={{ display: 'flex', border: `1px solid ${S.base1}`, borderRadius: '2px', backgroundColor: S.base3 }}>
+                                    <pre
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.base0,
+                                            padding: '0.6rem 0.8rem',
+                                            margin: 0,
+                                            flexGrow: 1,
+                                            overflowX: 'auto',
+                                        }}
+                                    >
+                                        <span style={{ color: S.base1 }}>$ </span>curl -fsSL https://artfct.dev/install.sh | sh
+                                    </pre>
+                                    <button
+                                        onClick={async () => {
+                                            await navigator.clipboard.writeText(`curl -fsSL https://artfct.dev/install.sh | sh`);
+                                            setCopiedSelfInstall(true);
+                                            setTimeout(() => setCopiedSelfInstall(false), 2000);
+                                        }}
+                                        style={{
+                                            padding: '0 0.8rem',
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            backgroundColor: copiedSelfInstall ? S.green : S.base2,
+                                            color: copiedSelfInstall ? S.base3 : S.base00,
+                                            border: 'none',
+                                            borderLeft: `1px solid ${S.base1}`,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {copiedSelfInstall ? 'copied' : 'copy'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <Link
                             href="/docs#cli"
                             style={{
@@ -1411,9 +1533,10 @@ export default function Welcome() {
                                 fontSize: '12px',
                                 color: S.blue,
                                 textDecoration: 'none',
+                                marginTop: '0.25rem',
                             }}
                         >
-                            install & usage
+                            install & usage docs
                         </Link>
                     </div>
                 </div>
