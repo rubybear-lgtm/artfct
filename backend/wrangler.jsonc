@@ -1,0 +1,35 @@
+{
+    "$schema": "../node_modules/wrangler/config-schema.json",
+    "name": "artfct-engine",
+    "main": "build/worker/shim.mjs",
+    "compatibility_date": "2026-06-03",
+    "build": {
+        "command": "PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+    },
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+    },
+    "routes": [
+        {
+            "pattern": "artfct.dev/v1/*",
+            "zone_name": "artfct.dev",
+        },
+        {
+            "pattern": "artfct.dev/p/*",
+            "zone_name": "artfct.dev",
+        },
+    ],
+    "kv_namespaces": [
+        {
+            "binding": "ARTIFACTS_KV",
+            "id": "89447fa353bd403abdcffbce5e5c331b",
+        },
+    ],
+    "vars": {
+        "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
+        "ARTFCT_MAX_HTML_BYTES": "1048576",
+        "ARTFCT_DEFAULT_TTL_MINUTES": "60",
+        "ARTFCT_MAX_TTL_MINUTES": "1440",
+    },
+}
