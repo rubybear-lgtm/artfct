@@ -482,7 +482,7 @@ export default function Welcome() {
                                 docs
                             </Link>
                             <a
-                                href="https://github.com"
+                                href="https://github.com/rubybear-lgtm/artfct"
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{ color: S.base1, textDecoration: 'none' }}
@@ -492,6 +492,49 @@ export default function Welcome() {
                         </div>
                         <span style={{ color: S.base1 }}>ephemeral · secure · 60min</span>
                     </footer>
+
+                    {/* cli callout */}
+                    <div
+                        style={{
+                            width: '100%',
+                            paddingTop: '1.5rem',
+                            borderTop: `1px solid ${S.base2}`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem',
+                        }}
+                    >
+                        <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base1 }}>
+                            prefer the terminal?
+                        </span>
+                        <pre
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '13px',
+                                color: S.base0,
+                                backgroundColor: S.base2,
+                                padding: '0.9rem 1rem',
+                                margin: 0,
+                                lineHeight: 1.7,
+                            }}
+                        >
+                            <span style={{ color: S.base1 }}>$ </span>
+                            {'artfct deploy page.html'}
+                            {'\n'}
+                            <span style={{ color: S.cyan }}>{'→ https://artfct.dev/p/4fA8gX9z...'}</span>
+                        </pre>
+                        <Link
+                            href="/docs#cli"
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.blue,
+                                textDecoration: 'none',
+                            }}
+                        >
+                            install & usage →
+                        </Link>
+                    </div>
                 </div>
             </div>
         </>

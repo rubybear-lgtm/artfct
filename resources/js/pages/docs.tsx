@@ -43,7 +43,47 @@ const ERROR_CODES = [
     { code: '404', meaning: 'Artifact not found or expired.' },
 ] as const;
 
+const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
+const RELEASES = `${GITHUB}/releases/latest/download`;
 const EXAMPLE_ID = '4fa8gx9z3k7m2n5p8q1r6s0t7u2v4w9x';
+
+// ── CLI content ───────────────────────────────────────────────────────────────
+const CLI_INSTALL_MAC_ARM =
+`curl -sSfL ${RELEASES}/artfct-aarch64-apple-darwin.tar.gz \\
+  | tar -xz -C /usr/local/bin`;
+
+const CLI_INSTALL_MAC_INTEL =
+`curl -sSfL ${RELEASES}/artfct-x86_64-apple-darwin.tar.gz \\
+  | tar -xz -C /usr/local/bin`;
+
+const CLI_INSTALL_LINUX_X64 =
+`curl -sSfL ${RELEASES}/artfct-x86_64-unknown-linux-gnu.tar.gz \\
+  | tar -xz -C /usr/local/bin`;
+
+const CLI_INSTALL_LINUX_ARM =
+`curl -sSfL ${RELEASES}/artfct-aarch64-unknown-linux-gnu.tar.gz \\
+  | tar -xz -C /usr/local/bin`;
+
+const CLI_USAGE =
+`# deploy a file — prints the URL
+artfct deploy page.html
+
+# deploy from stdin
+cat page.html | artfct deploy --stdin
+echo '<h1>hello</h1>' | artfct deploy --stdin
+
+# check connectivity
+artfct doctor`;
+
+const CLI_MCP =
+`artfct mcp serve`;
+
+const CLI_DEPLOY_FLAGS = [
+    { name: 'FILE',            type: 'path',    req: false, note: 'Path to the HTML file to deploy.' },
+    { name: '--stdin',         type: 'flag',    req: false, note: 'Read HTML from stdin instead of a file.' },
+    { name: '--tier',          type: 'string',  req: false, note: 'public · secure · ephemeral  (default: ephemeral)' },
+    { name: '--ttl-minutes',   type: 'integer', req: false, note: 'Minutes until expiry. Default: 60. Max: 1440.' },
+] as const;
 
 const CODE_POST_REQUEST =
 `curl -X POST https://artfct.dev/v1/artifacts \\
@@ -238,7 +278,8 @@ function Chip({ children }: { children: React.ReactNode }) {
 // ── page ─────────────────────────────────────────────────────────────────────
 export default function Docs() {
     const NAV_LINKS = [
-        { href: '#overview', label: 'overview' },
+        { href: '#cli',      label: 'cli' },
+        { href: '#overview', label: 'rest api' },
         { href: '#create',   label: 'create' },
         { href: '#delete',   label: 'delete' },
         { href: '#errors',   label: 'errors' },
@@ -350,8 +391,63 @@ export default function Docs() {
                         ))}
                     </div>
 
+                    {/* ── cli ─────────────────────────────────────────────── */}
+                    <SectionDivider id="cli" label="cli" />
+
+                    <Prose>
+                        The <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>artfct</code> CLI
+                        deploys HTML files directly from your terminal and pipes. Pre-built binaries
+                        are available for macOS and Linux — no runtime required.
+                    </Prose>
+
+                    <Label>install</Label>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                        {[
+                            { label: 'macOS · Apple Silicon', code: CLI_INSTALL_MAC_ARM },
+                            { label: 'macOS · Intel',         code: CLI_INSTALL_MAC_INTEL },
+                            { label: 'Linux · x86_64',        code: CLI_INSTALL_LINUX_X64 },
+                            { label: 'Linux · ARM64',         code: CLI_INSTALL_LINUX_ARM },
+                        ].map(({ label, code }) => (
+                            <div key={label}>
+                                <div style={{ fontFamily: MONO, fontSize: '11px', color: S.base1, marginBottom: '0.3rem' }}>
+                                    {label}
+                                </div>
+                                <CodeBlock code={code} />
+                            </div>
+                        ))}
+                    </div>
+
+                    <Label>usage</Label>
+                    <CodeBlock code={CLI_USAGE} />
+
+                    <Label>deploy flags</Label>
+                    <FieldTable fields={CLI_DEPLOY_FLAGS} />
+
+                    <Label>mcp server</Label>
+                    <Prose>
+                        Start artfct as a local MCP server over stdio. Supports the{' '}
+                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>deploy_to_canvas</code>{' '}
+                        tool — Claude Code, Cursor, and other MCP-compatible agents can call it to publish
+                        HTML directly without leaving the session.
+                    </Prose>
+                    <CodeBlock code={CLI_MCP} />
+
+                    <Prose>
+                        To wire it up in Claude Code, add this to your{' '}
+                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>.mcp.json</code>:
+                    </Prose>
+                    <CodeBlock code={`{
+  "mcpServers": {
+    "artfct": {
+      "command": "artfct",
+      "args": ["mcp", "serve"]
+    }
+  }
+}`} />
+
                     {/* ── overview ─────────────────────────────────────────── */}
-                    <SectionDivider id="overview" label="overview" />
+                    <SectionDivider id="overview" label="rest api" />
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem' }}>
                         <Chip>base url: https://artfct.dev</Chip>
@@ -492,7 +588,7 @@ export default function Docs() {
                             home
                         </Link>
                         <a
-                            href="https://github.com"
+                            href={GITHUB}
                             target="_blank"
                             rel="noreferrer"
                             style={{ color: S.base1, textDecoration: 'none' }}
