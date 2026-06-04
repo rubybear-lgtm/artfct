@@ -76,6 +76,7 @@ if echo "$STAGED_FILES" | grep -Eq '^(Cargo\.toml|Cargo\.lock|backend/|mcp-serve
     cargo fmt --all -- --check
     cargo check --workspace --locked
     cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
+    cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test -p artfct --locked
     cargo run -p artfct --locked -- doctor >/dev/null
 
