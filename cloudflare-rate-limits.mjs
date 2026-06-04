@@ -38,6 +38,20 @@ const managedRules = [
             requests_to_origin: false,
         },
     },
+    {
+        ref: 'artfct_manage_rate_limit',
+        description:
+            'Artifact management: 60 PATCH/DELETE /v1/artifacts/* requests per minute per IP',
+        expression: `(http.host eq "${zoneName}" and (http.request.method eq "PATCH" or http.request.method eq "DELETE") and starts_with(http.request.uri.path, "/v1/artifacts/"))`,
+        action: 'block',
+        ratelimit: {
+            characteristics: ['cf.colo.id', 'ip.src'],
+            period: 10,
+            requests_per_period: 10,
+            mitigation_timeout: 10,
+            requests_to_origin: false,
+        },
+    },
 ];
 
 const requiredRules = managedRules.slice(0, 1);

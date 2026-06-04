@@ -1,40 +1,46 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { renderMarkdownToHtml } from '@/lib/markdown';
 import { ThemeToggle } from '@/lib/theme';
 
-// ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
 const S = {
-    base3:   'var(--sol-base3)',
-    base2:   'var(--sol-base2)',
-    base1:   'var(--sol-base1)',
-    base0:   'var(--sol-base0)',
-    base00:  'var(--sol-base00)',
-    yellow:  'var(--sol-yellow)',
-    orange:  'var(--sol-orange)',
-    red:     'var(--sol-red)',
+    base3: 'var(--sol-base3)',
+    base2: 'var(--sol-base2)',
+    base1: 'var(--sol-base1)',
+    base0: 'var(--sol-base0)',
+    base00: 'var(--sol-base00)',
+    yellow: 'var(--sol-yellow)',
+    orange: 'var(--sol-orange)',
+    red: 'var(--sol-red)',
     magenta: 'var(--sol-magenta)',
-    violet:  'var(--sol-violet)',
-    blue:    'var(--sol-blue)',
-    cyan:    'var(--sol-cyan)',
-    green:   'var(--sol-green)',
+    violet: 'var(--sol-violet)',
+    blue: 'var(--sol-blue)',
+    cyan: 'var(--sol-cyan)',
+    green: 'var(--sol-green)',
 } as const;
 
-const ACCENTS = [S.yellow, S.orange, S.red, S.magenta, S.violet, S.blue, S.cyan, S.green] as const;
+const ACCENTS = [
+    S.yellow,
+    S.orange,
+    S.red,
+    S.magenta,
+    S.violet,
+    S.blue,
+    S.cyan,
+    S.green,
+] as const;
 
-// Complementary / analogous pairs (warm→cool or high-contrast)
 const PAIRS: [number, number][] = [
-    [0, 5],  // yellow → blue
-    [1, 6],  // orange → cyan
-    [2, 7],  // red → green
-    [3, 7],  // magenta → green
-    [4, 0],  // violet → yellow
-    [2, 5],  // red → blue
-    [6, 3],  // cyan → magenta
-    [1, 4],  // orange → violet
+    [0, 5],
+    [1, 6],
+    [2, 7],
+    [3, 7],
+    [4, 0],
+    [2, 5],
+    [6, 3],
+    [1, 4],
 ];
 
-// ── ASCII art ────────────────────────────────────────────────────────────────
-// ANSI Shadow font, "artfct" — 50 cols × 6 rows
 const ART = [
     ' █████╗ ██████╗ ████████╗███████╗ ██████╗████████╗',
     '██╔══██╗██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝',
@@ -44,50 +50,76 @@ const ART = [
     '╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═════╝   ╚═╝   ',
 ];
 
-// ── constants ────────────────────────────────────────────────────────────────
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-const WORKER_URL = (import.meta.env.VITE_WORKER_URL as string | undefined) ?? '';
+const WORKER_URL =
+    (import.meta.env.VITE_WORKER_URL as string | undefined) ?? '';
+const MAX_BYTES = 1024 * 1024;
+const TAGLINE = "share html. get a link. that's it.";
 
-// ── types ────────────────────────────────────────────────────────────────────
+interface CachedLink {
+    id: string;
+    url: string;
+    expiresAt: string;
+    filename: string;
+    deployedAt: string;
+}
+
 type Phase =
     | { t: 'idle' }
-    | { t: 'selected';  file: File }
+    | { t: 'selected'; file: File }
     | { t: 'deploying'; file: File }
-    | { t: 'success';   url: string; expiresAt: string }
-    | { t: 'error';     message: string };
+    | { t: 'success'; url: string; expiresAt: string }
+    | { t: 'error'; message: string };
 
-// ── hooks ────────────────────────────────────────────────────────────────────
 function useTypewriter(text: string, speed: number) {
     const [index, setIndex] = useState(0);
+    const [prevText, setPrevText] = useState(text);
 
-    useEffect(() => {
+    if (text !== prevText) {
+        setPrevText(text);
         setIndex(0);
-    }, [text]);
+    }
 
     useEffect(() => {
-        if (index >= text.length) return;
+        if (index >= text.length) {
+            return;
+        }
+
         const t = setTimeout(() => setIndex((i) => i + 1), speed);
+
         return () => clearTimeout(t);
     }, [index, text.length, speed]);
 
     return { displayed: text.slice(0, index), done: index >= text.length };
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
 function pickGradient(): [string, string] {
     const [a, b] = PAIRS[Math.floor(Math.random() * PAIRS.length)];
+
     return [ACCENTS[a], ACCENTS[b]];
 }
 
 function timeUntil(iso: string): string {
     const ms = new Date(iso).getTime() - Date.now();
     const min = Math.round(ms / 60_000);
-    if (min <= 0) return 'expired';
-    if (min < 60) return `${min} min`;
+
+    if (min <= 0) {
+        return 'expired';
+    }
+
+    if (min < 60) {
+        return `${min} min`;
+    }
+
     return `${Math.round(min / 60)}h`;
 }
 
-// ── subcomponents ─────────────────────────────────────────────────────────────
+function getRemainingMinutes(expiresAtStr: string): number {
+    const ms = new Date(expiresAtStr).getTime() - Date.now();
+
+    return Math.max(1, Math.round(ms / 60_000));
+}
+
 function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
     return (
         <pre
@@ -114,81 +146,17 @@ function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
     );
 }
 
-interface DropZoneProps {
-    phase: Phase;
-    dragOver: boolean;
-    onDragOver: (e: React.DragEvent) => void;
-    onDragLeave: () => void;
-    onDrop: (e: React.DragEvent) => void;
-    onClick: () => void;
-}
-
-function DropZone({ phase, dragOver, onDragOver, onDragLeave, onDrop, onClick }: DropZoneProps) {
-    const isActive = dragOver;
-    const borderColor = isActive ? S.blue : S.base1;
-    const borderStyle = isActive ? 'double' : 'solid';
-
-    const hasFile = phase.t === 'selected' || phase.t === 'deploying';
-    const filename = hasFile ? phase.file.name : null;
-
-    return (
-        <div
-            role="button"
-            tabIndex={0}
-            onClick={onClick}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            style={{
-                border: `1px ${borderStyle} ${borderColor}`,
-                padding: '2.2rem 2rem',
-                cursor: 'pointer',
-                textAlign: 'center',
-                backgroundColor: isActive ? 'color-mix(in srgb, var(--sol-blue) 7%, transparent)' : 'transparent',
-                transition: 'border-color 0.1s ease, background-color 0.1s ease',
-                fontFamily: MONO,
-                fontSize: '16px',
-                outline: 'none',
-            }}
-        >
-            {filename ? (
-                <>
-                    <div style={{ color: S.cyan, marginBottom: '0.35rem', letterSpacing: '0.02em' }}>
-                        ◆ {filename}
-                    </div>
-                    <div style={{ color: S.base1, fontSize: '14px' }}>
-                        {phase.t === 'deploying' ? (
-                            <span className="cursor-blink">deploying</span>
-                        ) : (
-                            'ready to deploy'
-                        )}
-                    </div>
-                </>
-            ) : (
-                <>
-                    <div style={{ color: S.base0, marginBottom: '0.35rem' }}>
-                        drop your{' '}
-                        <span style={{ color: S.base00, fontWeight: 600 }}>.html</span>
-                        {' '}file here
-                    </div>
-                    <div style={{ color: S.base1, fontSize: '14px' }}>or click to browse</div>
-                </>
-            )}
-        </div>
-    );
-}
-
-interface ResultProps {
+function Result({
+    url,
+    expiresAt,
+    onReset,
+}: {
     url: string;
     expiresAt: string;
     onReset: () => void;
-}
-
-function Result({ url, expiresAt, onReset }: ResultProps) {
+}) {
     const [copied, setCopied] = useState(false);
     const { displayed, done } = useTypewriter(url, 18);
-
     const copy = useCallback(async () => {
         await navigator.clipboard.writeText(url);
         setCopied(true);
@@ -196,8 +164,22 @@ function Result({ url, expiresAt, onReset }: ResultProps) {
     }, [url]);
 
     return (
-        <div className="fade-in" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <div style={{ display: 'flex', alignItems: 'stretch', border: `1px solid ${S.green}` }}>
+        <div
+            className="fade-in"
+            style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+            }}
+        >
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    border: `1px solid ${S.green}`,
+                }}
+            >
                 <div
                     style={{
                         flex: 1,
@@ -208,7 +190,8 @@ function Result({ url, expiresAt, onReset }: ResultProps) {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        backgroundColor: 'color-mix(in srgb, var(--sol-green) 8%, transparent)',
+                        backgroundColor:
+                            'color-mix(in srgb, var(--sol-green) 8%, transparent)',
                         minWidth: 0,
                     }}
                 >
@@ -217,6 +200,7 @@ function Result({ url, expiresAt, onReset }: ResultProps) {
                 </div>
                 <button
                     onClick={copy}
+                    className={`result-action-btn ${copied ? 'copied' : ''}`}
                     style={{
                         padding: '0 1.25rem',
                         fontFamily: MONO,
@@ -224,19 +208,55 @@ function Result({ url, expiresAt, onReset }: ResultProps) {
                         backgroundColor: copied ? S.green : S.base2,
                         color: copied ? S.base3 : S.base0,
                         border: 'none',
-                        borderLeft: `1px solid ${S.base2}`,
+                        borderLeft: `1px solid ${S.green}`,
                         cursor: 'pointer',
-                        transition: 'background-color 0.15s ease, color 0.15s ease',
                         flexShrink: 0,
                         letterSpacing: '0.04em',
                         minWidth: '7rem',
                     }}
                 >
-                    {copied ? '✓ copied' : '⎘ copy'}
+                    {copied ? 'copied' : 'copy'}
                 </button>
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="result-action-btn"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0 1.25rem',
+                        fontFamily: MONO,
+                        fontSize: '14px',
+                        backgroundColor: S.base2,
+                        color: S.base0,
+                        border: 'none',
+                        borderLeft: `1px solid ${S.green}`,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        letterSpacing: '0.04em',
+                        textDecoration: 'none',
+                        minWidth: '7rem',
+                    }}
+                >
+                    open
+                </a>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontFamily: MONO, fontSize: '14px', color: S.base1 }}>
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                }}
+            >
+                <span
+                    style={{
+                        fontFamily: MONO,
+                        fontSize: '14px',
+                        color: S.base1,
+                    }}
+                >
                     expires in {timeUntil(expiresAt)}
                 </span>
                 <button
@@ -252,55 +272,242 @@ function Result({ url, expiresAt, onReset }: ResultProps) {
                         padding: 0,
                     }}
                 >
-                    deploy another →
+                    deploy another
                 </button>
             </div>
         </div>
     );
 }
 
-// ── page ─────────────────────────────────────────────────────────────────────
-const TAGLINE = "share html. get a link. that's it.";
+function isMarkdownFile(name: string): boolean {
+    return (
+        name.toLowerCase().endsWith('.md') ||
+        name.toLowerCase().endsWith('.markdown')
+    );
+}
 
 export default function Welcome() {
     const [gradient] = useState<[string, string]>(pickGradient);
     const [phase, setPhase] = useState<Phase>({ t: 'idle' });
     const [dragOver, setDragOver] = useState(false);
+
+    const [cachedLinks, setCachedLinks] = useState<CachedLink[]>(() => {
+        if (typeof window !== 'undefined') {
+            const raw = localStorage.getItem('artfct_cached_links');
+
+            if (raw) {
+                try {
+                    return JSON.parse(raw) as CachedLink[];
+                } catch (e) {
+                    console.error('Failed to parse cached links', e);
+                }
+            }
+        }
+
+        return [];
+    });
+    const [managingLink, setManagingLink] = useState<CachedLink | null>(null);
+    const [newTtlMinutes, setNewTtlMinutes] = useState<number>(60);
+    const [isUpdatingTtl, setIsUpdatingTtl] = useState(false);
+    const [isDeletingLink, setIsDeletingLink] = useState(false);
+    const [modalError, setModalError] = useState<string | null>(null);
+    const [modalSuccess, setModalSuccess] = useState(false);
+
     const inputRef = useRef<HTMLInputElement>(null);
     const tagline = useTypewriter(TAGLINE, 38);
 
-    const acceptFile = useCallback((file: File) => {
-        if (!file.name.toLowerCase().endsWith('.html') && file.type !== 'text/html') {
-            setPhase({ t: 'error', message: 'only .html files are accepted' });
+    const saveCachedLinks = useCallback(
+        (updater: CachedLink[] | ((prev: CachedLink[]) => CachedLink[])) => {
+            setCachedLinks((prev) => {
+                const next =
+                    typeof updater === 'function' ? updater(prev) : updater;
+                localStorage.setItem(
+                    'artfct_cached_links',
+                    JSON.stringify(next),
+                );
+
+                return next;
+            });
+        },
+        [],
+    );
+
+    const openManageModal = useCallback((link: CachedLink) => {
+        setManagingLink(link);
+        const remaining = getRemainingMinutes(link.expiresAt);
+        setNewTtlMinutes(remaining > 0 ? remaining : 60);
+        setModalError(null);
+        setModalSuccess(false);
+        setIsUpdatingTtl(false);
+        setIsDeletingLink(false);
+    }, []);
+
+    const closeManageModal = useCallback(() => {
+        setManagingLink(null);
+    }, []);
+
+    const handleUpdateTtl = useCallback(async () => {
+        if (!managingLink) {
             return;
         }
-        setPhase({ t: 'selected', file });
+
+        setIsUpdatingTtl(true);
+        setModalError(null);
+        setModalSuccess(false);
+
+        try {
+            const res = await fetch(
+                `${WORKER_URL}/v1/artifacts/${managingLink.id}`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ttl_minutes: newTtlMinutes }),
+                },
+            );
+
+            if (!res.ok) {
+                const body = (await res.json().catch(() => ({}))) as {
+                    error?: string;
+                };
+
+                throw new Error(body.error ?? `server error ${res.status}`);
+            }
+
+            const data = (await res.json()) as {
+                id: string;
+                expires_at: string;
+            };
+
+            saveCachedLinks((prev) =>
+                prev.map((link) =>
+                    link.id === managingLink.id
+                        ? { ...link, expiresAt: data.expires_at }
+                        : link,
+                ),
+            );
+
+            setManagingLink((prev) =>
+                prev ? { ...prev, expiresAt: data.expires_at } : null,
+            );
+            setModalSuccess(true);
+            setTimeout(() => setModalSuccess(false), 3000);
+        } catch (err) {
+            setModalError(
+                err instanceof Error ? err.message : 'failed to update TTL',
+            );
+        } finally {
+            setIsUpdatingTtl(false);
+        }
+    }, [managingLink, newTtlMinutes, saveCachedLinks]);
+
+    const handleDeleteLink = useCallback(async () => {
+        if (!managingLink) {
+            return;
+        }
+
+        if (
+            !confirm(
+                'are you sure you want to delete this deployment? it will be permanently removed from the server.',
+            )
+        ) {
+            return;
+        }
+
+        setIsDeletingLink(true);
+        setModalError(null);
+
+        try {
+            const res = await fetch(
+                `${WORKER_URL}/v1/artifacts/${managingLink.id}`,
+                {
+                    method: 'DELETE',
+                },
+            );
+
+            if (!res.ok && res.status !== 204) {
+                const body = (await res.json().catch(() => ({}))) as {
+                    error?: string;
+                };
+
+                throw new Error(body.error ?? `server error ${res.status}`);
+            }
+
+            saveCachedLinks((prev) =>
+                prev.filter((link) => link.id !== managingLink.id),
+            );
+            closeManageModal();
+        } catch (err) {
+            setModalError(
+                err instanceof Error
+                    ? err.message
+                    : 'failed to delete artifact',
+            );
+        } finally {
+            setIsDeletingLink(false);
+        }
+    }, [managingLink, saveCachedLinks, closeManageModal]);
+
+    const acceptFile = useCallback((file: File) => {
+        const name = file.name.toLowerCase();
+
+        if (
+            name.endsWith('.html') ||
+            name.endsWith('.htm') ||
+            isMarkdownFile(file.name)
+        ) {
+            setPhase({ t: 'selected', file });
+
+            return;
+        }
+
+        setPhase({
+            t: 'error',
+            message: 'only .html and .md files are accepted',
+        });
     }, []);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(true);
     }, []);
-
     const handleDragLeave = useCallback(() => setDragOver(false), []);
-
     const handleDrop = useCallback(
         (e: React.DragEvent) => {
             e.preventDefault();
             setDragOver(false);
             const file = e.dataTransfer.files[0];
-            if (file) acceptFile(file);
+
+            if (file) {
+                acceptFile(file);
+            }
         },
         [acceptFile],
     );
 
     const handleDeploy = useCallback(async () => {
-        if (phase.t !== 'selected') return;
+        if (phase.t !== 'selected') {
+            return;
+        }
+
         const { file } = phase;
         setPhase({ t: 'deploying', file });
 
         try {
-            const html = await file.text();
+            const text = await file.text();
+
+            const html = isMarkdownFile(file.name)
+                ? renderMarkdownToHtml(text)
+                : text;
+
+            if (new Blob([html]).size > MAX_BYTES) {
+                setPhase({
+                    t: 'error',
+                    message: 'payload exceeds 1 MB limit',
+                });
+
+                return;
+            }
+
             const res = await fetch(`${WORKER_URL}/v1/artifacts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -308,21 +515,47 @@ export default function Welcome() {
             });
 
             if (!res.ok) {
-                const body = (await res.json().catch(() => ({}))) as { message?: string };
+                const body = (await res.json().catch(() => ({}))) as {
+                    message?: string;
+                };
+
                 throw new Error(body.message ?? `server error ${res.status}`);
             }
 
-            const data = (await res.json()) as { url: string; expires_at: string };
-            setPhase({ t: 'success', url: data.url, expiresAt: data.expires_at });
+            const data = (await res.json()) as {
+                id: string;
+                url: string;
+                expires_at: string;
+            };
+            setPhase({
+                t: 'success',
+                url: data.url,
+                expiresAt: data.expires_at,
+            });
+
+            const newLink: CachedLink = {
+                id: data.id,
+                url: data.url,
+                expiresAt: data.expires_at,
+                filename: file.name,
+                deployedAt: new Date().toISOString(),
+            };
+            saveCachedLinks((prev) => [newLink, ...prev]);
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'deployment failed';
-            setPhase({ t: 'error', message });
+            setPhase({
+                t: 'error',
+                message:
+                    err instanceof Error ? err.message : 'deployment failed',
+            });
         }
-    }, [phase]);
+    }, [phase, saveCachedLinks]);
 
     const reset = useCallback(() => {
         setPhase({ t: 'idle' });
-        if (inputRef.current) inputRef.current.value = '';
+
+        if (inputRef.current) {
+            inputRef.current.value = '';
+        }
     }, []);
 
     const canDeploy = phase.t === 'selected';
@@ -330,6 +563,9 @@ export default function Welcome() {
     const isSuccess = phase.t === 'success';
     const showButton = !isSuccess;
     const buttonActive = canDeploy || isDeploying;
+    const selectedFile =
+        phase.t === 'selected' || phase.t === 'deploying' ? phase.file : null;
+    const isMd = selectedFile ? isMarkdownFile(selectedFile.name) : false;
 
     return (
         <>
@@ -344,7 +580,8 @@ export default function Welcome() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '3rem 1.5rem',
-                    fontFamily: "'Instrument Sans', ui-sans-serif, system-ui, sans-serif",
+                    fontFamily:
+                        "'Instrument Sans', ui-sans-serif, system-ui, sans-serif",
                     color: S.base0,
                     boxSizing: 'border-box',
                 }}
@@ -359,10 +596,8 @@ export default function Welcome() {
                         maxWidth: '700px',
                     }}
                 >
-                    {/* ascii hero */}
                     <AsciiHero colorA={gradient[0]} colorB={gradient[1]} />
 
-                    {/* tagline */}
                     <p
                         aria-label={TAGLINE}
                         style={{
@@ -380,30 +615,129 @@ export default function Welcome() {
                         </span>
                     </p>
 
-                    {/* drop zone */}
+                    {/* ── drop zone ── */}
                     <div style={{ width: '100%' }}>
                         <input
                             ref={inputRef}
                             type="file"
-                            accept=".html,text/html"
+                            accept=".html,.htm,.md,.markdown,text/html,text/markdown"
                             onChange={(e) => {
                                 const file = e.target.files?.[0];
-                                if (file) acceptFile(file);
+
+                                if (file) {
+                                    acceptFile(file);
+                                }
                             }}
                             style={{ display: 'none' }}
-                            aria-label="Select HTML file"
+                            aria-label="Select HTML or Markdown file"
                         />
-                        <DropZone
-                            phase={phase}
-                            dragOver={dragOver}
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => inputRef.current?.click()}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    inputRef.current?.click();
+                                }
+                            }}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
-                            onClick={() => inputRef.current?.click()}
-                        />
+                            style={{
+                                border: `1px ${dragOver ? 'double' : 'solid'} ${dragOver ? S.blue : S.base1}`,
+                                padding: '2.2rem 2rem',
+                                cursor: 'pointer',
+                                textAlign: 'center',
+                                backgroundColor: dragOver
+                                    ? 'color-mix(in srgb, var(--sol-blue) 7%, transparent)'
+                                    : 'transparent',
+                                transition:
+                                    'border-color 0.1s ease, background-color 0.1s ease',
+                                fontFamily: MONO,
+                                fontSize: '16px',
+                                outline: 'none',
+                            }}
+                        >
+                            {selectedFile ? (
+                                <>
+                                    <div
+                                        style={{
+                                            color: S.cyan,
+                                            marginBottom: '0.35rem',
+                                            letterSpacing: '0.02em',
+                                        }}
+                                    >
+                                        {phase.t === 'selected' ? '◆ ' : ''}
+                                        {selectedFile.name}
+                                        {isMd && (
+                                            <span
+                                                style={{
+                                                    color: S.violet,
+                                                    marginLeft: '0.5rem',
+                                                    fontSize: '13px',
+                                                }}
+                                            >
+                                                md
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div
+                                        style={{
+                                            color: S.base1,
+                                            fontSize: '14px',
+                                        }}
+                                    >
+                                        {phase.t === 'deploying' ? (
+                                            <span className="cursor-blink">
+                                                deploying
+                                            </span>
+                                        ) : (
+                                            'ready to deploy'
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div
+                                        style={{
+                                            color: S.base0,
+                                            marginBottom: '0.35rem',
+                                        }}
+                                    >
+                                        drop your{' '}
+                                        <span
+                                            style={{
+                                                color: S.base00,
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            .html
+                                        </span>{' '}
+                                        or{' '}
+                                        <span
+                                            style={{
+                                                color: S.base00,
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            .md
+                                        </span>{' '}
+                                        file here
+                                    </div>
+                                    <div
+                                        style={{
+                                            color: S.base1,
+                                            fontSize: '14px',
+                                        }}
+                                    >
+                                        or click to browse
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
 
-                    {/* error */}
+                    {/* ── error ── */}
                     {phase.t === 'error' && (
                         <p
                             className="fade-in"
@@ -414,7 +748,7 @@ export default function Welcome() {
                                 color: S.red,
                             }}
                         >
-                            ✗ {phase.message}{' '}
+                            {phase.message}{' '}
                             <button
                                 onClick={reset}
                                 style={{
@@ -433,7 +767,7 @@ export default function Welcome() {
                         </p>
                     )}
 
-                    {/* deploy button */}
+                    {/* ── deploy button ── */}
                     {showButton && (
                         <button
                             className="deploy-btn"
@@ -443,28 +777,550 @@ export default function Welcome() {
                                 fontFamily: MONO,
                                 fontSize: '16px',
                                 padding: '0.625rem 2.8rem',
-                                backgroundColor: buttonActive ? S.red : 'transparent',
+                                backgroundColor: buttonActive
+                                    ? S.red
+                                    : 'transparent',
                                 color: buttonActive ? S.base3 : S.base1,
                                 border: `1px solid ${buttonActive ? S.red : S.base2}`,
                                 cursor: canDeploy ? 'pointer' : 'not-allowed',
-                                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                                transition:
+                                    'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                                 letterSpacing: '0.06em',
                             }}
                         >
                             {isDeploying ? (
                                 <span className="cursor-blink">deploying</span>
                             ) : (
-                                '[ deploy → ]'
+                                '[ deploy ]'
                             )}
                         </button>
                     )}
 
-                    {/* success */}
+                    {/* ── success ── */}
                     {isSuccess && phase.t === 'success' && (
-                        <Result url={phase.url} expiresAt={phase.expiresAt} onReset={reset} />
+                        <Result
+                            url={phase.url}
+                            expiresAt={phase.expiresAt}
+                            onReset={reset}
+                        />
                     )}
 
-                    {/* footer */}
+                    {/* ── cached links list ── */}
+                    {cachedLinks.length > 0 && (
+                        <div
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.75rem',
+                                marginTop: '1rem',
+                                animation: 'fadeSlideUp 0.25s ease-out both',
+                            }}
+                        >
+                            <h3
+                                style={{
+                                    fontFamily: MONO,
+                                    fontSize: '13px',
+                                    color: S.base00,
+                                    margin: 0,
+                                    borderBottom: `1px solid ${S.base2}`,
+                                    paddingBottom: '0.5rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <span>recent deployments</span>
+                                <button
+                                    onClick={() => {
+                                        if (
+                                            confirm('clear all cached links?')
+                                        ) {
+                                            saveCachedLinks([]);
+                                        }
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: S.base1,
+                                        cursor: 'pointer',
+                                        fontSize: '11px',
+                                        textDecoration: 'underline',
+                                        fontFamily: 'inherit',
+                                    }}
+                                >
+                                    clear history
+                                </button>
+                            </h3>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem',
+                                }}
+                            >
+                                {cachedLinks.map((link) => {
+                                    const timeStr = timeUntil(link.expiresAt);
+                                    const isExpired = timeStr === 'expired';
+
+                                    return (
+                                        <div
+                                            key={link.id}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '0.6rem 0.8rem',
+                                                backgroundColor: S.base2,
+                                                border: `1px solid ${isExpired ? S.red : S.base2}`,
+                                                fontFamily: MONO,
+                                                fontSize: '13px',
+                                                boxSizing: 'border-box',
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '0.2rem',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    flex: 1,
+                                                    marginRight: '1rem',
+                                                }}
+                                            >
+                                                <span
+                                                    style={{
+                                                        color: S.cyan,
+                                                        fontWeight: 'bold',
+                                                        overflow: 'hidden',
+                                                        textOverflow:
+                                                            'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {link.filename}
+                                                </span>
+                                                <a
+                                                    href={link.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        color: isExpired
+                                                            ? S.base1
+                                                            : S.blue,
+                                                        textDecoration: 'none',
+                                                        overflow: 'hidden',
+                                                        textOverflow:
+                                                            'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {link.url}
+                                                </a>
+                                            </div>
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.75rem',
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                <span
+                                                    style={{
+                                                        fontSize: '11px',
+                                                        color: isExpired
+                                                            ? S.red
+                                                            : S.green,
+                                                    }}
+                                                >
+                                                    {isExpired
+                                                        ? 'expired'
+                                                        : `expires in ${timeStr}`}
+                                                </span>
+                                                <button
+                                                    onClick={() =>
+                                                        openManageModal(link)
+                                                    }
+                                                    className="manage-btn"
+                                                    style={{
+                                                        padding:
+                                                            '0.25rem 0.6rem',
+                                                        backgroundColor:
+                                                            'transparent',
+                                                        color: S.base0,
+                                                        border: `1px solid ${S.base1}`,
+                                                        cursor: 'pointer',
+                                                        fontSize: '11px',
+                                                        fontFamily: MONO,
+                                                        letterSpacing: '0.04em',
+                                                    }}
+                                                >
+                                                    manage
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── manage modal ── */}
+                    {managingLink && (
+                        <div
+                            style={{
+                                position: 'fixed',
+                                inset: 0,
+                                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                                backdropFilter: 'blur(4px)',
+                                zIndex: 1000,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '1.5rem',
+                                boxSizing: 'border-box',
+                            }}
+                            onClick={closeManageModal}
+                        >
+                            <div
+                                className="modal-content"
+                                style={{
+                                    backgroundColor: S.base3,
+                                    border: `1px solid ${S.base1}`,
+                                    width: '100%',
+                                    maxWidth: '460px',
+                                    padding: '1.8rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '1.5rem',
+                                    position: 'relative',
+                                    boxSizing: 'border-box',
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        borderBottom: `1px solid ${S.base2}`,
+                                        paddingBottom: '0.75rem',
+                                    }}
+                                >
+                                    <h3
+                                        style={{
+                                            margin: 0,
+                                            fontFamily: MONO,
+                                            fontSize: '15px',
+                                            color: S.cyan,
+                                            fontWeight: 'bold',
+                                        }}
+                                    >
+                                        manage deployment
+                                    </h3>
+                                    <button
+                                        onClick={closeManageModal}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: S.base1,
+                                            cursor: 'pointer',
+                                            fontSize: '18px',
+                                            fontFamily: MONO,
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.5rem',
+                                        fontFamily: MONO,
+                                        fontSize: '12px',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex' }}>
+                                        <span
+                                            style={{
+                                                color: S.base1,
+                                                width: '90px',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            file:
+                                        </span>
+                                        <span
+                                            style={{
+                                                color: S.base00,
+                                                fontWeight: 'bold',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {managingLink.filename}
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            overflow: 'hidden',
+                                        }}
+                                    >
+                                        <span
+                                            style={{
+                                                color: S.base1,
+                                                width: '90px',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            url:
+                                        </span>
+                                        <a
+                                            href={managingLink.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                color: S.blue,
+                                                textDecoration: 'none',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {managingLink.url}
+                                        </a>
+                                    </div>
+                                    <div style={{ display: 'flex' }}>
+                                        <span
+                                            style={{
+                                                color: S.base1,
+                                                width: '90px',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            status:
+                                        </span>
+                                        <span
+                                            style={{
+                                                color:
+                                                    timeUntil(
+                                                        managingLink.expiresAt,
+                                                    ) === 'expired'
+                                                        ? S.red
+                                                        : S.green,
+                                                fontWeight: 'bold',
+                                            }}
+                                        >
+                                            {timeUntil(
+                                                managingLink.expiresAt,
+                                            ) === 'expired'
+                                                ? 'expired'
+                                                : `expires in ${timeUntil(managingLink.expiresAt)}`}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.75rem',
+                                    }}
+                                >
+                                    <label
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '12px',
+                                            color: S.base00,
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.5rem',
+                                        }}
+                                    >
+                                        <span>
+                                            adjust duration (minutes from now)
+                                        </span>
+                                        <div
+                                            style={{
+                                                display: 'flex',
+                                                gap: '0.5rem',
+                                            }}
+                                        >
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={1440}
+                                                value={newTtlMinutes}
+                                                onChange={(e) =>
+                                                    setNewTtlMinutes(
+                                                        parseInt(
+                                                            e.target.value,
+                                                        ) || 60,
+                                                    )
+                                                }
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '0.5rem',
+                                                    backgroundColor: S.base2,
+                                                    border: `1px solid ${S.base1}`,
+                                                    color: S.base0,
+                                                    fontFamily: MONO,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                    boxSizing: 'border-box',
+                                                }}
+                                            />
+                                            <select
+                                                value={
+                                                    [
+                                                        15, 60, 360, 1440,
+                                                    ].includes(newTtlMinutes)
+                                                        ? newTtlMinutes
+                                                        : ''
+                                                }
+                                                onChange={(e) =>
+                                                    e.target.value &&
+                                                    setNewTtlMinutes(
+                                                        parseInt(
+                                                            e.target.value,
+                                                        ),
+                                                    )
+                                                }
+                                                style={{
+                                                    padding: '0.5rem',
+                                                    backgroundColor: S.base2,
+                                                    border: `1px solid ${S.base1}`,
+                                                    color: S.base0,
+                                                    fontFamily: MONO,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                    boxSizing: 'border-box',
+                                                }}
+                                            >
+                                                <option value="" disabled>
+                                                    presets
+                                                </option>
+                                                <option value={15}>
+                                                    15 min
+                                                </option>
+                                                <option value={60}>
+                                                    1 hour
+                                                </option>
+                                                <option value={360}>
+                                                    6 hours
+                                                </option>
+                                                <option value={1440}>
+                                                    24 hours
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </label>
+
+                                    <button
+                                        onClick={handleUpdateTtl}
+                                        disabled={
+                                            isUpdatingTtl || isDeletingLink
+                                        }
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '12px',
+                                            padding: '0.5rem 1rem',
+                                            backgroundColor: S.blue,
+                                            color: S.base3,
+                                            border: 'none',
+                                            cursor:
+                                                isUpdatingTtl || isDeletingLink
+                                                    ? 'not-allowed'
+                                                    : 'pointer',
+                                            transition: 'opacity 0.15s ease',
+                                            alignSelf: 'flex-start',
+                                        }}
+                                    >
+                                        {isUpdatingTtl
+                                            ? 'updating...'
+                                            : 'update duration'}
+                                    </button>
+                                </div>
+
+                                {modalError && (
+                                    <div
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '12px',
+                                            color: S.red,
+                                        }}
+                                    >
+                                        ✗ {modalError}
+                                    </div>
+                                )}
+                                {modalSuccess && (
+                                    <div
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '12px',
+                                            color: S.green,
+                                        }}
+                                    >
+                                        ✓ duration updated successfully!
+                                    </div>
+                                )}
+
+                                <div
+                                    style={{
+                                        borderTop: `1px solid ${S.base2}`,
+                                        paddingTop: '1.2rem',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.6rem',
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.base1,
+                                        }}
+                                    >
+                                        danger zone: permanently delete
+                                        deployment from server
+                                    </div>
+                                    <button
+                                        onClick={handleDeleteLink}
+                                        disabled={
+                                            isUpdatingTtl || isDeletingLink
+                                        }
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '12px',
+                                            padding: '0.5rem 1rem',
+                                            backgroundColor: S.red,
+                                            color: S.base3,
+                                            border: 'none',
+                                            cursor:
+                                                isUpdatingTtl || isDeletingLink
+                                                    ? 'not-allowed'
+                                                    : 'pointer',
+                                            transition: 'opacity 0.15s ease',
+                                            alignSelf: 'flex-start',
+                                        }}
+                                    >
+                                        {isDeletingLink
+                                            ? 'deleting...'
+                                            : 'delete deployment'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── footer ── */}
                     <footer
                         style={{
                             width: '100%',
@@ -480,7 +1336,10 @@ export default function Welcome() {
                         <div style={{ display: 'flex', gap: '1.5rem' }}>
                             <Link
                                 href="/docs"
-                                style={{ color: S.base1, textDecoration: 'none' }}
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
                             >
                                 docs
                             </Link>
@@ -488,15 +1347,20 @@ export default function Welcome() {
                                 href="https://github.com/rubybear-lgtm/artfct"
                                 target="_blank"
                                 rel="noreferrer"
-                                style={{ color: S.base1, textDecoration: 'none' }}
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
                             >
                                 github
                             </a>
                         </div>
-                        <span style={{ color: S.base1 }}>ephemeral · secure · 60min</span>
+                        <span style={{ color: S.base1 }}>
+                            ephemeral · secure · 60min
+                        </span>
                     </footer>
 
-                    {/* cli callout */}
+                    {/* ── cli callout ── */}
                     <div
                         style={{
                             width: '100%',
@@ -507,11 +1371,24 @@ export default function Welcome() {
                             gap: '0.75rem',
                         }}
                     >
-                        <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        <span
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             cli
                         </span>
-                        <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base1 }}>
-                            deploy from your terminal, or run as an mcp server for claude code, cursor & more.
+                        <span
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base1,
+                            }}
+                        >
+                            deploy from your terminal, or run as an mcp server
+                            for claude code, cursor & more.
                         </span>
                         <pre
                             style={{
@@ -524,8 +1401,8 @@ export default function Welcome() {
                                 lineHeight: 1.7,
                             }}
                         >
-                            <span style={{ color: S.base1 }}>$ </span>
-                            {'curl -fsSL https://artfct.dev/install.sh | sh'}
+                            <span style={{ color: S.base1 }}>$ </span>curl -fsSL
+                            https://artfct.dev/install.sh | sh
                         </pre>
                         <Link
                             href="/docs#cli"
@@ -536,7 +1413,7 @@ export default function Welcome() {
                                 textDecoration: 'none',
                             }}
                         >
-                            install & usage →
+                            install & usage
                         </Link>
                     </div>
                 </div>

@@ -4,19 +4,19 @@ import { ThemeToggle } from '@/lib/theme';
 
 // ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
 const S = {
-    base3:   'var(--sol-base3)',
-    base2:   'var(--sol-base2)',
-    base1:   'var(--sol-base1)',
-    base0:   'var(--sol-base0)',
-    base00:  'var(--sol-base00)',
-    yellow:  'var(--sol-yellow)',
-    orange:  'var(--sol-orange)',
-    red:     'var(--sol-red)',
+    base3: 'var(--sol-base3)',
+    base2: 'var(--sol-base2)',
+    base1: 'var(--sol-base1)',
+    base0: 'var(--sol-base0)',
+    base00: 'var(--sol-base00)',
+    yellow: 'var(--sol-yellow)',
+    orange: 'var(--sol-orange)',
+    red: 'var(--sol-red)',
     magenta: 'var(--sol-magenta)',
-    violet:  'var(--sol-violet)',
-    blue:    'var(--sol-blue)',
-    cyan:    'var(--sol-cyan)',
-    green:   'var(--sol-green)',
+    violet: 'var(--sol-violet)',
+    blue: 'var(--sol-blue)',
+    cyan: 'var(--sol-cyan)',
+    green: 'var(--sol-green)',
 } as const;
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
@@ -24,15 +24,30 @@ const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
 
 // ── content ──────────────────────────────────────────────────────────────────
 const POST_REQUEST_FIELDS = [
-    { name: 'html',        type: 'string',  req: true,  note: 'The complete HTML to host. Max 1 MB.' },
-    { name: 'tier',        type: 'enum',    req: true,  note: 'public · secure · ephemeral' },
-    { name: 'ttl_minutes', type: 'integer', req: false, note: 'Minutes until expiry. Default: 60. Max: 1440.' },
+    {
+        name: 'html',
+        type: 'string',
+        req: true,
+        note: 'The complete HTML to host. Max 1 MB.',
+    },
+    {
+        name: 'tier',
+        type: 'enum',
+        req: true,
+        note: 'public · secure · ephemeral',
+    },
+    {
+        name: 'ttl_minutes',
+        type: 'integer',
+        req: false,
+        note: 'Minutes until expiry. Default: 60. Max: 1440.',
+    },
 ] as const;
 
 const POST_RESPONSE_FIELDS = [
-    { name: 'id',         type: 'string', note: '32-character token.' },
-    { name: 'url',        type: 'string', note: 'Direct link to the artifact.' },
-    { name: 'tier',       type: 'string', note: 'The tier used.' },
+    { name: 'id', type: 'string', note: '32-character token.' },
+    { name: 'url', type: 'string', note: 'Direct link to the artifact.' },
+    { name: 'tier', type: 'string', note: 'The tier used.' },
     { name: 'expires_at', type: 'string', note: 'ISO 8601 expiry timestamp.' },
 ] as const;
 
@@ -48,18 +63,15 @@ const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 const EXAMPLE_ID = '4fa8gx9z3k7m2n5p8q1r6s0t7u2v4w9x';
 
 // ── CLI content ───────────────────────────────────────────────────────────────
-const CLI_INSTALL =
-`curl -fsSL https://artfct.dev/install.sh | sh`;
+const CLI_INSTALL = `curl -fsSL https://artfct.dev/install.sh | sh`;
 
-const CLI_INSTALL_OPTS =
-`# install a specific version
+const CLI_INSTALL_OPTS = `# install a specific version
 ARTFCT_INSTALL_VERSION=v0.1.0 curl -fsSL https://artfct.dev/install.sh | sh
 
 # install to a custom directory
 ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh`;
 
-const CLI_USAGE =
-`# deploy a file — prints the URL
+const CLI_USAGE = `# deploy a file — prints the URL
 artfct deploy page.html
 
 # deploy from stdin
@@ -69,37 +81,52 @@ echo '<h1>hello</h1>' | artfct deploy --stdin
 # check connectivity
 artfct doctor`;
 
-const CLI_MCP =
-`artfct mcp serve`;
+const CLI_MCP = `artfct mcp serve`;
 
 const CLI_DEPLOY_FLAGS = [
-    { name: 'FILE',            type: 'path',    req: false, note: 'Path to the HTML file to deploy.' },
-    { name: '--stdin',         type: 'flag',    req: false, note: 'Read HTML from stdin instead of a file.' },
-    { name: '--tier',          type: 'string',  req: false, note: 'public · secure · ephemeral  (default: ephemeral)' },
-    { name: '--ttl-minutes',   type: 'integer', req: false, note: 'Minutes until expiry. Default: 60. Max: 1440.' },
+    {
+        name: 'FILE',
+        type: 'path',
+        req: false,
+        note: 'Path to the HTML file to deploy.',
+    },
+    {
+        name: '--stdin',
+        type: 'flag',
+        req: false,
+        note: 'Read HTML from stdin instead of a file.',
+    },
+    {
+        name: '--tier',
+        type: 'string',
+        req: false,
+        note: 'public · secure · ephemeral  (default: ephemeral)',
+    },
+    {
+        name: '--ttl-minutes',
+        type: 'integer',
+        req: false,
+        note: 'Minutes until expiry. Default: 60. Max: 1440.',
+    },
 ] as const;
 
-const CODE_POST_REQUEST =
-`curl -X POST https://artfct.dev/v1/artifacts \\
+const CODE_POST_REQUEST = `curl -X POST https://artfct.dev/v1/artifacts \\
   -H "Content-Type: application/json" \\
   -d '{
     "html": "<h1>hello world</h1>",
     "tier": "ephemeral"
   }'`;
 
-const CODE_POST_RESPONSE =
-`{
+const CODE_POST_RESPONSE = `{
   "id": "${EXAMPLE_ID}",
   "url": "https://artfct.dev/p/${EXAMPLE_ID}",
   "tier": "ephemeral",
   "expires_at": "2026-06-03T15:30:00Z"
 }`;
 
-const CODE_DELETE_REQUEST =
-`curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
+const CODE_DELETE_REQUEST = `curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
 
-const CODE_ERROR_RESPONSE =
-`{
+const CODE_ERROR_RESPONSE = `{
   "message": "The html field is required."
 }`;
 
@@ -116,7 +143,14 @@ function SectionDivider({ id, label }: { id: string; label: string }) {
                 marginBottom: '1.5rem',
             }}
         >
-            <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1, whiteSpace: 'nowrap' }}>
+            <span
+                style={{
+                    fontFamily: MONO,
+                    fontSize: '11px',
+                    color: S.base1,
+                    whiteSpace: 'nowrap',
+                }}
+            >
                 ── {label}
             </span>
             <div style={{ flex: 1, height: '1px', backgroundColor: S.base2 }} />
@@ -176,7 +210,12 @@ function CodeBlock({ code }: { code: string }) {
 function FieldTable({
     fields,
 }: {
-    fields: ReadonlyArray<{ name: string; type: string; req?: boolean; note: string }>;
+    fields: ReadonlyArray<{
+        name: string;
+        type: string;
+        req?: boolean;
+        note: string;
+    }>;
 }) {
     return (
         <div style={{ marginBottom: '1.25rem' }}>
@@ -193,10 +232,22 @@ function FieldTable({
                         alignItems: 'baseline',
                     }}
                 >
-                    <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                    <span
+                        style={{
+                            fontFamily: MONO,
+                            fontSize: '12px',
+                            color: S.base00,
+                        }}
+                    >
                         {f.name}
                     </span>
-                    <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1 }}>
+                    <span
+                        style={{
+                            fontFamily: MONO,
+                            fontSize: '11px',
+                            color: S.base1,
+                        }}
+                    >
                         {f.type}
                         {'req' in f && (
                             <span
@@ -210,7 +261,13 @@ function FieldTable({
                             </span>
                         )}
                     </span>
-                    <span style={{ fontFamily: SANS, fontSize: '13px', color: S.base0 }}>
+                    <span
+                        style={{
+                            fontFamily: SANS,
+                            fontSize: '13px',
+                            color: S.base0,
+                        }}
+                    >
                         {f.note}
                     </span>
                 </div>
@@ -272,12 +329,12 @@ function Chip({ children }: { children: React.ReactNode }) {
 // ── page ─────────────────────────────────────────────────────────────────────
 export default function Docs() {
     const NAV_LINKS = [
-        { href: '#cli',      label: 'cli' },
+        { href: '#cli', label: 'cli' },
         { href: '#overview', label: 'rest api' },
-        { href: '#create',   label: 'create' },
-        { href: '#delete',   label: 'delete' },
-        { href: '#errors',   label: 'errors' },
-        { href: '#limits',   label: 'rate limits' },
+        { href: '#create', label: 'create' },
+        { href: '#delete', label: 'delete' },
+        { href: '#errors', label: 'errors' },
+        { href: '#limits', label: 'rate limits' },
     ];
 
     return (
@@ -375,12 +432,22 @@ export default function Docs() {
                             <span key={link.href}>
                                 <a
                                     href={link.href}
-                                    style={{ color: S.blue, textDecoration: 'none' }}
+                                    style={{
+                                        color: S.blue,
+                                        textDecoration: 'none',
+                                    }}
                                 >
                                     {link.label}
                                 </a>
                                 {i < NAV_LINKS.length - 1 && (
-                                    <span style={{ color: S.base2, margin: '0 0.5rem' }}>·</span>
+                                    <span
+                                        style={{
+                                            color: S.base2,
+                                            margin: '0 0.5rem',
+                                        }}
+                                    >
+                                        ·
+                                    </span>
                                 )}
                             </span>
                         ))}
@@ -390,16 +457,36 @@ export default function Docs() {
                     <SectionDivider id="cli" label="cli" />
 
                     <Prose>
-                        The <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>artfct</code> CLI
-                        deploys HTML files directly from your terminal and pipes. Pre-built binaries
-                        are available for macOS and Linux — no runtime required.
+                        The{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            artfct
+                        </code>{' '}
+                        CLI deploys HTML files directly from your terminal and
+                        pipes. Pre-built binaries are available for macOS and
+                        Linux — no runtime required.
                     </Prose>
 
                     <Label>install</Label>
 
                     <Prose>
-                        Works on macOS (Apple Silicon and Intel) and Linux (x86\_64 and ARM64).
-                        Installs to <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>~/.local/bin</code> by default.
+                        Works on macOS (Apple Silicon and Intel) and Linux
+                        (x86\_64 and ARM64). Installs to{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            ~/.local/bin
+                        </code>{' '}
+                        by default.
                     </Prose>
 
                     <CodeBlock code={CLI_INSTALL} />
@@ -414,39 +501,70 @@ export default function Docs() {
 
                     <Label>mcp server</Label>
                     <Prose>
-                        Start artfct as a local MCP server over stdio. Supports the{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>deploy_to_canvas</code>{' '}
-                        tool — Claude Code, Cursor, and other MCP-compatible agents can call it to publish
-                        HTML directly without leaving the session.
+                        Start artfct as a local MCP server over stdio. Supports
+                        the{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            deploy_to_canvas
+                        </code>{' '}
+                        tool — Claude Code, Cursor, and other MCP-compatible
+                        agents can call it to publish HTML directly without
+                        leaving the session.
                     </Prose>
                     <CodeBlock code={CLI_MCP} />
 
                     <Prose>
                         To wire it up in Claude Code, add this to your{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>.mcp.json</code>:
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            .mcp.json
+                        </code>
+                        :
                     </Prose>
-                    <CodeBlock code={`{
+                    <CodeBlock
+                        code={`{
   "mcpServers": {
     "artfct": {
       "command": "artfct",
       "args": ["mcp", "serve"]
     }
   }
-}`} />
+}`}
+                    />
 
                     {/* ── overview ─────────────────────────────────────────── */}
                     <SectionDivider id="overview" label="rest api" />
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem',
+                            marginBottom: '1.5rem',
+                        }}
+                    >
                         <Chip>base url: https://artfct.dev</Chip>
                         <Chip>content-type: application/json</Chip>
                         <Chip>max payload: 1 mb</Chip>
                     </div>
 
                     <Prose>
-                        No authentication required. Requests are rate-limited per IP at the
-                        Cloudflare edge — see{' '}
-                        <a href="#limits" style={{ color: S.blue, textDecoration: 'none' }}>
+                        No authentication required. Requests are rate-limited
+                        per IP at the Cloudflare edge — see{' '}
+                        <a
+                            href="#limits"
+                            style={{ color: S.blue, textDecoration: 'none' }}
+                        >
                             rate limits
                         </a>
                         .
@@ -454,17 +572,25 @@ export default function Docs() {
 
                     <Prose>
                         Artifacts are served at{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             /p/:id
                         </code>{' '}
-                        as rendered HTML pages — that endpoint is browser-facing and not part of
-                        this API.
+                        as rendered HTML pages — that endpoint is browser-facing
+                        and not part of this API.
                     </Prose>
 
                     {/* ── create ───────────────────────────────────────────── */}
                     <SectionDivider id="create" label="POST /v1/artifacts" />
 
-                    <Prose>Creates a new artifact and returns a shareable URL.</Prose>
+                    <Prose>
+                        Creates a new artifact and returns a shareable URL.
+                    </Prose>
 
                     <Label>request body</Label>
                     <FieldTable fields={POST_REQUEST_FIELDS} />
@@ -478,16 +604,30 @@ export default function Docs() {
                                 marginBottom: '0.75rem',
                             }}
                         >
-                            <strong style={{ color: S.base00 }}>tier values</strong>
-                            <span style={{ margin: '0 0.4rem', color: S.base2 }}>·</span>
-                            <span style={{ color: S.cyan }}>public</span>
-                            {' '}open link
-                            <span style={{ margin: '0 0.5rem', color: S.base2 }}>·</span>
-                            <span style={{ color: S.cyan }}>secure</span>
-                            {' '}high-entropy URL
-                            <span style={{ margin: '0 0.5rem', color: S.base2 }}>·</span>
-                            <span style={{ color: S.cyan }}>ephemeral</span>
-                            {' '}auto-expires after TTL
+                            <strong style={{ color: S.base00 }}>
+                                tier values
+                            </strong>
+                            <span
+                                style={{ margin: '0 0.4rem', color: S.base2 }}
+                            >
+                                ·
+                            </span>
+                            <span style={{ color: S.cyan }}>public</span> open
+                            link
+                            <span
+                                style={{ margin: '0 0.5rem', color: S.base2 }}
+                            >
+                                ·
+                            </span>
+                            <span style={{ color: S.cyan }}>secure</span>{' '}
+                            high-entropy URL
+                            <span
+                                style={{ margin: '0 0.5rem', color: S.base2 }}
+                            >
+                                ·
+                            </span>
+                            <span style={{ color: S.cyan }}>ephemeral</span>{' '}
+                            auto-expires after TTL
                         </div>
                     </div>
 
@@ -499,15 +639,30 @@ export default function Docs() {
                     <CodeBlock code={CODE_POST_RESPONSE} />
 
                     {/* ── delete ───────────────────────────────────────────── */}
-                    <SectionDivider id="delete" label="DELETE /v1/artifacts/:id" />
+                    <SectionDivider
+                        id="delete"
+                        label="DELETE /v1/artifacts/:id"
+                    />
 
                     <Prose>
                         Immediately evicts an artifact from the store. Returns{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             204 No Content
                         </code>{' '}
                         on success. Use the{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             id
                         </code>{' '}
                         from the create response.
@@ -521,7 +676,13 @@ export default function Docs() {
 
                     <Prose>
                         All errors return a JSON body with a single{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             message
                         </code>{' '}
                         field.
@@ -541,9 +702,15 @@ export default function Docs() {
                     <SectionDivider id="limits" label="rate limits" />
 
                     <Prose>
-                        Rate limits are enforced at the Cloudflare WAF before requests reach the
-                        worker. Exceeding a limit returns{' '}
-                        <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                        Rate limits are enforced at the Cloudflare WAF before
+                        requests reach the worker. Exceeding a limit returns{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
                             429
                         </code>
                         .
@@ -551,8 +718,16 @@ export default function Docs() {
 
                     <FieldTable
                         fields={[
-                            { name: 'POST /v1/artifacts', type: '', note: '60 requests / minute per IP' },
-                            { name: 'GET /p/:id',         type: '', note: '200 requests / minute per IP' },
+                            {
+                                name: 'POST /v1/artifacts',
+                                type: '',
+                                note: '60 requests / minute per IP',
+                            },
+                            {
+                                name: 'GET /p/:id',
+                                type: '',
+                                note: '200 requests / minute per IP',
+                            },
                         ]}
                     />
                 </div>
@@ -572,7 +747,10 @@ export default function Docs() {
                     }}
                 >
                     <div style={{ display: 'flex', gap: '1.25rem' }}>
-                        <Link href="/" style={{ color: S.base1, textDecoration: 'none' }}>
+                        <Link
+                            href="/"
+                            style={{ color: S.base1, textDecoration: 'none' }}
+                        >
                             home
                         </Link>
                         <a
@@ -584,7 +762,9 @@ export default function Docs() {
                             github
                         </a>
                     </div>
-                    <span style={{ color: S.base2 }}>ephemeral · secure · 60min</span>
+                    <span style={{ color: S.base2 }}>
+                        ephemeral · secure · 60min
+                    </span>
                 </footer>
             </div>
         </>

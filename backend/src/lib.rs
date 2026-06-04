@@ -60,6 +60,9 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
             delete_artifact(path, &env).await
         }
+        (Method::Patch, path) if path.starts_with("/v1/artifacts/") => {
+            update_artifact(path, &mut req, &env).await
+        }
         (Method::Get, path) if path.starts_with("/p/") => resolve_artifact(path, &env).await,
         (Method::Options, _) => options_response(),
         _ => not_found_response(),
@@ -155,6 +158,61 @@ async fn delete_artifact(path: &str, env: &Env) -> Result<Response> {
     Response::empty().map(|response| response.with_status(204))
 }
 
+async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
+    let id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(id) {
+        return json_error("Invalid artifact id.", 400);
+    }
+
+    #[derive(Deserialize)]
+    struct UpdateArtifactRequest {
+        ttl_minutes: u64,
+    }
+
+    let payload = match req.json::<UpdateArtifactRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error("Invalid JSON request body.", 400),
+    };
+
+    let max_ttl_minutes = env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES);
+    if payload.ttl_minutes == 0 || payload.ttl_minutes > max_ttl_minutes {
+        return json_error(
+            "ttl_minutes must be between 1 and the configured maximum.",
+            422,
+        );
+    }
+
+    let Some(mut stored) = env.kv(KV_BINDING)?.get(id).json::<StoredArtifact>().await? else {
+        return json_error("Artifact not found or expired.", 404);
+    };
+
+    let ttl_seconds = (payload.ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+
+    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+
+    let body = serde_json::to_string(&stored)?;
+    env.kv(KV_BINDING)?
+        .put(id, body)?
+        .expiration_ttl(ttl_seconds)
+        .execute()
+        .await?;
+
+    #[derive(Serialize)]
+    struct UpdateArtifactResponse {
+        id: String,
+        expires_at: String,
+    }
+
+    let response = UpdateArtifactResponse {
+        id: id.to_string(),
+        expires_at: stored.expires_at,
+    };
+
+    json_response(&response, 200)
+}
+
 fn render_canvas(html: &str, expires_at: &str) -> String {
     let escaped_html = escape_attr(html);
     let escaped_expires_at = escape_text(expires_at);
@@ -219,9 +277,10 @@ fn json_response<T: Serialize>(value: &T, status: u16) -> Result<Response> {
     response
         .headers_mut()
         .set("Access-Control-Allow-Origin", "*")?;
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Methods", "POST, DELETE, OPTIONS")?;
+    response.headers_mut().set(
+        "Access-Control-Allow-Methods",
+        "POST, PATCH, DELETE, OPTIONS",
+    )?;
     response.headers_mut().set(
         "Access-Control-Allow-Headers",
         "Content-Type, Authorization",
@@ -266,9 +325,10 @@ fn options_response() -> Result<Response> {
     response
         .headers_mut()
         .set("Access-Control-Allow-Origin", "*")?;
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Methods", "POST, DELETE, OPTIONS")?;
+    response.headers_mut().set(
+        "Access-Control-Allow-Methods",
+        "POST, PATCH, DELETE, OPTIONS",
+    )?;
     response.headers_mut().set(
         "Access-Control-Allow-Headers",
         "Content-Type, Authorization",
