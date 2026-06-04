@@ -20,6 +20,8 @@
         "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs"
     },
     "devDependencies": {
+        "@emnapi/core": "^1.10.0",
+        "@emnapi/runtime": "^1.10.0",
         "@eslint/js": "^9.19.0",
         "@laravel/vite-plugin-wayfinder": "^0.1.3",
         "@stylistic/eslint-plugin": "^5.10.0",
