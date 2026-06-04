@@ -1,17 +1,53 @@
-# artfct CLI
+```
+ █████╗ ██████╗ ████████╗███████╗ ██████╗████████╗
+██╔══██╗██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝
+███████║██████╔╝   ██║   █████╗  ██║        ██║   
+██╔══██║██╔══██╗   ██║   ██╔══╝  ██║        ██║   
+██║  ██║██║  ██║   ██║   ██║     ╚██████╗   ██║   
+╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═════╝   ╚═╝   
+```
 
-`artfct` publishes self-contained HTML files to temporary magic links.
+share html. get a link. that's it.
 
-## Install
+Drop any self-contained HTML file — via browser, CLI, or API — and get back a
+secure, ephemeral link. Links expire after 60 minutes. No sign-up required.
 
-Install the latest CLI release:
+---
+
+- **Web** — [artfct.dev](https://artfct.dev)
+- **Docs** — [artfct.dev/docs](https://artfct.dev/docs)
+- **Releases** — [github.com/rubybear-lgtm/artfct/releases](https://github.com/rubybear-lgtm/artfct/releases)
+
+---
+
+## Web
+
+Visit [artfct.dev](https://artfct.dev). Drop or select an `.html` file. You get a
+link immediately — no account, no configuration.
+
+```
+ drop your .html file here
+ or click to browse
+
+ [ deploy → ]
+
+ → https://artfct.dev/p/4fA8gX9z...   ⎘ copy
+   expires in 60 min
+```
+
+Links are ephemeral and secure by default. The URL is a 32-character random token —
+not guessable, not indexed, gone after the TTL.
+
+## CLI
+
+Install the latest release:
 
 ```sh
 curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
-The installer downloads the right binary for macOS or Linux and installs it to
-`~/.local/bin/artfct` by default.
+The installer downloads the right binary for macOS (Apple Silicon or Intel) or
+Linux (x86\_64 or ARM64) and installs it to `~/.local/bin/artfct` by default.
 
 If `~/.local/bin` is not on your `PATH`, add it:
 
@@ -19,68 +55,58 @@ If `~/.local/bin` is not on your `PATH`, add it:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Install a specific release:
+Install a specific version or to a custom directory:
 
 ```sh
 ARTFCT_INSTALL_VERSION=v0.1.0 curl -fsSL https://artfct.dev/install.sh | sh
-```
-
-Install to a different directory:
-
-```sh
 ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
-## Deploy HTML
-
-Deploy a file:
+### Deploy
 
 ```sh
+# Deploy a file — prints the URL
 artfct deploy ./dashboard.html
-```
 
-Deploy from stdin:
-
-```sh
+# Deploy from stdin
 cat dashboard.html | artfct deploy --stdin
-```
+echo '<h1>hello</h1>' | artfct deploy --stdin
 
-Set the artifact tier and expiration:
-
-```sh
+# Set tier and expiration
 artfct deploy ./dashboard.html --tier ephemeral --ttl-minutes 30
 ```
 
-The command prints the preview URL:
+Output:
 
-```text
+```
 https://artfct.dev/p/<artifact-id>
 ```
 
-## Deploy Options
+### Options
 
-```text
+```
 Usage: artfct deploy [OPTIONS] [FILE]
 
 Arguments:
-  [FILE]  Path to a self-contained HTML file to publish
+  [FILE]  Path to a self-contained HTML file
 
 Options:
-      --stdin                  Read the HTML payload from standard input
-      --tier <TIER>            Artifact tier: public, secure, or ephemeral [default: ephemeral]
-      --ttl-minutes <MINUTES>  Minutes until the artifact expires. Defaults to the backend policy
+      --stdin                  Read HTML from stdin
+      --tier <TIER>            public | secure | ephemeral  [default: ephemeral]
+      --ttl-minutes <MINUTES>  Minutes until expiry
   -h, --help                   Print help
 ```
 
-## MCP Server
+### MCP Server
 
-Run the CLI as a local MCP server over stdio:
+Run the CLI as a local MCP server over stdio so AI agents can deploy HTML without
+leaving the session:
 
 ```sh
 artfct mcp serve
 ```
 
-Use that command in an MCP client configuration:
+Wire it up in an MCP client (Claude Code, Cursor, etc.):
 
 ```json
 {
@@ -93,37 +119,102 @@ Use that command in an MCP client configuration:
 }
 ```
 
-The MCP server exposes `deploy_to_canvas`, which accepts a complete HTML payload
-and returns an artfct preview URL.
+The server exposes a single tool — `deploy_to_canvas` — which accepts a complete
+HTML payload and returns a preview URL.
 
-## Diagnostics
-
-Check the local CLI configuration and MCP command:
+### Diagnostics
 
 ```sh
-artfct doctor
-```
-
-Print command help:
-
-```sh
+artfct doctor       # check connectivity and configuration
 artfct --help
 artfct deploy --help
 artfct mcp --help
 ```
 
-## Environment
+### Environment
 
-Override the API base URL:
-
-```sh
-ARTFCT_API_BASE_URL=https://artfct.dev artfct deploy ./dashboard.html
 ```
-
-Installer options:
-
-```text
+ARTFCT_API_BASE_URL      API base URL. Defaults to https://artfct.dev
 ARTFCT_INSTALL_VERSION   Release tag to install. Defaults to latest.
 ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
 ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
+```
+
+## API
+
+Full reference at [artfct.dev/docs](https://artfct.dev/docs).
+
+Quick reference:
+
+```sh
+# Create an artifact
+curl -X POST https://artfct.dev/v1/artifacts \
+  -H "Content-Type: application/json" \
+  -d '{"html": "<h1>hello</h1>", "tier": "ephemeral"}'
+
+# Delete immediately
+curl -X DELETE https://artfct.dev/v1/artifacts/<id>
+```
+
+No authentication. Rate limited to 60 creates / minute per IP.
+
+## Development
+
+The project is a Cargo workspace with two crates and a Laravel frontend.
+
+```
+Cargo.toml          # workspace root
+backend/            # Cloudflare Worker (Rust, wasm32)
+mcp-server/         # CLI + MCP server binary (Rust)
+resources/          # Laravel frontend (React + Inertia + Tailwind)
+```
+
+### Frontend
+
+Requirements: PHP 8.5, Composer, Node 22.
+
+```sh
+composer setup      # install deps, copy .env, generate key, run migrations
+composer dev        # PHP server + queue + Vite dev server (all in one)
+```
+
+Set the worker URL so the browser can reach a local Cloudflare Worker:
+
+```sh
+# .env
+VITE_WORKER_URL=http://localhost:8787
+```
+
+Run the frontend checks:
+
+```sh
+npm run lint:check      # ESLint
+npm run format:check    # Prettier
+npm run types:check     # TypeScript
+npm run build           # Vite production build
+php artisan test        # Pest
+```
+
+Or run them all at once:
+
+```sh
+composer ci:check
+```
+
+### Worker
+
+Requirements: Rust stable, `wrangler`.
+
+```sh
+npm run worker:kv:create   # create the KV namespace (once)
+npm run worker:dev         # local worker on http://localhost:8787
+npm run worker:deploy      # deploy to Cloudflare
+```
+
+### CLI
+
+```sh
+cargo build -p artfct              # debug build
+cargo test -p artfct               # run tests
+cargo run -p artfct -- deploy --help
 ```
