@@ -100,8 +100,5 @@ jobs:
             flags+=(--prerelease)
           fi
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/*.tar.gz --clobber
-          else
-            gh release create "$RELEASE_TAG" dist/*.tar.gz "${flags[@]}"
-          fi
+          gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true
+          gh release create "$RELEASE_TAG" dist/*.tar.gz "${flags[@]}"
