@@ -333,6 +333,7 @@ export default function Welcome() {
     return (
         <>
             <Head title="artfct — share html instantly" />
+            <ThemeToggle />
             <div
                 style={{
                     minHeight: '100dvh',
@@ -475,7 +476,7 @@ export default function Welcome() {
                             fontSize: '14px',
                         }}
                     >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', gap: '1.5rem' }}>
                             <Link
                                 href="/docs"
                                 style={{ color: S.base1, textDecoration: 'none' }}
@@ -490,7 +491,6 @@ export default function Welcome() {
                             >
                                 github
                             </a>
-                            <ThemeToggle />
                         </div>
                         <span style={{ color: S.base1 }}>ephemeral · secure · 60min</span>
                     </footer>

@@ -47,16 +47,19 @@ export function ThemeToggle() {
             onClick={cycle}
             title={TITLE[theme]}
             style={{
+                position: 'fixed',
+                bottom: '1.5rem',
+                right: '1.5rem',
                 fontFamily: MONO,
                 fontSize: '11px',
-                background: 'none',
+                background: 'var(--sol-base3)',
                 border: '1px solid var(--sol-base2)',
                 color: 'var(--sol-base1)',
                 cursor: 'pointer',
-                padding: '0.15rem 0.5rem',
+                padding: '0.3rem 0.6rem',
                 letterSpacing: '0.04em',
                 transition: 'border-color 0.15s ease, color 0.15s ease',
-                flexShrink: 0,
+                zIndex: 50,
             }}
         >
             {LABEL[theme]}

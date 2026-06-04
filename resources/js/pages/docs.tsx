@@ -283,6 +283,7 @@ export default function Docs() {
     return (
         <>
             <Head title="api reference — artfct" />
+            <ThemeToggle />
             <div
                 style={{
                     minHeight: '100dvh',
@@ -314,20 +315,17 @@ export default function Docs() {
                     >
                         artfct
                     </Link>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <ThemeToggle />
-                        <Link
-                            href="/"
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '11px',
-                                color: S.base1,
-                                textDecoration: 'none',
-                            }}
-                        >
-                            ← deploy
-                        </Link>
-                    </div>
+                    <Link
+                        href="/"
+                        style={{
+                            fontFamily: MONO,
+                            fontSize: '11px',
+                            color: S.base1,
+                            textDecoration: 'none',
+                        }}
+                    >
+                        ← deploy
+                    </Link>
                 </nav>
 
                 {/* ── main content ─────────────────────────────────────────── */}
