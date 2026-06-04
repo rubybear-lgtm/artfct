@@ -1,21 +1,21 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useState } from 'react';
 
-// ── Solarized Light ──────────────────────────────────────────────────────────
+// ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
 const S = {
-    base3:   '#FDF6E3',
-    base2:   '#EEE8D5',
-    base1:   '#93A1A1',
-    base0:   '#657B83',
-    base00:  '#586E75',
-    yellow:  '#B58900',
-    orange:  '#CB4B16',
-    red:     '#DC322F',
-    magenta: '#D33682',
-    violet:  '#6C71C4',
-    blue:    '#268BD2',
-    cyan:    '#2AA198',
-    green:   '#859900',
+    base3:   'var(--sol-base3)',
+    base2:   'var(--sol-base2)',
+    base1:   'var(--sol-base1)',
+    base0:   'var(--sol-base0)',
+    base00:  'var(--sol-base00)',
+    yellow:  'var(--sol-yellow)',
+    orange:  'var(--sol-orange)',
+    red:     'var(--sol-red)',
+    magenta: 'var(--sol-magenta)',
+    violet:  'var(--sol-violet)',
+    blue:    'var(--sol-blue)',
+    cyan:    'var(--sol-cyan)',
+    green:   'var(--sol-green)',
 } as const;
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';

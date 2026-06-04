@@ -10,6 +10,33 @@
         'Noto Color Emoji';
 }
 
+/* ── Solarized palette ──────────────────────────────────────────────────── */
+:root {
+    --sol-base3:   #FDF6E3;
+    --sol-base2:   #EEE8D5;
+    --sol-base1:   #93A1A1;
+    --sol-base0:   #657B83;
+    --sol-base00:  #586E75;
+    --sol-yellow:  #B58900;
+    --sol-orange:  #CB4B16;
+    --sol-red:     #DC322F;
+    --sol-magenta: #D33682;
+    --sol-violet:  #6C71C4;
+    --sol-blue:    #268BD2;
+    --sol-cyan:    #2AA198;
+    --sol-green:   #859900;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --sol-base3:  #002B36;
+        --sol-base2:  #073642;
+        --sol-base1:  #586E75;
+        --sol-base0:  #839496;
+        --sol-base00: #93A1A1;
+    }
+}
+
 html {
     scroll-behavior: smooth;
 }
