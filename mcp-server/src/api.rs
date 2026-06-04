@@ -45,6 +45,26 @@ pub async fn deploy_artifact(
     serde_json::from_str(&body).context("Artifact Engine returned an invalid response")
 }
 
+pub async fn delete_artifact(client: &reqwest::Client, api_base_url: &str, id: &str) -> Result<()> {
+    let url = format!("{}/{}", artifact_endpoint(api_base_url), id);
+    let response = client
+        .delete(&url)
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+
+    if status == reqwest::StatusCode::NO_CONTENT {
+        return Ok(());
+    }
+
+    let body = response
+        .text()
+        .await
+        .context("Failed to read Artifact Engine response")?;
+    Err(anyhow!("Artifact Engine returned {status}: {body}"))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

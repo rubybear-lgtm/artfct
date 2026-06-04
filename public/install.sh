@@ -109,20 +109,15 @@ install_artfct() {
         return
     fi
 
-    if [ "${ARTFCT_INSTALL_SETUP:-1}" = "1" ] && [ -t 0 ] && [ -t 1 ]; then
-        printf 'Run artfct setup now? [Y/n] '
-        read answer
+    if [ "${ARTFCT_INSTALL_SETUP:-}" = "0" ]; then
+        say "Skipping setup. Run it later with: artfct setup"
+        return
+    fi
 
-        case "$answer" in
-            n | N | no | NO | No)
-                say "Skipping setup. Run it later with: artfct setup"
-                ;;
-            *)
-                "$install_dir/$binary_name" setup
-                ;;
-        esac
+    if [ -t 0 ] && [ -t 1 ]; then
+        "$install_dir/$binary_name" setup
     else
-        say "Run setup with: artfct setup"
+        "$install_dir/$binary_name" setup --silent
     fi
 }
 
