@@ -504,8 +504,11 @@ export default function Welcome() {
                             gap: '0.75rem',
                         }}
                     >
+                        <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>
+                            cli
+                        </span>
                         <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base1 }}>
-                            install the cli or mcp
+                            deploy from your terminal, or run as an mcp server for claude code, cursor & more.
                         </span>
                         <pre
                             style={{
