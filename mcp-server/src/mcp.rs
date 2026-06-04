@@ -67,9 +67,7 @@ pub async fn handle_json_rpc(value: Value) -> Option<Value> {
         }
     };
 
-    if request.id.is_none() {
-        return None;
-    }
+    request.id.as_ref()?;
 
     if request.jsonrpc != "2.0" {
         return Some(json_rpc_error(

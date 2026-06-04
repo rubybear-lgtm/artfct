@@ -55,4 +55,31 @@ else
 fi
 
 echo "✅ No secrets detected."
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+if echo "$STAGED_FILES" | grep -Eq '^(Cargo\.toml|Cargo\.lock|backend/|mcp-server/).*'; then
+    export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
+
+    if ! command -v cargo &>/dev/null; then
+        echo "❌ Rust files are staged, but cargo is not installed or not on PATH."
+        echo "   Install Rust with rustup, then retry the commit."
+        exit 1
+    fi
+
+    echo "🦀 Running Rust and CLI pre-commit checks..."
+
+    cargo fmt --all -- --check
+    cargo check --workspace --locked
+    cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
+    cargo test -p artfct --locked
+    cargo run -p artfct --locked -- doctor >/dev/null
+
+    echo "✅ Rust and CLI checks passed."
+fi
+
 exit 0

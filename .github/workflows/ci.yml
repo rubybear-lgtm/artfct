@@ -85,7 +85,7 @@ jobs:
 
       - name: Install gitleaks
         env:
-          GITLEAKS_VERSION: "8.21.2"
+          GITLEAKS_VERSION: '8.21.2'
         run: |
           curl -sSfL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
@@ -107,6 +107,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
         with:
           toolchain: stable
+          components: clippy
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo
@@ -123,10 +124,49 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Check Rust workspace
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
 
       - name: Check Worker WASM target
-        run: cargo check -p artfct-backend --target wasm32-unknown-unknown
+        run: cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test Rust workspace
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
+
+  cli:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: actions/cache@638ed79f9dc94c1de1baef91bcab5edaa19451f4 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cli-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build CLI
+        run: cargo build -p artfct --locked
+
+      - name: Test CLI package
+        run: cargo test -p artfct --locked
+
+      - name: Smoke test CLI commands
+        run: |
+          cargo run -p artfct --locked -- --help
+          cargo run -p artfct --locked -- deploy --help
+          cargo run -p artfct --locked -- mcp --help
+          cargo run -p artfct --locked -- doctor
