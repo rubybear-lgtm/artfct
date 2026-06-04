@@ -11,6 +11,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added a public shell installer script for GitHub Release binaries.
 - Added a GitHub Release workflow for publishing CLI binaries.
 - Added Rust and CLI CI jobs plus matching pre-commit checks.
+- Expanded CLI help with command descriptions, examples, and environment variable guidance.
 
 ## 0.1.0 - 2026-06-04
 
