@@ -44,25 +44,18 @@ const ERROR_CODES = [
 ] as const;
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
-const RELEASES = `${GITHUB}/releases/latest/download`;
 const EXAMPLE_ID = '4fa8gx9z3k7m2n5p8q1r6s0t7u2v4w9x';
 
 // ── CLI content ───────────────────────────────────────────────────────────────
-const CLI_INSTALL_MAC_ARM =
-`curl -sSfL ${RELEASES}/artfct-aarch64-apple-darwin.tar.gz \\
-  | tar -xz -C /usr/local/bin`;
+const CLI_INSTALL =
+`curl -fsSL https://artfct.dev/install.sh | sh`;
 
-const CLI_INSTALL_MAC_INTEL =
-`curl -sSfL ${RELEASES}/artfct-x86_64-apple-darwin.tar.gz \\
-  | tar -xz -C /usr/local/bin`;
+const CLI_INSTALL_OPTS =
+`# install a specific version
+ARTFCT_INSTALL_VERSION=v0.1.0 curl -fsSL https://artfct.dev/install.sh | sh
 
-const CLI_INSTALL_LINUX_X64 =
-`curl -sSfL ${RELEASES}/artfct-x86_64-unknown-linux-gnu.tar.gz \\
-  | tar -xz -C /usr/local/bin`;
-
-const CLI_INSTALL_LINUX_ARM =
-`curl -sSfL ${RELEASES}/artfct-aarch64-unknown-linux-gnu.tar.gz \\
-  | tar -xz -C /usr/local/bin`;
+# install to a custom directory
+ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh`;
 
 const CLI_USAGE =
 `# deploy a file — prints the URL
@@ -402,21 +395,14 @@ export default function Docs() {
 
                     <Label>install</Label>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' }}>
-                        {[
-                            { label: 'macOS · Apple Silicon', code: CLI_INSTALL_MAC_ARM },
-                            { label: 'macOS · Intel',         code: CLI_INSTALL_MAC_INTEL },
-                            { label: 'Linux · x86_64',        code: CLI_INSTALL_LINUX_X64 },
-                            { label: 'Linux · ARM64',         code: CLI_INSTALL_LINUX_ARM },
-                        ].map(({ label, code }) => (
-                            <div key={label}>
-                                <div style={{ fontFamily: MONO, fontSize: '11px', color: S.base1, marginBottom: '0.3rem' }}>
-                                    {label}
-                                </div>
-                                <CodeBlock code={code} />
-                            </div>
-                        ))}
-                    </div>
+                    <Prose>
+                        Works on macOS (Apple Silicon and Intel) and Linux (x86\_64 and ARM64).
+                        Installs to <code style={{ fontFamily: MONO, fontSize: '12px', color: S.base00 }}>~/.local/bin</code> by default.
+                    </Prose>
+
+                    <CodeBlock code={CLI_INSTALL} />
+
+                    <CodeBlock code={CLI_INSTALL_OPTS} />
 
                     <Label>usage</Label>
                     <CodeBlock code={CLI_USAGE} />
