@@ -95,8 +95,8 @@ function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
             className="ascii-hero"
             style={{
                 fontFamily: MONO,
-                fontSize: 'clamp(9px, 2.1vw, 16px)',
-                lineHeight: 1.2,
+                fontSize: 'min(16px, calc((100vw - 3rem) / 30))',
+                lineHeight: 1,
                 letterSpacing: 0,
                 background: `linear-gradient(to right, ${colorA}, ${colorB})`,
                 WebkitBackgroundClip: 'text',
@@ -106,6 +106,7 @@ function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
                 margin: 0,
                 padding: 0,
                 whiteSpace: 'pre',
+                overflow: 'hidden',
             }}
         >
             {ART.join('\n')}
