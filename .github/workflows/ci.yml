@@ -37,6 +37,13 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Cache Composer dependencies
+        uses: actions/cache@638ed79f9dc94c1de1baef91bcab5edaa19451f4 # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
