@@ -38,12 +38,13 @@ pub enum Command {
         command: McpCommand,
     },
     #[command(
+        name = "delete",
         about = "Delete an artifact by ID or URL",
         after_help = "Examples:
-  artfct remove abc123def456789012345678901234ab
-  artfct remove https://artfct.dev/p/abc123def456789012345678901234ab"
+  artfct delete abc123def456789012345678901234ab
+  artfct delete https://artfct.dev/p/abc123def456789012345678901234ab"
     )]
-    Remove(RemoveArgs),
+    Delete(DeleteArgs),
     #[command(
         about = "Install the artfct MCP server into supported agent configs",
         after_help = "Examples:
@@ -52,6 +53,13 @@ pub enum Command {
   artfct setup --list"
     )]
     Setup(SetupArgs),
+    #[command(
+        about = "Uninstall the artfct CLI binary and remove MCP entries from agent configs",
+        after_help = "Examples:
+  artfct uninstall
+  artfct uninstall --silent"
+    )]
+    Uninstall(UninstallArgs),
     #[command(about = "Print local CLI and MCP diagnostics")]
     Doctor,
 }
@@ -110,7 +118,7 @@ pub enum McpCommand {
 }
 
 #[derive(Debug, Args)]
-pub struct RemoveArgs {
+pub struct DeleteArgs {
     #[arg(
         value_name = "ID_OR_URL",
         help = "Artifact ID (32 hex chars) or full preview URL"
@@ -118,7 +126,7 @@ pub struct RemoveArgs {
     pub id_or_url: String,
 }
 
-impl RemoveArgs {
+impl DeleteArgs {
     pub fn artifact_id(&self) -> Option<&str> {
         if let Some(stripped) = self.id_or_url.strip_prefix('/') {
             return stripped.strip_suffix('/');
@@ -147,13 +155,19 @@ pub struct SetupArgs {
     pub list: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct UninstallArgs {
+    #[arg(long, help = "Skip all prompts and uninstall automatically")]
+    pub silent: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use clap::{CommandFactory, Parser};
 
-    use super::{Cli, Command, DeployInput, McpCommand, RemoveArgs};
+    use super::{Cli, Command, DeleteArgs, DeployInput, McpCommand};
 
     #[test]
     fn parses_deploy_from_stdin() {
@@ -216,7 +230,7 @@ mod tests {
 
     #[test]
     fn extracts_id_from_plain_hex() {
-        let args = RemoveArgs {
+        let args = DeleteArgs {
             id_or_url: "abc123def456789012345678901234ab".to_string(),
         };
         assert_eq!(args.artifact_id(), Some("abc123def456789012345678901234ab"));
@@ -224,7 +238,7 @@ mod tests {
 
     #[test]
     fn extracts_id_from_url() {
-        let args = RemoveArgs {
+        let args = DeleteArgs {
             id_or_url: "https://artfct.dev/p/abc123def456789012345678901234ab".to_string(),
         };
         assert_eq!(args.artifact_id(), Some("abc123def456789012345678901234ab"));
@@ -232,7 +246,7 @@ mod tests {
 
     #[test]
     fn extracts_id_from_url_with_trailing_slash() {
-        let args = RemoveArgs {
+        let args = DeleteArgs {
             id_or_url: "https://artfct.dev/p/abc123def456789012345678901234ab/".to_string(),
         };
         assert_eq!(args.artifact_id(), Some("abc123def456789012345678901234ab"));
@@ -240,7 +254,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_id() {
-        let args = RemoveArgs {
+        let args = DeleteArgs {
             id_or_url: "not-an-id".to_string(),
         };
         assert_eq!(args.artifact_id(), None);
@@ -248,7 +262,7 @@ mod tests {
 
     #[test]
     fn rejects_url_without_p_path() {
-        let args = RemoveArgs {
+        let args = DeleteArgs {
             id_or_url: "https://artfct.dev/v1/artifacts".to_string(),
         };
         assert_eq!(args.artifact_id(), None);

@@ -8,6 +8,7 @@ mod cli;
 mod doctor;
 mod mcp;
 mod setup;
+mod uninstall;
 
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
 
@@ -20,8 +21,9 @@ async fn main() -> Result<()> {
         cli::Command::Mcp {
             command: cli::McpCommand::Serve,
         } => mcp::run_stdio_server().await,
-        cli::Command::Remove(args) => remove_from_cli(args).await,
+        cli::Command::Delete(args) => delete_from_cli(args).await,
         cli::Command::Setup(args) => run_setup(args),
+        cli::Command::Uninstall(args) => run_uninstall(args),
         cli::Command::Doctor => {
             let api_base_url = env::var("ARTFCT_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
@@ -31,7 +33,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn remove_from_cli(args: cli::RemoveArgs) -> Result<()> {
+async fn delete_from_cli(args: cli::DeleteArgs) -> Result<()> {
     let id = args
         .artifact_id()
         .ok_or_else(|| anyhow::anyhow!("Invalid artifact ID or URL: {}", args.id_or_url))?;
@@ -54,6 +56,10 @@ fn run_setup(args: cli::SetupArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_uninstall(args: cli::UninstallArgs) -> Result<()> {
+    uninstall::uninstall(args.silent)
 }
 
 async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {

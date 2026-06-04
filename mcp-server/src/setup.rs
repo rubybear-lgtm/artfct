@@ -17,21 +17,28 @@ pub fn setup_agents(silent: bool) -> Result<()> {
     let binary = std::env::current_exe().context("Failed to determine CLI binary path")?;
     let binary_path = binary.to_string_lossy();
 
+    let found = if silent {
+        (0..paths.len()).collect()
+    } else {
+        show_toggle_list(&paths)?
+    };
+
     let mut configured = 0;
     let mut skipped = 0;
 
-    for path in &paths {
-        match install_into(path, &binary_path, silent) {
+    for (i, path) in paths.iter().enumerate() {
+        if !found.contains(&i) {
+            skipped += 1;
+            continue;
+        }
+
+        match install_into(path, &binary_path) {
             Ok(InstallResult::Written) => {
                 eprintln!("  Configured: {}", path.display());
                 configured += 1;
             }
             Ok(InstallResult::AlreadyConfigured) => {
                 eprintln!("  Already configured: {}", path.display());
-                skipped += 1;
-            }
-            Ok(InstallResult::UserSkipped) => {
-                eprintln!("  Skipped: {}", path.display());
                 skipped += 1;
             }
             Err(err) => {
@@ -43,9 +50,9 @@ pub fn setup_agents(silent: bool) -> Result<()> {
     if configured > 0 {
         eprintln!("Done — installed into {configured} configs (skipped {skipped})");
     } else if skipped > 0 {
-        eprintln!("All {skipped} configs already had artfct or were skipped");
+        eprintln!("All {skipped} configs already had artfct or were deselected");
     } else {
-        eprintln!("No writable agent configs found");
+        eprintln!("No configs selected");
     }
 
     eprintln!("Binary: {binary_path}\nMCP server entry: artfct mcp serve");
@@ -64,14 +71,66 @@ pub fn list_configs() {
     eprintln!("  {}", MCP_SERVER_ENTRY.replace('\n', "\n  ").trim_end());
 }
 
+fn show_toggle_list(paths: &[PathBuf]) -> Result<Vec<usize>> {
+    let mut selected: Vec<bool> = vec![true; paths.len()];
+    let mut state_changed = true;
+
+    loop {
+        if state_changed {
+            eprintln!("\nToggle configs to install into (enter numbers, Enter to confirm):\n");
+            for (i, path) in paths.iter().enumerate() {
+                let check = if selected[i] { "✓" } else { " " };
+                let action = if path.exists() { "add" } else { "create" };
+                eprintln!("  [{i}] [{check}] {} ({action})", path.display());
+            }
+            eprintln!();
+            state_changed = false;
+        }
+
+        eprint!("> ");
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
+
+        let trimmed = input.trim();
+
+        if trimmed.is_empty() {
+            let found: Vec<usize> = selected
+                .iter()
+                .enumerate()
+                .filter(|(_, &s)| s)
+                .map(|(i, _)| i)
+                .collect();
+
+            if found.is_empty() {
+                eprintln!("Select at least one config or press Ctrl-C to cancel.");
+                state_changed = true;
+                continue;
+            }
+
+            eprintln!();
+            return Ok(found);
+        }
+
+        for token in trimmed.split_whitespace() {
+            if let Ok(idx) = token.parse::<usize>() {
+                if idx < selected.len() {
+                    selected[idx] = !selected[idx];
+                    state_changed = true;
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum InstallResult {
     Written,
     AlreadyConfigured,
-    UserSkipped,
 }
 
-fn install_into(config_path: &PathBuf, _binary_path: &str, silent: bool) -> Result<InstallResult> {
+fn install_into(config_path: &PathBuf, _binary_path: &str) -> Result<InstallResult> {
     if config_path.exists() {
         let content = fs::read_to_string(config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
@@ -109,22 +168,10 @@ fn install_into(config_path: &PathBuf, _binary_path: &str, silent: bool) -> Resu
             }
         }
 
-        if !silent {
-            if !confirm_overwrite(config_path)? {
-                return Ok(InstallResult::UserSkipped);
-            }
-        }
-
         let formatted = serde_json::to_string_pretty(&parsed)?;
         fs::write(config_path, formatted)
             .with_context(|| format!("Failed to write {}", config_path.display()))?;
     } else {
-        if !silent {
-            if !confirm_create(config_path)? {
-                return Ok(InstallResult::UserSkipped);
-            }
-        }
-
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
@@ -135,26 +182,6 @@ fn install_into(config_path: &PathBuf, _binary_path: &str, silent: bool) -> Resu
     }
 
     Ok(InstallResult::Written)
-}
-
-fn confirm_overwrite(path: &PathBuf) -> Result<bool> {
-    eprint!("Add artfct to {}? [Y/n] ", path.display());
-    read_yn()
-}
-
-fn confirm_create(path: &PathBuf) -> Result<bool> {
-    eprint!("Create {} with artfct MCP server? [Y/n] ", path.display());
-    read_yn()
-}
-
-fn read_yn() -> Result<bool> {
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("Failed to read input")?;
-
-    let trimmed = input.trim().to_lowercase();
-    Ok(trimmed.is_empty() || trimmed == "y" || trimmed == "yes")
 }
 
 fn discover_config_paths() -> Vec<PathBuf> {
@@ -196,7 +223,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("new.mcp.json");
 
-        let result = install_into(&path, "", true).expect("install_into");
+        let result = install_into(&path, "").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
@@ -215,7 +242,7 @@ mod tests {
         let path = tmp.path().join("exists.mcp.json");
 
         fs::write(&path, MCP_SERVER_ENTRY).expect("write");
-        let result = install_into(&path, "", true).expect("install_into");
+        let result = install_into(&path, "").expect("install_into");
         assert_eq!(result, InstallResult::AlreadyConfigured);
     }
 
@@ -227,7 +254,7 @@ mod tests {
         let existing = r#"{"mcpServers": {"other": {"command": "echo"}}}"#;
         fs::write(&path, existing).expect("write");
 
-        let result = install_into(&path, "", true).expect("install_into");
+        let result = install_into(&path, "").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
@@ -245,7 +272,7 @@ mod tests {
         let existing = r#"{"someKey": "value"}"#;
         fs::write(&path, existing).expect("write");
 
-        let result = install_into(&path, "", true).expect("install_into");
+        let result = install_into(&path, "").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
