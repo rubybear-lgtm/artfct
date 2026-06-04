@@ -505,7 +505,7 @@ export default function Welcome() {
                         }}
                     >
                         <span style={{ fontFamily: MONO, fontSize: '12px', color: S.base1 }}>
-                            prefer the terminal?
+                            install the cli or mcp
                         </span>
                         <pre
                             style={{
@@ -520,11 +520,6 @@ export default function Welcome() {
                         >
                             <span style={{ color: S.base1 }}>$ </span>
                             {'curl -fsSL https://artfct.dev/install.sh | sh'}
-                            {'\n'}
-                            <span style={{ color: S.base1 }}>$ </span>
-                            {'artfct deploy page.html'}
-                            {'\n'}
-                            <span style={{ color: S.cyan }}>{'→ https://artfct.dev/p/4fA8gX9z...'}</span>
                         </pre>
                         <Link
                             href="/docs#cli"
