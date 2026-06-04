@@ -78,11 +78,11 @@ artfct deploy page.html
 cat page.html | artfct deploy --stdin
 echo '<h1>hello</h1>' | artfct deploy --stdin
 
-# remove an artifact by ID
-artfct remove abc123def456789012345678901234ab
+# delete an artifact by ID
+artfct delete abc123def456789012345678901234ab
 
-# remove an artifact by preview URL
-artfct remove https://artfct.dev/p/abc123def456789012345678901234ab
+# delete an artifact by preview URL
+artfct delete https://artfct.dev/p/abc123def456789012345678901234ab
 
 # check connectivity
 artfct doctor`;
@@ -546,10 +546,19 @@ export default function Docs() {
     "artfct": {
       "command": "artfct",
       "args": ["mcp", "serve"]
-    }
   }
 }`}
                     />
+                    <Prose>
+                        To uninstall the CLI binary and remove MCP
+                        configurations from all supported client configuration
+                        files, run:
+                    </Prose>
+                    <CodeBlock code="artfct uninstall" />
+                    <Prose>
+                        Pass <code>--silent</code> to run the uninstallation
+                        without interactive prompts.
+                    </Prose>
 
                     {/* ── overview ─────────────────────────────────────────── */}
                     <SectionDivider id="overview" label="rest api" />

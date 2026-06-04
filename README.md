@@ -7,9 +7,9 @@
 ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝      ╚═════╝   ╚═╝   
 ```
 
-share html. get a link. that's it.
+share html or markdown. get a link. that's it.
 
-Drop any self-contained HTML file — via browser, CLI, or API — and get back a
+Drop any self-contained HTML or Markdown file — via browser, CLI, or API — and get back a
 secure, ephemeral link. Links expire after 60 minutes. No sign-up required.
 
 ---
@@ -87,14 +87,14 @@ Output:
 https://artfct.dev/p/<artifact-id>
 ```
 
-### Remove
+### Delete
 
 ```sh
 # Delete an artifact by its 32-hex ID
-artfct remove abc123def456789012345678901234ab
+artfct delete abc123def456789012345678901234ab
 
 # Delete an artifact by its preview URL
-artfct remove https://artfct.dev/p/abc123def456789012345678901234ab
+artfct delete https://artfct.dev/p/abc123def456789012345678901234ab
 ```
 
 ### Options
@@ -153,7 +153,20 @@ artfct --help
 artfct deploy --help
 artfct mcp --help
 artfct setup --help
-artfct remove --help
+artfct delete --help
+artfct uninstall --help
+```
+
+### Uninstall
+
+Uninstall the CLI binary and remove MCP configurations from all supported client configuration files:
+
+```sh
+# Prompts for verification before removing the CLI binary
+artfct uninstall
+
+# Run without interactive prompts
+artfct uninstall --silent
 ```
 
 ### Environment

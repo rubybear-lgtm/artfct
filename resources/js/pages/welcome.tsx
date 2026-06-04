@@ -54,7 +54,10 @@ const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const WORKER_URL =
     (import.meta.env.VITE_WORKER_URL as string | undefined) ?? '';
 const MAX_BYTES = 1024 * 1024;
-const TAGLINE = "share html. get a link. that's it.";
+const TAGLINES = [
+    "share html. get a link. that's it.",
+    "share markdown. get a link. that's it.",
+];
 
 interface CachedLink {
     id: string;
@@ -91,6 +94,94 @@ function useTypewriter(text: string, speed: number) {
     }, [index, text.length, speed]);
 
     return { displayed: text.slice(0, index), done: index >= text.length };
+}
+
+function useRotatingTypewriter(
+    texts: string[],
+    typeSpeed: number = 38,
+    deleteSpeed: number = 20,
+    delayMs: number = 3000,
+) {
+    const [textIndex, setTextIndex] = useState(0);
+    const [displayed, setDisplayed] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isWaiting, setIsWaiting] = useState(false);
+
+    useEffect(() => {
+        if (texts.length === 0) {
+            return;
+        }
+
+        const currentText = texts[textIndex];
+        const nextText = texts[(textIndex + 1) % texts.length];
+
+        // Find the common prefix of current and next text
+        let commonLength = 0;
+
+        while (
+            commonLength < currentText.length &&
+            commonLength < nextText.length &&
+            currentText[commonLength] === nextText[commonLength]
+        ) {
+            commonLength++;
+        }
+
+        const commonPrefix = currentText.slice(0, commonLength);
+
+        if (isWaiting) {
+            const t = setTimeout(() => {
+                setIsWaiting(false);
+                setIsDeleting(true);
+            }, delayMs);
+
+            return () => clearTimeout(t);
+        }
+
+        if (isDeleting) {
+            const t = setTimeout(() => {
+                setDisplayed((prev) => {
+                    const next = prev.slice(0, -1);
+
+                    if (next === commonPrefix) {
+                        setIsDeleting(false);
+                        setTextIndex(
+                            (prevIndex) => (prevIndex + 1) % texts.length,
+                        );
+                    }
+
+                    return next;
+                });
+            }, deleteSpeed);
+
+            return () => clearTimeout(t);
+        }
+
+        // Typing
+        const t = setTimeout(() => {
+            setDisplayed((prev) => {
+                const next = currentText.slice(0, prev.length + 1);
+
+                if (next === currentText) {
+                    setIsWaiting(true);
+                }
+
+                return next;
+            });
+        }, typeSpeed);
+
+        return () => clearTimeout(t);
+    }, [
+        displayed,
+        isDeleting,
+        isWaiting,
+        textIndex,
+        texts,
+        typeSpeed,
+        deleteSpeed,
+        delayMs,
+    ]);
+
+    return { displayed, done: isWaiting };
 }
 
 function pickGradient(): [string, string] {
@@ -318,7 +409,7 @@ export default function Welcome() {
     const [modalSuccess, setModalSuccess] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
-    const tagline = useTypewriter(TAGLINE, 38);
+    const tagline = useRotatingTypewriter(TAGLINES, 38, 20, 3000);
 
     const saveCachedLinks = useCallback(
         (updater: CachedLink[] | ((prev: CachedLink[]) => CachedLink[])) => {
@@ -603,7 +694,7 @@ export default function Welcome() {
                     <AsciiHero colorA={gradient[0]} colorB={gradient[1]} />
 
                     <p
-                        aria-label={TAGLINE}
+                        aria-label="share html or markdown. get a link. that's it."
                         style={{
                             margin: 0,
                             fontFamily: MONO,
@@ -1324,46 +1415,6 @@ export default function Welcome() {
                         </div>
                     )}
 
-                    {/* ── footer ── */}
-                    <footer
-                        style={{
-                            width: '100%',
-                            paddingTop: '1.25rem',
-                            borderTop: `1px solid ${S.base2}`,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontFamily: MONO,
-                            fontSize: '14px',
-                        }}
-                    >
-                        <div style={{ display: 'flex', gap: '1.5rem' }}>
-                            <Link
-                                href="/docs"
-                                style={{
-                                    color: S.base1,
-                                    textDecoration: 'none',
-                                }}
-                            >
-                                docs
-                            </Link>
-                            <a
-                                href="https://github.com/rubybear-lgtm/artfct"
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{
-                                    color: S.base1,
-                                    textDecoration: 'none',
-                                }}
-                            >
-                                github
-                            </a>
-                        </div>
-                        <span style={{ color: S.base1 }}>
-                            ephemeral · secure · 60min
-                        </span>
-                    </footer>
-
                     {/* ── cli & mcp callout ── */}
                     <div
                         style={{
@@ -1604,6 +1655,46 @@ curl -fsSL https://artfct.dev/install.sh | sh`}
                             install & usage docs
                         </Link>
                     </div>
+
+                    {/* ── footer ── */}
+                    <footer
+                        style={{
+                            width: '100%',
+                            paddingTop: '1.25rem',
+                            borderTop: `1px solid ${S.base2}`,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontFamily: MONO,
+                            fontSize: '14px',
+                        }}
+                    >
+                        <div style={{ display: 'flex', gap: '1.5rem' }}>
+                            <Link
+                                href="/docs"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                docs
+                            </Link>
+                            <a
+                                href="https://github.com/rubybear-lgtm/artfct"
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                github
+                            </a>
+                        </div>
+                        <span style={{ color: S.base1 }}>
+                            ephemeral · secure · 60min
+                        </span>
+                    </footer>
                 </div>
             </div>
         </>
