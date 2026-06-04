@@ -10,16 +10,6 @@
         "enabled": true,
         "head_sampling_rate": 1,
     },
-    "routes": [
-        {
-            "pattern": "artfct.dev/v1/*",
-            "zone_name": "artfct.dev",
-        },
-        {
-            "pattern": "artfct.dev/p/*",
-            "zone_name": "artfct.dev",
-        },
-    ],
     "kv_namespaces": [
         {
             "binding": "ARTIFACTS_KV",
