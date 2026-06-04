@@ -1,0 +1,35 @@
+title = "artfct"
+
+[extend]
+# Inherit the full default ruleset
+useDefault = true
+
+[allowlist]
+description = "Safe patterns and paths"
+regexTarget = "line"
+
+regexes = [
+    # Placeholder / example values
+    '''your[_-].+[_-]here''',
+    '''<[A-Z_]+>''',
+    '''EXAMPLE_[A-Z_]+''',
+    # Common test / fake values
+    '''fake[_-]''',
+    '''test[_-]key''',
+    '''dummy[_-]''',
+    # Localhost / local dev URLs are never secrets
+    '''https?://localhost''',
+    '''https?://127\.0\.0\.1''',
+    # The 40-char hex rule fires on git SHAs in workflows — allow those
+    '''uses: [a-zA-Z0-9_/-]+@[0-9a-f]{40}''',
+]
+
+paths = [
+    '''\.md$''',
+    '''\.toml$''',
+    '''\.example$''',
+    '''Cargo\.lock$''',
+    '''package-lock\.json$''',
+    '''tests/''',
+    '''\.github/''',
+]

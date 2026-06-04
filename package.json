@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "prepare": "git config core.hooksPath .githooks",
         "build": "vite build",
         "build:ssr": "vite build && vite build --ssr",
         "dev": "vite",
