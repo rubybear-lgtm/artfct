@@ -9,6 +9,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Started the `artfct` CLI with standalone `deploy`, `doctor`, and `mcp serve` commands.
 - Added CLI parsing and API client tests for artifact deployment.
 - Added a public shell installer script for GitHub Release binaries.
+- Added a GitHub Release workflow for publishing CLI binaries.
 
 ## 0.1.0 - 2026-06-04
 
