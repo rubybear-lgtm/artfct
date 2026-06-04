@@ -58,7 +58,7 @@ export PATH="$HOME/.local/bin:$PATH"
 Install a specific version or to a custom directory:
 
 ```sh
-ARTFCT_INSTALL_VERSION=v0.1.0 curl -fsSL https://artfct.dev/install.sh | sh
+ARTFCT_INSTALL_VERSION=v0.0.1 curl -fsSL https://artfct.dev/install.sh | sh
 ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh
 ```
 

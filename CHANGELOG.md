@@ -2,7 +2,7 @@
 
 All notable changes to Artifact Engine will be recorded in this file.
 
-## Unreleased
+## 0.0.1 - 2026-06-03
 
 ### Added
 
@@ -12,11 +12,6 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added a GitHub Release workflow for publishing CLI binaries.
 - Added Rust and CLI CI jobs plus matching pre-commit checks.
 - Expanded CLI help with command descriptions, examples, and environment variable guidance.
-
-## 0.1.0 - 2026-06-04
-
-### Added
-
 - Added a Rust Cloudflare Worker backend for creating, deleting, and rendering ephemeral HTML artifacts.
 - Added Workers KV storage with Brotli-compressed artifact payloads and TTL-based expiration.
 - Added `artfct.dev/v1/*` and `artfct.dev/p/*` Worker routes.
