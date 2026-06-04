@@ -2,6 +2,13 @@
 
 All notable changes to Artifact Engine will be recorded in this file.
 
+## Unreleased
+
+### Added
+
+- Started the `artfct` CLI with standalone `deploy`, `doctor`, and `mcp serve` commands.
+- Added CLI parsing and API client tests for artifact deployment.
+
 ## 0.1.0 - 2026-06-04
 
 ### Added

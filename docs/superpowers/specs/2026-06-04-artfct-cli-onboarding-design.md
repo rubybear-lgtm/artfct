@@ -272,4 +272,3 @@ Later:
 - Exact config file paths and schemas for Gemini CLI and Antigravity need current verification before implementation.
 - Whether `secure` tier should remain as an accepted alias for magic-link-only previews or be removed until stronger semantics exist.
 - Whether setup should default all detected agents to selected or require opt-in per agent.
-
