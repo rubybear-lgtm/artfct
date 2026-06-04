@@ -1,5 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ThemeToggle } from '@/lib/theme';
 
 // ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
 const S = {
@@ -474,7 +475,7 @@ export default function Welcome() {
                             fontSize: '14px',
                         }}
                     >
-                        <div style={{ display: 'flex', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                             <Link
                                 href="/docs"
                                 style={{ color: S.base1, textDecoration: 'none' }}
@@ -489,6 +490,7 @@ export default function Welcome() {
                             >
                                 github
                             </a>
+                            <ThemeToggle />
                         </div>
                         <span style={{ color: S.base1 }}>ephemeral · secure · 60min</span>
                     </footer>

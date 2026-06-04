@@ -1,5 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useState } from 'react';
+import { ThemeToggle } from '@/lib/theme';
 
 // ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
 const S = {
@@ -313,17 +314,20 @@ export default function Docs() {
                     >
                         artfct
                     </Link>
-                    <Link
-                        href="/"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base1,
-                            textDecoration: 'none',
-                        }}
-                    >
-                        ← deploy
-                    </Link>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <ThemeToggle />
+                        <Link
+                            href="/"
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '11px',
+                                color: S.base1,
+                                textDecoration: 'none',
+                            }}
+                        >
+                            ← deploy
+                        </Link>
+                    </div>
                 </nav>
 
                 {/* ── main content ─────────────────────────────────────────── */}

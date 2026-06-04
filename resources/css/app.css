@@ -27,14 +27,24 @@
     --sol-green:   #859900;
 }
 
+/* System dark — skipped when an explicit theme is forced */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --sol-base3:  #002B36;
         --sol-base2:  #073642;
         --sol-base1:  #586E75;
         --sol-base0:  #839496;
         --sol-base00: #93A1A1;
     }
+}
+
+/* Explicit overrides */
+:root[data-theme="dark"] {
+    --sol-base3:  #002B36;
+    --sol-base2:  #073642;
+    --sol-base1:  #586E75;
+    --sol-base0:  #839496;
+    --sol-base00: #93A1A1;
 }
 
 html {

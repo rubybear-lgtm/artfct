@@ -4,6 +4,17 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
+        <script>
+            (function () {
+                try {
+                    var t = localStorage.getItem('artfct-theme');
+                    if (t === 'dark' || t === 'light') {
+                        document.documentElement.setAttribute('data-theme', t);
+                    }
+                } catch (e) {}
+            })();
+        </script>
+
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
