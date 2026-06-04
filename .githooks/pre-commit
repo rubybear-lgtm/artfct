@@ -83,4 +83,30 @@ if echo "$STAGED_FILES" | grep -Eq '^(Cargo\.toml|Cargo\.lock|backend/|mcp-serve
     echo "✅ Rust and CLI checks passed."
 fi
 
+if echo "$STAGED_FILES" | grep -Eq '\.php$'; then
+    if [ ! -f vendor/bin/pint ]; then
+        echo "❌ PHP files are staged, but pint is not installed."
+        echo "   Run: composer install"
+        exit 1
+    fi
+
+    echo "🐘 Running PHP pre-commit checks..."
+    vendor/bin/pint --test --format agent
+    echo "✅ PHP checks passed."
+fi
+
+if echo "$STAGED_FILES" | grep -Eq '(^resources/.*\.(ts|tsx|js|jsx|css)$|^package(-lock)?\.json$|^tsconfig\.json$|^(eslint|prettier)\.)'; then
+    if ! command -v npx &>/dev/null; then
+        echo "❌ Frontend files are staged, but npx is not available."
+        echo "   Ensure Node.js is installed."
+        exit 1
+    fi
+
+    echo "🎨 Running frontend pre-commit checks..."
+    npm run format:check
+    npm run lint:check
+    npm run types:check
+    echo "✅ Frontend checks passed."
+fi
+
 exit 0

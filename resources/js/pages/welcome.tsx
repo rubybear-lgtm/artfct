@@ -1415,6 +1415,7 @@ export default function Welcome() {
                                     onClick={async () => {
                                         const nextState = !mcpExpanded;
                                         setMcpExpanded(nextState);
+
                                         if (nextState) {
                                             await navigator.clipboard.writeText(
                                                 `Please install the artfct CLI and configure it as an MCP server on my machine by running:\ncurl -fsSL https://artfct.dev/install.sh | sh`,
