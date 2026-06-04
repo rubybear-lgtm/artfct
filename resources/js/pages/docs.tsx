@@ -518,22 +518,27 @@ export default function Docs() {
                         >
                             deploy_to_canvas
                         </code>{' '}
-                        tool — Claude Desktop, Claude Code, Cursor, and other MCP-compatible
-                        agents can call it to publish HTML directly without
-                        leaving the session.
+                        tool — Claude Desktop, Claude Code, Cursor, and other
+                        MCP-compatible agents can call it to publish HTML
+                        directly without leaving the session.
                     </Prose>
                     <CodeBlock code={CLI_MCP} />
 
                     <Prose>
-                        To configure the MCP server automatically for all detected agents (Cursor, Claude Desktop, Gemini, Codex, etc.), run:
+                        To configure the MCP server automatically for all
+                        detected agents (Cursor, Claude Desktop, Gemini, Codex,
+                        etc.), run:
                     </Prose>
                     <CodeBlock code="artfct setup" />
                     <Prose>
-                        Pass <code>--silent</code> to execute without prompts, or <code>--list</code> to preview which configuration files will be modified.
+                        Pass <code>--silent</code> to execute without prompts,
+                        or <code>--list</code> to preview which configuration
+                        files will be modified.
                     </Prose>
 
                     <Prose>
-                        Alternatively, for manual setup, add this configuration block directly to your client's settings file:
+                        Alternatively, for manual setup, add this configuration
+                        block directly to your client's settings file:
                     </Prose>
                     <CodeBlock
                         code={`{

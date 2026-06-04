@@ -1391,7 +1391,9 @@ export default function Welcome() {
                                 color: S.base1,
                             }}
                         >
-                            install the CLI and automatically configure MCP for all detected agents (Cursor, Claude Desktop, Gemini, and Codex) in one step.
+                            install the CLI and automatically configure MCP for
+                            all detected agents (Cursor, Claude Desktop, Gemini,
+                            and Codex) in one step.
                         </span>
 
                         <div
@@ -1402,15 +1404,27 @@ export default function Welcome() {
                                 marginTop: '0.25rem',
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                }}
+                            >
                                 <button
                                     onClick={async () => {
                                         const nextState = !mcpExpanded;
                                         setMcpExpanded(nextState);
                                         if (nextState) {
-                                            await navigator.clipboard.writeText(`Please install the artfct CLI and configure it as an MCP server on my machine by running:\ncurl -fsSL https://artfct.dev/install.sh | sh`);
+                                            await navigator.clipboard.writeText(
+                                                `Please install the artfct CLI and configure it as an MCP server on my machine by running:\ncurl -fsSL https://artfct.dev/install.sh | sh`,
+                                            );
                                             setCopiedAgentPrompt(true);
-                                            setTimeout(() => setCopiedAgentPrompt(false), 2000);
+                                            setTimeout(
+                                                () =>
+                                                    setCopiedAgentPrompt(false),
+                                                2000,
+                                            );
                                         }
                                     }}
                                     className="result-action-btn"
@@ -1418,7 +1432,9 @@ export default function Welcome() {
                                         padding: '0.4rem 0.8rem',
                                         fontFamily: MONO,
                                         fontSize: '11px',
-                                        backgroundColor: mcpExpanded ? S.base1 : S.base2,
+                                        backgroundColor: mcpExpanded
+                                            ? S.base1
+                                            : S.base2,
                                         color: mcpExpanded ? S.base3 : S.base00,
                                         border: `1px solid ${S.base1}`,
                                         borderRadius: '3px',
@@ -1430,7 +1446,12 @@ export default function Welcome() {
                                     }}
                                 >
                                     <span>ask an ai agent</span>
-                                    <span style={{ fontSize: '9px', opacity: 0.8 }}>
+                                    <span
+                                        style={{
+                                            fontSize: '9px',
+                                            opacity: 0.8,
+                                        }}
+                                    >
                                         {mcpExpanded ? '▲' : '▼'}
                                     </span>
                                 </button>
@@ -1461,8 +1482,17 @@ export default function Welcome() {
                                         gap: '0.4rem',
                                     }}
                                 >
-                                    <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1 }}>
-                                        paste this prompt directly into your terminal-capable agent (e.g. Claude Code or Cursor Composer) to install and configure:
+                                    <span
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.base1,
+                                        }}
+                                    >
+                                        paste this prompt directly into your
+                                        terminal-capable agent (e.g. Claude Code
+                                        or Cursor Composer) to install and
+                                        configure:
                                     </span>
                                     <pre
                                         style={{
@@ -1479,17 +1509,37 @@ export default function Welcome() {
                                             lineHeight: 1.5,
                                         }}
                                     >
-{`Please install the artfct CLI and configure it as an MCP server on my machine by running:
+                                        {`Please install the artfct CLI and configure it as an MCP server on my machine by running:
 curl -fsSL https://artfct.dev/install.sh | sh`}
                                     </pre>
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
-                                <span style={{ fontFamily: MONO, fontSize: '11px', color: S.base1 }}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.4rem',
+                                    marginTop: '0.5rem',
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        fontFamily: MONO,
+                                        fontSize: '11px',
+                                        color: S.base1,
+                                    }}
+                                >
                                     or run the command to install it yourself:
                                 </span>
-                                <div style={{ display: 'flex', border: `1px solid ${S.base1}`, borderRadius: '2px', backgroundColor: S.base3 }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        border: `1px solid ${S.base1}`,
+                                        borderRadius: '2px',
+                                        backgroundColor: S.base3,
+                                    }}
+                                >
                                     <pre
                                         style={{
                                             fontFamily: MONO,
@@ -1501,20 +1551,34 @@ curl -fsSL https://artfct.dev/install.sh | sh`}
                                             overflowX: 'auto',
                                         }}
                                     >
-                                        <span style={{ color: S.base1 }}>$ </span>curl -fsSL https://artfct.dev/install.sh | sh
+                                        <span style={{ color: S.base1 }}>
+                                            ${' '}
+                                        </span>
+                                        curl -fsSL https://artfct.dev/install.sh
+                                        | sh
                                     </pre>
                                     <button
                                         onClick={async () => {
-                                            await navigator.clipboard.writeText(`curl -fsSL https://artfct.dev/install.sh | sh`);
+                                            await navigator.clipboard.writeText(
+                                                `curl -fsSL https://artfct.dev/install.sh | sh`,
+                                            );
                                             setCopiedSelfInstall(true);
-                                            setTimeout(() => setCopiedSelfInstall(false), 2000);
+                                            setTimeout(
+                                                () =>
+                                                    setCopiedSelfInstall(false),
+                                                2000,
+                                            );
                                         }}
                                         style={{
                                             padding: '0 0.8rem',
                                             fontFamily: MONO,
                                             fontSize: '11px',
-                                            backgroundColor: copiedSelfInstall ? S.green : S.base2,
-                                            color: copiedSelfInstall ? S.base3 : S.base00,
+                                            backgroundColor: copiedSelfInstall
+                                                ? S.green
+                                                : S.base2,
+                                            color: copiedSelfInstall
+                                                ? S.base3
+                                                : S.base00,
                                             border: 'none',
                                             borderLeft: `1px solid ${S.base1}`,
                                             cursor: 'pointer',
