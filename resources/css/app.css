@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+@source '../views';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+@theme {
+    --font-sans:
+        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.cursor-blink::after {
+    content: '▋';
+    animation: blink 1s step-end infinite;
+    margin-left: 1px;
+}
+
+@keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeSlideUp 0.25s ease-out both;
+}
+
+/* ASCII hero gradient drift — oscillates the gradient position */
+@keyframes gradientDrift {
+    0%   { background-position: 0% center; }
+    50%  { background-position: 100% center; }
+    100% { background-position: 0% center; }
+}
+
+.ascii-hero {
+    background-size: 200% auto !important;
+    animation: gradientDrift 10s ease-in-out infinite;
+}
+
+/* Deploy button press */
+.deploy-btn {
+    position: relative;
+}
+
+.deploy-btn:not(:disabled):active {
+    transform: scale(0.97);
+    transition-duration: 0.05s !important;
+}
+
+.deploy-btn:not(:disabled):hover {
+    filter: brightness(1.08);
+}
