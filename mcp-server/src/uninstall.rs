@@ -1,7 +1,8 @@
+use std::fs;
 use std::path::PathBuf;
-use std::{fs, io};
 
 use anyhow::{Context, Result};
+use dialoguer::Confirm;
 
 pub fn uninstall(silent: bool) -> Result<()> {
     let binary = std::env::current_exe().context("Failed to determine CLI binary path")?;
@@ -46,8 +47,10 @@ pub fn uninstall(silent: bool) -> Result<()> {
     let should_remove_binary = if silent {
         true
     } else {
-        eprint!("Remove binary at {}? [Y/n] ", binary_path);
-        read_yn()?
+        Confirm::new()
+            .with_prompt(format!("Remove binary at {binary_path}?"))
+            .default(true)
+            .interact()?
     };
 
     if should_remove_binary {
@@ -91,7 +94,7 @@ fn remove_artfct_entry(config_path: &PathBuf) -> Result<bool> {
     };
 
     if removed {
-        if parsed.as_object().map_or(true, |o| o.is_empty()) {
+        if parsed.as_object().is_none_or(|o| o.is_empty()) {
             fs::remove_file(config_path).with_context(|| {
                 format!("Failed to remove empty config {}", config_path.display())
             })?;
@@ -103,16 +106,6 @@ fn remove_artfct_entry(config_path: &PathBuf) -> Result<bool> {
     }
 
     Ok(removed)
-}
-
-fn read_yn() -> Result<bool> {
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("Failed to read input")?;
-
-    let trimmed = input.trim().to_lowercase();
-    Ok(trimmed.is_empty() || trimmed == "y" || trimmed == "yes")
 }
 
 fn discover_config_paths() -> Vec<PathBuf> {

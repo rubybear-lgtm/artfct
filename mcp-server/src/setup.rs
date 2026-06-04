@@ -1,6 +1,7 @@
-use std::{fs, io, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
+use dialoguer::MultiSelect;
 
 const MCP_SERVER_ENTRY: &str = r#"{
     "mcpServers": {
@@ -20,7 +21,30 @@ pub fn setup_agents(silent: bool) -> Result<()> {
     let found = if silent {
         (0..paths.len()).collect()
     } else {
-        show_toggle_list(&paths)?
+        let items: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                let action = if p.exists() { "add to" } else { "create" };
+                let home = dirs_home();
+                let display = if let Some(h) = &home {
+                    p.strip_prefix(h)
+                        .map(|r| format!("~/{}", r.display()))
+                        .unwrap_or_else(|_| p.display().to_string())
+                } else {
+                    p.display().to_string()
+                };
+                format!("{display} ({action})")
+            })
+            .collect();
+
+        let defaults: Vec<bool> = vec![true; items.len()];
+
+        MultiSelect::new()
+            .with_prompt("Select configs to install into (space to toggle, enter to confirm)")
+            .items(&items)
+            .defaults(&defaults)
+            .interact()
+            .context("Failed to show selection")?
     };
 
     let mut configured = 0;
@@ -69,59 +93,6 @@ pub fn list_configs() {
     eprintln!();
     eprintln!("MCP server entry:");
     eprintln!("  {}", MCP_SERVER_ENTRY.replace('\n', "\n  ").trim_end());
-}
-
-fn show_toggle_list(paths: &[PathBuf]) -> Result<Vec<usize>> {
-    let mut selected: Vec<bool> = vec![true; paths.len()];
-    let mut state_changed = true;
-
-    loop {
-        if state_changed {
-            eprintln!("\nToggle configs to install into (enter numbers, Enter to confirm):\n");
-            for (i, path) in paths.iter().enumerate() {
-                let check = if selected[i] { "✓" } else { " " };
-                let action = if path.exists() { "add" } else { "create" };
-                eprintln!("  [{i}] [{check}] {} ({action})", path.display());
-            }
-            eprintln!();
-            state_changed = false;
-        }
-
-        eprint!("> ");
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("Failed to read input")?;
-
-        let trimmed = input.trim();
-
-        if trimmed.is_empty() {
-            let found: Vec<usize> = selected
-                .iter()
-                .enumerate()
-                .filter(|(_, &s)| s)
-                .map(|(i, _)| i)
-                .collect();
-
-            if found.is_empty() {
-                eprintln!("Select at least one config or press Ctrl-C to cancel.");
-                state_changed = true;
-                continue;
-            }
-
-            eprintln!();
-            return Ok(found);
-        }
-
-        for token in trimmed.split_whitespace() {
-            if let Ok(idx) = token.parse::<usize>() {
-                if idx < selected.len() {
-                    selected[idx] = !selected[idx];
-                    state_changed = true;
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
