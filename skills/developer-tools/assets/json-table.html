@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — table viewer</title>
+  <style>
+    :root {
+      --base3:   #FDF6E3; --base2: #EEE8D5; --base1: #93A1A1;
+      --base0:   #657B83; --base00: #586E75; --base01: #073642;
+      --yellow:  #B58900; --orange: #CB4B16; --red: #DC322F;
+      --blue:    #268BD2; --cyan:   #2AA198; --green: #859900;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--base3); color: var(--base00);
+      min-height: 100dvh; display: flex; flex-direction: column;
+    }
+    header {
+      border-bottom: 1px solid var(--base2);
+      padding: 0.75rem 1.25rem;
+      display: flex; align-items: baseline; gap: 0.75rem;
+    }
+    .brand { font-family: ui-monospace, monospace; font-size: 12px; color: var(--base1); }
+    .tool-title { font-family: ui-monospace, monospace; font-size: 13px; color: var(--base00); }
+    main { flex: 1; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* input area */
+    .input-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+    textarea {
+      flex: 1; min-height: 120px; max-height: 240px;
+      font-family: ui-monospace, monospace; font-size: 12px;
+      background: var(--base2); border: 1px solid var(--base1);
+      color: var(--base00); padding: 0.65rem 0.75rem; resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: var(--blue); }
+    textarea::placeholder { color: var(--base1); }
+    .btn {
+      font-family: ui-monospace, monospace; font-size: 11px;
+      background: none; border: 1px solid var(--base1);
+      color: var(--base0); padding: 0.4rem 0.9rem; cursor: pointer;
+      white-space: nowrap; transition: border-color 0.15s, color 0.15s;
+    }
+    .btn:hover { border-color: var(--base00); color: var(--base00); }
+    .btn.primary { border-color: var(--blue); color: var(--blue); }
+    .btn.primary:hover { background: var(--blue); color: var(--base3); }
+
+    /* controls bar */
+    .controls-bar {
+      display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    }
+    input[type="search"] {
+      font-family: ui-monospace, monospace; font-size: 12px;
+      background: var(--base2); border: 1px solid var(--base1);
+      color: var(--base00); padding: 0.35rem 0.65rem; outline: none;
+      width: 220px;
+    }
+    input[type="search"]:focus { border-color: var(--blue); }
+    .stats { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1); margin-left: auto; }
+    .error { font-family: ui-monospace, monospace; font-size: 12px; color: var(--red); padding: 0.5rem 0; }
+
+    /* table */
+    .table-wrap { overflow: auto; flex: 1; border: 1px solid var(--base2); }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    thead { position: sticky; top: 0; z-index: 1; background: var(--base2); }
+    th {
+      font-family: ui-monospace, monospace; font-size: 11px; font-weight: 400;
+      color: var(--base1); letter-spacing: 0.04em;
+      padding: 0.55rem 0.75rem; text-align: left;
+      border-right: 1px solid var(--base3); cursor: pointer; user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--base00); }
+    th.asc::after  { content: ' ↑'; color: var(--blue); }
+    th.desc::after { content: ' ↓'; color: var(--blue); }
+    td {
+      padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--base2);
+      border-right: 1px solid var(--base2); max-width: 320px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--base0); cursor: pointer;
+    }
+    td:last-child, th:last-child { border-right: none; }
+    tr:hover td { background: var(--base2); color: var(--base00); }
+    td.null  { color: var(--base1); font-style: italic; }
+    td.num   { color: var(--blue); font-family: ui-monospace, monospace; font-size: 12px; }
+    td.bool  { color: var(--cyan); font-family: ui-monospace, monospace; font-size: 12px; }
+    .copied { position: fixed; bottom: 1rem; right: 1rem; background: var(--green);
+              color: var(--base3); font-family: ui-monospace, monospace; font-size: 11px;
+              padding: 0.35rem 0.7rem; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+    .copied.show { opacity: 1; }
+
+    footer { border-top: 1px solid var(--base2); padding: 0.65rem 1.25rem;
+             font-family: ui-monospace, monospace; font-size: 10px; color: var(--base1);
+             display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+<header>
+  <span class="brand">artfct</span>
+  <span class="tool-title">{{TITLE}}</span>
+</header>
+
+<main>
+  <div class="input-row">
+    <textarea id="input" placeholder="Paste JSON array or CSV…">{{DATA}}</textarea>
+    <button class="btn primary" onclick="parse()">parse →</button>
+  </div>
+  <div id="error" class="error" style="display:none"></div>
+
+  <div id="controls" class="controls-bar" style="display:none">
+    <input type="search" id="search" placeholder="filter rows…" oninput="render()">
+    <button class="btn" onclick="clearAll()">clear</button>
+    <span class="stats" id="stats"></span>
+  </div>
+
+  <div id="table-wrap" class="table-wrap" style="display:none">
+    <table id="table"><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+  </div>
+</main>
+
+<div class="copied" id="copied">copied</div>
+
+<footer>
+  <span>click cell to copy · click header to sort</span>
+  <a href="https://artfct.dev" style="color:inherit;text-decoration:none">artfct.dev</a>
+</footer>
+
+<script>
+  let rows = [], headers = [], sortCol = null, sortDir = 1;
+
+  function parse() {
+    const raw = document.getElementById('input').value.trim();
+    const err = document.getElementById('error');
+    err.style.display = 'none';
+    if (!raw) return;
+
+    try {
+      const json = JSON.parse(raw);
+      if (Array.isArray(json) && json.length && typeof json[0] === 'object') {
+        headers = Array.from(new Set(json.flatMap(Object.keys)));
+        rows = json.map(r => headers.map(h => r[h] ?? null));
+      } else if (Array.isArray(json)) {
+        headers = ['value'];
+        rows = json.map(v => [v]);
+      } else {
+        throw new Error('Expected a JSON array');
+      }
+    } catch (_) {
+      // try CSV
+      try {
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        headers = parseCSVLine(lines[0]);
+        rows = lines.slice(1).map(parseCSVLine);
+      } catch (e) {
+        err.textContent = 'Could not parse as JSON array or CSV: ' + e.message;
+        err.style.display = '';
+        return;
+      }
+    }
+
+    sortCol = null; sortDir = 1;
+    buildHead();
+    render();
+    document.getElementById('controls').style.display = 'flex';
+    document.getElementById('table-wrap').style.display = '';
+  }
+
+  function parseCSVLine(line) {
+    const result = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+      else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+      else cur += c;
+    }
+    result.push(cur);
+    return result;
+  }
+
+  function buildHead() {
+    const thead = document.getElementById('thead');
+    thead.innerHTML = '<tr>' + headers.map((h, i) =>
+      `<th onclick="sortBy(${i})" id="th${i}">${esc(h)}</th>`
+    ).join('') + '</tr>';
+  }
+
+  function sortBy(i) {
+    if (sortCol === i) sortDir *= -1; else { sortCol = i; sortDir = 1; }
+    headers.forEach((_, j) => {
+      const el = document.getElementById('th' + j);
+      el.className = j === sortCol ? (sortDir === 1 ? 'asc' : 'desc') : '';
+    });
+    render();
+  }
+
+  function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    let visible = rows;
+    if (q) visible = rows.filter(r => r.some(v => String(v ?? '').toLowerCase().includes(q)));
+    if (sortCol !== null) {
+      visible = [...visible].sort((a, b) => {
+        const av = a[sortCol], bv = b[sortCol];
+        if (av === null) return 1; if (bv === null) return -1;
+        return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+      });
+    }
+    document.getElementById('stats').textContent =
+      `${visible.length} / ${rows.length} rows · ${headers.length} cols`;
+    document.getElementById('tbody').innerHTML = visible.map(r =>
+      '<tr>' + r.map((v, i) => {
+        const cls = v === null ? 'null' : typeof v === 'number' ? 'num' : typeof v === 'boolean' ? 'bool' : '';
+        const display = v === null ? 'null' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return `<td class="${cls}" title="${esc(display)}" onclick="copy(this,'${esc(JSON.stringify(v))}')">${esc(display)}</td>`;
+      }).join('') + '</tr>'
+    ).join('');
+  }
+
+  function copy(el, val) {
+    navigator.clipboard.writeText(JSON.parse(val) ?? '').catch(() => {});
+    const t = document.getElementById('copied');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1500);
+  }
+
+  function clearAll() {
+    document.getElementById('input').value = '';
+    document.getElementById('controls').style.display = 'none';
+    document.getElementById('table-wrap').style.display = 'none';
+    rows = []; headers = [];
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  if (document.getElementById('input').value.trim()) parse();
+</script>
+</body>
+</html>

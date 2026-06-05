@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — env diff</title>
+  <style>
+    :root {
+      --base3:   #FDF6E3; --base2: #EEE8D5; --base1: #93A1A1;
+      --base0:   #657B83; --base00: #586E75; --base01: #073642;
+      --yellow:  #B58900; --orange: #CB4B16; --red: #DC322F;
+      --blue:    #268BD2; --cyan:   #2AA198; --green: #859900;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif;
+           background: var(--base3); color: var(--base00); min-height: 100dvh;
+           display: flex; flex-direction: column; }
+    header { border-bottom: 1px solid var(--base2); padding: 0.75rem 1.25rem;
+             display: flex; align-items: baseline; gap: 0.75rem; }
+    .brand { font-family: ui-monospace, monospace; font-size: 12px; color: var(--base1); }
+    .tool-title { font-family: ui-monospace, monospace; font-size: 13px; color: var(--base00); }
+    main { flex: 1; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 640px) { .inputs { grid-template-columns: 1fr; } }
+    .input-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    label { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1); letter-spacing: 0.04em; }
+    textarea {
+      font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5;
+      background: var(--base2); border: 1px solid var(--base1); color: var(--base00);
+      padding: 0.65rem 0.75rem; resize: vertical; min-height: 200px; outline: none;
+    }
+    textarea:focus { border-color: var(--blue); }
+    textarea::placeholder { color: var(--base1); }
+
+    .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .btn { font-family: ui-monospace, monospace; font-size: 11px; background: none;
+           border: 1px solid var(--base1); color: var(--base0); padding: 0.4rem 0.9rem;
+           cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+    .btn:hover { border-color: var(--base00); color: var(--base00); }
+    .btn.primary { border-color: var(--blue); color: var(--blue); }
+    .btn.primary:hover { background: var(--blue); color: var(--base3); }
+    .toggle-label { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1);
+                    display: flex; align-items: center; gap: 0.4rem; cursor: pointer; user-select: none; }
+    .summary { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1); margin-left: auto; }
+
+    /* result table */
+    .result { border: 1px solid var(--base2); overflow: auto; }
+    table { border-collapse: collapse; width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
+    thead { position: sticky; top: 0; background: var(--base2); }
+    th { padding: 0.45rem 0.75rem; text-align: left; font-size: 11px; color: var(--base1);
+         font-weight: 400; letter-spacing: 0.04em; border-right: 1px solid var(--base3); }
+    th:last-child { border-right: none; }
+    td { padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--base2); border-right: 1px solid var(--base2);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+    td:last-child { border-right: none; }
+    tr.added   td:first-child { border-left: 3px solid var(--green); }
+    tr.removed td:first-child { border-left: 3px solid var(--red); }
+    tr.changed td:first-child { border-left: 3px solid var(--yellow); }
+    tr.same    td { color: var(--base1); }
+    .badge {
+      display: inline-block; font-size: 10px; padding: 0.1rem 0.35rem;
+      font-family: ui-monospace, monospace; letter-spacing: 0.04em;
+    }
+    .badge.added   { background: #edf5e1; color: var(--green); }
+    .badge.removed { background: #fcecea; color: var(--red); }
+    .badge.changed { background: #fdf6e3; color: var(--yellow); }
+    .badge.same    { background: var(--base2); color: var(--base1); }
+    .val { color: var(--base0); }
+    .val.redacted { color: var(--base1); font-style: italic; }
+    .empty-state { padding: 2rem; text-align: center; color: var(--base1);
+                   font-family: ui-monospace, monospace; font-size: 12px; }
+    footer { border-top: 1px solid var(--base2); padding: 0.65rem 1.25rem;
+             font-family: ui-monospace, monospace; font-size: 10px; color: var(--base1);
+             display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+<header>
+  <span class="brand">artfct</span>
+  <span class="tool-title">{{TITLE}}</span>
+</header>
+
+<main>
+  <div class="inputs">
+    <div class="input-group">
+      <label>{{LABEL_LEFT}}</label>
+      <textarea id="left" placeholder="DATABASE_URL=postgres://...&#10;API_KEY=sk-...&#10;DEBUG=true"></textarea>
+    </div>
+    <div class="input-group">
+      <label>{{LABEL_RIGHT}}</label>
+      <textarea id="right" placeholder="DATABASE_URL=postgres://...&#10;API_KEY=sk-...&#10;DEBUG=false"></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" onclick="compare()">compare →</button>
+    <button class="btn" onclick="clearAll()">clear</button>
+    <label class="toggle-label">
+      <input type="checkbox" id="show-vals" onchange="render()"> show values
+    </label>
+    <label class="toggle-label">
+      <input type="checkbox" id="show-same" checked onchange="render()"> show unchanged
+    </label>
+    <span class="summary" id="summary"></span>
+  </div>
+
+  <div class="result">
+    <div class="empty-state" id="empty">paste two .env files and click compare →</div>
+    <table id="table" style="display:none">
+      <thead>
+        <tr>
+          <th>key</th>
+          <th>status</th>
+          <th id="col-left">{{LABEL_LEFT}}</th>
+          <th id="col-right">{{LABEL_RIGHT}}</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  <span>values are redacted by default — toggle to reveal</span>
+  <a href="https://artfct.dev" style="color:inherit;text-decoration:none">artfct.dev</a>
+</footer>
+
+<script>
+  let data = [];
+
+  function parseEnv(text) {
+    const map = {};
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq === -1) continue;
+      const key = line.slice(0, eq).trim();
+      const val = line.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      map[key] = val;
+    }
+    return map;
+  }
+
+  function compare() {
+    const left  = parseEnv(document.getElementById('left').value);
+    const right = parseEnv(document.getElementById('right').value);
+    const keys  = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+
+    data = keys.map(k => {
+      const inL = k in left, inR = k in right;
+      let type = 'same';
+      if (!inL) type = 'added';
+      else if (!inR) type = 'removed';
+      else if (left[k] !== right[k]) type = 'changed';
+      return { key: k, type, left: left[k] ?? null, right: right[k] ?? null };
+    });
+
+    document.getElementById('table').style.display = '';
+    document.getElementById('empty').style.display = 'none';
+    render();
+  }
+
+  function render() {
+    const showVals = document.getElementById('show-vals').checked;
+    const showSame = document.getElementById('show-same').checked;
+    const visible = showSame ? data : data.filter(d => d.type !== 'same');
+
+    const counts = { added: 0, removed: 0, changed: 0, same: 0 };
+    data.forEach(d => counts[d.type]++);
+    document.getElementById('summary').textContent =
+      `+${counts.added}  −${counts.removed}  ~${counts.changed}  =${counts.same}`;
+
+    const labels = { added: '+ added', removed: '− removed', changed: '~ changed', same: '= same' };
+    document.getElementById('tbody').innerHTML = visible.map(d => {
+      const lv = d.left  === null ? '—' : showVals ? esc(d.left)  : '<span class="val redacted">•••</span>';
+      const rv = d.right === null ? '—' : showVals ? esc(d.right) : '<span class="val redacted">•••</span>';
+      return `<tr class="${d.type}">
+        <td>${esc(d.key)}</td>
+        <td><span class="badge ${d.type}">${labels[d.type]}</span></td>
+        <td class="val">${d.left  === null ? '<span style="color:var(--base1)">—</span>' : lv}</td>
+        <td class="val">${d.right === null ? '<span style="color:var(--base1)">—</span>' : rv}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function clearAll() {
+    document.getElementById('left').value = '';
+    document.getElementById('right').value = '';
+    document.getElementById('table').style.display = 'none';
+    document.getElementById('empty').style.display = '';
+    document.getElementById('summary').textContent = '';
+    data = [];
+  }
+
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>

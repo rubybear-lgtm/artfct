@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — api diff</title>
+  <style>
+    :root {
+      --base3:   #FDF6E3; --base2: #EEE8D5; --base1: #93A1A1;
+      --base0:   #657B83; --base00: #586E75; --base01: #073642;
+      --yellow:  #B58900; --orange: #CB4B16; --red: #DC322F;
+      --blue:    #268BD2; --cyan:   #2AA198; --green: #859900;
+      --green-bg:  #f0f4e8; --red-bg:   #fdf0ef; --yellow-bg: #fdf6e3;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif;
+           background: var(--base3); color: var(--base00); min-height: 100dvh;
+           display: flex; flex-direction: column; }
+    header { border-bottom: 1px solid var(--base2); padding: 0.75rem 1.25rem;
+             display: flex; align-items: baseline; gap: 0.75rem; }
+    .brand { font-family: ui-monospace, monospace; font-size: 12px; color: var(--base1); }
+    .tool-title { font-family: ui-monospace, monospace; font-size: 13px; color: var(--base00); }
+    main { flex: 1; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 640px) { .inputs { grid-template-columns: 1fr; } }
+
+    .input-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    label { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1); letter-spacing: 0.04em; }
+    textarea {
+      font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5;
+      background: var(--base2); border: 1px solid var(--base1); color: var(--base00);
+      padding: 0.65rem 0.75rem; resize: vertical; min-height: 180px; outline: none;
+    }
+    textarea:focus { border-color: var(--blue); }
+    textarea::placeholder { color: var(--base1); }
+
+    .actions { display: flex; gap: 0.5rem; align-items: center; }
+    .btn { font-family: ui-monospace, monospace; font-size: 11px; background: none;
+           border: 1px solid var(--base1); color: var(--base0); padding: 0.4rem 0.9rem;
+           cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+    .btn:hover { border-color: var(--base00); color: var(--base00); }
+    .btn.primary { border-color: var(--blue); color: var(--blue); }
+    .btn.primary:hover { background: var(--blue); color: var(--base3); }
+    .summary { font-family: ui-monospace, monospace; font-size: 11px; color: var(--base1); margin-left: auto; }
+
+    /* diff output */
+    .diff-output { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.7;
+                   border: 1px solid var(--base2); overflow: auto; }
+    .diff-line { display: flex; gap: 0; border-bottom: 1px solid var(--base2); }
+    .diff-line:last-child { border-bottom: none; }
+    .diff-gutter { width: 2rem; flex-shrink: 0; display: flex; align-items: center;
+                   justify-content: center; font-size: 13px; border-right: 1px solid var(--base2); }
+    .diff-body { padding: 0.25rem 0.75rem; flex: 1; white-space: pre; overflow-x: auto; }
+    .diff-path { padding: 0.25rem 0.75rem; color: var(--base1); font-size: 11px; background: var(--base2); }
+
+    .added   { background: #edf5e1; } .added   .diff-gutter { color: var(--green); background: #e0eecc; }
+    .removed { background: #fcecea; } .removed .diff-gutter { color: var(--red);   background: #f8d9d7; }
+    .changed { background: #fdf6e3; } .changed .diff-gutter { color: var(--yellow); background: #f5edcc; }
+    .same    .diff-gutter { color: var(--base2); }
+    .same    .diff-body   { color: var(--base1); }
+
+    .empty-state { padding: 2rem; text-align: center; color: var(--base1);
+                   font-family: ui-monospace, monospace; font-size: 12px; }
+    footer { border-top: 1px solid var(--base2); padding: 0.65rem 1.25rem;
+             font-family: ui-monospace, monospace; font-size: 10px; color: var(--base1);
+             display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+<header>
+  <span class="brand">artfct</span>
+  <span class="tool-title">{{TITLE}}</span>
+</header>
+
+<main>
+  <div class="inputs">
+    <div class="input-group">
+      <label>{{LABEL_LEFT}} (before)</label>
+      <textarea id="left" placeholder='{"key": "value"}'></textarea>
+    </div>
+    <div class="input-group">
+      <label>{{LABEL_RIGHT}} (after)</label>
+      <textarea id="right" placeholder='{"key": "value"}'></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" onclick="diff()">diff →</button>
+    <button class="btn" onclick="swap()">⇄ swap</button>
+    <button class="btn" onclick="clearAll()">clear</button>
+    <span class="summary" id="summary"></span>
+  </div>
+
+  <div id="output" class="diff-output">
+    <div class="empty-state">paste two JSON objects and click diff →</div>
+  </div>
+</main>
+
+<footer>
+  <span>
+    <span style="color:var(--green)">+</span> added &nbsp;
+    <span style="color:var(--red)">−</span> removed &nbsp;
+    <span style="color:var(--yellow)">~</span> changed
+  </span>
+  <a href="https://artfct.dev" style="color:inherit;text-decoration:none">artfct.dev</a>
+</footer>
+
+<script>
+  function diff() {
+    const lRaw = document.getElementById('left').value.trim();
+    const rRaw = document.getElementById('right').value.trim();
+    if (!lRaw && !rRaw) return;
+
+    let left, right;
+    try { left  = lRaw ? JSON.parse(lRaw) : {}; } catch(e) { alert('Left side: ' + e.message); return; }
+    try { right = rRaw ? JSON.parse(rRaw) : {}; } catch(e) { alert('Right side: ' + e.message); return; }
+
+    const changes = [];
+    deepDiff(left, right, '', changes);
+
+    const counts = { added: 0, removed: 0, changed: 0 };
+    changes.forEach(c => { if (counts[c.type] !== undefined) counts[c.type]++; });
+    document.getElementById('summary').textContent =
+      `${counts.added} added · ${counts.removed} removed · ${counts.changed} changed`;
+
+    if (!changes.length) {
+      document.getElementById('output').innerHTML = '<div class="empty-state">✓ no differences found</div>';
+      return;
+    }
+
+    document.getElementById('output').innerHTML = changes.map(c => {
+      if (c.type === 'path') {
+        return `<div class="diff-line"><div class="diff-body diff-path">${esc(c.path)}</div></div>`;
+      }
+      const glyph = c.type === 'added' ? '+' : c.type === 'removed' ? '−' : '~';
+      const val = c.type === 'changed'
+        ? `${fmt(c.left)}  →  ${fmt(c.right)}`
+        : fmt(c.type === 'added' ? c.right : c.left);
+      return `<div class="diff-line ${c.type}">
+        <div class="diff-gutter">${glyph}</div>
+        <div class="diff-body"><span style="color:var(--base1)">${esc(c.key)}: </span>${esc(val)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function deepDiff(left, right, path, out) {
+    const lKeys = left && typeof left === 'object' ? Object.keys(left) : [];
+    const rKeys = right && typeof right === 'object' ? Object.keys(right) : [];
+    const allKeys = Array.from(new Set([...lKeys, ...rKeys]));
+
+    let hasChild = false;
+    for (const k of allKeys) {
+      const lv = left?.[k], rv = right?.[k];
+      const childPath = path ? `${path}.${k}` : k;
+      if (!(k in (left || {}))) {
+        if (!hasChild && path) { out.push({ type: 'path', path }); hasChild = true; }
+        out.push({ type: 'added', key: k, right: rv });
+      } else if (!(k in (right || {}))) {
+        if (!hasChild && path) { out.push({ type: 'path', path }); hasChild = true; }
+        out.push({ type: 'removed', key: k, left: lv });
+      } else if (typeof lv === 'object' && lv !== null && typeof rv === 'object' && rv !== null) {
+        deepDiff(lv, rv, childPath, out);
+      } else if (lv !== rv) {
+        if (!hasChild && path) { out.push({ type: 'path', path }); hasChild = true; }
+        out.push({ type: 'changed', key: k, left: lv, right: rv });
+      }
+    }
+  }
+
+  function fmt(v) { return v === null ? 'null' : typeof v === 'object' ? JSON.stringify(v) : String(v); }
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function swap() {
+    const l = document.getElementById('left'), r = document.getElementById('right');
+    [l.value, r.value] = [r.value, l.value];
+  }
+  function clearAll() {
+    document.getElementById('left').value = '';
+    document.getElementById('right').value = '';
+    document.getElementById('summary').textContent = '';
+    document.getElementById('output').innerHTML = '<div class="empty-state">paste two JSON objects and click diff →</div>';
+  }
+</script>
+</body>
+</html>

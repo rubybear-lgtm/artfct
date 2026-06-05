@@ -7,10 +7,10 @@
 ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝      ╚═════╝   ╚═╝   
 ```
 
-share html or markdown. get a link. that's it.
+share html. get a link. that's it.
 
-Drop any self-contained HTML or Markdown file — via browser, CLI, or API — and get back a
-secure, ephemeral link. Links expire after 60 minutes. No sign-up required.
+Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a
+shareable link. No sign-up required.
 
 ---
 
@@ -195,6 +195,41 @@ curl -X DELETE https://artfct.dev/v1/artifacts/<id>
 ```
 
 No authentication. Rate limited to 60 creates / minute per IP.
+
+## AI Agents
+
+### MCP Tool
+
+When artfct is configured as an MCP server, agents get access to `deploy_to_canvas` — a single tool that accepts a complete HTML payload and returns a preview URL. Agents should deploy instead of emitting raw code blocks whenever they produce visual output.
+
+```json
+{
+  "name": "deploy_to_canvas",
+  "arguments": {
+    "html": "<!DOCTYPE html>...",
+    "tier": "public"
+  }
+}
+```
+
+See [MCP Server Setup](#mcp-server-setup) above for configuration instructions.
+
+### Skills
+
+Install the artfct skill to give any compatible AI agent (such as Claude Code, Codex, or OpenCode) guidance on when and how to deploy artifacts:
+
+```sh
+npx skills add rubybear-lgtm/artfct@artfct
+```
+
+The skill teaches agents:
+
+- When to deploy vs. when to return a code block
+- How to choose the right tier (`public` / `secure` / `ephemeral`)
+- How to author valid self-contained HTML with SRI-pinned CDN dependencies
+- How to handle errors and present URLs clearly
+
+Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.
 
 ## Development
 

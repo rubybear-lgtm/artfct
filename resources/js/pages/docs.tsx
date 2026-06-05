@@ -62,6 +62,9 @@ const ERROR_CODES = [
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 const EXAMPLE_ID = '2QJZgqlWux7NBsETBVa1Oj';
 
+// ── Skills content ───────────────────────────────────────────────────────────
+const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
+
 // ── CLI content ───────────────────────────────────────────────────────────────
 const CLI_INSTALL = `curl -fsSL https://artfct.dev/install.sh | sh`;
 
@@ -336,6 +339,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 export default function Docs() {
     const NAV_LINKS = [
         { href: '#cli', label: 'cli' },
+        { href: '#skills', label: 'skills' },
         { href: '#overview', label: 'rest api' },
         { href: '#create', label: 'create' },
         { href: '#delete', label: 'delete' },
@@ -560,6 +564,68 @@ export default function Docs() {
                         without interactive prompts.
                     </Prose>
 
+                    {/* ── skills ───────────────────────────────────────────── */}
+                    <SectionDivider id="skills" label="skills" />
+
+                    <Prose>
+                        Install the artfct skill to give any compatible AI agent
+                        (such as Claude Code, Codex, or OpenCode) built-in
+                        guidance on when and how to deploy artifacts — tier
+                        selection, self-contained HTML authoring, SRI pinning,
+                        and error handling.
+                    </Prose>
+
+                    <Label>install</Label>
+                    <CodeBlock code={SKILLS_INSTALL} />
+
+                    <Prose>
+                        Once installed, agents automatically call{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            deploy_to_canvas
+                        </code>{' '}
+                        whenever they produce visual HTML output — dashboards,
+                        reports, charts, interactive demos — instead of emitting
+                        raw code blocks.
+                    </Prose>
+
+                    <Prose>
+                        Skills follow the{' '}
+                        <a
+                            href="https://skills.sh"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: S.blue, textDecoration: 'none' }}
+                        >
+                            skills.sh
+                        </a>{' '}
+                        format and are resolved from the{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            skills/artfct/
+                        </code>{' '}
+                        directory in the{' '}
+                        <a
+                            href={GITHUB}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: S.blue, textDecoration: 'none' }}
+                        >
+                            artfct repo
+                        </a>
+                        .
+                    </Prose>
+
                     {/* ── overview ─────────────────────────────────────────── */}
                     <SectionDivider id="overview" label="rest api" />
 
@@ -771,6 +837,12 @@ export default function Docs() {
                         >
                             home
                         </Link>
+                        <Link
+                            href="/blog"
+                            style={{ color: S.base1, textDecoration: 'none' }}
+                        >
+                            blog
+                        </Link>
                         <a
                             href={GITHUB}
                             target="_blank"
@@ -781,8 +853,17 @@ export default function Docs() {
                         </a>
                     </div>
                     <span style={{ color: S.base2 }}>
-                        ephemeral · secure · 60min
+                        public · secure · ephemeral
                     </span>
+                    <a
+                        href="#"
+                        style={{
+                            color: S.base1,
+                            textDecoration: 'none',
+                        }}
+                    >
+                        ↑ top
+                    </a>
                 </footer>
             </div>
         </>

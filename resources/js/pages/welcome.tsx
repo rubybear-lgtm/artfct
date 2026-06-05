@@ -218,7 +218,7 @@ function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
             className="ascii-hero"
             style={{
                 fontFamily: MONO,
-                fontSize: 'min(16px, calc((100vw - 3rem) / 30))',
+                fontSize: 'min(16px, calc((100vw - 3rem) / 50))',
                 lineHeight: 1,
                 letterSpacing: 0,
                 background: `linear-gradient(to right, ${colorA}, ${colorB})`,
@@ -385,6 +385,7 @@ export default function Welcome() {
     const [mcpExpanded, setMcpExpanded] = useState(false);
     const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
     const [copiedSelfInstall, setCopiedSelfInstall] = useState(false);
+    const [copiedSkillsInstall, setCopiedSkillsInstall] = useState(false);
 
     const [cachedLinks, setCachedLinks] = useState<CachedLink[]>(() => {
         if (typeof window !== 'undefined') {
@@ -1415,7 +1416,7 @@ export default function Welcome() {
                         </div>
                     )}
 
-                    {/* ── cli & mcp callout ── */}
+                    {/* ── cli, mcp & skills callout ── */}
                     <div
                         style={{
                             width: '100%',
@@ -1433,7 +1434,7 @@ export default function Welcome() {
                                 color: S.base00,
                             }}
                         >
-                            cli & mcp
+                            cli, mcp & skills
                         </span>
                         <span
                             style={{
@@ -1442,9 +1443,9 @@ export default function Welcome() {
                                 color: S.base1,
                             }}
                         >
-                            install the CLI and automatically configure MCP for
-                            all detected agents (Cursor, Claude Desktop, Gemini,
-                            and Codex) in one step.
+                            install the CLI, configure MCP for native agent tool
+                            calls, or add the artfct skills to guide your
+                            agent's deployment workflows.
                         </span>
 
                         <div
@@ -1469,7 +1470,7 @@ export default function Welcome() {
 
                                         if (nextState) {
                                             await navigator.clipboard.writeText(
-                                                `Please install the artfct CLI and configure it as an MCP server on my machine by running:\ncurl -fsSL https://artfct.dev/install.sh | sh`,
+                                                `Please add the artfct skill to guide your deployment workflows:\nnpx skills add rubybear-lgtm/artfct@artfct\n\nNote: The MCP server is not required to use the skill, but is highly encouraged for native agent tool calls:\ncurl -fsSL https://artfct.dev/install.sh | sh && artfct setup`,
                                             );
                                             setCopiedAgentPrompt(true);
                                             setTimeout(
@@ -1541,10 +1542,11 @@ export default function Welcome() {
                                             color: S.base1,
                                         }}
                                     >
-                                        paste this prompt directly into your
-                                        terminal-capable agent (e.g. Claude Code
-                                        or Cursor Composer) to install and
-                                        configure:
+                                        install the artfct skill to give your
+                                        agent built-in guidance. MCP is not a
+                                        requirement to the skills (they fall
+                                        back to API deploys), but it is highly
+                                        encouraged for a native tool call:
                                     </span>
                                     <pre
                                         style={{
@@ -1561,8 +1563,11 @@ export default function Welcome() {
                                             lineHeight: 1.5,
                                         }}
                                     >
-                                        {`Please install the artfct CLI and configure it as an MCP server on my machine by running:
-curl -fsSL https://artfct.dev/install.sh | sh`}
+                                        {`# 1. install the skill (MCP optional but encouraged):
+npx skills add rubybear-lgtm/artfct@artfct
+
+# 2. (optional but highly encouraged) setup MCP for native tool calls:
+curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                     </pre>
                                 </div>
                             )}
@@ -1640,6 +1645,84 @@ curl -fsSL https://artfct.dev/install.sh | sh`}
                                     </button>
                                 </div>
                             </div>
+
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.4rem',
+                                    marginTop: '0.5rem',
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        fontFamily: MONO,
+                                        fontSize: '11px',
+                                        color: S.base1,
+                                    }}
+                                >
+                                    or install only the agent skills:
+                                </span>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        border: `1px solid ${S.base1}`,
+                                        borderRadius: '2px',
+                                        backgroundColor: S.base3,
+                                    }}
+                                >
+                                    <pre
+                                        style={{
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            color: S.base0,
+                                            padding: '0.6rem 0.8rem',
+                                            margin: 0,
+                                            flexGrow: 1,
+                                            overflowX: 'auto',
+                                        }}
+                                    >
+                                        <span style={{ color: S.base1 }}>
+                                            ${' '}
+                                        </span>
+                                        npx skills add
+                                        rubybear-lgtm/artfct@artfct
+                                    </pre>
+                                    <button
+                                        onClick={async () => {
+                                            await navigator.clipboard.writeText(
+                                                `npx skills add rubybear-lgtm/artfct@artfct`,
+                                            );
+                                            setCopiedSkillsInstall(true);
+                                            setTimeout(
+                                                () =>
+                                                    setCopiedSkillsInstall(
+                                                        false,
+                                                    ),
+                                                2000,
+                                            );
+                                        }}
+                                        style={{
+                                            padding: '0 0.8rem',
+                                            fontFamily: MONO,
+                                            fontSize: '11px',
+                                            backgroundColor: copiedSkillsInstall
+                                                ? S.green
+                                                : S.base2,
+                                            color: copiedSkillsInstall
+                                                ? S.base3
+                                                : S.base00,
+                                            border: 'none',
+                                            borderLeft: `1px solid ${S.base1}`,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {copiedSkillsInstall
+                                            ? 'copied'
+                                            : 'copy'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <Link
@@ -1679,6 +1762,15 @@ curl -fsSL https://artfct.dev/install.sh | sh`}
                             >
                                 docs
                             </Link>
+                            <Link
+                                href="/blog"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                blog
+                            </Link>
                             <a
                                 href="https://github.com/rubybear-lgtm/artfct"
                                 target="_blank"
@@ -1692,7 +1784,7 @@ curl -fsSL https://artfct.dev/install.sh | sh`}
                             </a>
                         </div>
                         <span style={{ color: S.base1 }}>
-                            ephemeral · secure · 60min
+                            public · secure · ephemeral
                         </span>
                     </footer>
                 </div>
