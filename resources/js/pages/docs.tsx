@@ -45,7 +45,7 @@ const POST_REQUEST_FIELDS = [
 ] as const;
 
 const POST_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '32-character token.' },
+    { name: 'id', type: 'string', note: '22-character token.' },
     { name: 'url', type: 'string', note: 'Direct link to the artifact.' },
     { name: 'tier', type: 'string', note: 'The tier used.' },
     { name: 'expires_at', type: 'string', note: 'ISO 8601 expiry timestamp.' },
@@ -60,7 +60,7 @@ const ERROR_CODES = [
 ] as const;
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
-const EXAMPLE_ID = '4fa8gx9z3k7m2n5p8q1r6s0t7u2v4w9x';
+const EXAMPLE_ID = '2QJZgqlWux7NBsETBVa1Oj';
 
 // ── CLI content ───────────────────────────────────────────────────────────────
 const CLI_INSTALL = `curl -fsSL https://artfct.dev/install.sh | sh`;
@@ -79,10 +79,10 @@ cat page.html | artfct deploy --stdin
 echo '<h1>hello</h1>' | artfct deploy --stdin
 
 # delete an artifact by ID
-artfct delete abc123def456789012345678901234ab
+artfct delete 2QJZgqlWux7NBsETBVa1Oj
 
 # delete an artifact by preview URL
-artfct delete https://artfct.dev/p/abc123def456789012345678901234ab
+artfct delete https://artfct.dev/p/2QJZgqlWux7NBsETBVa1Oj
 
 # check connectivity
 artfct doctor`;

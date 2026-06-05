@@ -12,6 +12,8 @@ const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
 const DEFAULT_TTL_MINUTES: u64 = 60;
 const MAX_TTL_MINUTES: u64 = 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
+const BASE62_ALPHABET: &[u8; 62] =
+    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -99,7 +101,9 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
     let now = Utc::now();
     let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
-    let id = Uuid::new_v4().simple().to_string();
+    let uuid = Uuid::new_v4();
+    let hex_id = uuid.simple().to_string();
+    let short_id = base62_encode(uuid.as_bytes());
     let compressed_html = compress_html(&payload.html)?;
 
     let stored = StoredArtifact {
@@ -111,15 +115,15 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
 
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
-        .put(&id, body)?
+        .put(&hex_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;
 
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
     let response = CreateArtifactResponse {
-        id: id.clone(),
-        url: format!("{}/p/{}", base_url.trim_end_matches('/'), id),
+        id: short_id.clone(),
+        url: format!("{}/p/{}", base_url.trim_end_matches('/'), short_id),
         tier: payload.tier,
         expires_at: stored.expires_at,
     };
@@ -128,12 +132,22 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
 }
 
 async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
-    let id = path.trim_start_matches("/p/");
-    if !is_valid_artifact_id(id) {
+    let short_id = path.trim_start_matches("/p/");
+    if !is_valid_artifact_id(short_id) {
         return expired_response();
     }
 
-    let Some(stored) = env.kv(KV_BINDING)?.get(id).json::<StoredArtifact>().await? else {
+    let hex_id = match base62_decode(short_id) {
+        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
+        None => return expired_response(),
+    };
+
+    let Some(stored) = env
+        .kv(KV_BINDING)?
+        .get(&hex_id)
+        .json::<StoredArtifact>()
+        .await?
+    else {
         return expired_response();
     };
 
@@ -149,20 +163,30 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
 }
 
 async fn delete_artifact(path: &str, env: &Env) -> Result<Response> {
-    let id = path.trim_start_matches("/v1/artifacts/");
-    if !is_valid_artifact_id(id) {
+    let short_id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(short_id) {
         return json_error("Invalid artifact id.", 400);
     }
 
-    env.kv(KV_BINDING)?.delete(id).await?;
+    let hex_id = match base62_decode(short_id) {
+        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
+        None => return json_error("Invalid artifact id.", 400),
+    };
+
+    env.kv(KV_BINDING)?.delete(&hex_id).await?;
     Response::empty().map(|response| response.with_status(204))
 }
 
 async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
-    let id = path.trim_start_matches("/v1/artifacts/");
-    if !is_valid_artifact_id(id) {
+    let short_id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(short_id) {
         return json_error("Invalid artifact id.", 400);
     }
+
+    let hex_id = match base62_decode(short_id) {
+        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
+        None => return json_error("Invalid artifact id.", 400),
+    };
 
     #[derive(Deserialize)]
     struct UpdateArtifactRequest {
@@ -182,7 +206,12 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
         );
     }
 
-    let Some(mut stored) = env.kv(KV_BINDING)?.get(id).json::<StoredArtifact>().await? else {
+    let Some(mut stored) = env
+        .kv(KV_BINDING)?
+        .get(&hex_id)
+        .json::<StoredArtifact>()
+        .await?
+    else {
         return json_error("Artifact not found or expired.", 404);
     };
 
@@ -194,7 +223,7 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
 
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
-        .put(id, body)?
+        .put(&hex_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;
@@ -206,7 +235,7 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
     }
 
     let response = UpdateArtifactResponse {
-        id: id.to_string(),
+        id: short_id.to_string(),
         expires_at: stored.expires_at,
     };
 
@@ -251,8 +280,62 @@ fn decompress_html(bytes: &[u8]) -> Result<String> {
     Ok(html)
 }
 
+fn base62_encode(bytes: &[u8; 16]) -> String {
+    let mut digits = Vec::new();
+    let mut data = *bytes;
+
+    loop {
+        let mut remainder = 0u32;
+        let mut all_zero = true;
+
+        for byte in data.iter_mut() {
+            let combined = (remainder as u64 * 256) + *byte as u64;
+            *byte = (combined / 62) as u8;
+            remainder = (combined % 62) as u32;
+            if *byte != 0 {
+                all_zero = false;
+            }
+        }
+
+        digits.push(BASE62_ALPHABET[remainder as usize]);
+
+        if all_zero {
+            break;
+        }
+    }
+
+    digits.reverse();
+
+    while digits.len() < 22 {
+        digits.insert(0, BASE62_ALPHABET[0]);
+    }
+
+    String::from_utf8(digits).unwrap()
+}
+
+fn base62_decode(encoded: &str) -> Option<[u8; 16]> {
+    let mut result = [0u8; 16];
+
+    for c in encoded.chars() {
+        let digit = BASE62_ALPHABET.iter().position(|&b| b == c as u8)? as u16;
+        let mut carry = digit;
+
+        for byte in result.iter_mut().rev() {
+            carry += *byte as u16 * 62;
+            *byte = (carry % 256) as u8;
+            carry /= 256;
+        }
+
+        if carry > 0 {
+            return None;
+        }
+    }
+
+    Some(result)
+}
+
 fn is_valid_artifact_id(id: &str) -> bool {
-    id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    id.len() == 22 && id.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
 fn env_string(env: &Env, key: &str, default: &str) -> String {
@@ -345,4 +428,88 @@ fn escape_text(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base62_roundtrip() {
+        let uuid = Uuid::new_v4();
+        let encoded = base62_encode(uuid.as_bytes());
+        assert_eq!(encoded.len(), 22);
+        let decoded = base62_decode(&encoded).unwrap();
+        assert_eq!(*uuid.as_bytes(), decoded);
+    }
+
+    #[test]
+    fn base62_zero_bytes() {
+        let bytes = [0u8; 16];
+        let encoded = base62_encode(&bytes);
+        assert_eq!(encoded, "0000000000000000000000");
+        let decoded = base62_decode(&encoded).unwrap();
+        assert_eq!(bytes, decoded);
+    }
+
+    #[test]
+    fn base62_one_hundred_random_roundtrips() {
+        for _ in 0..100 {
+            let uuid = Uuid::new_v4();
+            let bytes = uuid.as_bytes();
+            let encoded = base62_encode(bytes);
+            assert_eq!(encoded.len(), 22);
+            let decoded = base62_decode(&encoded).unwrap();
+            assert_eq!(*bytes, decoded);
+        }
+    }
+
+    #[test]
+    fn base62_overflow_rejected() {
+        assert!(base62_decode("zzzzzzzzzzzzzzzzzzzzzz").is_none());
+    }
+
+    #[test]
+    fn base62_decode_empty_string_is_zero() {
+        let decoded = base62_decode("").unwrap();
+        assert_eq!(decoded, [0u8; 16]);
+    }
+
+    #[test]
+    fn base62_decode_short_string_works_for_small_numbers() {
+        let decoded = base62_decode("ABC").unwrap();
+        let mut expected = [0u8; 16];
+        expected[14] = 0x98;
+        expected[15] = 0xDE;
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn base62_non_alphanumeric_is_invalid_id() {
+        assert!(!is_valid_artifact_id("00000000000000000000!0"));
+        assert!(!is_valid_artifact_id("00000000000000000000-0"));
+        assert!(!is_valid_artifact_id("abc defghijklmnopqrstuv"));
+    }
+
+    #[test]
+    fn base62_wrong_length_is_invalid_id() {
+        assert!(!is_valid_artifact_id(""));
+        assert!(!is_valid_artifact_id("12345"));
+        assert!(!is_valid_artifact_id(&"a".repeat(21)));
+        assert!(!is_valid_artifact_id(&"a".repeat(23)));
+    }
+
+    #[test]
+    fn base62_valid_id_accepted() {
+        let uuid = Uuid::new_v4();
+        let short = base62_encode(uuid.as_bytes());
+        assert!(is_valid_artifact_id(&short));
+    }
+
+    #[test]
+    fn base62_id_deterministic() {
+        let uuid = Uuid::parse_str("4fa8e33748f2434f8223e5c36a7848b1").unwrap();
+        let encoded = base62_encode(uuid.as_bytes());
+        assert_eq!(encoded, "2QJZgqlWux7NBsETBVa1Oj");
+    }
 }
