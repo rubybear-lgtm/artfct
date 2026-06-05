@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Confirm};
@@ -22,7 +21,7 @@ pub fn uninstall(silent: bool) -> Result<()> {
             continue;
         }
 
-        match remove_artfct_entry(&agent.path) {
+        match setup::remove_artfct_entry(&agent.path, &agent.format) {
             Ok(true) => {
                 ui::item_success(format!("Removed from {}", agent.name));
                 removed_from += 1;
@@ -77,97 +76,4 @@ pub fn uninstall(silent: bool) -> Result<()> {
     eprintln!();
 
     Ok(())
-}
-
-fn remove_artfct_entry(config_path: &PathBuf) -> Result<bool> {
-    let content = fs::read_to_string(config_path)
-        .with_context(|| format!("Failed to read {}", config_path.display()))?;
-
-    let mut parsed: serde_json::Value = if content.trim().is_empty() {
-        return Ok(false);
-    } else {
-        serde_json::from_str(&content)
-            .with_context(|| format!("Invalid JSON in {}", config_path.display()))?
-    };
-
-    let removed = if let Some(servers) = parsed
-        .as_object_mut()
-        .and_then(|obj| obj.get_mut("mcpServers"))
-        .and_then(|s| s.as_object_mut())
-    {
-        let had_artfct = servers.remove("artfct").is_some();
-
-        if servers.is_empty() {
-            if let Some(obj) = parsed.as_object_mut() {
-                obj.remove("mcpServers");
-            }
-        }
-
-        had_artfct
-    } else {
-        false
-    };
-
-    if removed {
-        if parsed.as_object().is_none_or(|o| o.is_empty()) {
-            fs::remove_file(config_path).with_context(|| {
-                format!("Failed to remove empty config {}", config_path.display())
-            })?;
-        } else {
-            let formatted = serde_json::to_string_pretty(&parsed)?;
-            fs::write(config_path, formatted)
-                .with_context(|| format!("Failed to write {}", config_path.display()))?;
-        }
-    }
-
-    Ok(removed)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::remove_artfct_entry;
-
-    #[test]
-    fn removes_artfct_from_config() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let path = tmp.path().join("test.mcp.json");
-
-        let config =
-            r#"{"mcpServers": {"artfct": {"command": "artfct"}, "other": {"command": "echo"}}}"#;
-        fs::write(&path, config).expect("write");
-
-        let result = remove_artfct_entry(&path).expect("remove");
-        assert!(result);
-
-        let content = fs::read_to_string(&path).expect("read");
-        assert!(!content.contains("artfct"));
-        assert!(content.contains("other"));
-    }
-
-    #[test]
-    fn removes_file_when_only_artfct() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let path = tmp.path().join("only.mcp.json");
-
-        let config = r#"{"mcpServers": {"artfct": {"command": "artfct"}}}"#;
-        fs::write(&path, config).expect("write");
-
-        let result = remove_artfct_entry(&path).expect("remove");
-        assert!(result);
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn noop_when_no_artfct() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let path = tmp.path().join("no_artfct.mcp.json");
-
-        let config = r#"{"mcpServers": {"other": {"command": "echo"}}}"#;
-        fs::write(&path, config).expect("write");
-
-        let result = remove_artfct_entry(&path).expect("remove");
-        assert!(!result);
-    }
 }
