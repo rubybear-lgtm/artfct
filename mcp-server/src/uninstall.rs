@@ -2,64 +2,79 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use dialoguer::Confirm;
+use dialoguer::{theme::ColorfulTheme, Confirm};
+
+use crate::{setup, ui};
 
 pub fn uninstall(silent: bool) -> Result<()> {
     let binary = std::env::current_exe().context("Failed to determine CLI binary path")?;
     let binary_path = binary.to_string_lossy();
 
-    let paths = discover_config_paths();
+    ui::header("Uninstalling artfct");
+    eprintln!();
+
+    let agents = setup::discover_agents();
     let mut removed_from = 0;
     let mut not_found = 0;
 
-    for path in &paths {
-        if !path.exists() {
+    for agent in &agents {
+        if !agent.path.exists() {
             continue;
         }
 
-        match remove_artfct_entry(path) {
+        match remove_artfct_entry(&agent.path) {
             Ok(true) => {
-                eprintln!("  Removed artfct from: {}", path.display());
+                ui::item_success(format!("Removed from {}", agent.name));
                 removed_from += 1;
             }
             Ok(false) => {
+                ui::item_skip(format!("Not present in {}", agent.name));
                 not_found += 1;
             }
             Err(err) => {
-                eprintln!("  Failed: {} ({err})", path.display());
+                ui::item_error(format!("Failed {} — {err}", agent.name));
             }
         }
     }
 
+    eprintln!();
+
     if removed_from > 0 {
-        eprintln!(
-            "Removed MCP entries from {removed_from} configs{}",
+        ui::success(format!(
+            "Removed MCP entries from {removed_from} config{}{}",
+            if removed_from == 1 { "" } else { "s" },
             if not_found > 0 {
-                format!(" ({not_found} already clean)")
+                format!(", {not_found} already clean")
             } else {
                 String::new()
             }
-        );
+        ));
     } else {
         eprintln!("No artfct MCP entries found in agent configs");
     }
 
+    eprintln!();
+
     let should_remove_binary = if silent {
         true
     } else {
-        Confirm::new()
+        Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt(format!("Remove binary at {binary_path}?"))
             .default(true)
             .interact()?
     };
 
+    eprintln!();
+
     if should_remove_binary {
         fs::remove_file(&*binary)
             .with_context(|| format!("Failed to remove binary at {binary_path}"))?;
-        eprintln!("Removed binary: {binary_path}");
+        ui::success(format!("Removed binary at {binary_path}"));
     } else {
-        eprintln!("Binary left at: {binary_path}");
+        ui::item_skip(format!("Binary left at {binary_path}"));
     }
+
+    eprintln!();
 
     Ok(())
 }
@@ -106,24 +121,6 @@ fn remove_artfct_entry(config_path: &PathBuf) -> Result<bool> {
     }
 
     Ok(removed)
-}
-
-fn discover_config_paths() -> Vec<PathBuf> {
-    let home = std::env::var("HOME").ok().map(PathBuf::from);
-    let mut paths = Vec::new();
-
-    if let Some(ref home) = home {
-        paths.push(home.join(".mcp.json"));
-        paths.push(home.join(".cursor").join("mcp.json"));
-        paths.push(home.join(".gemini").join("mcp.json"));
-        paths.push(home.join(".codex").join("mcp.json"));
-    }
-
-    if let Ok(cwd) = std::env::current_dir() {
-        paths.push(cwd.join(".mcp.json"));
-    }
-
-    paths
 }
 
 #[cfg(test)]

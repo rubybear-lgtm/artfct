@@ -1,98 +1,193 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use dialoguer::MultiSelect;
+use console::Term;
+use dialoguer::{theme::ColorfulTheme, MultiSelect};
 
-const MCP_SERVER_ENTRY: &str = r#"{
-    "mcpServers": {
-        "artfct": {
-            "command": "artfct",
-            "args": ["mcp", "serve"]
-        }
+use crate::ui;
+
+pub struct AgentConfig {
+    pub name: &'static str,
+    pub path: PathBuf,
+}
+
+pub fn discover_agents() -> Vec<AgentConfig> {
+    let home = dirs_home();
+    let mut agents = Vec::new();
+
+    if let Some(ref home) = home {
+        agents.push(AgentConfig {
+            name: "Claude Code",
+            path: home.join(".mcp.json"),
+        });
+        agents.push(AgentConfig {
+            name: "Cursor",
+            path: home.join(".cursor").join("mcp.json"),
+        });
+        agents.push(AgentConfig {
+            name: "Gemini",
+            path: home.join(".gemini").join("mcp.json"),
+        });
+        agents.push(AgentConfig {
+            name: "Codex",
+            path: home.join(".codex").join("mcp.json"),
+        });
     }
-}"#;
+
+    if let Ok(cwd) = std::env::current_dir() {
+        agents.push(AgentConfig {
+            name: "Current project",
+            path: cwd.join(".mcp.json"),
+        });
+    }
+
+    agents
+}
 
 pub fn setup_agents(silent: bool) -> Result<()> {
-    let paths = discover_config_paths();
+    let agents = discover_agents();
 
     let binary = std::env::current_exe().context("Failed to determine CLI binary path")?;
     let binary_path = binary.to_string_lossy();
 
-    let found = if silent {
-        (0..paths.len()).collect()
-    } else {
-        let items: Vec<String> = paths
-            .iter()
-            .map(|p| {
-                let action = if p.exists() { "add to" } else { "create" };
-                let home = dirs_home();
-                let display = if let Some(h) = &home {
-                    p.strip_prefix(h)
-                        .map(|r| format!("~/{}", r.display()))
-                        .unwrap_or_else(|_| p.display().to_string())
-                } else {
-                    p.display().to_string()
-                };
-                format!("{display} ({action})")
-            })
-            .collect();
+    ui::banner();
 
+    let selected = if silent {
+        (0..agents.len()).collect()
+    } else {
+        let items: Vec<&str> = agents.iter().map(|a| a.name).collect();
         let defaults: Vec<bool> = vec![true; items.len()];
 
-        MultiSelect::new()
-            .with_prompt("Select configs to install into (space to toggle, enter to confirm)")
+        let selected = MultiSelect::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select agents to configure")
             .items(&items)
             .defaults(&defaults)
             .interact()
-            .context("Failed to show selection")?
+            .context("Failed to show selection")?;
+
+        let term = Term::stderr();
+        let _ = term.clear_last_lines(1);
+        for (i, agent) in agents.iter().enumerate() {
+            if selected.contains(&i) {
+                ui::item_success(agent.name);
+            } else {
+                ui::item_skip(agent.name);
+            }
+        }
+
+        selected
     };
+
+    eprintln!();
 
     let mut configured = 0;
     let mut skipped = 0;
 
-    for (i, path) in paths.iter().enumerate() {
-        if !found.contains(&i) {
+    for (i, agent) in agents.iter().enumerate() {
+        if !selected.contains(&i) {
             skipped += 1;
             continue;
         }
 
-        match install_into(path, &binary_path) {
+        match install_into(&agent.path, &binary_path) {
             Ok(InstallResult::Written) => {
-                eprintln!("  Configured: {}", path.display());
+                ui::item_success(format!("Configured {}", agent.name));
                 configured += 1;
             }
             Ok(InstallResult::AlreadyConfigured) => {
-                eprintln!("  Already configured: {}", path.display());
+                ui::item_skip(format!("Already configured {}", agent.name));
                 skipped += 1;
             }
             Err(err) => {
-                eprintln!("  Failed: {} ({err})", path.display());
+                ui::item_error(format!("Failed {} — {err}", agent.name));
             }
         }
     }
 
+    eprintln!();
+
     if configured > 0 {
-        eprintln!("Done — installed into {configured} configs (skipped {skipped})");
+        ui::success(format!(
+            "Done — {configured} agent{} configured{}",
+            if configured == 1 { "" } else { "s" },
+            if skipped > 0 {
+                format!(", {skipped} skipped")
+            } else {
+                String::new()
+            }
+        ));
     } else if skipped > 0 {
-        eprintln!("All {skipped} configs already had artfct or were deselected");
+        ui::success("Already up to date");
     } else {
-        eprintln!("No configs selected");
+        eprintln!("No agents selected");
     }
 
-    eprintln!("Binary: {binary_path}\nMCP server entry: artfct mcp serve");
+    eprintln!();
+    ui::label_value("Binary", &binary_path);
+    ui::label_value("MCP command", "artfct mcp serve");
+    eprintln!();
+
+    if !binary_on_path() {
+        let parent = binary
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        ui::warn(format!(
+            "artfct is not on your PATH — add {parent} to PATH to use it in the terminal"
+        ));
+        eprintln!();
+    }
 
     Ok(())
 }
 
 pub fn list_configs() {
-    eprintln!("Agent config paths that would be used:");
-    for path in discover_config_paths() {
-        let marker = if path.exists() { "exists" } else { "new" };
-        eprintln!("  {marker:>6}  {}", path.display());
+    let binary_path = std::env::current_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "artfct".to_string());
+
+    ui::banner();
+    ui::header("Agent config paths");
+    eprintln!();
+    for agent in discover_agents() {
+        let marker = if agent.path.exists() {
+            "exists"
+        } else {
+            "   new"
+        };
+        eprintln!("  {marker}  {:<16}  {}", agent.name, agent.path.display());
     }
     eprintln!();
-    eprintln!("MCP server entry:");
-    eprintln!("  {}", MCP_SERVER_ENTRY.replace('\n', "\n  ").trim_end());
+    ui::header("MCP server entry");
+    eprintln!();
+    let entry = mcp_entry_json(&binary_path);
+    for line in serde_json::to_string_pretty(&entry)
+        .unwrap_or_default()
+        .lines()
+    {
+        eprintln!("  {line}");
+    }
+    eprintln!();
+}
+
+fn mcp_entry_json(binary_path: &str) -> serde_json::Value {
+    serde_json::json!({
+        "mcpServers": {
+            "artfct": {
+                "command": binary_path,
+                "args": ["mcp", "serve"]
+            }
+        }
+    })
+}
+
+fn binary_on_path() -> bool {
+    std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(std::path::Path::new)
+        .any(|dir| dir.join("artfct").exists())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -101,7 +196,7 @@ enum InstallResult {
     AlreadyConfigured,
 }
 
-fn install_into(config_path: &PathBuf, _binary_path: &str) -> Result<InstallResult> {
+fn install_into(config_path: &PathBuf, binary_path: &str) -> Result<InstallResult> {
     if config_path.exists() {
         let content = fs::read_to_string(config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
@@ -122,20 +217,24 @@ fn install_into(config_path: &PathBuf, _binary_path: &str) -> Result<InstallResu
             if servers.contains_key("artfct") {
                 return Ok(InstallResult::AlreadyConfigured);
             }
-            let entry: serde_json::Value = serde_json::json!({
-                "command": "artfct",
-                "args": ["mcp", "serve"]
-            });
-            servers.insert("artfct".to_string(), entry);
-        } else {
-            let entry = serde_json::json!({
-                "artfct": {
-                    "command": "artfct",
+            servers.insert(
+                "artfct".to_string(),
+                serde_json::json!({
+                    "command": binary_path,
                     "args": ["mcp", "serve"]
-                }
-            });
+                }),
+            );
+        } else {
             if let Some(obj) = parsed.as_object_mut() {
-                obj.insert("mcpServers".to_string(), entry);
+                obj.insert(
+                    "mcpServers".to_string(),
+                    serde_json::json!({
+                        "artfct": {
+                            "command": binary_path,
+                            "args": ["mcp", "serve"]
+                        }
+                    }),
+                );
             }
         }
 
@@ -148,29 +247,13 @@ fn install_into(config_path: &PathBuf, _binary_path: &str) -> Result<InstallResu
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
         }
 
-        fs::write(config_path, MCP_SERVER_ENTRY)
+        let entry = mcp_entry_json(binary_path);
+        let formatted = serde_json::to_string_pretty(&entry)?;
+        fs::write(config_path, formatted)
             .with_context(|| format!("Failed to write {}", config_path.display()))?;
     }
 
     Ok(InstallResult::Written)
-}
-
-fn discover_config_paths() -> Vec<PathBuf> {
-    let home = dirs_home();
-    let mut paths = Vec::new();
-
-    if let Some(ref home) = home {
-        paths.push(home.join(".mcp.json"));
-        paths.push(home.join(".cursor").join("mcp.json"));
-        paths.push(home.join(".gemini").join("mcp.json"));
-        paths.push(home.join(".codex").join("mcp.json"));
-    }
-
-    if let Ok(cwd) = std::env::current_dir() {
-        paths.push(cwd.join(".mcp.json"));
-    }
-
-    paths
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -181,25 +264,37 @@ fn dirs_home() -> Option<PathBuf> {
 mod tests {
     use std::fs;
 
-    use super::{discover_config_paths, install_into, InstallResult, MCP_SERVER_ENTRY};
+    const MCP_SERVER_ENTRY_TEMPLATE: &str = r#"{
+    "mcpServers": {
+        "artfct": {
+            "command": "artfct",
+            "args": ["mcp", "serve"]
+        }
+    }
+}"#;
+
+    use super::{discover_agents, install_into, InstallResult};
 
     #[test]
-    fn discovers_known_paths() {
-        let paths = discover_config_paths();
-        assert!(!paths.is_empty());
+    fn discovers_known_agents() {
+        let agents = discover_agents();
+        assert!(!agents.is_empty());
     }
 
     #[test]
-    fn creates_new_config() {
+    fn creates_new_config_with_binary_path() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("new.mcp.json");
 
-        let result = install_into(&path, "").expect("install_into");
+        let result = install_into(&path, "/usr/local/bin/artfct").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
         let parsed: serde_json::Value = serde_json::from_str(&content).expect("json");
-        assert_eq!(parsed["mcpServers"]["artfct"]["command"], "artfct");
+        assert_eq!(
+            parsed["mcpServers"]["artfct"]["command"],
+            "/usr/local/bin/artfct"
+        );
         let args = parsed["mcpServers"]["artfct"]["args"]
             .as_array()
             .expect("array");
@@ -212,8 +307,8 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("exists.mcp.json");
 
-        fs::write(&path, MCP_SERVER_ENTRY).expect("write");
-        let result = install_into(&path, "").expect("install_into");
+        fs::write(&path, MCP_SERVER_ENTRY_TEMPLATE).expect("write");
+        let result = install_into(&path, "/usr/local/bin/artfct").expect("install_into");
         assert_eq!(result, InstallResult::AlreadyConfigured);
     }
 
@@ -225,7 +320,7 @@ mod tests {
         let existing = r#"{"mcpServers": {"other": {"command": "echo"}}}"#;
         fs::write(&path, existing).expect("write");
 
-        let result = install_into(&path, "").expect("install_into");
+        let result = install_into(&path, "/usr/local/bin/artfct").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
@@ -243,12 +338,15 @@ mod tests {
         let existing = r#"{"someKey": "value"}"#;
         fs::write(&path, existing).expect("write");
 
-        let result = install_into(&path, "").expect("install_into");
+        let result = install_into(&path, "/usr/local/bin/artfct").expect("install_into");
         assert_eq!(result, InstallResult::Written);
 
         let content = fs::read_to_string(&path).expect("read");
         let parsed: serde_json::Value = serde_json::from_str(&content).expect("json");
         assert_eq!(parsed["someKey"], "value");
-        assert!(parsed["mcpServers"]["artfct"]["command"] == "artfct");
+        assert_eq!(
+            parsed["mcpServers"]["artfct"]["command"],
+            "/usr/local/bin/artfct"
+        );
     }
 }
