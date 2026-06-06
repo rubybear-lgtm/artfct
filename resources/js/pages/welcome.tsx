@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { renderMarkdownToHtml } from '@/lib/markdown';
 import { ThemeToggle } from '@/lib/theme';
 
+const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
+
 const S = {
     base3: 'var(--sol-base3)',
     base2: 'var(--sol-base2)',
@@ -666,11 +668,20 @@ export default function Welcome() {
     return (
         <>
             <Head title="artfct — share html instantly">
-                <meta property="og:title" content="artfct — share html. get a link. that's it." />
-                <meta property="og:description" content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required." />
+                <meta
+                    property="og:title"
+                    content="artfct — share html. get a link. that's it."
+                />
+                <meta
+                    property="og:description"
+                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required."
+                />
                 <meta property="og:url" content="https://artfct.dev" />
                 <meta property="og:type" content="website" />
-                <meta name="description" content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required." />
+                <meta
+                    name="description"
+                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required."
+                />
             </Head>
             <ThemeToggle />
             <div
@@ -1794,9 +1805,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 <span style={{ color: S.cyan }}>public</span>,{' '}
                                 <span style={{ color: S.cyan }}>secure</span>,
                                 or{' '}
-                                <span style={{ color: S.cyan }}>
-                                    ephemeral
-                                </span>
+                                <span style={{ color: S.cyan }}>ephemeral</span>
                                 . Links will never be crawled, indexed, or
                                 guessable.
                             </p>
