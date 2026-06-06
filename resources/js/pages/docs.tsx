@@ -349,7 +349,9 @@ export default function Docs() {
 
     return (
         <>
-            <Head title="api reference — artfct" />
+            <Head title="api reference — artfct">
+                <meta name="description" content="REST API reference for creating and managing HTML artifacts on artfct.dev." />
+            </Head>
             <ThemeToggle />
             <div
                 style={{

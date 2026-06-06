@@ -665,7 +665,13 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="artfct — share html instantly" />
+            <Head title="artfct — share html instantly">
+                <meta property="og:title" content="artfct — share html. get a link. that's it." />
+                <meta property="og:description" content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required." />
+                <meta property="og:url" content="https://artfct.dev" />
+                <meta property="og:type" content="website" />
+                <meta name="description" content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required." />
+            </Head>
             <ThemeToggle />
             <div
                 style={{
@@ -1737,6 +1743,72 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                         >
                             install & usage docs
                         </Link>
+                    </div>
+
+                    {/* ── about / seo content ── */}
+                    <div
+                        style={{
+                            width: '100%',
+                            paddingTop: '2rem',
+                            borderTop: `1px solid ${S.base2}`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.2rem',
+                        }}
+                    >
+                        <div
+                            style={{
+                                fontFamily: SANS,
+                                fontSize: '14px',
+                                lineHeight: 1.7,
+                                color: S.base0,
+                            }}
+                        >
+                            <h2
+                                style={{
+                                    fontFamily: MONO,
+                                    fontSize: '12px',
+                                    fontWeight: 400,
+                                    color: S.base00,
+                                    margin: '0 0 1rem',
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                }}
+                            >
+                                what is artfct?
+                            </h2>
+                            <p style={{ margin: '0 0 0.8rem' }}>
+                                artfct is an{' '}
+                                <strong style={{ color: S.base00 }}>
+                                    instant HTML sharing
+                                </strong>{' '}
+                                tool for developers. Drop a self-contained HTML
+                                file — or pipe one via CLI, API, or AI agent —
+                                and get a shareable link in seconds. No sign-up,
+                                no accounts, no configuration.
+                            </p>
+                            <p style={{ margin: '0 0 0.8rem' }}>
+                                Every artifact is ephemeral by default (expires
+                                in 60 minutes) with an unguessable 32-character
+                                URL. Choose from three tiers:{' '}
+                                <span style={{ color: S.cyan }}>public</span>,{' '}
+                                <span style={{ color: S.cyan }}>secure</span>,
+                                or{' '}
+                                <span style={{ color: S.cyan }}>
+                                    ephemeral
+                                </span>
+                                . Links will never be crawled, indexed, or
+                                guessable.
+                            </p>
+                            <p style={{ margin: 0 }}>
+                                Perfect for sharing UI prototypes, dashboard
+                                previews, AI-generated visual outputs, HTML
+                                demos, markdown documents, and any other
+                                self-contained web content. Works from the
+                                browser, terminal, and through MCP-compatible AI
+                                agents like Claude, Cursor, and Gemini.
+                            </p>
+                        </div>
                     </div>
 
                     {/* ── footer ── */}
