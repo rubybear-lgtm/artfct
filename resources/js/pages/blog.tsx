@@ -231,6 +231,191 @@ const POSTS: Post[] = [
             </>
         ),
     },
+    {
+        slug: 'mermaid-diagrams',
+        date: '2026-06-06',
+        title: 'Share Mermaid diagrams as live links — no screenshots needed',
+        tag: 'skills',
+        body: (
+            <>
+                <P>
+                    Mermaid is the best thing to happen to technical
+                    documentation since Markdown. Write a flowchart in plain
+                    text, get a diagram. It works in GitHub READMEs, Notion
+                    blocks, and documentation generators. It's version-control
+                    friendly. It doesn't require a design tool.
+                </P>
+
+                <P>
+                    But there's a gap:{' '}
+                    <strong>
+                        sharing Mermaid diagrams outside those environments is a
+                        pain
+                    </strong>
+                    .
+                </P>
+
+                <P>
+                    Want to show an architecture diagram in a Discord thread?
+                    You take a screenshot. Sending a sequence diagram to a
+                    teammate on Slack? Screenshot. Including a flowchart in a
+                    bug report on Linear? Screenshot. Screenshots are dead
+                    content — they don't render at different sizes, they don't
+                    respond to dark mode, they can't be zoomed, and they're
+                    useless for accessibility.
+                </P>
+
+                <P>
+                    This is exactly the kind of problem artfct was built to
+                    solve.
+                </P>
+
+                <H3>The artfct approach</H3>
+
+                <P>
+                    The artfct <Mono>developer-tools</Mono> skill includes a
+                    Mermaid renderer tool. When an agent detects Mermaid source
+                    — whether you wrote it, pasted it, or the agent generated it
+                    from a description — the tool renders it to an interactive
+                    HTML page and deploys it as a shareable link. No accounts,
+                    no setup, no screenshots.
+                </P>
+
+                <CodeBlock
+                    code={`# Generate a diagram
+"What does the request lifecycle look like?"
+
+# Agent builds this Mermaid source, renders it, and deploys:
+→ https://artfct.dev/p/790DiZFA457XQur1w0H27u`}
+                />
+
+                <P>
+                    <A href="https://artfct.dev/p/790DiZFA457XQur1w0H27u">
+                        Click that link
+                    </A>{' '}
+                    — it's a live sequence diagram. Theme-aware (light/dark),
+                    zoomable, rendered from Mermaid. The person on the other end
+                    doesn't need Mermaid installed, doesn't need a plugin. They
+                    click and see the diagram.
+                </P>
+
+                <H3>Diagrams that adapt</H3>
+
+                <P>
+                    Because the rendered output is a real HTML page (not an
+                    image), the diagram inherits all the benefits of the web:
+                </P>
+
+                <P>
+                    <strong>Theme-aware.</strong> The page detects
+                    <Mono>prefers-color-scheme</Mono> and swaps between
+                    Solarized Light and Solarized Dark automatically. Dark mode
+                    users see dark diagrams, light mode users see light ones —
+                    from the same URL.
+                </P>
+
+                <P>
+                    <strong>Zoomable.</strong> Click or pinch to zoom into any
+                    part of the diagram. Complex architecture diagrams with
+                    dozens of nodes become readable without squinting or
+                    exporting at 4x resolution.
+                </P>
+
+                <P>
+                    <strong>Exportable.</strong> Right-click to save as SVG. The
+                    diagram is <em>alive</em> — not trapped in a screenshot.
+                </P>
+
+                <P>
+                    <strong>Zero dependencies.</strong> The output is a single
+                    HTML file. It loads in any browser, on any device.
+                </P>
+
+                <H3>How agents use it</H3>
+
+                <P>
+                    The Mermaid renderer is one of four tools in the
+                    <Mono>developer-tools</Mono> skill. When a user asks for a
+                    diagram, the agent:
+                </P>
+
+                <P>
+                    1. Generates Mermaid source from the description (or uses
+                    what the user pasted)
+                    <br />
+                    2. Loads the renderer HTML template from the skill
+                    <br />
+                    3. Injects the Mermaid source into the template body
+                    <br />
+                    4. Calls <Mono>deploy_to_canvas</Mono> via the artfct MCP
+                    server
+                    <br />
+                    5. Returns the URL
+                </P>
+
+                <CodeBlock
+                    code={`# Install once
+npx skills add rubybear-lgtm/artfct@developer-tools
+
+# Use anywhere
+"Show me the CI/CD pipeline as a diagram"
+→ live diagram link
+
+"Render this Mermaid for the bug report"
+flowchart LR
+  A[Start] --> B{Valid?}
+  B -->|Yes| C[Process]
+  B -->|No| D[Reject]
+  C --> E[End]
+  D --> E
+→ live diagram link`}
+                />
+
+                <H3>Why this matters</H3>
+
+                <P>
+                    Technical communication is increasingly async and
+                    link-driven. Code reviews happen in GitHub, discussions in
+                    Discord, documentation in Notion, bugs in Linear. Each
+                    platform has its own rendering limitations. The common
+                    denominator is a URL.
+                </P>
+
+                <P>
+                    By making diagrams linkable — truly linkable, not
+                    "screenshot posted in a thread" — artfct closes a gap that's
+                    been annoying developers for years. It's a small thing that
+                    makes a big difference in daily workflow.
+                </P>
+
+                <P>
+                    <strong>
+                        The best diagram tool is the one that gets out of your
+                        way.
+                    </strong>{' '}
+                    Write your Mermaid, get your link. That's the whole thing.
+                </P>
+
+                <p
+                    style={{
+                        fontFamily: SANS,
+                        fontSize: '13px',
+                        fontStyle: 'italic',
+                        lineHeight: 1.75,
+                        color: S.base1,
+                        margin: '2rem 0 0',
+                        paddingTop: '1.5rem',
+                        borderTop: `1px solid ${S.base2}`,
+                    }}
+                >
+                    This post was itself drafted and deployed as an artfct
+                    artifact during writing, then migrated here. The same
+                    pipeline that renders Mermaid diagrams also delivered the
+                    first draft as a link. That's the product working on itself.
+                </p>
+            </>
+        ),
+    },
 ];
 
 // ── subcomponents ─────────────────────────────────────────────────────────────
