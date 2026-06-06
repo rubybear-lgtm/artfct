@@ -291,3 +291,31 @@ cargo build -p artfct              # debug build
 cargo test -p artfct               # run tests
 cargo run -p artfct -- deploy --help
 ```
+
+## Why artfct?
+
+There are plenty of ways to share HTML. Here's how artfct compares:
+
+|                    | artfct | GitHub Gist | CodePen | Pastebin | Dropbox |
+|--------------------|--------|-------------|---------|----------|---------|
+| **No sign-up**     | ✅     | ❌          | ❌      | ✅       | ❌      |
+| **Ephemeral by default** | ✅ | ❌     | ❌      | ❌       | ❌      |
+| **CLI-first**      | ✅     | ❌*         | ❌      | ❌       | ❌      |
+| **AI agent native (MCP)** | ✅ | ❌    | ❌      | ❌       | ❌      |
+| **Renders HTML**   | ✅     | ❌          | ✅      | ❌       | ✅      |
+| **Self-contained only** | ✅ | ❌       | ❌      | ❌       | ❌      |
+| **API**            | ✅     | ✅          | ✅      | ✅       | ✅      |
+| **Open source**    | ✅     | ❌          | ❌      | ❌       | ❌      |
+
+*\*GitHub has a CLI but no dedicated "share HTML snippet" workflow.*
+
+**artfct is for the gap between "too simple for a full repo" and "too heavy for a pastebin."**
+
+### Use cases
+
+- **Share a dashboard or chart** — Your agent generates a data viz. Deploy it, share the link.
+- **Preview an HTML email** — Render it in a browser before sending.
+- **Share a UI mockup** — Quick prototype, no account needed on the recipient's side.
+- **Debug output** — Your agent returns structured HTML. Instead of a code block, get a live page.
+- **Throwaway snippets** — Ephemeral by default. 60 minutes and it's gone.
+- **CI/CD artifacts** — Deploy HTML reports from your pipeline via the API or CLI.
