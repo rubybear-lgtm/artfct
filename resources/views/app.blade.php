@@ -48,7 +48,7 @@
         {{-- structured data --}}
         <script type="application/ld+json">
         {
-            "@context": "https://schema.org",
+            "@@context": "https://schema.org",
             "@type": "WebApplication",
             "name": "artfct",
             "url": "https://artfct.dev",
