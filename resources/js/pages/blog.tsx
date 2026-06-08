@@ -396,23 +396,6 @@ flowchart LR
                     Write your Mermaid, get your link. That's the whole thing.
                 </P>
 
-                <p
-                    style={{
-                        fontFamily: SANS,
-                        fontSize: '13px',
-                        fontStyle: 'italic',
-                        lineHeight: 1.75,
-                        color: S.base1,
-                        margin: '2rem 0 0',
-                        paddingTop: '1.5rem',
-                        borderTop: `1px solid ${S.base2}`,
-                    }}
-                >
-                    This post was itself drafted and deployed as an artfct
-                    artifact during writing, then migrated here. The same
-                    pipeline that renders Mermaid diagrams also delivered the
-                    first draft as a link. That's the product working on itself.
-                </p>
             </>
         ),
     },
