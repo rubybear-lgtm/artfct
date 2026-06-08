@@ -204,7 +204,25 @@ function timeUntil(iso: string): string {
         return `${min} min`;
     }
 
-    return `${Math.round(min / 60)}h`;
+    const hours = Math.round(min / 60);
+
+    if (hours < 24) {
+        return `${hours}h`;
+    }
+
+    const days = Math.round(hours / 24);
+
+    if (days < 30) {
+        return `${days}d`;
+    }
+
+    const months = Math.round(days / 30);
+
+    if (months < 12) {
+        return `${months}mo`;
+    }
+
+    return `${Math.round(months / 12)}y`;
 }
 
 function getRemainingMinutes(expiresAtStr: string): number {
@@ -405,7 +423,7 @@ export default function Welcome() {
         return [];
     });
     const [managingLink, setManagingLink] = useState<CachedLink | null>(null);
-    const [newTtlMinutes, setNewTtlMinutes] = useState<number>(60);
+    const [newTtlMinutes, setNewTtlMinutes] = useState<number>(525600);
     const [isUpdatingTtl, setIsUpdatingTtl] = useState(false);
     const [isDeletingLink, setIsDeletingLink] = useState(false);
     const [modalError, setModalError] = useState<string | null>(null);
@@ -433,7 +451,7 @@ export default function Welcome() {
     const openManageModal = useCallback((link: CachedLink) => {
         setManagingLink(link);
         const remaining = getRemainingMinutes(link.expiresAt);
-        setNewTtlMinutes(remaining > 0 ? remaining : 60);
+        setNewTtlMinutes(remaining > 0 ? remaining : 525600);
         setModalError(null);
         setModalSuccess(false);
         setIsUpdatingTtl(false);
@@ -1269,13 +1287,13 @@ export default function Welcome() {
                                             <input
                                                 type="number"
                                                 min={1}
-                                                max={1440}
+                                                max={525600}
                                                 value={newTtlMinutes}
                                                 onChange={(e) =>
                                                     setNewTtlMinutes(
                                                         parseInt(
                                                             e.target.value,
-                                                        ) || 60,
+                                                        ) || 525600,
                                                     )
                                                 }
                                                 style={{
@@ -1294,6 +1312,7 @@ export default function Welcome() {
                                                 value={
                                                     [
                                                         15, 60, 360, 1440,
+                                                        10080, 43200, 525600,
                                                     ].includes(newTtlMinutes)
                                                         ? newTtlMinutes
                                                         : ''
@@ -1331,6 +1350,15 @@ export default function Welcome() {
                                                 </option>
                                                 <option value={1440}>
                                                     24 hours
+                                                </option>
+                                                <option value={10080}>
+                                                    7 days
+                                                </option>
+                                                <option value={43200}>
+                                                    30 days
+                                                </option>
+                                                <option value={525600}>
+                                                    365 days
                                                 </option>
                                             </select>
                                         </div>
@@ -1800,8 +1828,8 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             </p>
                             <p style={{ margin: '0 0 0.8rem' }}>
                                 Every artifact is ephemeral by default (expires
-                                in 60 minutes) with an unguessable 32-character
-                                URL. Choose from three tiers:{' '}
+                                in 1 year) with an unguessable 32-character URL.
+                                Choose from three tiers:{' '}
                                 <span style={{ color: S.cyan }}>public</span>,{' '}
                                 <span style={{ color: S.cyan }}>secure</span>,
                                 or{' '}
