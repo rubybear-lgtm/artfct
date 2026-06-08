@@ -9,8 +9,8 @@ use worker::{event, Env, Headers, Method, Request, Response, Result};
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
 const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
-const DEFAULT_TTL_MINUTES: u64 = 60;
-const MAX_TTL_MINUTES: u64 = 24 * 60;
+const DEFAULT_TTL_MINUTES: u64 = 365 * 24 * 60;
+const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
 const BASE62_ALPHABET: &[u8; 62] =
     b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -142,7 +142,7 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
         None => return expired_response(),
     };
 
-    let Some(stored) = env
+    let Some(mut stored) = env
         .kv(KV_BINDING)?
         .get(&hex_id)
         .json::<StoredArtifact>()
@@ -150,6 +150,21 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
     else {
         return expired_response();
     };
+
+    // Sliding expiration: refresh on every access
+    let ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES)
+        .min(env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES));
+    let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+
+    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+    let body = serde_json::to_string(&stored)?;
+    env.kv(KV_BINDING)?
+        .put(&hex_id, body)?
+        .expiration_ttl(ttl_seconds)
+        .execute()
+        .await?;
 
     let compressed =
         match base64::engine::general_purpose::STANDARD.decode(stored.html_brotli_base64) {
