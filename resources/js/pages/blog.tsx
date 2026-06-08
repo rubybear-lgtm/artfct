@@ -215,8 +215,8 @@ const POSTS: Post[] = [
                 <P>
                     Finished deck? Deploy as <Mono>public</Mono> — permanent,
                     shareable with anyone. Iterating? <Mono>ephemeral</Mono>{' '}
-                    with a 60-minute TTL keeps drafts from accumulating.
-                    Sensitive content? <Mono>secure</Mono> requires auth.
+                    with a 1-year TTL keeps drafts from accumulating. Sensitive
+                    content? <Mono>secure</Mono> requires auth.
                 </P>
 
                 <H3>When the skill steps aside</H3>
