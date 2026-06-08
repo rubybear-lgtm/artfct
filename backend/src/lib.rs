@@ -157,7 +157,9 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
             Err(_) => return html_error("Stored artifact is corrupted.", 500),
         };
     let html = decompress_html(&compressed)?;
-    let wrapped = render_canvas(&html, &stored.expires_at);
+    let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+    let url = format!("{}/p/{}", base_url.trim_end_matches('/'), short_id);
+    let wrapped = render_canvas(&html, &stored.expires_at, &url);
 
     html_response(&wrapped, 200)
 }
@@ -242,9 +244,32 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
     json_response(&response, 200)
 }
 
-fn render_canvas(html: &str, expires_at: &str) -> String {
+fn extract_title(html: &str) -> Option<String> {
+    // Only scan the first 8KB — title is always in <head>
+    let head = &html[..html.len().min(8192)];
+    let lower = head.to_lowercase();
+
+    let tag_start = lower.find("<title")?;
+    let content_start = lower[tag_start..].find('>')? + tag_start + 1;
+    let content_end = lower[content_start..].find("</title>")? + content_start;
+
+    let title = head[content_start..content_end].trim();
+    if title.is_empty() {
+        return None;
+    }
+    Some(title.to_string())
+}
+
+fn render_canvas(html: &str, expires_at: &str, url: &str) -> String {
     let escaped_html = escape_attr(html);
     let escaped_expires_at = escape_text(expires_at);
+    let escaped_url = escape_attr(url);
+    let artifact_title = extract_title(html).unwrap_or_else(|| "Artifact Preview".to_string());
+    let escaped_title = escape_text(&artifact_title);
+    let escaped_description = escape_text(
+        "View this artifact on artfct — ephemeral HTML & markdown sharing, no sign-up required.",
+    );
+    let og_image = "https://artfct.dev/og-image.svg";
 
     format!(
         r#"<!doctype html>
@@ -252,7 +277,21 @@ fn render_canvas(html: &str, expires_at: &str) -> String {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Artifact Preview</title>
+<title>{escaped_title}</title>
+<meta name="description" content="{escaped_description}">
+<meta property="og:title" content="{escaped_title}">
+<meta property="og:description" content="{escaped_description}">
+<meta property="og:url" content="{escaped_url}">
+<meta property="og:type" content="website">
+<meta property="og:image" content="{og_image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="artfct">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{escaped_title}">
+<meta name="twitter:description" content="{escaped_description}">
+<meta name="twitter:image" content="{og_image}">
+<link rel="canonical" href="{escaped_url}">
 <style>
 html,body{{margin:0;min-height:100%;background:#0b0d10;color:#f8fafc;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}}
 .artfct-frame{{position:fixed;inset:0;width:100%;height:100%;border:0;background:white;}}
@@ -387,11 +426,39 @@ fn html_response(html: &str, status: u16) -> Result<Response> {
     Response::from_html(html).map(|response| response.with_headers(headers).with_status(status))
 }
 
+fn error_html_page(title: &str, message: &str) -> String {
+    let escaped_title = escape_text(title);
+    let escaped_message = escape_text(message);
+    let escaped_description =
+        escape_text("This link is expired or invalid — create a new artifact at artfct.dev.");
+    let og_image = "https://artfct.dev/og-image.svg";
+
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escaped_title}</title>
+<meta name="description" content="{escaped_description}">
+<meta property="og:title" content="{escaped_title}">
+<meta property="og:description" content="{escaped_description}">
+<meta property="og:type" content="website">
+<meta property="og:image" content="{og_image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="artfct">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{og_image}">
+<link rel="canonical" href="https://artfct.dev">
+</head>
+<body>{escaped_message}</body>
+</html>"#
+    )
+}
+
 fn html_error(message: &str, status: u16) -> Result<Response> {
-    let html = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>Artifact unavailable</title><body>{}</body>",
-        escape_text(message)
-    );
+    let html = error_html_page("Artifact unavailable — artfct", message);
     html_response(&html, status)
 }
 
@@ -511,5 +578,86 @@ mod tests {
         let uuid = Uuid::parse_str("4fa8e33748f2434f8223e5c36a7848b1").unwrap();
         let encoded = base62_encode(uuid.as_bytes());
         assert_eq!(encoded, "2QJZgqlWux7NBsETBVa1Oj");
+    }
+
+    #[test]
+    fn extract_title_standard_html() {
+        let html = "<html><head><title>My Dashboard</title></head><body><p>Hello</p></body></html>";
+        assert_eq!(extract_title(html), Some("My Dashboard".to_string()));
+    }
+
+    #[test]
+    fn extract_title_with_attrs() {
+        let html = "<html><head><TITLE lang=\"en\">Stats Report</TITLE></head></html>";
+        assert_eq!(extract_title(html), Some("Stats Report".to_string()));
+    }
+
+    #[test]
+    fn extract_title_none_when_missing() {
+        let html = "<html><head></head><body><p>No title here</p></body></html>";
+        assert_eq!(extract_title(html), None);
+    }
+
+    #[test]
+    fn extract_title_empty_title() {
+        let html = "<html><head><title></title></head></html>";
+        assert_eq!(extract_title(html), None);
+    }
+
+    #[test]
+    fn extract_title_trims_whitespace() {
+        let html = "<html><head><title>   Hello World   </title></head></html>";
+        assert_eq!(extract_title(html), Some("Hello World".to_string()));
+    }
+
+    #[test]
+    fn extract_title_only_scans_first_8kb() {
+        let mut html = String::from("<html><head>");
+        // pad past 8KB
+        while html.len() < 8192 {
+            html.push_str("<!-- comment -->");
+        }
+        html.push_str("<title>Late Title</title></head></html>");
+        assert_eq!(extract_title(&html), None);
+    }
+
+    #[test]
+    fn render_canvas_includes_og_tags() {
+        let html = "<h1>Hello</h1>";
+        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/abc123");
+        assert!(rendered.contains("og:title"));
+        assert!(rendered.contains("og:description"));
+        assert!(rendered.contains("og:image"));
+        assert!(rendered.contains("twitter:card"));
+        assert!(rendered.contains("summary_large_image"));
+        assert!(rendered.contains("canonical"));
+        assert!(rendered.contains("https://artfct.dev/p/abc123"));
+    }
+
+    #[test]
+    fn render_canvas_uses_artifact_title() {
+        let html = "<html><head><title>My Chart</title></head><body><h1>Chart</h1></body></html>";
+        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/xyz");
+        assert!(rendered.contains("og:title\" content=\"My Chart"));
+        assert!(rendered.contains("<title>My Chart</title>"));
+    }
+
+    #[test]
+    fn render_canvas_fallback_title() {
+        let html = "<html><body>no title</body></html>";
+        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/xyz");
+        assert!(rendered.contains("Artifact Preview"));
+    }
+
+    #[test]
+    fn error_html_page_includes_og_tags() {
+        let page = error_html_page(
+            "Artifact unavailable — artfct",
+            "This artifact has expired.",
+        );
+        assert!(page.contains("og:title"));
+        assert!(page.contains("og:image"));
+        assert!(page.contains("twitter:card"));
+        assert!(page.contains("summary_large_image"));
     }
 }
