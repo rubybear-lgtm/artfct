@@ -152,8 +152,11 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
     };
 
     // Sliding expiration: refresh on every access
-    let ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES)
-        .min(env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES));
+    let ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES).min(env_u64(
+        env,
+        "ARTFCT_MAX_TTL_MINUTES",
+        MAX_TTL_MINUTES,
+    ));
     let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
     let now = Utc::now();
     let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
