@@ -70,7 +70,7 @@ const POST_REQUEST_FIELDS = [
         name: 'ttl_minutes',
         type: 'integer',
         req: false,
-        note: 'Minutes until expiry. Default: 525600 (1 year). Max: 525600 (1 year).',
+        note: 'Minutes until expiry. Default: 525600 (365 days). Max: 525600 (365 days).',
     },
 ] as const;
 
@@ -157,7 +157,7 @@ const CLI_DEPLOY_FLAGS = [
         name: '--ttl-minutes',
         type: 'integer',
         req: false,
-        note: 'Minutes until expiry. Default: 525600 (1 year). Max: 525600 (1 year).',
+        note: 'Minutes until expiry. Default: 525600 (365 days). Max: 525600 (365 days).',
     },
 ] as const;
 
