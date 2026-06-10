@@ -9,6 +9,12 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      sync_triggers:
+        description: 'Also apply configured Worker routes/triggers after deploying the version'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -45,6 +51,12 @@ jobs:
 
       - name: Deploy Worker
         run: npm run worker:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Apply Worker routes and triggers
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sync_triggers }}
+        run: npm run worker:deploy:triggers
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
