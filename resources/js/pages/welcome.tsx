@@ -5,6 +5,7 @@ import {
     extractArtifactMetadata,
     withArtifactFragment,
 } from '@/lib/artifactCrypto';
+import { AsciiLogo } from '@/lib/asciiLogo';
 import { renderMarkdownToFragment, renderMarkdownToHtml } from '@/lib/markdown';
 import { ThemeToggle } from '@/lib/theme';
 
@@ -48,21 +49,13 @@ const PAIRS: [number, number][] = [
     [1, 4],
 ];
 
-const ART = [
-    ' █████╗ ██████╗ ████████╗███████╗ ██████╗████████╗',
-    '██╔══██╗██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝',
-    '███████║██████╔╝   ██║   █████╗  ██║        ██║   ',
-    '██╔══██║██╔══██╗   ██║   ██╔══╝  ██║        ██║   ',
-    '██║  ██║██║  ██║   ██║   ██║     ╚██████╗   ██║   ',
-    '╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝      ╚═════╝   ╚═╝   ',
-];
-
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const WORKER_URL =
     (import.meta.env.VITE_WORKER_URL as string | undefined) ??
     (import.meta.env.DEV ? 'http://127.0.0.1:8788' : '');
 const MAX_BYTES = 1024 * 1024;
-const DEFAULT_TTL_MINUTES = 365 * 24 * 60;
+const DEFAULT_TTL_MINUTES = 5 * 24 * 60;
+const MAX_TTL_MINUTES = 365 * 24 * 60;
 const TAGLINES = [
     "share encrypted html. get a link. that's it.",
     "share encrypted markdown. get a link. that's it.",
@@ -236,32 +229,6 @@ function getRemainingMinutes(expiresAtStr: string): number {
     const ms = new Date(expiresAtStr).getTime() - Date.now();
 
     return Math.max(1, Math.round(ms / 60_000));
-}
-
-function AsciiHero({ colorA, colorB }: { colorA: string; colorB: string }) {
-    return (
-        <pre
-            aria-label="artfct"
-            className="ascii-hero"
-            style={{
-                fontFamily: MONO,
-                fontSize: 'min(16px, calc((100vw - 3rem) / 50))',
-                lineHeight: 1,
-                letterSpacing: 0,
-                background: `linear-gradient(to right, ${colorA}, ${colorB})`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                userSelect: 'none',
-                margin: 0,
-                padding: 0,
-                whiteSpace: 'pre',
-                overflow: 'hidden',
-            }}
-        >
-            {ART.join('\n')}
-        </pre>
-    );
 }
 
 function Result({
@@ -767,7 +734,11 @@ export default function Welcome() {
                         maxWidth: '700px',
                     }}
                 >
-                    <AsciiHero colorA={gradient[0]} colorB={gradient[1]} />
+                    <AsciiLogo
+                        colorA={gradient[0]}
+                        colorB={gradient[1]}
+                        className="ascii-hero"
+                    />
 
                     <p
                         aria-label="share encrypted html or markdown. get a link. that's it."
@@ -1353,7 +1324,7 @@ export default function Welcome() {
                                             <input
                                                 type="number"
                                                 min={1}
-                                                max={DEFAULT_TTL_MINUTES}
+                                                max={MAX_TTL_MINUTES}
                                                 value={newTtlMinutes}
                                                 onChange={(e) =>
                                                     setNewTtlMinutes(
@@ -1382,9 +1353,10 @@ export default function Welcome() {
                                                         60,
                                                         360,
                                                         1440,
+                                                        DEFAULT_TTL_MINUTES,
                                                         10080,
                                                         43200,
-                                                        DEFAULT_TTL_MINUTES,
+                                                        MAX_TTL_MINUTES,
                                                     ].includes(newTtlMinutes)
                                                         ? newTtlMinutes
                                                         : ''
@@ -1423,15 +1395,18 @@ export default function Welcome() {
                                                 <option value={1440}>
                                                     24 hours
                                                 </option>
+                                                <option
+                                                    value={DEFAULT_TTL_MINUTES}
+                                                >
+                                                    5 days
+                                                </option>
                                                 <option value={10080}>
                                                     7 days
                                                 </option>
                                                 <option value={43200}>
                                                     30 days
                                                 </option>
-                                                <option
-                                                    value={DEFAULT_TTL_MINUTES}
-                                                >
+                                                <option value={MAX_TTL_MINUTES}>
                                                     365 days
                                                 </option>
                                             </select>

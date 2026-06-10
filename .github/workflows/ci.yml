@@ -50,6 +50,15 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Audit PHP dependencies
+        run: composer audit --no-interaction
+
+      - name: Audit Node dependencies
+        run: npm audit --audit-level=critical
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
       - name: Prepare Laravel
         run: |
           cp .env.example .env
