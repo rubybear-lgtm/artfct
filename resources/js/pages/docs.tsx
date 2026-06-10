@@ -25,16 +25,46 @@ const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
 // ── content ──────────────────────────────────────────────────────────────────
 const POST_REQUEST_FIELDS = [
     {
-        name: 'html',
+        name: 'body_ciphertext_b64',
         type: 'string',
         req: true,
-        note: 'The complete HTML to host. Max 1 MB.',
+        note: 'Base64url ciphertext for the encrypted HTML body. Max 1 MB.',
+    },
+    {
+        name: 'body_iv_b64',
+        type: 'string',
+        req: true,
+        note: 'Base64url AES-GCM nonce for the encrypted body.',
     },
     {
         name: 'tier',
         type: 'enum',
         req: true,
         note: 'public · secure · ephemeral',
+    },
+    {
+        name: 'title',
+        type: 'string',
+        req: false,
+        note: 'Public metadata shown in previews and link unfurls.',
+    },
+    {
+        name: 'description',
+        type: 'string',
+        req: false,
+        note: 'Public metadata shown in previews and link unfurls.',
+    },
+    {
+        name: 'thumbnail',
+        type: 'string',
+        req: false,
+        note: 'Public image URL for previews and link unfurls.',
+    },
+    {
+        name: 'preview_blurred',
+        type: 'boolean',
+        req: false,
+        note: 'Whether the decrypted body starts blurred. Default: true.',
     },
     {
         name: 'ttl_minutes',
@@ -45,10 +75,22 @@ const POST_REQUEST_FIELDS = [
 ] as const;
 
 const POST_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '22-character token.' },
-    { name: 'url', type: 'string', note: 'Direct link to the artifact.' },
+    { name: 'id', type: 'string', note: '10-character token.' },
+    {
+        name: 'url',
+        type: 'string',
+        note: 'Canonical share link without the fragment passcode.',
+    },
     { name: 'tier', type: 'string', note: 'The tier used.' },
     { name: 'expires_at', type: 'string', note: 'ISO 8601 expiry timestamp.' },
+    { name: 'title', type: 'string', note: 'Public metadata.' },
+    { name: 'description', type: 'string', note: 'Public metadata.' },
+    { name: 'thumbnail', type: 'string', note: 'Public metadata.' },
+    {
+        name: 'preview_blurred',
+        type: 'boolean',
+        note: 'True when the preview body is blurred by default.',
+    },
 ] as const;
 
 const ERROR_CODES = [
@@ -122,21 +164,30 @@ const CLI_DEPLOY_FLAGS = [
 const CODE_POST_REQUEST = `curl -X POST https://artfct.dev/v1/artifacts \\
   -H "Content-Type: application/json" \\
   -d '{
-    "html": "<h1>hello world</h1>",
-    "tier": "ephemeral"
+    "body_ciphertext_b64": "<ciphertext>",
+    "body_iv_b64": "<iv>",
+    "tier": "ephemeral",
+    "title": "Hello world",
+    "description": "Encrypted preview",
+    "thumbnail": "https://example.com/thumb.png",
+    "preview_blurred": true
   }'`;
 
 const CODE_POST_RESPONSE = `{
   "id": "${EXAMPLE_ID}",
   "url": "https://artfct.dev/p/${EXAMPLE_ID}",
   "tier": "ephemeral",
-  "expires_at": "2026-06-03T15:30:00Z"
+  "expires_at": "2026-06-03T15:30:00Z",
+  "title": "Hello world",
+  "description": "Encrypted preview",
+  "thumbnail": "https://example.com/thumb.png",
+  "preview_blurred": true
 }`;
 
 const CODE_DELETE_REQUEST = `curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
 
 const CODE_ERROR_RESPONSE = `{
-  "message": "The html field is required."
+  "error": "The body_ciphertext_b64 field is required."
 }`;
 
 // ── subcomponents ─────────────────────────────────────────────────────────────
@@ -678,7 +729,9 @@ export default function Docs() {
                     <SectionDivider id="create" label="POST /v1/artifacts" />
 
                     <Prose>
-                        Creates a new artifact and returns a shareable URL.
+                        Creates a new encrypted artifact and returns the
+                        canonical share URL. The client appends the fragment
+                        passcode before sharing.
                     </Prose>
 
                     <Label>request body</Label>

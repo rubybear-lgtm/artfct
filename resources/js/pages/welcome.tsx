@@ -1,6 +1,11 @@
 import { Head, Link } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { renderMarkdownToHtml } from '@/lib/markdown';
+import {
+    encryptArtifactBody,
+    extractArtifactMetadata,
+    withArtifactFragment,
+} from '@/lib/artifactCrypto';
+import { renderMarkdownToFragment, renderMarkdownToHtml } from '@/lib/markdown';
 import { ThemeToggle } from '@/lib/theme';
 
 const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
@@ -57,8 +62,8 @@ const WORKER_URL =
     (import.meta.env.VITE_WORKER_URL as string | undefined) ?? '';
 const MAX_BYTES = 1024 * 1024;
 const TAGLINES = [
-    "share html. get a link. that's it.",
-    "share markdown. get a link. that's it.",
+    "share encrypted html. get a link. that's it.",
+    "share encrypted markdown. get a link. that's it.",
 ];
 
 interface CachedLink {
@@ -397,10 +402,21 @@ function isMarkdownFile(name: string): boolean {
     );
 }
 
+function fileStem(name: string): string {
+    const lastDot = name.lastIndexOf('.');
+
+    if (lastDot <= 0) {
+        return name;
+    }
+
+    return name.slice(0, lastDot);
+}
+
 export default function Welcome() {
     const [gradient] = useState<[string, string]>(pickGradient);
     const [phase, setPhase] = useState<Phase>({ t: 'idle' });
     const [dragOver, setDragOver] = useState(false);
+    const [previewBlurred, setPreviewBlurred] = useState(true);
 
     const [mcpExpanded, setMcpExpanded] = useState(false);
     const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
@@ -614,6 +630,9 @@ export default function Welcome() {
             const html = isMarkdownFile(file.name)
                 ? renderMarkdownToHtml(text)
                 : text;
+            const metadataSource = isMarkdownFile(file.name)
+                ? renderMarkdownToFragment(text)
+                : text;
 
             if (new Blob([html]).size > MAX_BYTES) {
                 setPhase({
@@ -624,10 +643,24 @@ export default function Welcome() {
                 return;
             }
 
+            const metadata = extractArtifactMetadata(
+                metadataSource,
+                fileStem(file.name),
+            );
+            const encrypted = await encryptArtifactBody(html);
             const res = await fetch(`${WORKER_URL}/v1/artifacts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ html, tier: 'ephemeral' }),
+                body: JSON.stringify({
+                    body_ciphertext_b64: encrypted.bodyCiphertextB64,
+                    body_iv_b64: encrypted.bodyIvB64,
+                    tier: 'ephemeral',
+                    ttl_minutes: 525600,
+                    title: metadata.title,
+                    description: metadata.description,
+                    thumbnail: metadata.thumbnail,
+                    preview_blurred: previewBlurred,
+                }),
             });
 
             if (!res.ok) {
@@ -643,15 +676,19 @@ export default function Welcome() {
                 url: string;
                 expires_at: string;
             };
+            const fullUrl = withArtifactFragment(
+                data.url,
+                encrypted.keyFragment,
+            );
             setPhase({
                 t: 'success',
-                url: data.url,
+                url: fullUrl,
                 expiresAt: data.expires_at,
             });
 
             const newLink: CachedLink = {
                 id: data.id,
-                url: data.url,
+                url: fullUrl,
                 expiresAt: data.expires_at,
                 filename: file.name,
                 deployedAt: new Date().toISOString(),
@@ -664,7 +701,7 @@ export default function Welcome() {
                     err instanceof Error ? err.message : 'deployment failed',
             });
         }
-    }, [phase, saveCachedLinks]);
+    }, [phase, previewBlurred, saveCachedLinks]);
 
     const reset = useCallback(() => {
         setPhase({ t: 'idle' });
@@ -685,20 +722,20 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="artfct — share html instantly">
+            <Head title="artfct — share encrypted html instantly">
                 <meta
                     property="og:title"
-                    content="artfct — share html. get a link. that's it."
+                    content="artfct — share encrypted html. get a link. that's it."
                 />
                 <meta
                     property="og:description"
-                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required."
+                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
                 />
                 <meta property="og:url" content="https://artfct.dev" />
                 <meta property="og:type" content="website" />
                 <meta
                     name="description"
-                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required."
+                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
                 />
             </Head>
             <ThemeToggle />
@@ -730,7 +767,7 @@ export default function Welcome() {
                     <AsciiHero colorA={gradient[0]} colorB={gradient[1]} />
 
                     <p
-                        aria-label="share html or markdown. get a link. that's it."
+                        aria-label="share encrypted html or markdown. get a link. that's it."
                         style={{
                             margin: 0,
                             fontFamily: MONO,
@@ -745,6 +782,32 @@ export default function Welcome() {
                             {!tagline.done && <span className="cursor-blink" />}
                         </span>
                     </p>
+
+                    <label
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.6rem',
+                            fontFamily: MONO,
+                            fontSize: '12px',
+                            color: S.base1,
+                            letterSpacing: '0.03em',
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={previewBlurred}
+                            onChange={(e) =>
+                                setPreviewBlurred(e.target.checked)
+                            }
+                            style={{
+                                accentColor: S.blue,
+                                width: '14px',
+                                height: '14px',
+                            }}
+                        />
+                        blur preview by default
+                    </label>
 
                     {/* ── drop zone ── */}
                     <div style={{ width: '100%' }}>
@@ -1819,7 +1882,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             <p style={{ margin: '0 0 0.8rem' }}>
                                 artfct is an{' '}
                                 <strong style={{ color: S.base00 }}>
-                                    instant HTML sharing
+                                    instant encrypted HTML sharing
                                 </strong>{' '}
                                 tool for developers. Drop a self-contained HTML
                                 file — or pipe one via CLI, API, or AI agent —
@@ -1827,15 +1890,16 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 no accounts, no configuration.
                             </p>
                             <p style={{ margin: '0 0 0.8rem' }}>
-                                Every artifact is ephemeral by default (expires
-                                in 1 year) with an unguessable 32-character URL.
+                                Every artifact is encrypted by default and uses
+                                a fragment passcode the server never sees.
+                                Public metadata stays visible for link previews.
                                 Choose from three tiers:{' '}
                                 <span style={{ color: S.cyan }}>public</span>,{' '}
                                 <span style={{ color: S.cyan }}>secure</span>,
                                 or{' '}
                                 <span style={{ color: S.cyan }}>ephemeral</span>
-                                . Links will never be crawled, indexed, or
-                                guessable.
+                                . Preview bodies can start blurred or unblurred
+                                per artifact.
                             </p>
                             <p style={{ margin: 0 }}>
                                 Perfect for sharing UI prototypes, dashboard
