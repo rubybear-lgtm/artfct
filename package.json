@@ -16,7 +16,8 @@
         "worker:kv:create": "cd backend && ../node_modules/.bin/wrangler kv namespace create ARTIFACTS_KV",
         "worker:dev": "cd backend && ../node_modules/.bin/wrangler dev",
         "worker:dev:local": "cd backend && ARTFCT_PUBLIC_BASE_URL=http://127.0.0.1:8788 ../node_modules/.bin/wrangler dev --port 8788",
-        "worker:deploy": "cd backend && ../node_modules/.bin/wrangler deploy",
+        "worker:deploy": "node scripts/deploy-worker-version.mjs",
+        "worker:deploy:triggers": "cd backend && ../node_modules/.bin/wrangler triggers deploy",
         "waf:rate-limits": "node cloudflare-rate-limits.mjs",
         "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs"
     },

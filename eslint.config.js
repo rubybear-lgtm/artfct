@@ -128,7 +128,7 @@ export default [
         ],
     },
     {
-        files: ['*.mjs'],
+        files: ['*.mjs', '**/*.mjs'],
         languageOptions: {
             globals: {
                 ...globals.node,
