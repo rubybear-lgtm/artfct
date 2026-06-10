@@ -376,6 +376,7 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 .stage{{position:relative;min-height:72vh;margin-top:1rem;border-radius:18px;overflow:hidden;border:1px solid rgb(148 163 184 / .16);background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
 .frame{{position:absolute;inset:0;width:100%;height:100%;border:0;background:white;}}
 .overlay{{position:absolute;inset:0;display:grid;place-items:center;padding:1.5rem;background:linear-gradient(180deg, rgb(2 6 23 / .1), rgb(2 6 23 / .45));}}
+[hidden]{{display:none !important;}}
 .message{{padding:.85rem 1rem;border-radius:999px;border:1px solid rgb(148 163 184 / .26);background:rgb(15 23 42 / .82);backdrop-filter:blur(12px);color:#e2e8f0;font-size:.9rem;line-height:1.4;max-width:min(90vw, 36rem);text-align:center;}}
 </style>
 </head>
@@ -728,6 +729,26 @@ mod tests {
         assert!(rendered.contains("Waiting for the decryption key"));
         assert!(rendered.contains("Link preview will start unblurred."));
         assert!(rendered.contains("Secure Deck"));
+    }
+
+    #[test]
+    fn render_preview_shell_honors_hidden_attribute() {
+        let artifact = StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Secure,
+            title: "Hidden Test".to_string(),
+            description: "Preview visibility".to_string(),
+            thumbnail: "https://example.com/thumb.png".to_string(),
+            preview_blurred: false,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+            expires_at: "2026-06-09T00:00:00Z".to_string(),
+        };
+        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
+
+        assert!(rendered.contains("[hidden]{display:none !important;}"));
+        assert!(rendered.contains("id=\"artfct-overlay\" class=\"overlay\""));
+        assert!(rendered.contains("id=\"artfct-frame\" class=\"frame\" hidden"));
     }
 
     #[test]
