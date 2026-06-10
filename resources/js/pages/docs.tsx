@@ -64,7 +64,7 @@ const POST_REQUEST_FIELDS = [
         name: 'preview_blurred',
         type: 'boolean',
         req: false,
-        note: 'Whether the decrypted body starts blurred. Default: true.',
+        note: 'Whether the link preview starts blurred. Default: true.',
     },
     {
         name: 'ttl_minutes',
@@ -89,7 +89,7 @@ const POST_RESPONSE_FIELDS = [
     {
         name: 'preview_blurred',
         type: 'boolean',
-        note: 'True when the preview body is blurred by default.',
+        note: 'True when the link preview is blurred by default.',
     },
 ] as const;
 

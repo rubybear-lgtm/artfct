@@ -321,10 +321,15 @@ fn render_preview_shell(artifact: &StoredArtifact, url: &str) -> String {
     let escaped_url = escape_attr(url);
     let escaped_expires_at = escape_text(&artifact.expires_at);
     let escaped_preview_status = escape_text(if artifact.preview_blurred {
-        "Preview body will start blurred."
+        "Link preview will start blurred."
     } else {
-        "Preview body will start unblurred."
+        "Link preview will start unblurred."
     });
+    let preview_class = if artifact.preview_blurred {
+        " is-blurred"
+    } else {
+        ""
+    };
     let payload = serde_json::json!({
         "bodyCiphertextB64": artifact.body_ciphertext_b64,
         "bodyIvB64": artifact.body_iv_b64,
@@ -361,9 +366,15 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 .meta h1{{margin:0 0 .35rem;font-size:1.1rem;line-height:1.35;color:#f8fafc;}}
 .meta p{{margin:0 0 .75rem;line-height:1.6;color:#cbd5e1;}}
 .meta .status{{font-size:.8rem;color:#94a3b8;}}
-.stage{{position:relative;flex:1;min-height:72vh;border-radius:18px;overflow:hidden;border:1px solid rgb(148 163 184 / .16);background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
-.frame{{position:absolute;inset:0;width:100%;height:100%;border:0;background:white;transition:filter .18s ease,transform .18s ease;}}
-.frame.is-blurred{{filter:blur(18px) saturate(.92);transform:scale(1.015);}}
+.preview-shell{{padding:1rem;border:1px solid rgb(148 163 184 / .16);border-radius:18px;background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
+.preview-shell.is-blurred .preview-card{{filter:blur(18px) saturate(.92);transform:scale(1.015);}}
+.preview-card{{display:grid;grid-template-columns:120px 1fr;gap:1rem;align-items:start;padding:1rem;border:1px solid rgb(148 163 184 / .14);border-radius:16px;background:rgb(15 23 42 / .72);backdrop-filter:blur(12px);transition:filter .18s ease,transform .18s ease;}}
+.preview-card img{{width:120px;height:68px;object-fit:cover;border-radius:10px;background:#111827;}}
+.preview-card h2{{margin:0 0 .35rem;font-size:1rem;line-height:1.35;color:#f8fafc;}}
+.preview-card p{{margin:0 0 .75rem;line-height:1.6;color:#cbd5e1;}}
+.preview-card .status{{font-size:.8rem;color:#94a3b8;}}
+.stage{{position:relative;min-height:72vh;margin-top:1rem;border-radius:18px;overflow:hidden;border:1px solid rgb(148 163 184 / .16);background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
+.frame{{position:absolute;inset:0;width:100%;height:100%;border:0;background:white;}}
 .overlay{{position:absolute;inset:0;display:grid;place-items:center;padding:1.5rem;background:linear-gradient(180deg, rgb(2 6 23 / .1), rgb(2 6 23 / .45));}}
 .message{{padding:.85rem 1rem;border-radius:999px;border:1px solid rgb(148 163 184 / .26);background:rgb(15 23 42 / .82);backdrop-filter:blur(12px);color:#e2e8f0;font-size:.9rem;line-height:1.4;max-width:min(90vw, 36rem);text-align:center;}}
 </style>
@@ -379,6 +390,16 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
       <div class="status">expires <time datetime="{escaped_expires_at}">{escaped_expires_at}</time></div>
     </div>
   </section>
+  <section id="artfct-preview" class="preview-shell{preview_class}">
+    <div class="preview-card">
+      <img src="{escaped_thumbnail}" alt="">
+      <div>
+        <h2>{escaped_title}</h2>
+        <p>{escaped_description}</p>
+        <div class="status">{escaped_preview_status}</div>
+      </div>
+    </div>
+  </section>
   <section class="stage">
     <iframe id="artfct-frame" class="frame" hidden sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
     <div id="artfct-overlay" class="overlay">
@@ -391,6 +412,7 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 (function() {{
   const payload = JSON.parse(document.getElementById('artfct-payload').textContent || '{{}}');
   const frame = document.getElementById('artfct-frame');
+  const preview = document.getElementById('artfct-preview');
   const overlay = document.getElementById('artfct-overlay');
   const message = document.getElementById('artfct-message');
 
@@ -457,13 +479,7 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 
       frame.hidden = false;
       frame.srcdoc = html;
-
-      if (payload.previewBlurred) {{
-        frame.classList.add('is-blurred');
-      }} else {{
-        frame.classList.remove('is-blurred');
-      }}
-
+      preview.hidden = true;
       hideOverlay();
     }} catch (error) {{
       frame.hidden = true;
@@ -686,6 +702,7 @@ mod tests {
         assert!(rendered.contains("ciphertext"));
         assert!(rendered.contains("nonce"));
         assert!(rendered.contains("previewBlurred"));
+        assert!(rendered.contains("preview-shell"));
         assert!(rendered.contains("https://artfct.dev/p/abc1234567"));
     }
 
@@ -705,7 +722,7 @@ mod tests {
         let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
 
         assert!(rendered.contains("Waiting for the decryption key"));
-        assert!(rendered.contains("Preview body will start unblurred."));
+        assert!(rendered.contains("Link preview will start unblurred."));
         assert!(rendered.contains("Secure Deck"));
     }
 
