@@ -69,6 +69,7 @@ pub struct DeployArgs {
     #[arg(
         value_name = "FILE",
         conflicts_with = "stdin",
+        required_unless_present = "stdin",
         help = "Path to a self-contained HTML file to publish"
     )]
     pub file: Option<PathBuf>,
@@ -193,6 +194,11 @@ mod tests {
             args.input(),
             DeployInput::File(PathBuf::from("preview.html"))
         );
+    }
+
+    #[test]
+    fn deploy_requires_file_or_stdin() {
+        assert!(Cli::try_parse_from(["artfct", "deploy"]).is_err());
     }
 
     #[test]

@@ -32,10 +32,11 @@ link immediately — no account, no configuration.
  [ deploy → ]
 
  → https://artfct.dev/p/4fA8gX9z...#abC123xyZ9   ⎘ copy
-   expires in 60 min
+   expires in 5 days
 ```
 
-Links are encrypted and ephemeral by default. Public metadata stays visible for link
+Links are encrypted and ephemeral by default: they expire 5 days after last
+access unless you set a custom TTL. Public metadata stays visible for link
 previews, while the fragment passcode is never sent to the server.
 
 ## CLI
@@ -108,7 +109,7 @@ Arguments:
 Options:
       --stdin                  Read HTML from stdin
       --tier <TIER>            public | secure | ephemeral  [default: ephemeral]
-      --ttl-minutes <MINUTES>  Minutes until expiry
+      --ttl-minutes <MINUTES>  Minutes until expiry after last access
   -h, --help                   Print help
 ```
 
@@ -188,13 +189,18 @@ Quick reference:
 # Create an artifact
 curl -X POST https://artfct.dev/v1/artifacts \
   -H "Content-Type: application/json" \
-  -d '{"html": "<h1>hello</h1>", "tier": "ephemeral"}'
+  -d '{
+    "body_ciphertext_b64": "<ciphertext>",
+    "body_iv_b64": "<iv>",
+    "tier": "ephemeral"
+  }'
 
 # Delete immediately
 curl -X DELETE https://artfct.dev/v1/artifacts/<id>
 ```
 
-No authentication. Rate limited to 60 creates / minute per IP.
+The CLI handles encryption and metadata extraction for you. No authentication.
+Rate limited to 60 creates / minute per IP.
 
 ## AI Agents
 

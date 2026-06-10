@@ -10,6 +10,16 @@
         "enabled": true,
         "head_sampling_rate": 1,
     },
+    "routes": [
+        {
+            "pattern": "artfct.dev/v1/*",
+            "zone_name": "artfct.dev",
+        },
+        {
+            "pattern": "artfct.dev/p/*",
+            "zone_name": "artfct.dev",
+        },
+    ],
     "kv_namespaces": [
         {
             "binding": "ARTIFACTS_KV",
@@ -19,7 +29,7 @@
     "vars": {
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
         "ARTFCT_MAX_HTML_BYTES": "1048576",
-        "ARTFCT_DEFAULT_TTL_MINUTES": "525600",
+        "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
         "ARTFCT_MAX_TTL_MINUTES": "525600",
     },
 }

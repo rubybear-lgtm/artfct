@@ -70,7 +70,7 @@ const POST_REQUEST_FIELDS = [
         name: 'ttl_minutes',
         type: 'integer',
         req: false,
-        note: 'Minutes until expiry. Default: 525600 (365 days). Max: 525600 (365 days).',
+        note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
     },
 ] as const;
 
@@ -157,7 +157,7 @@ const CLI_DEPLOY_FLAGS = [
         name: '--ttl-minutes',
         type: 'integer',
         req: false,
-        note: 'Minutes until expiry. Default: 525600 (365 days). Max: 525600 (365 days).',
+        note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
     },
 ] as const;
 
@@ -210,7 +210,7 @@ const CODE_PATCH_REQUEST = `curl -X PATCH https://artfct.dev/v1/artifacts/${EXAM
 
 const CODE_PATCH_RESPONSE = `{
   "id": "${EXAMPLE_ID}",
-  "expires_at": "2027-06-09T15:30:00Z"
+  "expires_at": "2026-06-10T15:30:00Z"
 }`;
 
 const CODE_ERROR_RESPONSE = `{

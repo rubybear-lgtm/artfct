@@ -7,7 +7,7 @@ use worker::{event, Env, Headers, Method, Request, Response, Result};
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
 const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
-const DEFAULT_TTL_MINUTES: u64 = 365 * 24 * 60;
+const DEFAULT_TTL_MINUTES: u64 = 5 * 24 * 60;
 const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
 const ARTIFACT_ID_LENGTH: usize = 10;
@@ -375,6 +375,12 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 .preview-card .status{{font-size:.8rem;color:#94a3b8;}}
 .stage{{position:relative;min-height:72vh;margin-top:1rem;border-radius:18px;overflow:hidden;border:1px solid rgb(148 163 184 / .16);background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
 .frame{{position:absolute;inset:0;width:100%;height:100%;border:0;background:white;}}
+body.artfct-decrypted{{overflow:hidden;background:white;}}
+body.artfct-decrypted .page{{padding:0;gap:0;}}
+body.artfct-decrypted .meta{{display:none !important;}}
+body.artfct-decrypted .preview-shell{{display:none !important;}}
+body.artfct-decrypted .stage{{position:fixed;inset:0;min-height:100vh;margin:0;border:none;border-radius:0;box-shadow:none;}}
+body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
 .overlay{{position:absolute;inset:0;display:grid;place-items:center;padding:1.5rem;background:linear-gradient(180deg, rgb(2 6 23 / .1), rgb(2 6 23 / .45));}}
 [hidden]{{display:none !important;}}
 .message{{padding:.85rem 1rem;border-radius:999px;border:1px solid rgb(148 163 184 / .26);background:rgb(15 23 42 / .82);backdrop-filter:blur(12px);color:#e2e8f0;font-size:.9rem;line-height:1.4;max-width:min(90vw, 36rem);text-align:center;}}
@@ -483,6 +489,7 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
       );
       const html = textDecoder.decode(plaintext);
 
+      document.body.classList.add('artfct-decrypted');
       frame.hidden = false;
       frame.srcdoc = html;
       hideOverlay();
@@ -640,6 +647,11 @@ fn escape_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_ttl_is_five_days() {
+        assert_eq!(DEFAULT_TTL_MINUTES, 5 * 24 * 60);
+    }
 
     #[test]
     fn random_artifact_id_is_short_and_alphanumeric() {
