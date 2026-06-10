@@ -102,7 +102,7 @@ const ERROR_CODES = [
 ] as const;
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
-const EXAMPLE_ID = '2QJZgqlWux7NBsETBVa1Oj';
+const EXAMPLE_ID = 'bdf7cd9dd9';
 
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
@@ -124,10 +124,10 @@ cat page.html | artfct deploy --stdin
 echo '<h1>hello</h1>' | artfct deploy --stdin
 
 # delete an artifact by ID
-artfct delete 2QJZgqlWux7NBsETBVa1Oj
+artfct delete bdf7cd9dd9
 
 # delete an artifact by preview URL
-artfct delete https://artfct.dev/p/2QJZgqlWux7NBsETBVa1Oj
+artfct delete https://artfct.dev/p/bdf7cd9dd9
 
 # check connectivity
 artfct doctor`;
@@ -185,6 +185,33 @@ const CODE_POST_RESPONSE = `{
 }`;
 
 const CODE_DELETE_REQUEST = `curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
+
+const PATCH_REQUEST_FIELDS = [
+    {
+        name: 'ttl_minutes',
+        type: 'integer',
+        req: true,
+        note: 'New TTL from now. Must be between 1 and 525600 (365 days).',
+    },
+] as const;
+
+const PATCH_RESPONSE_FIELDS = [
+    { name: 'id', type: 'string', note: '10-character artifact token.' },
+    {
+        name: 'expires_at',
+        type: 'string',
+        note: 'Updated ISO 8601 expiry timestamp.',
+    },
+] as const;
+
+const CODE_PATCH_REQUEST = `curl -X PATCH https://artfct.dev/v1/artifacts/${EXAMPLE_ID} \\
+  -H "Content-Type: application/json" \\
+  -d '{"ttl_minutes": 10080}'`;
+
+const CODE_PATCH_RESPONSE = `{
+  "id": "${EXAMPLE_ID}",
+  "expires_at": "2027-06-09T15:30:00Z"
+}`;
 
 const CODE_ERROR_RESPONSE = `{
   "error": "The body_ciphertext_b64 field is required."
@@ -394,6 +421,7 @@ export default function Docs() {
         { href: '#overview', label: 'rest api' },
         { href: '#create', label: 'create' },
         { href: '#delete', label: 'delete' },
+        { href: '#update', label: 'update' },
         { href: '#errors', label: 'errors' },
         { href: '#limits', label: 'rate limits' },
     ];
@@ -719,10 +747,13 @@ export default function Docs() {
                                 color: S.base00,
                             }}
                         >
-                            /p/:id
-                        </code>{' '}
-                        as rendered HTML pages — that endpoint is browser-facing
-                        and not part of this API.
+                            /p/:id#&lt;key&gt;
+                        </code>
+                        . When the fragment key is present the artifact is
+                        decrypted client-side and rendered fullscreen. Without
+                        the key, a metadata preview page is shown instead — used
+                        by link unfurlers and OG scrapers. That endpoint is
+                        browser-facing and not part of this API.
                     </Prose>
 
                     {/* ── create ───────────────────────────────────────────── */}
@@ -813,6 +844,37 @@ export default function Docs() {
                     <Label>example request</Label>
                     <CodeBlock code={CODE_DELETE_REQUEST} />
 
+                    {/* ── update ───────────────────────────────────────────── */}
+                    <SectionDivider
+                        id="update"
+                        label="PATCH /v1/artifacts/:id"
+                    />
+
+                    <Prose>
+                        Extends the TTL of an existing artifact from now.
+                        Returns{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            404
+                        </code>{' '}
+                        if the artifact has already expired.
+                    </Prose>
+
+                    <Label>request body</Label>
+                    <FieldTable fields={PATCH_REQUEST_FIELDS} />
+
+                    <Label>example request</Label>
+                    <CodeBlock code={CODE_PATCH_REQUEST} />
+
+                    <Label>response — 200 ok</Label>
+                    <FieldTable fields={PATCH_RESPONSE_FIELDS} />
+                    <CodeBlock code={CODE_PATCH_RESPONSE} />
+
                     {/* ── errors ───────────────────────────────────────────── */}
                     <SectionDivider id="errors" label="errors" />
 
@@ -825,7 +887,7 @@ export default function Docs() {
                                 color: S.base00,
                             }}
                         >
-                            message
+                            error
                         </code>{' '}
                         field.
                     </Prose>
