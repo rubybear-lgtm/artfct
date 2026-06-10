@@ -7,10 +7,10 @@
 ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝      ╚═════╝   ╚═╝   
 ```
 
-share html. get a link. that's it.
+share encrypted html. get a link. that's it.
 
 Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a
-shareable link. No sign-up required.
+shareable encrypted link. No sign-up required.
 
 ---
 
@@ -31,12 +31,12 @@ link immediately — no account, no configuration.
 
  [ deploy → ]
 
- → https://artfct.dev/p/4fA8gX9z...   ⎘ copy
+ → https://artfct.dev/p/4fA8gX9z...#abC123xyZ9   ⎘ copy
    expires in 60 min
 ```
 
-Links are ephemeral and secure by default. The URL is a 32-character random token —
-not guessable, not indexed, gone after the TTL.
+Links are encrypted and ephemeral by default. Public metadata stays visible for link
+previews, while the fragment passcode is never sent to the server.
 
 ## CLI
 
@@ -84,14 +84,14 @@ artfct deploy ./dashboard.html --tier ephemeral --ttl-minutes 30
 Output:
 
 ```
-https://artfct.dev/p/<artifact-id>
+https://artfct.dev/p/<artifact-id>#<passcode>
 ```
 
 ### Delete
 
 ```sh
-# Delete an artifact by its 32-hex ID
-artfct delete abc123def456789012345678901234ab
+# Delete an artifact by its 10-character ID
+artfct delete abc123def4
 
 # Delete an artifact by its preview URL
 artfct delete https://artfct.dev/p/abc123def456789012345678901234ab

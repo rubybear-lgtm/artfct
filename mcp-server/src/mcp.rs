@@ -3,7 +3,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::api::{self, CreateArtifactRequest};
+use crate::api;
+use crate::artifact_crypto;
 
 const PROTOCOL_VERSION: &str = "2025-11-25";
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
@@ -20,7 +21,14 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct ToolCallParams {
     name: String,
-    arguments: CreateArtifactRequest,
+    arguments: DeployToolArguments,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeployToolArguments {
+    html: String,
+    tier: String,
+    ttl_minutes: Option<u64>,
 }
 
 pub async fn run_stdio_server() -> Result<()> {
@@ -147,27 +155,35 @@ async fn call_tool(params: Value) -> Result<Value> {
         return Err(anyhow!("Unknown tool: {}", params.name));
     }
 
-    if params.arguments.html.trim().is_empty() {
-        return Err(anyhow!("html is required"));
-    }
-
     let api_base_url =
         std::env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let prepared = artifact_crypto::prepare_artifact_request(
+        &params.arguments.html,
+        params.arguments.tier,
+        params.arguments.ttl_minutes,
+        true,
+    )?;
     let artifact =
-        api::deploy_artifact(&reqwest::Client::new(), &api_base_url, &params.arguments).await?;
+        api::deploy_artifact(&reqwest::Client::new(), &api_base_url, &prepared.request).await?;
+    let full_url = format!("{}{}", artifact.url, prepared.fragment);
 
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": format!("Artifact deployed: {}", artifact.url)
+                "text": format!("Artifact deployed: {}", full_url)
             }
         ],
         "structuredContent": {
             "id": artifact.id,
-            "url": artifact.url,
+            "url": full_url,
+            "canonical_url": artifact.url,
             "tier": artifact.tier,
-            "expires_at": artifact.expires_at
+            "expires_at": artifact.expires_at,
+            "title": artifact.title,
+            "description": artifact.description,
+            "thumbnail": artifact.thumbnail,
+            "preview_blurred": artifact.preview_blurred
         }
     }))
 }

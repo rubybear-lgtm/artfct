@@ -121,7 +121,7 @@ pub enum McpCommand {
 pub struct DeleteArgs {
     #[arg(
         value_name = "ID_OR_URL",
-        help = "Artifact ID (22 characters) or full preview URL"
+        help = "Artifact ID (10 characters) or full preview URL"
     )]
     pub id_or_url: String,
 }
@@ -134,11 +134,12 @@ impl DeleteArgs {
 
         if let Some(pos) = self.id_or_url.rfind("/p/") {
             let candidate = &self.id_or_url[pos + 3..];
+            let candidate = candidate.split('#').next().unwrap_or(candidate);
             let candidate = candidate.split('?').next().unwrap_or(candidate);
             return Some(candidate.trim_end_matches('/'));
         }
 
-        if self.id_or_url.len() == 22 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if self.id_or_url.len() == 10 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()) {
             return Some(&self.id_or_url);
         }
 
@@ -231,31 +232,31 @@ mod tests {
     #[test]
     fn extracts_id_from_plain_base62() {
         let args = DeleteArgs {
-            id_or_url: "0000000000000000000000".to_string(),
+            id_or_url: "0000000000".to_string(),
         };
-        assert_eq!(args.artifact_id(), Some("0000000000000000000000"));
+        assert_eq!(args.artifact_id(), Some("0000000000"));
     }
 
     #[test]
     fn extracts_id_from_url() {
         let args = DeleteArgs {
-            id_or_url: "https://artfct.dev/p/0000000000000000000000".to_string(),
+            id_or_url: "https://artfct.dev/p/0000000000".to_string(),
         };
-        assert_eq!(args.artifact_id(), Some("0000000000000000000000"));
+        assert_eq!(args.artifact_id(), Some("0000000000"));
     }
 
     #[test]
     fn extracts_id_from_url_with_trailing_slash() {
         let args = DeleteArgs {
-            id_or_url: "https://artfct.dev/p/0000000000000000000000/".to_string(),
+            id_or_url: "https://artfct.dev/p/0000000000/".to_string(),
         };
-        assert_eq!(args.artifact_id(), Some("0000000000000000000000"));
+        assert_eq!(args.artifact_id(), Some("0000000000"));
     }
 
     #[test]
-    fn rejects_old_hex_id() {
+    fn rejects_long_id() {
         let args = DeleteArgs {
-            id_or_url: "abc123def456789012345678901234ab".to_string(),
+            id_or_url: "abc123def45".to_string(),
         };
         assert_eq!(args.artifact_id(), None);
     }

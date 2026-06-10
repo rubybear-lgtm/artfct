@@ -1,5 +1,3 @@
-use std::io::{Cursor, Read, Write};
-
 use base64::Engine;
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -12,15 +10,23 @@ const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
 const DEFAULT_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
-const BASE62_ALPHABET: &[u8; 62] =
-    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const ARTIFACT_ID_LENGTH: usize = 10;
+const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
+const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
+const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct CreateArtifactRequest {
-    html: String,
+    body_ciphertext_b64: String,
+    body_iv_b64: String,
     tier: ArtifactTier,
     ttl_minutes: Option<u64>,
+    title: Option<String>,
+    description: Option<String>,
+    thumbnail: Option<String>,
+    #[serde(default = "default_preview_blurred")]
+    preview_blurred: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -30,6 +36,10 @@ struct CreateArtifactResponse {
     url: String,
     tier: ArtifactTier,
     expires_at: String,
+    title: String,
+    description: String,
+    thumbnail: String,
+    preview_blurred: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -43,8 +53,13 @@ enum ArtifactTier {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct StoredArtifact {
-    html_brotli_base64: String,
+    body_ciphertext_b64: String,
+    body_iv_b64: String,
     tier: ArtifactTier,
+    title: String,
+    description: String,
+    thumbnail: String,
+    preview_blurred: bool,
     created_at: String,
     expires_at: String,
 }
@@ -77,13 +92,39 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
         Err(_) => return json_error("Invalid JSON request body.", 400),
     };
 
-    if payload.html.trim().is_empty() {
-        return json_error("The html field is required.", 422);
+    if payload.body_ciphertext_b64.trim().is_empty() {
+        return json_error("The body_ciphertext_b64 field is required.", 422);
+    }
+
+    if payload.body_iv_b64.trim().is_empty() {
+        return json_error("The body_iv_b64 field is required.", 422);
     }
 
     let max_html_bytes = env_usize(env, "ARTFCT_MAX_HTML_BYTES", DEFAULT_MAX_HTML_BYTES);
-    if payload.html.len() > max_html_bytes {
-        return json_error("The html payload exceeds the configured size limit.", 413);
+    let ciphertext_bytes = match base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.body_ciphertext_b64.trim())
+    {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return json_error(
+                "The body_ciphertext_b64 field must be valid base64url.",
+                422,
+            );
+        }
+    };
+
+    if ciphertext_bytes.len() > max_html_bytes + 64 {
+        return json_error("The encrypted body exceeds the configured size limit.", 413);
+    }
+
+    let iv_bytes =
+        match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload.body_iv_b64.trim()) {
+            Ok(bytes) => bytes,
+            Err(_) => return json_error("The body_iv_b64 field must be valid base64url.", 422),
+        };
+
+    if iv_bytes.len() != 12 {
+        return json_error("The body_iv_b64 field must decode to a 12-byte nonce.", 422);
     }
 
     let ttl_minutes = payload
@@ -101,50 +142,61 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
     let now = Utc::now();
     let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
-    let uuid = Uuid::new_v4();
-    let hex_id = uuid.simple().to_string();
-    let short_id = base62_encode(uuid.as_bytes());
-    let compressed_html = compress_html(&payload.html)?;
+    let artifact_id = loop {
+        let candidate = random_artifact_id(ARTIFACT_ID_LENGTH);
+
+        if env.kv(KV_BINDING)?.get(&candidate).text().await?.is_none() {
+            break candidate;
+        }
+    };
+
+    let title = normalize_metadata_value(payload.title, DEFAULT_ARTIFACT_TITLE);
+    let description = normalize_metadata_value(payload.description, DEFAULT_ARTIFACT_DESCRIPTION);
+    let thumbnail = normalize_metadata_value(payload.thumbnail, DEFAULT_ARTIFACT_THUMBNAIL);
 
     let stored = StoredArtifact {
-        html_brotli_base64: base64::engine::general_purpose::STANDARD.encode(compressed_html),
+        body_ciphertext_b64: payload.body_ciphertext_b64,
+        body_iv_b64: payload.body_iv_b64,
         tier: payload.tier,
+        title: title.clone(),
+        description: description.clone(),
+        thumbnail: thumbnail.clone(),
+        preview_blurred: payload.preview_blurred,
         created_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
         expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Secs, true),
     };
 
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
-        .put(&hex_id, body)?
+        .put(&artifact_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;
 
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
     let response = CreateArtifactResponse {
-        id: short_id.clone(),
-        url: format!("{}/p/{}", base_url.trim_end_matches('/'), short_id),
+        id: artifact_id.clone(),
+        url: format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id),
         tier: payload.tier,
         expires_at: stored.expires_at,
+        title,
+        description,
+        thumbnail,
+        preview_blurred: stored.preview_blurred,
     };
 
     json_response(&response, 201)
 }
 
 async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
-    let short_id = path.trim_start_matches("/p/");
-    if !is_valid_artifact_id(short_id) {
+    let artifact_id = path.trim_start_matches("/p/");
+    if !is_valid_artifact_id(artifact_id) {
         return expired_response();
     }
 
-    let hex_id = match base62_decode(short_id) {
-        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
-        None => return expired_response(),
-    };
-
     let Some(mut stored) = env
         .kv(KV_BINDING)?
-        .get(&hex_id)
+        .get(artifact_id)
         .json::<StoredArtifact>()
         .await?
     else {
@@ -164,49 +216,33 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
     stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
-        .put(&hex_id, body)?
+        .put(artifact_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;
 
-    let compressed =
-        match base64::engine::general_purpose::STANDARD.decode(stored.html_brotli_base64) {
-            Ok(bytes) => bytes,
-            Err(_) => return html_error("Stored artifact is corrupted.", 500),
-        };
-    let html = decompress_html(&compressed)?;
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-    let url = format!("{}/p/{}", base_url.trim_end_matches('/'), short_id);
-    let wrapped = render_canvas(&html, &stored.expires_at, &url);
+    let url = format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id);
+    let rendered = render_preview_shell(&stored, &url);
 
-    html_response(&wrapped, 200)
+    html_response(&rendered, 200)
 }
 
 async fn delete_artifact(path: &str, env: &Env) -> Result<Response> {
-    let short_id = path.trim_start_matches("/v1/artifacts/");
-    if !is_valid_artifact_id(short_id) {
+    let artifact_id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(artifact_id) {
         return json_error("Invalid artifact id.", 400);
     }
 
-    let hex_id = match base62_decode(short_id) {
-        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
-        None => return json_error("Invalid artifact id.", 400),
-    };
-
-    env.kv(KV_BINDING)?.delete(&hex_id).await?;
+    env.kv(KV_BINDING)?.delete(artifact_id).await?;
     Response::empty().map(|response| response.with_status(204))
 }
 
 async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
-    let short_id = path.trim_start_matches("/v1/artifacts/");
-    if !is_valid_artifact_id(short_id) {
+    let artifact_id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(artifact_id) {
         return json_error("Invalid artifact id.", 400);
     }
-
-    let hex_id = match base62_decode(short_id) {
-        Some(bytes) => Uuid::from_bytes(bytes).simple().to_string(),
-        None => return json_error("Invalid artifact id.", 400),
-    };
 
     #[derive(Deserialize)]
     struct UpdateArtifactRequest {
@@ -228,7 +264,7 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
 
     let Some(mut stored) = env
         .kv(KV_BINDING)?
-        .get(&hex_id)
+        .get(artifact_id)
         .json::<StoredArtifact>()
         .await?
     else {
@@ -243,7 +279,7 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
 
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
-        .put(&hex_id, body)?
+        .put(artifact_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;
@@ -255,39 +291,46 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
     }
 
     let response = UpdateArtifactResponse {
-        id: short_id.to_string(),
+        id: artifact_id.to_string(),
         expires_at: stored.expires_at,
     };
 
     json_response(&response, 200)
 }
 
-fn extract_title(html: &str) -> Option<String> {
-    // Only scan the first 8KB — title is always in <head>
-    let head = &html[..html.len().min(8192)];
-    let lower = head.to_lowercase();
+fn normalize_metadata_value(value: Option<String>, default: &str) -> String {
+    let normalized = value
+        .map(|value| value.trim().to_string())
+        .unwrap_or_default();
 
-    let tag_start = lower.find("<title")?;
-    let content_start = lower[tag_start..].find('>')? + tag_start + 1;
-    let content_end = lower[content_start..].find("</title>")? + content_start;
-
-    let title = head[content_start..content_end].trim();
-    if title.is_empty() {
-        return None;
+    if normalized.is_empty() {
+        default.to_string()
+    } else {
+        normalized
     }
-    Some(title.to_string())
 }
 
-fn render_canvas(html: &str, expires_at: &str, url: &str) -> String {
-    let escaped_html = escape_attr(html);
-    let escaped_expires_at = escape_text(expires_at);
+fn default_preview_blurred() -> bool {
+    true
+}
+
+fn render_preview_shell(artifact: &StoredArtifact, url: &str) -> String {
+    let escaped_title = escape_text(&artifact.title);
+    let escaped_description = escape_text(&artifact.description);
+    let escaped_thumbnail = escape_attr(&artifact.thumbnail);
     let escaped_url = escape_attr(url);
-    let artifact_title = extract_title(html).unwrap_or_else(|| "Artifact Preview".to_string());
-    let escaped_title = escape_text(&artifact_title);
-    let escaped_description = escape_text(
-        "View this artifact on artfct — ephemeral HTML & markdown sharing, no sign-up required.",
-    );
-    let og_image = "https://artfct.dev/og-image.svg";
+    let escaped_expires_at = escape_text(&artifact.expires_at);
+    let escaped_preview_status = escape_text(if artifact.preview_blurred {
+        "Preview body will start blurred."
+    } else {
+        "Preview body will start unblurred."
+    });
+    let payload = serde_json::json!({
+        "bodyCiphertextB64": artifact.body_ciphertext_b64,
+        "bodyIvB64": artifact.body_iv_b64,
+        "previewBlurred": artifact.preview_blurred,
+    });
+    let payload_json = escape_json_script(&serde_json::to_string(&payload).unwrap());
 
     format!(
         r#"<!doctype html>
@@ -299,100 +342,158 @@ fn render_canvas(html: &str, expires_at: &str, url: &str) -> String {
 <meta name="description" content="{escaped_description}">
 <meta property="og:title" content="{escaped_title}">
 <meta property="og:description" content="{escaped_description}">
+<meta property="og:image" content="{escaped_thumbnail}">
 <meta property="og:url" content="{escaped_url}">
 <meta property="og:type" content="website">
-<meta property="og:image" content="{og_image}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
 <meta property="og:site_name" content="artfct">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{escaped_title}">
 <meta name="twitter:description" content="{escaped_description}">
-<meta name="twitter:image" content="{og_image}">
+<meta name="twitter:image" content="{escaped_thumbnail}">
 <link rel="canonical" href="{escaped_url}">
 <style>
-html,body{{margin:0;min-height:100%;background:#0b0d10;color:#f8fafc;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}}
-.artfct-frame{{position:fixed;inset:0;width:100%;height:100%;border:0;background:white;}}
-.artfct-badge{{position:fixed;right:12px;bottom:12px;z-index:1;padding:8px 10px;border:1px solid rgb(255 255 255 / .18);border-radius:8px;background:rgb(15 23 42 / .72);backdrop-filter:blur(12px);font-size:12px;line-height:1.3;color:#e2e8f0;box-shadow:0 10px 30px rgb(0 0 0 / .22);}}
+:root{{color-scheme:dark;}}
+html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}}
+*{{box-sizing:border-box;}}
+.page{{min-height:100vh;display:flex;flex-direction:column;gap:1rem;padding:1rem;}}
+.meta{{display:grid;grid-template-columns:120px 1fr;gap:1rem;align-items:start;padding:1rem;border:1px solid rgb(148 163 184 / .22);border-radius:16px;background:rgb(15 23 42 / .72);backdrop-filter:blur(14px);box-shadow:0 20px 50px rgb(0 0 0 / .22);}}
+.meta img{{width:120px;height:68px;object-fit:cover;border-radius:10px;background:#111827;}}
+.meta h1{{margin:0 0 .35rem;font-size:1.1rem;line-height:1.35;color:#f8fafc;}}
+.meta p{{margin:0 0 .75rem;line-height:1.6;color:#cbd5e1;}}
+.meta .status{{font-size:.8rem;color:#94a3b8;}}
+.stage{{position:relative;flex:1;min-height:72vh;border-radius:18px;overflow:hidden;border:1px solid rgb(148 163 184 / .16);background:#020617;box-shadow:0 20px 60px rgb(0 0 0 / .3);}}
+.frame{{position:absolute;inset:0;width:100%;height:100%;border:0;background:white;transition:filter .18s ease,transform .18s ease;}}
+.frame.is-blurred{{filter:blur(18px) saturate(.92);transform:scale(1.015);}}
+.overlay{{position:absolute;inset:0;display:grid;place-items:center;padding:1.5rem;background:linear-gradient(180deg, rgb(2 6 23 / .1), rgb(2 6 23 / .45));}}
+.message{{padding:.85rem 1rem;border-radius:999px;border:1px solid rgb(148 163 184 / .26);background:rgb(15 23 42 / .82);backdrop-filter:blur(12px);color:#e2e8f0;font-size:.9rem;line-height:1.4;max-width:min(90vw, 36rem);text-align:center;}}
 </style>
 </head>
 <body>
-<iframe class="artfct-frame" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="{escaped_html}"></iframe>
-<div class="artfct-badge">expires <time datetime="{escaped_expires_at}">{escaped_expires_at}</time></div>
+<div class="page">
+  <section class="meta" aria-label="artifact metadata">
+    <img src="{escaped_thumbnail}" alt="">
+    <div>
+      <h1>{escaped_title}</h1>
+      <p>{escaped_description}</p>
+      <div class="status">{escaped_preview_status}</div>
+      <div class="status">expires <time datetime="{escaped_expires_at}">{escaped_expires_at}</time></div>
+    </div>
+  </section>
+  <section class="stage">
+    <iframe id="artfct-frame" class="frame" hidden sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+    <div id="artfct-overlay" class="overlay">
+      <div id="artfct-message" class="message">Waiting for the decryption key in the URL fragment.</div>
+    </div>
+  </section>
+</div>
+<script id="artfct-payload" type="application/json">{payload_json}</script>
+<script>
+(function() {{
+  const payload = JSON.parse(document.getElementById('artfct-payload').textContent || '{{}}');
+  const frame = document.getElementById('artfct-frame');
+  const overlay = document.getElementById('artfct-overlay');
+  const message = document.getElementById('artfct-message');
+
+  const textEncoder = new TextEncoder();
+  const textDecoder = new TextDecoder();
+
+  function setOverlay(text) {{
+    message.textContent = text;
+    overlay.hidden = false;
+  }}
+
+  function hideOverlay() {{
+    overlay.hidden = true;
+  }}
+
+  function base64UrlToBytes(value) {{
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {{
+      bytes[i] = binary.charCodeAt(i);
+    }}
+
+    return bytes;
+  }}
+
+  async function deriveKey(passcode) {{
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      textEncoder.encode(passcode),
+    );
+
+    return crypto.subtle.importKey(
+      'raw',
+      digest,
+      {{ name: 'AES-GCM' }},
+      false,
+      ['decrypt']
+    );
+  }}
+
+  async function decrypt() {{
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const keyEncoded = hash.get('p') ?? window.location.hash.slice(1);
+
+    if (!keyEncoded) {{
+      frame.hidden = true;
+      setOverlay('Waiting for the decryption key in the URL fragment.');
+      return;
+    }}
+
+    try {{
+      const cryptoKey = await deriveKey(keyEncoded);
+      const iv = base64UrlToBytes(payload.bodyIvB64);
+      const ciphertext = base64UrlToBytes(payload.bodyCiphertextB64);
+      const plaintext = await crypto.subtle.decrypt(
+        {{ name: 'AES-GCM', iv }},
+        cryptoKey,
+        ciphertext,
+      );
+      const html = textDecoder.decode(plaintext);
+
+      frame.hidden = false;
+      frame.srcdoc = html;
+
+      if (payload.previewBlurred) {{
+        frame.classList.add('is-blurred');
+      }} else {{
+        frame.classList.remove('is-blurred');
+      }}
+
+      hideOverlay();
+    }} catch (error) {{
+      frame.hidden = true;
+      setOverlay('Unable to decrypt this artifact. Open the full link, including the fragment key.');
+    }}
+  }}
+
+  window.addEventListener('hashchange', decrypt);
+  decrypt();
+}})();
+</script>
 </body>
 </html>"#
     )
 }
 
-fn compress_html(html: &str) -> Result<Vec<u8>> {
-    let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 5, 22);
-    writer.write_all(html.as_bytes())?;
-    Ok(writer.into_inner())
-}
-
-fn decompress_html(bytes: &[u8]) -> Result<String> {
-    let mut reader = brotli::Decompressor::new(Cursor::new(bytes), 4096);
-    let mut html = String::new();
-    reader.read_to_string(&mut html)?;
-    Ok(html)
-}
-
-fn base62_encode(bytes: &[u8; 16]) -> String {
-    let mut digits = Vec::new();
-    let mut data = *bytes;
-
-    loop {
-        let mut remainder = 0u32;
-        let mut all_zero = true;
-
-        for byte in data.iter_mut() {
-            let combined = (remainder as u64 * 256) + *byte as u64;
-            *byte = (combined / 62) as u8;
-            remainder = (combined % 62) as u32;
-            if *byte != 0 {
-                all_zero = false;
-            }
-        }
-
-        digits.push(BASE62_ALPHABET[remainder as usize]);
-
-        if all_zero {
-            break;
-        }
-    }
-
-    digits.reverse();
-
-    while digits.len() < 22 {
-        digits.insert(0, BASE62_ALPHABET[0]);
-    }
-
-    String::from_utf8(digits).unwrap()
-}
-
-fn base62_decode(encoded: &str) -> Option<[u8; 16]> {
-    let mut result = [0u8; 16];
-
-    for c in encoded.chars() {
-        let digit = BASE62_ALPHABET.iter().position(|&b| b == c as u8)? as u16;
-        let mut carry = digit;
-
-        for byte in result.iter_mut().rev() {
-            carry += *byte as u16 * 62;
-            *byte = (carry % 256) as u8;
-            carry /= 256;
-        }
-
-        if carry > 0 {
-            return None;
-        }
-    }
-
-    Some(result)
+fn escape_json_script(value: &str) -> String {
+    value
+        .replace('&', "\\u0026")
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
 }
 
 fn is_valid_artifact_id(id: &str) -> bool {
-    id.len() == 22 && id.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
+fn random_artifact_id(length: usize) -> String {
+    let encoded = Uuid::new_v4().simple().to_string();
+    encoded.chars().take(length).collect()
 }
 
 fn env_string(env: &Env, key: &str, default: &str) -> String {
@@ -520,151 +621,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base62_roundtrip() {
-        let uuid = Uuid::new_v4();
-        let encoded = base62_encode(uuid.as_bytes());
-        assert_eq!(encoded.len(), 22);
-        let decoded = base62_decode(&encoded).unwrap();
-        assert_eq!(*uuid.as_bytes(), decoded);
+    fn random_artifact_id_is_short_and_alphanumeric() {
+        let id = random_artifact_id(ARTIFACT_ID_LENGTH);
+
+        assert_eq!(id.len(), ARTIFACT_ID_LENGTH);
+        assert!(id.chars().all(|ch| ch.is_ascii_alphanumeric()));
     }
 
     #[test]
-    fn base62_zero_bytes() {
-        let bytes = [0u8; 16];
-        let encoded = base62_encode(&bytes);
-        assert_eq!(encoded, "0000000000000000000000");
-        let decoded = base62_decode(&encoded).unwrap();
-        assert_eq!(bytes, decoded);
-    }
+    fn random_artifact_id_generates_varied_values() {
+        let mut ids = std::collections::HashSet::new();
 
-    #[test]
-    fn base62_one_hundred_random_roundtrips() {
-        for _ in 0..100 {
-            let uuid = Uuid::new_v4();
-            let bytes = uuid.as_bytes();
-            let encoded = base62_encode(bytes);
-            assert_eq!(encoded.len(), 22);
-            let decoded = base62_decode(&encoded).unwrap();
-            assert_eq!(*bytes, decoded);
+        for _ in 0..50 {
+            ids.insert(random_artifact_id(ARTIFACT_ID_LENGTH));
         }
+
+        assert!(ids.len() > 1);
     }
 
     #[test]
-    fn base62_overflow_rejected() {
-        assert!(base62_decode("zzzzzzzzzzzzzzzzzzzzzz").is_none());
-    }
-
-    #[test]
-    fn base62_decode_empty_string_is_zero() {
-        let decoded = base62_decode("").unwrap();
-        assert_eq!(decoded, [0u8; 16]);
-    }
-
-    #[test]
-    fn base62_decode_short_string_works_for_small_numbers() {
-        let decoded = base62_decode("ABC").unwrap();
-        let mut expected = [0u8; 16];
-        expected[14] = 0x98;
-        expected[15] = 0xDE;
-        assert_eq!(decoded, expected);
-    }
-
-    #[test]
-    fn base62_non_alphanumeric_is_invalid_id() {
-        assert!(!is_valid_artifact_id("00000000000000000000!0"));
-        assert!(!is_valid_artifact_id("00000000000000000000-0"));
-        assert!(!is_valid_artifact_id("abc defghijklmnopqrstuv"));
-    }
-
-    #[test]
-    fn base62_wrong_length_is_invalid_id() {
+    fn artifact_id_validation_requires_exact_length_and_charset() {
+        assert!(is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH)));
         assert!(!is_valid_artifact_id(""));
         assert!(!is_valid_artifact_id("12345"));
-        assert!(!is_valid_artifact_id(&"a".repeat(21)));
-        assert!(!is_valid_artifact_id(&"a".repeat(23)));
+        assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH - 1)));
+        assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH + 1)));
+        assert!(!is_valid_artifact_id("abc!defghi"));
     }
 
     #[test]
-    fn base62_valid_id_accepted() {
-        let uuid = Uuid::new_v4();
-        let short = base62_encode(uuid.as_bytes());
-        assert!(is_valid_artifact_id(&short));
+    fn normalize_metadata_value_uses_default_for_empty_values() {
+        assert_eq!(
+            normalize_metadata_value(Some("   ".to_string()), "Fallback"),
+            "Fallback"
+        );
+        assert_eq!(normalize_metadata_value(None, "Fallback"), "Fallback");
     }
 
     #[test]
-    fn base62_id_deterministic() {
-        let uuid = Uuid::parse_str("4fa8e33748f2434f8223e5c36a7848b1").unwrap();
-        let encoded = base62_encode(uuid.as_bytes());
-        assert_eq!(encoded, "2QJZgqlWux7NBsETBVa1Oj");
+    fn escape_json_script_escapes_angle_brackets() {
+        let escaped = escape_json_script(r#"{"title":"</script><b>&"}"#);
+        assert!(escaped.contains("\\u003c/script\\u003e"));
+        assert!(escaped.contains("\\u0026"));
     }
 
     #[test]
-    fn extract_title_standard_html() {
-        let html = "<html><head><title>My Dashboard</title></head><body><p>Hello</p></body></html>";
-        assert_eq!(extract_title(html), Some("My Dashboard".to_string()));
+    fn render_preview_shell_includes_public_metadata_and_ciphertext() {
+        let artifact = StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Ephemeral,
+            title: "My Chart".to_string(),
+            description: "A chart preview".to_string(),
+            thumbnail: "https://example.com/thumb.png".to_string(),
+            preview_blurred: true,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+            expires_at: "2026-06-09T00:00:00Z".to_string(),
+        };
+        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/abc1234567");
+
+        assert!(rendered.contains("My Chart"));
+        assert!(rendered.contains("A chart preview"));
+        assert!(rendered.contains("https://example.com/thumb.png"));
+        assert!(rendered.contains("ciphertext"));
+        assert!(rendered.contains("nonce"));
+        assert!(rendered.contains("previewBlurred"));
+        assert!(rendered.contains("https://artfct.dev/p/abc1234567"));
     }
 
     #[test]
-    fn extract_title_with_attrs() {
-        let html = "<html><head><TITLE lang=\"en\">Stats Report</TITLE></head></html>";
-        assert_eq!(extract_title(html), Some("Stats Report".to_string()));
-    }
+    fn render_preview_shell_marks_blurred_state() {
+        let artifact = StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Secure,
+            title: "Secure Deck".to_string(),
+            description: "Private preview".to_string(),
+            thumbnail: "https://example.com/thumb.png".to_string(),
+            preview_blurred: false,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+            expires_at: "2026-06-09T00:00:00Z".to_string(),
+        };
+        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
 
-    #[test]
-    fn extract_title_none_when_missing() {
-        let html = "<html><head></head><body><p>No title here</p></body></html>";
-        assert_eq!(extract_title(html), None);
-    }
-
-    #[test]
-    fn extract_title_empty_title() {
-        let html = "<html><head><title></title></head></html>";
-        assert_eq!(extract_title(html), None);
-    }
-
-    #[test]
-    fn extract_title_trims_whitespace() {
-        let html = "<html><head><title>   Hello World   </title></head></html>";
-        assert_eq!(extract_title(html), Some("Hello World".to_string()));
-    }
-
-    #[test]
-    fn extract_title_only_scans_first_8kb() {
-        let mut html = String::from("<html><head>");
-        // pad past 8KB
-        while html.len() < 8192 {
-            html.push_str("<!-- comment -->");
-        }
-        html.push_str("<title>Late Title</title></head></html>");
-        assert_eq!(extract_title(&html), None);
-    }
-
-    #[test]
-    fn render_canvas_includes_og_tags() {
-        let html = "<h1>Hello</h1>";
-        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/abc123");
-        assert!(rendered.contains("og:title"));
-        assert!(rendered.contains("og:description"));
-        assert!(rendered.contains("og:image"));
-        assert!(rendered.contains("twitter:card"));
-        assert!(rendered.contains("summary_large_image"));
-        assert!(rendered.contains("canonical"));
-        assert!(rendered.contains("https://artfct.dev/p/abc123"));
-    }
-
-    #[test]
-    fn render_canvas_uses_artifact_title() {
-        let html = "<html><head><title>My Chart</title></head><body><h1>Chart</h1></body></html>";
-        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/xyz");
-        assert!(rendered.contains("og:title\" content=\"My Chart"));
-        assert!(rendered.contains("<title>My Chart</title>"));
-    }
-
-    #[test]
-    fn render_canvas_fallback_title() {
-        let html = "<html><body>no title</body></html>";
-        let rendered = render_canvas(html, "2026-06-08T00:00:00Z", "https://artfct.dev/p/xyz");
-        assert!(rendered.contains("Artifact Preview"));
+        assert!(rendered.contains("Waiting for the decryption key"));
+        assert!(rendered.contains("Preview body will start unblurred."));
+        assert!(rendered.contains("Secure Deck"));
     }
 
     #[test]

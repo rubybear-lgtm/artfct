@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 mod api;
+mod artifact_crypto;
 mod cli;
 mod doctor;
 mod mcp;
@@ -80,6 +81,12 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
     let html = read_deploy_html(&args)?;
     let api_base_url =
         env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let prepared = artifact_crypto::prepare_artifact_request(
+        &html,
+        args.tier.clone(),
+        args.ttl_minutes,
+        true,
+    )?;
 
     let label = match args.input() {
         cli::DeployInput::File(ref path) => path.display().to_string(),
@@ -87,21 +94,14 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
     };
     let pb = ui::spinner(format!("Uploading {label}…"));
 
-    let result = api::deploy_artifact(
-        &reqwest::Client::new(),
-        &api_base_url,
-        &api::CreateArtifactRequest {
-            html,
-            tier: args.tier,
-            ttl_minutes: args.ttl_minutes,
-        },
-    )
-    .await;
+    let result =
+        api::deploy_artifact(&reqwest::Client::new(), &api_base_url, &prepared.request).await;
 
     match result {
         Ok(artifact) => {
-            ui::finish_success(pb, &artifact.url);
-            println!("{}", artifact.url);
+            let full_url = format!("{}{}", artifact.url, prepared.fragment);
+            ui::finish_success(pb, &full_url);
+            println!("{full_url}");
         }
         Err(e) => {
             ui::finish_error(pb, e.to_string());

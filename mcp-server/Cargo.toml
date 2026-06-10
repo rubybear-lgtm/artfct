@@ -6,9 +6,11 @@ license.workspace = true
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4", features = ["derive"] }
 console = "0.15"
+ring = "0.17"
 toml = "0.8"
 dialoguer = { version = "0.12.0", features = ["fuzzy-select"] }
 indicatif = "0.17"
