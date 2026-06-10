@@ -461,10 +461,15 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
     const keyEncoded = hash.get('p') ?? window.location.hash.slice(1);
 
     if (!keyEncoded) {{
+      preview.hidden = false;
       frame.hidden = true;
       setOverlay('Waiting for the decryption key in the URL fragment.');
       return;
     }}
+
+    preview.hidden = true;
+    frame.hidden = true;
+    setOverlay('Decrypting artifact...');
 
     try {{
       const cryptoKey = await deriveKey(keyEncoded);
@@ -479,7 +484,6 @@ html,body{{margin:0;min-height:100%;background:#0b0d10;color:#e2e8f0;font-family
 
       frame.hidden = false;
       frame.srcdoc = html;
-      preview.hidden = true;
       hideOverlay();
     }} catch (error) {{
       frame.hidden = true;
