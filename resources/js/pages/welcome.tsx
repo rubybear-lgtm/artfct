@@ -809,7 +809,7 @@ export default function Welcome() {
                                 height: '14px',
                             }}
                         />
-                        blur preview by default
+                        blur link preview by default
                     </label>
 
                     {/* ── drop zone ── */}
