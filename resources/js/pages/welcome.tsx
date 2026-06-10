@@ -59,8 +59,10 @@ const ART = [
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const WORKER_URL =
-    (import.meta.env.VITE_WORKER_URL as string | undefined) ?? '';
+    (import.meta.env.VITE_WORKER_URL as string | undefined) ??
+    (import.meta.env.DEV ? 'http://127.0.0.1:8788' : '');
 const MAX_BYTES = 1024 * 1024;
+const DEFAULT_TTL_MINUTES = 365 * 24 * 60;
 const TAGLINES = [
     "share encrypted html. get a link. that's it.",
     "share encrypted markdown. get a link. that's it.",
@@ -439,7 +441,8 @@ export default function Welcome() {
         return [];
     });
     const [managingLink, setManagingLink] = useState<CachedLink | null>(null);
-    const [newTtlMinutes, setNewTtlMinutes] = useState<number>(525600);
+    const [newTtlMinutes, setNewTtlMinutes] =
+        useState<number>(DEFAULT_TTL_MINUTES);
     const [isUpdatingTtl, setIsUpdatingTtl] = useState(false);
     const [isDeletingLink, setIsDeletingLink] = useState(false);
     const [modalError, setModalError] = useState<string | null>(null);
@@ -467,7 +470,7 @@ export default function Welcome() {
     const openManageModal = useCallback((link: CachedLink) => {
         setManagingLink(link);
         const remaining = getRemainingMinutes(link.expiresAt);
-        setNewTtlMinutes(remaining > 0 ? remaining : 525600);
+        setNewTtlMinutes(remaining > 0 ? remaining : DEFAULT_TTL_MINUTES);
         setModalError(null);
         setModalSuccess(false);
         setIsUpdatingTtl(false);
@@ -655,7 +658,7 @@ export default function Welcome() {
                     body_ciphertext_b64: encrypted.bodyCiphertextB64,
                     body_iv_b64: encrypted.bodyIvB64,
                     tier: 'ephemeral',
-                    ttl_minutes: 525600,
+                    ttl_minutes: DEFAULT_TTL_MINUTES,
                     title: metadata.title,
                     description: metadata.description,
                     thumbnail: metadata.thumbnail,
@@ -1350,13 +1353,14 @@ export default function Welcome() {
                                             <input
                                                 type="number"
                                                 min={1}
-                                                max={525600}
+                                                max={DEFAULT_TTL_MINUTES}
                                                 value={newTtlMinutes}
                                                 onChange={(e) =>
                                                     setNewTtlMinutes(
                                                         parseInt(
                                                             e.target.value,
-                                                        ) || 525600,
+                                                        ) ||
+                                                            DEFAULT_TTL_MINUTES,
                                                     )
                                                 }
                                                 style={{
@@ -1374,8 +1378,13 @@ export default function Welcome() {
                                             <select
                                                 value={
                                                     [
-                                                        15, 60, 360, 1440,
-                                                        10080, 43200, 525600,
+                                                        15,
+                                                        60,
+                                                        360,
+                                                        1440,
+                                                        10080,
+                                                        43200,
+                                                        DEFAULT_TTL_MINUTES,
                                                     ].includes(newTtlMinutes)
                                                         ? newTtlMinutes
                                                         : ''
@@ -1420,7 +1429,9 @@ export default function Welcome() {
                                                 <option value={43200}>
                                                     30 days
                                                 </option>
-                                                <option value={525600}>
+                                                <option
+                                                    value={DEFAULT_TTL_MINUTES}
+                                                >
                                                     365 days
                                                 </option>
                                             </select>
