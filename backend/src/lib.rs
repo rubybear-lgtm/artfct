@@ -408,7 +408,7 @@ body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
     </div>
   </section>
   <section class="stage">
-    <iframe id="artfct-frame" class="frame" hidden sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+    <iframe id="artfct-frame" class="frame" hidden sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation" referrerpolicy="no-referrer"></iframe>
     <div id="artfct-overlay" class="overlay">
       <div id="artfct-message" class="message">Waiting for the decryption key in the URL fragment.</div>
     </div>
@@ -761,6 +761,26 @@ mod tests {
         assert!(rendered.contains("[hidden]{display:none !important;}"));
         assert!(rendered.contains("id=\"artfct-overlay\" class=\"overlay\""));
         assert!(rendered.contains("id=\"artfct-frame\" class=\"frame\" hidden"));
+    }
+
+    #[test]
+    fn render_preview_shell_allows_user_link_navigation_from_iframe() {
+        let artifact = StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Public,
+            title: "Linked Artifact".to_string(),
+            description: "Preview with links".to_string(),
+            thumbnail: "https://example.com/thumb.png".to_string(),
+            preview_blurred: false,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+            expires_at: "2026-06-09T00:00:00Z".to_string(),
+        };
+        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
+
+        assert!(rendered.contains(
+            r#"sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation""#
+        ));
     }
 
     #[test]
