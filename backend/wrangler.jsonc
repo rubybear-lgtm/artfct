@@ -1,6 +1,7 @@
 {
     "$schema": "../node_modules/wrangler/config-schema.json",
     "name": "artfct-engine",
+    "account_id": "c630a56af756f229176fc46b6bd2326f",
     "main": "build/worker/shim.mjs",
     "compatibility_date": "2026-06-03",
     "build": {
