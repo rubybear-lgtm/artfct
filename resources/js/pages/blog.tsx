@@ -287,17 +287,14 @@ const POSTS: Post[] = [
 "What does the request lifecycle look like?"
 
 # Agent builds this Mermaid source, renders it, and deploys:
-→ https://artfct.dev/p/790DiZFA457XQur1w0H27u`}
+→ https://artfct.dev/p/{shareable-artifact-id}`}
                 />
 
                 <P>
-                    <A href="https://artfct.dev/p/790DiZFA457XQur1w0H27u">
-                        Click that link
-                    </A>{' '}
-                    — it's a live sequence diagram. Theme-aware (light/dark),
-                    zoomable, rendered from Mermaid. The person on the other end
-                    doesn't need Mermaid installed, doesn't need a plugin. They
-                    click and see the diagram.
+                    The result is a live sequence diagram. Theme-aware
+                    (light/dark), zoomable, rendered from Mermaid. The person on
+                    the other end doesn't need Mermaid installed, doesn't need a
+                    plugin. They open the link and see the diagram.
                 </P>
 
                 <H3>Diagrams that adapt</H3>

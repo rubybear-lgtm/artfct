@@ -5,7 +5,7 @@
     "main": "build/worker/shim.mjs",
     "compatibility_date": "2026-06-03",
     "build": {
-        "command": "PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
     },
     "observability": {
         "enabled": true,
