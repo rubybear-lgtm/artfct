@@ -14,6 +14,7 @@ const ARTIFACT_ID_LENGTH: usize = 10;
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
 const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
+const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none';";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -566,10 +567,7 @@ fn html_response(html: &str, status: u16) -> Result<Response> {
     headers.set("Content-Type", "text/html; charset=utf-8")?;
     headers.set("X-Frame-Options", "DENY")?;
     headers.set("X-Content-Type-Options", "nosniff")?;
-    headers.set(
-        "Content-Security-Policy",
-        "default-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none';",
-    )?;
+    headers.set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
     Response::from_html(html).map(|response| response.with_headers(headers).with_status(status))
 }
 
@@ -781,6 +779,15 @@ mod tests {
         assert!(rendered.contains(
             r#"sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation""#
         ));
+    }
+
+    #[test]
+    fn preview_content_security_policy_allows_https_artifact_dependencies() {
+        assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("default-src 'self' https:;"));
+        assert!(PREVIEW_CONTENT_SECURITY_POLICY
+            .contains("script-src 'unsafe-inline' 'unsafe-eval' https:;"));
+        assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("style-src 'unsafe-inline' https:;"));
+        assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("font-src https: data:;"));
     }
 
     #[test]
