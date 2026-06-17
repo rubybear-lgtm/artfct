@@ -28,6 +28,11 @@ interface Post {
     body: React.ReactNode;
 }
 
+interface BlogPageProps {
+    postSlug?: string | null;
+    posts?: Array<Pick<Post, 'slug' | 'date' | 'title' | 'tag'>>;
+}
+
 const CODE_DEVTOOLS_INSTALL = `npx skills add rubybear-lgtm/artfct@developer-tools`;
 
 const CODE_DEVTOOLS_EXAMPLE = `# JSON table
@@ -485,12 +490,24 @@ function CodeBlock({ code }: { code: string }) {
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
-export default function Blog() {
+export default function Blog({ postSlug }: BlogPageProps) {
+    const activePost = postSlug
+        ? (POSTS.find((post) => post.slug === postSlug) ?? null)
+        : null;
+    const visiblePosts = activePost ? [activePost] : POSTS;
+
     return (
         <>
-            <Head title="blog — artfct" />
+            <Head
+                title={
+                    activePost
+                        ? `${activePost.title} — artfct`
+                        : 'blog — artfct'
+                }
+            />
             <ThemeToggle />
             <div
+                id="top"
                 style={{
                     minHeight: '100dvh',
                     backgroundColor: S.base3,
@@ -554,9 +571,30 @@ export default function Blog() {
                         blog
                     </h1>
 
-                    {POSTS.map((post) => (
+                    {activePost && (
+                        <div
+                            style={{
+                                marginBottom: '1.5rem',
+                                fontFamily: MONO,
+                                fontSize: '11px',
+                            }}
+                        >
+                            <Link
+                                href="/blog"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                ← all posts
+                            </Link>
+                        </div>
+                    )}
+
+                    {visiblePosts.map((post) => (
                         <article
                             key={post.slug}
+                            id={post.slug}
                             style={{ marginBottom: '4rem' }}
                         >
                             {/* post header */}
@@ -605,7 +643,15 @@ export default function Blog() {
                                         lineHeight: 1.3,
                                     }}
                                 >
-                                    {post.title}
+                                    <Link
+                                        href={`/blog/${post.slug}`}
+                                        style={{
+                                            color: S.base00,
+                                            textDecoration: 'none',
+                                        }}
+                                    >
+                                        {post.title}
+                                    </Link>
                                 </h2>
                             </div>
 
@@ -652,7 +698,7 @@ export default function Blog() {
                         </a>
                     </div>
                     <a
-                        href="#"
+                        href="#top"
                         style={{ color: S.base1, textDecoration: 'none' }}
                     >
                         ↑ top
