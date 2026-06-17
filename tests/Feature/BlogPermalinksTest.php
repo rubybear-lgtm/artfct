@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class BlogPermalinksTest extends TestCase
@@ -30,19 +29,22 @@ class BlogPermalinksTest extends TestCase
 
     public function test_it_includes_blog_permalinks_in_the_sitemap(): void
     {
-        $sitemap = File::get(public_path('sitemap.xml'));
+        $response = $this->get(route('sitemap'));
 
-        $this->assertStringContainsString(
-            'https://artfct.dev/blog/developer-tools',
-            $sitemap,
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'text/xml; charset=UTF-8');
+
+        $response->assertSee(
+            route('blog.show', ['slug' => 'developer-tools']),
+            escape: false,
         );
-        $this->assertStringContainsString(
-            'https://artfct.dev/blog/ai-presentations',
-            $sitemap,
+        $response->assertSee(
+            route('blog.show', ['slug' => 'ai-presentations']),
+            escape: false,
         );
-        $this->assertStringContainsString(
-            'https://artfct.dev/blog/mermaid-diagrams',
-            $sitemap,
+        $response->assertSee(
+            route('blog.show', ['slug' => 'mermaid-diagrams']),
+            escape: false,
         );
     }
 }
