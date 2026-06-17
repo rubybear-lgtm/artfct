@@ -46,7 +46,6 @@ Route::inertia('/blog', 'blog', [
         'title' => 'blog — artfct',
         'description' => 'Product updates, tips, and behind-the-scenes on artfct — the instant HTML sharing tool for developers.',
     ],
-    'postSlug' => null,
     'posts' => $blogPosts,
 ])->name('blog');
 
@@ -57,12 +56,34 @@ Route::get('/blog/{slug}', function (string $slug) use ($blogPosts) {
 
     abort_if($post === null, 404);
 
-    return Inertia::render('blog', [
+    return Inertia::render('blog-show', [
         'meta' => [
             'title' => "{$post['title']} — artfct",
             'description' => $post['description'],
         ],
-        'postSlug' => $slug,
-        'posts' => $blogPosts,
+        'post' => $post,
     ]);
 })->where('slug', '[a-z0-9-]+')->name('blog.show');
+
+// ── sitemap ───────────────────────────────────────────────────────────────────
+
+Route::get('/sitemap.xml', function () use ($blogPosts) {
+    $urls = [
+        ['loc' => url('/'), 'priority' => '1.0', 'changefreq' => 'weekly'],
+        ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
+        ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
+    ];
+
+    foreach ($blogPosts as $post) {
+        $urls[] = [
+            'loc' => route('blog.show', ['slug' => $post['slug']]),
+            'priority' => '0.7',
+            'changefreq' => 'monthly',
+        ];
+    }
+
+    $xml = view('sitemap', ['urls' => $urls])->render();
+
+    return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
+        ->header('Content-Type', 'text/xml');
+})->name('sitemap');

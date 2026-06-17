@@ -381,6 +381,40 @@ function fileStem(name: string): string {
     return name.slice(0, lastDot);
 }
 
+function FaqItem({ q, children }: { q: string; children: React.ReactNode }) {
+    return (
+        <details
+            style={{
+                fontFamily: SANS,
+                fontSize: '14px',
+                lineHeight: 1.65,
+                color: S.base0,
+                cursor: 'pointer',
+            }}
+        >
+            <summary
+                style={{
+                    color: S.base00,
+                    fontWeight: 500,
+                    marginBottom: '0.35rem',
+                    userSelect: 'none',
+                }}
+            >
+                {q}
+            </summary>
+            <div
+                style={{
+                    paddingLeft: '0.5rem',
+                    borderLeft: `2px solid ${S.base2}`,
+                    marginBottom: '0.5rem',
+                }}
+            >
+                {children}
+            </div>
+        </details>
+    );
+}
+
 export default function Welcome() {
     const [gradient] = useState<[string, string]>(pickGradient);
     const [phase, setPhase] = useState<Phase>({ t: 'idle' });
@@ -1898,6 +1932,115 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                         </div>
                     </div>
 
+                    {/* ── FAQ ── */}
+                    <div
+                        style={{
+                            width: '100%',
+                            paddingTop: '2rem',
+                            borderTop: `1px solid ${S.base2}`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem',
+                        }}
+                    >
+                        <h2
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                fontWeight: 400,
+                                color: S.base00,
+                                margin: '0 0 0.5rem',
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                            }}
+                        >
+                            faq
+                        </h2>
+                        <FaqItem q="What is artfct?">
+                            artfct is an instant encrypted HTML sharing tool for
+                            developers. Drop a self-contained HTML or Markdown
+                            file — via browser, CLI, API, or AI agent — and get
+                            a shareable link in seconds. No sign-up required.
+                            Think of it as "deploy and share" for self-contained
+                            web content.
+                        </FaqItem>
+                        <FaqItem q="Is artfct free?">
+                            Yes. Public artifacts are free and permanent. Secure
+                            artifacts (encrypted with fragment passcodes) and
+                            higher usage tiers will be available as paid options
+                            in the future. For now, everything is free.
+                        </FaqItem>
+                        <FaqItem q="How does encryption work?">
+                            Every artifact is encrypted in the browser using
+                            AES-GCM before it ever reaches the server. The
+                            encryption key is embedded in the URL fragment (the
+                            part after #), which the server never sees. For
+                            secure artifacts, the preview is blurred by default
+                            — only someone with the full URL can read the
+                            content.
+                        </FaqItem>
+                        <FaqItem q="What are the three tiers?">
+                            <strong style={{ color: S.cyan }}>public</strong> —
+                            permanent, open-access URLs. Anyone with the link
+                            can view the content. Best for sharing demos,
+                            prototypes, and public documents.
+                            <br />
+                            <strong style={{ color: S.cyan }}>secure</strong> —
+                            high-entropy fragment keys with blurred previews by
+                            default. The content is encrypted and only
+                            accessible with the full URL. Best for sensitive
+                            documents or internal tools.
+                            <br />
+                            <strong style={{ color: S.cyan }}>
+                                ephemeral
+                            </strong>{' '}
+                            — auto-expiring content with a fixed TTL (1 week to
+                            1 year). The artifact is permanently deleted after
+                            expiration. Best for temporary shares, drafts, and
+                            one-off reviews.
+                        </FaqItem>
+                        <FaqItem q="How long do artifacts last?">
+                            Public artifacts are permanent. Secure artifacts are
+                            permanent but require the full URL (including the
+                            fragment key). Ephemeral artifacts auto-delete after
+                            their configured TTL — choose from 1 week, 1 month,
+                            3 months, 6 months, or 1 year.
+                        </FaqItem>
+                        <FaqItem q="Can I use artfct from the CLI?">
+                            Yes. Pipe HTML from stdin:{' '}
+                            <code
+                                style={{
+                                    fontFamily: MONO,
+                                    fontSize: '12px',
+                                    color: S.base00,
+                                    backgroundColor: S.base2,
+                                    padding: '0.1em 0.3em',
+                                }}
+                            >
+                                cat dashboard.html | npx artfct
+                            </code>
+                            . The CLI returns a URL to stdout — perfect for
+                            shell scripts, CI pipelines, and automation.
+                        </FaqItem>
+                        <FaqItem q="Does artfct work with AI agents?">
+                            Yes. Install the artfct MCP server or the artfct
+                            skill in Claude Code, Cursor, Codex, or Gemini. Your
+                            agent can build HTML artifacts (dashboards,
+                            diagrams, presentations, tools) and deploy them
+                            automatically with a single MCP call. See the{' '}
+                            <Link
+                                href="/docs"
+                                style={{
+                                    color: S.blue,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                docs
+                            </Link>{' '}
+                            for setup instructions.
+                        </FaqItem>
+                    </div>
+
                     {/* ── footer ── */}
                     <footer
                         style={{
@@ -1948,6 +2091,67 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                     </footer>
                 </div>
             </div>
+
+            {/* ── FAQPage JSON-LD schema ── */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        '@context': 'https://schema.org',
+                        '@type': 'FAQPage',
+                        mainEntity: [
+                            {
+                                '@type': 'Question',
+                                name: 'What is artfct?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'artfct is an instant encrypted HTML sharing tool for developers. Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get a shareable link in seconds. No sign-up required.',
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'Is artfct free?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'Yes. Public artifacts are free and permanent. Secure artifacts (encrypted with fragment passcodes) and higher usage tiers will be available as paid options in the future. For now, everything is free.',
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'How does encryption work?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'Every artifact is encrypted in the browser using AES-GCM before it ever reaches the server. The encryption key is embedded in the URL fragment (the part after #), which the server never sees.',
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'What are the three tiers?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'Public — permanent, open-access URLs. Secure — high-entropy fragment keys with blurred previews by default. Ephemeral — auto-expiring content with a fixed TTL (1 week to 1 year).',
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'Can I use artfct from the CLI?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'Yes. Pipe HTML from stdin: "cat dashboard.html | npx artfct". The CLI returns a URL to stdout — perfect for shell scripts, CI pipelines, and automation.',
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'Does artfct work with AI agents?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'Yes. Install the artfct MCP server or the artfct skill in Claude Code, Cursor, Codex, or Gemini. Your agent can build HTML artifacts and deploy them automatically with a single MCP call.',
+                                },
+                            },
+                        ],
+                    }),
+                }}
+            />
         </>
     );
 }
