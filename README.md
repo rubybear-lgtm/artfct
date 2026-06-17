@@ -64,7 +64,7 @@ export PATH="$HOME/.local/bin:$PATH"
 Install a specific version or to a custom directory:
 
 ```sh
-ARTFCT_INSTALL_VERSION=v0.0.1 curl -fsSL https://artfct.dev/install.sh | sh
+ARTFCT_INSTALL_VERSION=v0.0.4 curl -fsSL https://artfct.dev/install.sh | sh
 ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
@@ -178,6 +178,22 @@ ARTFCT_INSTALL_VERSION   Release tag to install. Defaults to latest.
 ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
 ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
 ```
+
+## Production
+
+The Laravel site is deployed with Railway. Required production environment:
+
+```sh
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://artfct.dev
+APP_KEY=<generated Laravel app key>
+VITE_APP_NAME=artfct
+```
+
+The Worker API and previews are deployed with Wrangler from `backend/wrangler.jsonc`.
+Before deploying, verify the Cloudflare route bindings and `ARTFCT_PUBLIC_BASE_URL`
+still point at `https://artfct.dev`.
 
 ## API
 
