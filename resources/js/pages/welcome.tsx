@@ -1910,16 +1910,18 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 no accounts, no configuration.
                             </p>
                             <p style={{ margin: '0 0 0.8rem' }}>
-                                Every artifact is encrypted by default and uses
-                                a fragment passcode the server never sees.
-                                Public metadata stays visible for link previews.
-                                Choose from three tiers:{' '}
+                                Every artifact is encrypted in the browser with
+                                AES-GCM before it ever reaches the server. The
+                                encryption key lives in the URL fragment, which
+                                the server never sees. Choose from three access
+                                tiers:{' '}
                                 <span style={{ color: S.cyan }}>public</span>,{' '}
                                 <span style={{ color: S.cyan }}>secure</span>,
                                 or{' '}
                                 <span style={{ color: S.cyan }}>ephemeral</span>
-                                . Preview bodies can start blurred or unblurred
-                                per artifact.
+                                . All artifacts use sliding expiration — each
+                                access resets the clock. Default TTL is 5 days,
+                                configurable up to 1 year.
                             </p>
                             <p style={{ margin: 0 }}>
                                 Perfect for sharing UI prototypes, dashboard
@@ -1965,10 +1967,9 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             web content.
                         </FaqItem>
                         <FaqItem q="Is artfct free?">
-                            Yes. Public artifacts are free and permanent. Secure
-                            artifacts (encrypted with fragment passcodes) and
-                            higher usage tiers will be available as paid options
-                            in the future. For now, everything is free.
+                            Yes. All artifact tiers are free right now. Paid
+                            plans with higher usage limits may be added in the
+                            future, but the core service will remain free.
                         </FaqItem>
                         <FaqItem q="How does encryption work?">
                             Every artifact is encrypted in the browser using
@@ -1981,9 +1982,8 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                         </FaqItem>
                         <FaqItem q="What are the three tiers?">
                             <strong style={{ color: S.cyan }}>public</strong> —
-                            permanent, open-access URLs. Anyone with the link
-                            can view the content. Best for sharing demos,
-                            prototypes, and public documents.
+                            open-access URLs, shareable with anyone. Best for
+                            demos, prototypes, and public documents.
                             <br />
                             <strong style={{ color: S.cyan }}>secure</strong> —
                             high-entropy fragment keys with blurred previews by
@@ -1994,17 +1994,17 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             <strong style={{ color: S.cyan }}>
                                 ephemeral
                             </strong>{' '}
-                            — auto-expiring content with a fixed TTL (1 week to
-                            1 year). The artifact is permanently deleted after
-                            expiration. Best for temporary shares, drafts, and
-                            one-off reviews.
+                            — intentionally short-lived. Same as public, just
+                            named for things you don't need to keep. Best for
+                            temporary shares, drafts, and one-off reviews.
                         </FaqItem>
                         <FaqItem q="How long do artifacts last?">
-                            Public artifacts are permanent. Secure artifacts are
-                            permanent but require the full URL (including the
-                            fragment key). Ephemeral artifacts auto-delete after
-                            their configured TTL — choose from 1 week, 1 month,
-                            3 months, 6 months, or 1 year.
+                            All artifacts use sliding expiration — every access
+                            resets the clock. The default TTL is 5 days,
+                            configurable up to 1 year. If an artifact isn't
+                            accessed within its TTL, it expires and is deleted.
+                            There is no "permanent" tier — everything has a
+                            shelf life.
                         </FaqItem>
                         <FaqItem q="Can I use artfct from the CLI?">
                             Yes. Pipe HTML from stdin:{' '}
@@ -2113,7 +2113,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 name: 'Is artfct free?',
                                 acceptedAnswer: {
                                     '@type': 'Answer',
-                                    text: 'Yes. Public artifacts are free and permanent. Secure artifacts (encrypted with fragment passcodes) and higher usage tiers will be available as paid options in the future. For now, everything is free.',
+                                    text: 'Yes. All artifact tiers are free right now. Paid plans with higher usage limits may be added in the future, but the core service will remain free.',
                                 },
                             },
                             {
@@ -2129,7 +2129,15 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 name: 'What are the three tiers?',
                                 acceptedAnswer: {
                                     '@type': 'Answer',
-                                    text: 'Public — permanent, open-access URLs. Secure — high-entropy fragment keys with blurred previews by default. Ephemeral — auto-expiring content with a fixed TTL (1 week to 1 year).',
+                                    text: "Public — open-access URLs, shareable with anyone. Secure — high-entropy fragment keys with blurred previews by default. Ephemeral — intentionally short-lived, same as public but named for things you don't need to keep.",
+                                },
+                            },
+                            {
+                                '@type': 'Question',
+                                name: 'How long do artifacts last?',
+                                acceptedAnswer: {
+                                    '@type': 'Answer',
+                                    text: 'All artifacts use sliding expiration — every access resets the clock. Default TTL is 5 days, configurable up to 1 year. There is no permanent tier.',
                                 },
                             },
                             {

@@ -30,7 +30,7 @@ $blogPosts = [
 Route::inertia('/', 'welcome', [
     'meta' => [
         'title' => 'artfct — share HTML & markdown instantly',
-        'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Ephemeral by default.',
+        'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Encrypted by default.',
     ],
 ])->name('home');
 
