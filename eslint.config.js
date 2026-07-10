@@ -117,6 +117,7 @@ export default [
             'backend/build',
             'backend/target',
             'backend/.wrangler/**',
+            '.pi/**',
             'target',
             'bootstrap/ssr',
             'tailwind.config.js',

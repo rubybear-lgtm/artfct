@@ -2,6 +2,16 @@
     "$schema": "https://www.schemastore.org/package.json",
     "private": true,
     "type": "module",
+    "keywords": ["pi-package"],
+    "pi": {
+        "extensions": [".pi/extensions/artfct"],
+        "skills": ["./skills"]
+    },
+    "peerDependencies": {
+        "@earendil-works/pi-ai": "*",
+        "@earendil-works/pi-coding-agent": "*",
+        "typebox": "*"
+    },
     "scripts": {
         "prepare": "git config core.hooksPath .githooks",
         "build": "vite build",
