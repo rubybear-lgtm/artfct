@@ -95,8 +95,8 @@ Admin (`/v1/orgs/…`, `/v1/artifacts` list) and retrieval (`/v1/search`) are pr
 - [ ] `openapi/artfct.yaml` exists, validates as OpenAPI 3.1 (`npx @redocly/cli lint openapi/artfct.yaml` exits 0).
 - [ ] Every currently implemented Worker route appears in the document with request and response schemas.
 - [ ] Every unimplemented path carries `x-status: unimplemented` and is documented as returning 501.
-- [ ] `cargo test -p artfct-backend` includes a test asserting each handler's success response validates against its documented schema.
-- [ ] `cargo test -p artfct-cli` includes a test asserting the create request the CLI builds validates against `EphemeralArtifactRequest`.
+- [ ] `cargo test -p artfct-backend` includes a test asserting each currently implemented handler's success response validates against its documented schema; the reserved permanent-create response validates as a contract fixture until spec 4 implements its handler.
+- [ ] `cargo test -p artfct` includes a test asserting the create request the CLI builds validates against `EphemeralArtifactRequest`.
 - [ ] CI fails on a deliberately introduced field-name mismatch between code and document — demonstrated once, then reverted.
 - [ ] `https://artfct.dev/docs` renders from the document rather than hand-maintained content; the existing Inertia `docs` page consumes generated output.
 - [ ] The `provenance.sources` enum in the document matches the resolution chain spec 1 implements, exactly.

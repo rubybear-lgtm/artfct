@@ -2,6 +2,12 @@
 
 All notable changes to Artifact Engine will be recorded in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added the OpenAPI 3.1 contract, blocking contract-drift CI checks, and a generated API reference on `/docs` for Spec 0.
+
 ## 0.0.1 - 2026-06-03
 
 ### Added
