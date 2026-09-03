@@ -8,6 +8,7 @@ mod artifact_crypto;
 mod cli;
 mod doctor;
 mod mcp;
+mod provenance;
 mod setup;
 mod ui;
 mod uninstall;
@@ -81,11 +82,21 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
     let html = read_deploy_html(&args)?;
     let api_base_url =
         env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let cwd = env::current_dir().context("Failed to determine current directory")?;
+    let input = args.input();
+    let source_path = match &input {
+        cli::DeployInput::File(path) => Some(path.as_path()),
+        cli::DeployInput::Stdin => None,
+    };
+    let provenance = provenance::build_cli_provenance(&cwd, source_path);
     let prepared = artifact_crypto::prepare_artifact_request(
         &html,
-        args.tier.clone(),
-        args.ttl_minutes,
-        true,
+        artifact_crypto::ArtifactPreparationOptions {
+            tier: args.tier.clone(),
+            ttl_minutes: args.ttl_minutes,
+            preview_blurred: true,
+            provenance,
+        },
     )?;
 
     let label = match args.input() {

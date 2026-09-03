@@ -1,17 +1,19 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Debug, Clone, Deserialize)]
+use crate::provenance::Provenance;
+
+#[derive(Debug, Clone)]
 pub struct CreateArtifactRequest {
     pub body_ciphertext_b64: String,
     pub body_iv_b64: String,
     pub tier: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub ttl_minutes: Option<u64>,
     pub title: String,
     pub description: String,
     pub thumbnail: String,
     pub preview_blurred: bool,
+    pub provenance: Provenance,
 }
 
 #[derive(Serialize)]
@@ -26,40 +28,7 @@ struct EphemeralArtifactRequest<'a> {
     description: &'a str,
     thumbnail: &'a str,
     preview_blurred: bool,
-    provenance: Provenance<'a>,
-}
-
-#[derive(Serialize)]
-struct Provenance<'a> {
-    agent: Option<&'a str>,
-    agent_raw: Option<&'a str>,
-    agent_version: Option<&'a str>,
-    model: Option<&'a str>,
-    session_id: Option<&'a str>,
-    tool: Option<&'a str>,
-    repo_url: Option<&'a str>,
-    branch: Option<&'a str>,
-    commit_sha: Option<&'a str>,
-    dirty: Option<bool>,
-    source_path: Option<&'a str>,
-    client: &'static str,
-    client_version: &'static str,
-    sources: ProvenanceSources,
-}
-
-#[derive(Serialize)]
-struct ProvenanceSources {
-    agent: &'static str,
-    agent_raw: &'static str,
-    agent_version: &'static str,
-    model: &'static str,
-    session_id: &'static str,
-    tool: &'static str,
-    repo_url: &'static str,
-    branch: &'static str,
-    commit_sha: &'static str,
-    dirty: &'static str,
-    source_path: &'static str,
+    provenance: &'a Provenance,
 }
 
 impl CreateArtifactRequest {
@@ -74,34 +43,7 @@ impl CreateArtifactRequest {
             description: &self.description,
             thumbnail: &self.thumbnail,
             preview_blurred: self.preview_blurred,
-            provenance: Provenance {
-                agent: None,
-                agent_raw: None,
-                agent_version: None,
-                model: None,
-                session_id: None,
-                tool: Some("cli"),
-                repo_url: None,
-                branch: None,
-                commit_sha: None,
-                dirty: None,
-                source_path: None,
-                client: "artfct-cli",
-                client_version: env!("CARGO_PKG_VERSION"),
-                sources: ProvenanceSources {
-                    agent: "absent",
-                    agent_raw: "absent",
-                    agent_version: "absent",
-                    model: "absent",
-                    session_id: "absent",
-                    tool: "config",
-                    repo_url: "absent",
-                    branch: "absent",
-                    commit_sha: "absent",
-                    dirty: "absent",
-                    source_path: "absent",
-                },
-            },
+            provenance: &self.provenance,
         }
     }
 }
@@ -186,12 +128,14 @@ pub async fn delete_artifact(client: &reqwest::Client, api_base_url: &str, id: &
 #[cfg(test)]
 pub(crate) mod tests {
     use std::fs;
+    use std::path::Path;
 
     use anyhow::{anyhow, Context, Result};
     use serde_json::{json, Map, Value};
 
     use super::{artifact_endpoint, CreateArtifactRequest};
     use crate::artifact_crypto;
+    use crate::provenance::build_cli_provenance;
 
     #[test]
     fn builds_artifact_endpoint_without_double_slash() {
@@ -203,6 +147,7 @@ pub(crate) mod tests {
 
     #[test]
     fn serializes_create_artifact_payload() {
+        let provenance = build_cli_provenance(Path::new("."), None);
         let request = CreateArtifactRequest {
             body_ciphertext_b64: "ciphertext".to_string(),
             body_iv_b64: "nonce".to_string(),
@@ -212,62 +157,45 @@ pub(crate) mod tests {
             description: "World".to_string(),
             thumbnail: "https://example.com/thumb.png".to_string(),
             preview_blurred: true,
+            provenance,
         };
 
-        assert_eq!(
-            serde_json::to_value(request).expect("serializes request"),
-            json!({
-                "mode": "ephemeral",
-                "body_ciphertext_b64": "ciphertext",
-                "body_iv_b64": "nonce",
-                "tier": "ephemeral",
-                "ttl_minutes": 5,
-                "title": "Hello",
-                "description": "World",
-                "thumbnail": "https://example.com/thumb.png",
-                "preview_blurred": true,
-                "provenance": {
-                    "agent": null,
-                    "agent_raw": null,
-                    "agent_version": null,
-                    "model": null,
-                    "session_id": null,
-                    "tool": "cli",
-                    "repo_url": null,
-                    "branch": null,
-                    "commit_sha": null,
-                    "dirty": null,
-                    "source_path": null,
-                    "client": "artfct-cli",
-                    "client_version": env!("CARGO_PKG_VERSION"),
-                    "sources": {
-                        "agent": "absent",
-                        "agent_raw": "absent",
-                        "agent_version": "absent",
-                        "model": "absent",
-                        "session_id": "absent",
-                        "tool": "config",
-                        "repo_url": "absent",
-                        "branch": "absent",
-                        "commit_sha": "absent",
-                        "dirty": "absent",
-                        "source_path": "absent"
-                    }
-                }
-            })
-        );
+        let serialized = serde_json::to_value(request).expect("serializes request");
+        let mut expected = json!({
+            "mode": "ephemeral",
+            "body_ciphertext_b64": "ciphertext",
+            "body_iv_b64": "nonce",
+            "tier": "ephemeral",
+            "ttl_minutes": 5,
+            "title": "Hello",
+            "description": "World",
+            "thumbnail": "https://example.com/thumb.png",
+            "preview_blurred": true,
+        });
+        expected["provenance"] = serde_json::to_value(build_cli_provenance(Path::new("."), None))
+            .expect("serializes provenance");
+
+        assert_eq!(serialized, expected);
     }
 
     #[test]
     fn cli_create_request_validates_against_contract() {
         let prepared = artifact_crypto::prepare_artifact_request(
             "<html><head><title>Hello</title></head><body><p>World</p></body></html>",
-            "ephemeral".to_string(),
-            Some(5),
-            true,
+            artifact_crypto::ArtifactPreparationOptions {
+                tier: "ephemeral".to_string(),
+                ttl_minutes: None,
+                preview_blurred: true,
+                provenance: build_cli_provenance(Path::new("."), None),
+            },
         )
         .expect("prepares CLI artifact request");
         let payload = serde_json::to_value(prepared.request).expect("serializes CLI request");
+
+        assert!(!payload
+            .as_object()
+            .expect("CLI payload should be a JSON object")
+            .contains_key("ttl_minutes"));
 
         validate_contract_schema(&payload, "EphemeralArtifactRequest")
             .expect("CLI create request matches EphemeralArtifactRequest");

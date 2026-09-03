@@ -4,9 +4,10 @@ use base64::Engine;
 use ring::aead::{self, Aad, LessSafeKey, UnboundKey};
 use ring::digest;
 use ring::rand::{SecureRandom, SystemRandom};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::api;
+use crate::provenance::Provenance;
 
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
@@ -18,17 +19,22 @@ const SHARE_CODE_ALPHABET: &[u8; 62] =
 const MAX_HTML_BYTES: usize = 1024 * 1024;
 const AES_KEY_BYTES: usize = 32;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PreparedArtifactRequest {
     pub request: api::CreateArtifactRequest,
     pub fragment: String,
 }
 
+pub struct ArtifactPreparationOptions {
+    pub tier: String,
+    pub ttl_minutes: Option<u64>,
+    pub preview_blurred: bool,
+    pub provenance: Provenance,
+}
+
 pub fn prepare_artifact_request(
     html: &str,
-    tier: String,
-    ttl_minutes: Option<u64>,
-    preview_blurred: bool,
+    options: ArtifactPreparationOptions,
 ) -> Result<PreparedArtifactRequest> {
     let html = html.trim();
 
@@ -76,12 +82,13 @@ pub fn prepare_artifact_request(
     let request = api::CreateArtifactRequest {
         body_ciphertext_b64: URL_SAFE_NO_PAD.encode(ciphertext),
         body_iv_b64: URL_SAFE_NO_PAD.encode(iv_bytes),
-        tier,
-        ttl_minutes,
+        tier: options.tier,
+        ttl_minutes: options.ttl_minutes,
         title,
         description,
         thumbnail,
-        preview_blurred,
+        preview_blurred: options.preview_blurred,
+        provenance: options.provenance,
     };
 
     Ok(PreparedArtifactRequest {
@@ -222,15 +229,22 @@ fn strip_tags(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::prepare_artifact_request;
+    use std::path::Path;
+
+    use crate::provenance::build_cli_provenance;
+
+    use super::{prepare_artifact_request, ArtifactPreparationOptions};
 
     #[test]
     fn prepares_compact_share_fragment() {
         let prepared = prepare_artifact_request(
             "<html><head><title>Hello</title></head><body><p>World</p></body></html>",
-            "ephemeral".to_string(),
-            Some(5),
-            true,
+            ArtifactPreparationOptions {
+                tier: "ephemeral".to_string(),
+                ttl_minutes: Some(5),
+                preview_blurred: true,
+                provenance: build_cli_provenance(Path::new("."), None),
+            },
         )
         .expect("prepares artifact");
 
