@@ -11,6 +11,7 @@ const DEFAULT_TTL_MINUTES: u64 = 5 * 24 * 60;
 const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
 const ARTIFACT_ID_LENGTH: usize = 10;
+const NOT_IMPLEMENTED_STATUS: u16 = 501;
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
 const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
@@ -43,6 +44,174 @@ struct CreateArtifactResponse {
     preview_blurred: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct UpdateArtifactResponse {
+    id: String,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponse<'a> {
+    error: ErrorBody<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorBody<'a> {
+    code: ErrorCode,
+    message: &'a str,
+    details: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+#[allow(
+    dead_code,
+    reason = "reserved error codes are part of the wire contract"
+)]
+enum ErrorCode {
+    InvalidJson,
+    ValidationFailed,
+    InvalidArtifactId,
+    ArtifactNotFound,
+    BodyTooLarge,
+    BundleTooLarge,
+    EntrypointMissing,
+    InvalidPath,
+    DuplicatePath,
+    HashMismatch,
+    FileCountExceeded,
+    Unauthorized,
+    Forbidden,
+    NotImplemented,
+    InternalError,
+}
+
+impl ErrorCode {
+    #[allow(dead_code, reason = "used by native contract tests")]
+    const ALL: [Self; 15] = [
+        Self::InvalidJson,
+        Self::ValidationFailed,
+        Self::InvalidArtifactId,
+        Self::ArtifactNotFound,
+        Self::BodyTooLarge,
+        Self::BundleTooLarge,
+        Self::EntrypointMissing,
+        Self::InvalidPath,
+        Self::DuplicatePath,
+        Self::HashMismatch,
+        Self::FileCountExceeded,
+        Self::Unauthorized,
+        Self::Forbidden,
+        Self::NotImplemented,
+        Self::InternalError,
+    ];
+}
+
+#[derive(Debug)]
+struct JsonResponseDefinition {
+    status: u16,
+    body: serde_json::Value,
+    headers: Vec<(&'static str, &'static str)>,
+}
+
+#[derive(Debug)]
+struct HtmlResponseDefinition {
+    status: u16,
+    body: String,
+    headers: Vec<(&'static str, &'static str)>,
+}
+
+impl HtmlResponseDefinition {
+    fn preview(body: String, status: u16) -> Self {
+        Self {
+            status,
+            body,
+            headers: vec![
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("X-Frame-Options", "DENY"),
+                ("X-Content-Type-Options", "nosniff"),
+                ("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY),
+            ],
+        }
+    }
+
+    fn into_worker_response(self) -> Result<Response> {
+        let headers = Headers::new();
+        for (name, value) in self.headers {
+            headers.set(name, value)?;
+        }
+
+        Ok(Response::from_html(&self.body)?
+            .with_headers(headers)
+            .with_status(self.status))
+    }
+}
+
+#[derive(Debug)]
+struct EmptyResponseDefinition {
+    status: u16,
+    headers: Vec<(&'static str, &'static str)>,
+}
+
+impl EmptyResponseDefinition {
+    fn delete() -> Self {
+        Self {
+            status: 204,
+            headers: Vec::new(),
+        }
+    }
+
+    fn options() -> Self {
+        Self {
+            status: 204,
+            headers: vec![
+                ("Access-Control-Allow-Origin", "*"),
+                (
+                    "Access-Control-Allow-Methods",
+                    "POST, PATCH, DELETE, OPTIONS",
+                ),
+                (
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, Authorization",
+                ),
+            ],
+        }
+    }
+
+    fn into_worker_response(self) -> Result<Response> {
+        let mut response = Response::empty()?.with_status(self.status);
+        for (name, value) in self.headers {
+            response.headers_mut().set(name, value)?;
+        }
+
+        Ok(response)
+    }
+}
+
+impl JsonResponseDefinition {
+    fn json<T: Serialize>(value: T, status: u16) -> Self {
+        Self {
+            status,
+            body: serde_json::to_value(value).expect("response bodies are serializable"),
+            headers: Vec::new(),
+        }
+    }
+
+    fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
+        self.headers.push((name, value));
+        self
+    }
+
+    fn into_worker_response(self) -> Result<Response> {
+        let mut response = json_response(&self.body, self.status)?;
+        for (name, value) in self.headers {
+            response.headers_mut().set(name, value)?;
+        }
+
+        Ok(response)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 enum ArtifactTier {
@@ -73,6 +242,10 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
     let url = req.url()?;
     let path = url.path();
 
+    if let Some(response) = dispatch_unimplemented_route(&method, path) {
+        return response.into_worker_response();
+    }
+
     match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env).await,
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
@@ -90,15 +263,25 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
 async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     let payload = match req.json::<CreateArtifactRequest>().await {
         Ok(payload) => payload,
-        Err(_) => return json_error("Invalid JSON request body.", 400),
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
     };
 
     if payload.body_ciphertext_b64.trim().is_empty() {
-        return json_error("The body_ciphertext_b64 field is required.", 422);
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_ciphertext_b64 field is required.",
+            422,
+        );
     }
 
     if payload.body_iv_b64.trim().is_empty() {
-        return json_error("The body_iv_b64 field is required.", 422);
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_iv_b64 field is required.",
+            422,
+        );
     }
 
     let max_html_bytes = env_usize(env, "ARTFCT_MAX_HTML_BYTES", DEFAULT_MAX_HTML_BYTES);
@@ -108,6 +291,7 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
         Ok(bytes) => bytes,
         Err(_) => {
             return json_error(
+                ErrorCode::ValidationFailed,
                 "The body_ciphertext_b64 field must be valid base64url.",
                 422,
             );
@@ -115,17 +299,31 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     };
 
     if ciphertext_bytes.len() > max_html_bytes + 64 {
-        return json_error("The encrypted body exceeds the configured size limit.", 413);
+        return json_error(
+            ErrorCode::BodyTooLarge,
+            "The encrypted body exceeds the configured size limit.",
+            413,
+        );
     }
 
     let iv_bytes =
         match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload.body_iv_b64.trim()) {
             Ok(bytes) => bytes,
-            Err(_) => return json_error("The body_iv_b64 field must be valid base64url.", 422),
+            Err(_) => {
+                return json_error(
+                    ErrorCode::ValidationFailed,
+                    "The body_iv_b64 field must be valid base64url.",
+                    422,
+                );
+            }
         };
 
     if iv_bytes.len() != 12 {
-        return json_error("The body_iv_b64 field must decode to a 12-byte nonce.", 422);
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_iv_b64 field must decode to a 12-byte nonce.",
+            422,
+        );
     }
 
     let ttl_minutes = payload
@@ -135,6 +333,7 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
 
     if ttl_minutes == 0 || ttl_minutes > max_ttl_minutes {
         return json_error(
+            ErrorCode::ValidationFailed,
             "ttl_minutes must be between 1 and the configured maximum.",
             422,
         );
@@ -175,18 +374,7 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
         .await?;
 
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-    let response = CreateArtifactResponse {
-        id: artifact_id.clone(),
-        url: format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id),
-        tier: payload.tier,
-        expires_at: stored.expires_at,
-        title,
-        description,
-        thumbnail,
-        preview_blurred: stored.preview_blurred,
-    };
-
-    json_response(&response, 201)
+    build_create_artifact_response(&artifact_id, &base_url, &stored).into_worker_response()
 }
 
 async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
@@ -226,23 +414,23 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
     let url = format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id);
     let rendered = render_preview_shell(&stored, &url);
 
-    html_response(&rendered, 200)
+    build_preview_response(rendered).into_worker_response()
 }
 
 async fn delete_artifact(path: &str, env: &Env) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
     if !is_valid_artifact_id(artifact_id) {
-        return json_error("Invalid artifact id.", 400);
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
     }
 
     env.kv(KV_BINDING)?.delete(artifact_id).await?;
-    Response::empty().map(|response| response.with_status(204))
+    build_delete_response().into_worker_response()
 }
 
 async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
     if !is_valid_artifact_id(artifact_id) {
-        return json_error("Invalid artifact id.", 400);
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
     }
 
     #[derive(Deserialize)]
@@ -252,12 +440,15 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
 
     let payload = match req.json::<UpdateArtifactRequest>().await {
         Ok(payload) => payload,
-        Err(_) => return json_error("Invalid JSON request body.", 400),
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
     };
 
     let max_ttl_minutes = env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES);
     if payload.ttl_minutes == 0 || payload.ttl_minutes > max_ttl_minutes {
         return json_error(
+            ErrorCode::ValidationFailed,
             "ttl_minutes must be between 1 and the configured maximum.",
             422,
         );
@@ -269,7 +460,11 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
         .json::<StoredArtifact>()
         .await?
     else {
-        return json_error("Artifact not found or expired.", 404);
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or expired.",
+            404,
+        );
     };
 
     let ttl_seconds = (payload.ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
@@ -285,18 +480,40 @@ async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Res
         .execute()
         .await?;
 
-    #[derive(Serialize)]
-    struct UpdateArtifactResponse {
-        id: String,
-        expires_at: String,
-    }
+    build_update_artifact_response(artifact_id, &stored).into_worker_response()
+}
 
-    let response = UpdateArtifactResponse {
-        id: artifact_id.to_string(),
-        expires_at: stored.expires_at,
-    };
+fn build_create_artifact_response(
+    artifact_id: &str,
+    base_url: &str,
+    stored: &StoredArtifact,
+) -> JsonResponseDefinition {
+    JsonResponseDefinition::json(
+        CreateArtifactResponse {
+            id: artifact_id.to_string(),
+            url: format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id),
+            tier: stored.tier,
+            expires_at: stored.expires_at.clone(),
+            title: stored.title.clone(),
+            description: stored.description.clone(),
+            thumbnail: stored.thumbnail.clone(),
+            preview_blurred: stored.preview_blurred,
+        },
+        201,
+    )
+}
 
-    json_response(&response, 200)
+fn build_update_artifact_response(
+    artifact_id: &str,
+    stored: &StoredArtifact,
+) -> JsonResponseDefinition {
+    JsonResponseDefinition::json(
+        UpdateArtifactResponse {
+            id: artifact_id.to_string(),
+            expires_at: stored.expires_at.clone(),
+        },
+        200,
+    )
 }
 
 fn normalize_metadata_value(value: Option<String>, default: &str) -> String {
@@ -558,8 +775,56 @@ fn json_response<T: Serialize>(value: &T, status: u16) -> Result<Response> {
     Ok(response)
 }
 
-fn json_error(message: &str, status: u16) -> Result<Response> {
-    json_response(&serde_json::json!({ "error": message }), status)
+fn build_error_response(code: ErrorCode, message: &str, status: u16) -> JsonResponseDefinition {
+    JsonResponseDefinition::json(
+        ErrorResponse {
+            error: ErrorBody {
+                code,
+                message,
+                details: serde_json::json!({}),
+            },
+        },
+        status,
+    )
+}
+
+fn json_error(code: ErrorCode, message: &str, status: u16) -> Result<Response> {
+    build_error_response(code, message, status).into_worker_response()
+}
+
+fn is_unimplemented_route(method: &Method, path: &str) -> bool {
+    let segments = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    match method {
+        Method::Get => {
+            path == "/v1/artifacts"
+                || matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts"])
+                || matches!(segments.as_slice(), ["v1", "orgs", _, "export"])
+        }
+        Method::Patch => matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts", _]),
+        Method::Post => path == "/v1/search",
+        Method::Put => {
+            matches!(segments.as_slice(), ["v1", "artifacts", _, "files", _])
+        }
+        _ => false,
+    }
+}
+
+fn dispatch_unimplemented_route(method: &Method, path: &str) -> Option<JsonResponseDefinition> {
+    is_unimplemented_route(method, path).then_some(build_unimplemented_response())
+}
+
+fn build_unimplemented_response() -> JsonResponseDefinition {
+    build_error_response(
+        ErrorCode::NotImplemented,
+        "This operation is not implemented.",
+        NOT_IMPLEMENTED_STATUS,
+    )
+    .with_header("x-status", "unimplemented")
 }
 
 fn html_response(html: &str, status: u16) -> Result<Response> {
@@ -569,6 +834,14 @@ fn html_response(html: &str, status: u16) -> Result<Response> {
     headers.set("X-Content-Type-Options", "nosniff")?;
     headers.set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
     Response::from_html(html).map(|response| response.with_headers(headers).with_status(status))
+}
+
+fn build_preview_response(body: String) -> HtmlResponseDefinition {
+    HtmlResponseDefinition::preview(body, 200)
+}
+
+fn build_delete_response() -> EmptyResponseDefinition {
+    EmptyResponseDefinition::delete()
 }
 
 fn error_html_page(title: &str, message: &str) -> String {
@@ -616,19 +889,11 @@ fn not_found_response() -> Result<Response> {
 }
 
 fn options_response() -> Result<Response> {
-    let mut response = Response::empty()?.with_status(204);
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Origin", "*")?;
-    response.headers_mut().set(
-        "Access-Control-Allow-Methods",
-        "POST, PATCH, DELETE, OPTIONS",
-    )?;
-    response.headers_mut().set(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization",
-    )?;
-    Ok(response)
+    build_options_response().into_worker_response()
+}
+
+fn build_options_response() -> EmptyResponseDefinition {
+    EmptyResponseDefinition::options()
 }
 
 fn escape_attr(value: &str) -> String {
@@ -645,6 +910,532 @@ fn escape_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn openapi_contract() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../openapi/artfct.yaml"))
+            .expect("the OpenAPI contract must be JSON-compatible")
+    }
+
+    fn validate_schema(
+        contract: &serde_json::Value,
+        schema: &serde_json::Value,
+        instance: &serde_json::Value,
+    ) -> std::result::Result<(), String> {
+        if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+            let schema_name = reference
+                .strip_prefix("#/components/schemas/")
+                .ok_or_else(|| format!("unsupported schema reference: {reference}"))?;
+            return validate_schema(
+                contract,
+                &contract["components"]["schemas"][schema_name],
+                instance,
+            );
+        }
+
+        if let Some(branches) = schema.get("oneOf").and_then(serde_json::Value::as_array) {
+            let matches = branches
+                .iter()
+                .filter(|branch| validate_schema(contract, branch, instance).is_ok())
+                .count();
+            if matches != 1 {
+                return Err(format!(
+                    "expected exactly one oneOf branch to match, got {matches}"
+                ));
+            }
+        }
+
+        if let Some(expected) = schema.get("const") {
+            if expected != instance {
+                return Err(format!("expected constant {expected}, got {instance}"));
+            }
+        }
+
+        if let Some(values) = schema.get("enum").and_then(serde_json::Value::as_array) {
+            if !values.contains(instance) {
+                return Err(format!("{instance} is not in the documented enum"));
+            }
+        }
+
+        if let Some(schema_type) = schema.get("type") {
+            let types = schema_type
+                .as_array()
+                .map(|values| values.iter().collect::<Vec<_>>())
+                .unwrap_or_else(|| vec![schema_type]);
+            let matches_type = types.iter().any(|value| match value.as_str() {
+                Some("object") => instance.is_object(),
+                Some("array") => instance.is_array(),
+                Some("string") => instance.is_string(),
+                Some("integer") => instance.is_i64() || instance.is_u64(),
+                Some("number") => instance.is_number(),
+                Some("boolean") => instance.is_boolean(),
+                Some("null") => instance.is_null(),
+                _ => false,
+            });
+            if !matches_type {
+                return Err(format!("{instance} does not match type {schema_type}"));
+            }
+        }
+
+        if let Some(value) = instance.as_str() {
+            if let Some(min_length) = schema.get("minLength").and_then(serde_json::Value::as_u64) {
+                let length = value.chars().count() as u64;
+                if length < min_length {
+                    return Err(format!(
+                        "string length {length} is below minimum {min_length}"
+                    ));
+                }
+            }
+
+            if let Some(max_length) = schema.get("maxLength").and_then(serde_json::Value::as_u64) {
+                let length = value.chars().count() as u64;
+                if length > max_length {
+                    return Err(format!(
+                        "string length {length} exceeds maximum {max_length}"
+                    ));
+                }
+            }
+
+            if let Some(format) = schema.get("format").and_then(serde_json::Value::as_str) {
+                let matches_format = match format {
+                    "uri" => is_valid_uri(value),
+                    "date-time" => chrono::DateTime::parse_from_rfc3339(value).is_ok(),
+                    "date" => chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok(),
+                    "binary" => true,
+                    _ => return Err(format!("unsupported schema format {format}")),
+                };
+                if !matches_format {
+                    return Err(format!("{value:?} does not match format {format}"));
+                }
+            }
+
+            if let Some(pattern) = schema.get("pattern").and_then(serde_json::Value::as_str) {
+                if !matches_schema_pattern(pattern, value) {
+                    return Err(format!("{value:?} does not match pattern {pattern}"));
+                }
+            }
+        }
+
+        if let Some(value) = instance.as_f64() {
+            if let Some(minimum) = schema.get("minimum").and_then(serde_json::Value::as_f64) {
+                if value < minimum {
+                    return Err(format!("number {value} is below minimum {minimum}"));
+                }
+            }
+
+            if let Some(maximum) = schema.get("maximum").and_then(serde_json::Value::as_f64) {
+                if value > maximum {
+                    return Err(format!("number {value} exceeds maximum {maximum}"));
+                }
+            }
+        }
+
+        if let Some(object) = instance.as_object() {
+            let properties = schema
+                .get("properties")
+                .and_then(serde_json::Value::as_object);
+            if let Some(required) = schema.get("required").and_then(serde_json::Value::as_array) {
+                for property in required.iter().filter_map(serde_json::Value::as_str) {
+                    if !object.contains_key(property) {
+                        return Err(format!("missing required property {property}"));
+                    }
+                }
+            }
+
+            if schema.get("additionalProperties") == Some(&serde_json::Value::Bool(false)) {
+                let properties = properties.ok_or("object schema has no properties")?;
+                if let Some(property) = object.keys().find(|key| !properties.contains_key(*key)) {
+                    return Err(format!("undocumented property {property}"));
+                }
+            }
+
+            if let Some(properties) = properties {
+                for (name, property_schema) in properties {
+                    if let Some(value) = object.get(name) {
+                        validate_schema(contract, property_schema, value)?;
+                    }
+                }
+            }
+        }
+
+        if let Some(values) = instance.as_array() {
+            if let Some(min_items) = schema.get("minItems").and_then(serde_json::Value::as_u64) {
+                if values.len() < min_items as usize {
+                    return Err(format!(
+                        "array length {} is below minimum {min_items}",
+                        values.len()
+                    ));
+                }
+            }
+
+            if let Some(max_items) = schema.get("maxItems").and_then(serde_json::Value::as_u64) {
+                if values.len() > max_items as usize {
+                    return Err(format!(
+                        "array length {} exceeds maximum {max_items}",
+                        values.len()
+                    ));
+                }
+            }
+
+            if schema.get("uniqueItems") == Some(&serde_json::Value::Bool(true)) {
+                for (index, value) in values.iter().enumerate() {
+                    if values[..index].contains(value) {
+                        return Err(format!("array contains duplicate item at index {index}"));
+                    }
+                }
+            }
+        }
+
+        if let (Some(items), Some(values)) = (schema.get("items"), instance.as_array()) {
+            for value in values {
+                validate_schema(contract, items, value)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn is_valid_uri(value: &str) -> bool {
+        if value.chars().any(char::is_whitespace) {
+            return false;
+        }
+
+        let Some((scheme, remainder)) = value.split_once(':') else {
+            return false;
+        };
+        if scheme.is_empty()
+            || !scheme.chars().enumerate().all(|(index, character)| {
+                if index == 0 {
+                    character.is_ascii_alphabetic()
+                } else {
+                    character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+                }
+            })
+        {
+            return false;
+        }
+
+        if let Some(authority_and_path) = remainder.strip_prefix("//") {
+            authority_and_path
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|authority| !authority.is_empty())
+        } else {
+            !remainder.is_empty()
+        }
+    }
+
+    fn matches_schema_pattern(pattern: &str, value: &str) -> bool {
+        match pattern {
+            "^[A-Za-z0-9]{10}$" => {
+                value.len() == 10
+                    && value
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric())
+            }
+            "^[a-f0-9]{64}$" => {
+                value.len() == 64
+                    && value.chars().all(|character| {
+                        character.is_ascii_hexdigit() && !character.is_ascii_uppercase()
+                    })
+            }
+            "^https://" => value.starts_with("https://"),
+            "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$" => {
+                !value.is_empty()
+                    && !value.starts_with('/')
+                    && !value.get(..3).is_some_and(|prefix| {
+                        prefix.as_bytes()[1] == b':' && matches!(prefix.as_bytes()[2], b'/' | b'\\')
+                    })
+                    && !value.split('/').any(|segment| segment == "..")
+            }
+            _ => false,
+        }
+    }
+
+    fn assert_schema_matches(name: &str, instance: &serde_json::Value) {
+        let contract = openapi_contract();
+        validate_schema(
+            &contract,
+            &contract["components"]["schemas"][name],
+            instance,
+        )
+        .unwrap_or_else(|error| panic!("{name} mismatch: {error}"));
+    }
+
+    fn operation_response_schema<'a>(
+        contract: &'a serde_json::Value,
+        path: &str,
+        method: &str,
+        status: &str,
+        content_type: &str,
+    ) -> &'a serde_json::Value {
+        &contract["paths"][path][method]["responses"][status]["content"][content_type]["schema"]
+    }
+
+    fn stored_artifact() -> StoredArtifact {
+        StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Ephemeral,
+            title: "Artifact".to_string(),
+            description: "An encrypted artifact".to_string(),
+            thumbnail: "https://artfct.dev/og-image.svg".to_string(),
+            preview_blurred: true,
+            created_at: "2026-09-02T00:00:00Z".to_string(),
+            expires_at: "2026-09-03T00:00:00Z".to_string(),
+        }
+    }
+
+    fn documented_unimplemented_permanent_response_fixture() -> serde_json::Value {
+        serde_json::json!({
+            "id": "permanent1",
+            "url": "https://permanent1.artifacts.example.artfct.dev/",
+            "tier": "secure",
+            "missing_files": ["a".repeat(64)],
+        })
+    }
+
+    #[test]
+    fn create_ephemeral_response_matches_schema() {
+        let response =
+            build_create_artifact_response("abc1234567", "https://artfct.dev", &stored_artifact());
+
+        assert_eq!(response.status, 201);
+        assert_schema_matches("EphemeralArtifactResponse", &response.body);
+        assert_schema_matches("CreateArtifactResponse", &response.body);
+    }
+
+    #[test]
+    fn create_permanent_response_matches_schema() {
+        let response = documented_unimplemented_permanent_response_fixture();
+
+        assert_schema_matches("PermanentArtifactResponse", &response);
+        assert_schema_matches("CreateArtifactResponse", &response);
+    }
+
+    #[test]
+    fn error_envelope_matches_schema_for_each_error_code() {
+        let contract = openapi_contract();
+        let documented_codes = contract["components"]["schemas"]["ErrorCode"]["enum"]
+            .as_array()
+            .expect("ErrorCode must be an enum");
+        let mut production_codes = Vec::new();
+
+        for code in ErrorCode::ALL {
+            let response = build_error_response(code, "A useful error message.", 400);
+            validate_schema(
+                &contract,
+                &contract["components"]["schemas"]["ErrorEnvelope"],
+                &response.body,
+            )
+            .unwrap_or_else(|error| panic!("production error envelope mismatch: {error}"));
+            production_codes.push(response.body["error"]["code"].clone());
+        }
+
+        assert_eq!(&production_codes, documented_codes);
+
+        for (code, status) in [
+            (ErrorCode::InvalidJson, 400),
+            (ErrorCode::ValidationFailed, 422),
+            (ErrorCode::InvalidArtifactId, 400),
+            (ErrorCode::ArtifactNotFound, 404),
+            (ErrorCode::BodyTooLarge, 413),
+        ] {
+            assert_eq!(
+                build_error_response(code, "Handler error.", status).status,
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn unimplemented_paths_return_501() {
+        let contract = openapi_contract();
+
+        for (template, path_item) in contract["paths"]
+            .as_object()
+            .expect("paths must be an object")
+        {
+            for method_name in ["get", "post", "patch", "put", "delete", "options"] {
+                let operation = &path_item[method_name];
+                if operation
+                    .get("x-status")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("unimplemented")
+                {
+                    continue;
+                }
+
+                assert!(operation["responses"].get("501").is_some());
+                let path = template
+                    .replace("{org}", "acme")
+                    .replace("{id}", "abc1234567")
+                    .replace("{sha256}", &"a".repeat(64));
+                let method = match method_name {
+                    "get" => Method::Get,
+                    "post" => Method::Post,
+                    "patch" => Method::Patch,
+                    "put" => Method::Put,
+                    "delete" => Method::Delete,
+                    "options" => Method::Options,
+                    _ => unreachable!(),
+                };
+
+                let response = dispatch_unimplemented_route(&method, &path).unwrap_or_else(|| {
+                    panic!("{method_name} {path} must route to the 501 handler")
+                });
+                assert_eq!(response.status, NOT_IMPLEMENTED_STATUS);
+                assert_eq!(response.headers, vec![("x-status", "unimplemented")]);
+                assert_eq!(response.body["error"]["code"], "not_implemented");
+                assert_schema_matches("ErrorEnvelope", &response.body);
+            }
+        }
+    }
+
+    #[test]
+    fn schema_validator_rejects_malformed_constraint_values() {
+        let contract = serde_json::json!({"components": {"schemas": {}}});
+
+        let uri_schema = serde_json::json!({"type": "string", "format": "uri"});
+        assert!(validate_schema(
+            &contract,
+            &uri_schema,
+            &serde_json::Value::String("not a uri".to_string())
+        )
+        .is_err());
+        let date_time_schema = serde_json::json!({"type": "string", "format": "date-time"});
+        assert!(validate_schema(
+            &contract,
+            &date_time_schema,
+            &serde_json::Value::String("2026-99-99T00:00:00Z".to_string())
+        )
+        .is_err());
+        let length_schema = serde_json::json!({
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 4
+        });
+        assert!(validate_schema(
+            &contract,
+            &length_schema,
+            &serde_json::Value::String("x".to_string())
+        )
+        .is_err());
+        assert!(validate_schema(
+            &contract,
+            &length_schema,
+            &serde_json::Value::String("12345".to_string())
+        )
+        .is_err());
+
+        let constrained_number = serde_json::json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+        });
+        assert!(validate_schema(&contract, &constrained_number, &serde_json::json!(0)).is_err());
+        assert!(validate_schema(&contract, &constrained_number, &serde_json::json!(101)).is_err());
+
+        let constrained_array = serde_json::json!({
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {"type": "string"}
+        });
+        assert!(validate_schema(&contract, &constrained_array, &serde_json::json!([])).is_err());
+        assert!(validate_schema(
+            &contract,
+            &constrained_array,
+            &serde_json::json!(["a", "a"])
+        )
+        .is_err());
+        assert!(validate_schema(
+            &contract,
+            &constrained_array,
+            &serde_json::json!(["a", "b", "c"])
+        )
+        .is_err());
+
+        let valid_sha256 = serde_json::Value::String("a".repeat(64));
+        let sha256_schema = serde_json::json!({
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+        });
+        assert!(validate_schema(&contract, &sha256_schema, &valid_sha256).is_ok());
+        assert!(validate_schema(
+            &contract,
+            &sha256_schema,
+            &serde_json::Value::String("A".repeat(64))
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn implemented_handler_success_responses_match_documented_schemas() {
+        let contract = openapi_contract();
+        let update = build_update_artifact_response("abc1234567", &stored_artifact());
+        assert_eq!(update.status, 200);
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/artifacts/{id}",
+                "patch",
+                "200",
+                "application/json",
+            ),
+            &update.body,
+        )
+        .unwrap();
+
+        let stored = stored_artifact();
+        let rendered = render_preview_shell(&stored, "https://artfct.dev/p/abc1234567");
+        let preview = build_preview_response(rendered);
+        assert_eq!(preview.status, 200);
+        assert_eq!(
+            preview.headers[0],
+            ("Content-Type", "text/html; charset=utf-8")
+        );
+        validate_schema(
+            &contract,
+            operation_response_schema(&contract, "/p/{id}", "get", "200", "text/html"),
+            &serde_json::Value::String(preview.body.clone()),
+        )
+        .unwrap();
+
+        let delete = build_delete_response();
+        assert_eq!(delete.status, 204);
+        assert!(delete.headers.is_empty());
+        let delete_operation = &contract["paths"]["/v1/artifacts/{id}"]["delete"];
+        assert!(delete_operation["responses"]["204"]
+            .get("content")
+            .is_none());
+
+        for (path, method) in [
+            ("/v1/artifacts", "options"),
+            ("/v1/artifacts/{id}", "options"),
+            ("/v1/artifacts/{id}/files/{sha256}", "options"),
+            ("/p/{id}", "options"),
+        ] {
+            let options = build_options_response();
+            assert_eq!(options.status, 204);
+            assert_eq!(options.headers.len(), 3);
+            assert!(options
+                .headers
+                .contains(&("Access-Control-Allow-Origin", "*")));
+            assert!(options.headers.contains(&(
+                "Access-Control-Allow-Methods",
+                "POST, PATCH, DELETE, OPTIONS"
+            )));
+            assert!(options.headers.contains(&(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization"
+            )));
+            assert!(contract["paths"][path][method]["responses"]["204"]
+                .get("content")
+                .is_none());
+        }
+    }
 
     #[test]
     fn default_ttl_is_five_days() {
