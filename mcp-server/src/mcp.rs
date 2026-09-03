@@ -163,8 +163,9 @@ async fn call_tool(params: Value) -> Result<Value> {
         params.arguments.ttl_minutes,
         true,
     )?;
+    let request = mcp_create_request_payload(&prepared.request)?;
     let artifact =
-        api::deploy_artifact(&reqwest::Client::new(), &api_base_url, &prepared.request).await?;
+        api::deploy_artifact_payload(&reqwest::Client::new(), &api_base_url, &request).await?;
     let full_url = format!("{}{}", artifact.url, prepared.fragment);
 
     Ok(json!({
@@ -186,6 +187,22 @@ async fn call_tool(params: Value) -> Result<Value> {
             "preview_blurred": artifact.preview_blurred
         }
     }))
+}
+
+fn mcp_create_request_payload(request: &api::CreateArtifactRequest) -> Result<Value> {
+    let mut payload =
+        serde_json::to_value(request).context("Failed to serialize artifact request")?;
+    let provenance = payload
+        .get_mut("provenance")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("Artifact request provenance is missing"))?;
+
+    provenance.insert(
+        "tool".to_string(),
+        Value::String("deploy_to_canvas".to_string()),
+    );
+
+    Ok(payload)
 }
 
 fn json_rpc_success(id: Option<Value>, result: Value) -> Value {
@@ -211,7 +228,8 @@ fn json_rpc_error(id: Option<Value>, code: i32, message: impl Into<String>) -> V
 mod tests {
     use serde_json::json;
 
-    use super::handle_json_rpc;
+    use super::{handle_json_rpc, mcp_create_request_payload};
+    use crate::{api::tests::validate_contract_schema, artifact_crypto};
 
     #[tokio::test]
     async fn handles_initialize() {
@@ -241,5 +259,22 @@ mod tests {
         .expect("response");
 
         assert_eq!(response["result"]["tools"][0]["name"], "deploy_to_canvas");
+    }
+
+    #[test]
+    fn mcp_create_request_validates_against_contract() {
+        let prepared = artifact_crypto::prepare_artifact_request(
+            "<html><head><title>Hello</title></head><body><p>World</p></body></html>",
+            "ephemeral".to_string(),
+            Some(5),
+            true,
+        )
+        .expect("prepares MCP artifact request");
+        let payload =
+            mcp_create_request_payload(&prepared.request).expect("builds MCP request payload");
+
+        assert_eq!(payload["provenance"]["tool"], "deploy_to_canvas");
+        validate_contract_schema(&payload, "EphemeralArtifactRequest")
+            .expect("MCP create request matches EphemeralArtifactRequest");
     }
 }
