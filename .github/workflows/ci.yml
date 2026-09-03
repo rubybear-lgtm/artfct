@@ -16,6 +16,51 @@ permissions:
   contents: read
 
 jobs:
+  openapi_lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: openapi_lint
+        run: npx --yes @redocly/cli@2.15.2 lint openapi/artfct.yaml
+
+  contract_drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-contract-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: contract_drift
+        run: |
+          cargo test -p artfct-backend --locked
+          cargo test -p artfct --locked
+
   application:
     runs-on: ubuntu-latest
 
