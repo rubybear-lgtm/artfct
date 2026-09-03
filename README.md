@@ -233,10 +233,14 @@ When artfct is configured as an MCP server, agents get access to `deploy_to_canv
   "name": "deploy_to_canvas",
   "arguments": {
     "html": "<!DOCTYPE html>...",
-    "tier": "public"
+    "tier": "public",
+    "model": "optional-agent-attested-model"
   }
 }
 ```
+
+The optional `model` value is recorded as agent-attested provenance and is kept
+separate from process-observed identity.
 
 See [MCP Server Setup](#mcp-server-setup) above for configuration instructions.
 

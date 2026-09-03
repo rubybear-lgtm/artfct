@@ -7,6 +7,7 @@ use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::api;
 use crate::artifact_crypto;
+use crate::provenance::{self, McpProvenanceInput, ProvenanceSource};
 
 const PROTOCOL_VERSION: &str = "2025-11-25";
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
@@ -142,6 +143,7 @@ struct DeployToolArguments {
     html: String,
     tier: String,
     ttl_minutes: Option<u64>,
+    model: Option<String>,
 }
 
 pub async fn run_stdio_server(configured_host: Option<String>) -> Result<()> {
@@ -428,6 +430,10 @@ fn tools_list_result() -> Value {
                             "type": "integer",
                             "minimum": 1,
                             "description": "Optional artifact lifetime in minutes."
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Optional agent-attested model identifier."
                         }
                     },
                     "required": ["html", "tier"]
@@ -498,6 +504,16 @@ fn session_identity(session: &Session) -> (&str, HostSource) {
     )
 }
 
+fn provenance_source(source: HostSource) -> ProvenanceSource {
+    match source {
+        HostSource::Config => ProvenanceSource::Config,
+        HostSource::ClientInfo => ProvenanceSource::ClientInfo,
+        HostSource::Process => ProvenanceSource::Process,
+        HostSource::Env => ProvenanceSource::Env,
+        HostSource::Absent => ProvenanceSource::Absent,
+    }
+}
+
 fn prepare_mcp_tool_request(
     session: &Session,
     arguments: &DeployToolArguments,
@@ -507,29 +523,32 @@ fn prepare_mcp_tool_request(
         "mcp tool preparation: host={host} source={}",
         source.as_str()
     );
+    let cwd = std::env::current_dir().context("Failed to determine current directory")?;
+    let provenance = provenance::build_mcp_provenance(
+        &cwd,
+        McpProvenanceInput {
+            agent: session.host.normalized.clone(),
+            agent_raw: session.host.raw.clone(),
+            agent_version: session.client_version.clone(),
+            agent_source: provenance_source(source),
+            session_id: session.session_id.clone(),
+            model: arguments.model.clone(),
+        },
+    );
 
     artifact_crypto::prepare_artifact_request(
         &arguments.html,
-        arguments.tier.clone(),
-        arguments.ttl_minutes,
-        true,
+        artifact_crypto::ArtifactPreparationOptions {
+            tier: arguments.tier.clone(),
+            ttl_minutes: arguments.ttl_minutes,
+            preview_blurred: true,
+            provenance,
+        },
     )
 }
 
 fn mcp_create_request_payload(request: &api::CreateArtifactRequest) -> Result<Value> {
-    let mut payload =
-        serde_json::to_value(request).context("Failed to serialize artifact request")?;
-    let provenance = payload
-        .get_mut("provenance")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| anyhow!("Artifact request provenance is missing"))?;
-
-    provenance.insert(
-        "tool".to_string(),
-        Value::String("deploy_to_canvas".to_string()),
-    );
-
-    Ok(payload)
+    serde_json::to_value(request).context("Failed to serialize artifact request")
 }
 
 fn json_rpc_success(id: Option<Value>, result: Value) -> Value {
@@ -558,10 +577,10 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        call_tool, handle_json_rpc, mcp_create_request_payload, resolve_host, session_identity,
-        HostSource, Session,
+        call_tool, handle_json_rpc, mcp_create_request_payload, prepare_mcp_tool_request,
+        resolve_host, session_identity, DeployToolArguments, HostIdentity, HostSource, Session,
     };
-    use crate::{api::tests::validate_contract_schema, artifact_crypto};
+    use crate::api::tests::validate_contract_schema;
 
     #[tokio::test]
     async fn initialize_captures_client_info() {
@@ -782,15 +801,65 @@ mod tests {
         assert_eq!(response["result"]["tools"][0]["name"], "deploy_to_canvas");
     }
 
+    fn deploy_arguments(model: Option<&str>) -> DeployToolArguments {
+        DeployToolArguments {
+            html: "<html><body>Hello</body></html>".to_string(),
+            tier: "ephemeral".to_string(),
+            ttl_minutes: Some(5),
+            model: model.map(ToOwned::to_owned),
+        }
+    }
+
+    #[test]
+    fn mcp_builder_populates_agent_and_session() {
+        let mut session = Session::new_with_resolution(None, None, None);
+        session.host = HostIdentity {
+            normalized: Some("cursor".to_string()),
+            raw: Some("Cursor".to_string()),
+            source: HostSource::ClientInfo,
+        };
+        session.client_version = Some("2.1".to_string());
+
+        let prepared = prepare_mcp_tool_request(&session, &deploy_arguments(None))
+            .expect("prepares MCP artifact request");
+        let payload = mcp_create_request_payload(&prepared.request).expect("serializes request");
+
+        assert_eq!(payload["provenance"]["agent"], "cursor");
+        assert_eq!(payload["provenance"]["agent_version"], "2.1");
+        assert_eq!(
+            payload["provenance"]["session_id"],
+            session.session_id.as_str()
+        );
+        assert_eq!(payload["provenance"]["tool"], "deploy_to_canvas");
+    }
+
+    #[test]
+    fn model_argument_is_marked_self_reported() {
+        let session = Session::new_with_resolution(None, None, None);
+        let prepared = prepare_mcp_tool_request(&session, &deploy_arguments(Some("claude-opus-5")))
+            .expect("prepares MCP artifact request");
+        let payload = mcp_create_request_payload(&prepared.request).expect("serializes request");
+
+        assert_eq!(payload["provenance"]["model"], "claude-opus-5");
+        assert_eq!(payload["provenance"]["sources"]["model"], "self_reported");
+    }
+
+    #[test]
+    fn model_absent_records_absent_source() {
+        let session = Session::new_with_resolution(None, None, None);
+        let prepared = prepare_mcp_tool_request(&session, &deploy_arguments(None))
+            .expect("prepares MCP artifact request");
+        let payload = mcp_create_request_payload(&prepared.request).expect("serializes request");
+
+        assert!(payload["provenance"]["model"].is_null());
+        assert_eq!(payload["provenance"]["sources"]["model"], "absent");
+    }
+
     #[test]
     fn mcp_create_request_validates_against_contract() {
-        let prepared = artifact_crypto::prepare_artifact_request(
-            "<html><head><title>Hello</title></head><body><p>World</p></body></html>",
-            "ephemeral".to_string(),
-            Some(5),
-            true,
-        )
-        .expect("prepares MCP artifact request");
+        let session = Session::new_with_resolution(None, None, None);
+        let prepared = prepare_mcp_tool_request(&session, &deploy_arguments(None))
+            .expect("prepares MCP artifact request");
         let payload =
             mcp_create_request_payload(&prepared.request).expect("builds MCP request payload");
 
