@@ -7,6 +7,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 ### Added
 
 - Added the OpenAPI 3.1 contract, blocking contract-drift CI checks, and a generated API reference on `/docs` for Spec 0.
+- Added stateful MCP client identity, deterministic host-source resolution, per-process session IDs, and host-aware setup configuration for Spec 1.
 
 ## 0.0.1 - 2026-06-03
 
