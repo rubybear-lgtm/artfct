@@ -128,8 +128,12 @@ artfct setup --list
 Or run the server manually over stdio:
 
 ```sh
-artfct mcp serve
+artfct mcp serve --host cursor
 ```
+
+`artfct setup --silent` writes the matching `--host` value for Claude Code,
+Cursor, Gemini, Codex, and OpenCode. Project-local `.mcp.json` entries omit the
+flag when the client cannot be identified safely.
 
 To configure it manually in your client's settings file (Cursor's `mcp.json` or Claude Desktop's config file):
 
@@ -138,7 +142,7 @@ To configure it manually in your client's settings file (Cursor's `mcp.json` or 
     "mcpServers": {
         "artfct": {
             "command": "artfct",
-            "args": ["mcp", "serve"]
+            "args": ["mcp", "serve", "--host", "cursor"]
         }
     }
 }

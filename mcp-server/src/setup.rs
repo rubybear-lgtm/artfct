@@ -21,6 +21,9 @@ pub enum ConfigFormat {
 
 pub struct AgentConfig {
     pub name: &'static str,
+    /// The normalized host to pass to the MCP server for this named config.
+    /// Project-local config has no known host and therefore leaves this unset.
+    pub host: Option<&'static str>,
     pub path: PathBuf,
     pub format: ConfigFormat,
 }
@@ -32,26 +35,31 @@ pub fn discover_agents() -> Vec<AgentConfig> {
     if let Some(ref home) = home {
         agents.push(AgentConfig {
             name: "Claude Code",
+            host: Some("claude-code"),
             path: home.join(".mcp.json"),
             format: ConfigFormat::JsonMcpServers,
         });
         agents.push(AgentConfig {
             name: "Cursor",
+            host: Some("cursor"),
             path: home.join(".cursor").join("mcp.json"),
             format: ConfigFormat::JsonMcpServers,
         });
         agents.push(AgentConfig {
             name: "Gemini",
+            host: Some("gemini"),
             path: home.join(".gemini").join("settings.json"),
             format: ConfigFormat::JsonMcpServers,
         });
         agents.push(AgentConfig {
             name: "Codex",
+            host: Some("codex"),
             path: home.join(".codex").join("config.toml"),
             format: ConfigFormat::Toml,
         });
         agents.push(AgentConfig {
             name: "OpenCode",
+            host: Some("opencode"),
             path: home.join(".config").join("opencode").join("opencode.json"),
             format: ConfigFormat::JsonOpenCode,
         });
@@ -60,6 +68,7 @@ pub fn discover_agents() -> Vec<AgentConfig> {
     if let Ok(cwd) = std::env::current_dir() {
         agents.push(AgentConfig {
             name: "Current project",
+            host: None,
             path: cwd.join(".mcp.json"),
             format: ConfigFormat::JsonMcpServers,
         });
@@ -72,6 +81,13 @@ pub fn setup_agents(silent: bool) -> Result<()> {
     let agents = discover_agents();
 
     let binary = std::env::current_exe().context("Failed to determine CLI binary path")?;
+
+    setup_agents_with(&agents, &binary, silent).map(|_| ())
+}
+
+/// Configure the supplied agent configs using the same orchestration as the
+/// public setup command. The return value is the number of entries written.
+pub fn setup_agents_with(agents: &[AgentConfig], binary: &Path, silent: bool) -> Result<usize> {
     let binary_path = binary.to_string_lossy();
 
     ui::banner();
@@ -113,7 +129,14 @@ pub fn setup_agents(silent: bool) -> Result<()> {
             continue;
         }
 
-        match install_into(&agent.path, &binary_path, &agent.format) {
+        let install_result = match agent.host {
+            Some(host) => {
+                install_into_with_host(&agent.path, &binary_path, &agent.format, Some(host))
+            }
+            None => install_into(&agent.path, &binary_path, &agent.format),
+        };
+
+        match install_result {
             Ok(InstallResult::Written) => {
                 ui::item_success(format!("Configured {}", agent.name));
                 configured += 1;
@@ -162,7 +185,7 @@ pub fn setup_agents(silent: bool) -> Result<()> {
         eprintln!();
     }
 
-    Ok(())
+    Ok(configured)
 }
 
 pub fn list_configs() {
@@ -174,7 +197,8 @@ pub fn list_configs() {
     ui::banner();
     ui::header("Agent config paths");
     eprintln!();
-    for agent in discover_agents() {
+    let agents = discover_agents();
+    for agent in &agents {
         let marker = if agent.path.exists() {
             "exists"
         } else {
@@ -185,11 +209,24 @@ pub fn list_configs() {
             _ => "json",
         };
         eprintln!(
-            "  {marker}  {:<16}  {:<6}  {}",
+            "  {marker}  {:<16}  {:<6}  {:<12}  {}",
             agent.name,
             fmt,
+            agent.host.unwrap_or("(unknown)"),
             agent.path.display()
         );
+    }
+    eprintln!();
+    ui::header("MCP server commands");
+    eprintln!();
+    for agent in &agents {
+        match agent.host {
+            Some(host) => eprintln!("  {:<16} artfct mcp serve --host {host}", agent.name),
+            None => eprintln!(
+                "  {:<16} artfct mcp serve (project config; host omitted)",
+                agent.name
+            ),
+        }
     }
     eprintln!();
     ui::header("Example MCP server entry (JSON)");
@@ -198,7 +235,7 @@ pub fn list_configs() {
         "mcpServers": {
             "artfct": {
                 "command": binary_path,
-                "args": ["mcp", "serve"]
+                "args": ["mcp", "serve", "--host", "cursor"]
             }
         }
     });
@@ -230,11 +267,26 @@ pub fn install_into(
     binary_path: &str,
     format: &ConfigFormat,
 ) -> Result<InstallResult> {
+    install_into_with_host(config_path, binary_path, format, None)
+}
+
+/// Install the MCP entry and, when the config belongs to a named agent, pass
+/// that normalized agent name to the server through `--host`.
+pub fn install_into_with_host(
+    config_path: &Path,
+    binary_path: &str,
+    format: &ConfigFormat,
+    configured_host: Option<&str>,
+) -> Result<InstallResult> {
     ensure_parent(config_path)?;
     match format {
-        ConfigFormat::JsonMcpServers => install_json_mcp_servers(config_path, binary_path),
-        ConfigFormat::JsonOpenCode => install_json_opencode(config_path, binary_path),
-        ConfigFormat::Toml => install_toml(config_path, binary_path),
+        ConfigFormat::JsonMcpServers => {
+            install_json_mcp_servers(config_path, binary_path, configured_host)
+        }
+        ConfigFormat::JsonOpenCode => {
+            install_json_opencode(config_path, binary_path, configured_host)
+        }
+        ConfigFormat::Toml => install_toml(config_path, binary_path, configured_host),
     }
 }
 
@@ -248,7 +300,11 @@ pub fn remove_artfct_entry(config_path: &Path, format: &ConfigFormat) -> Result<
 
 // ── JSON mcpServers ────────────────────────────────────────────────────────────
 
-fn install_json_mcp_servers(config_path: &Path, binary_path: &str) -> Result<InstallResult> {
+fn install_json_mcp_servers(
+    config_path: &Path,
+    binary_path: &str,
+    configured_host: Option<&str>,
+) -> Result<InstallResult> {
     let mut parsed = read_json(config_path, serde_json::Value::Object(Default::default()))?;
 
     let servers = parsed
@@ -257,14 +313,28 @@ fn install_json_mcp_servers(config_path: &Path, binary_path: &str) -> Result<Ins
         .and_then(|s| s.as_object_mut());
 
     if let Some(servers) = servers {
-        if servers.contains_key("artfct") {
-            return Ok(InstallResult::AlreadyConfigured);
+        if let Some(entry) = servers.get_mut("artfct") {
+            let expected_args = serde_json::json!(mcp_args(configured_host));
+            if configured_host.is_none() || entry.get("args") == Some(&expected_args) {
+                return Ok(InstallResult::AlreadyConfigured);
+            }
+
+            if let Some(entry) = entry.as_object_mut() {
+                entry.insert("command".to_string(), binary_path.into());
+                entry.insert("args".to_string(), expected_args);
+            } else {
+                *entry = artfct_json_entry(binary_path, configured_host);
+            }
+            return write_json(config_path, &parsed);
         }
-        servers.insert("artfct".to_string(), artfct_json_entry(binary_path));
+        servers.insert(
+            "artfct".to_string(),
+            artfct_json_entry(binary_path, configured_host),
+        );
     } else if let Some(obj) = parsed.as_object_mut() {
         obj.insert(
             "mcpServers".to_string(),
-            serde_json::json!({"artfct": artfct_json_entry(binary_path)}),
+            serde_json::json!({"artfct": artfct_json_entry(binary_path, configured_host)}),
         );
     }
 
@@ -296,13 +366,17 @@ fn remove_json_mcp_servers(config_path: &Path) -> Result<bool> {
     Ok(removed)
 }
 
-fn artfct_json_entry(binary_path: &str) -> serde_json::Value {
-    serde_json::json!({"command": binary_path, "args": ["mcp", "serve"]})
+fn artfct_json_entry(binary_path: &str, configured_host: Option<&str>) -> serde_json::Value {
+    serde_json::json!({"command": binary_path, "args": mcp_args(configured_host)})
 }
 
 // ── JSON OpenCode ──────────────────────────────────────────────────────────────
 
-fn install_json_opencode(config_path: &Path, binary_path: &str) -> Result<InstallResult> {
+fn install_json_opencode(
+    config_path: &Path,
+    binary_path: &str,
+    configured_host: Option<&str>,
+) -> Result<InstallResult> {
     let default = serde_json::json!({"$schema": "https://opencode.ai/config.json"});
     let mut parsed = read_json(config_path, default)?;
 
@@ -312,14 +386,34 @@ fn install_json_opencode(config_path: &Path, binary_path: &str) -> Result<Instal
         .and_then(|s| s.as_object_mut());
 
     if let Some(mcp) = mcp {
-        if mcp.contains_key("artfct") {
-            return Ok(InstallResult::AlreadyConfigured);
+        if let Some(entry) = mcp.get_mut("artfct") {
+            let expected_command = serde_json::json!([binary_path, "mcp", "serve"]
+                .into_iter()
+                .chain(
+                    configured_host
+                        .into_iter()
+                        .flat_map(|host| ["--host", host])
+                )
+                .collect::<Vec<_>>());
+            if configured_host.is_none() || entry.get("command") == Some(&expected_command) {
+                return Ok(InstallResult::AlreadyConfigured);
+            }
+
+            if let Some(entry) = entry.as_object_mut() {
+                entry.insert("command".to_string(), expected_command);
+            } else {
+                *entry = artfct_opencode_entry(binary_path, configured_host);
+            }
+            return write_json(config_path, &parsed);
         }
-        mcp.insert("artfct".to_string(), artfct_opencode_entry(binary_path));
+        mcp.insert(
+            "artfct".to_string(),
+            artfct_opencode_entry(binary_path, configured_host),
+        );
     } else if let Some(obj) = parsed.as_object_mut() {
         obj.insert(
             "mcp".to_string(),
-            serde_json::json!({"artfct": artfct_opencode_entry(binary_path)}),
+            serde_json::json!({"artfct": artfct_opencode_entry(binary_path, configured_host)}),
         );
     }
 
@@ -354,39 +448,51 @@ fn remove_json_opencode(config_path: &Path) -> Result<bool> {
     Ok(removed)
 }
 
-fn artfct_opencode_entry(binary_path: &str) -> serde_json::Value {
+fn artfct_opencode_entry(binary_path: &str, configured_host: Option<&str>) -> serde_json::Value {
     serde_json::json!({
         "type": "local",
         "enabled": true,
-        "command": [binary_path, "mcp", "serve"]
+        "command": opencode_command(binary_path, configured_host)
     })
 }
 
 // ── TOML (Codex) ──────────────────────────────────────────────────────────────
 
-fn install_toml(config_path: &Path, binary_path: &str) -> Result<InstallResult> {
+fn install_toml(
+    config_path: &Path,
+    binary_path: &str,
+    configured_host: Option<&str>,
+) -> Result<InstallResult> {
     let mut doc = read_toml(config_path)?;
 
-    if doc
-        .get("mcp_servers")
-        .and_then(|v| v.as_table())
-        .is_some_and(|t| t.contains_key("artfct"))
+    if let Some(entry) = doc
+        .get_mut("mcp_servers")
+        .and_then(|v| v.as_table_mut())
+        .and_then(|t| t.get_mut("artfct"))
     {
-        return Ok(InstallResult::AlreadyConfigured);
+        let expected_args = toml::Value::Array(
+            mcp_args(configured_host)
+                .into_iter()
+                .map(toml::Value::String)
+                .collect(),
+        );
+        if configured_host.is_none() || entry.get("args") == Some(&expected_args) {
+            return Ok(InstallResult::AlreadyConfigured);
+        }
+
+        if let Some(entry) = entry.as_table_mut() {
+            entry.insert(
+                "command".to_string(),
+                toml::Value::String(binary_path.to_string()),
+            );
+            entry.insert("args".to_string(), expected_args);
+        } else {
+            *entry = toml::Value::Table(toml_entry(binary_path, configured_host));
+        }
+        return write_toml(config_path, &doc);
     }
 
-    let mut entry = toml::map::Map::new();
-    entry.insert(
-        "command".to_string(),
-        toml::Value::String(binary_path.to_string()),
-    );
-    entry.insert(
-        "args".to_string(),
-        toml::Value::Array(vec![
-            toml::Value::String("mcp".to_string()),
-            toml::Value::String("serve".to_string()),
-        ]),
-    );
+    let entry = toml_entry(binary_path, configured_host);
 
     let table = doc.as_table_mut().unwrap();
     let servers = table
@@ -398,6 +504,41 @@ fn install_toml(config_path: &Path, binary_path: &str) -> Result<InstallResult> 
         .insert("artfct".to_string(), toml::Value::Table(entry));
 
     write_toml(config_path, &doc)
+}
+
+fn mcp_args(configured_host: Option<&str>) -> Vec<String> {
+    let mut args = vec!["mcp".to_string(), "serve".to_string()];
+    if let Some(host) = configured_host {
+        args.extend(["--host".to_string(), host.to_string()]);
+    }
+    args
+}
+
+fn opencode_command(binary_path: &str, configured_host: Option<&str>) -> Vec<String> {
+    let mut command = vec![binary_path.to_string()];
+    command.extend(mcp_args(configured_host));
+    command
+}
+
+fn toml_entry(
+    binary_path: &str,
+    configured_host: Option<&str>,
+) -> toml::map::Map<String, toml::Value> {
+    let mut entry = toml::map::Map::new();
+    entry.insert(
+        "command".to_string(),
+        toml::Value::String(binary_path.to_string()),
+    );
+    entry.insert(
+        "args".to_string(),
+        toml::Value::Array(
+            mcp_args(configured_host)
+                .into_iter()
+                .map(toml::Value::String)
+                .collect(),
+        ),
+    );
+    entry
 }
 
 fn remove_toml(config_path: &Path) -> Result<bool> {
@@ -491,11 +632,149 @@ fn dirs_home() -> Option<PathBuf> {
 mod tests {
     use std::fs;
 
-    use super::{discover_agents, install_into, remove_artfct_entry, ConfigFormat, InstallResult};
+    use super::{
+        discover_agents, install_into, remove_artfct_entry, setup_agents_with, AgentConfig,
+        ConfigFormat, InstallResult,
+    };
 
     #[test]
     fn discovers_known_agents() {
         assert!(!discover_agents().is_empty());
+    }
+
+    #[test]
+    fn setup_writes_host_flag_for_each_agent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let agents = vec![
+            AgentConfig {
+                name: "Claude Code",
+                host: Some("claude-code"),
+                path: tmp.path().join("claude-code.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Cursor",
+                host: Some("cursor"),
+                path: tmp.path().join("cursor.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Gemini",
+                host: Some("gemini"),
+                path: tmp.path().join("gemini.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Codex",
+                host: Some("codex"),
+                path: tmp.path().join("codex.config"),
+                format: ConfigFormat::Toml,
+            },
+            AgentConfig {
+                name: "OpenCode",
+                host: Some("opencode"),
+                path: tmp.path().join("opencode.config"),
+                format: ConfigFormat::JsonOpenCode,
+            },
+        ];
+        let binary = tmp.path().join("artfct");
+        let binary_string = binary.to_str().expect("binary path is utf-8");
+
+        assert_eq!(
+            setup_agents_with(&agents, &binary, true).expect("configure agents"),
+            5
+        );
+
+        for agent in &agents {
+            let host = agent.host.expect("named agent host");
+            let content = fs::read_to_string(&agent.path).expect("read agent config");
+
+            match agent.format {
+                ConfigFormat::JsonMcpServers => {
+                    let parsed: serde_json::Value =
+                        serde_json::from_str(&content).expect("parse JSON config");
+                    assert_eq!(
+                        parsed["mcpServers"]["artfct"]["args"],
+                        serde_json::json!(["mcp", "serve", "--host", host])
+                    );
+                }
+                ConfigFormat::JsonOpenCode => {
+                    let parsed: serde_json::Value =
+                        serde_json::from_str(&content).expect("parse OpenCode config");
+                    assert_eq!(
+                        parsed["mcp"]["artfct"]["command"],
+                        serde_json::json!([binary_string, "mcp", "serve", "--host", host])
+                    );
+                }
+                ConfigFormat::Toml => {
+                    let parsed: toml::Value = toml::from_str(&content).expect("parse TOML config");
+                    assert_eq!(
+                        parsed["mcp_servers"]["artfct"]["args"],
+                        toml::Value::Array(
+                            ["mcp", "serve", "--host", host]
+                                .into_iter()
+                                .map(|arg| toml::Value::String(arg.to_string()))
+                                .collect()
+                        )
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn setup_is_idempotent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let agents = vec![
+            AgentConfig {
+                name: "Claude Code",
+                host: Some("claude-code"),
+                path: tmp.path().join("claude-code.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Cursor",
+                host: Some("cursor"),
+                path: tmp.path().join("cursor.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Gemini",
+                host: Some("gemini"),
+                path: tmp.path().join("gemini.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
+            AgentConfig {
+                name: "Codex",
+                host: Some("codex"),
+                path: tmp.path().join("codex.config"),
+                format: ConfigFormat::Toml,
+            },
+            AgentConfig {
+                name: "OpenCode",
+                host: Some("opencode"),
+                path: tmp.path().join("opencode.config"),
+                format: ConfigFormat::JsonOpenCode,
+            },
+        ];
+        let binary = tmp.path().join("artfct");
+
+        assert_eq!(
+            setup_agents_with(&agents, &binary, true).expect("first setup"),
+            5
+        );
+        let first: Vec<_> = agents
+            .iter()
+            .map(|agent| fs::read(&agent.path).expect("read first config"))
+            .collect();
+
+        assert_eq!(
+            setup_agents_with(&agents, &binary, true).expect("second setup"),
+            0
+        );
+        for (agent, first) in agents.iter().zip(first) {
+            assert_eq!(fs::read(&agent.path).expect("read second config"), first);
+        }
     }
 
     // ── JSON mcpServers ──────────────────────────────────────────────────────

@@ -28,8 +28,8 @@ async fn run() -> Result<()> {
     match cli.command {
         cli::Command::Deploy(args) => deploy_from_cli(args).await,
         cli::Command::Mcp {
-            command: cli::McpCommand::Serve,
-        } => mcp::run_stdio_server().await,
+            command: cli::McpCommand::Serve(args),
+        } => mcp::run_stdio_server(args.host).await,
         cli::Command::Delete(args) => delete_from_cli(args).await,
         cli::Command::Setup(args) => run_setup(args),
         cli::Command::Uninstall(args) => run_uninstall(args),

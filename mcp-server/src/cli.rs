@@ -11,7 +11,7 @@ use clap::{Args, Parser, Subcommand};
     after_help = "Examples:
   artfct deploy ./dashboard.html
   cat dashboard.html | artfct deploy --stdin --ttl-minutes 30
-  artfct mcp serve
+  artfct mcp serve --host cursor
   artfct doctor
 
 Environment:
@@ -113,9 +113,19 @@ pub enum McpCommand {
     #[command(
         about = "Run the MCP server over stdio for Claude Code, Codex, Gemini, and other agents",
         after_help = "Use this command as the MCP server command in an agent config:
-  artfct mcp serve"
+  artfct mcp serve --host cursor"
     )]
-    Serve,
+    Serve(McpServeArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpServeArgs {
+    #[arg(
+        long,
+        value_name = "HOST",
+        help = "Configured agent host (for example: cursor or claude-code)"
+    )]
+    pub host: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -208,9 +218,23 @@ mod tests {
         assert!(matches!(
             cli.command,
             Command::Mcp {
-                command: McpCommand::Serve,
+                command: McpCommand::Serve(_),
             }
         ));
+    }
+
+    #[test]
+    fn parses_mcp_serve_host() {
+        let cli = Cli::parse_from(["artfct", "mcp", "serve", "--host", "cursor"]);
+
+        let Command::Mcp {
+            command: McpCommand::Serve(args),
+        } = cli.command
+        else {
+            panic!("expected mcp serve command");
+        };
+
+        assert_eq!(args.host.as_deref(), Some("cursor"));
     }
 
     #[test]
