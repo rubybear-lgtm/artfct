@@ -22,87 +22,7 @@ const S = {
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
 
-// ── content ──────────────────────────────────────────────────────────────────
-const POST_REQUEST_FIELDS = [
-    {
-        name: 'body_ciphertext_b64',
-        type: 'string',
-        req: true,
-        note: 'Base64url ciphertext for the encrypted HTML body. Max 1 MB.',
-    },
-    {
-        name: 'body_iv_b64',
-        type: 'string',
-        req: true,
-        note: 'Base64url AES-GCM nonce for the encrypted body.',
-    },
-    {
-        name: 'tier',
-        type: 'enum',
-        req: true,
-        note: 'public · secure · ephemeral',
-    },
-    {
-        name: 'title',
-        type: 'string',
-        req: false,
-        note: 'Public metadata shown in previews and link unfurls.',
-    },
-    {
-        name: 'description',
-        type: 'string',
-        req: false,
-        note: 'Public metadata shown in previews and link unfurls.',
-    },
-    {
-        name: 'thumbnail',
-        type: 'string',
-        req: false,
-        note: 'Public image URL for previews and link unfurls.',
-    },
-    {
-        name: 'preview_blurred',
-        type: 'boolean',
-        req: false,
-        note: 'Whether the link preview starts blurred. Default: true.',
-    },
-    {
-        name: 'ttl_minutes',
-        type: 'integer',
-        req: false,
-        note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
-    },
-] as const;
-
-const POST_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '10-character token.' },
-    {
-        name: 'url',
-        type: 'string',
-        note: 'Canonical share link without the fragment passcode.',
-    },
-    { name: 'tier', type: 'string', note: 'The tier used.' },
-    { name: 'expires_at', type: 'string', note: 'ISO 8601 expiry timestamp.' },
-    { name: 'title', type: 'string', note: 'Public metadata.' },
-    { name: 'description', type: 'string', note: 'Public metadata.' },
-    { name: 'thumbnail', type: 'string', note: 'Public metadata.' },
-    {
-        name: 'preview_blurred',
-        type: 'boolean',
-        note: 'True when the link preview is blurred by default.',
-    },
-] as const;
-
-const ERROR_CODES = [
-    { code: '400', meaning: 'Malformed JSON body.' },
-    { code: '413', meaning: 'Payload exceeds 1 MB.' },
-    { code: '422', meaning: 'Missing or invalid field.' },
-    { code: '429', meaning: 'Rate limit exceeded.' },
-    { code: '404', meaning: 'Artifact not found or expired.' },
-] as const;
-
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
-const EXAMPLE_ID = 'bdf7cd9dd9';
 
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
@@ -160,62 +80,6 @@ const CLI_DEPLOY_FLAGS = [
         note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
     },
 ] as const;
-
-const CODE_POST_REQUEST = `curl -X POST https://artfct.dev/v1/artifacts \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "body_ciphertext_b64": "<ciphertext>",
-    "body_iv_b64": "<iv>",
-    "tier": "ephemeral",
-    "title": "Hello world",
-    "description": "Encrypted preview",
-    "thumbnail": "https://example.com/thumb.png",
-    "preview_blurred": true
-  }'`;
-
-const CODE_POST_RESPONSE = `{
-  "id": "${EXAMPLE_ID}",
-  "url": "https://artfct.dev/p/${EXAMPLE_ID}",
-  "tier": "ephemeral",
-  "expires_at": "2026-06-03T15:30:00Z",
-  "title": "Hello world",
-  "description": "Encrypted preview",
-  "thumbnail": "https://example.com/thumb.png",
-  "preview_blurred": true
-}`;
-
-const CODE_DELETE_REQUEST = `curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
-
-const PATCH_REQUEST_FIELDS = [
-    {
-        name: 'ttl_minutes',
-        type: 'integer',
-        req: true,
-        note: 'New TTL from now. Must be between 1 and 525600 (365 days).',
-    },
-] as const;
-
-const PATCH_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '10-character artifact token.' },
-    {
-        name: 'expires_at',
-        type: 'string',
-        note: 'Updated ISO 8601 expiry timestamp.',
-    },
-] as const;
-
-const CODE_PATCH_REQUEST = `curl -X PATCH https://artfct.dev/v1/artifacts/${EXAMPLE_ID} \\
-  -H "Content-Type: application/json" \\
-  -d '{"ttl_minutes": 10080}'`;
-
-const CODE_PATCH_RESPONSE = `{
-  "id": "${EXAMPLE_ID}",
-  "expires_at": "2026-06-10T15:30:00Z"
-}`;
-
-const CODE_ERROR_RESPONSE = `{
-  "error": "The body_ciphertext_b64 field is required."
-}`;
 
 // ── subcomponents ─────────────────────────────────────────────────────────────
 function SectionDivider({ id, label }: { id: string; label: string }) {
@@ -413,17 +277,283 @@ function Chip({ children }: { children: React.ReactNode }) {
     );
 }
 
+type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
+
+type OpenApiSchema = {
+    $ref?: string;
+    type?: string | string[];
+    format?: string;
+    description?: string;
+    enum?: Array<string | number | boolean>;
+    properties?: Record<string, OpenApiSchema>;
+    required?: string[];
+    oneOf?: OpenApiSchema[];
+    items?: OpenApiSchema;
+};
+
+type OpenApiMediaType = {
+    schema?: OpenApiSchema;
+    example?: unknown;
+};
+
+type OpenApiOperation = {
+    operationId?: string;
+    summary?: string;
+    description?: string;
+    security?: Array<Record<string, string[]>>;
+    requestBody?: {
+        content?: Record<string, OpenApiMediaType>;
+    };
+    responses?: Record<
+        string,
+        {
+            description?: string;
+            content?: Record<string, OpenApiMediaType>;
+        }
+    >;
+    'x-status'?: string;
+};
+
+type OpenApiPath = Partial<Record<HttpMethod, OpenApiOperation>> & {
+    'x-status'?: string;
+};
+
+type OpenApiDocument = {
+    openapi: string;
+    info: {
+        title: string;
+        version: string;
+        description?: string;
+    };
+    servers?: Array<{ url: string }>;
+    paths: Record<string, OpenApiPath>;
+    components?: {
+        schemas?: Record<string, OpenApiSchema>;
+    };
+};
+
+type DocsProps = {
+    contract: OpenApiDocument;
+};
+
+const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'patch', 'delete', 'put'];
+
+function schemaName(reference: string): string {
+    return reference.split('/').at(-1) ?? reference;
+}
+
+function resolveSchema(
+    schema: OpenApiSchema,
+    contract: OpenApiDocument,
+): OpenApiSchema {
+    if (!schema.$ref) {
+        return schema;
+    }
+
+    return contract.components?.schemas?.[schemaName(schema.$ref)] ?? schema;
+}
+
+function describeSchema(schema: OpenApiSchema): string {
+    if (schema.$ref) {
+        return schemaName(schema.$ref);
+    }
+
+    if (schema.oneOf) {
+        return schema.oneOf.map(describeSchema).join(' | ');
+    }
+
+    const type = Array.isArray(schema.type)
+        ? schema.type.join(' | ')
+        : (schema.type ?? 'object');
+    const format = schema.format ? `:${schema.format}` : '';
+    const values = schema.enum ? ` (${schema.enum.join(' · ')})` : '';
+
+    return `${type}${format}${values}`;
+}
+
+function schemaFields(
+    schema: OpenApiSchema | undefined,
+    contract: OpenApiDocument,
+) {
+    if (!schema) {
+        return [];
+    }
+
+    const resolved = resolveSchema(schema, contract);
+    const required = new Set(resolved.required ?? []);
+
+    return Object.entries(resolved.properties ?? {}).map(
+        ([name, property]) => ({
+            name,
+            type: describeSchema(property),
+            req: required.has(name),
+            note: property.description ?? '',
+        }),
+    );
+}
+
+function SchemaTable({
+    schema,
+    contract,
+}: {
+    schema: OpenApiSchema;
+    contract: OpenApiDocument;
+}) {
+    if (schema.oneOf) {
+        return (
+            <>
+                {schema.oneOf.map((variant) => (
+                    <div key={describeSchema(variant)}>
+                        <Label>{describeSchema(variant)}</Label>
+                        <SchemaTable schema={variant} contract={contract} />
+                    </div>
+                ))}
+            </>
+        );
+    }
+
+    const fields = schemaFields(schema, contract);
+
+    if (fields.length === 0) {
+        return <Chip>{describeSchema(schema)}</Chip>;
+    }
+
+    return <FieldTable fields={fields} />;
+}
+
+function OpenApiReference({ contract }: { contract: OpenApiDocument }) {
+    const operations = Object.entries(contract.paths).flatMap(([path, item]) =>
+        HTTP_METHODS.flatMap((method) => {
+            const operation = item[method];
+
+            return operation ? [{ method, path, item, operation }] : [];
+        }),
+    );
+
+    return (
+        <>
+            <SectionDivider id="overview" label="rest api" />
+
+            <div
+                style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                    marginBottom: '1.5rem',
+                }}
+            >
+                <Chip>
+                    base url:{' '}
+                    {contract.servers?.[0]?.url ?? 'https://artfct.dev'}
+                </Chip>
+                <Chip>openapi: {contract.openapi}</Chip>
+                <Chip>version: {contract.info.version}</Chip>
+            </div>
+
+            {contract.info.description && (
+                <Prose>{contract.info.description}</Prose>
+            )}
+
+            {operations.map(({ method, path, item, operation }) => {
+                const request =
+                    operation.requestBody?.content?.['application/json'];
+                const status = operation['x-status'] ?? item['x-status'];
+                const security = (operation.security ?? [])
+                    .flatMap((requirement) => Object.keys(requirement))
+                    .join(' · ');
+
+                return (
+                    <section key={`${method}:${path}`}>
+                        <SectionDivider
+                            id={operation.operationId ?? `${method}-${path}`}
+                            label={`${method.toUpperCase()} ${path}`}
+                        />
+
+                        <div
+                            style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.5rem',
+                                marginBottom: '1rem',
+                            }}
+                        >
+                            <Chip>{status ?? 'implemented'}</Chip>
+                            <Chip>{security || 'anonymous'}</Chip>
+                        </div>
+
+                        {operation.summary && (
+                            <Label>{operation.summary}</Label>
+                        )}
+                        {operation.description && (
+                            <Prose>{operation.description}</Prose>
+                        )}
+
+                        {request?.schema && (
+                            <>
+                                <Label>request body</Label>
+                                <SchemaTable
+                                    schema={request.schema}
+                                    contract={contract}
+                                />
+                                {request.example !== undefined && (
+                                    <CodeBlock
+                                        code={JSON.stringify(
+                                            request.example,
+                                            null,
+                                            2,
+                                        )}
+                                    />
+                                )}
+                            </>
+                        )}
+
+                        <Label>responses</Label>
+                        <FieldTable
+                            fields={Object.entries(
+                                operation.responses ?? {},
+                            ).map(([code, response]) => {
+                                const responseMedia =
+                                    response.content?.['application/json'] ??
+                                    response.content?.['text/html'];
+
+                                return {
+                                    name: code,
+                                    type: responseMedia?.schema
+                                        ? describeSchema(responseMedia.schema)
+                                        : 'empty',
+                                    note: response.description ?? '',
+                                };
+                            })}
+                        />
+                    </section>
+                );
+            })}
+        </>
+    );
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
-export default function Docs() {
+export default function Docs({ contract }: DocsProps) {
+    const operationLinks = Object.entries(contract.paths).flatMap(
+        ([path, item]) =>
+            HTTP_METHODS.flatMap((method) => {
+                const operation = item[method];
+
+                return operation
+                    ? [
+                          {
+                              href: `#${operation.operationId ?? `${method}-${path}`}`,
+                              label: `${method} ${path}`,
+                          },
+                      ]
+                    : [];
+            }),
+    );
     const NAV_LINKS = [
         { href: '#cli', label: 'cli' },
         { href: '#skills', label: 'skills' },
         { href: '#overview', label: 'rest api' },
-        { href: '#create', label: 'create' },
-        { href: '#delete', label: 'delete' },
-        { href: '#update', label: 'update' },
-        { href: '#errors', label: 'errors' },
-        { href: '#limits', label: 'rate limits' },
+        ...operationLinks,
     ];
 
     return (
@@ -710,230 +840,8 @@ export default function Docs() {
                         .
                     </Prose>
 
-                    {/* ── overview ─────────────────────────────────────────── */}
-                    <SectionDivider id="overview" label="rest api" />
-
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.5rem',
-                            marginBottom: '1.5rem',
-                        }}
-                    >
-                        <Chip>base url: https://artfct.dev</Chip>
-                        <Chip>content-type: application/json</Chip>
-                        <Chip>max payload: 1 mb</Chip>
-                    </div>
-
-                    <Prose>
-                        No authentication required. Requests are rate-limited
-                        per IP at the Cloudflare edge — see{' '}
-                        <a
-                            href="#limits"
-                            style={{ color: S.blue, textDecoration: 'none' }}
-                        >
-                            rate limits
-                        </a>
-                        .
-                    </Prose>
-
-                    <Prose>
-                        Artifacts are served at{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            /p/:id#&lt;key&gt;
-                        </code>
-                        . When the fragment key is present the artifact is
-                        decrypted client-side and rendered fullscreen. Without
-                        the key, a metadata preview page is shown instead — used
-                        by link unfurlers and OG scrapers. That endpoint is
-                        browser-facing and not part of this API.
-                    </Prose>
-
-                    {/* ── create ───────────────────────────────────────────── */}
-                    <SectionDivider id="create" label="POST /v1/artifacts" />
-
-                    <Prose>
-                        Creates a new encrypted artifact and returns the
-                        canonical share URL. The client appends the fragment
-                        passcode before sharing.
-                    </Prose>
-
-                    <Label>request body</Label>
-                    <FieldTable fields={POST_REQUEST_FIELDS} />
-
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <div
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '11px',
-                                color: S.base1,
-                                marginBottom: '0.75rem',
-                            }}
-                        >
-                            <strong style={{ color: S.base00 }}>
-                                tier values
-                            </strong>
-                            <span
-                                style={{ margin: '0 0.4rem', color: S.base2 }}
-                            >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>public</span> open
-                            link
-                            <span
-                                style={{ margin: '0 0.5rem', color: S.base2 }}
-                            >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>secure</span>{' '}
-                            high-entropy URL
-                            <span
-                                style={{ margin: '0 0.5rem', color: S.base2 }}
-                            >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>ephemeral</span>{' '}
-                            auto-expires after TTL
-                        </div>
-                    </div>
-
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_POST_REQUEST} />
-
-                    <Label>response — 201 created</Label>
-                    <FieldTable fields={POST_RESPONSE_FIELDS} />
-                    <CodeBlock code={CODE_POST_RESPONSE} />
-
-                    {/* ── delete ───────────────────────────────────────────── */}
-                    <SectionDivider
-                        id="delete"
-                        label="DELETE /v1/artifacts/:id"
-                    />
-
-                    <Prose>
-                        Immediately evicts an artifact from the store. Returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            204 No Content
-                        </code>{' '}
-                        on success. Use the{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            id
-                        </code>{' '}
-                        from the create response.
-                    </Prose>
-
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_DELETE_REQUEST} />
-
-                    {/* ── update ───────────────────────────────────────────── */}
-                    <SectionDivider
-                        id="update"
-                        label="PATCH /v1/artifacts/:id"
-                    />
-
-                    <Prose>
-                        Extends the TTL of an existing artifact from now.
-                        Returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            404
-                        </code>{' '}
-                        if the artifact has already expired.
-                    </Prose>
-
-                    <Label>request body</Label>
-                    <FieldTable fields={PATCH_REQUEST_FIELDS} />
-
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_PATCH_REQUEST} />
-
-                    <Label>response — 200 ok</Label>
-                    <FieldTable fields={PATCH_RESPONSE_FIELDS} />
-                    <CodeBlock code={CODE_PATCH_RESPONSE} />
-
-                    {/* ── errors ───────────────────────────────────────────── */}
-                    <SectionDivider id="errors" label="errors" />
-
-                    <Prose>
-                        All errors return a JSON body with a single{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            error
-                        </code>{' '}
-                        field.
-                    </Prose>
-
-                    <CodeBlock code={CODE_ERROR_RESPONSE} />
-
-                    <FieldTable
-                        fields={ERROR_CODES.map((e) => ({
-                            name: e.code,
-                            type: '',
-                            note: e.meaning,
-                        }))}
-                    />
-
-                    {/* ── rate limits ──────────────────────────────────────── */}
-                    <SectionDivider id="limits" label="rate limits" />
-
-                    <Prose>
-                        Rate limits are enforced at the Cloudflare WAF before
-                        requests reach the worker. Exceeding a limit returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            429
-                        </code>
-                        .
-                    </Prose>
-
-                    <FieldTable
-                        fields={[
-                            {
-                                name: 'POST /v1/artifacts',
-                                type: '',
-                                note: '60 requests / minute per IP',
-                            },
-                            {
-                                name: 'GET /p/:id',
-                                type: '',
-                                note: '200 requests / minute per IP',
-                            },
-                        ]}
-                    />
+                    {/* Generated directly from openapi/artfct.yaml. */}
+                    <OpenApiReference contract={contract} />
                 </div>
 
                 {/* ── footer ───────────────────────────────────────────────── */}
