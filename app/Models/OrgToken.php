@@ -27,10 +27,11 @@ use Illuminate\Support\Carbon;
  * @property string $last_four
  * @property Carbon $expires_at
  * @property Carbon|null $revoked_at
+ * @property array<int, string>|null $slack_channels
  * @property-read Team $team
  * @property-read User $user
  */
-#[Fillable(['team_id', 'user_id', 'name', 'jti', 'role', 'last_four', 'expires_at'])]
+#[Fillable(['team_id', 'user_id', 'name', 'jti', 'role', 'last_four', 'expires_at', 'slack_channels'])]
 class OrgToken extends Model
 {
     /** @use HasFactory<OrgTokenFactory> */
@@ -86,6 +87,7 @@ class OrgToken extends Model
             'role' => TeamRole::class,
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'slack_channels' => 'array',
         ];
     }
 }

@@ -33,6 +33,12 @@ use App\Services\Indexing\VectorIndexContract;
 use App\Services\Polis\FakePolisClient;
 use App\Services\Polis\PolisClientContract;
 use App\Services\Polis\RealPolisClient;
+use App\Services\Slack\ArtifactSharingContract;
+use App\Services\Slack\FakeArtifactSharing;
+use App\Services\Slack\FakeSlackPost;
+use App\Services\Slack\RealArtifactSharing;
+use App\Services\Slack\RealSlackPost;
+use App\Services\Slack\SlackPostContract;
 use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
@@ -101,6 +107,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             BillingContract::class,
             app()->environment('testing') ? FakeBilling::class : RealBilling::class,
+        );
+        $this->app->singleton(
+            ArtifactSharingContract::class,
+            app()->environment('testing') ? FakeArtifactSharing::class : RealArtifactSharing::class,
+        );
+        $this->app->singleton(
+            SlackPostContract::class,
+            app()->environment('testing') ? FakeSlackPost::class : RealSlackPost::class,
         );
     }
 

@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $stripe_subscription_id
  * @property int|null $seats_billed
  * @property string|null $custom_hostname
+ * @property string|null $slack_workspace_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at

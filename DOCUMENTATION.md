@@ -574,3 +574,39 @@ the validation rule removed, a duplicate claim surfaces as a raw
 message, not a 500" half depends on — the validation rule is. No billing
 settings UI exists yet to set this from the console; the route and
 controller are real and tested.
+
+## Slack (spec 15)
+
+**Unfurl richness has no viewer parameter.** `UnfurlService::unfurl(Team,
+artifactId)` decides purely from `ArtifactSharingContract::sharingLevelFor()`
+— public gets full metadata, domain-restricted gets title only,
+org-private (and an unrecognized/missing artifact) always gets a bare
+card. This is deliberate, not a shortcut: Slack fetches a URL's unfurl
+once and caches it for the whole channel, so there is no per-viewer
+identity to check in the first place — building one would be dead code
+that looked like a security control without being one.
+
+**Workspace-to-org resolution.** `teams.slack_workspace_id` is unique,
+and `SlashCommandService` requires the Slack user's linked
+`external_identities` row to belong to a user who is a *member of the
+team that workspace maps to* — not just linked anywhere. That's what
+makes "linked to org A, command run in org B's workspace" fail closed
+(DoD: "gets no results from org B") rather than accidentally resolving
+through some other membership.
+
+**Not wired in this environment: Slack request-signature verification.**
+Every inbound Slack request (slash commands today; the Events API
+`link_shared` webhook this session didn't build) is normally verified
+against an HMAC over the raw body and timestamp, keyed by a live app's
+signing secret. There is no live Slack app here to verify a real
+signature against, so `SlashCommandController` accepts any well-formed
+POST. This is a real gap for a production deployment, not a cosmetic
+one — the fix is a middleware computing and comparing the HMAC once a
+signing secret exists, gating the route above.
+
+**No install/OAuth flow.** `slack_workspace_id` and `external_identities`
+(provider `slack`) are populated directly in tests; the OAuth flow that
+would populate them from a real Slack app install was not built. This is
+a separate integration from spec 6's WorkOS AuthKit OAuth flow (which
+*is* built) — Slack's own OAuth was out of scope per the mock-only
+decision for this spec.

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\SearchController;
+use App\Http\Controllers\Slack\SlashCommandController;
 use App\Http\Middleware\AuthenticateOrgToken;
 use Illuminate\Support\Facades\Route;
 
@@ -12,3 +13,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(AuthenticateOrgToken::class)->group(function () {
     Route::post('search', [SearchController::class, 'search'])->name('api.search');
 });
+
+// Slack's own request-signature check gates this route in production
+// (not implemented here — see SlashCommandController's docblock).
+Route::post('slack/commands', [SlashCommandController::class, 'handle'])->name('api.slack.commands');
