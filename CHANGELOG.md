@@ -11,6 +11,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added required CLI/MCP provenance with Git discovery, per-field source attribution, credential-safe remotes, and optional self-reported model identity for Spec 2.
 - Added Spec 3 permanent single-file storage with D1 metadata, R2 raw blobs, content-addressed IDs, deduplication, and CLI export; ephemeral KV behavior remains unchanged.
 - Added Spec 4 deterministic multi-file permanent bundles, manifest validation, missing-file uploads, nested asset previews, and directory deployment with `--entrypoint`.
+- Added Spec 5 server-side origin isolation: per-artifact `<tenant-slug>--<artifact-id>.artfct.dev` hostnames, cookieless HMAC-signed access tokens with artifact scoping and expiry, and per-artifact CSP derived from manifest `external_origins`/`unsafe_eval`; free-tier `/p/{id}` links are unchanged.
 
 ## 0.0.1 - 2026-06-03
 

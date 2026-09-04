@@ -750,6 +750,33 @@ pub fn content_hash(content: &[u8]) -> String {
         .collect()
 }
 
+/// HMAC-SHA256 (RFC 2104), built on the local `sha256` implementation so
+/// access-token signing needs no additional crate.
+pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    const BLOCK_SIZE: usize = 64;
+    let mut block_key = [0u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        block_key[..32].copy_from_slice(&sha256(key));
+    } else {
+        block_key[..key.len()].copy_from_slice(key);
+    }
+
+    let mut inner_pad = [0x36u8; BLOCK_SIZE];
+    let mut outer_pad = [0x5cu8; BLOCK_SIZE];
+    for index in 0..BLOCK_SIZE {
+        inner_pad[index] ^= block_key[index];
+        outer_pad[index] ^= block_key[index];
+    }
+
+    let mut inner_message = inner_pad.to_vec();
+    inner_message.extend_from_slice(message);
+    let inner_digest = sha256(&inner_message);
+
+    let mut outer_message = outer_pad.to_vec();
+    outer_message.extend_from_slice(&inner_digest);
+    sha256(&outer_message)
+}
+
 pub fn public_id(hash: &str) -> String {
     hash.chars().take(PUBLIC_ID_LENGTH).collect()
 }
@@ -881,6 +908,21 @@ mod tests {
         assert!(id
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
+    }
+
+    #[test]
+    fn hmac_sha256_matches_known_test_vector() {
+        // RFC 4231 test case 1.
+        let key = [0x0bu8; 20];
+        let mac = hmac_sha256(&key, b"Hi There");
+        let hex = mac
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        assert_eq!(
+            hex,
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
     }
 
     #[test]

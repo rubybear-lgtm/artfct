@@ -752,6 +752,11 @@
               "format": "uri",
               "pattern": "^https://"
             }
+          },
+          "unsafe_eval": {
+            "type": "boolean",
+            "default": false,
+            "description": "Grants 'unsafe-eval' in the isolated-origin CSP script-src. Defaults to false; must be explicitly declared."
           }
         }
       },

@@ -24,6 +24,14 @@ const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
 const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
 const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none';";
+/// Wildcard suffix for the per-artifact isolated origin scheme:
+/// `<tenant-slug>--<artifact-id>.artfct.dev`. One wildcard level, covered by
+/// Universal SSL (spec 05).
+const ARTIFACT_ORIGIN_SUFFIX: &str = ".artfct.dev";
+/// Env var carrying the HMAC secret used to sign/verify isolated-origin
+/// access tokens. Follows the same fail-closed pattern as `ARTFCT_ORG_TOKEN`:
+/// a missing binding never authorizes a token, regardless of signature.
+const ARTIFACT_TOKEN_SECRET_ENV: &str = "ARTFCT_ARTIFACT_TOKEN_SECRET";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,6 +73,8 @@ struct PermanentManifest {
     entrypoint: String,
     files: Vec<PermanentManifestFile>,
     external_origins: Vec<String>,
+    #[serde(default)]
+    unsafe_eval: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -561,6 +571,11 @@ fn validate_permanent_manifest(raw: &Value) -> Result<(PermanentManifest, String
         .collect::<Result<Vec<_>, _>>()?;
     external_origins.sort();
     external_origins.dedup();
+    let unsafe_eval = match manifest.get("unsafe_eval") {
+        None => false,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => return Err(ErrorCode::ValidationFailed),
+    };
     let mut paths = std::collections::HashSet::new();
     let mut total = 0usize;
     let mut parsed = Vec::with_capacity(files.len());
@@ -614,6 +629,7 @@ fn validate_permanent_manifest(raw: &Value) -> Result<(PermanentManifest, String
         entrypoint: entrypoint.to_string(),
         files: parsed,
         external_origins,
+        unsafe_eval,
     };
     let canonical = serde_json::to_vec(&manifest).map_err(|_| ErrorCode::ValidationFailed)?;
     Ok((manifest, store::content_hash(&canonical)))
@@ -865,6 +881,7 @@ struct PermanentArtifactRow {
     tier: String,
     content_type: String,
     expires_at: Option<String>,
+    manifest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -901,7 +918,7 @@ async fn resolve_permanent_artifact(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
     let row = database
-        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
         .bind(&[
             JsValue::from_str(artifact_id),
             JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
@@ -913,10 +930,38 @@ async fn resolve_permanent_artifact(
     let Some(row) = row else {
         return expired_response();
     };
-    if row.tier == "secure" {
-        let authorization = req.headers().get("Authorization")?;
-        if !authorized_for_org(authorization.as_deref(), env) {
-            return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+    let host = req.headers().get("Host")?;
+    let authorization = req.headers().get("Authorization")?;
+    let token = authorization
+        .as_deref()
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            req.url()
+                .ok()?
+                .query_pairs()
+                .find(|(key, _)| key == "token")
+                .map(|(_, value)| value.into_owned())
+        });
+    let isolated_access = isolated_access_check(
+        host.as_deref(),
+        token.as_deref(),
+        artifact_id,
+        artifact_token_secret(env).as_deref(),
+        Utc::now(),
+    );
+    match isolated_access {
+        IsolatedAccess::Forbidden => return isolated_forbidden_response(),
+        IsolatedAccess::Authorized => {
+            // A verified artifact-scoped token replaces the org bearer-token
+            // check below for isolated-origin requests.
+        }
+        IsolatedAccess::NotIsolated => {
+            if row.tier == "secure" && !authorized_for_org(authorization.as_deref(), env) {
+                return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+            }
         }
     }
     let bucket = env.bucket("ARTIFACTS_BUCKET")?;
@@ -931,16 +976,20 @@ async fn resolve_permanent_artifact(
         return expired_response();
     };
     let bytes = body.bytes().await?;
-    let content_type = row.content_type;
+    let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest).unwrap_or_else(|_| {
+        PermanentManifest {
+            entrypoint: row.entrypoint.clone(),
+            files: Vec::new(),
+            external_origins: Vec::new(),
+            unsafe_eval: false,
+        }
+    });
     let mut response = Response::from_bytes(bytes)?.with_status(200);
-    response.headers_mut().set("Content-Type", &content_type)?;
-    response
-        .headers_mut()
-        .set("X-Content-Type-Options", "nosniff")?;
-    response
-        .headers_mut()
-        .set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
-    let _ = row.entrypoint;
+    let is_isolated = isolated_access == IsolatedAccess::Authorized;
+    for (name, value) in permanent_file_response_headers(&row.content_type, &manifest, is_isolated)
+    {
+        response.headers_mut().set(name, &value)?;
+    }
     let _ = row.expires_at;
     Ok(response)
 }
@@ -1150,6 +1199,187 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
         headers: Vec::new(),
     }
     .into_worker_response()
+}
+
+/// Derives the isolated per-artifact hostname
+/// `<tenant-slug>--<artifact-id>.artfct.dev` (spec 05). Pure function over
+/// the slug/id character-set rules already enforced by spec 3
+/// (`store::hostname_label`).
+#[allow(
+    dead_code,
+    reason = "minted by the control plane, not this Worker; exercised directly by hostname_derives_from_slug_and_id"
+)]
+fn isolated_artifact_hostname(tenant_slug: &str, artifact_id: &str) -> Result<String, String> {
+    let label = store::hostname_label(tenant_slug, &store::ArtifactId(artifact_id.to_string()))?;
+    Ok(format!("{label}{ARTIFACT_ORIGIN_SUFFIX}"))
+}
+
+/// Splits an isolated-origin `Host` header back into `(tenant_slug,
+/// artifact_id)`. Returns `None` for any host that isn't under
+/// `ARTIFACT_ORIGIN_SUFFIX`, including the shared `artfct.dev` host used by
+/// free-tier `/p/{id}` links.
+fn parse_isolated_hostname(host: &str) -> Option<(String, String)> {
+    let label = host.strip_suffix(ARTIFACT_ORIGIN_SUFFIX)?;
+    let (slug, artifact_id) = label.split_once("--")?;
+    (!slug.is_empty() && !artifact_id.is_empty())
+        .then(|| (slug.to_string(), artifact_id.to_string()))
+}
+
+/// HMAC-signed hex signature over `<artifact_id>.<expires_at_unix>`.
+fn access_token_signature(secret: &str, artifact_id: &str, expires_at_unix: i64) -> String {
+    let message = format!("{artifact_id}.{expires_at_unix}");
+    store::hmac_sha256(secret.as_bytes(), message.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Mints a short-lived access token scoped to one artifact. Pure and
+/// deterministic given an explicit expiry, so tests never need to sleep.
+#[allow(
+    dead_code,
+    reason = "minted by the control plane, not this Worker; exercised directly by the token tests"
+)]
+fn mint_access_token(secret: &str, artifact_id: &str, expires_at: chrono::DateTime<Utc>) -> String {
+    let expires_at_unix = expires_at.timestamp();
+    let signature = access_token_signature(secret, artifact_id, expires_at_unix);
+    format!("{artifact_id}.{expires_at_unix}.{signature}")
+}
+
+/// Verifies an access token against the artifact it is presented for, at a
+/// caller-supplied "now". Fails closed: a missing/empty secret, a token
+/// minted for a different artifact, an unparseable token, or an expired
+/// token are all rejected the same way callers should map to 403.
+fn verify_access_token(
+    secret: Option<&str>,
+    token: &str,
+    artifact_id: &str,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    let Some(secret) = secret.filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    let mut parts = token.splitn(3, '.');
+    let (Some(token_artifact_id), Some(expires_at_raw), Some(signature)) =
+        (parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    if !constant_time_equal(token_artifact_id.as_bytes(), artifact_id.as_bytes()) {
+        return false;
+    }
+    let Ok(expires_at_unix) = expires_at_raw.parse::<i64>() else {
+        return false;
+    };
+    if now.timestamp() >= expires_at_unix {
+        return false;
+    }
+    let expected = access_token_signature(secret, token_artifact_id, expires_at_unix);
+    constant_time_equal(signature.as_bytes(), expected.as_bytes())
+}
+
+/// Derives the per-artifact CSP from the manifest's `external_origins` and
+/// `unsafe_eval` flag (spec 05). An artifact declaring nothing gets
+/// `default-src 'self'`; `unsafe-eval` is only ever granted when the
+/// manifest opts in.
+fn isolated_content_security_policy(manifest: &PermanentManifest) -> String {
+    let origins = manifest.external_origins.join(" ");
+    let default_src = if origins.is_empty() {
+        "'self'".to_string()
+    } else {
+        format!("'self' {origins}")
+    };
+    let mut script_src = default_src.clone();
+    if manifest.unsafe_eval {
+        script_src.push_str(" 'unsafe-eval'");
+    }
+    format!(
+        "default-src {default_src}; script-src {script_src}; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    )
+}
+
+/// Response headers for a permanent bundle file: the real header-
+/// construction logic used at the `resolve_permanent_artifact` serving
+/// site. Deliberately has no `Set-Cookie` code path — artifact origins are
+/// cookieless by construction (spec 05), not by omission.
+///
+/// `is_isolated` must be true only for a request that actually verified on
+/// an isolated `<slug>--<id>.artfct.dev` host — everything else (including
+/// every free-tier and legacy shared-origin `/p/{id}` request) gets the
+/// pre-spec-05 `PREVIEW_CONTENT_SECURITY_POLICY` byte-identical, so the CSP
+/// derived from `external_origins`/`unsafe_eval` never silently tightens an
+/// existing artifact that never opted into isolation.
+fn permanent_file_response_headers(
+    content_type: &str,
+    manifest: &PermanentManifest,
+    is_isolated: bool,
+) -> Vec<(&'static str, String)> {
+    let csp = if is_isolated {
+        isolated_content_security_policy(manifest)
+    } else {
+        PREVIEW_CONTENT_SECURITY_POLICY.to_string()
+    };
+    vec![
+        ("Content-Type", content_type.to_string()),
+        ("X-Content-Type-Options", "nosniff".to_string()),
+        ("Content-Security-Policy", csp),
+    ]
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum IsolatedAccess {
+    /// The request did not arrive on an isolated `<slug>--<id>.artfct.dev`
+    /// host — free-tier and legacy shared-origin `/p/{id}` behavior applies
+    /// unchanged.
+    NotIsolated,
+    /// Arrived on an isolated host with a token that verifies for this
+    /// artifact.
+    Authorized,
+    /// Arrived on an isolated host without a token that verifies for this
+    /// artifact — callers must reject with 403.
+    Forbidden,
+}
+
+/// Decides isolated-origin access from the request `Host` header and an
+/// optional bearer/query token, given an explicit "now" and secret so it is
+/// testable without a live Worker. Cookieless by design: nothing here reads
+/// or sets a session cookie, so a stolen artifact origin cannot ride one.
+fn isolated_access_check(
+    host: Option<&str>,
+    token: Option<&str>,
+    artifact_id: &str,
+    secret: Option<&str>,
+    now: chrono::DateTime<Utc>,
+) -> IsolatedAccess {
+    let Some(host) = host else {
+        return IsolatedAccess::NotIsolated;
+    };
+    if parse_isolated_hostname(host).is_none() {
+        return IsolatedAccess::NotIsolated;
+    }
+    match token {
+        Some(token) if verify_access_token(secret, token, artifact_id, now) => {
+            IsolatedAccess::Authorized
+        }
+        _ => IsolatedAccess::Forbidden,
+    }
+}
+
+fn artifact_token_secret(env: &Env) -> Option<String> {
+    env.var(ARTIFACT_TOKEN_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string())
+}
+
+/// 403 response for a rejected isolated-origin request. Uses the plain HTML
+/// error path rather than `json_error`/`json_response`, which sets
+/// `Access-Control-Allow-Origin: *` on every response — the console and
+/// artifact origins must share no CORS allowance (spec 05).
+fn isolated_forbidden_response() -> Result<Response> {
+    html_error(
+        "This access token is invalid, expired, or not valid for this artifact.",
+        403,
+    )
 }
 
 fn authorized_for_org(authorization: Option<&str>, env: &Env) -> bool {
@@ -2376,10 +2606,24 @@ mod tests {
             normalized_content_type("application/x-private"),
             "application/octet-stream"
         );
-        assert!(HtmlResponseDefinition::preview(String::new(), 200)
-            .headers
+        // Real header-construction logic for the permanent-bundle serving
+        // site (`resolve_permanent_artifact`), not the unrelated ephemeral
+        // preview shell — deleting the nosniff header there must fail this.
+        let manifest = PermanentManifest {
+            entrypoint: "index.html".to_string(),
+            files: Vec::new(),
+            external_origins: Vec::new(),
+            unsafe_eval: false,
+        };
+        for is_isolated in [false, true] {
+            assert!(permanent_file_response_headers(
+                "application/octet-stream",
+                &manifest,
+                is_isolated
+            )
             .iter()
-            .any(|header| header == &("X-Content-Type-Options", "nosniff")));
+            .any(|(name, value)| *name == "X-Content-Type-Options" && value == "nosniff"));
+        }
     }
 
     #[test]
@@ -2757,6 +3001,185 @@ mod tests {
             .contains("script-src 'unsafe-inline' 'unsafe-eval' https:;"));
         assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("style-src 'unsafe-inline' https:;"));
         assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("font-src https: data:;"));
+    }
+
+    fn permanent_manifest(external_origins: Vec<&str>, unsafe_eval: bool) -> PermanentManifest {
+        PermanentManifest {
+            entrypoint: "index.html".to_string(),
+            files: Vec::new(),
+            external_origins: external_origins.into_iter().map(str::to_string).collect(),
+            unsafe_eval,
+        }
+    }
+
+    fn csp_directive<'a>(csp: &'a str, directive: &str) -> Vec<&'a str> {
+        csp.split(';')
+            .map(str::trim)
+            .find_map(|segment| segment.strip_prefix(directive))
+            .expect("directive present")
+            .split_whitespace()
+            .collect()
+    }
+
+    #[test]
+    fn hostname_derives_from_slug_and_id() {
+        let artifact_id = "0123456789abcdef0123456789abcdef";
+        let host_a = isolated_artifact_hostname("acme", artifact_id).unwrap();
+        assert_eq!(host_a, format!("acme--{artifact_id}.artfct.dev"));
+
+        let host_b =
+            isolated_artifact_hostname("acme", "ffffffffffffffffffffffffffffffff").unwrap();
+        assert_ne!(
+            host_a, host_b,
+            "artifact A and artifact B must serve from different hostnames"
+        );
+        assert_eq!(
+            parse_isolated_hostname(&host_a),
+            Some(("acme".to_string(), artifact_id.to_string()))
+        );
+    }
+
+    #[test]
+    fn artifact_origin_sets_no_cookie() {
+        let manifest = permanent_manifest(vec![], false);
+        let headers = permanent_file_response_headers("text/html", &manifest, true);
+        assert!(!headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("Set-Cookie")));
+        // This is the sole header source at the serving site — pin the exact
+        // set so an added cookie header cannot slip in unnoticed.
+        let names: Vec<&str> = headers.iter().map(|(name, _)| *name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "Content-Type",
+                "X-Content-Type-Options",
+                "Content-Security-Policy"
+            ]
+        );
+    }
+
+    #[test]
+    fn expired_access_token_rejected() {
+        let secret = "s3cr3t";
+        let artifact_id = "artifact-a";
+        let now = Utc::now();
+        let token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
+
+        // Positive control: valid and not yet expired.
+        assert!(verify_access_token(Some(secret), &token, artifact_id, now));
+        // At the boundary and past it, the token must be rejected.
+        assert!(!verify_access_token(
+            Some(secret),
+            &token,
+            artifact_id,
+            now + chrono::Duration::minutes(5)
+        ));
+        assert!(!verify_access_token(
+            Some(secret),
+            &token,
+            artifact_id,
+            now + chrono::Duration::minutes(6)
+        ));
+    }
+
+    #[test]
+    fn token_for_other_artifact_rejected() {
+        let secret = "s3cr3t";
+        let now = Utc::now();
+        let token = mint_access_token(secret, "artifact-a", now + chrono::Duration::minutes(5));
+
+        // Positive control: the token is valid for the artifact it was
+        // minted for.
+        assert!(verify_access_token(Some(secret), &token, "artifact-a", now));
+        // The same token must not authorize a different artifact.
+        assert!(!verify_access_token(
+            Some(secret),
+            &token,
+            "artifact-b",
+            now
+        ));
+    }
+
+    #[test]
+    fn free_tier_permanent_artifact_keeps_preview_csp() {
+        // A non-isolated /p/{id} request — free-tier and legacy shared-origin
+        // behavior — must keep the exact pre-spec-05 CSP, even for a
+        // manifest that would derive a tighter isolated CSP (e.g. it
+        // declares no external_origins, which alone would yield a
+        // restrictive `default-src 'self'`). Isolation opts artifacts in;
+        // it must never silently opt an existing one in by omission.
+        let manifest = permanent_manifest(vec![], false);
+        let headers = permanent_file_response_headers("text/html", &manifest, false);
+        let csp = headers
+            .iter()
+            .find(|(name, _)| *name == "Content-Security-Policy")
+            .map(|(_, value)| value.as_str())
+            .expect("Content-Security-Policy header present");
+        assert_eq!(csp, PREVIEW_CONTENT_SECURITY_POLICY);
+        assert_ne!(csp, isolated_content_security_policy(&manifest));
+    }
+
+    #[test]
+    fn csp_defaults_to_self_when_nothing_declared() {
+        let manifest = permanent_manifest(vec![], false);
+        let csp = isolated_content_security_policy(&manifest);
+        assert_eq!(csp_directive(&csp, "default-src"), vec!["'self'"]);
+    }
+
+    #[test]
+    fn csp_includes_only_declared_origins() {
+        let manifest = permanent_manifest(vec!["https://declared.example.com"], false);
+        let csp = isolated_content_security_policy(&manifest);
+        assert_eq!(
+            csp_directive(&csp, "default-src"),
+            vec!["'self'", "https://declared.example.com"]
+        );
+    }
+
+    #[test]
+    fn undeclared_origin_absent_from_csp() {
+        let manifest = permanent_manifest(vec!["https://declared.example.com"], false);
+        let csp = isolated_content_security_policy(&manifest);
+        // Exact token match, not substring: a permissive `https:` wildcard
+        // (today's ephemeral-preview CSP) would pass a substring check
+        // against "https://declared.example.com" but must fail this.
+        let tokens = csp_directive(&csp, "default-src");
+        assert_eq!(tokens, vec!["'self'", "https://declared.example.com"]);
+        assert!(!tokens.contains(&"https:"));
+        assert!(!tokens.contains(&"https://undeclared.example.com"));
+    }
+
+    #[test]
+    fn unsafe_eval_absent_unless_declared() {
+        let declared = isolated_content_security_policy(&permanent_manifest(vec![], true));
+        assert!(csp_directive(&declared, "script-src").contains(&"'unsafe-eval'"));
+
+        let not_declared = isolated_content_security_policy(&permanent_manifest(vec![], false));
+        assert!(!csp_directive(&not_declared, "script-src").contains(&"'unsafe-eval'"));
+        assert!(!not_declared.contains("unsafe-eval"));
+    }
+
+    #[test]
+    fn isolated_host_requires_verified_token() {
+        let secret = "s3cr3t";
+        let artifact_id = "artifact-a";
+        let host = isolated_artifact_hostname("acme", artifact_id).unwrap();
+        let now = Utc::now();
+        let token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
+
+        assert_eq!(
+            isolated_access_check(Some(&host), Some(&token), artifact_id, Some(secret), now),
+            IsolatedAccess::Authorized
+        );
+        assert_eq!(
+            isolated_access_check(Some(&host), None, artifact_id, Some(secret), now),
+            IsolatedAccess::Forbidden
+        );
+        assert_eq!(
+            isolated_access_check(Some("artfct.dev"), None, artifact_id, Some(secret), now),
+            IsolatedAccess::NotIsolated
+        );
     }
 
     #[test]
