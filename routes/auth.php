@@ -4,11 +4,13 @@ use App\Http\Controllers\Auth\AuthKitCallbackController;
 use App\Http\Controllers\Auth\AuthKitDevLoginController;
 use App\Http\Controllers\Auth\AuthKitLoginController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\Auth\PolisCallbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['guest'])->group(function () {
     Route::get('login', AuthKitLoginController::class)->name('login');
     Route::get('authenticate', AuthKitCallbackController::class)->name('authenticate');
+    Route::get('teams/{team}/sso/authenticate', PolisCallbackController::class)->name('sso.authenticate');
 
     // Dev/test-only stand-in for WorkOS's hosted login screen — never
     // available in production (see App\Providers\AppServiceProvider,

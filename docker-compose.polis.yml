@@ -1,0 +1,28 @@
+## Ory Polis (boxyhq/jackson) — spec 10's self-hosted SAML/OIDC broker.
+##
+## Not deployed from this environment; this file exists to satisfy spec
+## 10's "the image version is pinned — not latest" requirement as a
+## concrete, version-controlled artifact. Deploying it (to Railway, per
+## the spec's design, or locally for integration testing) is a follow-up
+## this session did not perform — there is no live Cloudflare/Railway
+## account reachable here to verify `/api/health` against.
+##
+## Pin bumps: check https://github.com/boxyhq/jackson/releases, update the
+## tag below, then follow the upgrade runbook in DOCUMENTATION.md's
+## "Enterprise SSO (Polis)" section before rolling to production.
+
+services:
+  polis:
+    image: boxyhq/jackson:1.27.5
+    ports:
+      - "5225:5225"
+    environment:
+      DB_URL: ${POLIS_DB_URL}
+      API_KEYS: ${POLIS_API_KEYS}
+      NEXTAUTH_SECRET: ${POLIS_NEXTAUTH_SECRET}
+      NEXTAUTH_ADMIN_CREDENTIALS: ${POLIS_NEXTAUTH_ADMIN_CREDENTIALS}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5225/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

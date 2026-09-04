@@ -23,9 +23,10 @@ class AuthModeController extends Controller
         Gate::authorize('changeAuthMode', $team);
 
         $target = AuthMode::from($request->validated('auth_mode'));
+        $confirmed = (bool) $request->boolean('confirmed');
 
         try {
-            $transitioner->transition($team, $target);
+            $transitioner->transition($team, $target, $confirmed);
         } catch (AuthModeTransitionException $exception) {
             throw ValidationException::withMessages(['auth_mode' => $exception->getMessage()]);
         }

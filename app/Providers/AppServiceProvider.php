@@ -12,6 +12,9 @@ use App\Services\AuthKit\RealAuthKitClient;
 use App\Services\Identity\DnsResolverContract;
 use App\Services\Identity\FakeDnsResolver;
 use App\Services\Identity\RealDnsResolver;
+use App\Services\Polis\FakePolisClient;
+use App\Services\Polis\PolisClientContract;
+use App\Services\Polis\RealPolisClient;
 use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
@@ -52,6 +55,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             TenantProvisionerContract::class,
             app()->environment('testing') ? FakeTenantProvisioner::class : RealTenantProvisioner::class,
+        );
+        $this->app->singleton(
+            PolisClientContract::class,
+            app()->environment('testing') ? FakePolisClient::class : RealPolisClient::class,
         );
     }
 

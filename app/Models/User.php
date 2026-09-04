@@ -20,14 +20,25 @@ class User extends Authenticatable
     use HasFactory, HasTeams, Notifiable;
 
     /**
-     * Get the external (WorkOS AuthKit / Polis) identities linked to this
-     * user. One human, many identities, across providers — see spec 06.
+     * Get the external (WorkOS AuthKit / Polis / SCIM) identities linked
+     * to this user. One human, many identities, across providers — see
+     * spec 06.
      *
      * @return HasMany<ExternalIdentity, $this>
      */
     public function externalIdentities(): HasMany
     {
         return $this->hasMany(ExternalIdentity::class);
+    }
+
+    /**
+     * Get the org tokens (spec 07) this user has created.
+     *
+     * @return HasMany<OrgToken, $this>
+     */
+    public function orgTokens(): HasMany
+    {
+        return $this->hasMany(OrgToken::class);
     }
 
     /**
@@ -39,6 +50,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'deactivated_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

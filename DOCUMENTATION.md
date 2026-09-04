@@ -265,3 +265,73 @@ each would need, not silently claimed. The dispatch router's pure
 resolution logic — hostname to script name, unknown hostname to 404 never
 500 — is unit-tested in `backend/src/dispatch.rs` without any of that
 infrastructure.
+
+## Enterprise SSO (Polis)
+
+Spec 10's SAML/OIDC broker is Ory Polis (`boxyhq/jackson`), abstracted
+into a standard OAuth 2.0 authorization-code flow — so login/linking is
+pure Laravel logic behind `App\Services\Polis\PolisClientContract`, the
+same fail-closed real/fake seam as WorkOS AuthKit. `RealPolisClient`
+throws unless `services.polis.base_url`/`api_key` are configured, then
+throws "not implemented" regardless — the real OAuth exchange was never
+written, since no live Polis instance exists in this environment to test
+it against. `FakePolisClient` is bound in testing, mirroring
+`FakeAuthKitClient`'s self-describing-code pattern.
+
+Polis logins reuse `AuthKitProfile` as their shape (`provider` is already
+a generic string field — a SAML login sets it to `polis`, OIDC to
+`polis-oidc`) but resolve through a *different* resolver:
+`App\Services\Identity\EnterpriseIdentityResolver::resolveOrgLogin()`,
+scoped to one org's members, **never creates a user**. Where
+`IdentityResolver` (spec 06, the AuthKit registration path) creates an
+account on first login, an enterprise SSO login is always for someone who
+already has — or should already have — a place in the org; an unmatched
+email returns `unlinked` for an admin to link manually rather than
+silently fragmenting one person into two accounts (spec 10's "email
+mismatch" failure mode).
+
+`AuthModeTransitioner::membersWithoutPolisIdentity()` (spec 10, extending
+spec 06's transitioner) lists every member lacking a verified Polis
+identity; moving to `polis` while that list is non-empty throws naming
+them by email unless the caller passes `confirmed: true` — spec 10's
+"absent from IdP" failure mode, so a contractor or personal account is
+surfaced before enforcement, not silently locked out.
+
+SCIM (`App\Services\Identity\ScimProvisioningService`) is separate from
+interactive login: an IdP-pushed provisioning event creates a user (and a
+`scim`-provider identity, distinct from the `polis` identity that same
+person gets on their first SAML login) ahead of ever authenticating.
+De-provisioning sets `users.deactivated_at` (blocking login without
+deleting the row or any `external_identities` — a re-activation must not
+require re-creating the account) and revokes every one of the user's
+unrevoked org tokens through the same `RevocationWriter` spec 07's
+`OrgTokenController` uses.
+
+**Security advisory subscription:** Ory gates CVE-patching SLAs behind an
+enterprise license (spec 10's "accepted risk"), so this deployment
+watches https://github.com/boxyhq/jackson/security/advisories directly —
+subscribe to repository security advisories via GitHub's "Watch → Custom
+→ Security alerts" on `boxyhq/jackson` before Polis carries any real
+traffic.
+
+**Upgrade runbook:**
+1. Read the release notes for the target tag at
+   https://github.com/boxyhq/jackson/releases before bumping.
+2. Update the pinned tag in `docker-compose.polis.yml` (never `latest`).
+3. Deploy to a non-production Railway environment first; confirm
+   `/api/health` returns 200.
+4. Run a SAML and an OIDC login against a test tenant/product pair before
+   promoting.
+5. Promote to production; keep the previous image tag noted in the commit
+   message so a revert is a one-line pin change, not an investigation.
+6. If Ory's community-cadence patching proves too slow for a live
+   incident, Managed Ory Network is the escape hatch — the integration is
+   identical (same OAuth flow), so switching is a `services.polis.base_url`
+   config change, not a rewrite.
+
+**Deferred, not closable in this environment:** "Polis runs on Railway,
+`/api/health` returns 200" (no live Railway/Cloudflare account reachable
+here — see `docker-compose.polis.yml` for the pinned-image artifact that
+substitutes for an actual deployment) and the corresponding end-to-end
+integration test. All login/linking/SCIM/upgrade logic above is real,
+tested Laravel code, not a description of intended behavior.
