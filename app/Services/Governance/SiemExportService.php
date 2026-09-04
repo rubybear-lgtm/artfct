@@ -5,6 +5,7 @@ namespace App\Services\Governance;
 use App\Enums\AuditEventType;
 use App\Models\AuditEvent;
 use App\Models\Team;
+use App\Services\Billing\PlanGate;
 
 /**
  * Scheduled and on-demand JSON Lines export of an org's audit log (spec
@@ -12,7 +13,9 @@ use App\Models\Team;
  * the audit log" is the first incident-response question, so the export
  * call records that fact before returning the export it produced,
  * guaranteeing the resulting export never claims to be complete without
- * mentioning itself.
+ * mentioning itself. Enterprise-gated (spec 14): a `team`-plan org is
+ * refused with a clear upgrade message before anything is queried or
+ * audited.
  */
 final class SiemExportService
 {
@@ -20,6 +23,8 @@ final class SiemExportService
 
     public function export(Team $team, string $actor, string $ip = 'internal', string $userAgent = 'governance:export'): string
     {
+        PlanGate::requireEnterprise($team, 'SIEM export');
+
         $this->auditLogger->record(
             AuditEventType::ExportPerformed,
             $team,

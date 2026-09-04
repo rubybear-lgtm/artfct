@@ -9,6 +9,12 @@ use App\Services\Artifacts\HttpArtifactDirectory;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
+use App\Services\Billing\BillingContract;
+use App\Services\Billing\FakeBilling;
+use App\Services\Billing\FakeUsage;
+use App\Services\Billing\RealBilling;
+use App\Services\Billing\RealUsage;
+use App\Services\Billing\UsageContract;
 use App\Services\Governance\ArtifactGovernanceContract;
 use App\Services\Governance\FakeArtifactGovernance;
 use App\Services\Governance\RealArtifactGovernance;
@@ -87,6 +93,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             VectorIndexContract::class,
             app()->environment('testing') ? FakeVectorIndex::class : RealVectorIndex::class,
+        );
+        $this->app->singleton(
+            UsageContract::class,
+            app()->environment('testing') ? FakeUsage::class : RealUsage::class,
+        );
+        $this->app->singleton(
+            BillingContract::class,
+            app()->environment('testing') ? FakeBilling::class : RealBilling::class,
         );
     }
 

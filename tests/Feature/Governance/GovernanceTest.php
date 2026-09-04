@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Team;
@@ -66,14 +67,14 @@ test('audit_rows_have_no_update_or_delete_path', function () {
 });
 
 test('export_writes_export_performed_event', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Enterprise]);
     app(SiemExportService::class)->export($team, actor: 'tester');
 
     expect(AuditEvent::query()->where('event_type', AuditEventType::ExportPerformed)->where('team_id', $team->id)->exists())->toBeTrue();
 });
 
 test('siem_export_is_valid_jsonl', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Enterprise]);
     AuditEvent::create([
         'team_id' => $team->id,
         'event_type' => AuditEventType::MemberAdded,

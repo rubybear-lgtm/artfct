@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Concerns\GeneratesUniqueTeamSlugs;
 use App\Enums\AuthMode;
+use App\Enums\PaymentStatus;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -27,6 +29,11 @@ use Illuminate\Support\Carbon;
  * @property int $schema_version
  * @property string|null $region
  * @property int|null $retention_days
+ * @property Plan $plan
+ * @property PaymentStatus $payment_status
+ * @property string|null $stripe_subscription_id
+ * @property int|null $seats_billed
+ * @property string|null $custom_hostname
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -35,7 +42,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, User> $members
  * @property-read Collection<int, TeamDomain> $domains
  */
-#[Fillable(['name', 'slug', 'is_personal', 'auth_mode', 'retention_days'])]
+#[Fillable(['name', 'slug', 'is_personal', 'auth_mode', 'retention_days', 'custom_hostname'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
@@ -148,6 +155,8 @@ class Team extends Model
             'is_personal' => 'boolean',
             'auth_mode' => AuthMode::class,
             'provisioned_at' => 'datetime',
+            'plan' => Plan::class,
+            'payment_status' => PaymentStatus::class,
         ];
     }
 

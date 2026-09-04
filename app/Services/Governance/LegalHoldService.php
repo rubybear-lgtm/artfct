@@ -4,6 +4,7 @@ namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
 use App\Models\Team;
+use App\Services\Billing\PlanGate;
 use App\Services\Indexing\IndexingService;
 
 final class LegalHoldService
@@ -16,6 +17,8 @@ final class LegalHoldService
 
     public function place(Team $team, string $artifactId, string $actor): void
     {
+        PlanGate::requireEnterprise($team, 'Legal hold');
+
         $this->governance->placeLegalHold($team->slug, $artifactId);
         $this->auditLogger->record(
             AuditEventType::LegalHoldApplied,

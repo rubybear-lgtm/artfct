@@ -515,3 +515,62 @@ writes `search.performed` via spec 11's `AuditLogger`.
 **Console search.** Spec 8's `q` free-text filter already covers the
 full-text half of "semantic and full-text" search. A dedicated semantic
 console panel calling `SearchService` was not built this session.
+
+## Billing, quotas and branded console (spec 14)
+
+**Plan gate.** `PlanGate::requireEnterprise(Team, feature)` is the one
+place that ever compares `$team->plan` — `plan_gate_has_single_call_site`
+enforces this structurally (a grep across `app/`, not a behavior test).
+Every enterprise feature — SIEM export, retention policy, and moving
+`auth_mode` past `authkit` — calls it and nothing else. Setting
+`plan = enterprise` is genuinely the only change needed to unlock all of
+them, since there is no second flag anywhere.
+
+**Quotas.** `QuotaService::assertCanCreateArtifact()` gates new creation
+on three independent conditions: bundle size over the tenant's ceiling
+(`BundleTooLargeException`), storage/artifact-count over 100%
+(`QuotaExceededException`), or a past-due payment (also
+`QuotaExceededException` — sharing the exception type keeps "can this org
+create right now" one question). **A caught bug worth knowing about**:
+both exceptions originally declared `public string $code`, which
+collides fatally with `Exception`'s own untyped `$code` property — PHP
+refuses to compile the subclass. The failure mode was a `php artisan
+test` run that exited 1 with **zero output on stdout or stderr**, because
+the fatal happens at class-declaration time, before any test output can
+be buffered. Renamed to `$errorCode` in both classes; see
+`scratchpad/runs/14/mutation.md` for the full diagnosis.
+
+**Billing.** `BillingService` counts seats from active memberships
+(`activeSeatCount()`) and applies Stripe's three relevant webhook events
+as plain methods: `applyCheckoutCompleted` (sets `plan = team`),
+`applyPaymentFailed`/`applyPaymentSucceeded` (the read-only degrade and
+its restore). **Not wired in this environment**: a route that verifies
+Stripe's webhook signature and calls these methods was not built — no
+live Stripe account exists here to sign a real webhook payload against,
+so there was nothing to verify the verification against. `RealBilling`
+and `RealUsage` (Analytics Engine) both fail closed.
+
+**The recurring gap, named once, plainly.** By this spec, the same
+structural gap has appeared four times: spec 11's audit events for
+Worker-side artifact actions, spec 12's `artifact.created` trigger for
+indexing, and now quota enforcement on artifact creation — all three need
+a call from the Worker's `create_permanent_artifact`/
+`resolve_permanent_artifact` handlers into logic that, in this session's
+architecture, lives in Laravel. (Spec 13 is the one exception: search
+required a *new* endpoint Laravel could own outright, so it got built for
+real rather than deferred.) The honest fix is one piece of work, not
+three: thread `worker::Context` through those handlers so
+`ctx.waitUntil()` can fire an async call — to the Worker's own D1 for
+audit/quota bookkeeping, or to Laravel's API for anything that needs
+Laravel's state — without blocking the response. Every one of the three
+gaps above is closable the same way once that plumbing exists; none of
+them needed a different design.
+
+**Custom hostname.** `teams.custom_hostname` has a database-level unique
+constraint, not just an application check — DoD: "a tenant cannot claim a
+hostname already claimed by another tenant." Verified by mutation: with
+the validation rule removed, a duplicate claim surfaces as a raw
+`PDOException`, proving the constraint alone isn't what the DoD's "clear
+message, not a 500" half depends on — the validation rule is. No billing
+settings UI exists yet to set this from the console; the route and
+controller are real and tested.

@@ -19,4 +19,7 @@ enum TeamPermission: string
 
     /** Retention policy, legal hold, and GDPR erasure (spec 11). */
     case ManageGovernance = 'team:manage-governance';
+
+    /** Billing checkout, seat sync, and custom hostname (spec 14). */
+    case ManageBilling = 'team:manage-billing';
 }

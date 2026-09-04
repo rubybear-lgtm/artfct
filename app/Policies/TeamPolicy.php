@@ -116,6 +116,15 @@ class TeamPolicy
     }
 
     /**
+     * Determine whether the user can start checkout, sync seats, or set
+     * the team's custom hostname (spec 14).
+     */
+    public function manageBilling(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, TeamPermission::ManageBilling);
+    }
+
+    /**
      * Determine whether the user can delete the model.
      */
     public function delete(User $user, Team $team): bool

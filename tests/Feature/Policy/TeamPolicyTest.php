@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -38,7 +39,7 @@ test('member_cannot_change_auth_mode', function () {
 });
 
 test('admin_can_change_auth_mode', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Enterprise]);
     $team->domains()->create(['domain' => 'acme.com', 'verified_at' => now()]);
     $admin = memberOf($team, TeamRole::Admin);
 

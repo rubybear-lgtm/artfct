@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Teams;
 
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Services\Billing\PlanGate;
+use App\Services\Billing\PlanGateException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -21,6 +24,12 @@ class GovernanceController extends Controller
     public function updateRetention(Request $request, Team $team): RedirectResponse
     {
         Gate::authorize('manageGovernance', $team);
+
+        try {
+            PlanGate::requireEnterprise($team, 'Custom retention policy');
+        } catch (PlanGateException $exception) {
+            throw ValidationException::withMessages(['retention_days' => $exception->getMessage()]);
+        }
 
         $validated = $request->validate([
             'retention_days' => ['nullable', 'integer', 'min:1', 'max:3650'],

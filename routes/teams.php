@@ -3,6 +3,7 @@
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
+use App\Http\Controllers\Teams\BillingController;
 use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\TeamController;
@@ -46,6 +47,9 @@ Route::middleware(['auth'])->group(function () {
         Route::patch('settings/teams/{team}/auth-mode', [AuthModeController::class, 'update'])->name('teams.auth-mode.update');
 
         Route::patch('settings/teams/{team}/retention', [GovernanceController::class, 'updateRetention'])->name('teams.retention.update');
+
+        Route::post('settings/teams/{team}/billing/checkout', [BillingController::class, 'checkout'])->name('teams.billing.checkout');
+        Route::patch('settings/teams/{team}/billing/hostname', [BillingController::class, 'updateHostname'])->name('teams.billing.hostname');
 
         Route::post('settings/teams/{team}/domains', [TeamDomainController::class, 'store'])->name('teams.domains.store');
         Route::post('settings/teams/{team}/domains/{domain}/verify', [TeamDomainController::class, 'verify'])->name('teams.domains.verify');
