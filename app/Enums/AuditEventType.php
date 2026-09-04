@@ -26,4 +26,5 @@ enum AuditEventType: string
     case ExportPerformed = 'export.performed';
     case RetentionApplied = 'retention.applied';
     case LegalHoldApplied = 'legal_hold.applied';
+    case SearchPerformed = 'search.performed';
 }

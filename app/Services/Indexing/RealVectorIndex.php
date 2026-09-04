@@ -18,6 +18,12 @@ final class RealVectorIndex implements VectorIndexContract
         throw new RuntimeException('RealVectorIndex::deleteArtifactVectors is not implemented — no live Vectorize account in this environment.');
     }
 
+    public function query(string $orgId, array $queryVector, int $limit): array
+    {
+        $this->requireConfigured();
+        throw new RuntimeException('RealVectorIndex::query is not implemented — no live Vectorize account in this environment.');
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         $this->requireConfigured();

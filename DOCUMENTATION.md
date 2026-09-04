@@ -469,3 +469,49 @@ invoice against this model. If the pessimistic ($2,300/mo) reading holds
 at real scale, the spec's own fallback applies — swap `VectorIndexContract`
 for an alternative vector store; the pipeline above is unchanged, since
 nothing outside `RealVectorIndex` knows Vectorize specifically.
+
+## Retrieval (spec 13)
+
+**The second MCP tool.** `search_artifacts` is listed alongside
+`deploy_to_canvas` in `mcp-server`'s `tools/list`. Its description
+explicitly tells an agent *when* to call it — before generating a
+dashboard/page/report the user references — because, per the spec, a
+tool agents don't know when to call is a tool that gets ignored in favor
+of regenerating from scratch. Request/response shaping
+(`search_request_payload`/`format_search_response`) is pure and tested
+without a live call, the same precedent `deploy_to_canvas`'s own tests
+already set.
+
+**`/api/search` — a new, real endpoint.** Unlike specs 11/12's deferred
+HTTP wiring, this one is built: `AuthenticateOrgToken` middleware
+verifies the bearer org JWT via a new `OrgJwtService::verify()`, deriving
+the RS256 public key from the private key Laravel already holds (no new
+secret to configure). The org is resolved strictly from the token's
+`org_id` claim — DoD: "resolved from the credential, never from a
+parameter." This is a deliberate, narrow exception to "Laravel signs; it
+never verifies" (spec 07's original architecture note on
+`OrgJwtService`) — the Worker's independent edge verification for the
+artifact-serving path is completely unchanged; this is a second verifier
+for a second, Laravel-owned endpoint. **Assumption not verified here**:
+production Cloudflare routing sends `/api/*` to Laravel's origin — only
+`/v1/*` and `/p/*` are documented as Worker-routed (see the 0.0.1
+changelog entry). Confirm this against the real zone before relying on
+it.
+
+**Ranking.** `SearchRanking::rank()` is pure: semantic similarity (from
+`VectorIndexContract::query()`) plus a small recency term plus a 0.5
+provenance-match boost when the query names the artifact's repo by its
+last path segment. Mutation-checked: removing the boost application
+flips the ranking in the adversarial test case where raw semantic
+similarity alone picks the wrong artifact.
+
+**Authorization.** `SearchService` cross-references every vector match
+against `ArtifactDirectory::listArtifacts()` for the same org; a match
+with no corresponding directory entry (deleted, never existed) or a
+`revoked_at` is dropped silently — same 404-shaped "indistinguishable
+from non-existence" precedent as spec 7's cross-org reads. Every search
+writes `search.performed` via spec 11's `AuditLogger`.
+
+**Console search.** Spec 8's `q` free-text filter already covers the
+full-text half of "semantic and full-text" search. A dedicated semantic
+console panel calling `SearchService` was not built this session.

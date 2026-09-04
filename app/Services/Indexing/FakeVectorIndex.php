@@ -23,6 +23,21 @@ final class FakeVectorIndex implements VectorIndexContract
         unset($this->byOrg[$orgId][$artifactId]);
     }
 
+    public function query(string $orgId, array $queryVector, int $limit): array
+    {
+        $matches = array_map(
+            fn (VectorChunk $chunk): VectorMatch => new VectorMatch(
+                $chunk,
+                CosineSimilarity::between($queryVector, $chunk->vector),
+            ),
+            $this->allVectorsForOrg($orgId),
+        );
+
+        usort($matches, fn (VectorMatch $a, VectorMatch $b): int => $b->similarity <=> $a->similarity);
+
+        return array_slice($matches, 0, $limit);
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         return array_merge(...array_values($this->byOrg[$orgId] ?? [[]]));

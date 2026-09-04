@@ -6,9 +6,11 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use RuntimeException;
+use UnexpectedValueException;
 
 /**
  * Mints the RS256 JWTs the Worker verifies at the edge (spec 07). Laravel
@@ -79,5 +81,52 @@ final class OrgJwtService
             'jti' => $jti,
             'expires_at' => $expiresAt,
         ];
+    }
+
+    /**
+     * Verifies a bearer token minted by {@see mint()} and returns its
+     * claims. New for spec 13: the Worker's edge verification (spec 07)
+     * is unchanged and remains the authority for the artifact-serving
+     * path — this is a second, independent verifier for Laravel's own
+     * `/api/search` endpoint, which needs to resolve the caller's org from
+     * the credential without a round trip to the Worker. Derives the
+     * public key from the private key already held (RSA public material
+     * is not secret), so no separate key needs configuring.
+     *
+     * @return array{org_id: string, user_id: string, role: string, jti: string}
+     *
+     * @throws RuntimeException on an invalid, expired, or malformed token.
+     */
+    public function verify(string $token): array
+    {
+        $publicKeyPem = $this->derivePublicKey();
+
+        try {
+            $decoded = JWT::decode($token, new Key($publicKeyPem, 'RS256'));
+        } catch (UnexpectedValueException $exception) {
+            throw new RuntimeException("Invalid org token: {$exception->getMessage()}", previous: $exception);
+        }
+
+        return [
+            'org_id' => (string) $decoded->org_id,
+            'user_id' => (string) $decoded->user_id,
+            'role' => (string) $decoded->role,
+            'jti' => (string) $decoded->jti,
+        ];
+    }
+
+    private function derivePublicKey(): string
+    {
+        $privateKey = openssl_pkey_get_private($this->privateKeyPem);
+        if ($privateKey === false) {
+            throw new RuntimeException('services.org_jwt.private_key is not a valid RSA private key.');
+        }
+
+        $details = openssl_pkey_get_details($privateKey);
+        if ($details === false || ! isset($details['key'])) {
+            throw new RuntimeException('Failed to derive the public key from services.org_jwt.private_key.');
+        }
+
+        return $details['key'];
     }
 }

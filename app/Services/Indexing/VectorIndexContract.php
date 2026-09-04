@@ -23,6 +23,17 @@ interface VectorIndexContract
     public function deleteArtifactVectors(string $orgId, string $artifactId): void;
 
     /**
+     * Top `$limit` chunks in `$orgId`'s index by cosine similarity to
+     * `$queryVector`. Never returns chunks belonging to another org — spec
+     * 13 DoD: "A search by org A's token returns nothing belonging to org
+     * B."
+     *
+     * @param  array<int, float>  $queryVector
+     * @return array<int, VectorMatch>
+     */
+    public function query(string $orgId, array $queryVector, int $limit): array;
+
+    /**
      * Every vector currently stored for one org — direct inspection, for
      * the isolation test (`tenant_index_contains_no_foreign_vectors`) and
      * nothing else; a real Vectorize deployment wouldn't expose a "dump

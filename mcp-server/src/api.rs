@@ -113,6 +113,24 @@ pub struct ExportResponse {
     pub blobs: std::collections::HashMap<String, String>,
 }
 
+/// One `search_artifacts` result — spec 13: "title, description, URL,
+/// provenance summary and a snippet — never the full bundle." Deliberately
+/// has no field that could carry full artifact content.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SearchResultDto {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub snippet: String,
+    pub provenance: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SearchResponse {
+    pub results: Vec<SearchResultDto>,
+}
+
 pub fn artifact_endpoint(api_base_url: &str) -> String {
     format!("{}/v1/artifacts", api_base_url.trim_end_matches('/'))
 }
@@ -243,6 +261,33 @@ pub async fn export_artifacts(
         return Err(anyhow!("Artifact Engine returned {status}: {body}"));
     }
     serde_json::from_str(&body).context("Artifact Engine returned an invalid export")
+}
+
+/// Calls spec 13's `/api/search` — org-scoped by the bearer `token`'s
+/// claims, never by a parameter this function could be tricked into
+/// sending.
+pub async fn search_artifacts(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    request: &serde_json::Value,
+) -> Result<SearchResponse> {
+    let response = client
+        .post(format!("{}/api/search", api_base_url.trim_end_matches('/')))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .json(request)
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read search response")?;
+    if !status.is_success() {
+        return Err(anyhow!("Artifact Engine returned {status}: {body}"));
+    }
+    serde_json::from_str(&body).context("Artifact Engine returned an invalid search response")
 }
 
 pub async fn deploy_artifact_payload<T: Serialize + ?Sized>(

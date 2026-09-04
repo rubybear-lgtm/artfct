@@ -29,6 +29,18 @@ final class FakeArtifactDirectory implements ArtifactDirectory
         $this->seedArtifacts();
     }
 
+    /**
+     * Adds one artifact to the in-memory demo set — for tests (spec 13's
+     * search suite in particular) that need artifacts beyond the two
+     * built-in seeds.
+     *
+     * @param  array<string, mixed>  $artifact
+     */
+    public function seedArtifact(array $artifact): void
+    {
+        $this->artifacts[] = $artifact;
+    }
+
     public function listArtifacts(
         string $orgSlug,
         array $filters = [],

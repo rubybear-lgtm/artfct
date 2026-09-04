@@ -163,7 +163,7 @@ To configure it manually in your client's settings file (Cursor's `mcp.json` or 
 }
 ```
 
-The server exposes a single tool — `deploy_to_canvas` — which accepts a complete HTML payload and returns a preview URL.
+The server exposes two tools: `deploy_to_canvas`, which accepts a complete HTML payload and returns a preview URL, and `search_artifacts`, which searches the org's previously deployed artifacts — call it before regenerating something that may already exist.
 
 ### Diagnostics
 
@@ -196,7 +196,8 @@ ARTFCT_API_BASE_URL      API base URL. Defaults to https://artfct.dev
 ARTFCT_INSTALL_VERSION   Release tag to install. Defaults to latest.
 ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
 ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
-ARTFCT_ORG_TOKEN         Organization token for permanent deploy, delete, and export.
+ARTFCT_ORG_TOKEN         Organization token for permanent deploy, delete, export, and search.
+ARTFCT_SEARCH_BASE_URL   search_artifacts endpoint base URL. Defaults to ARTFCT_API_BASE_URL.
 ```
 
 ## Production
@@ -255,7 +256,7 @@ Rate limited to 60 creates / minute per IP.
 
 ### MCP Tool
 
-When artfct is configured as an MCP server, agents get access to `deploy_to_canvas` — a single tool that accepts a complete HTML payload and returns a preview URL. Agents should deploy instead of emitting raw code blocks whenever they produce visual output.
+When artfct is configured as an MCP server, agents get access to two tools. `deploy_to_canvas` accepts a complete HTML payload and returns a preview URL — agents should deploy instead of emitting raw code blocks whenever they produce visual output.
 
 ```json
 {
@@ -270,6 +271,23 @@ When artfct is configured as an MCP server, agents get access to `deploy_to_canv
 
 The optional `model` value is recorded as agent-attested provenance and is kept
 separate from process-observed identity.
+
+`search_artifacts` searches the org's previously deployed artifacts — call it before building something the user references ("the billing dashboard", "that report from last week") instead of regenerating it from scratch. Results are a short list (title, description, URL, provenance summary, and a text snippet) — never the full HTML.
+
+```json
+{
+  "name": "search_artifacts",
+  "arguments": {
+    "query": "billing dashboard",
+    "repo": "https://github.com/acme/billing",
+    "agent": "claude-code",
+    "since": "2026-08-01",
+    "limit": 5
+  }
+}
+```
+
+Requires `ARTFCT_ORG_TOKEN` (see [Environment](#environment) above) and, optionally, `ARTFCT_SEARCH_BASE_URL` if the search endpoint is hosted separately from `ARTFCT_API_BASE_URL`.
 
 See [MCP Server Setup](#mcp-server-setup) above for configuration instructions.
 

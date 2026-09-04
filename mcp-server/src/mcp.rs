@@ -135,7 +135,8 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct ToolCallParams {
     name: String,
-    arguments: DeployToolArguments,
+    #[serde(default)]
+    arguments: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,6 +145,21 @@ struct DeployToolArguments {
     tier: String,
     ttl_minutes: Option<u64>,
     model: Option<String>,
+}
+
+/// Arguments for `search_artifacts` (spec 13).
+#[derive(Debug, Deserialize)]
+struct SearchToolArguments {
+    query: String,
+    repo: Option<String>,
+    agent: Option<String>,
+    since: Option<String>,
+    #[serde(default = "default_search_limit")]
+    limit: u32,
+}
+
+fn default_search_limit() -> u32 {
+    5
 }
 
 pub async fn run_stdio_server(configured_host: Option<String>) -> Result<()> {
@@ -444,6 +460,44 @@ fn tools_list_result() -> Value {
                     "destructiveHint": false,
                     "openWorldHint": true
                 }
+            },
+            {
+                "name": "search_artifacts",
+                "description": "Search this org's previously deployed artifacts before building something new. Call this BEFORE generating a dashboard, page, or report the user references (\"the billing dashboard\", \"that report from last week\") — an existing artifact answering the request should be returned as a link, not regenerated from scratch. Returns a short list of title, description, URL, provenance summary and a text snippet for each match — never the full HTML. Scoped strictly to the caller's org.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to search for, in natural language."
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "Optional: restrict to artifacts provenanced from this repo URL."
+                        },
+                        "agent": {
+                            "type": "string",
+                            "description": "Optional: restrict to artifacts created by this agent."
+                        },
+                        "since": {
+                            "type": "string",
+                            "description": "Optional: ISO 8601 date; excludes artifacts created before it."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50,
+                            "description": "Maximum results to return (default 5)."
+                        }
+                    },
+                    "required": ["query"]
+                },
+                "annotations": {
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "destructiveHint": false,
+                    "openWorldHint": false
+                }
             }
         ]
     })
@@ -464,13 +518,20 @@ where
         session.session_id
     ));
 
-    if params.name != "deploy_to_canvas" {
-        return Err(anyhow!("Unknown tool: {}", params.name));
+    match params.name.as_str() {
+        "deploy_to_canvas" => call_deploy_to_canvas(session, params.arguments).await,
+        "search_artifacts" => call_search_artifacts(params.arguments).await,
+        other => Err(anyhow!("Unknown tool: {other}")),
     }
+}
+
+async fn call_deploy_to_canvas(session: &Session, arguments: Value) -> Result<Value> {
+    let arguments: DeployToolArguments =
+        serde_json::from_value(arguments).context("Invalid deploy_to_canvas arguments")?;
 
     let api_base_url =
         std::env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
-    let prepared = prepare_mcp_tool_request(session, &params.arguments)?;
+    let prepared = prepare_mcp_tool_request(session, &arguments)?;
     let request = mcp_create_request_payload(&prepared.request)?;
     let artifact =
         api::deploy_artifact_payload(&reqwest::Client::new(), &api_base_url, &request).await?;
@@ -495,6 +556,66 @@ where
             "preview_blurred": artifact.preview_blurred
         }
     }))
+}
+
+async fn call_search_artifacts(arguments: Value) -> Result<Value> {
+    let arguments: SearchToolArguments =
+        serde_json::from_value(arguments).context("Invalid search_artifacts arguments")?;
+
+    let token =
+        std::env::var("ARTFCT_ORG_TOKEN").context("search_artifacts requires ARTFCT_ORG_TOKEN")?;
+    let api_base_url = std::env::var("ARTFCT_SEARCH_BASE_URL")
+        .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+
+    let request = search_request_payload(&arguments);
+    let response =
+        api::search_artifacts(&reqwest::Client::new(), &api_base_url, &token, &request).await?;
+
+    Ok(format_search_response(&response))
+}
+
+/// Builds the outgoing search request body from tool arguments. Pure — no
+/// network — so `search_respects_limit` and friends can assert the shape
+/// without a live call.
+fn search_request_payload(arguments: &SearchToolArguments) -> Value {
+    json!({
+        "query": arguments.query,
+        "repo": arguments.repo,
+        "agent": arguments.agent,
+        "since": arguments.since,
+        "limit": arguments.limit,
+    })
+}
+
+/// Shapes the API's search response into the MCP tool result. Pure — the
+/// only place that decides what an agent sees, so it's the one place that
+/// can be checked to never include a bundle's full HTML (DoD: "never the
+/// full bundle").
+fn format_search_response(response: &api::SearchResponse) -> Value {
+    let summary = if response.results.is_empty() {
+        "No matching artifacts found.".to_string()
+    } else {
+        format!("Found {} matching artifact(s).", response.results.len())
+    };
+
+    json!({
+        "content": [
+            {
+                "type": "text",
+                "text": summary
+            }
+        ],
+        "structuredContent": {
+            "results": response.results.iter().map(|result| json!({
+                "id": result.id,
+                "title": result.title,
+                "description": result.description,
+                "url": result.url,
+                "snippet": result.snippet,
+                "provenance": result.provenance,
+            })).collect::<Vec<_>>()
+        }
+    })
 }
 
 fn session_identity(session: &Session) -> (&str, HostSource) {
@@ -577,10 +698,12 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        call_tool, handle_json_rpc, mcp_create_request_payload, prepare_mcp_tool_request,
-        resolve_host, session_identity, DeployToolArguments, HostIdentity, HostSource, Session,
+        call_tool, format_search_response, handle_json_rpc, mcp_create_request_payload,
+        prepare_mcp_tool_request, resolve_host, search_request_payload, session_identity,
+        DeployToolArguments, HostIdentity, HostSource, SearchToolArguments, Session,
     };
     use crate::api::tests::validate_contract_schema;
+    use crate::api::{SearchResponse, SearchResultDto};
 
     #[tokio::test]
     async fn initialize_captures_client_info() {
@@ -866,5 +989,90 @@ mod tests {
         assert_eq!(payload["provenance"]["tool"], "deploy_to_canvas");
         validate_contract_schema(&payload, "EphemeralArtifactRequest")
             .expect("MCP create request matches EphemeralArtifactRequest");
+    }
+
+    #[tokio::test]
+    async fn search_tool_listed_alongside_deploy() {
+        let mut session = Session::new(None);
+        let response = handle_json_rpc(
+            &mut session,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/list",
+                "params": {}
+            }),
+        )
+        .await
+        .expect("response");
+
+        let names: Vec<&str> = response["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .map(|tool| tool["name"].as_str().expect("tool name"))
+            .collect();
+
+        assert!(names.contains(&"deploy_to_canvas"));
+        assert!(names.contains(&"search_artifacts"));
+
+        let search_tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "search_artifacts")
+            .expect("search_artifacts tool present");
+        assert_eq!(
+            search_tool["inputSchema"]["required"],
+            json!(["query"]),
+            "query must be the only required argument"
+        );
+    }
+
+    #[test]
+    fn search_respects_limit() {
+        let arguments = SearchToolArguments {
+            query: "billing dashboard".to_string(),
+            repo: None,
+            agent: None,
+            since: None,
+            limit: 3,
+        };
+
+        let payload = search_request_payload(&arguments);
+
+        assert_eq!(payload["limit"], 3);
+        assert_eq!(payload["query"], "billing dashboard");
+    }
+
+    #[test]
+    fn search_returns_snippet_not_bundle() {
+        let response = SearchResponse {
+            results: vec![SearchResultDto {
+                id: "artifact-1".to_string(),
+                title: "Billing dashboard".to_string(),
+                description: Some("Q3 revenue".to_string()),
+                url: "https://artfct.dev/p/artifact-1".to_string(),
+                snippet: "Q3 revenue grew 40%…".to_string(),
+                provenance: json!({"agent": "cursor", "repo_url": "https://github.com/acme/billing"}),
+            }],
+        };
+
+        let shaped = format_search_response(&response);
+        let result = &shaped["structuredContent"]["results"][0];
+
+        assert_eq!(result["snippet"], "Q3 revenue grew 40%…");
+        assert_eq!(result["url"], "https://artfct.dev/p/artifact-1");
+        // Never the full bundle: no "html" or "content"/"bundle" field on a
+        // result, only what the tool description promises.
+        assert!(result.get("html").is_none());
+        assert!(result.get("bundle").is_none());
+        let allowed_keys = ["id", "title", "description", "url", "snippet", "provenance"];
+        for key in result.as_object().expect("result object").keys() {
+            assert!(
+                allowed_keys.contains(&key.as_str()),
+                "unexpected field `{key}` in a search result — only snippet/provenance summary allowed, never full content"
+            );
+        }
     }
 }
