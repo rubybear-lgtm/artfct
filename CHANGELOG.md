@@ -13,6 +13,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added Spec 4 deterministic multi-file permanent bundles, manifest validation, missing-file uploads, nested asset previews, and directory deployment with `--entrypoint`.
 - Added Spec 5 server-side origin isolation: per-artifact `<tenant-slug>--<artifact-id>.artfct.dev` hostnames, cookieless HMAC-signed access tokens with artifact scoping and expiry, and per-artifact CSP derived from manifest `external_origins`/`unsafe_eval`; free-tier `/p/{id}` links are unchanged.
 - Added Spec 6 Laravel identity foundation: starter-kit Teams (admin/member/viewer roles) for orgs, WorkOS AuthKit login backed by an injectable client, `external_identities` linking one user to many provider identities, an `auth_mode` (`authkit`/`dual`/`polis`) state machine with domain-verification and Polis-identity preconditions, and DNS TXT domain verification against an injectable resolver.
+- Added Spec 7 auth seam: Laravel mints RS256 `sessionJwt`/`orgToken` credentials (org/user/role/exp/jti claims) via `OrgJwtService`, revoked by writing to the Worker's internal KV denylist through `RevocationWriter`; the Worker verifies JWTs at the edge against a KV-cached JWKS with no origin round-trip, checks the denylist, rate-limits per token, and resolves tenancy from the credential only (a body-supplied `org_id` is ignored); a credential-scoped `GET /v1/artifacts/{id}` returns 404 (never 403) for cross-org reads.
 
 ## 0.0.1 - 2026-06-03
 

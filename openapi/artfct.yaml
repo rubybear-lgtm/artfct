@@ -908,7 +908,9 @@
           "unauthorized",
           "forbidden",
           "not_implemented",
-          "internal_error"
+          "internal_error",
+          "authentication_required",
+          "rate_limited"
         ]
       }
     }

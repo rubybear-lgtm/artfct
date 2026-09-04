@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
+use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamDomainController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -40,5 +41,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('settings/teams/{team}/domains', [TeamDomainController::class, 'store'])->name('teams.domains.store');
         Route::post('settings/teams/{team}/domains/{domain}/verify', [TeamDomainController::class, 'verify'])->name('teams.domains.verify');
         Route::delete('settings/teams/{team}/domains/{domain}', [TeamDomainController::class, 'destroy'])->name('teams.domains.destroy');
+
+        Route::post('settings/teams/{team}/tokens', [OrgTokenController::class, 'store'])->name('teams.tokens.store');
+        Route::delete('settings/teams/{team}/tokens/{token}', [OrgTokenController::class, 'destroy'])->name('teams.tokens.destroy');
     });
 });

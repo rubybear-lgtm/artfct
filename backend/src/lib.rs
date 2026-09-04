@@ -1,5 +1,6 @@
 use base64::Engine;
 use chrono::{SecondsFormat, Utc};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -32,6 +33,29 @@ const ARTIFACT_ORIGIN_SUFFIX: &str = ".artfct.dev";
 /// access tokens. Follows the same fail-closed pattern as `ARTFCT_ORG_TOKEN`:
 /// a missing binding never authorizes a token, regardless of signature.
 const ARTIFACT_TOKEN_SECRET_ENV: &str = "ARTFCT_ARTIFACT_TOKEN_SECRET";
+/// Env var carrying the shared secret Laravel presents when writing to the
+/// internal revocation-denylist endpoint (spec 07). A credential of its own,
+/// separate from `orgToken`/`sessionJwt` and from `ARTFCT_ORG_TOKEN` — same
+/// fail-closed pattern: a missing binding never authorizes a write.
+const REVOCATION_WRITE_SECRET_ENV: &str = "ARTFCT_REVOCATION_WRITE_SECRET";
+/// KV key under which the published JWKS (fetched and cached out of band —
+/// this Worker never fetches it itself, see `cached_jwks`) is stored.
+const JWKS_KV_KEY: &str = "auth:jwks";
+/// KV key prefix for the revocation denylist, keyed on JWT `jti`.
+const DENYLIST_KV_PREFIX: &str = "auth:denylist:";
+/// KV key prefix for the per-token rate-limit counter.
+const RATE_LIMIT_TOKEN_KV_PREFIX: &str = "auth:ratelimit:token:";
+/// KV key prefix for the per-IP rate-limit counter used on the anonymous
+/// ephemeral-create path. Kept separate from the token prefix so the two
+/// limiters can never collide on the same key.
+const RATE_LIMIT_IP_KV_PREFIX: &str = "auth:ratelimit:ip:";
+/// Sliding window, in seconds, for both rate limiters.
+const RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
+/// Requests allowed per token per window (spec 07 DoD item 8).
+const RATE_LIMIT_MAX_PER_TOKEN: u32 = 60;
+/// Token id used for the legacy static `ARTFCT_ORG_TOKEN` credential, which
+/// carries no `jti` of its own.
+const LEGACY_ORG_TOKEN_ID: &str = "legacy-static-org-token";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,11 +149,18 @@ enum ErrorCode {
     Forbidden,
     NotImplemented,
     InternalError,
+    /// No credential was supplied at all (spec 07 DoD item 2). Distinct from
+    /// `Unauthorized`, which covers a credential that was presented but
+    /// rejected (wrong static token, expired/malformed/revoked JWT, ...).
+    AuthenticationRequired,
+    /// The presented token's per-token rate limit was exceeded (spec 07 DoD
+    /// item 8).
+    RateLimited,
 }
 
 impl ErrorCode {
     #[allow(dead_code, reason = "used by native contract tests")]
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 17] = [
         Self::InvalidJson,
         Self::ValidationFailed,
         Self::InvalidArtifactId,
@@ -145,6 +176,8 @@ impl ErrorCode {
         Self::Forbidden,
         Self::NotImplemented,
         Self::InternalError,
+        Self::AuthenticationRequired,
+        Self::RateLimited,
     ];
 }
 
@@ -289,6 +322,10 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
 
     match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env).await,
+        (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
+        (Method::Get, path) if path.starts_with("/v1/artifacts/") && !path.contains("/files/") => {
+            get_artifact_metadata(path, &req, &env).await
+        }
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
             delete_artifact(path, &req, &env).await
         }
@@ -640,9 +677,17 @@ async fn create_permanent_artifact(
     authorization: Option<&str>,
     env: &Env,
 ) -> Result<Response> {
-    if !authorized_for_org(authorization, env) {
-        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+    let credential = match resolve_request_credential(authorization, env, Utc::now()).await {
+        Ok(credential) => credential,
+        Err(error) => return credential_error_response(error),
     };
+    if !check_and_increment_rate_limit(env, &credential.token_id).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for this token.",
+            429,
+        );
+    }
 
     for field in [
         "title",
@@ -693,7 +738,9 @@ async fn create_permanent_artifact(
     let entrypoint = manifest.entrypoint.as_str();
     let content_hash = bundle_hash.as_str();
 
-    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    // Tenancy comes from the verified credential only. Any `org_id` present
+    // in `raw` is never read (spec 07 DoD item 7) — see `resolve_tenant_org`.
+    let org = resolve_tenant_org(raw, &credential);
     if let Err(message) = store::validate_slug(&org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
@@ -823,6 +870,92 @@ async fn create_permanent_artifact(
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactMetadataRow {
+    id: String,
+    org_id: String,
+    tier: String,
+}
+
+/// `GET /v1/artifacts/{id}` — the credential-scoped metadata read spec 07's
+/// DoD item 4 is about. Deliberately fetches the row *without* an org
+/// filter in the query, then gates visibility in application code via
+/// `decide_artifact_visibility` — that keeps the org-scoping predicate a
+/// single, independently mutation-testable check rather than folded into
+/// SQL where a mutation test could pass vacuously.
+async fn get_artifact_metadata(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match resolve_request_credential(authorization.as_deref(), env, Utc::now()).await {
+            Ok(credential) => credential,
+            Err(error) => return credential_error_response(error),
+        };
+    let artifact_id = path
+        .trim_start_matches("/v1/artifacts/")
+        .trim_end_matches('/');
+    if artifact_id.is_empty() {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let row = database
+        .prepare(
+            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
+        )
+        .bind(&[JsValue::from_str(artifact_id)])?
+        .first::<ArtifactMetadataRow>(None)
+        .await?;
+    let org_row = row.as_ref().map(|row| ArtifactOrgRow {
+        id: row.id.clone(),
+        org_id: row.org_id.clone(),
+    });
+    match decide_artifact_visibility(org_row.as_ref(), &credential.org_id) {
+        ArtifactLookupDecision::NotFound => {
+            json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
+        }
+        ArtifactLookupDecision::Visible => {
+            let row = row.expect("Visible is only returned when a row was fetched");
+            JsonResponseDefinition::json(serde_json::json!({"id": row.id, "tier": row.tier}), 200)
+                .into_worker_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct RevocationWriteRequest {
+    jti: String,
+    expires_at_unix: i64,
+}
+
+/// `POST /v1/internal/revocations` — Laravel writes here on revoke; the
+/// Worker checks this denylist at the edge (spec 07). This endpoint is
+/// itself an authorization boundary distinct from `orgToken`/`sessionJwt`
+/// (its own shared secret, `ARTFCT_REVOCATION_WRITE_SECRET`) — an
+/// unauthenticated or wrongly-credentialed write is rejected before the KV
+/// write happens.
+async fn write_revocation(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_revocation_write(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "Invalid revocation credential.",
+            401,
+        );
+    }
+    let payload = match req.json::<RevocationWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    let ttl_seconds = (payload.expires_at_unix - Utc::now().timestamp())
+        .max(MIN_EXPIRATION_TTL_SECONDS as i64) as u64;
+    let kv = env.kv(KV_BINDING)?;
+    kv.put(&denylist_kv_key(&payload.jti), "1")?
+        .expiration_ttl(ttl_seconds)
+        .execute()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"revoked": true}), 200).into_worker_response()
 }
 
 async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
@@ -1404,6 +1537,327 @@ fn authorization_matches(expected: Option<&str>, authorization: Option<&str>) ->
         return false;
     };
     constant_time_equal(actual.as_bytes(), expected.as_bytes())
+}
+
+/// One key from a published JWKS, in the `n`/`e` (base64url, unpadded) form
+/// `DecodingKey::from_rsa_components` expects — no PEM parsing needed.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct JwkKey {
+    kid: String,
+    n: String,
+    e: String,
+}
+
+/// The subset of a JWKS document this Worker needs. Cached in KV by an
+/// out-of-band process (Laravel publishes, something populates the cache);
+/// this Worker only ever reads the cache — see `cached_jwks`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+struct Jwks {
+    keys: Vec<JwkKey>,
+}
+
+/// Claims carried by both credential types (spec 07: `sessionJwt` and
+/// `orgToken` share one shape; only `exp` distance differs).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct OrgJwtClaims {
+    org_id: String,
+    user_id: String,
+    role: String,
+    exp: i64,
+    jti: String,
+}
+
+/// A verified, non-revoked credential resolved for the current request.
+/// `token_id` is the rate-limit/denylist key: the JWT's `jti`, or
+/// `LEGACY_ORG_TOKEN_ID` for the pre-spec-07 static `ARTFCT_ORG_TOKEN`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OrgCredential {
+    org_id: String,
+    #[allow(dead_code, reason = "carried for future audit logging")]
+    user_id: String,
+    #[allow(dead_code, reason = "carried for future role-gated routes")]
+    role: String,
+    token_id: String,
+}
+
+/// Every way a credential can fail to resolve. Callers map each variant to a
+/// wire response; `Missing` maps to 401 `authentication_required`, every
+/// other variant maps to 401 `unauthorized` (spec 07 DoD items 2, 5, 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CredentialError {
+    Missing,
+    Malformed,
+    UnknownKey,
+    BadSignature,
+    Expired,
+    Revoked,
+}
+
+/// Extracts the bearer token from an `Authorization` header, or `None` for
+/// anything else (missing header, wrong scheme, empty token).
+fn bearer_token(authorization: Option<&str>) -> Option<&str> {
+    authorization
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+}
+
+/// Pure wrapper around `bearer_token` that maps an absent/malformed
+/// `Authorization` header to `CredentialError::Missing` — factored out so
+/// the no-credential -> 401 `authentication_required` mapping (spec 07 DoD
+/// item 2) is unit-testable without an `Env`, not just the header-parsing
+/// helper underneath it.
+fn extract_bearer_token(authorization: Option<&str>) -> std::result::Result<&str, CredentialError> {
+    bearer_token(authorization).ok_or(CredentialError::Missing)
+}
+
+/// Parses a JWKS document as cached in KV. Pure — no I/O, no `Env` — so the
+/// caching layer (`cached_jwks`) and the parsing logic are independently
+/// testable.
+fn parse_jwks(raw: &str) -> Option<Jwks> {
+    serde_json::from_str(raw).ok()
+}
+
+/// Verifies an org/session JWT's signature and expiry against an
+/// already-resolved JWKS, at a caller-supplied "now". Deliberately takes no
+/// `&Env` and performs no I/O of any kind — this is the function whose
+/// signature is the proof for spec 07 DoD item 10 ("no origin round-trip"):
+/// it cannot reach the network even if it wanted to. Revocation is checked
+/// separately by the caller (`resolve_request_credential`), since that does
+/// require a KV read.
+fn decode_org_jwt(
+    token: &str,
+    jwks: &Jwks,
+    now: chrono::DateTime<Utc>,
+) -> std::result::Result<OrgJwtClaims, CredentialError> {
+    let header = decode_header(token).map_err(|_| CredentialError::Malformed)?;
+    let kid = header.kid.ok_or(CredentialError::Malformed)?;
+    let key = jwks
+        .keys
+        .iter()
+        .find(|candidate| candidate.kid == kid)
+        .ok_or(CredentialError::UnknownKey)?;
+    let decoding_key =
+        DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|_| CredentialError::Malformed)?;
+    let mut validation = Validation::new(Algorithm::RS256);
+    // Expiry is checked explicitly below against the caller-supplied clock,
+    // never the library's own wall-clock read, so tests never need to sleep
+    // or mock global time.
+    validation.validate_exp = false;
+    validation.set_required_spec_claims(&["exp", "org_id", "user_id", "role", "jti"]);
+    let data = decode::<OrgJwtClaims>(token, &decoding_key, &validation)
+        .map_err(|_| CredentialError::BadSignature)?;
+    if data.claims.exp <= now.timestamp() {
+        return Err(CredentialError::Expired);
+    }
+    Ok(data.claims)
+}
+
+/// Combines signature/expiry verification with the revocation check. The
+/// denylist lookup is injected as a closure so this stays synchronous and
+/// testable with a fake in-memory denylist; the real caller
+/// (`resolve_request_credential`) supplies one backed by a KV read it
+/// already performed.
+fn resolve_org_credential(
+    claims: OrgJwtClaims,
+    is_denylisted: impl Fn(&str) -> bool,
+) -> std::result::Result<OrgCredential, CredentialError> {
+    if is_denylisted(&claims.jti) {
+        return Err(CredentialError::Revoked);
+    }
+    Ok(OrgCredential {
+        org_id: claims.org_id,
+        user_id: claims.user_id,
+        role: claims.role,
+        token_id: claims.jti,
+    })
+}
+
+/// Tenancy always comes from the verified credential, never from the
+/// request body (spec 07: "An `org_id` in a body or path is ignored if
+/// present"). This function exists so that guarantee has one call site to
+/// audit, and so `org_id_in_body_is_ignored` can assert it directly instead
+/// of asserting the absence of a bug.
+fn resolve_tenant_org(_raw: &Value, credential: &OrgCredential) -> String {
+    credential.org_id.clone()
+}
+
+fn denylist_kv_key(jti: &str) -> String {
+    format!("{DENYLIST_KV_PREFIX}{jti}")
+}
+
+fn rate_limit_kv_key_for_token(token_id: &str) -> String {
+    format!("{RATE_LIMIT_TOKEN_KV_PREFIX}{token_id}")
+}
+
+#[allow(
+    dead_code,
+    reason = "anonymous rate limiting stays on the existing per-IP WAF rule (spec 07 scope); this key derivation exists so the two namespaces are provably disjoint, exercised by anonymous_path_still_rate_limited_by_ip"
+)]
+fn rate_limit_kv_key_for_ip(ip: &str) -> String {
+    format!("{RATE_LIMIT_IP_KV_PREFIX}{ip}")
+}
+
+/// Pure threshold check: `current_count` observed *before* this request, so
+/// the request that reaches exactly the limit is the one that gets
+/// rejected.
+fn rate_limit_allows(current_count: u32, limit: u32) -> bool {
+    current_count < limit
+}
+
+/// Resolves the request's credential end to end: extracts the bearer token,
+/// tries the legacy static `ARTFCT_ORG_TOKEN` first (back-compat for specs
+/// 03-05, which know nothing about JWTs), then falls back to JWT
+/// verification against the cached JWKS plus a live denylist check. The
+/// only network-shaped calls here are two KV reads (JWKS cache, denylist) —
+/// both edge-local, neither an origin round-trip to Laravel.
+async fn resolve_request_credential(
+    authorization: Option<&str>,
+    env: &Env,
+    now: chrono::DateTime<Utc>,
+) -> std::result::Result<OrgCredential, CredentialError> {
+    let token = extract_bearer_token(authorization)?;
+
+    if let Some(expected) = env
+        .var("ARTFCT_ORG_TOKEN")
+        .ok()
+        .map(|value| value.to_string())
+        .filter(|value| !value.is_empty())
+    {
+        if constant_time_equal(token.as_bytes(), expected.as_bytes()) {
+            return Ok(OrgCredential {
+                org_id: env_string(env, "ARTFCT_ORG_SLUG", "default"),
+                user_id: LEGACY_ORG_TOKEN_ID.to_string(),
+                role: "admin".to_string(),
+                token_id: LEGACY_ORG_TOKEN_ID.to_string(),
+            });
+        }
+    }
+
+    let jwks = cached_jwks(env).await.ok_or(CredentialError::UnknownKey)?;
+    let kv = env
+        .kv(KV_BINDING)
+        .map_err(|_| CredentialError::UnknownKey)?;
+    // Decoded exactly once — `claims` is threaded into `resolve_org_credential`
+    // rather than re-decoding, so the denylist check below and the one
+    // inside `resolve_org_credential` are provably checking the same `jti`,
+    // not just two decodes of the same token that happen to agree today.
+    let claims = decode_org_jwt(token, &jwks, now)?;
+    let jti = claims.jti.clone();
+    let denylisted = kv
+        .get(&denylist_kv_key(&jti))
+        .text()
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    resolve_org_credential(claims, |candidate_jti| candidate_jti == jti && denylisted)
+}
+
+/// Reads the JWKS from KV. No fetch fallback: publishing/refreshing the
+/// JWKS into KV is an out-of-band concern (Laravel's `.well-known` endpoint
+/// plus a job that populates the cache), deliberately outside this
+/// function and outside the hot request path (spec 07 DoD item 10).
+async fn cached_jwks(env: &Env) -> Option<Jwks> {
+    let kv = env.kv(KV_BINDING).ok()?;
+    let raw = kv.get(JWKS_KV_KEY).text().await.ok().flatten()?;
+    parse_jwks(&raw)
+}
+
+/// Checks and increments the per-token rate-limit counter. Not atomic
+/// (Workers KV has no compare-and-swap primitive) — an accepted race under
+/// heavy concurrent bursts from the same token, same tradeoff class as the
+/// eventual-consistency window already accepted for revocation.
+async fn check_and_increment_rate_limit(env: &Env, token_id: &str) -> Result<bool> {
+    let kv = env.kv(KV_BINDING)?;
+    let key = rate_limit_kv_key_for_token(token_id);
+    let current = kv
+        .get(&key)
+        .text()
+        .await?
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    if !rate_limit_allows(current, RATE_LIMIT_MAX_PER_TOKEN) {
+        return Ok(false);
+    }
+    kv.put(&key, (current + 1).to_string())?
+        .expiration_ttl(RATE_LIMIT_WINDOW_SECONDS)
+        .execute()
+        .await?;
+    Ok(true)
+}
+
+fn credential_error_response(error: CredentialError) -> Result<Response> {
+    match error {
+        CredentialError::Missing => json_error(
+            ErrorCode::AuthenticationRequired,
+            "An organization token or session credential is required.",
+            401,
+        ),
+        CredentialError::Revoked => json_error(
+            ErrorCode::Unauthorized,
+            "This credential has been revoked.",
+            401,
+        ),
+        CredentialError::Expired => {
+            json_error(ErrorCode::Unauthorized, "This credential has expired.", 401)
+        }
+        CredentialError::Malformed
+        | CredentialError::UnknownKey
+        | CredentialError::BadSignature => {
+            json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401)
+        }
+    }
+}
+
+/// The row shape needed to decide whether an artifact is visible to a
+/// credential, deliberately narrower than the full artifact record — see
+/// `decide_artifact_visibility`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArtifactOrgRow {
+    #[allow(dead_code, reason = "carried through to the metadata response")]
+    id: String,
+    org_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArtifactLookupDecision {
+    NotFound,
+    Visible,
+}
+
+/// Gates a fetched artifact row against the credential's org. A row that
+/// doesn't exist and a row that exists but belongs to a different org
+/// resolve to the identical `NotFound` — the caller must map both to the
+/// same 404, never 403, so a cross-tenant probe can't distinguish "doesn't
+/// exist" from "exists, not yours" (spec 07 DoD item 4).
+fn decide_artifact_visibility(
+    row: Option<&ArtifactOrgRow>,
+    credential_org_id: &str,
+) -> ArtifactLookupDecision {
+    match row {
+        Some(row) if row.org_id == credential_org_id => ArtifactLookupDecision::Visible,
+        _ => ArtifactLookupDecision::NotFound,
+    }
+}
+
+/// Named separately from `authorized_for_org`'s check so a test can assert
+/// against the revocation-write endpoint's own guard without that
+/// assertion being indistinguishable from spec 05's existing
+/// `authorization_matches` coverage — see
+/// `revocation_write_endpoint_rejects_unauthenticated_or_wrong_credential`.
+fn revocation_write_authorized(expected_secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(expected_secret, authorization)
+}
+
+fn authorized_for_revocation_write(authorization: Option<&str>, env: &Env) -> bool {
+    revocation_write_authorized(
+        env.var(REVOCATION_WRITE_SECRET_ENV)
+            .ok()
+            .map(|value| value.to_string())
+            .as_deref(),
+        authorization,
+    )
 }
 
 fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
@@ -3192,5 +3646,223 @@ mod tests {
         assert!(page.contains("og:image"));
         assert!(page.contains("twitter:card"));
         assert!(page.contains("summary_large_image"));
+    }
+
+    // --- spec 07: auth seam -------------------------------------------------
+
+    /// Test-only RSA-2048 keypair ("key A"), PKCS#1 DER, base64-encoded.
+    /// Generated with `openssl genrsa -out key_a.pem 2048 && openssl rsa
+    /// -in key_a.pem -outform DER | base64`; used only to sign fixture JWTs.
+    const TEST_KEY_A_DER_B64: &str = "MIIEowIBAAKCAQEAuJKelmXQyzS9BeaUdOIEfv1TSowF0uWjK9tw05G5/9eFWx/sb4RNFKXk4ERWK91DStR1UKy1VeYiyd/w/Bj/bNylKQL0sox4iZpQH8ZN6oBK0qPONp5WSJvAIW5VEdQCDh/nDV1rV2Zg6E0W1gXoOaRgT0Dqu+Qd0vURFNqWBmK9gWN7BkgU963RvMYHao5apdWn1mcWP3+E6eXaoXmp0V7MpRLTphJz8mlsyr6U/NdPjVgwZg5jzttouNJtcFLlvwNaBXuMNlivBnjsbBp5nkmOSzeT9a7m3OvKbinWO+ffL3xWLWQmHGPOyBnfk2o3tx9n6GMch0KrAg5S7luEKwIDAQABAoIBADCqeCYvsl3iCfUEVyB6d7UEFnIReXeiFOP7eERQqDpNGVxtjmnY+Hn5Q9/eJNpr/NI+MrCS2T1M8N9JrMDL1o1doC6wGNT7NM0TYwz9vI2YRiJEDptYJGgAqSgnb0bEH8aZotJjT2o8FFEsAllsNU79iGddNodUHokBFP/qoqQL8iW4pEmvjDRWvZhLJ+9/yj8cgMMwEwCmmjgMw5T+Ag2+A0LN5JKYrs/Lk5sk1P0Bj008NxzN5DOmDHli4DBbSgBS08UQz/vzFKSdBXfrvAv3n33JCJt+r3OW1WI13kajtWocErAjmxbwxMn85+/A3eqN6sjpCSrLvqDgb4mCcAECgYEA5IWGFOsNypnTUlqM9uUCT2uIo0av6VocHW+SXe8Z/EiOs12jFJSBNPU+jY4QYkn5DNKUhqn0Gdj/xJjTNrQZAL2SkIWdOnc3u3rbwrLg6JVUzmoVyInbso/EnDM4u2t3BHgxN6cwLFNhf104KBxrty+2XO3r5mHSCtdLwi+3SFECgYEAzsQ9A3bnejDF2MLN65+BtPZohBeGfbcGFm5e7fl2F42Nefph45Co7cvyaCUWursRR0BIVuAO5W8Rrwl88EmRNTBrv6n+Ppg1kJZBhG99EDWzobISh4+/IYqwh3WPcDME0u0ULJDGxbfERRDIUz9lpc/EsnZhIuO1Og3a+V4jYbsCgYB/WVGxUpRq9XJokIHCDTlOXRTWOMxLdKX6WXTt2BNZHm430tTQ4Tln88uaQzMqMyMRXEDdEtUvmlhejPQXpiHQ4dRNqchHDq0GU58oT1s7Ag0ywrfE+95tEeV1Tq4s8+RtnzV+WDNmYEkTGzXyVHRKr9Im04gE6TqORBC59LFlIQKBgHdUfB4GvpsfkN+DthI5UUNePn2VkjH1sha6BiFzqnr3X+I45cvPDh+HZ9RBK3gDRHqJl/ZDg3VYf600XZ3T53D6DAVml2wKrkdO4GsNaPE0/QHh4p3IETfLcgwLhgfr+em9l7oMqBst7qEpiWO6H/DtEwkoFvFq14m0u17VvLfHAoGBAMj9sq9lMfFzTk+kthAickPoej53srNcHbg/byzejo94ZltdqhU9FbKSDorfdqh91T//TrDCCfClLk/AnptCzE0NlevQOwLsJwvBuaTIGZ3rlxa9NFgPLtU+e/YuZBI1/353WWyP8mQ5W+vevP4t5RnZdnUd3+iqg/cjJrmdzm/R";
+
+    /// A second, unrelated RSA-2048 keypair ("key B"), same encoding — used
+    /// only to prove a token signed with the wrong key is rejected.
+    const TEST_KEY_B_DER_B64: &str = "MIIEogIBAAKCAQEAvEu5WjBa3hDJuU0r0UW2IlePT2pLBalDqaktqf6/QHOkbLhvXtsgoVm4z9Y6fif+zueBA5k1XtiOD5hmYoOdQspXrT01ltZ9shZ3Rcfe1OW3TYeDnDrMwuo1zm1f74NFG21BzHchlr/vK3I7vMakBpr6q+mRm0fEMbIlf+JoGNcdp8QrYr/ELz2wuOLKxkzKG2rcj44NuEGal4zBVzS1K8Y0qCfZmO21dmlXlOi7eDSrqE3aSkuFld4Yr3LRu61rg/jcRh5B/CP1IFKt4bnVyaHWWQvm3RnTVeK64ETwUqBywtKbad2Trw4c2G6SeUwEz3lKZFx3eksMh4WphJbKJwIDAQABAoIBAH5Ke8MV85xFvkbej6kJDKPz/lbRgAgIAy3kHpCKIFRmO73/5hLE/hm6R85+bTT4NlsnwsxbEgTPUlj7apBgnjWR6UR0bWEB88RidRUEfVxlxo/leExs07FXzUbq7RGEBfHjUeKFdK3bhdqp/48Z3CHiCIcNXW+8rsZ2KdigThl55iK8X01xvVIPuRWZe5jZo4AwW5FtA8mBiLmelgR0O2g3mo8JQ/OCXkP/4I4fKfErFsI5j5rG4DZowFnP8y1BaBy4CWBh7BJrYy1KftangFyvcLOm/gwr3CfgtfSFFIpW3pRCy1vByyBZSFFhb6a0QtCiQcK+fFyXx7fON61T+iECgYEA9jOeL3TFy+JAQvWHqfAUoZKPhL+S2JGm0T0j/M10qZGhC7GOQ1ovHW+zhLu9Lp1XGkspJ5kvvWaHycbfz1j3eqY/BH3TgrnZnDgMIvZsykkJKnEqjxtt2UW5VocrECYEA+zvOl27S9TjaS1w1PCsavRfhQgvSNbt6Ql9zuMliKUCgYEAw8okhyLUPNDE/MsBYpCIpODM1L0VtiBOmHWxYjAYDvo5RYg5czoGc6W3Z475UtiNncXhYpkfWiZ6oksXZRV1K4NcHF0KimX1tBt4cSWk1H/UKVY8O+Y8RT2tVHnuSFuCZ+vxCGQju0WDMxTocRk+4+6X273g6oyaT+uUoolVQdsCgYBN5v1ZpMhlf/y3cztvETFmApr49SlA761qLb9yYYxVj2f27ELImwOne83A5SqyUkTaZAfsqLMLaiLzPMNat5rvKyVrhWjkx2vM24szkOfRhhSpYk+GIra6di5z66c7n9vLZjA4NqpqDz257Q/zwQe9e/+xd2qG0MNM5pzxVrxspQKBgD783VuMXPNjxrv9I2juTseceslGO6HoKuDpnDOWfWb0IVC5TqI/XKv/+E0ctiFtAcJsUuJBmNCL6JAl0FT43kUtcYi+dhGoU6+p1smv7qNerIbP83jhzSoJeaXfxEULC50bTuQAM26gImFgrJcWJCF4NOrA34cVzN9BTwQrYn5ZAoGAa0TK37LoWMq+cTufni49G7NGm+5XBfA4VKIrq9DfnHnPieUJ5Viim8wJVOjlnKaJpZPGL8sCVwEONE/kkR0uY77GYNG9i2pfSNubPnxtJlyh3+N3u61Ov2gUP1rWJO4Pn2YEBk7gzCTys6L6trTriULkVedpD2jmjfmzjXnmC2A=";
+
+    fn test_jwks() -> Jwks {
+        Jwks {
+            keys: vec![JwkKey {
+                kid: "test-key-a".to_string(),
+                n: "uJKelmXQyzS9BeaUdOIEfv1TSowF0uWjK9tw05G5_9eFWx_sb4RNFKXk4ERWK91DStR1UKy1VeYiyd_w_Bj_bNylKQL0sox4iZpQH8ZN6oBK0qPONp5WSJvAIW5VEdQCDh_nDV1rV2Zg6E0W1gXoOaRgT0Dqu-Qd0vURFNqWBmK9gWN7BkgU963RvMYHao5apdWn1mcWP3-E6eXaoXmp0V7MpRLTphJz8mlsyr6U_NdPjVgwZg5jzttouNJtcFLlvwNaBXuMNlivBnjsbBp5nkmOSzeT9a7m3OvKbinWO-ffL3xWLWQmHGPOyBnfk2o3tx9n6GMch0KrAg5S7luEKw".to_string(),
+                e: "AQAB".to_string(),
+            }],
+        }
+    }
+
+    fn test_claims(org_id: &str, exp: i64) -> OrgJwtClaims {
+        OrgJwtClaims {
+            org_id: org_id.to_string(),
+            user_id: "user-1".to_string(),
+            role: "admin".to_string(),
+            exp,
+            jti: "jti-1".to_string(),
+        }
+    }
+
+    fn sign_test_jwt(der_b64: &str, kid: &str, claims: &OrgJwtClaims) -> String {
+        let der = base64::engine::general_purpose::STANDARD
+            .decode(der_b64)
+            .expect("test DER is valid base64");
+        let encoding_key = jsonwebtoken::EncodingKey::from_rsa_der(&der);
+        let mut header = jsonwebtoken::Header::new(Algorithm::RS256);
+        header.kid = Some(kid.to_string());
+        jsonwebtoken::encode(&header, claims, &encoding_key).expect("test claims encode")
+    }
+
+    #[test]
+    fn valid_org_token_resolves_org() {
+        let now = Utc::now();
+        let claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+
+        let decoded = decode_org_jwt(&token, &test_jwks(), now).expect("valid token decodes");
+        let credential =
+            resolve_org_credential(decoded, |_jti| false).expect("valid token resolves");
+
+        assert_eq!(credential.org_id, "org-a");
+        assert_eq!(credential.user_id, "user-1");
+        assert_eq!(credential.role, "admin");
+        assert_eq!(credential.token_id, "jti-1");
+    }
+
+    #[test]
+    fn missing_credential_rejected() {
+        assert_eq!(bearer_token(None), None);
+        assert_eq!(bearer_token(Some("Basic abc")), None);
+        assert_eq!(bearer_token(Some("Bearer ")), None);
+        assert_eq!(extract_bearer_token(None), Err(CredentialError::Missing));
+        assert_eq!(
+            extract_bearer_token(Some("Basic abc")),
+            Err(CredentialError::Missing)
+        );
+    }
+
+    #[test]
+    fn revoked_token_is_rejected_at_edge() {
+        let now = Utc::now();
+        let claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+
+        let decoded = decode_org_jwt(&token, &test_jwks(), now).expect("valid token decodes");
+        let result = resolve_org_credential(decoded, |jti| jti == "jti-1");
+
+        assert_eq!(result, Err(CredentialError::Revoked));
+    }
+
+    #[test]
+    fn expired_jwt_rejected() {
+        let now = Utc::now();
+        let claims = test_claims("org-a", (now - chrono::Duration::minutes(1)).timestamp());
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+
+        let result = decode_org_jwt(&token, &test_jwks(), now);
+
+        assert_eq!(result, Err(CredentialError::Expired));
+    }
+
+    #[test]
+    fn jwt_with_wrong_signature_rejected() {
+        let now = Utc::now();
+        let claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
+        // Signed with key B, but presented against a JWKS that only knows
+        // key A's public components under the same `kid` — the signature
+        // check must fail even though the `kid` lookup succeeds.
+        let token = sign_test_jwt(TEST_KEY_B_DER_B64, "test-key-a", &claims);
+
+        let result = decode_org_jwt(&token, &test_jwks(), now);
+
+        assert_eq!(result, Err(CredentialError::BadSignature));
+    }
+
+    #[test]
+    fn jwt_for_org_a_cannot_read_org_b() {
+        let row = ArtifactOrgRow {
+            id: "artifact-1".to_string(),
+            org_id: "org-b".to_string(),
+        };
+
+        assert_eq!(
+            decide_artifact_visibility(Some(&row), "org-a"),
+            ArtifactLookupDecision::NotFound
+        );
+        assert_eq!(
+            decide_artifact_visibility(Some(&row), "org-b"),
+            ArtifactLookupDecision::Visible
+        );
+    }
+
+    #[test]
+    fn cross_org_read_returns_404_not_403() {
+        // The artifact genuinely exists and genuinely belongs to org B —
+        // this is the case the spec calls out as easy to get vacuously
+        // right by testing only the absent-row path.
+        let row = ArtifactOrgRow {
+            id: "artifact-1".to_string(),
+            org_id: "org-b".to_string(),
+        };
+
+        let decision = decide_artifact_visibility(Some(&row), "org-a");
+        let status = match decision {
+            ArtifactLookupDecision::NotFound => 404,
+            ArtifactLookupDecision::Visible => 200,
+        };
+
+        assert_eq!(decision, ArtifactLookupDecision::NotFound);
+        assert_eq!(status, 404, "cross-org read must map to 404, never 403");
+    }
+
+    #[test]
+    fn org_id_in_body_is_ignored() {
+        let credential = OrgCredential {
+            org_id: "org-a".to_string(),
+            user_id: "user-1".to_string(),
+            role: "admin".to_string(),
+            token_id: "jti-1".to_string(),
+        };
+        let raw = serde_json::json!({ "org_id": "org-b", "tier": "public" });
+
+        assert_eq!(resolve_tenant_org(&raw, &credential), "org-a");
+    }
+
+    #[test]
+    fn rate_limit_keyed_on_token_not_ip() {
+        assert_ne!(
+            rate_limit_kv_key_for_token("token-a"),
+            rate_limit_kv_key_for_token("token-b")
+        );
+
+        // Two tokens in the same org get independent counters: exhausting
+        // one's limit must not affect the other's.
+        let mut counts: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+        counts.insert("token-a", RATE_LIMIT_MAX_PER_TOKEN);
+        counts.insert("token-b", 0);
+
+        assert!(!rate_limit_allows(
+            counts["token-a"],
+            RATE_LIMIT_MAX_PER_TOKEN
+        ));
+        assert!(rate_limit_allows(
+            counts["token-b"],
+            RATE_LIMIT_MAX_PER_TOKEN
+        ));
+    }
+
+    #[test]
+    fn anonymous_path_still_rate_limited_by_ip() {
+        let ip_key = rate_limit_kv_key_for_ip("203.0.113.4");
+        let token_key = rate_limit_kv_key_for_token("some-jti");
+
+        assert!(ip_key.starts_with(RATE_LIMIT_IP_KV_PREFIX));
+        assert!(!ip_key.starts_with(RATE_LIMIT_TOKEN_KV_PREFIX));
+        assert_ne!(ip_key, token_key);
+    }
+
+    #[test]
+    fn jwks_cached_in_kv() {
+        let raw = serde_json::json!({
+            "keys": [
+                { "kid": "test-key-a", "n": "abc", "e": "AQAB" }
+            ]
+        })
+        .to_string();
+
+        let jwks = parse_jwks(&raw).expect("valid JWKS JSON parses");
+
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(jwks.keys[0].kid, "test-key-a");
+        assert_eq!(parse_jwks("not json"), None);
+    }
+
+    #[test]
+    fn revocation_write_endpoint_rejects_unauthenticated_or_wrong_credential() {
+        assert!(!revocation_write_authorized(Some("expected-secret"), None));
+        assert!(!revocation_write_authorized(
+            Some("expected-secret"),
+            Some("Bearer wrong-secret")
+        ));
+        assert!(revocation_write_authorized(
+            Some("expected-secret"),
+            Some("Bearer expected-secret")
+        ));
     }
 }

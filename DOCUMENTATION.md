@@ -126,3 +126,61 @@ extra bookkeeping. **Only the fake resolver is exercised by the automated
 test suite** — real end-to-end DNS resolution against `RealDnsResolver` is
 not covered by a test and should be checked manually before relying on it
 in production.
+
+## Auth seam
+
+Two credential types (spec 07): `sessionJwt` (console-issued, minutes) and
+`orgToken` (CLI/MCP/CI, long-lived until revoked). Both share one claim
+shape — `org_id`, `user_id`, `role`, `exp`, `jti` — and Laravel is the only
+signer. `App\Services\Auth\OrgJwtService::mint()` signs RS256 via
+`firebase/php-jwt`, using the team's `slug` as `org_id` (the same string
+`store::validate_slug`/`o.slug` use on the Worker side, so the two sides
+never disagree about what an org is called). Key material comes from
+`config('services.org_jwt.private_key')`/`.kid` — not currently defined in
+`config/services.php` (out of this spec's owned-files list; wiring
+production key material is a flagged follow-up), so minting fails closed
+with no key configured.
+
+The Worker (`backend/src/lib.rs`) verifies at the edge against a JWKS
+cached in KV (`cached_jwks`) — it never fetches the JWKS itself, and
+`decode_org_jwt` takes no `&Env`/fetch capability at all, so there is no
+origin round-trip on the hot path by construction, not by observed trace.
+`resolve_request_credential` tries the legacy static `ARTFCT_ORG_TOKEN`
+bearer first (spec 03-05 back-compat), then falls back to JWT
+verification plus a KV denylist check keyed on `jti`. Tenancy always comes
+from this resolved credential — `resolve_tenant_org` never reads a body
+`org_id` — and `check_and_increment_rate_limit` enforces a per-token KV
+counter independent of any other token in the same org. Anonymous
+ephemeral creates are unchanged and keep relying on the existing per-IP
+WAF protection outside the Worker.
+
+`GET /v1/artifacts/{id}` is the credential-scoped metadata read: it fetches
+the row without an org filter, then gates visibility in
+`decide_artifact_visibility`, so a cross-org request and a nonexistent
+artifact both resolve to the identical 404 — never 403 — and existence is
+never disclosed.
+
+Revocation is Laravel writing to the Worker's own denylist, not Laravel
+calling the Cloudflare API directly (which would need a Cloudflare
+credential this project doesn't have).
+`App\Services\Auth\RevocationWriter` POSTs to the Worker's
+`POST /v1/internal/revocations`, authenticated with its own shared secret
+(`ARTFCT_REVOCATION_WRITE_SECRET`, matched against the Worker's
+`REVOCATION_WRITE_SECRET_ENV`) — a credential of its own, separate from
+`orgToken`/`sessionJwt`, following the same fail-closed pattern as
+`ARTFCT_ORG_TOKEN`/`ARTFCT_ARTIFACT_TOKEN_SECRET`. The denylist entry's TTL
+matches the token's own `exp`, so it expires with the credential and the
+denylist stays small. The propagation window between revoke and the next
+request being rejected is bounded by KV's eventual consistency — an
+accepted window measured in seconds, not milliseconds. That window is
+exactly why JWT TTLs are minutes rather than hours: a revocation that can
+take a few seconds to propagate is only safe to rely on when the token
+would have expired naturally soon anyway.
+
+`App\Models\OrgToken` never stores the raw JWT — only `jti` (the denylist
+key) and a display-only `last_four` — so `token creation returns value once
+only` is a property of the schema, not just the controller
+(`App\Http\Controllers\Teams\OrgTokenController::store`). Revoking someone
+else's token requires the team's member-management permission
+(`App\Policies\OrgTokenPolicy::revoke`); a token's own creator can always
+revoke it.
