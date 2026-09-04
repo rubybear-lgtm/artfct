@@ -12,6 +12,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added Spec 3 permanent single-file storage with D1 metadata, R2 raw blobs, content-addressed IDs, deduplication, and CLI export; ephemeral KV behavior remains unchanged.
 - Added Spec 4 deterministic multi-file permanent bundles, manifest validation, missing-file uploads, nested asset previews, and directory deployment with `--entrypoint`.
 - Added Spec 5 server-side origin isolation: per-artifact `<tenant-slug>--<artifact-id>.artfct.dev` hostnames, cookieless HMAC-signed access tokens with artifact scoping and expiry, and per-artifact CSP derived from manifest `external_origins`/`unsafe_eval`; free-tier `/p/{id}` links are unchanged.
+- Added Spec 6 Laravel identity foundation: starter-kit Teams (admin/member/viewer roles) for orgs, WorkOS AuthKit login backed by an injectable client, `external_identities` linking one user to many provider identities, an `auth_mode` (`authkit`/`dual`/`polis`) state machine with domain-verification and Polis-identity preconditions, and DNS TXT domain verification against an injectable resolver.
 
 ## 0.0.1 - 2026-06-03
 

@@ -93,3 +93,8 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
     return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
         ->header('Content-Type', 'text/xml');
 })->name('sitemap');
+
+// ── identity (spec 06) ──────────────────────────────────────────────────────
+
+require __DIR__.'/auth.php';
+require __DIR__.'/teams.php';

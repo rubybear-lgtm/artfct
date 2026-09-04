@@ -304,6 +304,17 @@ Set the worker URL so the browser can reach a local Cloudflare Worker:
 VITE_WORKER_URL=http://localhost:8787
 ```
 
+Login uses WorkOS AuthKit. Locally and in tests, an injectable fake client
+stands in and needs no credentials — see "Identity (control plane)" in
+[DOCUMENTATION.md](DOCUMENTATION.md). For a real WorkOS account, set:
+
+```sh
+# .env
+WORKOS_CLIENT_ID=
+WORKOS_API_KEY=
+WORKOS_REDIRECT_URL="${APP_URL}/authenticate"
+```
+
 Run the frontend checks:
 
 ```sh

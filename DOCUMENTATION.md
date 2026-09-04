@@ -74,3 +74,55 @@ legacy shared-origin `/p/{id}` path for permanent artifacts that never opted
 into isolation — keeps the pre-spec-05 `PREVIEW_CONTENT_SECURITY_POLICY`
 byte-identical, so isolation never silently tightens an artifact that did not
 opt in.
+
+## Identity (control plane)
+
+Orgs and membership are a starter-kit Teams install (`app/Models/Team`,
+`Membership`, `TeamInvitation`) with artfct's constraints layered on top: the
+`slug` column reuses the same rules as `store::validate_slug` in the Worker
+(1-24 chars, ASCII only, lowercase letters/digits/`-`, no leading/trailing
+`-`, no `--`) because it becomes a DNS label in spec 5. Roles are `admin` /
+`member` / `viewer` (`App\Enums\TeamRole`); every gate has a policy test.
+
+Auth is WorkOS AuthKit via `laravel/workos`, resolved through
+`App\Services\AuthKit\AuthKitClientContract` rather than called directly —
+the same "mock external services" seam used elsewhere in this project.
+`RealAuthKitClient` wraps the WorkOS PHP SDK and fails closed: it throws
+unless `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and `WORKOS_REDIRECT_URL` are
+all set. `FakeAuthKitClient` is bound instead outside production (and always
+in tests); it never talks to WorkOS, encoding a profile into a
+self-describing "authorization code" so both feature tests and Pest browser
+tests (a separate HTTP process) resolve it identically. `routes/auth.php`
+only registers the `/authkit/dev-login` stand-in screen when
+`app()->environment('production')` is false.
+
+There is no `workos_id` column on `users`. Login resolves through
+`external_identities` (`App\Models\ExternalIdentity`,
+`App\Services\Identity\IdentityResolver`): match `(provider, external_id)`
+first, then `users.email` but only when the incoming identity's email is
+verified, else create a new user. One human accumulates many identities
+across providers this way; an unverified email is never enough to attach a
+new identity to an existing account, for the same account-takeover reason
+domain verification exists.
+
+`auth_mode` (`App\Enums\AuthMode`) is a state machine on the team:
+`authkit` -> `dual` -> `polis`, enforced by
+`App\Services\Identity\AuthModeTransitioner`. Every org starts at
+`authkit`. Moving past it requires a verified `team_domains` row; moving to
+`polis` additionally requires at least one admin holding a verified
+`external_identities` row with `provider = polis` — the precondition that
+stops an admin flipping the switch and locking every admin out of the
+screen where SAML gets configured. Moving backward is unrestricted. A
+refused transition throws `AuthModeTransitionException` naming the reason,
+surfaced to the client as a `422` validation error on `auth_mode`.
+
+Domain verification (`App\Services\Identity\DomainVerifier`) checks a DNS
+TXT record at `_artfct-verify.<domain>` against a per-domain
+`verification_token`, through `App\Services\Identity\DnsResolverContract` —
+`RealDnsResolver` (real `dns_get_record`) in production, `FakeDnsResolver`
+in tests. `verified_at` is nullable and reset to `null` on a failed
+check, so removing the TXT record and re-verifying later works without
+extra bookkeeping. **Only the fake resolver is exercised by the automated
+test suite** — real end-to-end DNS resolution against `RealDnsResolver` is
+not covered by a test and should be checked manually before relying on it
+in production.
