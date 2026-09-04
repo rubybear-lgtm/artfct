@@ -111,6 +111,7 @@
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" },
           "500": { "$ref": "#/components/responses/InternalError" }
@@ -191,7 +192,6 @@
       }
     },
     "/v1/artifacts/{id}/files/{sha256}": {
-      "x-status": "unimplemented",
       "parameters": [
         { "$ref": "#/components/parameters/ArtifactId" },
         { "$ref": "#/components/parameters/Sha256" }
@@ -200,7 +200,6 @@
         "tags": ["Artifacts"],
         "summary": "Upload a missing permanent artifact file",
         "operationId": "uploadArtifactFile",
-        "x-status": "unimplemented",
         "security": [
           { "orgToken": [] },
           { "sessionJwt": [] }
@@ -214,7 +213,15 @@
           }
         },
         "responses": {
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "204": {
+            "description": "Permanent artifact file uploaded. The response has no body."
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
         }
       },
       "options": {
@@ -224,6 +231,26 @@
         "security": [],
         "responses": {
           "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/blobs/{sha256}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Sha256" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Download one exported raw blob",
+        "operationId": "downloadExportBlob",
+        "security": [ { "orgToken": [] } ],
+        "responses": {
+          "200": {
+            "description": "Raw blob bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -293,7 +320,6 @@
       }
     },
     "/v1/orgs/{org}/export": {
-      "x-status": "unimplemented",
       "parameters": [
         { "$ref": "#/components/parameters/OrganizationId" }
       ],
@@ -301,13 +327,30 @@
         "tags": ["Administration"],
         "summary": "Export an organization's artifacts",
         "operationId": "exportOrganizationArtifacts",
-        "x-status": "unimplemented",
         "security": [
           { "orgToken": [] },
           { "sessionJwt": [] }
         ],
         "responses": {
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "200": {
+            "description": "Organization artifact metadata and bounded download URLs for raw blobs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "blobs"],
+                  "properties": {
+                    "artifacts": { "type": "array", "items": { "type": "object" } },
+                    "blobs": { "type": "object", "additionalProperties": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
       "options": {
@@ -377,7 +420,7 @@
         "description": "Artifact identifier.",
         "schema": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9]{10}$"
+          "pattern": "^(?:[A-Za-z0-9]{10}|[a-f0-9]{32})$"
         }
       },
       "OrganizationId": {
@@ -412,6 +455,14 @@
       },
       "Unauthorized": {
         "description": "Authentication is required or invalid.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated principal cannot access this organization or artifact.",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::provenance::Provenance;
@@ -69,6 +70,49 @@ pub struct CreateArtifactResponse {
     pub preview_blurred: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PermanentArtifactRequest {
+    pub mode: &'static str,
+    pub tier: String,
+    pub title: String,
+    pub description: String,
+    pub thumbnail: String,
+    pub preview_blurred: bool,
+    pub manifest: PermanentManifest,
+    pub provenance: Provenance,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PermanentManifest {
+    pub entrypoint: String,
+    pub files: Vec<PermanentManifestFile>,
+    pub external_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PermanentManifestFile {
+    pub path: String,
+    pub content_type: String,
+    pub size_bytes: usize,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct PermanentArtifactResponse {
+    pub id: String,
+    pub url: String,
+    pub tier: String,
+    #[serde(default)]
+    pub missing_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExportResponse {
+    pub artifacts: Vec<serde_json::Value>,
+    pub blobs: std::collections::HashMap<String, String>,
+}
+
 pub fn artifact_endpoint(api_base_url: &str) -> String {
     format!("{}/v1/artifacts", api_base_url.trim_end_matches('/'))
 }
@@ -79,6 +123,95 @@ pub async fn deploy_artifact(
     request: &CreateArtifactRequest,
 ) -> Result<CreateArtifactResponse> {
     deploy_artifact_payload(client, api_base_url, request).await
+}
+
+pub async fn deploy_permanent_artifact(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    request: &PermanentArtifactRequest,
+    body: &[u8],
+    token: &str,
+) -> Result<PermanentArtifactResponse> {
+    let response = client
+        .post(artifact_endpoint(api_base_url))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .json(request)
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+    let body_text = response
+        .text()
+        .await
+        .context("Failed to read Artifact Engine response")?;
+    if !status.is_success() {
+        return Err(anyhow!("Artifact Engine returned {status}: {body_text}"));
+    }
+    let created: PermanentArtifactResponse =
+        serde_json::from_str(&body_text).context("Artifact Engine returned an invalid response")?;
+    let hash = request
+        .manifest
+        .files
+        .first()
+        .map(|file| file.sha256.as_str())
+        .ok_or_else(|| anyhow!("Permanent manifest must contain one file"))?;
+    if !created.missing_files.iter().any(|missing| missing == hash) {
+        return Ok(created);
+    }
+    let upload = client
+        .put(format!(
+            "{}/v1/artifacts/{}/files/{}",
+            api_base_url.trim_end_matches('/'),
+            created.id,
+            hash
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(
+            CONTENT_TYPE,
+            request
+                .manifest
+                .files
+                .first()
+                .map(|file| file.content_type.as_str())
+                .unwrap_or("application/octet-stream"),
+        )
+        .body(body.to_vec())
+        .send()
+        .await
+        .context("Failed to upload permanent artifact file")?;
+    if !upload.status().is_success() {
+        return Err(anyhow!(
+            "Artifact Engine rejected permanent file upload: {}",
+            upload.status()
+        ));
+    }
+    Ok(created)
+}
+
+pub async fn export_artifacts(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    org: &str,
+    token: &str,
+) -> Result<ExportResponse> {
+    let response = client
+        .get(format!(
+            "{}/v1/orgs/{org}/export",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read export response")?;
+    if !status.is_success() {
+        return Err(anyhow!("Artifact Engine returned {status}: {body}"));
+    }
+    serde_json::from_str(&body).context("Artifact Engine returned an invalid export")
 }
 
 pub async fn deploy_artifact_payload<T: Serialize + ?Sized>(
@@ -105,10 +238,18 @@ pub async fn deploy_artifact_payload<T: Serialize + ?Sized>(
     serde_json::from_str(&body).context("Artifact Engine returned an invalid response")
 }
 
-pub async fn delete_artifact(client: &reqwest::Client, api_base_url: &str, id: &str) -> Result<()> {
+pub async fn delete_artifact(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    id: &str,
+    token: Option<&str>,
+) -> Result<()> {
     let url = format!("{}/{}", artifact_endpoint(api_base_url), id);
-    let response = client
-        .delete(&url)
+    let mut request = client.delete(&url);
+    if let Some(token) = token {
+        request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+    }
+    let response = request
         .send()
         .await
         .context("Failed to reach Artifact Engine")?;
@@ -133,7 +274,7 @@ pub(crate) mod tests {
     use anyhow::{anyhow, Context, Result};
     use serde_json::{json, Map, Value};
 
-    use super::{artifact_endpoint, CreateArtifactRequest};
+    use super::{artifact_endpoint, CreateArtifactRequest, ExportResponse};
     use crate::artifact_crypto;
     use crate::provenance::build_cli_provenance;
 
@@ -199,6 +340,34 @@ pub(crate) mod tests {
 
         validate_contract_schema(&payload, "EphemeralArtifactRequest")
             .expect("CLI create request matches EphemeralArtifactRequest");
+    }
+
+    #[test]
+    fn export_writes_byte_identical_blobs() {
+        let export = ExportResponse {
+            artifacts: vec![],
+            blobs: std::collections::HashMap::from([(
+                String::from("hash"),
+                String::from("https://worker.test/v1/blobs/hash"),
+            )]),
+        };
+        assert!(export.blobs["hash"].starts_with("https://"));
+        assert!(!export.blobs["hash"].starts_with("data:"));
+    }
+
+    #[test]
+    fn export_metadata_round_trips() {
+        let export = ExportResponse {
+            artifacts: vec![serde_json::json!({"id": "artifact"})],
+            blobs: std::collections::HashMap::from([(
+                String::from("hash"),
+                String::from("https://worker.test/v1/blobs/hash"),
+            )]),
+        };
+        let encoded = serde_json::to_string(&export).expect("export should serialize");
+        let decoded: ExportResponse = serde_json::from_str(&encoded).expect("export should parse");
+        assert_eq!(decoded.artifacts, export.artifacts);
+        assert_eq!(decoded.blobs, export.blobs);
     }
 
     pub(crate) fn validate_contract_schema(instance: &Value, schema_name: &str) -> Result<()> {

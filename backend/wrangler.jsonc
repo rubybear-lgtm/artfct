@@ -27,6 +27,20 @@
             "id": "89447fa353bd403abdcffbce5e5c331b",
         },
     ],
+    "d1_databases": [
+        {
+            "binding": "ARTIFACTS_DB",
+            "database_name": "artfct-artifacts",
+            "database_id": "00000000-0000-0000-0000-000000000000",
+            "migrations_dir": "migrations",
+        },
+    ],
+    "r2_buckets": [
+        {
+            "binding": "ARTIFACTS_BUCKET",
+            "bucket_name": "artfct-blobs",
+        },
+    ],
     "vars": {
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
         "ARTFCT_MAX_HTML_BYTES": "1048576",

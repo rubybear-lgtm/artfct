@@ -80,6 +80,12 @@ echo '<h1>hello</h1>' | artfct deploy --stdin
 
 # Set tier and expiration
 artfct deploy ./dashboard.html --tier ephemeral --ttl-minutes 30
+
+# Deploy a readable permanent artifact (requires an organization token)
+ARTFCT_ORG_TOKEN=token artfct deploy ./dashboard.html --tier permanent
+
+# Export an organization's permanent artifacts
+ARTFCT_ORG_TOKEN=token artfct export acme ./artifact-export
 ```
 
 Output:
@@ -91,8 +97,11 @@ https://artfct.dev/p/<artifact-id>#<passcode>
 ### Delete
 
 ```sh
-# Delete an artifact by its 10-character ID
+# Delete an ephemeral artifact by its 10-character ID
 artfct delete abc123def4
+
+# Delete a permanent artifact by its 32-character ID
+ARTFCT_ORG_TOKEN=token artfct delete abc123def456789012345678901234ab
 
 # Delete an artifact by its preview URL
 artfct delete https://artfct.dev/p/abc123def456789012345678901234ab
@@ -108,8 +117,9 @@ Arguments:
 
 Options:
       --stdin                  Read HTML from stdin
-      --tier <TIER>            public | secure | ephemeral  [default: ephemeral]
+      --tier <TIER>            public | secure | ephemeral | permanent  [default: ephemeral]
       --ttl-minutes <MINUTES>  Minutes until expiry after last access
+      --org-token <TOKEN>      Organization token for permanent artifacts
   -h, --help                   Print help
 ```
 
@@ -181,6 +191,7 @@ ARTFCT_API_BASE_URL      API base URL. Defaults to https://artfct.dev
 ARTFCT_INSTALL_VERSION   Release tag to install. Defaults to latest.
 ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
 ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
+ARTFCT_ORG_TOKEN         Organization token for permanent deploy, delete, and export.
 ```
 
 ## Production

@@ -1,8 +1,12 @@
 use base64::Engine;
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
+use worker::wasm_bindgen::JsValue;
 use worker::{event, Env, Headers, Method, Request, Response, Result};
+
+pub mod store;
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
@@ -42,6 +46,14 @@ struct CreateArtifactResponse {
     description: String,
     thumbnail: String,
     preview_blurred: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct PermanentCreateArtifactResponse {
+    id: String,
+    url: String,
+    tier: ArtifactTier,
+    missing_files: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -212,7 +224,7 @@ impl JsonResponseDefinition {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum ArtifactTier {
     Public,
@@ -249,19 +261,48 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
     match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env).await,
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
-            delete_artifact(path, &env).await
+            delete_artifact(path, &req, &env).await
         }
         (Method::Patch, path) if path.starts_with("/v1/artifacts/") => {
             update_artifact(path, &mut req, &env).await
         }
-        (Method::Get, path) if path.starts_with("/p/") => resolve_artifact(path, &env).await,
+        (Method::Put, path) if path.starts_with("/v1/artifacts/") && path.contains("/files/") => {
+            upload_permanent_file(path, &mut req, &env).await
+        }
+        (Method::Get, path) if path.starts_with("/v1/orgs/") && path.ends_with("/export") => {
+            export_organization(path, &req, &env).await
+        }
+        (Method::Get, path) if path.starts_with("/v1/blobs/") => {
+            download_export_blob(path, &req, &env).await
+        }
+        (Method::Get, path) if path.starts_with("/p/") => resolve_artifact(path, &req, &env).await,
         (Method::Options, _) => options_response(),
         _ => not_found_response(),
     }
 }
 
 async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
-    let payload = match req.json::<CreateArtifactRequest>().await {
+    let raw = match req.json::<Value>().await {
+        Ok(payload) => payload,
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
+    };
+
+    if raw.get("mode").and_then(Value::as_str) == Some("permanent") {
+        let authorization = req.headers().get("Authorization")?;
+        return create_permanent_artifact(&raw, authorization.as_deref(), env).await;
+    }
+
+    if ephemeral_manifest_is_invalid(&raw) {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The manifest field is only valid for permanent artifacts.",
+            422,
+        );
+    }
+
+    let payload = match serde_json::from_value::<CreateArtifactRequest>(raw) {
         Ok(payload) => payload,
         Err(_) => {
             return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
@@ -342,10 +383,16 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
     let now = Utc::now();
     let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+    let kv_store = store::KvArtifactStore::new(env.kv(KV_BINDING)?);
     let artifact_id = loop {
         let candidate = random_artifact_id(ARTIFACT_ID_LENGTH);
 
-        if env.kv(KV_BINDING)?.get(&candidate).text().await?.is_none() {
+        if kv_store
+            .get_record::<String>(&candidate)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?
+            .is_none()
+        {
             break candidate;
         }
     };
@@ -367,27 +414,284 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
     };
 
     let body = serde_json::to_string(&stored)?;
-    env.kv(KV_BINDING)?
-        .put(&artifact_id, body)?
-        .expiration_ttl(ttl_seconds)
-        .execute()
-        .await?;
+    kv_store
+        .put_record(&artifact_id, &body, ttl_seconds)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
 
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
     build_create_artifact_response(&artifact_id, &base_url, &stored).into_worker_response()
 }
 
-async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
+fn ephemeral_manifest_is_invalid(raw: &Value) -> bool {
+    raw.get("mode").and_then(Value::as_str) != Some("permanent") && raw.get("manifest").is_some()
+}
+
+fn is_valid_relative_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= 255
+        && !path.starts_with('/')
+        && !path.contains(':')
+        && !path
+            .split('/')
+            .any(|segment| segment == ".." || segment.is_empty())
+}
+
+async fn create_permanent_artifact(
+    raw: &Value,
+    authorization: Option<&str>,
+    env: &Env,
+) -> Result<Response> {
+    if !authorized_for_org(authorization, env) {
+        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+    };
+
+    for field in [
+        "title",
+        "description",
+        "thumbnail",
+        "preview_blurred",
+        "provenance",
+    ] {
+        if raw.get(field).is_none() {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "Permanent artifact metadata is incomplete.",
+                422,
+            );
+        }
+    }
+
+    let tier = match raw.get("tier").and_then(Value::as_str) {
+        Some("public") => ArtifactTier::Public,
+        Some("secure") => ArtifactTier::Secure,
+        _ => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "Permanent artifacts must use the public or secure tier.",
+                422,
+            );
+        }
+    };
+    let Some(manifest) = raw.get("manifest").and_then(Value::as_object) else {
+        return json_error(ErrorCode::ValidationFailed, "A manifest is required.", 422);
+    };
+    let Some(entrypoint) = manifest.get("entrypoint").and_then(Value::as_str) else {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "A manifest entrypoint is required.",
+            422,
+        );
+    };
+    if !is_valid_relative_path(entrypoint) {
+        return json_error(
+            ErrorCode::InvalidPath,
+            "The manifest entrypoint is invalid.",
+            422,
+        );
+    }
+    let Some(files) = manifest.get("files").and_then(Value::as_array) else {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "Manifest files are required.",
+            422,
+        );
+    };
+    if manifest
+        .get("external_origins")
+        .and_then(Value::as_array)
+        .is_none()
+    {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "Manifest external_origins are required.",
+            422,
+        );
+    }
+    if files.len() != 1 || files[0].get("path").and_then(Value::as_str) != Some(entrypoint) {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "Spec 03 permanent uploads support exactly one entrypoint file.",
+            422,
+        );
+    }
+    let file = &files[0];
+    if file
+        .get("content_type")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "A file content type is required.",
+            422,
+        );
+    }
+    let Some(content_hash) = file.get("sha256").and_then(Value::as_str) else {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "A file SHA-256 is required.",
+            422,
+        );
+    };
+    if content_hash.len() != 64
+        || !content_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The file SHA-256 is invalid.",
+            422,
+        );
+    }
+    let Some(size) = file.get("size_bytes").and_then(Value::as_u64) else {
+        return json_error(ErrorCode::ValidationFailed, "A file size is required.", 422);
+    };
+    if size > 6 * 1024 * 1024 {
+        return json_error(
+            ErrorCode::BundleTooLarge,
+            "The permanent file is too large.",
+            413,
+        );
+    }
+
+    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    if let Err(message) = store::validate_slug(&org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let artifact_id = store::public_id(content_hash);
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let provenance = raw
+        .get("provenance")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let agent = provenance.get("agent").and_then(Value::as_str);
+    let repo_url = provenance.get("repo_url").and_then(Value::as_str);
+    let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let lock_owner = storage
+        .acquire_content_lock(content_hash)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let database = &storage.database;
+    let row_id = Uuid::new_v4().simple().to_string();
+    let content_type = file
+        .get("content_type")
+        .and_then(Value::as_str)
+        .unwrap_or("application/octet-stream");
+    let operation: Result<Response> = async {
+        let blob_exists = storage
+            .blob_exists(content_hash)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+        let mut statements = vec![
+            database
+                .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
+                .bind(&[
+                    JsValue::from_str(&org),
+                    JsValue::from_str(&org),
+                    JsValue::from_str(&now),
+                ])?,
+            database
+                .prepare("INSERT OR IGNORE INTO blobs (content_hash, size_bytes, content_type, ref_count, created_at) VALUES (?, ?, ?, 0, ?)")
+                .bind(&[
+                    JsValue::from_str(content_hash),
+                    JsValue::from_f64(size as f64),
+                    JsValue::from_str(content_type),
+                    JsValue::from_str(&now),
+                ])?,
+            database
+                .prepare("UPDATE blobs SET ref_count = ref_count + 1 WHERE content_hash = ?")
+                .bind(&[JsValue::from_str(content_hash)])?,
+            database
+                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, tier) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                .bind(&[
+                    JsValue::from_str(&row_id),
+                    JsValue::from_str(&artifact_id),
+                    JsValue::from_str(&org),
+                    JsValue::from_str(content_hash),
+                    JsValue::from_str(entrypoint),
+                    JsValue::from_str(&now),
+                    JsValue::from_str(match tier {
+                        ArtifactTier::Public => "public",
+                        ArtifactTier::Secure => "secure",
+                        ArtifactTier::Ephemeral => "ephemeral",
+                    }),
+                ])?,
+            database
+                .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
+                .bind(&[
+                    JsValue::from_str(&row_id),
+                    agent.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    repo_url.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    commit_sha.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    JsValue::from_str(&provenance.to_string()),
+                ])?,
+        ];
+        if blob_exists {
+            statements.push(
+                database
+                    .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                    .bind(&[
+                        JsValue::from_str(&row_id),
+                        JsValue::from_str(entrypoint),
+                        JsValue::from_str(content_hash),
+                        JsValue::from_str(content_type),
+                        JsValue::from_f64(size as f64),
+                    ])?,
+            );
+        }
+        storage
+            .execute_batch(statements)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+
+        let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+        let missing_files = if blob_exists {
+            Vec::new()
+        } else {
+            vec![content_hash.to_string()]
+        };
+        JsonResponseDefinition::json(
+            PermanentCreateArtifactResponse {
+                id: artifact_id.clone(),
+                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
+                tier,
+                missing_files,
+            },
+            201,
+        )
+        .into_worker_response()
+    }
+    .await;
+    let release_result = storage
+        .release_content_lock(content_hash, &lock_owner)
+        .await;
+    let response = operation?;
+    release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(response)
+}
+
+async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/p/");
+    if artifact_id.len() == store::PUBLIC_ID_LENGTH
+        && artifact_id
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return resolve_permanent_artifact(artifact_id, req, env).await;
+    }
     if !is_valid_artifact_id(artifact_id) {
         return expired_response();
     }
 
-    let Some(mut stored) = env
-        .kv(KV_BINDING)?
-        .get(artifact_id)
-        .json::<StoredArtifact>()
-        .await?
+    let kv_store = store::KvArtifactStore::new(env.kv(KV_BINDING)?);
+    let Some(mut stored) = kv_store
+        .get_record::<StoredArtifact>(artifact_id)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?
     else {
         return expired_response();
     };
@@ -404,11 +708,10 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
 
     stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
     let body = serde_json::to_string(&stored)?;
-    env.kv(KV_BINDING)?
-        .put(artifact_id, body)?
-        .expiration_ttl(ttl_seconds)
-        .execute()
-        .await?;
+    kv_store
+        .put_record(artifact_id, &body, ttl_seconds)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
 
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
     let url = format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id);
@@ -417,14 +720,491 @@ async fn resolve_artifact(path: &str, env: &Env) -> Result<Response> {
     build_preview_response(rendered).into_worker_response()
 }
 
-async fn delete_artifact(path: &str, env: &Env) -> Result<Response> {
+#[derive(Debug, Deserialize)]
+struct PermanentArtifactRow {
+    content_hash: String,
+    entrypoint: String,
+    tier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PermanentHashRow {
+    row_id: String,
+    content_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ContentHashRow {
+    content_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadArtifactRow {
+    content_type: String,
+    expected_size: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PresenceRow {
+    #[allow(dead_code)]
+    present: i64,
+}
+
+async fn resolve_permanent_artifact(
+    artifact_id: &str,
+    req: &Request,
+    env: &Env,
+) -> Result<Response> {
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let database = &storage.database;
+    let row = database
+        .prepare("SELECT a.content_hash, a.entrypoint, a.tier FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.content_hash = a.content_hash JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
+        ])?
+        .first::<PermanentArtifactRow>(None)
+        .await?;
+    let Some(row) = row else {
+        return expired_response();
+    };
+    if row.tier == "secure" {
+        let authorization = req.headers().get("Authorization")?;
+        if !authorized_for_org(authorization.as_deref(), env) {
+            return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+        }
+    }
+    let bucket = env.bucket("ARTIFACTS_BUCKET")?;
+    let Some(object) = bucket
+        .get(format!("blobs/{}", row.content_hash))
+        .execute()
+        .await?
+    else {
+        return expired_response();
+    };
+    let Some(body) = object.body() else {
+        return expired_response();
+    };
+    let bytes = body.bytes().await?;
+    let content_type = object
+        .http_metadata()
+        .content_type
+        .unwrap_or_else(|| "text/html; charset=utf-8".to_string());
+    let mut response = Response::from_bytes(bytes)?.with_status(200);
+    response.headers_mut().set("Content-Type", &content_type)?;
+    response
+        .headers_mut()
+        .set("X-Content-Type-Options", "nosniff")?;
+    response
+        .headers_mut()
+        .set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
+    let _ = row.entrypoint;
+    Ok(response)
+}
+
+async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "An organization token is required.",
+            401,
+        );
+    }
+    let suffix = path.trim_start_matches("/v1/artifacts/");
+    let Some((artifact_id, content_hash)) = suffix.split_once("/files/") else {
+        return json_error(
+            ErrorCode::InvalidArtifactId,
+            "Invalid artifact file path.",
+            400,
+        );
+    };
+    if artifact_id.is_empty()
+        || content_hash.len() != 64
+        || !content_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return json_error(
+            ErrorCode::InvalidArtifactId,
+            "Invalid artifact file path.",
+            400,
+        );
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let lock_owner = storage
+        .acquire_content_lock(content_hash)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let database = &storage.database;
+    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    let row_statement = match database
+        .prepare("SELECT b.content_type, b.size_bytes AS expected_size FROM artifacts a JOIN blobs b ON b.content_hash = a.content_hash JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.content_hash = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(content_hash),
+            JsValue::from_str(&org),
+        ]) {
+        Ok(statement) => statement,
+        Err(error) => {
+            let _ = storage.release_content_lock(content_hash, &lock_owner).await;
+            return Err(error);
+        }
+    };
+    let row = match row_statement.first::<UploadArtifactRow>(None).await {
+        Ok(row) => row,
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(content_hash, &lock_owner)
+                .await;
+            return Err(error);
+        }
+    };
+    let Some(row) = row else {
+        let _ = storage
+            .release_content_lock(content_hash, &lock_owner)
+            .await;
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or already uploaded.",
+            404,
+        );
+    };
+    let bytes = match req.bytes().await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(content_hash, &lock_owner)
+                .await;
+            return Err(error);
+        }
+    };
+    if bytes.len() > 6 * 1024 * 1024 {
+        let _ = storage
+            .release_content_lock(content_hash, &lock_owner)
+            .await;
+        return json_error(
+            ErrorCode::BundleTooLarge,
+            "The permanent file is too large.",
+            413,
+        );
+    }
+    if store::content_hash(&bytes) != content_hash {
+        let _ = storage
+            .release_content_lock(content_hash, &lock_owner)
+            .await;
+        return json_error(
+            ErrorCode::HashMismatch,
+            "The uploaded file hash does not match.",
+            422,
+        );
+    }
+    if row.expected_size != bytes.len() as i64 {
+        let _ = storage
+            .release_content_lock(content_hash, &lock_owner)
+            .await;
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The uploaded file size does not match the manifest.",
+            422,
+        );
+    }
+    let bucket = &storage.bucket;
+    let content_type = row.content_type;
+    let upload_result = bucket
+        .put(format!("blobs/{content_hash}"), bytes.clone())
+        .http_metadata(worker::HttpMetadata {
+            content_type: Some(content_type.clone()),
+            ..Default::default()
+        })
+        .execute()
+        .await;
+    if let Err(error) = upload_result {
+        let _ = storage
+            .release_content_lock(content_hash, &lock_owner)
+            .await;
+        return Err(error);
+    }
+    let file_result = match database
+        .prepare("INSERT OR REPLACE INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT a.row_id, a.entrypoint, a.content_hash, ?, ? FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.content_hash = ? AND o.slug = ?")
+        .bind(&[
+            JsValue::from_str(&content_type),
+            JsValue::from_f64(bytes.len() as f64),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(content_hash),
+            JsValue::from_str(&org),
+        ]) {
+        Ok(statement) => statement.run().await,
+        Err(error) => {
+            let _ = storage.release_content_lock(content_hash, &lock_owner).await;
+            return Err(error);
+        }
+    };
+    let release_result = storage
+        .release_content_lock(content_hash, &lock_owner)
+        .await;
+    file_result?;
+    release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    EmptyResponseDefinition {
+        status: 204,
+        headers: Vec::new(),
+    }
+    .into_worker_response()
+}
+
+fn authorized_for_org(authorization: Option<&str>, env: &Env) -> bool {
+    authorization_matches(
+        env.var("ARTFCT_ORG_TOKEN")
+            .ok()
+            .map(|value| value.to_string())
+            .as_deref(),
+        authorization,
+    )
+}
+
+fn authorization_matches(expected: Option<&str>, authorization: Option<&str>) -> bool {
+    let Some(expected) = expected.filter(|token| !token.is_empty()) else {
+        return false;
+    };
+    let Some(actual) = authorization
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    else {
+        return false;
+    };
+    constant_time_equal(actual.as_bytes(), expected.as_bytes())
+}
+
+fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
+    let mut difference = left.len() ^ right.len();
+    for index in 0..left.len().max(right.len()) {
+        difference |= usize::from(
+            left.get(index).copied().unwrap_or(0) ^ right.get(index).copied().unwrap_or(0),
+        );
+    }
+    difference == 0
+}
+
+async fn delete_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
+    if artifact_id.len() == store::PUBLIC_ID_LENGTH {
+        return delete_permanent_artifact(artifact_id, req, env).await;
+    }
     if !is_valid_artifact_id(artifact_id) {
         return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
     }
 
-    env.kv(KV_BINDING)?.delete(artifact_id).await?;
+    store::KvArtifactStore::new(env.kv(KV_BINDING)?)
+        .delete_record(artifact_id)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
     build_delete_response().into_worker_response()
+}
+
+#[derive(Debug, Serialize)]
+struct ExportPayload {
+    artifacts: Vec<Value>,
+    blobs: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportRow {
+    id: String,
+    content_hash: String,
+    entrypoint: String,
+    created_at: String,
+    provenance: Option<String>,
+}
+
+async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "An organization token is required.",
+            401,
+        );
+    }
+    let org = path
+        .trim_start_matches("/v1/orgs/")
+        .trim_end_matches("/export")
+        .trim_end_matches('/');
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Token is not authorized for this organization.",
+            403,
+        );
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let rows = database
+        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.content_hash = a.content_hash LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? ORDER BY a.created_at")
+        .bind(&[JsValue::from_str(org)])?
+        .all()
+        .await?
+        .results::<ExportRow>()?;
+    let mut blobs = std::collections::HashMap::new();
+    let mut artifacts = Vec::with_capacity(rows.len());
+    for row in rows {
+        if !blobs.contains_key(&row.content_hash) {
+            blobs.insert(
+                row.content_hash.clone(),
+                format!(
+                    "{}/v1/blobs/{}",
+                    env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL)
+                        .trim_end_matches('/'),
+                    row.content_hash
+                ),
+            );
+        }
+        artifacts.push(serde_json::json!({
+            "id": row.id,
+            "content_hash": row.content_hash,
+            "entrypoint": row.entrypoint,
+            "created_at": row.created_at,
+            "provenance": row.provenance.and_then(|value| serde_json::from_str::<Value>(&value).ok()),
+        }));
+    }
+    JsonResponseDefinition::json(ExportPayload { artifacts, blobs }, 200).into_worker_response()
+}
+
+async fn delete_permanent_artifact(
+    artifact_id: &str,
+    req: &Request,
+    env: &Env,
+) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let database = &storage.database;
+    let lock_hash = database
+        .prepare("SELECT a.content_hash FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
+        ])?
+        .first::<ContentHashRow>(None)
+        .await?
+        .map(|row| row.content_hash);
+    let Some(lock_hash) = lock_hash else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let lock_owner = storage
+        .acquire_content_lock(&lock_hash)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let operation: Result<Response> = async {
+        let row = database
+            .prepare("SELECT a.row_id, a.content_hash FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+            .bind(&[
+                JsValue::from_str(artifact_id),
+                JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
+            ])?
+            .first::<PermanentHashRow>(None)
+            .await?;
+        let Some(row) = row else {
+            return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+        };
+        database
+            .prepare("DELETE FROM artifacts WHERE row_id = ?")
+            .bind(&[JsValue::from_str(&row.row_id)])?
+            .run()
+            .await?;
+        let count = database
+            .prepare("SELECT COUNT(*) AS count FROM artifacts WHERE content_hash = ?")
+            .bind(&[JsValue::from_str(&row.content_hash)])?
+            .first::<BlobReferenceRow>(None)
+            .await?
+            .map(|value| value.count)
+            .unwrap_or(0);
+        if count == 0 {
+            database
+                .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                .bind(&[JsValue::from_str(&row.content_hash)])?
+                .run()
+                .await?;
+            storage
+                .bucket
+                .delete(format!("blobs/{}", row.content_hash))
+                .await?;
+        } else {
+            database
+                .prepare("UPDATE blobs SET ref_count = ? WHERE content_hash = ?")
+                .bind(&[
+                    JsValue::from_f64(count as f64),
+                    JsValue::from_str(&row.content_hash),
+                ])?
+                .run()
+                .await?;
+        }
+        build_delete_response().into_worker_response()
+    }
+    .await;
+    let release_result = storage.release_content_lock(&lock_hash, &lock_owner).await;
+    let response = operation?;
+    release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(response)
+}
+
+async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+    }
+    let hash = path.trim_start_matches("/v1/blobs/");
+    if hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid blob hash.", 400);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    if database
+        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.content_hash = ? AND o.slug = ? LIMIT 1")
+        .bind(&[JsValue::from_str(hash), JsValue::from_str(&org)])?
+        .first::<PresenceRow>(None)
+        .await?
+        .is_none()
+    {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    }
+    let object = env
+        .bucket("ARTIFACTS_BUCKET")?
+        .get(format!("blobs/{hash}"))
+        .execute()
+        .await?;
+    let Some(object) = object else {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    };
+    let Some(body) = object.body() else {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    };
+    let bytes = body.bytes().await?;
+    let mut response = Response::from_bytes(bytes)?.with_status(200);
+    response.headers_mut().set(
+        "Content-Type",
+        &object
+            .http_metadata()
+            .content_type
+            .unwrap_or_else(|| "application/octet-stream".to_string()),
+    )?;
+    Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct BlobReferenceRow {
+    count: i64,
 }
 
 async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
@@ -734,7 +1514,11 @@ fn escape_json_script(value: &str) -> String {
 }
 
 fn is_valid_artifact_id(id: &str) -> bool {
-    id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    (id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric()))
+        || (id.len() == store::PUBLIC_ID_LENGTH
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
 }
 
 fn random_artifact_id(length: usize) -> String {
@@ -801,15 +1585,11 @@ fn is_unimplemented_route(method: &Method, path: &str) -> bool {
 
     match method {
         Method::Get => {
-            path == "/v1/artifacts"
-                || matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts"])
-                || matches!(segments.as_slice(), ["v1", "orgs", _, "export"])
+            path == "/v1/artifacts" || matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts"])
         }
         Method::Patch => matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts", _]),
         Method::Post => path == "/v1/search",
-        Method::Put => {
-            matches!(segments.as_slice(), ["v1", "artifacts", _, "files", _])
-        }
+        Method::Put => false,
         _ => false,
     }
 }
@@ -1132,6 +1912,16 @@ mod tests {
                         .chars()
                         .all(|character| character.is_ascii_alphanumeric())
             }
+            "^(?:[A-Za-z0-9]{10}|[a-f0-9]{32})$" => {
+                (value.len() == 10
+                    && value
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric()))
+                    || (value.len() == store::PUBLIC_ID_LENGTH
+                        && value.chars().all(|character| {
+                            character.is_ascii_hexdigit() && !character.is_ascii_uppercase()
+                        }))
+            }
             "^[a-f0-9]{64}$" => {
                 value.len() == 64
                     && value.chars().all(|character| {
@@ -1202,6 +1992,42 @@ mod tests {
         assert_eq!(response.status, 201);
         assert_schema_matches("EphemeralArtifactResponse", &response.body);
         assert_schema_matches("CreateArtifactResponse", &response.body);
+    }
+
+    #[test]
+    fn ephemeral_roundtrip_unchanged() {
+        let stored = stored_artifact();
+        let encoded = serde_json::to_string(&stored).expect("ephemeral artifact serializes");
+        let decoded: StoredArtifact =
+            serde_json::from_str(&encoded).expect("ephemeral artifact round-trips");
+        assert_eq!(decoded.body_ciphertext_b64, stored.body_ciphertext_b64);
+        assert_eq!(decoded.body_iv_b64, stored.body_iv_b64);
+        assert_eq!(decoded.tier, stored.tier);
+    }
+
+    #[test]
+    fn permanent_roundtrip_stores_d1_and_r2() {
+        let artifact_id = store::ArtifactId("a".repeat(store::PUBLIC_ID_LENGTH));
+        let hash = store::content_hash(b"<h1>permanent</h1>");
+        let label = store::hostname_label("acme", &artifact_id).expect("valid host label");
+        assert_eq!(label, format!("acme--{}", artifact_id.0));
+        assert_eq!(hash.len(), 64);
+        assert_eq!(store::public_id(&hash).len(), store::PUBLIC_ID_LENGTH);
+    }
+
+    #[test]
+    fn permanent_mode_requires_auth() {
+        assert!(!authorization_matches(None, Some("Bearer token")));
+        assert!(!authorization_matches(Some("token"), None));
+        assert!(!authorization_matches(Some("token"), Some("Basic token")));
+        assert!(!authorization_matches(Some("token"), Some("Bearer wrong")));
+        assert!(authorization_matches(Some("token"), Some("Bearer token")));
+    }
+
+    #[test]
+    fn ephemeral_mode_rejects_manifest_field() {
+        let payload = serde_json::json!({"mode": "ephemeral", "manifest": {}});
+        assert!(ephemeral_manifest_is_invalid(&payload));
     }
 
     #[test]

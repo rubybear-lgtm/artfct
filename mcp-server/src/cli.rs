@@ -62,6 +62,8 @@ pub enum Command {
     Uninstall(UninstallArgs),
     #[command(about = "Print local CLI and MCP diagnostics")]
     Doctor,
+    #[command(about = "Export permanent artifacts for an organization")]
+    Export(ExportArgs),
 }
 
 #[derive(Debug, Args)]
@@ -81,7 +83,7 @@ pub struct DeployArgs {
         long,
         default_value = "ephemeral",
         value_name = "TIER",
-        help = "Artifact tier: public, secure, or ephemeral"
+        help = "Artifact tier: public, secure, ephemeral, or permanent"
     )]
     pub tier: String,
 
@@ -91,6 +93,13 @@ pub struct DeployArgs {
         help = "Minutes until the artifact expires. Defaults to the backend policy"
     )]
     pub ttl_minutes: Option<u64>,
+
+    #[arg(
+        long,
+        value_name = "TOKEN",
+        help = "Organization token for permanent artifacts"
+    )]
+    pub org_token: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -150,7 +159,13 @@ impl DeleteArgs {
             return Some(candidate.trim_end_matches('/'));
         }
 
-        if self.id_or_url.len() == 10 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if (self.id_or_url.len() == 10 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()))
+            || (self.id_or_url.len() == 32
+                && self
+                    .id_or_url
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+        {
             return Some(&self.id_or_url);
         }
 
@@ -171,6 +186,18 @@ pub struct SetupArgs {
 pub struct UninstallArgs {
     #[arg(long, help = "Skip all prompts and uninstall automatically")]
     pub silent: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    #[arg(value_name = "ORG", help = "Organization slug")]
+    pub org: String,
+
+    #[arg(value_name = "DIRECTORY", help = "Local export directory")]
+    pub directory: PathBuf,
+
+    #[arg(long, value_name = "TOKEN", help = "Organization token")]
+    pub org_token: Option<String>,
 }
 
 #[cfg(test)]
@@ -289,6 +316,14 @@ mod tests {
             id_or_url: "abc123def45".to_string(),
         };
         assert_eq!(args.artifact_id(), None);
+    }
+
+    #[test]
+    fn extracts_bare_permanent_id() {
+        let args = DeleteArgs {
+            id_or_url: "0123456789abcdef0123456789abcdef".to_string(),
+        };
+        assert_eq!(args.artifact_id(), Some("0123456789abcdef0123456789abcdef"));
     }
 
     #[test]

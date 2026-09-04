@@ -6,7 +6,7 @@ use ring::digest;
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::Serialize;
 
-use crate::api;
+use crate::api::{self, PermanentArtifactRequest, PermanentManifest, PermanentManifestFile};
 use crate::provenance::Provenance;
 
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
@@ -95,6 +95,63 @@ pub fn prepare_artifact_request(
         request,
         fragment: format!("#{share_code}"),
     })
+}
+
+pub fn prepare_permanent_artifact_request(
+    html: &str,
+    tier: String,
+    provenance: Provenance,
+) -> Result<PermanentArtifactRequest> {
+    let html = html.trim();
+    if html.is_empty() {
+        return Err(anyhow!("html is required"));
+    }
+    let hash = digest::digest(&digest::SHA256, html.as_bytes());
+    let sha256 = hash
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let title = normalize_metadata_value(extract_title(html), DEFAULT_ARTIFACT_TITLE);
+    let description = normalize_metadata_value(
+        extract_meta_content(html, &["name=\"description\"", "name='description'"])
+            .or_else(|| extract_first_paragraph(html))
+            .or_else(|| Some(title.clone())),
+        DEFAULT_ARTIFACT_DESCRIPTION,
+    );
+    let thumbnail = normalize_metadata_value(
+        extract_meta_content(html, &["property=\"og:image\"", "property='og:image'"])
+            .or_else(|| extract_img_src(html)),
+        DEFAULT_ARTIFACT_THUMBNAIL,
+    );
+
+    Ok(PermanentArtifactRequest {
+        mode: "permanent",
+        tier,
+        title,
+        description,
+        thumbnail,
+        preview_blurred: false,
+        manifest: PermanentManifest {
+            entrypoint: "index.html".to_string(),
+            files: vec![PermanentManifestFile {
+                path: "index.html".to_string(),
+                content_type: "text/html; charset=utf-8".to_string(),
+                size_bytes: html.len(),
+                sha256,
+            }],
+            external_origins: Vec::new(),
+        },
+        provenance,
+    })
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    digest::digest(&digest::SHA256, bytes)
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn derive_aes_key_bytes(share_code: &str) -> [u8; 32] {
