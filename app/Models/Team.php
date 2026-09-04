@@ -25,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $provisioning_failed_step
  * @property string|null $release_version
  * @property int $schema_version
+ * @property string|null $region
+ * @property int|null $retention_days
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -33,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, User> $members
  * @property-read Collection<int, TeamDomain> $domains
  */
-#[Fillable(['name', 'slug', 'is_personal', 'auth_mode'])]
+#[Fillable(['name', 'slug', 'is_personal', 'auth_mode', 'retention_days'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
@@ -55,6 +57,20 @@ class Team extends Model
         static::updating(function (Team $team) {
             if ($team->isDirty('name') && ! $team->isDirty('slug')) {
                 $team->slug = static::generateUniqueTeamSlug($team->name, $team->id);
+            }
+
+            // Spec 11: "`region` is set at provisioning and is immutable
+            // afterwards — moving a tenant between regions is a migration,
+            // not a setting." Setting it for the first time (null -> value,
+            // what spec-9 provisioning does) is allowed; changing an
+            // already-set region is not, regardless of call path
+            // (mass-assignment is excluded from `#[Fillable]` entirely, but
+            // `forceFill` and direct property assignment both still reach
+            // this guard).
+            if ($team->isDirty('region') && $team->getOriginal('region') !== null) {
+                throw new \RuntimeException(
+                    "Cannot change team [{$team->slug}]'s region from [{$team->getOriginal('region')}] to [{$team->region}] — region is immutable after provisioning."
+                );
             }
         });
     }

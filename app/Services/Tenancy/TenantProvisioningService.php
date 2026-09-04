@@ -38,7 +38,14 @@ final class TenantProvisioningService
      * step that failed, not from the start, so already-completed steps
      * are never repeated against the provisioner.
      */
-    public function provision(Team $team, string $releaseVersion): void
+    /**
+     * @param  string  $region  The deployment region to provision into.
+     *                          Spec 11: "`region` is set at provisioning and
+     *                          is immutable afterwards" — {@see Team}'s
+     *                          `updating` guard enforces that once this call
+     *                          has set it.
+     */
+    public function provision(Team $team, string $releaseVersion, string $region = 'us'): void
     {
         if ($team->provisioned_at !== null && $team->provisioning_failed_step === null) {
             return;
@@ -73,6 +80,9 @@ final class TenantProvisioningService
         $team->provisioned_at = now();
         $team->provisioning_failed_step = null;
         $team->release_version = $releaseVersion;
+        if ($team->region === null) {
+            $team->region = $region;
+        }
         $team->save();
     }
 

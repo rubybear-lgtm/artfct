@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\AuditEventType;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -22,6 +24,7 @@ class ConsoleController extends Controller
 
     public function __construct(
         private readonly ArtifactDirectory $artifacts,
+        private readonly AuditLogger $auditLogger,
     ) {}
 
     /**
@@ -69,6 +72,8 @@ class ConsoleController extends Controller
 
         try {
             $artifact = $this->artifacts->revokeArtifact($team->slug, $artifactId);
+
+            $this->auditLogger->recordForRequest($request, AuditEventType::ArtifactRevoked, $team, (string) $user->id, "artifact:{$artifactId}");
 
             return redirect()->route('console.index', ['team' => $team])
                 ->with('message', 'Artifact revoked successfully.');

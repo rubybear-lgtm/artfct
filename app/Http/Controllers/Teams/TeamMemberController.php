@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Teams;
 
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\UpdateTeamMemberRequest;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
@@ -16,7 +19,7 @@ class TeamMemberController extends Controller
     /**
      * Update the specified team member's role.
      */
-    public function update(UpdateTeamMemberRequest $request, Team $team, User $user): RedirectResponse
+    public function update(UpdateTeamMemberRequest $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('updateMember', $team);
 
@@ -27,6 +30,8 @@ class TeamMemberController extends Controller
             ->firstOrFail()
             ->update(['role' => $newRole]);
 
+        $auditLogger->recordForRequest($request, AuditEventType::RoleChanged, $team, (string) $request->user()->id, "user:{$user->id} -> {$newRole->value}");
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Member role updated.')]);
 
         return to_route('teams.edit', ['team' => $team->slug]);
@@ -35,7 +40,7 @@ class TeamMemberController extends Controller
     /**
      * Remove the specified team member.
      */
-    public function destroy(Team $team, User $user): RedirectResponse
+    public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('removeMember', $team);
 
@@ -51,6 +56,8 @@ class TeamMemberController extends Controller
         $team->memberships()
             ->where('user_id', $user->id)
             ->delete();
+
+        $auditLogger->recordForRequest($request, AuditEventType::MemberRemoved, $team, (string) $request->user()->id, "user:{$user->id}");
 
         if ($user->isCurrentTeam($team)) {
             $user->switchTeam($user->personalTeam());

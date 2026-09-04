@@ -3,6 +3,7 @@
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
+use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamDomainController;
@@ -43,6 +44,8 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
 
         Route::patch('settings/teams/{team}/auth-mode', [AuthModeController::class, 'update'])->name('teams.auth-mode.update');
+
+        Route::patch('settings/teams/{team}/retention', [GovernanceController::class, 'updateRetention'])->name('teams.retention.update');
 
         Route::post('settings/teams/{team}/domains', [TeamDomainController::class, 'store'])->name('teams.domains.store');
         Route::post('settings/teams/{team}/domains/{domain}/verify', [TeamDomainController::class, 'verify'])->name('teams.domains.verify');

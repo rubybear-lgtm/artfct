@@ -9,6 +9,9 @@ use App\Services\Artifacts\HttpArtifactDirectory;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
+use App\Services\Governance\ArtifactGovernanceContract;
+use App\Services\Governance\FakeArtifactGovernance;
+use App\Services\Governance\RealArtifactGovernance;
 use App\Services\Identity\DnsResolverContract;
 use App\Services\Identity\FakeDnsResolver;
 use App\Services\Identity\RealDnsResolver;
@@ -59,6 +62,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             PolisClientContract::class,
             app()->environment('testing') ? FakePolisClient::class : RealPolisClient::class,
+        );
+        $this->app->singleton(
+            ArtifactGovernanceContract::class,
+            app()->environment('testing') ? FakeArtifactGovernance::class : RealArtifactGovernance::class,
         );
     }
 

@@ -14,7 +14,7 @@ use Throwable;
  * fully-provisioned org is a no-op that exits 0. A previously failed run
  * resumes from its failed step rather than starting over.
  */
-#[Signature('tenant:provision {org : The team slug to provision} {--release=dev : The release version being deployed}')]
+#[Signature('tenant:provision {org : The team slug to provision} {--release=dev : The release version being deployed} {--region=us : The deployment region — immutable once provisioned (spec 11)}')]
 #[Description('Provisions a tenant\'s dispatch script, D1 database, R2 prefix, and hostname')]
 class TenantProvisionCommand extends Command
 {
@@ -30,7 +30,7 @@ class TenantProvisionCommand extends Command
         }
 
         try {
-            $service->provision($team, (string) $this->option('release'));
+            $service->provision($team, (string) $this->option('release'), (string) $this->option('region'));
         } catch (Throwable $exception) {
             $step = $team->fresh()?->provisioning_failed_step ?? 'unknown';
             $this->components->error("Provisioning failed at step \"{$step}\": {$exception->getMessage()}");

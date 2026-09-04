@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Teams;
 
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\CreateOrgTokenRequest;
@@ -9,7 +10,9 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\RevocationWriter;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
@@ -21,7 +24,7 @@ class OrgTokenController extends Controller
      * `org_tokens` row stores only `jti` and a display-only `last_four`
      * (spec 07: "token creation returns value once only").
      */
-    public function store(CreateOrgTokenRequest $request, Team $team): JsonResponse
+    public function store(CreateOrgTokenRequest $request, Team $team, AuditLogger $auditLogger): JsonResponse
     {
         Gate::authorize('create', [OrgToken::class, $team]);
 
@@ -40,6 +43,8 @@ class OrgTokenController extends Controller
             'expires_at' => $minted['expires_at'],
         ]);
 
+        $auditLogger->recordForRequest($request, AuditEventType::TokenCreated, $team, (string) $request->user()->id, "token:{$orgToken->id}");
+
         return response()->json([
             'id' => $orgToken->id,
             'token' => $minted['token'],
@@ -52,7 +57,7 @@ class OrgTokenController extends Controller
      * Worker's KV denylist so the next request using it is rejected at the
      * edge within the documented propagation window.
      */
-    public function destroy(Team $team, OrgToken $token): JsonResponse
+    public function destroy(Request $request, Team $team, OrgToken $token, AuditLogger $auditLogger): JsonResponse
     {
         abort_unless($token->team_id === $team->id, 404);
 
@@ -62,6 +67,8 @@ class OrgTokenController extends Controller
         $token->save();
 
         RevocationWriter::default()->revoke($token->jti, $token->expires_at);
+
+        $auditLogger->recordForRequest($request, AuditEventType::TokenRevoked, $team, (string) $request->user()->id, "token:{$token->id}");
 
         return response()->json(['revoked' => true]);
     }

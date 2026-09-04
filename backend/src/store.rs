@@ -14,6 +14,8 @@ use serde_json::Value;
 use uuid::Uuid;
 use worker::{d1::D1Database, kv::KvStore, Bucket, Delay};
 
+use crate::governance::GovernanceError;
+
 pub const MAX_TENANT_SLUG_LENGTH: usize = 24;
 pub const PUBLIC_ID_LENGTH: usize = 32;
 
@@ -953,6 +955,15 @@ pub struct MemoryArtifactStore {
     /// the `KvArtifactStore`/`D1R2ArtifactStore` `Artifact` shape, which
     /// spec 8 doesn't otherwise touch.
     revoked: Mutex<HashSet<u64>>,
+    /// Row ids currently under legal hold (spec 11). Same "kept separate"
+    /// rationale as `revoked`.
+    legal_hold: Mutex<HashSet<u64>>,
+    /// Reference count per content hash, incremented on every `put()` that
+    /// resolves to that hash (including a dedup hit) and decremented on
+    /// `hard_delete`. Models the dedup accounting spec 11 requires: "a
+    /// shared blob survives deletion of one referencing artifact and is
+    /// removed on deletion of the last."
+    blob_refs: Mutex<HashMap<String, u64>>,
 }
 
 impl MemoryArtifactStore {
@@ -985,6 +996,94 @@ impl MemoryArtifactStore {
             .lock()
             .expect("revoked-set lock poisoned")
             .insert(row_id);
+        Ok(())
+    }
+
+    /// Places a legal hold on an artifact (spec 11: "overrides everything,
+    /// including a user-initiated delete"). Idempotent.
+    pub fn place_legal_hold(&self, id: &ArtifactId) -> Result<(), StoreError> {
+        let row_id = self.row_id_of(id)?;
+        self.legal_hold
+            .lock()
+            .expect("legal-hold lock poisoned")
+            .insert(row_id);
+        Ok(())
+    }
+
+    /// Releases a legal hold. Idempotent; not an error if none was held.
+    pub fn release_legal_hold(&self, id: &ArtifactId) -> Result<(), StoreError> {
+        let row_id = self.row_id_of(id)?;
+        self.legal_hold
+            .lock()
+            .expect("legal-hold lock poisoned")
+            .remove(&row_id);
+        Ok(())
+    }
+
+    pub fn is_under_legal_hold(&self, id: &ArtifactId) -> bool {
+        let Ok(row_id) = self.row_id_of(id) else {
+            return false;
+        };
+        self.legal_hold
+            .lock()
+            .expect("legal-hold lock poisoned")
+            .contains(&row_id)
+    }
+
+    fn row_id_of(&self, id: &ArtifactId) -> Result<u64, StoreError> {
+        self.artifacts
+            .lock()
+            .expect("artifact store lock poisoned")
+            .values()
+            .filter(|artifact| &artifact.id == id)
+            .min_by_key(|artifact| artifact.row_id)
+            .map(|artifact| artifact.row_id)
+            .ok_or(StoreError::MissingArtifact)
+    }
+
+    /// Current reference count for a content hash — 0 once the last
+    /// referencing artifact has been hard-deleted, at which point the blob
+    /// itself is considered removed (spec 11: "the blob is removed only at
+    /// refcount zero").
+    pub fn blob_ref_count(&self, content_hash: &str) -> u64 {
+        *self
+            .blob_refs
+            .lock()
+            .expect("blob-refs lock poisoned")
+            .get(content_hash)
+            .unwrap_or(&0)
+    }
+
+    pub fn blob_exists(&self, content_hash: &str) -> bool {
+        self.blob_ref_count(content_hash) > 0
+    }
+
+    /// Hard-deletes an artifact row and decrements its blob's refcount,
+    /// removing the blob only once the refcount reaches zero. Refuses —
+    /// without deleting anything — when the artifact is under legal hold
+    /// (spec 11 DoD: "An artifact under legal hold cannot be hard-deleted
+    /// by any path; the attempt is refused").
+    pub fn hard_delete(&self, id: &ArtifactId) -> Result<(), GovernanceError> {
+        if self.is_under_legal_hold(id) {
+            return Err(GovernanceError::LegalHold {
+                artifact_id: id.0.clone(),
+            });
+        }
+        let mut artifacts = self.artifacts.lock().expect("artifact store lock poisoned");
+        let row = artifacts
+            .values()
+            .find(|artifact| &artifact.id == id)
+            .cloned()
+            .ok_or(GovernanceError::NotFound)?;
+        artifacts.remove(&row.row_id);
+        drop(artifacts);
+        let mut refs = self.blob_refs.lock().expect("blob-refs lock poisoned");
+        if let Some(count) = refs.get_mut(&row.content_hash) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                refs.remove(&row.content_hash);
+            }
+        }
         Ok(())
     }
 
@@ -1029,6 +1128,12 @@ impl ArtifactStore for MemoryArtifactStore {
             .lock()
             .expect("artifact store lock poisoned")
             .insert(row_id, stored);
+        *self
+            .blob_refs
+            .lock()
+            .expect("blob-refs lock poisoned")
+            .entry(hash.clone())
+            .or_insert(0) += 1;
         Ok(StoredRef {
             id,
             content_hash: hash,

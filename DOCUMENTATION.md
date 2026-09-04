@@ -335,3 +335,76 @@ here — see `docker-compose.polis.yml` for the pinned-image artifact that
 substitutes for an actual deployment) and the corresponding end-to-end
 integration test. All login/linking/SCIM/upgrade logic above is real,
 tested Laravel code, not a description of intended behavior.
+
+## Governance (spec 11)
+
+**Audit log.** `App\Models\AuditEvent` is append-only, enforced at three
+independent layers so it holds even if one is bypassed: `save()` refuses
+once the row exists, `update()` throws unconditionally, and a `boot()`
+`updating`/`deleting` listener throws too — the last catches call paths
+that reach Eloquent's event pipeline without going through the two method
+overrides. Every event type spec 11 names lives in `App\Enums\AuditEventType`,
+mirrored on the Worker side by `backend/src/governance.rs::AuditEventType`
+for the wire string (`artifact.viewed`, not `ArtifactViewed`).
+
+Two separate audit trails exist, deliberately:
+
+- **Laravel's `audit_events` table** — every lifecycle action Laravel
+  itself controls: member add/remove, role change, token mint/revoke,
+  `auth_mode` change, console artifact revoke, retention/legal-hold/
+  erasure runs, and SIEM exports (which audit themselves —
+  `SiemExportService::export()` writes `export.performed` before it reads
+  the log it's about to return, so the export it produces always includes
+  the fact of its own export).
+- **The Worker's own `audit_events` D1 table** (`backend/migrations/0001_storage.sql`)
+  — for `artifact.created`/`artifact.viewed`/`artifact.shared`, which
+  happen on the Worker's hot serving path and never route through Laravel.
+  **Not wired in this environment**: writing to it from
+  `create_permanent_artifact`/`resolve_permanent_artifact` needs
+  `ctx.waitUntil()` threaded through those handlers (currently `_ctx` is
+  unused in `main()`), which this session did not do. The pure event
+  shape, JSON Lines rendering, and the structural proof that such a write
+  would never block the response (`audit_queue_backpressure_does_not_slow_serving`)
+  are built and tested; the live D1 `INSERT` call sites are a follow-up.
+
+**Retention and legal hold.** `App\Services\Governance\RetentionService`
+and `ErasureService` both default to `dryRun: true` — `governance:retention`
+and `governance:erase` require `--apply` to actually delete anything, per
+the Rollback section's "every destructive path is dry-runnable first, and
+the dry run is itself part of the DoD." A legal hold (`LegalHoldService`)
+always survives a retention run and always blocks a hard delete; a GDPR
+erasure (whole-org) is refused — never partially executed — naming the
+first held artifact it finds.
+
+**The seam to storage.** `ArtifactGovernanceContract` is the same shape as
+spec 09's `TenantProvisionerContract`: `FakeArtifactGovernance` (an
+in-memory double) is bound in `testing`; `RealArtifactGovernance` fails
+closed everywhere else. **Not wired in this environment**: the Worker has
+D1 schema for `legal_hold`/`retention_class` (spec 3's migration) and the
+pure decision logic in `backend/src/governance.rs`
+(`plan_retention`/`plan_erasure`) plus dedupe accounting
+(`MemoryArtifactStore::hard_delete`, `blob_ref_count`), but no live HTTP
+route exposes "list artifacts older than X" / "hard-delete one" / "place a
+hold" to Laravel — building and verifying those against a live Wrangler
+dev instance is a follow-up, the same gap spec 9 left for tenant
+provisioning and for the same reason (no live account here).
+`gdpr_erasure_removes_bytes_from_r2` is an `#[ignore]`d Rust test stub for
+the same reason: proving a direct R2 read 404s after erasure needs a live
+bucket.
+
+**Sharing controls.** `governance::check_share_access` (passcode match,
+expiry, revocation, domain restriction — all collapsing to a 404, never a
+403, matching spec 7's cross-org precedent) is pure and fully unit-tested.
+Wiring share-link creation and validation into the Worker's request
+dispatch (a new `shares` D1 table already exists in the spec-3 migration;
+schema for passcode/domain/expiry columns does not yet) is a follow-up
+alongside the governance HTTP routes above.
+
+**Residency.** `teams.region` is set once, by
+`TenantProvisioningService::provision()`, and is immutable afterwards —
+`Team`'s `updating` guard throws on any attempted change regardless of
+call path (mass-assignment, since `region` is deliberately excluded from
+`#[Fillable]`, or `forceFill`). Moving a tenant between regions requires an
+actual migration, which this project does not implement (out of scope for
+spec 11 — see the spec's Deferred section for what's intentionally not
+built).

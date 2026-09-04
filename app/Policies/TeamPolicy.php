@@ -107,6 +107,15 @@ class TeamPolicy
     }
 
     /**
+     * Determine whether the user can change the team's retention policy or
+     * place/release a legal hold (spec 11).
+     */
+    public function manageGovernance(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, TeamPermission::ManageGovernance);
+    }
+
+    /**
      * Determine whether the user can delete the model.
      */
     public function delete(User $user, Team $team): bool

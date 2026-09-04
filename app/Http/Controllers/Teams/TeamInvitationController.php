@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Teams;
 
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\CreateTeamInvitationRequest;
@@ -9,6 +10,7 @@ use App\Http\Requests\Teams\RespondToTeamInvitationRequest;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -58,7 +60,7 @@ class TeamInvitationController extends Controller
     /**
      * Accept the invitation.
      */
-    public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation): RedirectResponse
+    public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, AuditLogger $auditLogger): RedirectResponse
     {
         $user = $request->user();
 
@@ -74,6 +76,8 @@ class TeamInvitationController extends Controller
 
             $user->switchTeam($team);
         });
+
+        $auditLogger->recordForRequest($request, AuditEventType::MemberAdded, $invitation->team, (string) $user->id, "user:{$user->id}");
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation accepted.')]);
 
