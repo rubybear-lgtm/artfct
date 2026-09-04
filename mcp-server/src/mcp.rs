@@ -147,13 +147,16 @@ struct DeployToolArguments {
     model: Option<String>,
 }
 
-/// Arguments for `search_artifacts` (spec 13).
+/// Arguments for `search_artifacts` (spec 13, `collection` added by spec 16).
 #[derive(Debug, Deserialize)]
 struct SearchToolArguments {
     query: String,
     repo: Option<String>,
     agent: Option<String>,
     since: Option<String>,
+    /// Scopes results to one named, org-scoped collection — "use our
+    /// approved billing report format," not "find anything about billing."
+    collection: Option<String>,
     #[serde(default = "default_search_limit")]
     limit: u32,
 }
@@ -483,6 +486,10 @@ fn tools_list_result() -> Value {
                             "type": "string",
                             "description": "Optional: ISO 8601 date; excludes artifacts created before it."
                         },
+                        "collection": {
+                            "type": "string",
+                            "description": "Optional: restrict to one named collection, e.g. the org's canonical/approved artifacts for this kind of request."
+                        },
                         "limit": {
                             "type": "integer",
                             "minimum": 1,
@@ -583,6 +590,7 @@ fn search_request_payload(arguments: &SearchToolArguments) -> Value {
         "repo": arguments.repo,
         "agent": arguments.agent,
         "since": arguments.since,
+        "collection": arguments.collection,
         "limit": arguments.limit,
     })
 }
@@ -1036,6 +1044,7 @@ mod tests {
             repo: None,
             agent: None,
             since: None,
+            collection: None,
             limit: 3,
         };
 

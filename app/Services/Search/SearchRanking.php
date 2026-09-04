@@ -19,16 +19,29 @@ final class SearchRanking
 
     private const RECENCY_WEIGHT = 0.05;
 
+    /** Weight on spec 16's usage score (already decayed/weighted by `UsageScorer`). */
+    private const USAGE_WEIGHT = 1.0;
+
+    /**
+     * "An artifact a team explicitly marked canonical should beat a
+     * semantically closer artifact nobody has opened since it was made"
+     * — larger than every other boost combined, deliberately, so
+     * canonical membership dominates.
+     */
+    private const CANONICAL_BOOST = 2.0;
+
     /**
      * @param  array<int, VectorMatch>  $candidates
+     * @param  array<string, float>  $usageScores  artifact id => `UsageScorer::score()`
+     * @param  array<string, bool>  $canonicalArtifactIds  artifact id => true, for ids in a canonical collection
      * @return array<int, VectorMatch> sorted by combined score, descending
      */
-    public static function rank(array $candidates, string $query): array
+    public static function rank(array $candidates, string $query, array $usageScores = [], array $canonicalArtifactIds = []): array
     {
         $scored = array_map(
             fn (VectorMatch $match): array => [
                 'match' => $match,
-                'score' => self::combinedScore($match, $query),
+                'score' => self::combinedScore($match, $query, $usageScores, $canonicalArtifactIds),
             ],
             $candidates,
         );
@@ -38,13 +51,22 @@ final class SearchRanking
         return array_map(fn (array $entry): VectorMatch => $entry['match'], $scored);
     }
 
-    public static function combinedScore(VectorMatch $match, string $query): float
+    /**
+     * @param  array<string, float>  $usageScores
+     * @param  array<string, bool>  $canonicalArtifactIds
+     */
+    public static function combinedScore(VectorMatch $match, string $query, array $usageScores = [], array $canonicalArtifactIds = []): float
     {
         $score = $match->similarity;
         $score += self::RECENCY_WEIGHT * self::recencyFactor($match->chunk->createdAt);
+        $score += self::USAGE_WEIGHT * ($usageScores[$match->chunk->artifactId] ?? 0.0);
 
         if (self::repoMatches($query, $match->chunk->repoUrl)) {
             $score += self::REPO_MATCH_BOOST;
+        }
+
+        if ($canonicalArtifactIds[$match->chunk->artifactId] ?? false) {
+            $score += self::CANONICAL_BOOST;
         }
 
         return $score;

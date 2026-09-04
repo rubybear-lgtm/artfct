@@ -22,4 +22,7 @@ enum TeamPermission: string
 
     /** Billing checkout, seat sync, and custom hostname (spec 14). */
     case ManageBilling = 'team:manage-billing';
+
+    /** Pinning a collection as canonical (spec 16) — creating/editing a collection needs no permission at all; any member can. */
+    case PinCanonicalCollection = 'collection:pin-canonical';
 }

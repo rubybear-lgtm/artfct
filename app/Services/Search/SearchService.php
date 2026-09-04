@@ -4,17 +4,22 @@ namespace App\Services\Search;
 
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Models\ArtifactUsageEvent;
+use App\Models\Collection;
 use App\Models\Team;
+use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\VectorIndexContract;
 use App\Services\Indexing\VectorMatch;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 
 /**
- * `search_artifacts` (spec 13): hybrid semantic + recency + provenance
- * ranking, strictly scoped to the caller's org, excluding revoked/
- * inaccessible artifacts, auditing every search.
+ * `search_artifacts` (spec 13, extended by spec 16): hybrid semantic +
+ * recency + provenance + usage + canonical-collection ranking, strictly
+ * scoped to the caller's org, excluding revoked/inaccessible artifacts,
+ * auditing every search.
  */
 final class SearchService
 {
@@ -26,7 +31,7 @@ final class SearchService
     ) {}
 
     /**
-     * @param  array{repo?: ?string, agent?: ?string, since?: ?string}  $filters
+     * @param  array{repo?: ?string, agent?: ?string, since?: ?string, collection?: ?string}  $filters
      * @return array<int, SearchResult>
      */
     public function search(
@@ -47,9 +52,18 @@ final class SearchService
 
         $directory = $this->artifactsBySlug($team);
 
+        // spec 16: `collection: "reporting-formats"` scopes results to
+        // exactly that collection's members — resolved before ranking so
+        // an out-of-collection artifact never even reaches the scorer.
+        $collectionArtifactIds = null;
+        if (! empty($filters['collection'])) {
+            $collection = Collection::query()->where('team_id', $team->id)->where('name', $filters['collection'])->first();
+            $collectionArtifactIds = $collection === null ? [] : array_flip($collection->artifactIds());
+        }
+
         $filtered = array_values(array_filter(
             $candidates,
-            function (VectorMatch $match) use ($directory, $filters): bool {
+            function (VectorMatch $match) use ($directory, $filters, $collectionArtifactIds): bool {
                 $artifact = $directory[$match->chunk->artifactId] ?? null;
 
                 // Not in the directory (deleted/never existed) or revoked:
@@ -57,6 +71,10 @@ final class SearchService
                 // never having matched at all (DoD: "its non-appearance is
                 // indistinguishable from non-existence").
                 if ($artifact === null || $artifact['revoked_at'] !== null) {
+                    return false;
+                }
+
+                if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$match->chunk->artifactId])) {
                     return false;
                 }
 
@@ -79,7 +97,10 @@ final class SearchService
             },
         ));
 
-        $ranked = SearchRanking::rank($filtered, $query);
+        $usageScores = $this->usageScoresFor($team, $filtered);
+        $canonicalArtifactIds = $this->canonicalArtifactIdsFor($team);
+
+        $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds);
         $top = array_slice($ranked, 0, $limit);
 
         $results = array_map(
@@ -98,6 +119,49 @@ final class SearchService
         );
 
         return $results;
+    }
+
+    /**
+     * @param  array<int, VectorMatch>  $candidates
+     * @return array<string, float> artifact id => `UsageScorer::score()`
+     */
+    private function usageScoresFor(Team $team, array $candidates): array
+    {
+        $artifactIds = array_unique(array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $candidates));
+        if ($artifactIds === []) {
+            return [];
+        }
+
+        $eventsByArtifact = ArtifactUsageEvent::query()
+            ->where('team_id', $team->id)
+            ->whereIn('artifact_id', $artifactIds)
+            ->get()
+            ->groupBy('artifact_id');
+
+        $now = Carbon::now();
+        $scores = [];
+        foreach ($eventsByArtifact as $artifactId => $events) {
+            $scores[$artifactId] = UsageScorer::score($events->all(), $now);
+        }
+
+        return $scores;
+    }
+
+    /**
+     * @return array<string, bool> artifact id => true, for every artifact
+     *                             in any of this org's canonical collections
+     */
+    private function canonicalArtifactIdsFor(Team $team): array
+    {
+        $ids = Collection::query()
+            ->where('team_id', $team->id)
+            ->where('canonical', true)
+            ->with('artifacts')
+            ->get()
+            ->flatMap(fn (Collection $collection) => $collection->artifactIds())
+            ->all();
+
+        return array_fill_keys($ids, true);
     }
 
     /**

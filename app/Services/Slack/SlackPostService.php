@@ -3,6 +3,7 @@
 namespace App\Services\Slack;
 
 use App\Models\OrgToken;
+use App\Services\Collections\UsageEventLogger;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -14,7 +15,10 @@ final class SlackPostService
 {
     private const MAX_POSTS_PER_MINUTE = 5;
 
-    public function __construct(private readonly SlackPostContract $slack) {}
+    public function __construct(
+        private readonly SlackPostContract $slack,
+        private readonly ?UsageEventLogger $usage = null,
+    ) {}
 
     /**
      * @throws SlackChannelNotAllowedException when `$channel` isn't in
@@ -22,7 +26,7 @@ final class SlackPostService
      * @throws SlackRateLimitExceededException when the channel's post
      *                                         rate limit is exceeded.
      */
-    public function postArtifact(OrgToken $token, string $channel, string $artifactUrl, string $title): void
+    public function postArtifact(OrgToken $token, string $channel, string $artifactUrl, string $title, ?string $artifactId = null): void
     {
         $allowlist = $token->slack_channels ?? [];
         if (! in_array($channel, $allowlist, strict: true)) {
@@ -36,5 +40,11 @@ final class SlackPostService
         RateLimiter::hit($key, decaySeconds: 60);
 
         $this->slack->postMessage($channel, $title, $artifactUrl);
+
+        // Spec 16: "Shared into Slack — someone vouched for it to
+        // colleagues" is a ranking signal in its own right.
+        if ($artifactId !== null) {
+            $this->usage?->recordSlackShare($token->team, $artifactId, $token->user_id);
+        }
     }
 }

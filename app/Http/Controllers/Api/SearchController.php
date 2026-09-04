@@ -19,6 +19,7 @@ class SearchController extends Controller
             'agent' => ['nullable', 'string'],
             'since' => ['nullable', 'date'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'collection' => ['nullable', 'string'],
         ]);
 
         /** @var Team $team */
@@ -32,6 +33,7 @@ class SearchController extends Controller
                 'repo' => $validated['repo'] ?? null,
                 'agent' => $validated['agent'] ?? null,
                 'since' => $validated['since'] ?? null,
+                'collection' => $validated['collection'] ?? null,
             ],
             (int) ($validated['limit'] ?? 10),
             actor: (string) ($claims['user_id'] ?? 'unknown'),

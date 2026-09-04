@@ -610,3 +610,49 @@ would populate them from a real Slack app install was not built. This is
 a separate integration from spec 6's WorkOS AuthKit OAuth flow (which
 *is* built) — Slack's own OAuth was out of scope per the mock-only
 decision for this spec.
+
+## Collections and usage ranking (spec 16)
+
+**Usage scoring is pure.** `UsageScorer::score(events, now)` takes an
+array of `ArtifactUsageEvent` and returns a float — no database, no
+container, so every one of its rules (distinct-viewer counting, Slack-
+share weight, retrieved-then-opened weight, 30-day-half-life decay, a
+hard zero for a superseded artifact) is independently testable and was
+mutation-checked where it has an actual boolean branch to remove.
+
+**Collections stay thin on purpose.** Creating one, and adding or
+removing artifacts, has no permission check at all — any member can.
+Only `pinCanonical()`/`unpinCanonical()` are gated
+(`pinCanonicalCollection`, Admin-only under the existing role table),
+because canonical status is the one thing with real consequences (a
+strong ranking boost everyone in the org sees).
+
+**Ranking composition.** `SearchRanking::combinedScore()` (spec 13) now
+adds two more terms: `USAGE_WEIGHT * usageScores[artifactId]` and a flat
+`CANONICAL_BOOST = 2.0` when the artifact is in any canonical collection
+— larger than the repo-match boost (0.5) and recency term combined, so
+a team's explicit "this is the canonical one" always wins over a
+semantically closer but unmarked artifact. `SearchService::search()`
+computes both inputs per query (usage scores from
+`artifact_usage_events`, canonical membership from `collections`) and
+passes them through; the `collection` filter (when present) narrows the
+candidate set *before* ranking runs, so an out-of-collection artifact
+never reaches the scorer at all.
+
+**Zero-collections path still works.** Spec 13's own `SearchTest` suite
+runs unchanged and green alongside spec 16's — proof the automatic
+signal (semantic + recency + repo-match + usage) is useful on its own,
+since `usageScores`/`canonicalArtifactIds` default to empty arrays and
+every new term simply contributes zero when there's nothing to score.
+
+**The recurring gap, instances six and seven.** `SlackPostService` now
+calls `UsageEventLogger::recordSlackShare()` for real — the one usage
+signal fully wired end to end this session, since Slack posting was
+already Laravel-owned (spec 15). The other two automatic signals need
+the same Worker↔Laravel plumbing named after spec 14: a `/p/{id}` view
+on the Worker would need to call `UsageEventLogger::recordView()`, and
+correlating "an agent called `search_artifacts`, then the returned URL
+was actually opened" needs a signal from wherever "opened" happens (the
+Worker's serving path again, or an MCP client reporting back) matched
+against the search that returned it. `UsageEventLogger`'s methods for
+both are real and tested; nothing currently calls them for real traffic.

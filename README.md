@@ -282,6 +282,7 @@ separate from process-observed identity.
     "repo": "https://github.com/acme/billing",
     "agent": "claude-code",
     "since": "2026-08-01",
+    "collection": "reporting-formats",
     "limit": 5
   }
 }

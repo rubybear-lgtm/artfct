@@ -125,6 +125,16 @@ class TeamPolicy
     }
 
     /**
+     * Determine whether the user can pin a collection as canonical (spec
+     * 16) — everything else about a collection (create, add/remove
+     * artifacts) needs no permission at all; any member can.
+     */
+    public function pinCanonicalCollection(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, TeamPermission::PinCanonicalCollection);
+    }
+
+    /**
      * Determine whether the user can delete the model.
      */
     public function delete(User $user, Team $team): bool
