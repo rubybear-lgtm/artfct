@@ -84,6 +84,10 @@ artfct deploy ./dashboard.html --tier ephemeral --ttl-minutes 30
 # Deploy a readable permanent artifact (requires an organization token)
 ARTFCT_ORG_TOKEN=token artfct deploy ./dashboard.html --tier permanent
 
+# Deploy a Vite/static bundle (all files are uploaded individually)
+ARTFCT_ORG_TOKEN=token artfct deploy ./dist/ --tier permanent
+ARTFCT_ORG_TOKEN=token artfct deploy ./dist/ --tier permanent --entrypoint app.html
+
 # Export an organization's permanent artifacts
 ARTFCT_ORG_TOKEN=token artfct export acme ./artifact-export
 ```
@@ -118,6 +122,7 @@ Arguments:
 Options:
       --stdin                  Read HTML from stdin
       --tier <TIER>            public | secure | ephemeral | permanent  [default: ephemeral]
+      --entrypoint <PATH>      Entrypoint path for a permanent directory bundle
       --ttl-minutes <MINUTES>  Minutes until expiry after last access
       --org-token <TOKEN>      Organization token for permanent artifacts
   -h, --help                   Print help

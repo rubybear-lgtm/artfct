@@ -42,13 +42,15 @@ CREATE TABLE IF NOT EXISTS artifacts (
     id TEXT NOT NULL,
     org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-    content_hash TEXT NOT NULL REFERENCES blobs(content_hash),
+    content_hash TEXT NOT NULL,
     entrypoint TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    expires_at TEXT,
     superseded_by TEXT,
     retention_class TEXT NOT NULL DEFAULT 'permanent',
     legal_hold INTEGER NOT NULL DEFAULT 0,
     tier TEXT NOT NULL DEFAULT 'public',
+    manifest TEXT NOT NULL DEFAULT '{}',
     UNIQUE (row_id)
 );
 
@@ -67,7 +69,7 @@ CREATE TABLE IF NOT EXISTS artifact_versions (
 CREATE TABLE IF NOT EXISTS files (
     artifact_row_id TEXT NOT NULL REFERENCES artifacts(row_id) ON DELETE CASCADE,
     path TEXT NOT NULL,
-    content_hash TEXT NOT NULL REFERENCES blobs(content_hash),
+    content_hash TEXT NOT NULL,
     content_type TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
     PRIMARY KEY (artifact_row_id, path)

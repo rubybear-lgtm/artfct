@@ -14,6 +14,7 @@ mod ui;
 mod uninstall;
 
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
+type BundleFiles = Vec<(String, Vec<u8>)>;
 
 #[tokio::main]
 async fn main() {
@@ -126,6 +127,11 @@ fn run_uninstall(args: cli::UninstallArgs) -> Result<()> {
 }
 
 async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
+    if args.tier == "permanent"
+        && matches!(args.input(), cli::DeployInput::File(ref path) if path.is_dir())
+    {
+        return deploy_permanent_directory(&args).await;
+    }
     let html = read_deploy_html(&args)?;
     let api_base_url =
         env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
@@ -204,6 +210,133 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
     Ok(())
 }
 
+async fn deploy_permanent_directory(args: &cli::DeployArgs) -> Result<()> {
+    let cli::DeployInput::File(directory) = args.input() else {
+        unreachable!("directory bundles require a file argument");
+    };
+    let entrypoint = args
+        .entrypoint
+        .clone()
+        .unwrap_or_else(|| "index.html".to_string());
+    let (manifest, files) = build_manifest_from_directory(&directory, entrypoint)?;
+    let cwd = env::current_dir().context("Failed to determine current directory")?;
+    let provenance = crate_provenance(&cwd, &directory);
+    let request = api::PermanentArtifactRequest {
+        mode: "permanent",
+        tier: "public".to_string(),
+        title: "Permanent artifact".to_string(),
+        description: "Published bundle".to_string(),
+        thumbnail: "https://artfct.dev/og-image.svg".to_string(),
+        preview_blurred: false,
+        manifest,
+        provenance,
+    };
+    let token = args
+        .org_token
+        .clone()
+        .or_else(|| env::var("ARTFCT_ORG_TOKEN").ok())
+        .ok_or_else(|| anyhow::anyhow!("Permanent artifacts require ARTFCT_ORG_TOKEN"))?;
+    let api_base_url =
+        env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let pb = ui::spinner("Uploading permanent bundle…");
+    let result = api::deploy_permanent_artifact_files(
+        &reqwest::Client::new(),
+        &api_base_url,
+        &request,
+        &files,
+        &token,
+    )
+    .await;
+    match result {
+        Ok(artifact) => {
+            ui::finish_success(pb, &artifact.url);
+            println!(
+                "{} (uploaded {} file(s), skipped {} file(s))",
+                artifact.url,
+                artifact.missing_files.len(),
+                request
+                    .manifest
+                    .files
+                    .len()
+                    .saturating_sub(artifact.missing_files.len())
+            );
+            Ok(())
+        }
+        Err(error) => {
+            ui::finish_error(pb, error.to_string());
+            Err(error)
+        }
+    }
+}
+
+fn build_manifest_from_directory(
+    directory: &Path,
+    entrypoint: String,
+) -> Result<(api::PermanentManifest, BundleFiles)> {
+    let mut files = Vec::new();
+    collect_bundle_files(directory, directory, &mut files)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let manifest_files = files
+        .iter()
+        .map(|(path, bytes)| api::PermanentManifestFile {
+            path: path.clone(),
+            content_type: content_type_for_path(path),
+            size_bytes: bytes.len(),
+            sha256: artifact_crypto::sha256_hex(bytes),
+        })
+        .collect();
+    Ok((
+        api::PermanentManifest {
+            entrypoint,
+            files: manifest_files,
+            external_origins: Vec::new(),
+        },
+        files,
+    ))
+}
+
+fn crate_provenance(cwd: &Path, source: &Path) -> provenance::Provenance {
+    provenance::build_cli_provenance(cwd, Some(source))
+}
+
+fn collect_bundle_files(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<(String, Vec<u8>)>,
+) -> Result<()> {
+    let mut entries = fs::read_dir(current)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_bundle_files(root, &path, files)?;
+        } else if path.is_file() {
+            let relative = path
+                .strip_prefix(root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push((relative, fs::read(path)?));
+        }
+    }
+    Ok(())
+}
+
+fn content_type_for_path(path: &str) -> String {
+    match Path::new(path).extension().and_then(|ext| ext.to_str()) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("css") => "text/css",
+        Some("js") | Some("mjs") => "application/javascript",
+        Some("json") => "application/json",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
 fn read_deploy_html(args: &cli::DeployArgs) -> Result<String> {
     match args.input() {
         cli::DeployInput::File(path) => {
@@ -216,5 +349,81 @@ fn read_deploy_html(args: &cli::DeployArgs) -> Result<String> {
                 .context("Failed to read HTML from stdin")?;
             Ok(html)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::{build_manifest_from_directory, read_deploy_html};
+    use crate::api::{missing_manifest_files, PermanentArtifactRequest};
+    use crate::cli::{DeployArgs, DeployInput};
+    use crate::provenance::build_cli_provenance;
+
+    fn fixture_dir() -> tempfile::TempDir {
+        let directory = tempfile::tempdir().expect("fixture directory");
+        fs::create_dir_all(directory.path().join("assets")).expect("assets directory");
+        fs::write(directory.path().join("index.html"), b"<html></html>").expect("html fixture");
+        fs::write(directory.path().join("assets/app.js"), b"console.log('ok')")
+            .expect("js fixture");
+        directory
+    }
+
+    #[test]
+    fn cli_builds_manifest_from_directory() {
+        let directory = fixture_dir();
+        let (manifest, files) =
+            build_manifest_from_directory(directory.path(), "index.html".to_string())
+                .expect("manifest should build");
+        assert_eq!(files.len(), 2);
+        assert_eq!(manifest.files[0].path, "assets/app.js");
+        assert_eq!(manifest.files[1].path, "index.html");
+        assert_eq!(manifest.entrypoint, "index.html");
+    }
+
+    #[test]
+    fn cli_skips_files_server_already_has() {
+        let directory = fixture_dir();
+        let (manifest, _) =
+            build_manifest_from_directory(directory.path(), "index.html".to_string())
+                .expect("manifest should build");
+        let missing = [manifest.files[0].sha256.clone()];
+        let request = PermanentArtifactRequest {
+            mode: "permanent",
+            tier: "public".to_string(),
+            title: "Bundle".to_string(),
+            description: "Bundle".to_string(),
+            thumbnail: "https://example.com/thumbnail.png".to_string(),
+            preview_blurred: false,
+            manifest,
+            provenance: build_cli_provenance(std::path::Path::new("."), None),
+        };
+        assert_eq!(missing_manifest_files(&request, &missing).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cli_ephemeral_path_unchanged() {
+        let directory = fixture_dir();
+        let path = directory.path().join("index.html");
+        let args = DeployArgs {
+            file: Some(path.clone()),
+            stdin: false,
+            tier: "ephemeral".to_string(),
+            ttl_minutes: None,
+            org_token: None,
+            entrypoint: None,
+        };
+        assert_eq!(read_deploy_html(&args).expect("read html"), "<html></html>");
+        assert_eq!(args.input(), DeployInput::File(path.clone()));
+    }
+
+    #[test]
+    fn entrypoint_override_respected() {
+        let directory = fixture_dir();
+        let (manifest, _) =
+            build_manifest_from_directory(directory.path(), "assets/app.js".to_string())
+                .expect("manifest should build");
+        assert_eq!(manifest.entrypoint, "assets/app.js");
     }
 }

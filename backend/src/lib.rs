@@ -15,6 +15,10 @@ const DEFAULT_TTL_MINUTES: u64 = 5 * 24 * 60;
 const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
 const ARTIFACT_ID_LENGTH: usize = 10;
+const MAX_BUNDLE_BYTES: usize = 50 * 1024 * 1024;
+const MAX_FILE_BYTES: usize = 25 * 1024 * 1024;
+const MAX_BUNDLE_FILES: usize = 500;
+const MAX_PATH_BYTES: usize = 255;
 const NOT_IMPLEMENTED_STATUS: u16 = 501;
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
@@ -56,6 +60,21 @@ struct PermanentCreateArtifactResponse {
     missing_files: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+struct PermanentManifest {
+    entrypoint: String,
+    files: Vec<PermanentManifestFile>,
+    external_origins: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+struct PermanentManifestFile {
+    path: String,
+    content_type: String,
+    size_bytes: usize,
+    sha256: String,
+}
+
 #[derive(Debug, Serialize)]
 struct UpdateArtifactResponse {
     id: String,
@@ -74,7 +93,7 @@ struct ErrorBody<'a> {
     details: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[allow(
     dead_code,
@@ -429,12 +448,175 @@ fn ephemeral_manifest_is_invalid(raw: &Value) -> bool {
 
 fn is_valid_relative_path(path: &str) -> bool {
     !path.is_empty()
-        && path.len() <= 255
+        && path.len() <= MAX_PATH_BYTES
         && !path.starts_with('/')
+        && !path.contains('\\')
         && !path.contains(':')
         && !path
             .split('/')
             .any(|segment| segment == ".." || segment.is_empty())
+}
+
+fn normalized_content_type(value: &str) -> String {
+    let value = value.trim().to_ascii_lowercase();
+    if matches!(
+        value.as_str(),
+        "text/html"
+            | "text/html; charset=utf-8"
+            | "text/css"
+            | "text/javascript"
+            | "application/javascript"
+            | "application/json"
+            | "application/wasm"
+            | "image/svg+xml"
+            | "image/png"
+            | "image/jpeg"
+            | "image/gif"
+            | "image/webp"
+            | "font/woff"
+            | "font/woff2"
+            | "font/ttf"
+            | "font/otf"
+    ) {
+        value
+    } else {
+        "application/octet-stream".to_string()
+    }
+}
+
+fn uploaded_file_error(
+    expected_hash: &str,
+    expected_size: usize,
+    bytes: &[u8],
+) -> Option<ErrorCode> {
+    if bytes.len() > MAX_FILE_BYTES {
+        return Some(ErrorCode::BundleTooLarge);
+    }
+    if store::content_hash(bytes) != expected_hash {
+        return Some(ErrorCode::HashMismatch);
+    }
+    (bytes.len() != expected_size).then_some(ErrorCode::ValidationFailed)
+}
+
+fn missing_manifest_files(manifest: &PermanentManifest, present: &[bool]) -> Vec<String> {
+    let mut missing = manifest
+        .files
+        .iter()
+        .zip(present.iter().copied())
+        .filter(|(_, is_present)| !*is_present)
+        .map(|(file, _)| file.sha256.clone())
+        .collect::<Vec<_>>();
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+#[allow(dead_code)]
+fn manifest_is_complete(manifest: &PermanentManifest, uploaded_paths: &[&str]) -> bool {
+    manifest
+        .files
+        .iter()
+        .all(|file| uploaded_paths.contains(&file.path.as_str()))
+}
+
+fn upload_expired(expires_at: Option<&str>, now: chrono::DateTime<Utc>) -> bool {
+    expires_at
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .is_some_and(|value| value.with_timezone(&Utc) <= now)
+}
+
+fn validate_permanent_manifest(raw: &Value) -> Result<(PermanentManifest, String), ErrorCode> {
+    let Some(manifest) = raw.get("manifest").and_then(Value::as_object) else {
+        return Err(ErrorCode::ValidationFailed);
+    };
+    let Some(entrypoint) = manifest.get("entrypoint").and_then(Value::as_str) else {
+        return Err(ErrorCode::EntrypointMissing);
+    };
+    if !is_valid_relative_path(entrypoint) {
+        return Err(ErrorCode::InvalidPath);
+    }
+    let Some(files) = manifest.get("files").and_then(Value::as_array) else {
+        return Err(ErrorCode::ValidationFailed);
+    };
+    if files.is_empty() {
+        return Err(ErrorCode::ValidationFailed);
+    }
+    if files.len() > MAX_BUNDLE_FILES {
+        return Err(ErrorCode::FileCountExceeded);
+    }
+    let mut external_origins = manifest
+        .get("external_origins")
+        .and_then(Value::as_array)
+        .ok_or(ErrorCode::ValidationFailed)?
+        .iter()
+        .map(|origin| {
+            origin
+                .as_str()
+                .filter(|value| {
+                    value.starts_with("https://") && !value.chars().any(char::is_whitespace)
+                })
+                .map(str::to_string)
+                .ok_or(ErrorCode::ValidationFailed)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    external_origins.sort();
+    external_origins.dedup();
+    let mut paths = std::collections::HashSet::new();
+    let mut total = 0usize;
+    let mut parsed = Vec::with_capacity(files.len());
+    for file in files {
+        let path = file.get("path").and_then(Value::as_str).unwrap_or_default();
+        if !is_valid_relative_path(path) {
+            return Err(ErrorCode::InvalidPath);
+        }
+        if !paths.insert(path.to_string()) {
+            return Err(ErrorCode::DuplicatePath);
+        }
+        let size_bytes = file
+            .get("size_bytes")
+            .and_then(Value::as_u64)
+            .and_then(|size| usize::try_from(size).ok())
+            .ok_or(ErrorCode::ValidationFailed)?;
+        if size_bytes > MAX_FILE_BYTES {
+            return Err(ErrorCode::BundleTooLarge);
+        }
+        total = total.saturating_add(size_bytes);
+        if total > MAX_BUNDLE_BYTES {
+            return Err(ErrorCode::BundleTooLarge);
+        }
+        let sha256 = file
+            .get("sha256")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if sha256.len() != 64
+            || !sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(ErrorCode::ValidationFailed);
+        }
+        let content_type = file
+            .get("content_type")
+            .and_then(Value::as_str)
+            .unwrap_or("application/octet-stream");
+        parsed.push(PermanentManifestFile {
+            path: path.to_string(),
+            content_type: normalized_content_type(content_type),
+            size_bytes,
+            sha256: sha256.to_string(),
+        });
+    }
+    if !paths.contains(entrypoint) {
+        return Err(ErrorCode::EntrypointMissing);
+    }
+    parsed.sort_by(|left, right| left.path.cmp(&right.path));
+    let manifest = PermanentManifest {
+        entrypoint: entrypoint.to_string(),
+        files: parsed,
+        external_origins,
+    };
+    let canonical = serde_json::to_vec(&manifest).map_err(|_| ErrorCode::ValidationFailed)?;
+    Ok((manifest, store::content_hash(&canonical)))
 }
 
 async fn create_permanent_artifact(
@@ -473,88 +655,27 @@ async fn create_permanent_artifact(
             );
         }
     };
-    let Some(manifest) = raw.get("manifest").and_then(Value::as_object) else {
-        return json_error(ErrorCode::ValidationFailed, "A manifest is required.", 422);
+    let (manifest, bundle_hash) = match validate_permanent_manifest(raw) {
+        Ok(value) => value,
+        Err(code) => {
+            let message = match code {
+                ErrorCode::EntrypointMissing => "The manifest entrypoint is missing.",
+                ErrorCode::InvalidPath => "The manifest contains an invalid path.",
+                ErrorCode::DuplicatePath => "The manifest contains a duplicate path.",
+                ErrorCode::BundleTooLarge => "The permanent bundle is too large.",
+                ErrorCode::FileCountExceeded => "The permanent bundle has too many files.",
+                _ => "The permanent manifest is invalid.",
+            };
+            let status = if code == ErrorCode::BundleTooLarge {
+                413
+            } else {
+                422
+            };
+            return json_error(code, message, status);
+        }
     };
-    let Some(entrypoint) = manifest.get("entrypoint").and_then(Value::as_str) else {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "A manifest entrypoint is required.",
-            422,
-        );
-    };
-    if !is_valid_relative_path(entrypoint) {
-        return json_error(
-            ErrorCode::InvalidPath,
-            "The manifest entrypoint is invalid.",
-            422,
-        );
-    }
-    let Some(files) = manifest.get("files").and_then(Value::as_array) else {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "Manifest files are required.",
-            422,
-        );
-    };
-    if manifest
-        .get("external_origins")
-        .and_then(Value::as_array)
-        .is_none()
-    {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "Manifest external_origins are required.",
-            422,
-        );
-    }
-    if files.len() != 1 || files[0].get("path").and_then(Value::as_str) != Some(entrypoint) {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "Spec 03 permanent uploads support exactly one entrypoint file.",
-            422,
-        );
-    }
-    let file = &files[0];
-    if file
-        .get("content_type")
-        .and_then(Value::as_str)
-        .is_none_or(str::is_empty)
-    {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "A file content type is required.",
-            422,
-        );
-    }
-    let Some(content_hash) = file.get("sha256").and_then(Value::as_str) else {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "A file SHA-256 is required.",
-            422,
-        );
-    };
-    if content_hash.len() != 64
-        || !content_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
-        return json_error(
-            ErrorCode::ValidationFailed,
-            "The file SHA-256 is invalid.",
-            422,
-        );
-    }
-    let Some(size) = file.get("size_bytes").and_then(Value::as_u64) else {
-        return json_error(ErrorCode::ValidationFailed, "A file size is required.", 422);
-    };
-    if size > 6 * 1024 * 1024 {
-        return json_error(
-            ErrorCode::BundleTooLarge,
-            "The permanent file is too large.",
-            413,
-        );
-    }
+    let entrypoint = manifest.entrypoint.as_str();
+    let content_hash = bundle_hash.as_str();
 
     let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
     if let Err(message) = store::validate_slug(&org) {
@@ -562,6 +683,8 @@ async fn create_permanent_artifact(
     }
     let artifact_id = store::public_id(content_hash);
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let upload_expires_at =
+        (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
     let provenance = raw
         .get("provenance")
         .cloned()
@@ -571,21 +694,32 @@ async fn create_permanent_artifact(
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
-    let lock_owner = storage
-        .acquire_content_lock(content_hash)
+    let file_hashes = manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect::<Vec<_>>();
+    let locks = storage
+        .acquire_content_locks(&file_hashes)
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
     let database = &storage.database;
     let row_id = Uuid::new_v4().simple().to_string();
-    let content_type = file
-        .get("content_type")
-        .and_then(Value::as_str)
-        .unwrap_or("application/octet-stream");
     let operation: Result<Response> = async {
-        let blob_exists = storage
-            .blob_exists(content_hash)
-            .await
-            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+        let mut existing = Vec::with_capacity(manifest.files.len());
+        for file in &manifest.files {
+            existing.push(
+                storage
+                    .blob_exists(&file.sha256)
+                    .await
+                .map_err(|error| worker::Error::RustError(error.to_string()))?,
+            );
+        }
+        let expires_value = if existing.iter().all(|present| *present) {
+            JsValue::null()
+        } else {
+            JsValue::from_str(&upload_expires_at)
+        };
         let mut statements = vec![
             database
                 .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
@@ -595,18 +729,7 @@ async fn create_permanent_artifact(
                     JsValue::from_str(&now),
                 ])?,
             database
-                .prepare("INSERT OR IGNORE INTO blobs (content_hash, size_bytes, content_type, ref_count, created_at) VALUES (?, ?, ?, 0, ?)")
-                .bind(&[
-                    JsValue::from_str(content_hash),
-                    JsValue::from_f64(size as f64),
-                    JsValue::from_str(content_type),
-                    JsValue::from_str(&now),
-                ])?,
-            database
-                .prepare("UPDATE blobs SET ref_count = ref_count + 1 WHERE content_hash = ?")
-                .bind(&[JsValue::from_str(content_hash)])?,
-            database
-                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, tier) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, expires_at, tier, manifest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 .bind(&[
                     JsValue::from_str(&row_id),
                     JsValue::from_str(&artifact_id),
@@ -614,11 +737,13 @@ async fn create_permanent_artifact(
                     JsValue::from_str(content_hash),
                     JsValue::from_str(entrypoint),
                     JsValue::from_str(&now),
+                    expires_value,
                     JsValue::from_str(match tier {
                         ArtifactTier::Public => "public",
                         ArtifactTier::Secure => "secure",
                         ArtifactTier::Ephemeral => "ephemeral",
                     }),
+                    JsValue::from_str(&serde_json::to_string(&manifest)?),
                 ])?,
             database
                 .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
@@ -630,30 +755,42 @@ async fn create_permanent_artifact(
                     JsValue::from_str(&provenance.to_string()),
                 ])?,
         ];
-        if blob_exists {
+        for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
             statements.push(
                 database
-                    .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                    .prepare("INSERT OR IGNORE INTO blobs (content_hash, size_bytes, content_type, ref_count, created_at) VALUES (?, ?, ?, 0, ?)")
                     .bind(&[
-                        JsValue::from_str(&row_id),
-                        JsValue::from_str(entrypoint),
-                        JsValue::from_str(content_hash),
-                        JsValue::from_str(content_type),
-                        JsValue::from_f64(size as f64),
+                        JsValue::from_str(&file.sha256),
+                        JsValue::from_f64(file.size_bytes as f64),
+                        JsValue::from_str(&file.content_type),
+                        JsValue::from_str(&now),
                     ])?,
             );
+            statements.push(
+                database
+                    .prepare("UPDATE blobs SET ref_count = ref_count + 1 WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(&file.sha256)])?,
+            );
+            if is_present {
+                statements.push(
+                    database
+                        .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                        .bind(&[
+                            JsValue::from_str(&row_id),
+                            JsValue::from_str(&file.path),
+                            JsValue::from_str(&file.sha256),
+                            JsValue::from_str(&file.content_type),
+                            JsValue::from_f64(file.size_bytes as f64),
+                        ])?,
+                );
+            }
         }
         storage
             .execute_batch(statements)
             .await
             .map_err(|error| worker::Error::RustError(error.to_string()))?;
-
+        let missing_files = missing_manifest_files(&manifest, &existing);
         let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-        let missing_files = if blob_exists {
-            Vec::new()
-        } else {
-            vec![content_hash.to_string()]
-        };
         JsonResponseDefinition::json(
             PermanentCreateArtifactResponse {
                 id: artifact_id.clone(),
@@ -666,22 +803,23 @@ async fn create_permanent_artifact(
         .into_worker_response()
     }
     .await;
-    let release_result = storage
-        .release_content_lock(content_hash, &lock_owner)
-        .await;
+    let release_result = storage.release_content_locks(&locks).await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     Ok(response)
 }
 
 async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
-    let artifact_id = path.trim_start_matches("/p/");
+    let suffix = path.trim_start_matches("/p/");
+    let (artifact_id, requested_path) = suffix
+        .split_once('/')
+        .map_or((suffix, None), |(id, file)| (id, Some(file)));
     if artifact_id.len() == store::PUBLIC_ID_LENGTH
         && artifact_id
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
-        return resolve_permanent_artifact(artifact_id, req, env).await;
+        return resolve_permanent_artifact(artifact_id, requested_path, req, env).await;
     }
     if !is_valid_artifact_id(artifact_id) {
         return expired_response();
@@ -725,23 +863,23 @@ struct PermanentArtifactRow {
     content_hash: String,
     entrypoint: String,
     tier: String,
+    content_type: String,
+    expires_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct PermanentHashRow {
     row_id: String,
-    content_hash: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ContentHashRow {
-    content_hash: String,
+    manifest: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct UploadArtifactRow {
+    row_id: String,
     content_type: String,
     expected_size: i64,
+    expires_at: Option<String>,
+    manifest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -752,17 +890,23 @@ struct PresenceRow {
 
 async fn resolve_permanent_artifact(
     artifact_id: &str,
+    requested_path: Option<&str>,
     req: &Request,
     env: &Env,
 ) -> Result<Response> {
+    if requested_path.is_some_and(|path| !is_valid_relative_path(path)) {
+        return expired_response();
+    }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
     let row = database
-        .prepare("SELECT a.content_hash, a.entrypoint, a.tier FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.content_hash = a.content_hash JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
         .bind(&[
             JsValue::from_str(artifact_id),
             JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
+            requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+            JsValue::from_str(&Utc::now().to_rfc3339()),
         ])?
         .first::<PermanentArtifactRow>(None)
         .await?;
@@ -787,10 +931,7 @@ async fn resolve_permanent_artifact(
         return expired_response();
     };
     let bytes = body.bytes().await?;
-    let content_type = object
-        .http_metadata()
-        .content_type
-        .unwrap_or_else(|| "text/html; charset=utf-8".to_string());
+    let content_type = row.content_type;
     let mut response = Response::from_bytes(bytes)?.with_status(200);
     response.headers_mut().set("Content-Type", &content_type)?;
     response
@@ -800,6 +941,7 @@ async fn resolve_permanent_artifact(
         .headers_mut()
         .set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
     let _ = row.entrypoint;
+    let _ = row.expires_at;
     Ok(response)
 }
 
@@ -834,77 +976,123 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
-    let lock_owner = storage
-        .acquire_content_lock(content_hash)
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
     let database = &storage.database;
     let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
     let row_statement = match database
-        .prepare("SELECT b.content_type, b.size_bytes AS expected_size FROM artifacts a JOIN blobs b ON b.content_hash = a.content_hash JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.content_hash = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT a.row_id, json_extract(mf.value, '$.content_type') AS content_type, json_extract(mf.value, '$.size_bytes') AS expected_size, a.expires_at, a.manifest FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN blobs b ON b.content_hash = ? JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? LIMIT 1")
         .bind(&[
-            JsValue::from_str(artifact_id),
             JsValue::from_str(content_hash),
+            JsValue::from_str(artifact_id),
             JsValue::from_str(&org),
+            JsValue::from_str(content_hash),
         ]) {
         Ok(statement) => statement,
         Err(error) => {
-            let _ = storage.release_content_lock(content_hash, &lock_owner).await;
             return Err(error);
         }
     };
     let row = match row_statement.first::<UploadArtifactRow>(None).await {
         Ok(row) => row,
         Err(error) => {
-            let _ = storage
-                .release_content_lock(content_hash, &lock_owner)
-                .await;
             return Err(error);
         }
     };
     let Some(row) = row else {
-        let _ = storage
-            .release_content_lock(content_hash, &lock_owner)
-            .await;
         return json_error(
             ErrorCode::ArtifactNotFound,
             "Artifact not found or already uploaded.",
             404,
         );
     };
+    let lock_hashes = serde_json::from_str::<PermanentManifest>(&row.manifest)
+        .map(|manifest| {
+            manifest
+                .files
+                .into_iter()
+                .map(|file| file.sha256)
+                .collect::<Vec<_>>()
+        })
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let locks = storage
+        .acquire_content_locks(&lock_hashes)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    if upload_expired(row.expires_at.as_deref(), Utc::now()) {
+        let cleanup: Result<Response> = async {
+            let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
+            database
+                .prepare("DELETE FROM artifacts WHERE row_id = ?")
+                .bind(&[JsValue::from_str(&row.row_id)])?
+                .run()
+                .await?;
+            let hashes = manifest
+                .files
+                .iter()
+                .map(|file| file.sha256.as_str())
+                .collect::<Vec<_>>();
+            for hash in &hashes {
+                database
+                    .prepare(
+                        "UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?",
+                    )
+                    .bind(&[JsValue::from_str(hash)])?
+                    .run()
+                    .await?;
+            }
+            for hash in hashes.into_iter().collect::<std::collections::HashSet<_>>() {
+                let refs = database
+                    .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(hash)])?
+                    .first::<BlobReferenceRow>(None)
+                    .await?
+                    .map(|value| value.count)
+                    .unwrap_or(0);
+                if refs == 0 {
+                    database
+                        .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                        .bind(&[JsValue::from_str(hash)])?
+                        .run()
+                        .await?;
+                    storage.bucket.delete(format!("blobs/{hash}")).await?;
+                }
+            }
+            json_error(ErrorCode::ArtifactNotFound, "Artifact upload expired.", 404)
+        }
+        .await;
+        let release_result = storage.release_content_locks(&locks).await;
+        let response = cleanup?;
+        release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+        return Ok(response);
+    }
     let bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(error) => {
-            let _ = storage
-                .release_content_lock(content_hash, &lock_owner)
-                .await;
+            let _ = storage.release_content_locks(&locks).await;
             return Err(error);
         }
     };
-    if bytes.len() > 6 * 1024 * 1024 {
-        let _ = storage
-            .release_content_lock(content_hash, &lock_owner)
-            .await;
+    if bytes.len() > MAX_FILE_BYTES {
+        let _ = storage.release_content_locks(&locks).await;
         return json_error(
             ErrorCode::BundleTooLarge,
             "The permanent file is too large.",
             413,
         );
     }
-    if store::content_hash(&bytes) != content_hash {
-        let _ = storage
-            .release_content_lock(content_hash, &lock_owner)
-            .await;
+    if uploaded_file_error(content_hash, row.expected_size as usize, &bytes)
+        == Some(ErrorCode::HashMismatch)
+    {
+        let _ = storage.release_content_locks(&locks).await;
         return json_error(
             ErrorCode::HashMismatch,
             "The uploaded file hash does not match.",
             422,
         );
     }
-    if row.expected_size != bytes.len() as i64 {
-        let _ = storage
-            .release_content_lock(content_hash, &lock_owner)
-            .await;
+    if uploaded_file_error(content_hash, row.expected_size as usize, &bytes)
+        == Some(ErrorCode::ValidationFailed)
+    {
+        let _ = storage.release_content_locks(&locks).await;
         return json_error(
             ErrorCode::ValidationFailed,
             "The uploaded file size does not match the manifest.",
@@ -922,30 +1110,40 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
         .execute()
         .await;
     if let Err(error) = upload_result {
-        let _ = storage
-            .release_content_lock(content_hash, &lock_owner)
-            .await;
+        let _ = storage.release_content_locks(&locks).await;
         return Err(error);
     }
     let file_result = match database
-        .prepare("INSERT OR REPLACE INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT a.row_id, a.entrypoint, a.content_hash, ?, ? FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.content_hash = ? AND o.slug = ?")
+        .prepare("INSERT OR REPLACE INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT a.row_id, json_extract(mf.value, '$.path'), ?, json_extract(mf.value, '$.content_type'), json_extract(mf.value, '$.size_bytes') FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? AND (a.expires_at IS NULL OR a.expires_at > ?)")
         .bind(&[
-            JsValue::from_str(&content_type),
-            JsValue::from_f64(bytes.len() as f64),
-            JsValue::from_str(artifact_id),
             JsValue::from_str(content_hash),
+            JsValue::from_str(artifact_id),
             JsValue::from_str(&org),
+            JsValue::from_str(content_hash),
+            JsValue::from_str(&Utc::now().to_rfc3339()),
         ]) {
         Ok(statement) => statement.run().await,
         Err(error) => {
-            let _ = storage.release_content_lock(content_hash, &lock_owner).await;
+            let _ = storage.release_content_locks(&locks).await;
             return Err(error);
         }
     };
-    let release_result = storage
-        .release_content_lock(content_hash, &lock_owner)
-        .await;
+    let complete_result = match database
+        .prepare("UPDATE artifacts SET expires_at = NULL WHERE id = ? AND org_id = ? AND (expires_at IS NULL OR expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.artifact_row_id = artifacts.row_id AND f.path = json_extract(mf.value, '$.path')))" )
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&org),
+            JsValue::from_str(&Utc::now().to_rfc3339()),
+        ]) {
+        Ok(statement) => statement.run().await,
+        Err(error) => {
+            let _ = storage.release_content_locks(&locks).await;
+            return Err(error);
+        }
+    };
+    let release_result = storage.release_content_locks(&locks).await;
     file_result?;
+    complete_result?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     EmptyResponseDefinition {
         status: 204,
@@ -1017,6 +1215,7 @@ struct ExportRow {
     entrypoint: String,
     created_at: String,
     provenance: Option<String>,
+    manifest: String,
 }
 
 async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Response> {
@@ -1044,7 +1243,7 @@ async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Res
     }
     let database = env.d1("ARTIFACTS_DB")?;
     let rows = database
-        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.content_hash = a.content_hash LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? ORDER BY a.created_at")
+        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance, a.manifest FROM artifacts a LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files f ON f.artifact_row_id = a.row_id AND f.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE f.artifact_row_id IS NULL OR b.content_hash IS NULL) ORDER BY a.created_at")
         .bind(&[JsValue::from_str(org)])?
         .all()
         .await?
@@ -1052,16 +1251,17 @@ async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Res
     let mut blobs = std::collections::HashMap::new();
     let mut artifacts = Vec::with_capacity(rows.len());
     for row in rows {
-        if !blobs.contains_key(&row.content_hash) {
-            blobs.insert(
-                row.content_hash.clone(),
-                format!(
-                    "{}/v1/blobs/{}",
-                    env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL)
-                        .trim_end_matches('/'),
-                    row.content_hash
-                ),
-            );
+        if let Ok(manifest) = serde_json::from_str::<PermanentManifest>(&row.manifest) {
+            for file in manifest.files {
+                blobs.entry(file.sha256.clone()).or_insert_with(|| {
+                    format!(
+                        "{}/v1/blobs/{}",
+                        env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL)
+                            .trim_end_matches('/'),
+                        file.sha256
+                    )
+                });
+            }
         }
         artifacts.push(serde_json::json!({
             "id": row.id,
@@ -1086,25 +1286,33 @@ async fn delete_permanent_artifact(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
-    let lock_hash = database
-        .prepare("SELECT a.content_hash FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+    let lock_row = database
+        .prepare("SELECT a.row_id, a.manifest FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
         .bind(&[
             JsValue::from_str(artifact_id),
             JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
         ])?
-        .first::<ContentHashRow>(None)
-        .await?
-        .map(|row| row.content_hash);
-    let Some(lock_hash) = lock_hash else {
+        .first::<PermanentHashRow>(None)
+        .await?;
+    let Some(lock_row) = lock_row else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    let lock_owner = storage
-        .acquire_content_lock(&lock_hash)
+    let lock_hashes = serde_json::from_str::<PermanentManifest>(&lock_row.manifest)
+        .map(|manifest| {
+            manifest
+                .files
+                .into_iter()
+                .map(|file| file.sha256)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let locks = storage
+        .acquire_content_locks(&lock_hashes)
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
     let operation: Result<Response> = async {
         let row = database
-            .prepare("SELECT a.row_id, a.content_hash FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+            .prepare("SELECT a.row_id, a.manifest FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
             .bind(&[
                 JsValue::from_str(artifact_id),
                 JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
@@ -1119,37 +1327,35 @@ async fn delete_permanent_artifact(
             .bind(&[JsValue::from_str(&row.row_id)])?
             .run()
             .await?;
-        let count = database
-            .prepare("SELECT COUNT(*) AS count FROM artifacts WHERE content_hash = ?")
-            .bind(&[JsValue::from_str(&row.content_hash)])?
-            .first::<BlobReferenceRow>(None)
-            .await?
-            .map(|value| value.count)
-            .unwrap_or(0);
-        if count == 0 {
+        let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
+        for file in manifest.files {
             database
-                .prepare("DELETE FROM blobs WHERE content_hash = ?")
-                .bind(&[JsValue::from_str(&row.content_hash)])?
-                .run()
-                .await?;
-            storage
-                .bucket
-                .delete(format!("blobs/{}", row.content_hash))
-                .await?;
-        } else {
-            database
-                .prepare("UPDATE blobs SET ref_count = ? WHERE content_hash = ?")
+                .prepare("UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?")
                 .bind(&[
-                    JsValue::from_f64(count as f64),
-                    JsValue::from_str(&row.content_hash),
+                    JsValue::from_str(&file.sha256),
                 ])?
                 .run()
                 .await?;
+            let count = database
+                .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
+                .bind(&[JsValue::from_str(&file.sha256)])?
+                .first::<BlobReferenceRow>(None)
+                .await?
+                .map(|value| value.count)
+                .unwrap_or(0);
+            if count == 0 {
+                database
+                    .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(&file.sha256)])?
+                    .run()
+                    .await?;
+                storage.bucket.delete(format!("blobs/{}", file.sha256)).await?;
+            }
         }
         build_delete_response().into_worker_response()
     }
     .await;
-    let release_result = storage.release_content_lock(&lock_hash, &lock_owner).await;
+    let release_result = storage.release_content_locks(&locks).await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     Ok(response)
@@ -1171,7 +1377,7 @@ async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Re
     let database = env.d1("ARTIFACTS_DB")?;
     let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
     if database
-        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.content_hash = ? AND o.slug = ? LIMIT 1")
+        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
         .bind(&[JsValue::from_str(hash), JsValue::from_str(&org)])?
         .first::<PresenceRow>(None)
         .await?
@@ -2028,6 +2234,152 @@ mod tests {
     fn ephemeral_mode_rejects_manifest_field() {
         let payload = serde_json::json!({"mode": "ephemeral", "manifest": {}});
         assert!(ephemeral_manifest_is_invalid(&payload));
+    }
+
+    fn manifest_fixture(files: serde_json::Value, entrypoint: &str) -> Value {
+        serde_json::json!({
+            "manifest": {
+                "entrypoint": entrypoint,
+                "files": files,
+                "external_origins": []
+            }
+        })
+    }
+
+    #[test]
+    fn manifest_missing_entrypoint_rejected() {
+        let file = serde_json::json!([
+            {"path":"app.js","size_bytes":1,"sha256":"a".repeat(64),"content_type":"application/javascript"}
+        ]);
+        let payload = manifest_fixture(file, "index.html");
+        assert_eq!(
+            validate_permanent_manifest(&payload),
+            Err(ErrorCode::EntrypointMissing)
+        );
+    }
+
+    #[test]
+    fn manifest_path_traversal_rejected() {
+        let file = serde_json::json!([{"path":"../etc/passwd","size_bytes":1,"sha256":"a".repeat(64),"content_type":"text/plain"}]);
+        assert_eq!(
+            validate_permanent_manifest(&manifest_fixture(file, "../etc/passwd")),
+            Err(ErrorCode::InvalidPath)
+        );
+    }
+
+    #[test]
+    fn manifest_absolute_path_rejected() {
+        let file = serde_json::json!([{"path":"/index.html","size_bytes":1,"sha256":"a".repeat(64),"content_type":"text/html"}]);
+        assert_eq!(
+            validate_permanent_manifest(&manifest_fixture(file, "/index.html")),
+            Err(ErrorCode::InvalidPath)
+        );
+    }
+
+    #[test]
+    fn manifest_windows_path_rejected() {
+        let file = serde_json::json!([{"path":"..\\etc\\passwd","size_bytes":1,"sha256":"a".repeat(64),"content_type":"text/plain"}]);
+        assert_eq!(
+            validate_permanent_manifest(&manifest_fixture(file, "..\\etc\\passwd")),
+            Err(ErrorCode::InvalidPath)
+        );
+    }
+
+    #[test]
+    fn manifest_duplicate_paths_rejected() {
+        let file = serde_json::json!([
+            {"path":"index.html","size_bytes":1,"sha256":"a".repeat(64),"content_type":"text/html"},
+            {"path":"index.html","size_bytes":1,"sha256":"b".repeat(64),"content_type":"text/html"}
+        ]);
+        assert_eq!(
+            validate_permanent_manifest(&manifest_fixture(file, "index.html")),
+            Err(ErrorCode::DuplicatePath)
+        );
+    }
+
+    #[test]
+    fn file_hash_mismatch_rejected() {
+        assert_eq!(
+            uploaded_file_error(&"a".repeat(64), 15, b"different bytes"),
+            Some(ErrorCode::HashMismatch)
+        );
+    }
+
+    #[test]
+    fn bundle_over_limit_rejected() {
+        let file_size = 20 * 1024 * 1024;
+        let payload = manifest_fixture(
+            serde_json::json!([
+                {"path":"index.html","size_bytes":file_size,"sha256":"a".repeat(64),"content_type":"text/html"},
+                {"path":"assets/app.js","size_bytes":file_size,"sha256":"b".repeat(64),"content_type":"application/javascript"},
+                {"path":"assets/app.css","size_bytes":file_size,"sha256":"c".repeat(64),"content_type":"text/css"}
+            ]),
+            "index.html",
+        );
+        assert_eq!(
+            validate_permanent_manifest(&payload),
+            Err(ErrorCode::BundleTooLarge)
+        );
+    }
+
+    #[test]
+    fn file_count_over_limit_rejected() {
+        let files = (0..=MAX_BUNDLE_FILES).map(|index| serde_json::json!({"path": format!("{index}.js"), "size_bytes": 1, "sha256": "a".repeat(64), "content_type": "application/javascript"})).collect::<Vec<_>>();
+        let payload = manifest_fixture(Value::Array(files), "0.js");
+        assert_eq!(
+            validate_permanent_manifest(&payload),
+            Err(ErrorCode::FileCountExceeded)
+        );
+    }
+
+    #[test]
+    fn incomplete_bundle_returns_404() {
+        let payload = manifest_fixture(
+            serde_json::json!([{"path":"index.html","size_bytes":1,"sha256":"a".repeat(64),"content_type":"text/html"}]),
+            "index.html",
+        );
+        let (manifest, _) = validate_permanent_manifest(&payload).expect("manifest validates");
+        assert!(!manifest_is_complete(&manifest, &[]));
+        assert!(manifest_is_complete(&manifest, &["index.html"]));
+    }
+
+    #[test]
+    fn incomplete_upload_expires_after_one_hour() {
+        let now = Utc::now();
+        let expires = (now + chrono::Duration::hours(1)).to_rfc3339();
+        assert!(!upload_expired(Some(&expires), now));
+        assert!(upload_expired(
+            Some(&expires),
+            now + chrono::Duration::hours(1)
+        ));
+    }
+
+    #[test]
+    fn only_missing_files_are_requested() {
+        let payload = manifest_fixture(
+            serde_json::json!([
+                {"path":"a.js","size_bytes":1,"sha256":"a".repeat(64),"content_type":"application/javascript"},
+                {"path":"b.js","size_bytes":1,"sha256":"b".repeat(64),"content_type":"application/javascript"}
+            ]),
+            "a.js",
+        );
+        let (manifest, _) = validate_permanent_manifest(&payload).expect("manifest validates");
+        assert_eq!(
+            missing_manifest_files(&manifest, &[false, true]),
+            vec!["a".repeat(64)]
+        );
+    }
+
+    #[test]
+    fn unknown_content_type_served_with_nosniff() {
+        assert_eq!(
+            normalized_content_type("application/x-private"),
+            "application/octet-stream"
+        );
+        assert!(HtmlResponseDefinition::preview(String::new(), 200)
+            .headers
+            .iter()
+            .any(|header| header == &("X-Content-Type-Options", "nosniff")));
     }
 
     #[test]

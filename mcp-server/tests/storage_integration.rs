@@ -84,6 +84,55 @@ fn permanent_payload(bytes: &[u8], provenance: Value) -> Value {
     })
 }
 
+fn bundle_payload(files: &[(&str, &[u8], &str)], entrypoint: &str) -> Value {
+    json!({
+        "mode": "permanent", "tier": "public", "title": "Bundle",
+        "description": "Bundle", "thumbnail": "https://example.com/thumbnail.png",
+        "preview_blurred": false,
+        "manifest": {"entrypoint": entrypoint, "external_origins": [], "files": files.iter().map(|(path, bytes, content_type)| json!({"path": path, "content_type": content_type, "size_bytes": bytes.len(), "sha256": sha256(bytes)})).collect::<Vec<_>>()},
+        "provenance": {"agent": "integration", "agent_raw": "integration", "agent_version": "1", "model": null, "session_id": "integration", "tool": "cli", "repo_url": null, "branch": null, "commit_sha": null, "dirty": null, "source_path": null, "client": "integration", "client_version": "1", "sources": {"agent": "self_reported", "agent_raw": "self_reported", "agent_version": "client_info", "model": "absent", "session_id": "process", "tool": "config", "repo_url": "absent", "branch": "absent", "commit_sha": "absent", "dirty": "absent", "source_path": "absent"}}
+    })
+}
+
+async fn create_and_upload_bundle(
+    context: &Context,
+    client: &reqwest::Client,
+    files: &[(&str, &[u8], &str)],
+    entrypoint: &str,
+) -> Result<String, Box<dyn Error>> {
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&bundle_payload(files, entrypoint))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    let id = body["id"]
+        .as_str()
+        .ok_or("create response omitted id")?
+        .to_string();
+    for hash in body["missing_files"]
+        .as_array()
+        .ok_or("missing_files omitted")?
+    {
+        let hash = hash.as_str().ok_or("invalid missing hash")?;
+        let (_, bytes, content_type) = files
+            .iter()
+            .find(|(_, bytes, _)| sha256(bytes) == hash)
+            .ok_or("missing local file")?;
+        let upload = client
+            .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
+            .bearer_auth(&context.token)
+            .header(reqwest::header::CONTENT_TYPE, *content_type)
+            .body(bytes.to_vec())
+            .send()
+            .await?;
+        assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    Ok(id)
+}
+
 async fn create_and_upload(
     context: &Context,
     client: &reqwest::Client,
@@ -147,6 +196,31 @@ fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
         .and_then(|rows| rows.first())
         .cloned()
         .ok_or_else(|| format!("Wrangler D1 query returned no row: {value}").into())
+}
+
+fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
+    let output = Command::new(&context.wrangler)
+        .current_dir(format!("{}/../backend", env!("CARGO_MANIFEST_DIR")))
+        .args([
+            "d1",
+            "execute",
+            "artfct-artifacts",
+            "--local",
+            "--persist-to",
+            &context.persist_to,
+            "--command",
+            sql,
+        ])
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Wrangler D1 execute failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into())
+    }
 }
 
 fn count_value(context: &Context, sql: &str, key: &str) -> Result<i64, Box<dyn Error>> {
@@ -214,7 +288,23 @@ async fn duplicate_content_has_two_artifacts_and_one_blob() -> Result<(), Box<dy
     assert_eq!(first, second);
     assert_eq!(hash, second_hash);
     assert_eq!(first.len(), 32);
-    assert_eq!(count_value(&context, &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{first}' AND content_hash = '{hash}'"), "count")?, 2);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{first}'"),
+            "count"
+        )?,
+        2
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{first}' AND content_hash != '{hash}'"),
+            "count"
+        )?,
+        2,
+        "artifact content_hash stores the canonical bundle id, not a file SHA"
+    );
     assert_eq!(
         count_value(
             &context,
@@ -585,5 +675,473 @@ async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
     let body = preview.text().await?;
     assert!(body.contains("bodyCiphertextB64"));
     assert!(body.contains("Waiting for the decryption key"));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and Node/Vite"]
+async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vite-react");
+    let output_dir = tempfile::tempdir()?;
+    let build = Command::new("npm")
+        .args(["exec", "--", "vite", "build", "--outDir"])
+        .arg(output_dir.path())
+        .current_dir(&fixture)
+        .output()?;
+    assert!(
+        build.status.success(),
+        "Vite build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_artfct"))
+        .args([
+            "deploy",
+            output_dir.path().to_str().ok_or("path is not UTF-8")?,
+            "--tier",
+            "permanent",
+        ])
+        .env("ARTFCT_API_BASE_URL", &context.base)
+        .env("ARTFCT_ORG_TOKEN", &context.token)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "bundle deploy failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let base_prefix = format!("{}/p/", context.base);
+    let url = String::from_utf8(output.stdout)?
+        .lines()
+        .find(|line| line.trim_start().starts_with(&base_prefix))
+        .ok_or("bundle deploy omitted URL")?
+        .split_whitespace()
+        .next()
+        .ok_or("bundle deploy URL was empty")?
+        .to_string();
+    let preview = reqwest::get(&url).await?;
+    assert_eq!(preview.status(), reqwest::StatusCode::OK);
+    let index = preview.text().await?;
+    assert!(index.contains("assets/"));
+    let mut built_files = Vec::new();
+    collect_files(output_dir.path(), output_dir.path(), &mut built_files)?;
+    assert!(
+        built_files.iter().any(|(path, _)| path.ends_with(".html")),
+        "Vite output omitted HTML"
+    );
+    assert!(
+        built_files.iter().any(|(path, _)| path.ends_with(".js")),
+        "Vite output omitted JavaScript"
+    );
+    assert!(
+        built_files.iter().any(|(path, _)| path.ends_with(".css")),
+        "Vite output omitted CSS"
+    );
+    assert!(
+        built_files.iter().any(|(path, _)| path.ends_with(".woff2")),
+        "Vite output omitted WOFF2 font"
+    );
+    for (relative, _) in built_files {
+        let file_url = if relative == "index.html" {
+            url.clone()
+        } else {
+            format!("{}/{}", url.trim_end_matches('/'), relative)
+        };
+        let response = reqwest::get(file_url).await?;
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{relative}");
+        assert_eq!(
+            response
+                .headers()
+                .get("x-content-type-options")
+                .and_then(|value| value.to_str().ok()),
+            Some("nosniff")
+        );
+        let expected_type = match std::path::Path::new(&relative)
+            .extension()
+            .and_then(|value| value.to_str())
+        {
+            Some("html") => "text/html",
+            Some("css") => "text/css",
+            Some("js") => "application/javascript",
+            Some("woff2") => "font/woff2",
+            _ => "application/octet-stream",
+        };
+        assert!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with(expected_type)),
+            "{relative} content type"
+        );
+        if relative.ends_with(".js") {
+            assert!(
+                response
+                    .bytes()
+                    .await?
+                    .windows(b"vite-react-bundle".len())
+                    .any(|window| window == b"vite-react-bundle"),
+                "built JS marker missing"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn incomplete_bundle_returns_404() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let index = b"<script src=\"app.js\"></script>";
+    let app = b"console.log('bundle')";
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&bundle_payload(
+            &[
+                ("index.html", index, "text/html"),
+                ("app.js", app, "application/javascript"),
+            ],
+            "index.html",
+        ))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    let id = body["id"].as_str().ok_or("missing id")?;
+    assert_eq!(
+        client
+            .get(format!("{}/p/{id}", context.base))
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn nested_bundle_asset_uses_manifest_content_type() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let index = b"<h1>bundle</h1>";
+    let app = b"console.log('bundle')";
+    let id = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", index, "text/html"),
+            ("assets/app.js", app, "application/javascript"),
+        ],
+        "index.html",
+    )
+    .await?;
+    assert_eq!(
+        count_value(
+            &context,
+            &format!(
+                "SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}' AND expires_at IS NULL"
+            ),
+            "count"
+        )?,
+        1,
+        "completed permanent bundles must not expire"
+    );
+    let response = client
+        .get(format!("{}/p/{id}/assets/app.js", context.base))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert!(response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/javascript")));
+    assert_eq!(
+        response
+            .headers()
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
+        Some("nosniff")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let index = b"<h1>expired</h1>";
+    let script = b"console.log('expired')";
+    let index_hash = sha256(index);
+    let script_hash = sha256(script);
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&bundle_payload(
+            &[
+                ("index.html", index, "text/html"),
+                ("app.js", script, "application/javascript"),
+            ],
+            "index.html",
+        ))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    let id = body["id"].as_str().ok_or("missing id")?;
+    let first_upload = client
+        .put(format!(
+            "{}/v1/artifacts/{id}/files/{index_hash}",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .body(index.to_vec())
+        .send()
+        .await?;
+    assert_eq!(first_upload.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(count_value(&context, &format!("SELECT COUNT(*) AS count FROM files f JOIN artifacts a ON a.row_id = f.artifact_row_id WHERE a.id = '{id}'"), "count")?, 1);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{index_hash}'"),
+            "count"
+        )?,
+        1
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{script_hash}'"),
+            "count"
+        )?,
+        1
+    );
+    let row_id = d1_row(
+        &context,
+        &format!(
+            "SELECT row_id FROM artifacts WHERE id = '{id}' AND expires_at IS NOT NULL LIMIT 1"
+        ),
+    )?["row_id"]
+        .as_str()
+        .ok_or("artifact row id was not text")?
+        .to_string();
+    let update = format!("UPDATE artifacts SET expires_at = '2000-01-01T00:00:00Z' WHERE row_id = '{row_id}' AND id = '{id}'");
+    d1_execute(&context, &update)?;
+    let upload = client
+        .put(format!(
+            "{}/v1/artifacts/{id}/files/{script_hash}",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .body(script.to_vec())
+        .send()
+        .await?;
+    assert_eq!(upload.status(), reqwest::StatusCode::NOT_FOUND);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}'"),
+            "count"
+        )?,
+        0
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM provenance WHERE artifact_row_id = '{row_id}'"),
+            "count"
+        )?,
+        0
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM files WHERE artifact_row_id = '{row_id}'"),
+            "count"
+        )?,
+        0
+    );
+    assert_eq!(count_value(&context, &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash IN ('{index_hash}', '{script_hash}')"), "count")?, 0);
+    for hash in [index_hash, script_hash] {
+        assert_eq!(
+            client
+                .get(format!("{}/v1/blobs/{hash}", context.base))
+                .bearer_auth(&context.token)
+                .send()
+                .await?
+                .status(),
+            reqwest::StatusCode::NOT_FOUND
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn same_hash_paths_share_one_blob_and_manifest_types() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let bytes = b"same bytes";
+    let hash = sha256(bytes);
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&bundle_payload(
+            &[
+                ("index.html", bytes, "text/html"),
+                ("assets/app.js", bytes, "application/javascript"),
+            ],
+            "index.html",
+        ))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    assert_eq!(body["missing_files"], json!([hash]));
+    let id = body["id"].as_str().ok_or("missing id")?.to_string();
+    let upload = client
+        .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
+        .bearer_auth(&context.token)
+        .header(reqwest::header::CONTENT_TYPE, "text/html")
+        .body(bytes.to_vec())
+        .send()
+        .await?;
+    assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(count_value(&context, &format!("SELECT COUNT(*) AS count FROM files f JOIN artifacts a ON a.row_id = f.artifact_row_id WHERE a.id = '{id}'"), "count")?, 2);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        2
+    );
+    let index_response = client
+        .get(format!("{}/p/{id}", context.base))
+        .send()
+        .await?;
+    assert_eq!(index_response.status(), reqwest::StatusCode::OK);
+    assert!(index_response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/html")));
+    let script_response = client
+        .get(format!("{}/p/{id}/assets/app.js", context.base))
+        .send()
+        .await?;
+    assert_eq!(script_response.status(), reqwest::StatusCode::OK);
+    assert!(script_response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/javascript")));
+    client
+        .delete(format!("{}/v1/artifacts/{id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?
+        .error_for_status()?;
+    assert_eq!(count_value(&context, &format!("SELECT COUNT(*) AS count FROM files f JOIN artifacts a ON a.row_id = f.artifact_row_id WHERE a.id = '{id}'"), "count")?, 0);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        0
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and Node/Vite"]
+async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vite-react");
+    let output_dir = tempfile::tempdir()?;
+    let build = Command::new("npm")
+        .args(["exec", "--", "vite", "build", "--outDir"])
+        .arg(output_dir.path())
+        .current_dir(&fixture)
+        .output()?;
+    assert!(
+        build.status.success(),
+        "Vite build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let mut initial_files = Vec::new();
+    collect_files(output_dir.path(), output_dir.path(), &mut initial_files)?;
+    let run = |dir: &std::path::Path| -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(Command::new(env!("CARGO_BIN_EXE_artfct"))
+            .args([
+                "deploy",
+                dir.to_str().ok_or("path is not UTF-8")?,
+                "--tier",
+                "permanent",
+            ])
+            .env("ARTFCT_API_BASE_URL", &context.base)
+            .env("ARTFCT_ORG_TOKEN", &context.token)
+            .output()?)
+    };
+    let first = run(output_dir.path())?;
+    assert!(first.status.success(), "first deploy failed");
+    let changed = output_dir.path().join("index.html");
+    let mut html = fs::read_to_string(&changed)?;
+    html.push_str("<!-- changed -->");
+    fs::write(changed, html)?;
+    let second = run(output_dir.path())?;
+    assert!(
+        second.status.success(),
+        "second deploy failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let stdout = String::from_utf8(second.stdout)?;
+    assert!(
+        stdout.contains("uploaded 1 file(s)"),
+        "unexpected upload report: {stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("skipped {} file(s)", initial_files.len() - 1)),
+        "unexpected skip report: {stdout}"
+    );
+    Ok(())
+}
+
+fn collect_files(
+    root: &std::path::Path,
+    current: &std::path::Path,
+    files: &mut Vec<(String, Vec<u8>)>,
+) -> Result<(), Box<dyn Error>> {
+    for entry in fs::read_dir(current)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_files(root, &path, files)?;
+        } else {
+            files.push((
+                path.strip_prefix(root)?
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+                fs::read(path)?,
+            ));
+        }
+    }
     Ok(())
 }

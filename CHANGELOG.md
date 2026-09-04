@@ -10,6 +10,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 - Added stateful MCP client identity, deterministic host-source resolution, per-process session IDs, and host-aware setup configuration for Spec 1.
 - Added required CLI/MCP provenance with Git discovery, per-field source attribution, credential-safe remotes, and optional self-reported model identity for Spec 2.
 - Added Spec 3 permanent single-file storage with D1 metadata, R2 raw blobs, content-addressed IDs, deduplication, and CLI export; ephemeral KV behavior remains unchanged.
+- Added Spec 4 deterministic multi-file permanent bundles, manifest validation, missing-file uploads, nested asset previews, and directory deployment with `--entrypoint`.
 
 ## 0.0.1 - 2026-06-03
 

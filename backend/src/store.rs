@@ -291,6 +291,43 @@ impl D1R2ArtifactStore {
         Ok(())
     }
 
+    pub async fn acquire_content_locks(
+        &self,
+        content_hashes: &[String],
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        let mut hashes = content_hashes.to_vec();
+        hashes.sort();
+        hashes.dedup();
+        let mut held = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            match self.acquire_content_lock(&hash).await {
+                Ok(owner) => held.push((hash, owner)),
+                Err(error) => {
+                    for (held_hash, owner) in &held {
+                        let _ = self.release_content_lock(held_hash, owner).await;
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        Ok(held)
+    }
+
+    pub async fn release_content_locks(
+        &self,
+        locks: &[(String, String)],
+    ) -> Result<(), StoreError> {
+        let mut first_error = None;
+        for (hash, owner) in locks {
+            if let Err(error) = self.release_content_lock(hash, owner).await {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
     pub async fn blob_exists(&self, content_hash: &str) -> Result<bool, StoreError> {
         Ok(self
             .bucket
@@ -326,6 +363,16 @@ impl ArtifactStore for D1R2ArtifactStore {
             .provenance
             .get("commit_sha")
             .and_then(Value::as_str);
+        let manifest = serde_json::json!({
+            "entrypoint": artifact.entrypoint.clone(),
+            "files": [{
+                "path": artifact.entrypoint.clone(),
+                "content_type": artifact.content_type.clone(),
+                "size_bytes": size_bytes,
+                "sha256": hash,
+            }],
+            "external_origins": [],
+        });
         let lock_owner = self.acquire_content_lock(&hash).await?;
         let operation: Result<(), StoreError> = async {
             self.bucket
@@ -352,8 +399,8 @@ impl ArtifactStore for D1R2ArtifactStore {
                     .bind(&[worker::wasm_bindgen::JsValue::from_str(&hash)])
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
                 self.database
-                    .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-                    .bind(&[worker::wasm_bindgen::JsValue::from_str(&row_id), worker::wasm_bindgen::JsValue::from_str(&id.0), worker::wasm_bindgen::JsValue::from_str(&artifact.org), worker::wasm_bindgen::JsValue::from_str(&hash), worker::wasm_bindgen::JsValue::from_str(&artifact.entrypoint), worker::wasm_bindgen::JsValue::from_str(&now)])
+                    .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, manifest) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    .bind(&[worker::wasm_bindgen::JsValue::from_str(&row_id), worker::wasm_bindgen::JsValue::from_str(&id.0), worker::wasm_bindgen::JsValue::from_str(&artifact.org), worker::wasm_bindgen::JsValue::from_str(&hash), worker::wasm_bindgen::JsValue::from_str(&artifact.entrypoint), worker::wasm_bindgen::JsValue::from_str(&now), worker::wasm_bindgen::JsValue::from_str(&manifest.to_string())])
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
                 self.database
                     .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
@@ -393,7 +440,7 @@ impl ArtifactStore for D1R2ArtifactStore {
     async fn get(&self, id: &ArtifactId) -> Result<Option<Artifact>, StoreError> {
         let row = self
             .database
-            .prepare("SELECT a.org_id AS org, a.content_hash, a.entrypoint, b.content_type, p.payload FROM artifacts a JOIN blobs b ON b.content_hash = a.content_hash JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1")
+            .prepare("SELECT a.org_id AS org, a.content_hash, f.content_hash AS file_hash, a.entrypoint, f.content_type, p.payload FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1")
             .bind(&[worker::wasm_bindgen::JsValue::from_str(&id.0)])
             .map_err(|error| StoreError::Backend(error.to_string()))?
             .first::<D1ArtifactRow>(None)
@@ -402,7 +449,7 @@ impl ArtifactStore for D1R2ArtifactStore {
         let Some(row) = row else { return Ok(None) };
         let object = self
             .bucket
-            .get(format!("blobs/{}", row.content_hash))
+            .get(format!("blobs/{}", row.file_hash))
             .execute()
             .await
             .map_err(|error| StoreError::Backend(error.to_string()))?;
@@ -432,9 +479,7 @@ impl ArtifactStore for D1R2ArtifactStore {
     async fn delete(&self, id: &ArtifactId) -> Result<(), StoreError> {
         let row = self
             .database
-            .prepare(
-                "SELECT row_id, content_hash FROM artifacts WHERE id = ? ORDER BY row_id LIMIT 1",
-            )
+            .prepare("SELECT row_id, manifest FROM artifacts WHERE id = ? ORDER BY row_id LIMIT 1")
             .bind(&[worker::wasm_bindgen::JsValue::from_str(&id.0)])
             .map_err(|error| StoreError::Backend(error.to_string()))?
             .first::<D1DeleteRow>(None)
@@ -443,7 +488,20 @@ impl ArtifactStore for D1R2ArtifactStore {
         let Some(row) = row else {
             return Err(StoreError::MissingArtifact);
         };
-        let lock_owner = self.acquire_content_lock(&row.content_hash).await?;
+        let manifest: serde_json::Value = serde_json::from_str(&row.manifest)
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        let hashes = manifest
+            .get("files")
+            .and_then(Value::as_array)
+            .map(|files| {
+                files
+                    .iter()
+                    .filter_map(|file| file.get("sha256").and_then(Value::as_str))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let locks = self.acquire_content_locks(&hashes).await?;
         let operation: Result<(), StoreError> = async {
             self.database
                 .prepare("DELETE FROM artifacts WHERE row_id = ?")
@@ -452,46 +510,52 @@ impl ArtifactStore for D1R2ArtifactStore {
                 .run()
                 .await
                 .map_err(|error| StoreError::Backend(error.to_string()))?;
-            let refs = self
-                .database
-                .prepare("SELECT COUNT(*) AS count FROM artifacts WHERE content_hash = ?")
-                .bind(&[worker::wasm_bindgen::JsValue::from_str(&row.content_hash)])
-                .map_err(|error| StoreError::Backend(error.to_string()))?
-                .first::<D1CountRow>(None)
-                .await
-                .map_err(|error| StoreError::Backend(error.to_string()))?
-                .map(|value| value.count)
-                .unwrap_or(0);
-            if refs == 0 {
+            let files = manifest
+                .get("files")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            for file in files {
+                let Some(hash) = file.get("sha256").and_then(Value::as_str) else {
+                    continue;
+                };
                 self.database
-                    .prepare("DELETE FROM blobs WHERE content_hash = ?")
-                    .bind(&[worker::wasm_bindgen::JsValue::from_str(&row.content_hash)])
+                    .prepare(
+                        "UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?",
+                    )
+                    .bind(&[worker::wasm_bindgen::JsValue::from_str(hash)])
                     .map_err(|error| StoreError::Backend(error.to_string()))?
                     .run()
                     .await
                     .map_err(|error| StoreError::Backend(error.to_string()))?;
-                self.bucket
-                    .delete(format!("blobs/{}", row.content_hash))
-                    .await
-                    .map_err(|error| StoreError::Backend(error.to_string()))?;
-            } else {
-                self.database
-                    .prepare("UPDATE blobs SET ref_count = ? WHERE content_hash = ?")
-                    .bind(&[
-                        worker::wasm_bindgen::JsValue::from_f64(refs as f64),
-                        worker::wasm_bindgen::JsValue::from_str(&row.content_hash),
-                    ])
+                let refs = self
+                    .database
+                    .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
+                    .bind(&[worker::wasm_bindgen::JsValue::from_str(hash)])
                     .map_err(|error| StoreError::Backend(error.to_string()))?
-                    .run()
+                    .first::<D1CountRow>(None)
                     .await
-                    .map_err(|error| StoreError::Backend(error.to_string()))?;
+                    .map_err(|error| StoreError::Backend(error.to_string()))?
+                    .map(|value| value.count)
+                    .unwrap_or(0);
+                if refs == 0 {
+                    self.database
+                        .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                        .bind(&[worker::wasm_bindgen::JsValue::from_str(hash)])
+                        .map_err(|error| StoreError::Backend(error.to_string()))?
+                        .run()
+                        .await
+                        .map_err(|error| StoreError::Backend(error.to_string()))?;
+                    self.bucket
+                        .delete(format!("blobs/{hash}"))
+                        .await
+                        .map_err(|error| StoreError::Backend(error.to_string()))?;
+                }
             }
             Ok(())
         }
         .await;
-        let release_result = self
-            .release_content_lock(&row.content_hash, &lock_owner)
-            .await;
+        let release_result = self.release_content_locks(&locks).await;
         operation?;
         release_result?;
         Ok(())
@@ -533,6 +597,7 @@ impl ArtifactStore for D1R2ArtifactStore {
 struct D1ArtifactRow {
     org: String,
     content_hash: String,
+    file_hash: String,
     entrypoint: String,
     content_type: String,
     payload: String,
@@ -540,7 +605,7 @@ struct D1ArtifactRow {
 #[derive(Debug, Deserialize)]
 struct D1DeleteRow {
     row_id: String,
-    content_hash: String,
+    manifest: String,
 }
 #[derive(Debug, Deserialize)]
 struct D1CountRow {

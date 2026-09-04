@@ -191,6 +191,35 @@
         }
       }
     },
+    "/p/{id}/{path}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "$ref": "#/components/parameters/RelativePath" }
+      ],
+      "get": {
+        "tags": ["Previews"],
+        "summary": "Serve a file from a permanent artifact bundle",
+        "operationId": "renderArtifactFile",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Bundle file bytes.",
+            "headers": {
+              "X-Content-Type-Options": {
+                "schema": { "type": "string", "const": "nosniff" }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/artifacts/{id}/files/{sha256}": {
       "parameters": [
         { "$ref": "#/components/parameters/ArtifactId" },
@@ -442,6 +471,13 @@
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         }
+      },
+      "RelativePath": {
+        "name": "path",
+        "in": "path",
+        "required": true,
+        "description": "Relative path within the permanent artifact bundle.",
+        "schema": { "$ref": "#/components/schemas/RelativeArtifactPath" }
       }
     },
     "responses": {

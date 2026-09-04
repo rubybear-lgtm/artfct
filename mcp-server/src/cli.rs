@@ -100,6 +100,13 @@ pub struct DeployArgs {
         help = "Organization token for permanent artifacts"
     )]
     pub org_token: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Entrypoint path for a permanent directory bundle"
+    )]
+    pub entrypoint: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

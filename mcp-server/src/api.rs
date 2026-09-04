@@ -132,6 +132,31 @@ pub async fn deploy_permanent_artifact(
     body: &[u8],
     token: &str,
 ) -> Result<PermanentArtifactResponse> {
+    deploy_permanent_artifact_files(
+        client,
+        api_base_url,
+        request,
+        &[(
+            request
+                .manifest
+                .files
+                .first()
+                .map(|file| file.path.clone())
+                .unwrap_or_default(),
+            body.to_vec(),
+        )],
+        token,
+    )
+    .await
+}
+
+pub async fn deploy_permanent_artifact_files(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    request: &PermanentArtifactRequest,
+    files: &[(String, Vec<u8>)],
+    token: &str,
+) -> Result<PermanentArtifactResponse> {
     let response = client
         .post(artifact_endpoint(api_base_url))
         .header(AUTHORIZATION, format!("Bearer {token}"))
@@ -149,43 +174,49 @@ pub async fn deploy_permanent_artifact(
     }
     let created: PermanentArtifactResponse =
         serde_json::from_str(&body_text).context("Artifact Engine returned an invalid response")?;
-    let hash = request
-        .manifest
-        .files
-        .first()
-        .map(|file| file.sha256.as_str())
-        .ok_or_else(|| anyhow!("Permanent manifest must contain one file"))?;
-    if !created.missing_files.iter().any(|missing| missing == hash) {
-        return Ok(created);
+    for manifest_file in missing_manifest_files(request, &created.missing_files)? {
+        let (_, bytes) = files
+            .iter()
+            .find(|(path, _)| path == &manifest_file.path)
+            .ok_or_else(|| anyhow!("Missing local file {}", manifest_file.path))?;
+        let upload = client
+            .put(format!(
+                "{}/v1/artifacts/{}/files/{}",
+                api_base_url.trim_end_matches('/'),
+                created.id,
+                &manifest_file.sha256
+            ))
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(CONTENT_TYPE, &manifest_file.content_type)
+            .body(bytes.clone())
+            .send()
+            .await
+            .context("Failed to upload permanent artifact file")?;
+        if !upload.status().is_success() {
+            return Err(anyhow!(
+                "Artifact Engine rejected permanent file upload: {}",
+                upload.status()
+            ));
+        }
     }
-    let upload = client
-        .put(format!(
-            "{}/v1/artifacts/{}/files/{}",
-            api_base_url.trim_end_matches('/'),
-            created.id,
-            hash
-        ))
-        .header(AUTHORIZATION, format!("Bearer {token}"))
-        .header(
-            CONTENT_TYPE,
+    Ok(created)
+}
+
+pub(crate) fn missing_manifest_files<'a>(
+    request: &'a PermanentArtifactRequest,
+    missing: &[String],
+) -> Result<Vec<&'a PermanentManifestFile>> {
+    missing
+        .iter()
+        .map(|hash| {
             request
                 .manifest
                 .files
-                .first()
-                .map(|file| file.content_type.as_str())
-                .unwrap_or("application/octet-stream"),
-        )
-        .body(body.to_vec())
-        .send()
-        .await
-        .context("Failed to upload permanent artifact file")?;
-    if !upload.status().is_success() {
-        return Err(anyhow!(
-            "Artifact Engine rejected permanent file upload: {}",
-            upload.status()
-        ));
-    }
-    Ok(created)
+                .iter()
+                .find(|file| &file.sha256 == hash)
+                .ok_or_else(|| anyhow!("Server requested an unknown file hash"))
+        })
+        .collect()
 }
 
 pub async fn export_artifacts(
