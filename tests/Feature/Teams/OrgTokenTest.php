@@ -3,7 +3,6 @@
 use App\Enums\TeamRole;
 use App\Models\OrgToken;
 use App\Models\Team;
-use App\Models\User;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Support\Facades\Http;
@@ -63,14 +62,6 @@ function configureOrgJwt(): void
         'services.org_jwt.worker_base_url' => 'https://worker.test',
         'services.org_jwt.revocation_write_secret' => 'test-revocation-secret',
     ]);
-}
-
-function memberOfTeam(Team $team, TeamRole $role): User
-{
-    $user = User::factory()->create();
-    $team->memberships()->create(['user_id' => $user->id, 'role' => $role]);
-
-    return $user;
 }
 
 test('token_creation_returns_value_once_only', function () {

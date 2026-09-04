@@ -1,5 +1,8 @@
 <?php
 
+use App\Enums\TeamRole;
+use App\Models\Team;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -50,4 +53,16 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Creates a user with the given role on the given team. Shared across
+ * Identity/Teams/Console feature tests (specs 06-08).
+ */
+function memberOfTeam(Team $team, TeamRole $role): User
+{
+    $user = User::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => $role]);
+
+    return $user;
 }

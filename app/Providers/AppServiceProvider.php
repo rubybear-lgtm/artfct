@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Contracts\ArtifactDirectory;
 use App\Listeners\CreatePersonalTeam;
+use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Artifacts\HttpArtifactDirectory;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
@@ -38,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             DnsResolverContract::class,
             app()->environment('testing') ? FakeDnsResolver::class : RealDnsResolver::class,
+        );
+        $this->app->singleton(
+            ArtifactDirectory::class,
+            app()->environment('testing') ? FakeArtifactDirectory::class : HttpArtifactDirectory::class,
         );
     }
 

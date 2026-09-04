@@ -338,6 +338,12 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
         (Method::Get, path) if path.starts_with("/v1/orgs/") && path.ends_with("/export") => {
             export_organization(path, &req, &env).await
         }
+        (Method::Get, path) if path.starts_with("/v1/orgs/") && path.ends_with("/artifacts") => {
+            list_org_artifacts(path, &req, &env).await
+        }
+        (Method::Patch, path) if path.starts_with("/v1/orgs/") && path.contains("/artifacts/") => {
+            revoke_org_artifact(path, &req, &env).await
+        }
         (Method::Get, path) if path.starts_with("/v1/blobs/") => {
             download_export_blob(path, &req, &env).await
         }
@@ -1051,7 +1057,7 @@ async fn resolve_permanent_artifact(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
     let row = database
-        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
         .bind(&[
             JsValue::from_str(artifact_id),
             JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
@@ -1886,6 +1892,137 @@ async fn delete_artifact(path: &str, req: &Request, env: &Env) -> Result<Respons
     build_delete_response().into_worker_response()
 }
 
+/// Admin console listing (spec 8): `GET /v1/orgs/{org}/artifacts`. Same
+/// bearer-token gate as export/delete — role-based UI gating (viewer sees
+/// no controls, member can't change auth_mode) is enforced by the Laravel
+/// console, not this Worker; this endpoint trusts the credential the same
+/// way `export_organization` already does.
+async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "An organization token is required.",
+            401,
+        );
+    }
+    let org = path
+        .trim_start_matches("/v1/orgs/")
+        .trim_end_matches("/artifacts")
+        .trim_end_matches('/');
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Token is not authorized for this organization.",
+            403,
+        );
+    }
+    let query = req.url()?;
+    let params: std::collections::HashMap<String, String> =
+        query.query_pairs().into_owned().collect();
+    let filter = store::ArtifactListFilter {
+        org: org.to_string(),
+        repo_url: params.get("repo_url").cloned(),
+        agent: params.get("agent").cloned(),
+        created_after: params.get("created_after").cloned(),
+        created_before: params.get("created_before").cloned(),
+    };
+    let cursor = params
+        .get("cursor")
+        .and_then(|raw| store::decode_list_cursor(raw));
+    let limit = params
+        .get("limit")
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|value| *value > 0 && *value <= 200)
+        .unwrap_or(50);
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let (items, next_cursor) = storage
+        .list_org_artifacts(&filter, cursor.as_ref(), limit)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let artifacts: Vec<Value> = items
+        .into_iter()
+        .map(|item| {
+            serde_json::json!({
+                "id": item.id.0,
+                "org_id": item.org,
+                "content_hash": item.content_hash,
+                "size_bytes": item.size_bytes,
+                "created_at": item.created_at,
+                "revoked_at": item.revoked_at,
+                "provenance": {
+                    "agent": item.agent,
+                    "repo_url": item.repo_url,
+                    "commit_sha": item.commit_sha,
+                },
+            })
+        })
+        .collect();
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "artifacts": artifacts,
+            "next_cursor": next_cursor.as_ref().map(store::encode_list_cursor),
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
+/// Admin console revocation (spec 8): `PATCH /v1/orgs/{org}/artifacts/{id}`.
+/// A soft delete — sets `revoked_at`, retains the row and blob (spec 8's
+/// "Revocation" section; reference counting from spec 3 still governs
+/// whether a hard-deleted artifact's blob goes, unaffected by this path).
+async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_org(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "An organization token is required.",
+            401,
+        );
+    }
+    let rest = path.trim_start_matches("/v1/orgs/");
+    let Some((org, tail)) = rest.split_once("/artifacts/") else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let artifact_id = tail.trim_end_matches('/');
+    if !is_valid_artifact_id(artifact_id) {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
+    }
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Token is not authorized for this organization.",
+            403,
+        );
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let updated = storage
+        .revoke_artifact(org, &store::ArtifactId(artifact_id.to_string()))
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let Some(item) = updated else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "id": item.id.0,
+            "org_id": item.org,
+            "revoked_at": item.revoked_at,
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
 #[derive(Debug, Serialize)]
 struct ExportPayload {
     artifacts: Vec<Value>,
@@ -1947,15 +2084,26 @@ async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Res
                 });
             }
         }
-        artifacts.push(serde_json::json!({
-            "id": row.id,
-            "content_hash": row.content_hash,
-            "entrypoint": row.entrypoint,
-            "created_at": row.created_at,
-            "provenance": row.provenance.and_then(|value| serde_json::from_str::<Value>(&value).ok()),
-        }));
+        artifacts.push(export_artifact_entry(&row));
     }
     JsonResponseDefinition::json(ExportPayload { artifacts, blobs }, 200).into_worker_response()
+}
+
+/// Builds one artifact's metadata JSON entry for the export payload,
+/// factored out of `export_organization` so provenance round-tripping
+/// (spec 8 DoD: exported metadata "includes `sources` for every provenance
+/// field") is unit-testable without D1 — `row.provenance` is the exact
+/// JSON string stored by spec 2's provenance capture, parsed and
+/// re-serialized verbatim, never reconstructed field-by-field, so nothing
+/// here can drop a `sources` entry spec 2 populated.
+fn export_artifact_entry(row: &ExportRow) -> Value {
+    serde_json::json!({
+        "id": row.id,
+        "content_hash": row.content_hash,
+        "entrypoint": row.entrypoint,
+        "created_at": row.created_at,
+        "provenance": row.provenance.as_deref().and_then(|value| serde_json::from_str::<Value>(value).ok()),
+    })
 }
 
 async fn delete_permanent_artifact(
@@ -2467,17 +2615,13 @@ fn json_error(code: ErrorCode, message: &str, status: u16) -> Result<Response> {
 }
 
 fn is_unimplemented_route(method: &Method, path: &str) -> bool {
-    let segments = path
-        .trim_matches('/')
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-
     match method {
-        Method::Get => {
-            path == "/v1/artifacts" || matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts"])
-        }
-        Method::Patch => matches!(segments.as_slice(), ["v1", "orgs", _, "artifacts", _]),
+        // GET /v1/orgs/{org}/artifacts and PATCH /v1/orgs/{org}/artifacts/{id}
+        // are implemented (spec 8: list_org_artifacts/revoke_org_artifact) —
+        // deliberately excluded from this list so they reach the real
+        // dispatch table below instead of always 501ing.
+        Method::Get => path == "/v1/artifacts",
+        Method::Patch => false,
         Method::Post => path == "/v1/search",
         Method::Put => false,
         _ => false,
@@ -3864,5 +4008,275 @@ mod tests {
             Some("expected-secret"),
             Some("Bearer expected-secret")
         ));
+    }
+
+    // --- Spec 08: admin console list/filter/revoke/export ---
+
+    /// `MemoryArtifactStore`'s `ArtifactStore::put`/`get` never actually
+    /// suspend (no real I/O, just a `Mutex`), so a single poll always
+    /// completes. This drives such a future to completion without pulling
+    /// in a runtime crate — there is nothing to yield to.
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+        fn noop(_: *const ()) {}
+        fn clone(_: *const ()) -> RawWaker {
+            RawWaker::new(std::ptr::null(), &VTABLE)
+        }
+        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
+        let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
+        let mut context = Context::from_waker(&waker);
+        let mut future = Box::pin(future);
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+                return output;
+            }
+        }
+    }
+
+    fn list_item(
+        id: &str,
+        repo_url: Option<&str>,
+        agent: Option<&str>,
+        created_at: &str,
+    ) -> store::ArtifactListItem {
+        store::ArtifactListItem {
+            id: store::ArtifactId(id.to_string()),
+            org: "acme".to_string(),
+            content_hash: "a".repeat(64),
+            size_bytes: 100,
+            agent: agent.map(str::to_string),
+            repo_url: repo_url.map(str::to_string),
+            commit_sha: None,
+            created_at: created_at.to_string(),
+            revoked_at: None,
+        }
+    }
+
+    #[test]
+    fn list_filters_by_repo() {
+        let items = [
+            list_item(
+                "1",
+                Some("https://github.com/acme/one"),
+                None,
+                "2026-01-01T00:00:00Z",
+            ),
+            list_item(
+                "2",
+                Some("https://github.com/acme/two"),
+                None,
+                "2026-01-02T00:00:00Z",
+            ),
+        ];
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            repo_url: Some("https://github.com/acme/one".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1"]);
+    }
+
+    #[test]
+    fn list_filters_by_agent() {
+        let items = [
+            list_item("1", None, Some("cursor"), "2026-01-01T00:00:00Z"),
+            list_item("2", None, Some("claude-code"), "2026-01-02T00:00:00Z"),
+        ];
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            agent: Some("cursor".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1"]);
+    }
+
+    #[test]
+    fn list_filters_by_date_range() {
+        let items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-15T00:00:00Z"),
+            list_item("3", None, None, "2026-02-01T00:00:00Z"),
+        ];
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            created_after: Some("2026-01-10T00:00:00Z".to_string()),
+            created_before: Some("2026-01-31T00:00:00Z".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["2"]);
+    }
+
+    #[test]
+    fn cursor_pagination_has_no_gaps_or_duplicates() {
+        let total = 10_000; // matches the spec's own DoD scale literally
+        let base = "2026-01-01T00:00:00Z"
+            .parse::<chrono::DateTime<Utc>>()
+            .expect("valid fixture timestamp");
+        let items: Vec<store::ArtifactListItem> = (0..total)
+            .map(|i| {
+                list_item(
+                    &format!("{i:010}"),
+                    None,
+                    None,
+                    &(base + chrono::Duration::seconds(i as i64))
+                        .to_rfc3339_opts(SecondsFormat::Secs, true),
+                )
+            })
+            .collect();
+        let page_size = 137; // deliberately not a divisor of `total`
+        let mut cursor = None;
+        let mut seen = std::collections::HashSet::new();
+        let mut collected = Vec::new();
+        loop {
+            let (page, next_cursor) = store::paginate_sorted(&items, cursor.as_ref(), page_size);
+            if page.is_empty() {
+                assert!(next_cursor.is_none(), "an empty page must be the last page");
+                break;
+            }
+            for item in &page {
+                assert!(
+                    seen.insert(item.id.0.clone()),
+                    "artifact {} was returned on more than one page",
+                    item.id.0
+                );
+                collected.push(item.id.0.clone());
+            }
+            match next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        assert_eq!(collected.len(), total, "pagination skipped some rows");
+        let mut expected: Vec<String> = items.iter().map(|item| item.id.0.clone()).collect();
+        expected.sort();
+        let mut collected_sorted = collected.clone();
+        collected_sorted.sort();
+        assert_eq!(collected_sorted, expected);
+    }
+
+    #[test]
+    fn revoke_soft_deletes_and_stops_serving() {
+        let store = store::MemoryArtifactStore::new();
+        let stored = block_on(store::ArtifactStore::put(
+            &store,
+            store::NewArtifact {
+                org: "acme".to_string(),
+                content: b"<html>hi</html>".to_vec(),
+                content_type: "text/html".to_string(),
+                entrypoint: "index.html".to_string(),
+                provenance: serde_json::json!({"agent": "cursor"}),
+            },
+        ))
+        .expect("put succeeds");
+
+        assert!(
+            store.is_servable(&stored.id),
+            "must be servable before revoke"
+        );
+        store.revoke(&stored.id).expect("revoke succeeds");
+        assert!(
+            !store.is_servable(&stored.id),
+            "must stop being servable once revoked"
+        );
+
+        // Revoking twice is a no-op, not an error (spec 8: idempotent).
+        store.revoke(&stored.id).expect("re-revoke is a no-op");
+    }
+
+    #[test]
+    fn revoked_artifact_retains_provenance() {
+        let store = store::MemoryArtifactStore::new();
+        let provenance = serde_json::json!({
+            "agent": "cursor",
+            "repo_url": "https://github.com/acme/dashboard",
+            "sources": {"agent": "self_reported", "repo_url": "git_remote"},
+        });
+        let stored = block_on(store::ArtifactStore::put(
+            &store,
+            store::NewArtifact {
+                org: "acme".to_string(),
+                content: b"<html>hi</html>".to_vec(),
+                content_type: "text/html".to_string(),
+                entrypoint: "index.html".to_string(),
+                provenance: provenance.clone(),
+            },
+        ))
+        .expect("put succeeds");
+
+        store.revoke(&stored.id).expect("revoke succeeds");
+
+        let fetched = block_on(store::ArtifactStore::get(&store, &stored.id))
+            .expect("get succeeds")
+            .expect("row is retained after revoke, not deleted");
+        assert_eq!(fetched.provenance, provenance);
+        assert_eq!(fetched.content, b"<html>hi</html>");
+    }
+
+    #[test]
+    fn export_blobs_are_byte_identical() {
+        let store = store::MemoryArtifactStore::new();
+        let original = b"<html><body>exact bytes</body></html>".to_vec();
+        block_on(store::ArtifactStore::put(
+            &store,
+            store::NewArtifact {
+                org: "acme".to_string(),
+                content: original.clone(),
+                content_type: "text/html".to_string(),
+                entrypoint: "index.html".to_string(),
+                provenance: serde_json::json!({}),
+            },
+        ))
+        .expect("put succeeds");
+
+        let exported = store.export("acme").expect("export succeeds");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(
+            exported[0].1, original,
+            "exported bytes must be byte-identical"
+        );
+    }
+
+    #[test]
+    fn export_includes_provenance_sources() {
+        let row = ExportRow {
+            id: "artifact-1".to_string(),
+            content_hash: "a".repeat(64),
+            entrypoint: "index.html".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            provenance: Some(
+                serde_json::json!({
+                    "agent": "cursor",
+                    "repo_url": "https://github.com/acme/dashboard",
+                    "commit_sha": "abc123",
+                    "sources": {
+                        "agent": "self_reported",
+                        "repo_url": "git_remote",
+                        "commit_sha": "git_remote",
+                    },
+                })
+                .to_string(),
+            ),
+            manifest: serde_json::json!({"entrypoint": "index.html", "files": []}).to_string(),
+        };
+        let entry = export_artifact_entry(&row);
+        let sources = &entry["provenance"]["sources"];
+        assert_eq!(sources["agent"], "self_reported");
+        assert_eq!(sources["repo_url"], "git_remote");
+        assert_eq!(sources["commit_sha"], "git_remote");
     }
 }

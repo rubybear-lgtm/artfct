@@ -284,7 +284,6 @@
       }
     },
     "/v1/orgs/{org}/artifacts": {
-      "x-status": "unimplemented",
       "parameters": [
         { "$ref": "#/components/parameters/OrganizationId" }
       ],
@@ -292,13 +291,37 @@
         "tags": ["Administration"],
         "summary": "List an organization's artifacts",
         "operationId": "listOrganizationArtifacts",
-        "x-status": "unimplemented",
         "security": [
           { "orgToken": [] },
           { "sessionJwt": [] }
         ],
+        "parameters": [
+          { "name": "repo_url", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "agent", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "created_after", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "created_before", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200 } }
+        ],
         "responses": {
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "200": {
+            "description": "A page of artifacts, cursor-paginated on (created_at, id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "next_cursor"],
+                  "properties": {
+                    "artifacts": { "type": "array", "items": { "type": "object" } },
+                    "next_cursor": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
         }
       },
       "options": {
@@ -312,7 +335,6 @@
       }
     },
     "/v1/orgs/{org}/artifacts/{id}": {
-      "x-status": "unimplemented",
       "parameters": [
         { "$ref": "#/components/parameters/OrganizationId" },
         { "$ref": "#/components/parameters/ArtifactId" }
@@ -321,21 +343,32 @@
         "tags": ["Administration"],
         "summary": "Revoke an organization artifact",
         "operationId": "revokeOrganizationArtifact",
-        "x-status": "unimplemented",
         "security": [
           { "orgToken": [] },
           { "sessionJwt": [] }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/RevokeArtifactRequest" }
-            }
-          }
-        },
         "responses": {
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "200": {
+            "description": "The artifact, soft-deleted: revoked_at set, row and blob retained.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "org_id", "revoked_at"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "org_id": { "type": "string" },
+                    "revoked_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
         }
       },
       "options": {
@@ -852,14 +885,6 @@
         "properties": {
           "id": { "type": "string" },
           "expires_at": { "type": "string", "format": "date-time" }
-        }
-      },
-      "RevokeArtifactRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["revoked"],
-        "properties": {
-          "revoked": { "type": "boolean", "const": true }
         }
       },
       "SearchRequest": {

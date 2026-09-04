@@ -64,6 +64,169 @@ pub struct ArtifactSummary {
     pub content_hash: String,
 }
 
+/// One row of the admin console list view (spec 8). Deliberately narrower
+/// than [`Artifact`] — a list request never loads blob content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactListItem {
+    pub id: ArtifactId,
+    pub org: String,
+    pub content_hash: String,
+    pub size_bytes: u64,
+    pub agent: Option<String>,
+    pub repo_url: Option<String>,
+    pub commit_sha: Option<String>,
+    pub created_at: String,
+    pub revoked_at: Option<String>,
+}
+
+/// Filter predicate for the admin console list (spec 8: "filters that
+/// matter... by person, by repo, by agent, by date range"). `org` is always
+/// required — every other field is optional and additive (AND semantics).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ArtifactListFilter {
+    pub org: String,
+    pub repo_url: Option<String>,
+    pub agent: Option<String>,
+    /// Inclusive lower bound on `created_at` (RFC 3339, comparable as text).
+    pub created_after: Option<String>,
+    /// Inclusive upper bound on `created_at`.
+    pub created_before: Option<String>,
+}
+
+/// A cursor pagination position, spec 8: "cursor pagination on
+/// `(created_at, id)`". Opaque to callers — see
+/// [`encode_list_cursor`]/[`decode_list_cursor`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListCursor {
+    pub created_at: String,
+    pub id: String,
+}
+
+/// Field separator used inside an encoded cursor. Neither an RFC 3339
+/// timestamp nor a hex artifact id can contain this byte, so the split in
+/// `decode_list_cursor` is unambiguous.
+const LIST_CURSOR_SEPARATOR: char = '\u{1f}';
+
+/// Encodes a cursor as base64url (no padding) of `created_at<US>id`, the
+/// same encoding family the rest of this module already uses for opaque
+/// tokens. Deliberately pure — no `Env`, no I/O — so it and its inverse are
+/// unit-testable without a live Worker.
+pub fn encode_list_cursor(cursor: &ListCursor) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+        "{}{LIST_CURSOR_SEPARATOR}{}",
+        cursor.created_at, cursor.id
+    ))
+}
+
+/// Inverse of [`encode_list_cursor`]. Returns `None` for anything that
+/// isn't a validly-encoded cursor (wrong base64, missing separator) rather
+/// than panicking — a malformed `cursor` query parameter is caller input.
+pub fn decode_list_cursor(raw: &str) -> Option<ListCursor> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw)
+        .ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    let (created_at, id) = text.split_once(LIST_CURSOR_SEPARATOR)?;
+    if created_at.is_empty() || id.is_empty() {
+        return None;
+    }
+    Some(ListCursor {
+        created_at: created_at.to_string(),
+        id: id.to_string(),
+    })
+}
+
+/// Pure filter-predicate matching, factored out of SQL `WHERE`-clause
+/// construction so filter correctness (spec 8 DoD: "filtering by `repo_url`
+/// returns only artifacts from that repo", same for `agent` and date range)
+/// is unit-testable without D1. The real D1-backed list query
+/// (`D1R2ArtifactStore::list_org_artifacts`) applies the equivalent
+/// conditions in SQL for performance (indexed columns, no full scan); this
+/// function is the single specification of what "matches" means that both
+/// the SQL and the tests are held to.
+pub fn artifact_matches_filter(item: &ArtifactListItem, filter: &ArtifactListFilter) -> bool {
+    if item.org != filter.org {
+        return false;
+    }
+    if let Some(repo_url) = &filter.repo_url {
+        if item.repo_url.as_deref() != Some(repo_url.as_str()) {
+            return false;
+        }
+    }
+    if let Some(agent) = &filter.agent {
+        if item.agent.as_deref() != Some(agent.as_str()) {
+            return false;
+        }
+    }
+    if let Some(after) = &filter.created_after {
+        if item.created_at.as_str() < after.as_str() {
+            return false;
+        }
+    }
+    if let Some(before) = &filter.created_before {
+        if item.created_at.as_str() > before.as_str() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Whether an artifact revoked at `revoked_at` should still be served.
+/// Trivial, but named and tested on its own so the "revoke stops serving"
+/// guarantee has one call site to audit rather than an inline `is_some()`
+/// scattered across serving paths.
+pub fn artifact_is_revoked(revoked_at: Option<&str>) -> bool {
+    revoked_at.is_some()
+}
+
+/// Total order used for cursor pagination: `(created_at, id)` ascending.
+/// Ties on `created_at` (same-timestamp writes, which happen at
+/// second-granularity RFC 3339 precision) are broken by `id` so the
+/// ordering is total and a cursor position is always unambiguous.
+fn list_cursor_key(item: &ArtifactListItem) -> (&str, &str) {
+    (item.created_at.as_str(), item.id.0.as_str())
+}
+
+fn cursor_key(cursor: &ListCursor) -> (&str, &str) {
+    (cursor.created_at.as_str(), cursor.id.as_str())
+}
+
+/// Slices an already-sorted-by-`(created_at, id)` set of items into the
+/// page starting just after `cursor` (or the first page, if `cursor` is
+/// `None`), returning that page plus the cursor for the next page (`None`
+/// once the last page is reached). This is the page-boundary arithmetic
+/// `cursor_pagination_has_no_gaps_or_duplicates` exercises directly against
+/// a synthetic multi-thousand-row fixture — no D1 needed to prove pages
+/// neither skip nor repeat rows. `D1R2ArtifactStore::list_org_artifacts`
+/// performs the equivalent slice in SQL (`ORDER BY ... LIMIT`) for the live
+/// path; this is the specification it's built against.
+pub fn paginate_sorted(
+    items: &[ArtifactListItem],
+    cursor: Option<&ListCursor>,
+    page_size: usize,
+) -> (Vec<ArtifactListItem>, Option<ListCursor>) {
+    let start = match cursor {
+        Some(cursor) => items
+            .iter()
+            .position(|item| list_cursor_key(item) > cursor_key(cursor))
+            .unwrap_or(items.len()),
+        None => 0,
+    };
+    let end = items.len().min(start.saturating_add(page_size));
+    let page = items[start..end].to_vec();
+    let next_cursor = if end < items.len() {
+        page.last().map(|item| ListCursor {
+            created_at: item.created_at.clone(),
+            id: item.id.0.clone(),
+        })
+    } else {
+        None
+    };
+    (page, next_cursor)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
     Unsupported(&'static str),
@@ -347,6 +510,135 @@ impl D1R2ArtifactStore {
             .map_err(|error| StoreError::Backend(error.to_string()))?;
         Ok(())
     }
+
+    /// Admin console list (spec 8). Filters and paginates in SQL against the
+    /// indexed `(org_id, created_at, id)` column set added by
+    /// `0002_revocation.sql`, plus provenance's `agent`/`repo_url` — bounded
+    /// page size, no N+1 query per row (one query fetches the page and its
+    /// provenance/size columns via joins/a correlated subquery). See
+    /// `ArtifactListFilter`/`paginate_sorted` in this module for the pure
+    /// specification this SQL is built to match; that specification is what
+    /// the unit tests exercise, since this method itself needs a live D1.
+    pub async fn list_org_artifacts(
+        &self,
+        filter: &ArtifactListFilter,
+        cursor: Option<&ListCursor>,
+        page_size: usize,
+    ) -> Result<(Vec<ArtifactListItem>, Option<ListCursor>), StoreError> {
+        let mut clauses = vec!["o.slug = ?".to_string()];
+        let mut binds = vec![worker::wasm_bindgen::JsValue::from_str(&filter.org)];
+        if let Some(repo_url) = &filter.repo_url {
+            clauses.push("p.repo_url = ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(repo_url));
+        }
+        if let Some(agent) = &filter.agent {
+            clauses.push("p.agent = ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(agent));
+        }
+        if let Some(after) = &filter.created_after {
+            clauses.push("a.created_at >= ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(after));
+        }
+        if let Some(before) = &filter.created_before {
+            clauses.push("a.created_at <= ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(before));
+        }
+        if let Some(cursor) = cursor {
+            clauses.push("(a.created_at > ? OR (a.created_at = ? AND a.id > ?))".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.created_at));
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.created_at));
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.id));
+        }
+        // Fetch one extra row so presence of a next page is known without a
+        // second COUNT query.
+        let fetch_limit = page_size as f64 + 1.0;
+        let query = format!(
+            "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
+             p.agent, p.repo_url, p.commit_sha, \
+             (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
+             FROM artifacts a \
+             JOIN orgs o ON o.id = a.org_id \
+             LEFT JOIN provenance p ON p.artifact_row_id = a.row_id \
+             WHERE {} \
+             ORDER BY a.created_at ASC, a.id ASC \
+             LIMIT ?",
+            clauses.join(" AND ")
+        );
+        binds.push(worker::wasm_bindgen::JsValue::from_f64(fetch_limit));
+        let mut items = self
+            .database
+            .prepare(&query)
+            .bind(&binds)
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .all()
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .results::<D1ListRow>()
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .into_iter()
+            .map(ArtifactListItem::from)
+            .collect::<Vec<_>>();
+        let next_cursor = if items.len() > page_size {
+            items.truncate(page_size);
+            items.last().map(|item| ListCursor {
+                created_at: item.created_at.clone(),
+                id: item.id.0.clone(),
+            })
+        } else {
+            None
+        };
+        Ok((items, next_cursor))
+    }
+
+    /// Revocation (spec 8): a soft delete. Sets `revoked_at` if unset —
+    /// idempotent, a second revoke of an already-revoked artifact is a
+    /// no-op rather than an error — and never touches `artifacts`' other
+    /// columns or the `blobs`/`files` rows, so the row and blob are
+    /// retained exactly as spec 8's "Revocation" section requires. Returns
+    /// the updated row so the caller can hand the console the fresh
+    /// `revoked_at`, or `None` if no artifact with that id exists in this
+    /// org (the caller maps that to 404).
+    pub async fn revoke_artifact(
+        &self,
+        org: &str,
+        id: &ArtifactId,
+    ) -> Result<Option<ArtifactListItem>, StoreError> {
+        let now = Utc::now().to_rfc3339();
+        self.database
+            .prepare(
+                "UPDATE artifacts SET revoked_at = COALESCE(revoked_at, ?) \
+                 WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ? LIMIT 1)",
+            )
+            .bind(&[
+                worker::wasm_bindgen::JsValue::from_str(&now),
+                worker::wasm_bindgen::JsValue::from_str(&id.0),
+                worker::wasm_bindgen::JsValue::from_str(org),
+            ])
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .run()
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        let row = self
+            .database
+            .prepare(
+                "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
+                 p.agent, p.repo_url, p.commit_sha, \
+                 (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
+                 FROM artifacts a \
+                 JOIN orgs o ON o.id = a.org_id \
+                 LEFT JOIN provenance p ON p.artifact_row_id = a.row_id \
+                 WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1",
+            )
+            .bind(&[
+                worker::wasm_bindgen::JsValue::from_str(&id.0),
+                worker::wasm_bindgen::JsValue::from_str(org),
+            ])
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .first::<D1ListRow>(None)
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        Ok(row.map(ArtifactListItem::from))
+    }
 }
 
 impl ArtifactStore for D1R2ArtifactStore {
@@ -622,10 +914,45 @@ struct D1SummaryRow {
     content_hash: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct D1ListRow {
+    id: String,
+    org: String,
+    content_hash: String,
+    created_at: String,
+    revoked_at: Option<String>,
+    agent: Option<String>,
+    repo_url: Option<String>,
+    commit_sha: Option<String>,
+    size_bytes: i64,
+}
+
+impl From<D1ListRow> for ArtifactListItem {
+    fn from(row: D1ListRow) -> Self {
+        ArtifactListItem {
+            id: ArtifactId(row.id),
+            org: row.org,
+            content_hash: row.content_hash,
+            size_bytes: row.size_bytes.max(0) as u64,
+            agent: row.agent,
+            repo_url: row.repo_url,
+            commit_sha: row.commit_sha,
+            created_at: row.created_at,
+            revoked_at: row.revoked_at,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct MemoryArtifactStore {
     artifacts: Mutex<HashMap<u64, Artifact>>,
     next_row_id: AtomicU64,
+    /// Row ids revoked via [`MemoryArtifactStore::revoke`]. Kept separate
+    /// from `Artifact` itself (rather than adding a `revoked_at` field to
+    /// that struct) so this in-memory soft-delete proof doesn't ripple into
+    /// the `KvArtifactStore`/`D1R2ArtifactStore` `Artifact` shape, which
+    /// spec 8 doesn't otherwise touch.
+    revoked: Mutex<HashSet<u64>>,
 }
 
 impl MemoryArtifactStore {
@@ -642,6 +969,43 @@ impl MemoryArtifactStore {
             .filter(|artifact| seen.insert(artifact.content_hash.clone()))
             .map(|artifact| (artifact.content_hash.clone(), artifact.content.clone()))
             .collect())
+    }
+
+    /// Soft delete (spec 8): marks the artifact revoked without removing
+    /// its row or content. Idempotent — revoking twice is not an error.
+    pub fn revoke(&self, id: &ArtifactId) -> Result<(), StoreError> {
+        let artifacts = self.artifacts.lock().expect("artifact store lock poisoned");
+        let row_id = artifacts
+            .values()
+            .filter(|artifact| &artifact.id == id)
+            .min_by_key(|artifact| artifact.row_id)
+            .map(|artifact| artifact.row_id)
+            .ok_or(StoreError::MissingArtifact)?;
+        self.revoked
+            .lock()
+            .expect("revoked-set lock poisoned")
+            .insert(row_id);
+        Ok(())
+    }
+
+    /// Whether the artifact both exists and has not been revoked — the
+    /// in-memory equivalent of the `revoked_at IS NULL` gate
+    /// `resolve_permanent_artifact` applies on the live serving path.
+    pub fn is_servable(&self, id: &ArtifactId) -> bool {
+        let artifacts = self.artifacts.lock().expect("artifact store lock poisoned");
+        let Some(row_id) = artifacts
+            .values()
+            .filter(|artifact| &artifact.id == id)
+            .min_by_key(|artifact| artifact.row_id)
+            .map(|artifact| artifact.row_id)
+        else {
+            return false;
+        };
+        !self
+            .revoked
+            .lock()
+            .expect("revoked-set lock poisoned")
+            .contains(&row_id)
     }
 }
 

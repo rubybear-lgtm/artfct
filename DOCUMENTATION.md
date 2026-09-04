@@ -184,3 +184,46 @@ only` is a property of the schema, not just the controller
 else's token requires the team's member-management permission
 (`App\Policies\OrgTokenPolicy::revoke`); a token's own creator can always
 revoke it.
+
+## Admin console and export
+
+`GET /v1/orgs/{org}/artifacts` (Worker) lists an org's artifacts,
+cursor-paginated on `(created_at, id)` — `store::encode_list_cursor`/
+`decode_list_cursor` opaque-encode the position, `paginate_sorted` slices
+it. Filters (`repo_url`, `agent`, `created_after`/`created_before`) are AND
+semantics against spec 2's promoted provenance columns; `artifact_matches_filter`
+is the single specification both the D1 `WHERE` clause and the tests are
+held to. `PATCH /v1/orgs/{org}/artifacts/{id}` is the soft-delete
+revocation: `revoked_at` is set (idempotent — revoking twice is a no-op),
+the row and blob are retained untouched, and `resolve_permanent_artifact`'s
+serving query gates on `revoked_at IS NULL`, so a revoked artifact's URL
+starts returning 404 without a code change to the list/export paths, which
+deliberately keep showing revoked rows (with their `revoked_at` and
+provenance intact) rather than filtering them out.
+
+Both endpoints trust the same bearer credential `export_organization`
+already required (spec 03) — role-based gating (a `viewer` sees the list
+but not the revoke control; the API itself still rejects with 403; a
+non-member's org resolves to 404, not 403) is enforced by the Laravel
+console (`App\Http\Controllers\ConsoleController`, `App\Policies\ConsolePolicy`),
+not the Worker. `App\Contracts\ArtifactDirectory` is the console's seam
+onto the Worker's HTTP API (`HttpArtifactDirectory`, sessionJwt-authenticated);
+in the testing environment it's swapped for `App\Services\Artifacts\FakeArtifactDirectory`,
+an in-memory double seeded with demo data (served for any org slug — org
+boundaries are enforced upstream in `ConsoleController::resolveTeam` before
+this fake is ever reached, so it doesn't need to model per-org data to be a
+faithful test double for the console UI).
+
+Export (`export_organization`, unchanged endpoint from spec 03) now shares
+its per-artifact metadata mapping (`export_artifact_entry`) with this
+spec's list endpoint's expectations — provenance is re-serialized verbatim
+from spec 2's stored JSON, never reconstructed field-by-field, so a
+`sources` entry spec 2 populated can't be silently dropped in export.
+Blob byte-identity is unchanged from spec 03's export path.
+
+The 10,000-artifact/500ms list-rendering DoD item is closed structurally —
+cursor pagination on indexed columns, a bounded page size (1-200, default
+50), and a single query with no per-row follow-up fetch — not with a
+captured wall-clock measurement, which would be meaningless on a dev
+machine. `cursor_pagination_has_no_gaps_or_duplicates` proves the pagination
+arithmetic itself is exhaustive and duplicate-free at that exact scale.

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\OrgTokenController;
@@ -19,6 +20,11 @@ Route::prefix('{current_team}')
 Route::middleware(['auth'])->group(function () {
     Route::post('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
     Route::delete('invitations/{invitation}', [TeamInvitationController::class, 'decline'])->name('invitations.decline');
+
+    // Console routes (manually resolve team for 404 on cross-org access, not 403)
+    Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
+    Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
+    Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');
