@@ -4,6 +4,7 @@ namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
 use App\Models\Team;
+use App\Services\Indexing\IndexingService;
 use Carbon\CarbonImmutable;
 
 /**
@@ -22,6 +23,7 @@ final class RetentionService
     public function __construct(
         private readonly ArtifactGovernanceContract $governance,
         private readonly AuditLogger $auditLogger,
+        private readonly ?IndexingService $indexer = null,
     ) {}
 
     public function apply(Team $team, ?int $retentionDays, bool $dryRun, string $actor = 'system'): RetentionPlan
@@ -45,6 +47,9 @@ final class RetentionService
         if (! $dryRun) {
             foreach ($toDelete as $artifactId) {
                 $this->governance->hardDeleteArtifact($team->slug, $artifactId);
+                // Spec 12 DoD: "Deleting an artifact removes its vectors
+                // within one processing cycle."
+                $this->indexer?->removeFromIndex($team, $artifactId);
             }
         }
 

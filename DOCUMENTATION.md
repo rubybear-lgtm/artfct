@@ -408,3 +408,64 @@ call path (mass-assignment, since `region` is deliberately excluded from
 actual migration, which this project does not implement (out of scope for
 spec 11 — see the spec's Deferred section for what's intentionally not
 built).
+
+## Indexing pipeline (spec 12)
+
+**Pipeline.** `artifact.created` → `IndexArtifactJob` (a real Laravel
+queued job, not a simulation) → `IndexingService::indexArtifact()`:
+render only if `ExtractionHeuristics::needsRender()` says the raw HTML has
+no usable body text (a hydration shell strips down to almost nothing;
+static content doesn't) → extract → persist (`ArtifactIndexEntry`) →
+chunk with overlap (`Chunker`) → embed → upsert into the org's vector
+index (`VectorIndexContract`). A render timeout (or any other failure)
+retries per `$tries = 3` with `backoff() = [10, 30, 60]`, then `failed()`
+writes an `ArtifactIndexingFailure` row with the reason — its own table,
+never touching `artifacts` or the serving path, so a dead-lettered
+artifact keeps serving normally.
+
+**Not wired in this environment**: the Worker has no live webhook calling
+`IndexArtifactJob::dispatch()` on `artifact.created` — the same
+cross-boundary gap spec 11 left for Worker-originated audit events.
+`php artisan indexing:index {org} {artifact} {html-file}` is the manual
+entry point in the meantime, and exercises the identical queued job a
+webhook would dispatch. `RealRenderer`/`RealEmbeddings`/`RealVectorIndex`
+all fail closed (`RealTenantProvisioner`'s pattern) — no live Cloudflare
+Browser Rendering, Workers AI, or Vectorize account here.
+
+**Console surfacing.** `ConsoleController::index()` passes a real,
+queried `indexingFailures` prop (team-scoped, latest 20) to the Inertia
+page. The React panel that displays it was not built this session — the
+data is real and tested, the UI for it is a follow-up.
+
+**Tenant isolation.** `VectorIndexContract` is `$orgId`-scoped at every
+method; `FakeVectorIndex` keys its storage by org at the top level.
+Mutation-checked: merging all orgs' vectors together in
+`allVectorsForOrg()` makes `tenant_index_contains_no_foreign_vectors` fail
+immediately (see `scratchpad/runs/12/mutation.md`).
+
+**The Vectorize cost caveat (spec 12 DoD item 10).** The spec itself
+flags this as unresolved before shipping: Cloudflare bills Vectorize on
+"queried vector dimensions" = `(vectors in index + query vectors) ×
+dimensions` per query. Modeled against a **1M-vector corpus** (roughly
+artfct's estimate for ~50k artifacts × ~20 chunks each), 768 dimensions
+(a common Workers AI embedding size), at 10 queries/day:
+
+- Per query: `(1,000,000 + 1) × 768 ≈ 768M` "queried dimensions."
+- Per month (300 queries): `768M × 300 ≈ 230B` queried dimensions.
+- At Cloudflare's published $0.01 / 1M queried dimensions (their
+  worked-example rate), that's **≈ $2,300/month** — not the ≈$2/month
+  Cloudflare's own worked example implies for what reads like a similar
+  scenario. The spec is right that these two readings do not reconcile;
+  the likely resolution is that Cloudflare's cheap worked example uses a
+  much smaller index or query volume than "1M vectors, 10 queries/day"
+  implies, but the public pricing page does not fully disambiguate which.
+
+**This is written down, not resolved.** "Reconciles with observed
+billing over a week" (the second half of the DoD item) cannot be produced
+without a live Vectorize account and a week of real traffic — neither
+exists in this environment. Before this ships: run the actual corpus
+against a real Vectorize index for a representative week and compare the
+invoice against this model. If the pessimistic ($2,300/mo) reading holds
+at real scale, the spec's own fallback applies — swap `VectorIndexContract`
+for an alternative vector store; the pipeline above is unchanged, since
+nothing outside `RealVectorIndex` knows Vectorize specifically.

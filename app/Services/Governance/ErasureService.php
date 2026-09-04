@@ -4,6 +4,7 @@ namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
 use App\Models\Team;
+use App\Services\Indexing\IndexingService;
 
 /**
  * GDPR erasure across an org (spec 11): forces hard deletion of every
@@ -17,6 +18,7 @@ final class ErasureService
     public function __construct(
         private readonly ArtifactGovernanceContract $governance,
         private readonly AuditLogger $auditLogger,
+        private readonly ?IndexingService $indexer = null,
     ) {}
 
     public function erase(Team $team, bool $dryRun, string $actor = 'system'): ErasurePlan
@@ -45,6 +47,7 @@ final class ErasureService
         if (! $dryRun) {
             foreach ($ids as $artifactId) {
                 $this->governance->hardDeleteArtifact($team->slug, $artifactId);
+                $this->indexer?->removeFromIndex($team, $artifactId);
             }
         }
 

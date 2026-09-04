@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Governance\AuditLogger;
@@ -56,6 +57,16 @@ class ConsoleController extends Controller
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
             'isAdmin' => $user->isAdminOf($team),
+            // Spec 12 DoD: "parked in a dead-letter queue with the reason
+            // recorded and surfaced in the console." The data is real and
+            // tested; the page's own display of this list is a follow-up
+            // (see DOCUMENTATION.md) — this session did not build the
+            // React panel for it.
+            'indexingFailures' => ArtifactIndexingFailure::query()
+                ->where('team_id', $team->id)
+                ->latest('failed_at')
+                ->limit(20)
+                ->get(['artifact_id', 'attempts', 'reason', 'failed_at']),
         ]);
     }
 

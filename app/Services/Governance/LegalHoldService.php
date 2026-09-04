@@ -4,12 +4,14 @@ namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
 use App\Models\Team;
+use App\Services\Indexing\IndexingService;
 
 final class LegalHoldService
 {
     public function __construct(
         private readonly ArtifactGovernanceContract $governance,
         private readonly AuditLogger $auditLogger,
+        private readonly ?IndexingService $indexer = null,
     ) {}
 
     public function place(Team $team, string $artifactId, string $actor): void
@@ -61,6 +63,8 @@ final class LegalHoldService
 
             return false;
         }
+
+        $this->indexer?->removeFromIndex($team, $artifactId);
 
         $this->auditLogger->record(
             AuditEventType::ArtifactDeleted,

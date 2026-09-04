@@ -15,6 +15,15 @@ use App\Services\Governance\RealArtifactGovernance;
 use App\Services\Identity\DnsResolverContract;
 use App\Services\Identity\FakeDnsResolver;
 use App\Services\Identity\RealDnsResolver;
+use App\Services\Indexing\EmbeddingsContract;
+use App\Services\Indexing\FakeEmbeddings;
+use App\Services\Indexing\FakeRenderer;
+use App\Services\Indexing\FakeVectorIndex;
+use App\Services\Indexing\RealEmbeddings;
+use App\Services\Indexing\RealRenderer;
+use App\Services\Indexing\RealVectorIndex;
+use App\Services\Indexing\RendererContract;
+use App\Services\Indexing\VectorIndexContract;
 use App\Services\Polis\FakePolisClient;
 use App\Services\Polis\PolisClientContract;
 use App\Services\Polis\RealPolisClient;
@@ -66,6 +75,18 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             ArtifactGovernanceContract::class,
             app()->environment('testing') ? FakeArtifactGovernance::class : RealArtifactGovernance::class,
+        );
+        $this->app->singleton(
+            RendererContract::class,
+            app()->environment('testing') ? FakeRenderer::class : RealRenderer::class,
+        );
+        $this->app->singleton(
+            EmbeddingsContract::class,
+            app()->environment('testing') ? FakeEmbeddings::class : RealEmbeddings::class,
+        );
+        $this->app->singleton(
+            VectorIndexContract::class,
+            app()->environment('testing') ? FakeVectorIndex::class : RealVectorIndex::class,
         );
     }
 
