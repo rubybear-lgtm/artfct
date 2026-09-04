@@ -12,6 +12,9 @@ use App\Services\AuthKit\RealAuthKitClient;
 use App\Services\Identity\DnsResolverContract;
 use App\Services\Identity\FakeDnsResolver;
 use App\Services\Identity\RealDnsResolver;
+use App\Services\Tenancy\FakeTenantProvisioner;
+use App\Services\Tenancy\RealTenantProvisioner;
+use App\Services\Tenancy\TenantProvisionerContract;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Date;
@@ -45,6 +48,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             ArtifactDirectory::class,
             app()->environment('testing') ? FakeArtifactDirectory::class : HttpArtifactDirectory::class,
+        );
+        $this->app->singleton(
+            TenantProvisionerContract::class,
+            app()->environment('testing') ? FakeTenantProvisioner::class : RealTenantProvisioner::class,
         );
     }
 

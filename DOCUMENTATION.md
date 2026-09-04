@@ -227,3 +227,41 @@ cursor pagination on indexed columns, a bounded page size (1-200, default
 captured wall-clock measurement, which would be meaningless on a dev
 machine. `cursor_pagination_has_no_gaps_or_duplicates` proves the pagination
 arithmetic itself is exhaustive and duplicate-free at that exact scale.
+
+## Tenant provisioning
+
+Spec 09's per-tenant Cloudflare resources — a Workers for Platforms
+dispatch-namespace script, one D1, one R2 prefix, a hostname registration —
+need a paid Cloudflare tier not enabled in this environment.
+`App\Services\Tenancy\RealTenantProvisioner` fails closed the same way
+`RealAuthKitClient`/`RealDnsResolver` do: every method throws unless
+`services.cloudflare.api_token`/`account_id`/`dispatch_namespace` are
+configured, and even then throws "not implemented" — the real Cloudflare
+API calls were never written, since there is nowhere to test them against.
+`FakeTenantProvisioner` is bound instead in testing; it records every call
+and supports injecting a fault for one named org/step, which is what makes
+`migrate_all_continues_past_failure_and_reports` a genuine partial-failure
+run rather than a description of one.
+
+`App\Services\Tenancy\TenantProvisioningService::provision()` is the
+idempotent, resumable orchestrator: an already-provisioned team with no
+recorded failed step is a no-op; a team whose last run failed resumes from
+`provisioning_failed_step`, so already-completed steps are never repeated
+against the provisioner. `TenantFleetMigrator::migrateAll()` is the fleet
+runner spec 09 calls "the recurring cost — the price floor": it iterates
+every provisioned team, skips any already at the target `schema_version`,
+and collects failures into a report rather than stopping at the first one
+— `tenant:migrate --all` exits non-zero and names every failed tenant when
+`FleetMigrationReport::hasFailures()` is true, and `tenant:status` shows
+the version distribution across the fleet.
+
+**Deferred, not closable in this environment** (all need a live dispatch
+namespace, none exist here): the 60-second real provisioning wall clock,
+`request.cf` unavailability inside a real untrusted tenant script, CPU-limit
+isolation under real concurrent load, Logpush, and cross-tenant binding
+isolation verified against two actually-provisioned tenants. Written as
+`#[ignore]`d stubs in `backend/tests/dispatch_integration.rs` naming what
+each would need, not silently claimed. The dispatch router's pure
+resolution logic — hostname to script name, unknown hostname to 404 never
+500 — is unit-tested in `backend/src/dispatch.rs` without any of that
+infrastructure.

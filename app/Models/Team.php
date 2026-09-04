@@ -21,6 +21,10 @@ use Illuminate\Support\Carbon;
  * @property string $slug
  * @property bool $is_personal
  * @property AuthMode $auth_mode
+ * @property Carbon|null $provisioned_at
+ * @property string|null $provisioning_failed_step
+ * @property string|null $release_version
+ * @property int $schema_version
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -127,6 +131,7 @@ class Team extends Model
         return [
             'is_personal' => 'boolean',
             'auth_mode' => AuthMode::class,
+            'provisioned_at' => 'datetime',
         ];
     }
 

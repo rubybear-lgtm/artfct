@@ -7,6 +7,7 @@ use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
 use worker::{event, Env, Headers, Method, Request, Response, Result};
 
+pub mod dispatch;
 pub mod store;
 
 const KV_BINDING: &str = "ARTIFACTS_KV";

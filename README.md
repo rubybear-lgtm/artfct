@@ -215,6 +215,19 @@ The Worker API and previews are deployed with Wrangler from `backend/wrangler.js
 Before deploying, verify the Cloudflare route bindings and `ARTFCT_PUBLIC_BASE_URL`
 still point at `https://artfct.dev`.
 
+### Tenant provisioning
+
+```sh
+php artisan tenant:provision acme --release=v1.2.0  # idempotent; resumes a failed run
+php artisan tenant:migrate --all                    # fleet migration; continues past a failed tenant
+php artisan tenant:status                           # schema-version distribution across the fleet
+php artisan tenant:deprovision acme                  # removes the script; D1/R2 retained for the retention window
+```
+
+Requires `services.cloudflare.api_token`/`account_id`/`dispatch_namespace`
+configured to reach a real Workers for Platforms account; none of these
+commands do anything against real Cloudflare infrastructure without it.
+
 ## API
 
 Full reference at [artfct.dev/docs](https://artfct.dev/docs).
