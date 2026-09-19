@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Database\Factories\CollectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,6 +27,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['team_id', 'name', 'description', 'created_by_user_id', 'canonical'])]
 class Collection extends Model
 {
+    /** @use HasFactory<CollectionFactory> */
+    use HasFactory;
+
     protected $casts = [
         'canonical' => 'boolean',
     ];

@@ -31,13 +31,13 @@ final class OrgLimitsWriter
         );
     }
 
-    public function push(Team $team): bool
+    public function push(Team $team, ?QuotaLimits $limits = null): bool
     {
         if (! $this->baseUrl || ! $this->secret) {
             return false;
         }
 
-        $limits = QuotaLimits::default();
+        $limits ??= QuotaLimits::default();
 
         try {
             $response = Http::withToken($this->secret)

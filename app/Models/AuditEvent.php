@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\AuditEventType;
+use Database\Factories\AuditEventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -27,6 +29,9 @@ use Illuminate\Support\Carbon;
 #[Fillable(['team_id', 'event_type', 'actor', 'target', 'ip', 'user_agent', 'outcome'])]
 class AuditEvent extends Model
 {
+    /** @use HasFactory<AuditEventFactory> */
+    use HasFactory;
+
     /** This table has no `updated_at` column — rows are write-once. */
     public $timestamps = false;
 

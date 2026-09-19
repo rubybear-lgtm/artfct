@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Database\Factories\ArtifactIndexEntryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -20,6 +22,9 @@ use Illuminate\Support\Carbon;
 #[Fillable(['team_id', 'artifact_id', 'rendered', 'extracted_text', 'title', 'headings', 'extracted_at'])]
 class ArtifactIndexEntry extends Model
 {
+    /** @use HasFactory<ArtifactIndexEntryFactory> */
+    use HasFactory;
+
     protected $casts = [
         'rendered' => 'boolean',
         'headings' => 'array',

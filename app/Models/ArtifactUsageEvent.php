@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\UsageEventType;
+use Database\Factories\ArtifactUsageEventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -19,6 +21,9 @@ use Illuminate\Support\Carbon;
 #[Fillable(['team_id', 'artifact_id', 'event_type', 'actor_user_id', 'related_artifact_id', 'occurred_at'])]
 class ArtifactUsageEvent extends Model
 {
+    /** @use HasFactory<ArtifactUsageEventFactory> */
+    use HasFactory;
+
     public $timestamps = false;
 
     protected $casts = [
