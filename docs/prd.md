@@ -8,39 +8,55 @@
 
 Coding agents now produce a steady stream of self-contained visual artifacts — dashboards, reports, diagrams, demos, one-off tools. Every major lab ships its own way to share them, and every one of those keeps the artifact inside the lab's ecosystem.
 
-For an individual that's a convenience. For a company it's a quiet governance failure:
+These are **durable work product** — a finished dashboard, a report, a diagram someone will reuse — not chat scrollback. And they are stranded.
 
-- Work product lives in a vendor's cloud under the vendor's retention policy.
-- No org-level record of what was produced, by whom, from which repo.
-- No revocation. Sharing is handing someone a link.
-- Switching agent vendors orphans everything produced under the last one.
-- Nothing accumulates. Every artifact is a dead end; the next agent can't see what the last one built.
+Note what this problem is *not*. The labs shipped governance during 2026: Claude Code Artifacts are admin-gated on Team and Enterprise with share permissions, and OpenAI Canvas Sites have RBAC with per-site access modes. Pitching "the labs give you no controls" loses the room in front of a platform lead who has already configured them. See [market-analysis.md](market-analysis.md).
 
-**Job to be done, in the buyer's words:** *"Our engineers' agents produce work artifacts that live in someone else's cloud, with retention and access we don't control."*
+What no lab can fix, because it is structural rather than neglected:
 
-Not "we need artifact hosting."
+- **Artifacts are trapped per-vendor.** Most engineers run two to four AI tools. A report a PM generated in Cursor is invisible to an engineer in Claude Code, and always will be — Anthropic will not index Cursor's output.
+- **Work gets rebuilt.** The next agent cannot see what the last one produced, so it produces it again.
+- **Nothing accumulates.** A team's good report formats, dashboard patterns and runbooks stay one-off outputs instead of becoming the way that team works.
+- **Non-technical teammates are stuck entirely.** A PM with an HTML file has no way to open, send or place it anywhere their team will look.
+
+**Job to be done:** *"Our people's agents produce real work — across four different tools — and none of it is findable, reusable, or shareable outside the tool that made it."*
+
+Not "we need artifact hosting," and not "we need AI governance."
 
 ## 2. Users and buyer
 
 They are not the same person, and this asymmetry shapes the whole GTM.
 
-| | **User** | **Buyer** |
-|---|---|---|
-| Who | Individual engineer, or their agent acting for them | Platform engineering lead, or security/compliance owner |
-| Wants | The deploy stays one call and never gets in the way | Audit trail, revocation, retention control, SSO, a defensible answer at review |
-| Cares about | Latency, ergonomics, not thinking about it | Where the data lives, who can reach it, what happens when someone leaves |
-| Status today | **Reachable, not acquired** — the CLI, installer, MCP server and agent skill are built and published, but there is no user base | **Unvalidated** — no buyer conversation has happened |
+There are **two user segments, not one**, and `.impeccable.md` said so before this PRD narrowed it: devs are the core audience, "but the tool is simple enough that other professionals (designers, PMs, marketers) who occasionally deal with HTML files would also find it useful."
+
+| | **Technical user** | **Business user** | **Buyer** |
+|---|---|---|---|
+| Who | Engineer, or their agent acting for them | PM, designer, analyst, marketer — in Cursor or a desktop agent | Engineering or ops lead; security owner joins at Enterprise |
+| Produces | Dashboards, demos, diagrams, tooling | Reports, summaries, one-pagers, decks |
+| Wants | The deploy stays one call | Somewhere to *put* the thing their agent just made | Their team faster; findable work; a defensible answer at review |
+| Reaches us via | CLI, MCP tool | **IT configuring MCP org-wide**, or browser drag-and-drop | — |
+| Shares via | link, Slack | **Slack, almost exclusively** | — |
+| Status today | **Reachable, not acquired** — CLI, installer, MCP server and skill are built and published, but there is no user base | Same, and further from a CLI than the PRD previously assumed | **Unvalidated** — no buyer conversation has happened |
+
+**Value runs inverse to technical ability.** An engineer with an HTML file has a dozen options. A PM who just generated a report in Cursor has none. That is where "drop it, get a link" is transformative rather than convenient.
+
+**Org-wide MCP configuration is a distribution channel**, not a setup step — one admin action reaches hundreds of people who would never install a CLI.
 
 **There are no users yet.** The distribution *mechanism* exists and works; the distribution itself does not. This is the single most important correction to make when reading the rest of this document: nothing here can lean on an installed base, a friction moment inside an existing team, or organic pull. Both sides of the funnel start from zero, and the buyer has never been tested.
 
 ## 3. Positioning
 
-> **Your agents' artifacts, in your company's store.**
-> Permanent, governed, and searchable — instead of scattered across whichever lab produced them.
+> **Every artifact your team's agents make — findable by your people and your agents, whichever tool made it.**
 
-The long-term product is *an organization's memory of what its agents built*. Hosting is the substrate. Phase 5 (indexing, retrieval back to agents) is the thesis; everything before it earns the right to attempt it.
+Three properties, and the combination is what nobody else has:
 
-**Against the labs:** they will always make sharing inside their ecosystem easier than sharing outside it. We don't compete on convenience — we compete on ownership, and on being the one store that spans every agent an org uses. No lab will store artifacts produced by a competitor's agent.
+1. **Cross-vendor.** Claude Code, Cursor, Codex, Copilot — one store. Structurally impossible for any lab: Anthropic indexing Cursor's output is competitively incoherent, not an oversight.
+2. **Two audiences, one object.** A teammate opens it from Slack; another agent finds it through retrieval. Memory products serve only agents. Vercel and Tiiny Host serve only humans.
+3. **It accumulates.** Teams build up a store of the artifacts that turned out to matter, and agents draw on it.
+
+This is a **capability** pitch, not a compliance one. Compliance competes with controls the labs already shipped; capability competes with nothing. It also changes who buys: an engineering or ops lead who wants their team faster, rather than a security owner working through procurement.
+
+**The claim to make, because it demos in one interaction:** *Codex does not rebuild the dashboard Claude already built.* Not "we transfer understanding" — the artifact is the deliverable, and moving finished work is provable in a way transferring insight is not.
 
 ## 4. Goals and non-goals
 
@@ -57,6 +73,8 @@ The long-term product is *an organization's memory of what its agents built*. Ho
 - **Not a Notion or Confluence competitor.** No authoring, no editing, no wiki.
 - **Not general file storage.** HTML bundles and their assets. Nothing else at launch.
 - **Not non-HTML artifacts at launch** — no notebooks, no PDFs, no video. Adjacent and tempting; explicitly out.
+- **Not a document tool.** Broadening to business users pulls straight toward Confluence and Google Docs. Hold the line: **expand the user, not the artifact type.** Interactive HTML an agent produced is what those tools handle badly. The moment this becomes "share any document," we are a worse wiki.
+- **Not a memory or context layer.** We move finished artifacts, not reasoning. Different category, different competitors.
 - **Not BYOC or self-hosting.** Out of scope, not deferred.
 
 ## 5. Requirements, keyed to the build phases
@@ -177,7 +195,7 @@ With no users and no validated buyer, both sides of the funnel start at zero. Th
 
 **Still open**
 
-- **Team tier price per seat**, and whether there's a per-org floor given each tenant gets a dedicated deployment. Answer comes from the design partner and the first self-serve signups, not from a spreadsheet.
+- **Team tier pricing model, not just the number.** Per-seat looked obvious when the user was an engineer. With business users in scope, finance balks at buying seats for people who deploy twice a month — so active-user or artifact-volume pricing may fit better. Answer comes from the design partner and the first self-serve signups, not from a spreadsheet.
 
 ### ⚠️ Tenant-branded domains carry a Cloudflare plan cost
 

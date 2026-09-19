@@ -52,6 +52,8 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 |---|---|---|
 | 12 | [Indexing pipeline](12-indexing-pipeline.md) | A JS-heavy dashboard is searchable by content absent from its source HTML |
 | 13 | [Retrieval](13-retrieval.md) | An agent asks for "the billing dashboard from last month" and gets it before rebuilding it |
+| 15 | [Slack](15-slack.md) | A private artifact unfurls to a bare card; `/artfct` search returns ephemeral results |
+| 16 | [Collections and usage ranking](16-collections.md) | A canonical artifact outranks a semantically closer one nobody has opened |
 
 → **Thesis testable.**
 
@@ -67,6 +69,7 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 
 - **0 comes first.** The payload starts changing in spec 2; three codebases will encode the surface independently unless it's agreed once up front. Provenance field names become D1 columns — renaming them later is a migration.
 - **1–2 have no dependencies** and can start immediately.
+- **Track F is where the differentiation is** — see [market-analysis.md](../market-analysis.md). Specs 15 and 16 belong to Track F despite their numbers; numbering is allocation order, not build order.
 - **9 is the real milestone.** Everything before it is substrate; it's where revenue becomes possible.
 - Reserve later paths in the OpenAPI document but mark them unimplemented. A spec describing endpoints that don't exist is fiction other people will build against.
 
