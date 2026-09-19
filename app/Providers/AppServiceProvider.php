@@ -15,6 +15,7 @@ use App\Services\AuthKit\RealAuthKitClient;
 use App\Services\Billing\BillingContract;
 use App\Services\Billing\FakeBilling;
 use App\Services\Billing\FakeUsage;
+use App\Services\Billing\OrgLimitsWriter;
 use App\Services\Billing\RealBilling;
 use App\Services\Billing\RealUsage;
 use App\Services\Billing\UsageContract;
@@ -68,6 +69,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(WorkerEventHandlers::class);
+        $this->app->bind(OrgLimitsWriter::class, fn (): OrgLimitsWriter => OrgLimitsWriter::default());
 
         $workosConfigured = ! app()->environment('testing') && config('services.workos.client_id');
 

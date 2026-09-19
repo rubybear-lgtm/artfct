@@ -11,7 +11,10 @@ use App\Models\Team;
  */
 final class BillingService
 {
-    public function __construct(private readonly BillingContract $billing) {}
+    public function __construct(
+        private readonly BillingContract $billing,
+        private readonly OrgLimitsWriter $limitsWriter,
+    ) {}
 
     public function startCheckout(Team $team): string
     {
@@ -31,6 +34,8 @@ final class BillingService
             'stripe_subscription_id' => $subscriptionId,
             'seats_billed' => $this->activeSeatCount($team),
         ])->save();
+
+        $this->limitsWriter->push($team);
     }
 
     /**
@@ -58,6 +63,7 @@ final class BillingService
     public function applyPaymentFailed(Team $team): void
     {
         $team->forceFill(['payment_status' => PaymentStatus::PastDue])->save();
+        $this->limitsWriter->push($team);
     }
 
     /**
@@ -69,6 +75,7 @@ final class BillingService
     public function applyPaymentSucceeded(Team $team): void
     {
         $team->forceFill(['payment_status' => PaymentStatus::Active])->save();
+        $this->limitsWriter->push($team);
     }
 
     public function cancelSubscription(Team $team): void

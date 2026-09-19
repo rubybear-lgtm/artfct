@@ -458,6 +458,73 @@
         }
       }
     },
+    "/v1/internal/org-limits": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Push an organization's limits",
+        "description": "Internal. Laravel pushes an org's quota limits and read-only (past due) state. Authenticated with the limits shared secret, not an org token. Rows are upserted; with no row the Worker uses default limits.",
+        "operationId": "writeOrganizationLimits",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["org", "storage_bytes", "artifacts_per_month", "bundle_ceiling_bytes", "read_only"],
+                "properties": {
+                  "org": { "type": "string" },
+                  "storage_bytes": { "type": "integer", "minimum": 0 },
+                  "artifacts_per_month": { "type": "integer", "minimum": 0 },
+                  "bundle_ceiling_bytes": { "type": "integer", "minimum": 0 },
+                  "read_only": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Limits stored." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/usage": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Read an organization's usage",
+        "description": "The figures the create gate enforces: storage counts each distinct blob once; artifacts_this_period counts artifacts created in the current UTC month.",
+        "operationId": "readOrganizationUsage",
+        "security": [
+          { "orgToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current usage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["storage_bytes", "artifacts_this_period"],
+                  "properties": {
+                    "storage_bytes": { "type": "integer", "minimum": 0 },
+                    "artifacts_this_period": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/orgs/{org}/export": {
       "parameters": [
         { "$ref": "#/components/parameters/OrganizationId" }
@@ -1012,7 +1079,8 @@
           "not_implemented",
           "internal_error",
           "authentication_required",
-          "rate_limited"
+          "rate_limited",
+          "quota_exceeded"
         ]
       }
     }

@@ -10,6 +10,7 @@ use worker::{event, Env, Headers, Method, Request, Response, Result};
 pub mod dispatch;
 pub mod events;
 pub mod governance;
+pub mod quota;
 pub mod store;
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
@@ -159,11 +160,13 @@ enum ErrorCode {
     /// The presented token's per-token rate limit was exceeded (spec 07 DoD
     /// item 8).
     RateLimited,
+    /// The org is at a storage or artifact-count limit, or past due (spec 14).
+    QuotaExceeded,
 }
 
 impl ErrorCode {
     #[allow(dead_code, reason = "used by native contract tests")]
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 18] = [
         Self::InvalidJson,
         Self::ValidationFailed,
         Self::InvalidArtifactId,
@@ -181,6 +184,7 @@ impl ErrorCode {
         Self::InternalError,
         Self::AuthenticationRequired,
         Self::RateLimited,
+        Self::QuotaExceeded,
     ];
 }
 
@@ -326,6 +330,10 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
     match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
+        (Method::Post, "/v1/internal/org-limits") => write_org_limits(&mut req, &env).await,
+        (Method::Get, path) if parse_usage_path(path).is_some() => {
+            get_org_usage(path, &req, &env).await
+        }
         (Method::Get, path) if path.starts_with("/v1/artifacts/") && !path.contains("/files/") => {
             get_artifact_metadata(path, &req, &env).await
         }
@@ -770,6 +778,20 @@ async fn create_permanent_artifact(
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // Quota gate (spec 14): decided from the manifest's declared sizes,
+    // before any lock, row or blob is written.
+    let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
+    if let Some(refusal) = quota_refusal(
+        &storage.database,
+        env,
+        &org,
+        declared,
+        quota::AddKind::Create,
+    )
+    .await?
+    {
+        return Ok(refusal);
+    }
     let file_hashes = manifest
         .files
         .iter()
@@ -1236,6 +1258,19 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
             404,
         );
     };
+    // Quota gate (spec 14): the file's declared size against the org's
+    // storage, before its bytes are read or written.
+    if let Some(refusal) = quota_refusal(
+        database,
+        env,
+        &org,
+        row.expected_size.max(0) as u64,
+        quota::AddKind::Upload,
+    )
+    .await?
+    {
+        return Ok(refusal);
+    }
     let lock_hashes = serde_json::from_str::<PermanentManifest>(&row.manifest)
         .map(|manifest| {
             manifest
@@ -2036,7 +2071,7 @@ fn parse_content_path(path: &str) -> Option<(&str, &str)> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum ContentReadDecision {
+enum OrgReadDecision {
     Unauthorized,
     NotFound,
     Allowed,
@@ -2045,19 +2080,19 @@ enum ContentReadDecision {
 /// The single gate for the content read. A bad or missing org credential is
 /// 401; an org other than the token's is indistinguishable from a missing
 /// artifact (404, not 403) so the read never confirms another org's ids.
-fn decide_content_read(
+fn decide_org_read(
     expected_token: Option<&str>,
     authorization: Option<&str>,
     path_org: &str,
     credential_org: &str,
-) -> ContentReadDecision {
+) -> OrgReadDecision {
     if !authorization_matches(expected_token, authorization) {
-        return ContentReadDecision::Unauthorized;
+        return OrgReadDecision::Unauthorized;
     }
     if path_org != credential_org {
-        return ContentReadDecision::NotFound;
+        return OrgReadDecision::NotFound;
     }
-    ContentReadDecision::Allowed
+    OrgReadDecision::Allowed
 }
 
 /// `GET /v1/orgs/{org}/artifacts/{id}/content` — org-credentialed read of
@@ -2072,23 +2107,23 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
         .var("ARTFCT_ORG_TOKEN")
         .ok()
         .map(|value| value.to_string());
-    match decide_content_read(
+    match decide_org_read(
         expected_token.as_deref(),
         authorization.as_deref(),
         org,
         &env_string(env, "ARTFCT_ORG_SLUG", "default"),
     ) {
-        ContentReadDecision::Unauthorized => {
+        OrgReadDecision::Unauthorized => {
             return json_error(
                 ErrorCode::Unauthorized,
                 "An organization token is required.",
                 401,
             );
         }
-        ContentReadDecision::NotFound => {
+        OrgReadDecision::NotFound => {
             return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
         }
-        ContentReadDecision::Allowed => {}
+        OrgReadDecision::Allowed => {}
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
@@ -2123,6 +2158,213 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
                 "commit_sha": row.commit_sha,
             },
             "content": String::from_utf8_lossy(&bytes),
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
+const LIMITS_WRITE_SECRET_ENV: &str = "ARTFCT_LIMITS_WRITE_SECRET";
+const DEFAULT_STORAGE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+const DEFAULT_ARTIFACTS_PER_MONTH: u64 = 1000;
+const DEFAULT_BUNDLE_CEILING_BYTES: u64 = 10 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+struct OrgLimitsRow {
+    storage_bytes: i64,
+    artifacts_per_month: i64,
+    bundle_ceiling_bytes: i64,
+    read_only: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CountRow {
+    value: i64,
+}
+
+/// Limits for `org`: the pushed `org_limits` row, else defaults mirroring
+/// Laravel's `QuotaLimits::default()` (overridable through Worker vars).
+async fn load_org_limits(
+    database: &worker::D1Database,
+    env: &Env,
+    org: &str,
+) -> Result<quota::OrgLimits> {
+    let row = database
+        .prepare("SELECT storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only FROM org_limits WHERE org_id = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgLimitsRow>(None)
+        .await?;
+    Ok(match row {
+        Some(row) => quota::OrgLimits {
+            storage_bytes: row.storage_bytes.max(0) as u64,
+            artifacts_per_month: row.artifacts_per_month.max(0) as u64,
+            bundle_ceiling_bytes: row.bundle_ceiling_bytes.max(0) as u64,
+            read_only: row.read_only != 0,
+        },
+        None => quota::OrgLimits {
+            storage_bytes: env_u64(env, "ARTFCT_DEFAULT_STORAGE_BYTES", DEFAULT_STORAGE_BYTES),
+            artifacts_per_month: env_u64(
+                env,
+                "ARTFCT_DEFAULT_ARTIFACTS_PER_MONTH",
+                DEFAULT_ARTIFACTS_PER_MONTH,
+            ),
+            bundle_ceiling_bytes: env_u64(
+                env,
+                "ARTFCT_DEFAULT_BUNDLE_CEILING_BYTES",
+                DEFAULT_BUNDLE_CEILING_BYTES,
+            ),
+            read_only: false,
+        },
+    })
+}
+
+/// D1 is the source of truth: storage counts each distinct `content_hash`
+/// once per org; the period count is artifacts created this UTC month
+/// (a soft-deleted artifact still counts; a hard delete would drop it).
+async fn load_org_usage(database: &worker::D1Database, org: &str) -> Result<quota::OrgUsage> {
+    let storage = database
+        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT f.content_hash, MAX(f.size_bytes) AS size FROM files f JOIN artifacts a ON a.row_id = f.artifact_row_id WHERE a.org_id = ? GROUP BY f.content_hash)")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<CountRow>(None)
+        .await?;
+    let artifacts = database
+        .prepare("SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ?")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(&quota::month_start(Utc::now())),
+        ])?
+        .first::<CountRow>(None)
+        .await?;
+    Ok(quota::OrgUsage {
+        storage_bytes: storage.map_or(0, |row| row.value.max(0) as u64),
+        artifacts_this_period: artifacts.map_or(0, |row| row.value.max(0) as u64),
+    })
+}
+
+/// `Ok(None)` when the add is allowed, else the refusal response.
+async fn quota_refusal(
+    database: &worker::D1Database,
+    env: &Env,
+    org: &str,
+    incoming_bytes: u64,
+    kind: quota::AddKind,
+) -> Result<Option<Response>> {
+    let limits = load_org_limits(database, env, org).await?;
+    let usage = load_org_usage(database, org).await?;
+    match quota::assert_can_add(&limits, &usage, incoming_bytes, kind) {
+        quota::QuotaDecision::Allowed => Ok(None),
+        quota::QuotaDecision::QuotaExceeded(reason) => quota_error_response(
+            ErrorCode::QuotaExceeded,
+            403,
+            serde_json::json!({"reason": reason.as_str()}),
+        )
+        .map(Some),
+        quota::QuotaDecision::BundleTooLarge { limit_bytes } => quota_error_response(
+            ErrorCode::BundleTooLarge,
+            413,
+            serde_json::json!({"limit_bytes": limit_bytes}),
+        )
+        .map(Some),
+    }
+}
+
+fn quota_error_response(code: ErrorCode, status: u16, details: Value) -> Result<Response> {
+    let message = match code {
+        ErrorCode::BundleTooLarge => "The bundle exceeds this organization's per-artifact limit.",
+        _ => "This organization has reached a usage limit for new artifacts.",
+    };
+    let mut definition = build_error_response(code, message, status);
+    definition.body["error"]["details"] = details;
+    definition.into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgLimitsWriteRequest {
+    org: String,
+    storage_bytes: u64,
+    artifacts_per_month: u64,
+    bundle_ceiling_bytes: u64,
+    read_only: bool,
+}
+
+/// An unset secret fails closed.
+fn limits_write_authorized(secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(secret, authorization)
+}
+
+/// `POST /v1/internal/org-limits` — Laravel pushes each org's limits and
+/// payment state here (spec 14). Own shared secret, same shape as the
+/// revocation write; a wrong secret changes nothing.
+async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let payload = match req.json::<OrgLimitsWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    if let Err(message) = store::validate_slug(&payload.org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    database
+        .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+        .bind(&[
+            JsValue::from_str(&payload.org),
+            JsValue::from_f64(payload.storage_bytes as f64),
+            JsValue::from_f64(payload.artifacts_per_month as f64),
+            JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
+            JsValue::from_f64(f64::from(u8::from(payload.read_only))),
+            JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
+        ])?
+        .run()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"org": payload.org}), 200)
+        .into_worker_response()
+}
+
+/// Splits `/v1/orgs/{org}/usage` into `org`.
+fn parse_usage_path(path: &str) -> Option<&str> {
+    let org = path.strip_prefix("/v1/orgs/")?.strip_suffix("/usage")?;
+    (!org.is_empty() && !org.contains('/')).then_some(org)
+}
+
+/// `GET /v1/orgs/{org}/usage` — the numbers the create gate enforces.
+async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let org = parse_usage_path(path).unwrap_or_default();
+    let expected_token = env
+        .var("ARTFCT_ORG_TOKEN")
+        .ok()
+        .map(|value| value.to_string());
+    match decide_org_read(
+        expected_token.as_deref(),
+        authorization.as_deref(),
+        org,
+        &env_string(env, "ARTFCT_ORG_SLUG", "default"),
+    ) {
+        OrgReadDecision::Unauthorized => {
+            return json_error(
+                ErrorCode::Unauthorized,
+                "An organization token is required.",
+                401,
+            );
+        }
+        OrgReadDecision::NotFound => {
+            return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+        }
+        OrgReadDecision::Allowed => {}
+    }
+    let usage = load_org_usage(&env.d1("ARTIFACTS_DB")?, org).await?;
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "storage_bytes": usage.storage_bytes,
+            "artifacts_this_period": usage.artifacts_this_period,
         }),
         200,
     )
@@ -3224,36 +3466,94 @@ mod tests {
     fn content_read_requires_org_credential() {
         for authorization in [None, Some("Bearer wrong"), Some("Basic org-token")] {
             assert_eq!(
-                decide_content_read(Some("org-token"), authorization, "org-a", "org-a"),
-                ContentReadDecision::Unauthorized
+                decide_org_read(Some("org-token"), authorization, "org-a", "org-a"),
+                OrgReadDecision::Unauthorized
             );
         }
         assert_eq!(
-            decide_content_read(None, Some("Bearer org-token"), "org-a", "org-a"),
-            ContentReadDecision::Unauthorized
+            decide_org_read(None, Some("Bearer org-token"), "org-a", "org-a"),
+            OrgReadDecision::Unauthorized
         );
         assert_eq!(
-            decide_content_read(
+            decide_org_read(
                 Some("org-token"),
                 Some("Bearer org-token"),
                 "org-a",
                 "org-a"
             ),
-            ContentReadDecision::Allowed
+            OrgReadDecision::Allowed
         );
     }
 
     #[test]
     fn content_read_for_other_org_returns_404() {
         assert_eq!(
-            decide_content_read(
+            decide_org_read(
                 Some("org-token"),
                 Some("Bearer org-token"),
                 "org-b",
                 "org-a"
             ),
-            ContentReadDecision::NotFound
+            OrgReadDecision::NotFound
         );
+    }
+
+    #[test]
+    fn limits_push_requires_secret() {
+        assert!(!limits_write_authorized(None, Some("Bearer anything")));
+        assert!(!limits_write_authorized(Some("s3cret"), None));
+        assert!(!limits_write_authorized(
+            Some("s3cret"),
+            Some("Bearer wrong")
+        ));
+        // The org token is a different credential and must not open this route.
+        assert!(!limits_write_authorized(
+            Some("s3cret"),
+            Some("Bearer org-token")
+        ));
+        assert!(limits_write_authorized(
+            Some("s3cret"),
+            Some("Bearer s3cret")
+        ));
+    }
+
+    #[test]
+    fn usage_path_parses_org() {
+        assert_eq!(parse_usage_path("/v1/orgs/acme/usage"), Some("acme"));
+        assert_eq!(parse_usage_path("/v1/orgs//usage"), None);
+        assert_eq!(parse_usage_path("/v1/orgs/acme/artifacts"), None);
+        assert_eq!(parse_usage_path("/v1/orgs/a/b/usage"), None);
+    }
+
+    #[test]
+    fn quota_refusals_use_the_documented_envelope() {
+        let contract = openapi_contract();
+        for (code, status, details) in [
+            (
+                ErrorCode::QuotaExceeded,
+                403,
+                serde_json::json!({"reason": "storage"}),
+            ),
+            (
+                ErrorCode::QuotaExceeded,
+                403,
+                serde_json::json!({"reason": "past_due"}),
+            ),
+            (
+                ErrorCode::BundleTooLarge,
+                413,
+                serde_json::json!({"limit_bytes": 10485760}),
+            ),
+        ] {
+            let mut response = build_error_response(code, "m", status);
+            response.body["error"]["details"] = details;
+            validate_schema(
+                &contract,
+                &contract["components"]["schemas"]["ErrorEnvelope"],
+                &response.body,
+            )
+            .unwrap_or_else(|error| panic!("quota refusal envelope mismatch: {error}"));
+        }
     }
 
     #[test]
