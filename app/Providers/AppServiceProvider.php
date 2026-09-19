@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Listeners\CreatePersonalTeam;
+use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Artifacts\HttpArtifactDirectory;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
@@ -42,6 +45,7 @@ use App\Services\Slack\SlackPostContract;
 use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
+use App\Services\WorkerEvents\ArtifactCreatedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
@@ -78,6 +82,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             ArtifactDirectory::class,
             app()->environment('testing') ? FakeArtifactDirectory::class : HttpArtifactDirectory::class,
+        );
+        $this->app->singleton(
+            ArtifactContentSource::class,
+            app()->environment('testing') ? FakeArtifactContentSource::class : HttpArtifactContentSource::class,
         );
         $this->app->singleton(
             TenantProvisionerContract::class,
@@ -129,6 +137,11 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         Event::listen(Registered::class, CreatePersonalTeam::class);
+
+        $this->app->make(WorkerEventHandlers::class)->register(
+            'artifact.created',
+            fn (array $event) => $this->app->make(ArtifactCreatedHandler::class)->handle($event),
+        );
     }
 
     /**

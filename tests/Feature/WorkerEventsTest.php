@@ -1,32 +1,12 @@
 <?php
 
 use App\Services\WorkerEvents\WorkerEventHandlers;
-use App\Services\WorkerEvents\WorkerEventSignature;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Testing\TestResponse;
 
 beforeEach(function () {
     config(['services.worker_events.secret' => 'test-secret']);
 });
-
-function postWorkerEvent(array $overrides = [], ?int $timestamp = null, ?string $secret = 'test-secret'): TestResponse
-{
-    $body = json_encode(array_merge([
-        'id' => (string) Str::uuid(),
-        'type' => 'artifact.created',
-        'org_id' => 'acme',
-        'occurred_at' => now()->toRfc3339String(),
-        'data' => [],
-    ], $overrides));
-    $timestamp ??= time();
-
-    return test()->call('POST', '/internal/worker-events', [], [], [], [
-        'CONTENT_TYPE' => 'application/json',
-        'HTTP_X_ARTFCT_TIMESTAMP' => (string) $timestamp,
-        'HTTP_X_ARTFCT_SIGNATURE' => WorkerEventSignature::sign($secret ?? '', $timestamp, $body),
-    ], $body);
-}
 
 test('valid_signed_event_is_accepted_and_recorded', function () {
     $id = (string) Str::uuid();

@@ -36,6 +36,11 @@ return [
         ],
     ],
 
+    'worker' => [
+        'base_url' => env('ARTFCT_WORKER_BASE_URL'),
+        'org_token' => env('ARTFCT_ORG_TOKEN'),
+    ],
+
     'worker_events' => [
         'secret' => env('ARTFCT_WORKER_EVENT_SECRET'),
     ],

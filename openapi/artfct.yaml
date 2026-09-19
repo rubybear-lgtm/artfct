@@ -415,6 +415,49 @@
         }
       }
     },
+    "/v1/orgs/{org}/artifacts/{id}/content": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Read an artifact's entrypoint and provenance",
+        "description": "Org-credentialed read used by server-side indexing. Revoked artifacts and artifacts of other organizations return 404.",
+        "operationId": "readOrganizationArtifactContent",
+        "security": [
+          { "orgToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entrypoint text and provenance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "content_type", "provenance", "content"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "content_type": { "type": "string" },
+                    "provenance": {
+                      "type": "object",
+                      "properties": {
+                        "agent": { "type": ["string", "null"] },
+                        "repo_url": { "type": ["string", "null"] },
+                        "commit_sha": { "type": ["string", "null"] }
+                      }
+                    },
+                    "content": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/orgs/{org}/export": {
       "parameters": [
         { "$ref": "#/components/parameters/OrganizationId" }

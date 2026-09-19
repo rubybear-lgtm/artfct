@@ -3,7 +3,9 @@
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\WorkerEvents\WorkerEventSignature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -92,4 +94,27 @@ function postSlackCommand(array $payload, ?int $timestamp = null, string $signin
     ], $headerOverrides);
 
     return test()->call('POST', '/api/slack/commands', [], [], [], array_filter($headers, fn ($value) => $value !== null), $body);
+}
+
+/**
+ * POSTs a correctly signed Worker event to `/internal/worker-events`.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function postWorkerEvent(array $overrides = [], ?int $timestamp = null, ?string $secret = 'test-secret'): TestResponse
+{
+    $body = json_encode(array_merge([
+        'id' => (string) Str::uuid(),
+        'type' => 'artifact.created',
+        'org_id' => 'acme',
+        'occurred_at' => now()->toRfc3339String(),
+        'data' => [],
+    ], $overrides));
+    $timestamp ??= time();
+
+    return test()->call('POST', '/internal/worker-events', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_ARTFCT_TIMESTAMP' => (string) $timestamp,
+        'HTTP_X_ARTFCT_SIGNATURE' => WorkerEventSignature::sign($secret ?? '', $timestamp, $body),
+    ], $body);
 }
