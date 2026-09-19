@@ -899,7 +899,7 @@ fn emit_artifact_created(
     tier: ArtifactTier,
 ) {
     let (Ok(secret), Ok(url)) = (
-        env.secret(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_SECRET_ENV),
         env.var(events::EVENT_URL_ENV),
     ) else {
         return;
@@ -2035,10 +2035,29 @@ fn parse_content_path(path: &str) -> Option<(&str, &str)> {
     Some((org, artifact_id))
 }
 
-/// An org other than the token's is indistinguishable from a missing
+#[derive(Debug, PartialEq, Eq)]
+enum ContentReadDecision {
+    Unauthorized,
+    NotFound,
+    Allowed,
+}
+
+/// The single gate for the content read. A bad or missing org credential is
+/// 401; an org other than the token's is indistinguishable from a missing
 /// artifact (404, not 403) so the read never confirms another org's ids.
-fn content_read_org_matches(path_org: &str, credential_org: &str) -> bool {
-    path_org == credential_org
+fn decide_content_read(
+    expected_token: Option<&str>,
+    authorization: Option<&str>,
+    path_org: &str,
+    credential_org: &str,
+) -> ContentReadDecision {
+    if !authorization_matches(expected_token, authorization) {
+        return ContentReadDecision::Unauthorized;
+    }
+    if path_org != credential_org {
+        return ContentReadDecision::NotFound;
+    }
+    ContentReadDecision::Allowed
 }
 
 /// `GET /v1/orgs/{org}/artifacts/{id}/content` — org-credentialed read of
@@ -2046,18 +2065,30 @@ fn content_read_org_matches(path_org: &str, credential_org: &str) -> bool {
 /// (spec 12). Revoked artifacts and other orgs' artifacts are 404.
 async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(
-            ErrorCode::Unauthorized,
-            "An organization token is required.",
-            401,
-        );
-    }
     let Some((org, artifact_id)) = parse_content_path(path) else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    if !content_read_org_matches(org, &env_string(env, "ARTFCT_ORG_SLUG", "default")) {
-        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    let expected_token = env
+        .var("ARTFCT_ORG_TOKEN")
+        .ok()
+        .map(|value| value.to_string());
+    match decide_content_read(
+        expected_token.as_deref(),
+        authorization.as_deref(),
+        org,
+        &env_string(env, "ARTFCT_ORG_SLUG", "default"),
+    ) {
+        ContentReadDecision::Unauthorized => {
+            return json_error(
+                ErrorCode::Unauthorized,
+                "An organization token is required.",
+                401,
+            );
+        }
+        ContentReadDecision::NotFound => {
+            return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+        }
+        ContentReadDecision::Allowed => {}
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
@@ -3191,21 +3222,38 @@ mod tests {
 
     #[test]
     fn content_read_requires_org_credential() {
-        assert!(!authorization_matches(Some("org-token"), None));
-        assert!(!authorization_matches(
-            Some("org-token"),
-            Some("Bearer wrong")
-        ));
-        assert!(authorization_matches(
-            Some("org-token"),
-            Some("Bearer org-token")
-        ));
+        for authorization in [None, Some("Bearer wrong"), Some("Basic org-token")] {
+            assert_eq!(
+                decide_content_read(Some("org-token"), authorization, "org-a", "org-a"),
+                ContentReadDecision::Unauthorized
+            );
+        }
+        assert_eq!(
+            decide_content_read(None, Some("Bearer org-token"), "org-a", "org-a"),
+            ContentReadDecision::Unauthorized
+        );
+        assert_eq!(
+            decide_content_read(
+                Some("org-token"),
+                Some("Bearer org-token"),
+                "org-a",
+                "org-a"
+            ),
+            ContentReadDecision::Allowed
+        );
     }
 
     #[test]
     fn content_read_for_other_org_returns_404() {
-        assert!(!content_read_org_matches("org-b", "org-a"));
-        assert!(content_read_org_matches("org-a", "org-a"));
+        assert_eq!(
+            decide_content_read(
+                Some("org-token"),
+                Some("Bearer org-token"),
+                "org-b",
+                "org-a"
+            ),
+            ContentReadDecision::NotFound
+        );
     }
 
     #[test]
