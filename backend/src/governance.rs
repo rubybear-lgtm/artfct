@@ -168,6 +168,22 @@ impl std::fmt::Display for GovernanceError {
     }
 }
 
+/// Whether a hard delete may proceed. The Worker enforces this itself, not
+/// only Laravel: a Laravel bug must not be able to destroy held data.
+#[derive(Debug, PartialEq, Eq)]
+pub enum HardDeleteDecision {
+    Proceed,
+    RefuseLegalHold,
+}
+
+pub fn decide_hard_delete(legal_hold: bool) -> HardDeleteDecision {
+    if legal_hold {
+        HardDeleteDecision::RefuseLegalHold
+    } else {
+        HardDeleteDecision::Proceed
+    }
+}
+
 /// One candidate the retention job is considering, decoupled from any
 /// particular store's row type so `select_for_retention` and
 /// `plan_erasure` stay pure and unit-testable.
@@ -499,5 +515,14 @@ mod tests {
         counter.record_drop();
         counter.record_drop();
         assert_eq!(counter.0, 2);
+    }
+
+    #[test]
+    fn hard_delete_refuses_held_artifact_with_409() {
+        assert_eq!(
+            decide_hard_delete(true),
+            HardDeleteDecision::RefuseLegalHold
+        );
+        assert_eq!(decide_hard_delete(false), HardDeleteDecision::Proceed);
     }
 }

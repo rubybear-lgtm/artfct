@@ -330,6 +330,9 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
     match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
+        (method, path) if path.starts_with("/v1/internal/orgs/") => {
+            governance_route(method, path, &mut req, &env).await
+        }
         (Method::Post, "/v1/internal/org-limits") => write_org_limits(&mut req, &env).await,
         (Method::Get, path) if parse_usage_path(path).is_some() => {
             get_org_usage(path, &req, &env).await
@@ -1093,6 +1096,8 @@ struct PermanentArtifactRow {
 struct PermanentHashRow {
     row_id: String,
     manifest: String,
+    #[serde(default)]
+    legal_hold: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2371,6 +2376,232 @@ async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response>
     .into_worker_response()
 }
 
+const GOVERNANCE_SECRET_ENV: &str = "ARTFCT_GOVERNANCE_SECRET";
+const GOVERNANCE_MAX_PAGE: usize = 500;
+
+#[derive(Debug, PartialEq, Eq)]
+enum GovernanceRoute<'a> {
+    ListArtifacts { org: &'a str },
+    DeleteArtifact { org: &'a str, artifact_id: &'a str },
+    LegalHold { org: &'a str, artifact_id: &'a str },
+    SweepOrphans { org: &'a str },
+}
+
+/// Parses `/v1/internal/orgs/{org}/governance/...`.
+fn parse_governance_path(path: &str) -> Option<GovernanceRoute<'_>> {
+    let rest = path.strip_prefix("/v1/internal/orgs/")?;
+    let (org, rest) = rest.split_once("/governance/")?;
+    if org.is_empty() || org.contains('/') {
+        return None;
+    }
+    if rest == "artifacts" {
+        return Some(GovernanceRoute::ListArtifacts { org });
+    }
+    if rest == "sweep-orphans" {
+        return Some(GovernanceRoute::SweepOrphans { org });
+    }
+    let rest = rest.strip_prefix("artifacts/")?;
+    if let Some(artifact_id) = rest.strip_suffix("/legal-hold") {
+        return (!artifact_id.is_empty() && !artifact_id.contains('/'))
+            .then_some(GovernanceRoute::LegalHold { org, artifact_id });
+    }
+    (!rest.is_empty() && !rest.contains('/')).then_some(GovernanceRoute::DeleteArtifact {
+        org,
+        artifact_id: rest,
+    })
+}
+
+/// An unset secret fails closed; the org token is a different credential.
+fn governance_authorized(secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(secret, authorization)
+}
+
+#[derive(Debug, Deserialize)]
+struct GovernanceListRow {
+    id: String,
+    created_at: String,
+    legal_hold: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgPresenceRow {
+    #[allow(dead_code)]
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrphanRow {
+    content_hash: String,
+}
+
+fn encode_governance_cursor(created_at: &str, id: &str) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("{created_at}|{id}"))
+}
+
+fn decode_governance_cursor(raw: &str) -> Option<(String, String)> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw)
+        .ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    let (created_at, id) = text.split_once('|')?;
+    Some((created_at.to_string(), id.to_string()))
+}
+
+/// Internal governance routes for Laravel jobs (retention, erasure, legal
+/// hold), authenticated with their own secret. The org comes from the path
+/// and must already exist; unknown org is 404.
+async fn governance_route(
+    method: Method,
+    path: &str,
+    req: &mut Request,
+    env: &Env,
+) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(GOVERNANCE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !governance_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "Invalid governance credential.",
+            401,
+        );
+    }
+    let Some(route) = parse_governance_path(path) else {
+        return not_found_response();
+    };
+    let org = match route {
+        GovernanceRoute::ListArtifacts { org }
+        | GovernanceRoute::DeleteArtifact { org, .. }
+        | GovernanceRoute::LegalHold { org, .. }
+        | GovernanceRoute::SweepOrphans { org } => org,
+    };
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let database = &storage.database;
+    let org_exists = database
+        .prepare("SELECT id FROM orgs WHERE slug = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgPresenceRow>(None)
+        .await?
+        .is_some();
+    if !org_exists {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    match (route, method) {
+        (GovernanceRoute::ListArtifacts { .. }, Method::Get) => {
+            let params: std::collections::HashMap<String, String> =
+                req.url()?.query_pairs().into_owned().collect();
+            let limit = params
+                .get("limit")
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(GOVERNANCE_MAX_PAGE)
+                .min(GOVERNANCE_MAX_PAGE);
+            let cutoff = params.get("older_than").cloned();
+            let cursor = params
+                .get("cursor")
+                .and_then(|raw| decode_governance_cursor(raw));
+            let rows = database
+                .prepare("SELECT a.id AS id, a.created_at AS created_at, a.legal_hold AS legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE o.slug = ?1 AND (?2 IS NULL OR a.created_at < ?2) AND (?3 IS NULL OR a.created_at > ?3 OR (a.created_at = ?3 AND a.id > ?4)) ORDER BY a.created_at, a.id LIMIT ?5")
+                .bind(&[
+                    JsValue::from_str(org),
+                    cutoff.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    cursor.as_ref().map(|(created_at, _)| JsValue::from_str(created_at)).unwrap_or_else(JsValue::null),
+                    cursor.as_ref().map(|(_, id)| JsValue::from_str(id)).unwrap_or_else(|| JsValue::from_str("")),
+                    JsValue::from_f64((limit + 1) as f64),
+                ])?
+                .all()
+                .await?
+                .results::<GovernanceListRow>()?;
+            let has_more = rows.len() > limit;
+            let page: Vec<&GovernanceListRow> = rows.iter().take(limit).collect();
+            let next_cursor = has_more
+                .then(|| {
+                    page.last()
+                        .map(|row| encode_governance_cursor(&row.created_at, &row.id))
+                })
+                .flatten();
+            let artifacts: Vec<Value> = page
+                .iter()
+                .map(|row| serde_json::json!({"id": row.id, "created_at": row.created_at, "legal_hold": row.legal_hold != 0}))
+                .collect();
+            JsonResponseDefinition::json(
+                serde_json::json!({"artifacts": artifacts, "next_cursor": next_cursor}),
+                200,
+            )
+            .into_worker_response()
+        }
+        (GovernanceRoute::DeleteArtifact { artifact_id, .. }, Method::Delete) => {
+            match hard_delete_permanent(&storage, org, artifact_id).await? {
+                HardDeleteOutcome::Deleted => build_delete_response().into_worker_response(),
+                HardDeleteOutcome::NotFound => {
+                    json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
+                }
+                HardDeleteOutcome::LegalHold => legal_hold_response(),
+            }
+        }
+        (
+            GovernanceRoute::LegalHold { artifact_id, .. },
+            method @ (Method::Put | Method::Delete),
+        ) => {
+            let placing = method == Method::Put;
+            let update = database
+                .prepare("UPDATE artifacts SET legal_hold = ? WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)")
+                .bind(&[
+                    JsValue::from_f64(if placing { 1.0 } else { 0.0 }),
+                    JsValue::from_str(artifact_id),
+                    JsValue::from_str(org),
+                ])?
+                .run()
+                .await?;
+            let changed = update.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+            if changed == 0 {
+                return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+            }
+            storage
+                .execute_batch(vec![governance_audit_statement(
+                    database,
+                    org,
+                    if placing {
+                        "legal_hold.placed"
+                    } else {
+                        "legal_hold.released"
+                    },
+                    artifact_id,
+                )?])
+                .await
+                .map_err(|error| worker::Error::RustError(error.to_string()))?;
+            build_delete_response().into_worker_response()
+        }
+        (GovernanceRoute::SweepOrphans { .. }, Method::Post) => {
+            let orphans = database
+                .prepare("SELECT content_hash FROM blobs WHERE ref_count <= 0")
+                .all()
+                .await?
+                .results::<OrphanRow>()?;
+            let mut removed = 0usize;
+            for orphan in orphans {
+                let locks = storage
+                    .acquire_content_locks(std::slice::from_ref(&orphan.content_hash))
+                    .await
+                    .map_err(|error| worker::Error::RustError(error.to_string()))?;
+                let result = release_blob_if_unreferenced(&storage, &orphan.content_hash).await;
+                let release = storage.release_content_locks(&locks).await;
+                result?;
+                release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+                removed += 1;
+            }
+            JsonResponseDefinition::json(serde_json::json!({"removed": removed}), 200)
+                .into_worker_response()
+        }
+        _ => not_found_response(),
+    }
+}
+
 /// Admin console revocation (spec 8): `PATCH /v1/orgs/{org}/artifacts/{id}`.
 /// A soft delete — sets `revoked_at`, retains the row and blob (spec 8's
 /// "Revocation" section; reference counting from spec 3 still governs
@@ -2516,18 +2747,58 @@ async fn delete_permanent_artifact(
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    match hard_delete_permanent(&storage, &org, artifact_id).await? {
+        HardDeleteOutcome::Deleted => build_delete_response().into_worker_response(),
+        HardDeleteOutcome::NotFound => {
+            json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
+        }
+        HardDeleteOutcome::LegalHold => legal_hold_response(),
+    }
+}
+
+fn legal_hold_response() -> Result<Response> {
+    let mut definition = build_error_response(
+        ErrorCode::Forbidden,
+        "The artifact is under legal hold and cannot be deleted.",
+        409,
+    );
+    definition.body["error"]["details"] = serde_json::json!({"reason": "legal_hold"});
+    definition.into_worker_response()
+}
+
+enum HardDeleteOutcome {
+    Deleted,
+    NotFound,
+    LegalHold,
+}
+
+/// The one hard-delete path (public `DELETE` and the governance route):
+/// refuses a held artifact before any write; in one D1 batch deletes the
+/// row (cascading files, provenance, versions, shares), decrements each
+/// referenced blob and writes the audit row; then, under the content locks,
+/// removes blobs whose refcount reached zero. A failed R2 delete leaves an
+/// orphan, never a dangling reference.
+async fn hard_delete_permanent(
+    storage: &store::D1R2ArtifactStore,
+    org: &str,
+    artifact_id: &str,
+) -> Result<HardDeleteOutcome> {
     let database = &storage.database;
+    let select = "SELECT a.row_id, a.manifest, a.legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
     let lock_row = database
-        .prepare("SELECT a.row_id, a.manifest FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
-        .bind(&[
-            JsValue::from_str(artifact_id),
-            JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
-        ])?
+        .prepare(select)
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<PermanentHashRow>(None)
         .await?;
     let Some(lock_row) = lock_row else {
-        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+        return Ok(HardDeleteOutcome::NotFound);
     };
+    if governance::decide_hard_delete(lock_row.legal_hold != 0)
+        == governance::HardDeleteDecision::RefuseLegalHold
+    {
+        return Ok(HardDeleteOutcome::LegalHold);
+    }
     let lock_hashes = serde_json::from_str::<PermanentManifest>(&lock_row.manifest)
         .map(|manifest| {
             manifest
@@ -2541,55 +2812,103 @@ async fn delete_permanent_artifact(
         .acquire_content_locks(&lock_hashes)
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    let operation: Result<Response> = async {
+    let operation: Result<HardDeleteOutcome> = async {
         let row = database
-            .prepare("SELECT a.row_id, a.manifest FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
-            .bind(&[
-                JsValue::from_str(artifact_id),
-                JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
-            ])?
+            .prepare(select)
+            .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
             .first::<PermanentHashRow>(None)
             .await?;
         let Some(row) = row else {
-            return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+            return Ok(HardDeleteOutcome::NotFound);
         };
-        database
-            .prepare("DELETE FROM artifacts WHERE row_id = ?")
-            .bind(&[JsValue::from_str(&row.row_id)])?
-            .run()
-            .await?;
+        // Re-checked under the lock: a hold placed while waiting still wins.
+        if governance::decide_hard_delete(row.legal_hold != 0)
+            == governance::HardDeleteDecision::RefuseLegalHold
+        {
+            return Ok(HardDeleteOutcome::LegalHold);
+        }
         let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
-        for file in manifest.files {
-            database
-                .prepare("UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?")
-                .bind(&[
-                    JsValue::from_str(&file.sha256),
-                ])?
-                .run()
-                .await?;
-            let count = database
-                .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
-                .bind(&[JsValue::from_str(&file.sha256)])?
-                .first::<BlobReferenceRow>(None)
-                .await?
-                .map(|value| value.count)
-                .unwrap_or(0);
-            if count == 0 {
+        let mut statements = vec![database
+            .prepare("DELETE FROM artifacts WHERE row_id = ?")
+            .bind(&[JsValue::from_str(&row.row_id)])?];
+        for file in &manifest.files {
+            statements.push(
                 database
-                    .prepare("DELETE FROM blobs WHERE content_hash = ?")
-                    .bind(&[JsValue::from_str(&file.sha256)])?
-                    .run()
-                    .await?;
-                storage.bucket.delete(format!("blobs/{}", file.sha256)).await?;
+                    .prepare(
+                        "UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?",
+                    )
+                    .bind(&[JsValue::from_str(&file.sha256)])?,
+            );
+        }
+        statements.push(governance_audit_statement(
+            database,
+            org,
+            "artifact.hard_deleted",
+            artifact_id,
+        )?);
+        storage
+            .execute_batch(statements)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+        let mut released = std::collections::HashSet::new();
+        for file in manifest.files {
+            if released.insert(file.sha256.clone()) {
+                release_blob_if_unreferenced(storage, &file.sha256).await?;
             }
         }
-        build_delete_response().into_worker_response()
+        Ok(HardDeleteOutcome::Deleted)
     }
     .await;
     let release_result = storage.release_content_locks(&locks).await;
-    let response = operation?;
+    let outcome = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
-    Ok(response)
+    Ok(outcome)
+}
+
+/// Deletes the blob row and R2 object when nothing references the hash.
+/// Callers hold the content lock for `content_hash`.
+async fn release_blob_if_unreferenced(
+    storage: &store::D1R2ArtifactStore,
+    content_hash: &str,
+) -> Result<()> {
+    let count = storage
+        .database
+        .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
+        .bind(&[JsValue::from_str(content_hash)])?
+        .first::<BlobReferenceRow>(None)
+        .await?
+        .map(|value| value.count)
+        .unwrap_or(0);
+    if count == 0 {
+        storage
+            .database
+            .prepare("DELETE FROM blobs WHERE content_hash = ?")
+            .bind(&[JsValue::from_str(content_hash)])?
+            .run()
+            .await?;
+        storage
+            .bucket
+            .delete(format!("blobs/{content_hash}"))
+            .await?;
+    }
+    Ok(())
+}
+
+fn governance_audit_statement(
+    database: &worker::D1Database,
+    org: &str,
+    event_type: &str,
+    artifact_id: &str,
+) -> Result<worker::d1::D1PreparedStatement> {
+    database
+        .prepare("INSERT INTO audit_events (id, org_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(&[
+            JsValue::from_str(&Uuid::new_v4().simple().to_string()),
+            JsValue::from_str(org),
+            JsValue::from_str(event_type),
+            JsValue::from_str(&serde_json::json!({"org": org, "artifact_id": artifact_id}).to_string()),
+            JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
+        ])
 }
 
 async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Response> {
@@ -3554,6 +3873,67 @@ mod tests {
             )
             .unwrap_or_else(|error| panic!("quota refusal envelope mismatch: {error}"));
         }
+    }
+
+    #[test]
+    fn governance_routes_require_secret() {
+        assert!(!governance_authorized(None, Some("Bearer anything")));
+        assert!(!governance_authorized(Some("gov"), None));
+        assert!(!governance_authorized(Some("gov"), Some("Bearer wrong")));
+        // Neither the org token nor the limits secret opens this surface.
+        assert!(!governance_authorized(
+            Some("gov"),
+            Some("Bearer org-token")
+        ));
+        assert!(governance_authorized(Some("gov"), Some("Bearer gov")));
+    }
+
+    #[test]
+    fn governance_paths_parse() {
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/acme/governance/artifacts"),
+            Some(GovernanceRoute::ListArtifacts { org: "acme" })
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/acme/governance/artifacts/abc"),
+            Some(GovernanceRoute::DeleteArtifact {
+                org: "acme",
+                artifact_id: "abc"
+            })
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/acme/governance/artifacts/abc/legal-hold"),
+            Some(GovernanceRoute::LegalHold {
+                org: "acme",
+                artifact_id: "abc"
+            })
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/acme/governance/sweep-orphans"),
+            Some(GovernanceRoute::SweepOrphans { org: "acme" })
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs//governance/artifacts"),
+            None
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/a/b/governance/artifacts"),
+            None
+        );
+        assert_eq!(
+            parse_governance_path("/v1/internal/orgs/acme/governance/artifacts/a/b"),
+            None
+        );
+    }
+
+    #[test]
+    fn governance_cursor_round_trips() {
+        let cursor = encode_governance_cursor("2026-01-01T00:00:00Z", "abc");
+        assert_eq!(
+            decode_governance_cursor(&cursor),
+            Some(("2026-01-01T00:00:00Z".to_string(), "abc".to_string()))
+        );
+        assert_eq!(decode_governance_cursor("not-a-cursor!"), None);
     }
 
     #[test]

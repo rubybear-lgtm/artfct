@@ -40,6 +40,7 @@ return [
         'base_url' => env('ARTFCT_WORKER_BASE_URL'),
         'org_token' => env('ARTFCT_ORG_TOKEN'),
         'limits_write_secret' => env('ARTFCT_LIMITS_WRITE_SECRET'),
+        'governance_secret' => env('ARTFCT_GOVERNANCE_SECRET'),
     ],
 
     'worker_events' => [

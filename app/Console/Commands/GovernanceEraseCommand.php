@@ -29,7 +29,13 @@ class GovernanceEraseCommand extends Command
         }
 
         $dryRun = ! $this->option('apply');
-        $plan = $service->erase($team, $dryRun, actor: 'cli');
+        try {
+            $plan = $service->erase($team, $dryRun, actor: 'cli');
+        } catch (\Throwable $exception) {
+            $this->components->error('Aborted: '.$exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         if ($plan->refused) {
             $this->components->error("Refused: artifact [{$plan->heldArtifactId}] is under legal hold.");

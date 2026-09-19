@@ -165,6 +165,7 @@
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "The artifact is under legal hold and was not deleted. The error details carry reason legal_hold." },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       },
@@ -516,6 +517,135 @@
                     "storage_bytes": { "type": "integer", "minimum": 0 },
                     "artifacts_this_period": { "type": "integer", "minimum": 0 }
                   }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "List artifacts for governance jobs",
+        "description": "Internal. Cursor-paginated (limit max 500), includes revoked artifacts. older_than filters by created_at. Authenticated with the governance shared secret, not an org token.",
+        "operationId": "listGovernanceArtifacts",
+        "x-internal": true,
+        "security": [],
+        "parameters": [
+          { "name": "older_than", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of artifacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "next_cursor"],
+                  "properties": {
+                    "artifacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "created_at", "legal_hold"],
+                        "properties": {
+                          "id": { "type": "string" },
+                          "created_at": { "type": "string" },
+                          "legal_hold": { "type": "boolean" }
+                        }
+                      }
+                    },
+                    "next_cursor": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "delete": {
+        "tags": ["Administration"],
+        "summary": "Hard-delete an artifact",
+        "description": "Internal. Irreversibly deletes the artifact, decrements blob references and removes unreferenced blobs from storage. Refused with 409 while the artifact is under legal hold. Writes an artifact.hard_deleted audit event.",
+        "operationId": "hardDeleteGovernanceArtifact",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Artifact deleted." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "The artifact is under legal hold." }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts/{id}/legal-hold": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "put": {
+        "tags": ["Administration"],
+        "summary": "Place a legal hold",
+        "description": "Internal. Audited as legal_hold.placed.",
+        "operationId": "placeGovernanceLegalHold",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Hold placed." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Administration"],
+        "summary": "Release a legal hold",
+        "description": "Internal. Audited as legal_hold.released.",
+        "operationId": "releaseGovernanceLegalHold",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Hold released." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/sweep-orphans": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Sweep zero-reference blobs",
+        "description": "Internal. Removes blobs no artifact references, left behind by a failed storage delete.",
+        "operationId": "sweepGovernanceOrphans",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Number of blobs removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["removed"],
+                  "properties": { "removed": { "type": "integer", "minimum": 0 } }
                 }
               }
             }

@@ -39,4 +39,9 @@ interface ArtifactGovernanceContract
     public function placeLegalHold(string $orgSlug, string $artifactId): void;
 
     public function releaseLegalHold(string $orgSlug, string $artifactId): void;
+
+    /**
+     * Removes blobs no artifact references any more; returns how many.
+     */
+    public function sweepOrphans(string $orgSlug): int;
 }

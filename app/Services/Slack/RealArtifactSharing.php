@@ -7,7 +7,7 @@ use RuntimeException;
 /**
  * Fails closed — reading share configuration needs the same live Worker
  * governance HTTP routes spec 11 left unwired in this environment
- * (`RealArtifactGovernance`).
+ * (`HttpArtifactGovernance`).
  */
 final class RealArtifactSharing implements ArtifactSharingContract
 {

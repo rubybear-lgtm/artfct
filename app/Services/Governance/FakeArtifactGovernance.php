@@ -66,4 +66,9 @@ final class FakeArtifactGovernance implements ArtifactGovernanceContract
     {
         return isset($this->artifactsByOrg[$orgSlug][$artifactId]);
     }
+
+    public function sweepOrphans(string $orgSlug): int
+    {
+        return 0;
+    }
 }

@@ -21,7 +21,7 @@ use App\Services\Billing\RealUsage;
 use App\Services\Billing\UsageContract;
 use App\Services\Governance\ArtifactGovernanceContract;
 use App\Services\Governance\FakeArtifactGovernance;
-use App\Services\Governance\RealArtifactGovernance;
+use App\Services\Governance\HttpArtifactGovernance;
 use App\Services\Identity\DnsResolverContract;
 use App\Services\Identity\FakeDnsResolver;
 use App\Services\Identity\RealDnsResolver;
@@ -99,7 +99,7 @@ class AppServiceProvider extends ServiceProvider
         );
         $this->app->singleton(
             ArtifactGovernanceContract::class,
-            app()->environment('testing') ? FakeArtifactGovernance::class : RealArtifactGovernance::class,
+            app()->environment('testing') ? FakeArtifactGovernance::class : HttpArtifactGovernance::class,
         );
         $this->app->singleton(
             RendererContract::class,

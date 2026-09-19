@@ -30,7 +30,13 @@ class GovernanceRetentionCommand extends Command
         $days = $this->option('days') !== null ? (int) $this->option('days') : null;
         $dryRun = ! $this->option('apply');
 
-        $plan = $service->apply($team, $days, $dryRun, actor: 'cli');
+        try {
+            $plan = $service->apply($team, $days, $dryRun, actor: 'cli');
+        } catch (\Throwable $exception) {
+            $this->components->error('Aborted: '.$exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->components->info($dryRun
             ? sprintf('Dry run: would delete %d artifact(s), %d held survivor(s).', count($plan->toDelete), count($plan->heldSurvivors))
