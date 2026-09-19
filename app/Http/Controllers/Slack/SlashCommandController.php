@@ -8,14 +8,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * `/artfct <query>` (spec 15). **Not wired in this environment**: Slack's
- * request-signature verification (HMAC over the raw body + timestamp,
- * against a live app's signing secret) is not implemented here — no live
- * Slack app exists to verify a real signature against, same fail-closed
- * gap as every other external-service Real* implementation this run. The
- * response shape below (`response_type: ephemeral`) is what actually
- * proves search results never reach the channel — that's real and
- * tested; the inbound authenticity check is the deferred half.
+ * `/artfct <query>` (spec 15). Inbound authenticity is enforced by the
+ * `VerifySlackSignature` middleware on the route. `response_type:
+ * ephemeral` is what proves search results never reach the channel.
  */
 class SlashCommandController extends Controller
 {

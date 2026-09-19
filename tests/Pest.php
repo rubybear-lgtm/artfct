@@ -4,6 +4,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /*
@@ -65,4 +66,30 @@ function memberOfTeam(Team $team, TeamRole $role): User
     $team->memberships()->create(['user_id' => $user->id, 'role' => $role]);
 
     return $user;
+}
+
+/**
+ * POSTs a Slack slash-command payload to the Slack route, signed the way
+ * Slack signs it (spec 15). Sets the signing secret in config unless told
+ * not to, so callers can exercise the unset-secret path.
+ *
+ * @param  array<string, string>  $payload
+ * @param  array<string, string|null>  $headerOverrides  A null value drops that header.
+ */
+function postSlackCommand(array $payload, ?int $timestamp = null, string $signingSecret = 'slack-test-secret', array $headerOverrides = [], bool $configureSecret = true): TestResponse
+{
+    if ($configureSecret) {
+        config(['services.slack.signing_secret' => 'slack-test-secret']);
+    }
+
+    $body = json_encode($payload);
+    $timestamp ??= now()->timestamp;
+    $headers = array_merge([
+        'HTTP_X_SLACK_REQUEST_TIMESTAMP' => (string) $timestamp,
+        'HTTP_X_SLACK_SIGNATURE' => 'v0='.hash_hmac('sha256', "v0:{$timestamp}:{$body}", $signingSecret),
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_ACCEPT' => 'application/json',
+    ], $headerOverrides);
+
+    return test()->call('POST', '/api/slack/commands', [], [], [], array_filter($headers, fn ($value) => $value !== null), $body);
 }

@@ -93,7 +93,7 @@ test('slash_command_returns_ephemeral_results', function () {
     $team = Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
     linkSlackUser($team, TeamRole::Member, 'U123');
 
-    $response = test()->postJson('/api/slack/commands', [
+    $response = postSlackCommand([
         'team_id' => 'T123',
         'user_id' => 'U123',
         'text' => 'dashboard',
@@ -107,7 +107,7 @@ test('search_results_not_visible_to_channel', function () {
     $team = Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
     linkSlackUser($team, TeamRole::Member, 'U123');
 
-    $response = test()->postJson('/api/slack/commands', [
+    $response = postSlackCommand([
         'team_id' => 'T123',
         'user_id' => 'U123',
         'text' => 'dashboard',
@@ -122,7 +122,7 @@ test('search_results_not_visible_to_channel', function () {
 test('unlinked_slack_user_gets_connect_prompt', function () {
     Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
 
-    $response = test()->postJson('/api/slack/commands', [
+    $response = postSlackCommand([
         'team_id' => 'T123',
         'user_id' => 'U_UNKNOWN',
         'text' => 'dashboard',
