@@ -1,0 +1,11 @@
+{
+    "$schema": "https://railway.com/railway.schema.json",
+    "build": {
+        "builder": "NIXPACKS",
+        "buildCommand": "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && php artisan optimize"
+    },
+    "deploy": {
+        "startCommand": "php artisan queue:work --queue=indexing,default --tries=3 --sleep=3 --max-time=3600",
+        "restartPolicyType": "ALWAYS"
+    }
+}
