@@ -1,7 +1,7 @@
 <?php
 
+use App\Http\Controllers\DocsController;
 use App\Http\Controllers\WorkerEventController;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -36,17 +36,7 @@ Route::inertia('/', 'welcome', [
     ],
 ])->name('home');
 
-Route::inertia('/docs', 'docs', [
-    'meta' => [
-        'title' => 'api reference — artfct',
-        'description' => 'REST API reference and CLI documentation for artfct. Create, serve, and manage HTML artifacts programmatically.',
-    ],
-    'contract' => fn (): array => json_decode(
-        File::get(base_path('openapi/artfct.yaml')),
-        true,
-        flags: JSON_THROW_ON_ERROR,
-    ),
-])->name('docs');
+Route::get('/docs', DocsController::class)->name('docs');
 
 Route::inertia('/blog', 'blog', [
     'meta' => [
