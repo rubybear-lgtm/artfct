@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\WorkerEventController;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -98,3 +99,5 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
 
 require __DIR__.'/auth.php';
 require __DIR__.'/teams.php';
+
+Route::post('internal/worker-events', WorkerEventController::class)->name('internal.worker-events');

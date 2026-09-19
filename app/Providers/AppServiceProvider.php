@@ -42,6 +42,7 @@ use App\Services\Slack\SlackPostContract;
 use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
+use App\Services\WorkerEvents\WorkerEventHandlers;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Date;
@@ -62,6 +63,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(WorkerEventHandlers::class);
+
         $workosConfigured = ! app()->environment('testing') && config('services.workos.client_id');
 
         $this->app->singleton(

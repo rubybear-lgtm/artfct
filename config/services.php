@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'worker_events' => [
+        'secret' => env('ARTFCT_WORKER_EVENT_SECRET'),
+    ],
+
     'workos' => [
         'client_id' => env('WORKOS_CLIENT_ID'),
         'secret' => env('WORKOS_API_KEY'),

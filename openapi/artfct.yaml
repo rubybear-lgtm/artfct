@@ -21,6 +21,40 @@
     { "name": "Retrieval", "description": "Search an organization's accessible artifacts." }
   ],
   "paths": {
+    "/internal/worker-events": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Receive a Worker event",
+        "description": "Internal. Fire-and-forget Worker to Laravel event channel. Authenticated by X-Artfct-Timestamp and X-Artfct-Signature (hex HMAC-SHA256 of timestamp + \".\" + raw body, 300 s tolerance). A replayed event id returns 200 and does nothing; an unknown type is accepted and ignored.",
+        "operationId": "receiveWorkerEvent",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id", "type", "org_id", "occurred_at", "data"],
+                "properties": {
+                  "id": { "type": "string", "format": "uuid" },
+                  "type": { "type": "string", "examples": ["artifact.created", "artifact.viewed"] },
+                  "org_id": { "type": "string" },
+                  "occurred_at": { "type": "string", "format": "date-time" },
+                  "data": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Duplicate event id; nothing done." },
+          "202": { "description": "Event accepted." },
+          "401": { "description": "Bad signature or stale timestamp." },
+          "422": { "description": "Malformed envelope." }
+        }
+      }
+    },
     "/v1/artifacts": {
       "get": {
         "tags": ["Administration"],

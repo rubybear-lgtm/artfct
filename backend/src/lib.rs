@@ -8,6 +8,7 @@ use worker::wasm_bindgen::JsValue;
 use worker::{event, Env, Headers, Method, Request, Response, Result};
 
 pub mod dispatch;
+pub mod events;
 pub mod governance;
 pub mod store;
 
@@ -311,7 +312,7 @@ struct StoredArtifact {
 }
 
 #[event(fetch)]
-pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Response> {
     console_error_panic_hook::set_once();
 
     let method = req.method();
@@ -323,7 +324,7 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
     }
 
     match (method, path) {
-        (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env).await,
+        (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
         (Method::Get, path) if path.starts_with("/v1/artifacts/") && !path.contains("/files/") => {
             get_artifact_metadata(path, &req, &env).await
@@ -355,7 +356,7 @@ pub async fn main(mut req: Request, env: Env, _ctx: worker::Context) -> Result<R
     }
 }
 
-async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
+async fn create_artifact(req: &mut Request, env: &Env, ctx: &worker::Context) -> Result<Response> {
     let raw = match req.json::<Value>().await {
         Ok(payload) => payload,
         Err(_) => {
@@ -365,7 +366,7 @@ async fn create_artifact(req: &mut Request, env: &Env) -> Result<Response> {
 
     if raw.get("mode").and_then(Value::as_str) == Some("permanent") {
         let authorization = req.headers().get("Authorization")?;
-        return create_permanent_artifact(&raw, authorization.as_deref(), env).await;
+        return create_permanent_artifact(&raw, authorization.as_deref(), env, ctx).await;
     }
 
     if ephemeral_manifest_is_invalid(&raw) {
@@ -684,6 +685,7 @@ async fn create_permanent_artifact(
     raw: &Value,
     authorization: Option<&str>,
     env: &Env,
+    ctx: &worker::Context,
 ) -> Result<Response> {
     let credential = match resolve_request_credential(authorization, env, Utc::now()).await {
         Ok(credential) => credential,
@@ -877,7 +879,44 @@ async fn create_permanent_artifact(
     let release_result = storage.release_content_locks(&locks).await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    if response.status_code() == 201 {
+        emit_artifact_created(ctx, env, &org, &artifact_id, tier);
+    }
     Ok(response)
+}
+
+/// Queues `artifact.created` after the response is built. Best effort: the
+/// send runs in `waitUntil` and can never change the response. `org` is the
+/// verified credential's org.
+fn emit_artifact_created(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    tier: ArtifactTier,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.secret(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let tier = match tier {
+        ArtifactTier::Public => "public",
+        ArtifactTier::Secure => "secure",
+        ArtifactTier::Ephemeral => "ephemeral",
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.created",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({"artifact_id": artifact_id, "tier": tier}),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
 }
 
 #[derive(Debug, Deserialize)]
