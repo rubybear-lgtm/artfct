@@ -1,6 +1,6 @@
 # artfct enterprise transition — spec checkpoints
 
-Each spec is independently verifiable and safe to stop at. **Every spec follows the template below and is not done until its DoD checklist and its tests both pass.** All 15 are written — files in `specs/`. Architecture rationale lives in the [decision record](../architecture-decisions.md); product scope in the [PRD](../prd.md).
+Each spec is independently verifiable and safe to stop at. **Every spec follows the template below and is not done until its DoD checklist and its tests both pass.** All 17 are written (0–16) — files in `specs/`. Architecture rationale lives in the [decision record](../architecture-decisions.md); product scope in the [PRD](../prd.md).
 
 | # | Spec | Headline DoD |
 |---|---|---|
