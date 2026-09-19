@@ -36,6 +36,12 @@ return [
         ],
     ],
 
+    'authkit' => [
+        // Comma-separated email domains allowed through the non-production dev login.
+        // Empty means unrestricted (local and tests).
+        'dev_login_domains' => array_filter(explode(',', (string) env('AUTHKIT_DEV_LOGIN_DOMAINS', ''))),
+    ],
+
     'worker' => [
         'base_url' => env('ARTFCT_WORKER_BASE_URL'),
         'org_token' => env('ARTFCT_ORG_TOKEN'),

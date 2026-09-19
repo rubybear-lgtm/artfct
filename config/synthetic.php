@@ -20,6 +20,7 @@ return [
                 'governance_secret' => env('SYNTHETIC_LOCAL_A_GOVERNANCE', 'synthetic-a-gov'),
                 'limits_secret' => env('SYNTHETIC_LOCAL_A_LIMITS', 'synthetic-a-limits'),
                 'persist_to' => env('SYNTHETIC_LOCAL_A_PERSIST', base_path('backend/.wrangler/synthetic-a')),
+                'wrangler_config' => null,
                 'remote' => false,
             ],
             'b' => [
@@ -28,6 +29,7 @@ return [
                 'governance_secret' => env('SYNTHETIC_LOCAL_B_GOVERNANCE', 'synthetic-b-gov'),
                 'limits_secret' => env('SYNTHETIC_LOCAL_B_LIMITS', 'synthetic-b-limits'),
                 'persist_to' => env('SYNTHETIC_LOCAL_B_PERSIST', base_path('backend/.wrangler/synthetic-b')),
+                'wrangler_config' => null,
                 'remote' => false,
             ],
         ],
@@ -38,6 +40,7 @@ return [
                 'governance_secret' => env('SYNTHETIC_STAGING_GOVERNANCE'),
                 'limits_secret' => env('SYNTHETIC_STAGING_LIMITS'),
                 'persist_to' => null,
+                'wrangler_config' => 'wrangler.staging.jsonc',
                 'remote' => true,
             ],
             'b' => [
@@ -46,6 +49,7 @@ return [
                 'governance_secret' => env('SYNTHETIC_STAGING_B_GOVERNANCE'),
                 'limits_secret' => env('SYNTHETIC_STAGING_B_LIMITS'),
                 'persist_to' => null,
+                'wrangler_config' => 'wrangler.staging-b.jsonc',
                 'remote' => true,
             ],
         ],

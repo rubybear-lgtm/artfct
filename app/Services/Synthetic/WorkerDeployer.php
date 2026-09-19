@@ -145,6 +145,10 @@ final class WorkerDeployer
         }
 
         $command = [base_path('node_modules/.bin/wrangler'), 'd1', 'execute', 'ARTIFACTS_DB', $this->target->remote ? '--remote' : '--local', '--command', implode('; ', $statements)];
+        if ($this->target->wranglerConfig) {
+            $command[] = '--config';
+            $command[] = $this->target->wranglerConfig;
+        }
         if (! $this->target->remote && $this->target->persistTo) {
             $command[] = '--persist-to';
             $command[] = $this->target->persistTo;

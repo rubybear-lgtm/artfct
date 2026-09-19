@@ -65,7 +65,7 @@ final class SyntheticSeeder
     /**
      * @return array{team: Team, ids: array<string, string>, refused: array<string, string>, notes: list<string>}
      */
-    public function seedOrg(string $slug, string $name, WorkerTarget $worker, int $count, int $seed, bool $primary = true): array
+    public function seedOrg(string $slug, string $name, ?WorkerTarget $worker, int $count, int $seed, bool $primary = true): array
     {
         self::assertSafe($slug);
 
@@ -75,10 +75,12 @@ final class SyntheticSeeder
             ? SyntheticCorpus::generate($seed, $count, $ceiling)
             : SyntheticCorpus::generateOrgB($seed, $count);
 
-        $deployer = new WorkerDeployer($worker);
-        [$ids, $refused] = $this->deployCorpus($slug, $deployer, $specs);
+        // No Worker: seed only the Laravel data (e.g. on a deployed staging app).
+        [$ids, $refused] = $worker === null
+            ? [[], []]
+            : $this->deployCorpus($slug, new WorkerDeployer($worker), $specs);
 
-        if ($primary) {
+        if ($primary && $ids !== []) {
             $this->seedCollectionsAndUsage($team, $ids);
         }
 
@@ -93,6 +95,7 @@ final class SyntheticSeeder
 
         $team = Team::query()->where('slug', $slug)->first()
             ?? $this->createTeam->handle($admin, $name, false, $slug);
+        $admin->switchTeam($team);
 
         if (! $primary) {
             return $team;
@@ -111,6 +114,7 @@ final class SyntheticSeeder
         foreach ($roles as [$local, $display, $role]) {
             $user = $this->user($local, $display, $domain);
             $membership = $team->memberships()->firstOrCreate(['user_id' => $user->id], ['role' => $role]);
+            $user->switchTeam($team);
             if ($local === 'deactivated1' && $user->deactivated_at === null) {
                 $user->forceFill(['deactivated_at' => now()])->save();
             }

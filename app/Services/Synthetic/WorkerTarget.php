@@ -19,6 +19,7 @@ final readonly class WorkerTarget
         public ?string $limitsSecret,
         public ?string $persistTo,
         public bool $remote,
+        public ?string $wranglerConfig = null,
     ) {}
 
     /**
@@ -40,6 +41,7 @@ final readonly class WorkerTarget
             $config['limits_secret'] ?? null,
             $config['persist_to'] ?? null,
             (bool) ($config['remote'] ?? false),
+            $config['wrangler_config'] ?? null,
         );
     }
 }

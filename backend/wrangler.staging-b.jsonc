@@ -1,0 +1,44 @@
+// Staging Worker for synthetic org B (RUB-325): own D1, KV and R2, workers.dev only, no routes.
+// Secrets are set with `wrangler secret put`, never in this file.
+{
+    "$schema": "../node_modules/wrangler/config-schema.json",
+    "name": "artfct-engine-staging-b",
+    "account_id": "c630a56af756f229176fc46b6bd2326f",
+    "main": "build/worker/shim.mjs",
+    "compatibility_date": "2026-06-03",
+    "build": {
+        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+    },
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+    },
+    "kv_namespaces": [
+        {
+            "binding": "ARTIFACTS_KV",
+            "id": "8e5889005cd9405d821f2dee723c319a",
+        },
+    ],
+    "d1_databases": [
+        {
+            "binding": "ARTIFACTS_DB",
+            "database_name": "artfct-staging-b",
+            "database_id": "b48bcd81-0a94-479a-9d11-e0f52b8a5779",
+            "migrations_dir": "migrations",
+        },
+    ],
+    "r2_buckets": [
+        {
+            "binding": "ARTIFACTS_BUCKET",
+            "bucket_name": "artfct-staging-b-blobs",
+        },
+    ],
+    "vars": {
+        "ARTFCT_PUBLIC_BASE_URL": "https://artfct-engine-staging-b.rubentortolero.workers.dev",
+        "ARTFCT_ORG_SLUG": "zz-northwind-b",
+        "ARTFCT_WORKER_EVENT_URL": "https://staging-web-staging-07ed.up.railway.app/internal/worker-events",
+        "ARTFCT_MAX_HTML_BYTES": "1048576",
+        "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
+        "ARTFCT_MAX_TTL_MINUTES": "525600",
+    },
+}

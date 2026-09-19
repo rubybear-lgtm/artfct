@@ -7,6 +7,7 @@ use App\Services\AuthKit\AuthKitProfile;
 use App\Services\AuthKit\FakeAuthKitClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -26,6 +27,14 @@ class AuthKitDevLoginController extends Controller
         ]);
 
         $email = strtolower($validated['email']);
+
+        // On a reachable non-production host (staging) only allow listed email
+        // domains, so the passwordless stand-in cannot be used to sign in as
+        // or create arbitrary accounts.
+        $allowedDomains = array_filter((array) config('services.authkit.dev_login_domains'));
+        if ($allowedDomains !== [] && ! in_array(Str::after($email, '@'), $allowedDomains, true)) {
+            abort(403, 'This email domain is not allowed for dev login.');
+        }
         $name = $validated['name'] ?? explode('@', $email)[0];
 
         $profile = new AuthKitProfile(

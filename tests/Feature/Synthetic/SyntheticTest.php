@@ -272,3 +272,23 @@ test('worker_target_requires_configuration', function () {
 
     expect(fn () => WorkerTarget::for('staging', 'a', 'zz-northwind'))->toThrow(RuntimeException::class);
 });
+
+test('laravel_only_seed_creates_teammates_without_touching_a_worker', function () {
+    Http::fake();
+    Process::fake();
+
+    test()->artisan('synthetic:seed', ['--laravel-only' => true, '--target' => 'staging'])->assertSuccessful();
+
+    $team = Team::query()->where('slug', 'zz-northwind')->firstOrFail();
+    $member = User::query()->where('email', 'member1@northwind.example')->firstOrFail();
+    expect($team->memberships()->count())->toBe(7)
+        ->and($member->current_team_id)->toBe($team->id);
+    Http::assertNothingSent();
+});
+
+test('dev_login_domain_allowlist_blocks_other_domains', function () {
+    config(['services.authkit.dev_login_domains' => ['northwind.example']]);
+
+    test()->post(route('authkit.dev-login'), ['email' => 'stranger@example.com', 'provider' => 'MagicAuth'])->assertForbidden();
+    test()->post(route('authkit.dev-login'), ['email' => 'member1@northwind.example', 'provider' => 'MagicAuth'])->assertRedirect();
+});

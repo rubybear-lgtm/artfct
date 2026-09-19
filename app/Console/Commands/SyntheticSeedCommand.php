@@ -15,7 +15,7 @@ use Illuminate\Console\Command;
  * overlapping content for isolation tests. Deterministic for a given seed;
  * refuses in production; `--purge` removes only `zz-` orgs.
  */
-#[Signature('synthetic:seed {--slug=zz-northwind} {--artifacts=60} {--target=local : local|staging} {--seed=1} {--purge}')]
+#[Signature('synthetic:seed {--slug=zz-northwind} {--artifacts=60} {--target=local : local|staging} {--seed=1} {--purge} {--laravel-only : Seed users, teams and tokens only; skip the Worker corpus}')]
 #[Description('Seeds (or purges) the synthetic test org and its artifact corpus')]
 class SyntheticSeedCommand extends Command
 {
@@ -33,8 +33,9 @@ class SyntheticSeedCommand extends Command
                 return self::FAILURE;
             }
 
-            $workerA = WorkerTarget::for($target, 'a', $slug);
-            $workerB = WorkerTarget::for($target, 'b', $slug.'-b');
+            $laravelOnly = (bool) $this->option('laravel-only');
+            $workerA = $laravelOnly && ! $this->option('purge') ? null : WorkerTarget::for($target, 'a', $slug);
+            $workerB = $laravelOnly && ! $this->option('purge') ? null : WorkerTarget::for($target, 'b', $slug.'-b');
 
             if ($this->option('purge')) {
                 $result = $seeder->purge([$slug => $workerA, $slug.'-b' => $workerB]);
