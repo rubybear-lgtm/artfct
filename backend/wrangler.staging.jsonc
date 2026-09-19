@@ -34,7 +34,8 @@
         },
     ],
     "vars": {
-        "ARTFCT_PUBLIC_BASE_URL": "https://artfct-engine-staging.workers.dev",
+        "ARTFCT_PUBLIC_BASE_URL": "https://artfct-engine-staging.rubentortolero.workers.dev",
+        "ARTFCT_ORG_SLUG": "zz-northwind",
         "ARTFCT_MAX_HTML_BYTES": "1048576",
         "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
         "ARTFCT_MAX_TTL_MINUTES": "525600",
