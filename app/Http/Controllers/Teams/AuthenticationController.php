@@ -10,6 +10,7 @@ use App\Services\Billing\PlanGate;
 use App\Services\Governance\AuditLogger;
 use App\Services\Identity\AuthModeTransitioner;
 use App\Services\Polis\PolisAdminClient;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -63,6 +64,14 @@ class AuthenticationController extends Controller
 
         try {
             $polis->createSamlConnection($team->slug, $validated['metadata_url'], route('sso.authenticate', ['team' => $team->slug]));
+        } catch (RequestException $exception) {
+            // Polis explains itself (for example, that this identity provider
+            // already belongs to another org); pass that on.
+            $reason = $exception->response->json('error.message');
+
+            throw ValidationException::withMessages(['metadata_url' => is_string($reason) && $reason !== ''
+                ? __('Polis refused the connection: :reason', ['reason' => $reason])
+                : __('Polis could not create the connection from that metadata URL.')]);
         } catch (\Throwable) {
             throw ValidationException::withMessages(['metadata_url' => __('Polis could not create the connection from that metadata URL.')]);
         }

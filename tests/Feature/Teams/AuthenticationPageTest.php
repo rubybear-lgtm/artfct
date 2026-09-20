@@ -84,7 +84,7 @@ test('an_enterprise_admin_adds_and_removes_a_connection_through_polis', function
         && $request->hasHeader('Authorization', 'Api-Key k'));
 
     test()->actingAs($admin)->delete(route('teams.authentication.connection.destroy', $team))->assertRedirect();
-    Http::assertSent(fn ($request) => $request->method() === 'DELETE');
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'tenant=acme') && str_contains($request->url(), 'product=artfct'));
 });
 
 test('a_connection_cannot_be_removed_while_sso_only_is_enforced', function () {
@@ -112,4 +112,12 @@ test('a_non_https_metadata_url_is_rejected', function () {
     test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'http://idp.example.com/m'])->assertSessionHasErrors('metadata_url');
 
     Http::assertNothingSent();
+});
+
+test('polis_refusals_are_shown_to_the_admin', function () {
+    [$team, $admin] = ssoTeam();
+    Http::fake(['polis.test/*' => Http::response(['error' => ['message' => 'EntityID already exists for different tenant']], 500)]);
+
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://idp.example.com/m'])
+        ->assertSessionHasErrors(['metadata_url' => 'Polis refused the connection: EntityID already exists for different tenant']);
 });

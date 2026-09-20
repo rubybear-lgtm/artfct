@@ -44,7 +44,8 @@ class PolisAdminClient
 
     public function deleteConnections(string $tenant): void
     {
-        $this->http()->delete($this->baseUrl().'/api/v1/sso', ['tenant' => $tenant, 'product' => self::PRODUCT])->throw();
+        // Polis reads the tenant from the query string on DELETE, not the body.
+        $this->http()->delete($this->baseUrl().'/api/v1/sso?'.http_build_query(['tenant' => $tenant, 'product' => self::PRODUCT]))->throw();
     }
 
     private function baseUrl(): string
