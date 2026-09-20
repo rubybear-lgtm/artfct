@@ -42,15 +42,31 @@ final class BillingService
      * Syncs seat count to Stripe — call this at a billing period
      * boundary (a scheduled job), not on every membership change.
      */
-    public function syncSeatsAtPeriodBoundary(Team $team): void
+    public function syncSeatsAtPeriodBoundary(Team $team): bool
     {
         if ($team->stripe_subscription_id === null) {
-            return;
+            return false;
         }
 
         $seatCount = $this->activeSeatCount($team);
+
+        if (! self::seatChangeNeeded($team->seats_billed, $seatCount)) {
+            return false;
+        }
+
         $this->billing->updateSeats($team->stripe_subscription_id, $seatCount);
         $team->forceFill(['seats_billed' => $seatCount])->save();
+
+        return true;
+    }
+
+    /**
+     * Pure rule: only touch Stripe when the billed quantity differs from the
+     * active seat count, so repeated syncs are no-ops.
+     */
+    public static function seatChangeNeeded(?int $seatsBilled, int $activeSeats): bool
+    {
+        return $seatsBilled !== $activeSeats;
     }
 
     /**
@@ -89,8 +105,15 @@ final class BillingService
      * Seats are active members, counted at period boundaries — DoD:
      * "Seats are active members, counted at period boundaries."
      */
+    /**
+     * Active = not deactivated (SCIM). Viewers are billable unless
+     * `billing.viewers_billable` is turned off.
+     */
     public function activeSeatCount(Team $team): int
     {
-        return $team->memberships()->count();
+        return $team->memberships()
+            ->whereHas('user', fn ($query) => $query->whereNull('deactivated_at'))
+            ->when(! config('billing.viewers_billable', true), fn ($query) => $query->where('role', '!=', 'viewer'))
+            ->count();
     }
 }

@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Bounds how long a dropped org-limits push can leave the Worker on stale limits (RUB-310).
 Schedule::command('billing:sync-limits')->hourly();
+
+// Bills teammates: reconcile Stripe seat quantities with active members daily (RUB-342).
+Schedule::command('billing:sync-seats')->daily();
