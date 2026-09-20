@@ -10,6 +10,9 @@ return [
 
     'prefix' => 'zz-',
 
+    // Lets `staging:verify-usage` run at deploy time on staging only.
+    'verify_usage' => (bool) env('STAGING_VERIFY_USAGE', false),
+
     'email_domain' => 'northwind.example',
 
     // Token for remote `wrangler d1 execute` (seed-only backdating). Unset falls back to `wrangler login`.
