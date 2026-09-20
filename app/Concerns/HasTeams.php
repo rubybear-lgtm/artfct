@@ -8,6 +8,7 @@ use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
+use App\Models\TeamInvitation;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -69,6 +70,28 @@ trait HasTeams
     /**
      * Get the user's personal team.
      */
+    /**
+     * True for a user who has no team of their own choosing yet: every team
+     * they belong to is the personal one made at sign-up, and no team leader
+     * has invited them anywhere. They are asked to create a first team.
+     */
+    public function needsFirstTeam(): bool
+    {
+        $hasRealTeam = $this->teams()->where('teams.is_personal', false)->exists();
+
+        if ($hasRealTeam) {
+            return false;
+        }
+
+        $hasInvitation = TeamInvitation::query()
+            ->whereRaw('LOWER(email) = ?', [strtolower($this->email)])
+            ->whereNull('accepted_at')
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>=', now()))
+            ->exists();
+
+        return ! $hasInvitation;
+    }
+
     public function personalTeam(): ?Team
     {
         return $this->teams()

@@ -15,6 +15,8 @@ test('new_user_signs_up_becomes_owner_and_invites_a_teammate', function () {
         ->fill('email', 'captain@example.com')
         ->fill('name', 'Casey Captain')
         ->click('Continue with Google')
+        ->assertSee('Create your first team')
+        ->click('Create team')
         ->assertSee('Dashboard')
         ->assertNoJavaScriptErrors();
 

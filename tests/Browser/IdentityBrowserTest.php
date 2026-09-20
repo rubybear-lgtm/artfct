@@ -11,6 +11,8 @@ test('registration_and_org_creation_flow', function () {
         ->fill('email', 'browser-user@example.com')
         ->fill('name', 'Browser User')
         ->click('Continue with Google')
+        ->assertSee('Create your first team')
+        ->click('Create team')
         ->assertSee('Dashboard');
 
     $page->navigate('/settings/teams');
@@ -32,6 +34,8 @@ test('console_pages_have_no_js_errors', function () {
         ->fill('email', 'console-user@example.com')
         ->fill('name', 'Console User')
         ->click('Continue with Google')
+        ->assertSee('Create your first team')
+        ->click('Create team')
         ->assertSee('Dashboard');
 
     // Navigate to console
@@ -45,6 +49,8 @@ test('admin_finds_artifact_by_repo_and_revokes_it', function () {
         ->fill('email', 'admin-user@example.com')
         ->fill('name', 'Admin User')
         ->click('Continue with Google')
+        ->assertSee('Create your first team')
+        ->click('Create team')
         ->assertSee('Dashboard');
 
     // The page now shows the team; navigate to console for that team
