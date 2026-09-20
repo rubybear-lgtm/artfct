@@ -77,8 +77,8 @@ export default function ConsoleIndex({
     };
 
     return (
-        <div className="min-h-screen bg-muted px-4 py-12">
-            <div className="mx-auto max-w-7xl">
+        <div>
+            <div>
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-foreground">
                         {team.name} Console
