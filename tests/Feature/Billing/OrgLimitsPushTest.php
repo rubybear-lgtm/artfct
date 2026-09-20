@@ -80,3 +80,15 @@ test('real_usage_reads_worker_usage_endpoint', function () {
     ]);
     Http::assertSent(fn (Request $request) => str_starts_with($request->header('Authorization')[0], 'Bearer eyJ'));
 });
+
+test('billing_sync_limits_skips_a_deleted_team', function () {
+    fakeWorker(Http::response(['ok' => true]));
+    $live = Team::factory()->create(['slug' => 'live-team']);
+    $gone = Team::factory()->create(['slug' => 'gone-team']);
+    $gone->delete();
+
+    test()->artisan('billing:sync-limits')->assertSuccessful();
+
+    Http::assertSent(fn (Request $request) => $request['org'] === 'live-team');
+    Http::assertNotSent(fn (Request $request) => $request['org'] === 'gone-team');
+});
