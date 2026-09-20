@@ -30,6 +30,14 @@ interface ConsoleIndexProps {
     };
     nextCursor: string | null;
     isAdmin: boolean;
+    indexingEnabled: boolean;
+    indexing: Record<string, 'indexed' | 'pending' | 'failed' | 'off'>;
+    indexingFailures: {
+        artifact_id: string;
+        attempts: number;
+        reason: string;
+        failed_at: string;
+    }[];
 }
 
 export default function ConsoleIndex({
@@ -38,6 +46,9 @@ export default function ConsoleIndex({
     filters,
     nextCursor,
     isAdmin,
+    indexingEnabled,
+    indexing,
+    indexingFailures,
 }: ConsoleIndexProps) {
     const [localFilters, setLocalFilters] = useState(filters);
     const [confirmingRevoke, setConfirmingRevoke] = useState<string | null>(
@@ -162,6 +173,48 @@ export default function ConsoleIndex({
                     </div>
                 </div>
 
+                {!indexingEnabled && (
+                    <p className="text-sm text-muted-foreground">
+                        Search indexing is turned off on this environment, so
+                        new artifacts are not indexed yet.
+                    </p>
+                )}
+                {indexingEnabled && indexingFailures.length > 0 && (
+                    <div className="rounded-lg bg-background p-4 shadow-sm">
+                        <h2 className="mb-2 text-sm font-semibold">
+                            Indexing failures
+                        </h2>
+                        <ul className="divide-y divide-border text-sm">
+                            {indexingFailures.map((failure) => (
+                                <li
+                                    key={failure.artifact_id}
+                                    className="flex items-center gap-3 py-2"
+                                >
+                                    <span className="font-mono">
+                                        {failure.artifact_id.slice(0, 8)}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        {failure.attempts} attempts:{' '}
+                                        {failure.reason}
+                                    </span>
+                                    {isAdmin && (
+                                        <button
+                                            className="ml-auto underline"
+                                            onClick={() =>
+                                                router.post(
+                                                    `/settings/teams/${team.slug}/console/artifacts/${failure.artifact_id}/reindex`,
+                                                )
+                                            }
+                                        >
+                                            Retry
+                                        </button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
                 {/* Artifact List */}
                 <div
                     className="overflow-hidden rounded-lg bg-background shadow-sm"
@@ -221,6 +274,13 @@ export default function ConsoleIndex({
                                             </div>
                                             <div className="text-xs text-muted-foreground">
                                                 {artifact.description}
+                                            </div>
+                                            <div
+                                                className="text-xs text-muted-foreground"
+                                                data-testid="indexing-state"
+                                            >
+                                                Indexing:{' '}
+                                                {indexing[artifact.id] ?? 'off'}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-muted-foreground">

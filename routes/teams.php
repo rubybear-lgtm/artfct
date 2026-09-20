@@ -41,6 +41,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/teams/{team}/tokens', [OrgTokenController::class, 'index'])->name('teams.tokens.index');
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
+    Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
 

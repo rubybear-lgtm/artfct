@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Jobs\IndexArtifactJob;
+use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
@@ -51,7 +55,16 @@ class ConsoleController extends Controller
 
         $data = $this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit);
 
+        $artifactIds = collect($data['artifacts'])->pluck('id')->all();
+        $indexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)->pluck('artifact_id')->all();
+        $failed = ArtifactIndexingFailure::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)->pluck('artifact_id')->all();
+        $indexingEnabled = (bool) config('indexing.enabled');
+
         return Inertia::render('console/index', [
+            'indexingEnabled' => $indexingEnabled,
+            'indexing' => collect($artifactIds)->mapWithKeys(fn (string $id): array => [
+                $id => ! $indexingEnabled ? 'off' : (in_array($id, $indexed, true) ? 'indexed' : (in_array($id, $failed, true) ? 'failed' : 'pending')),
+            ])->all(),
             'team' => $team,
             'artifacts' => $data['artifacts'],
             'filters' => $filters,
@@ -68,6 +81,32 @@ class ConsoleController extends Controller
                 ->limit(20)
                 ->get(['artifact_id', 'attempts', 'reason', 'failed_at']),
         ]);
+    }
+
+    /**
+     * Queue a failed (or not yet indexed) artifact for indexing again. A
+     * second click while the first is still queued is a no-op, and an
+     * artifact that is already indexed is skipped.
+     */
+    public function reindex(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content)
+    {
+        $user = $request->user();
+        $team = $this->resolveTeam($user, $teamSlug);
+
+        abort_if(! $user->isAdminOf($team), 403);
+        abort_unless(config('indexing.enabled'), 409, 'Indexing is turned off.');
+
+        $alreadyIndexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists();
+
+        if (! $alreadyIndexed && Cache::add("reindex:{$team->id}:{$artifactId}", true, now()->addMinutes(10))) {
+            $artifact = $content->fetch($team->slug, $artifactId);
+            abort_if($artifact === null, 404);
+
+            ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
+            IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'])->onQueue('indexing');
+        }
+
+        return redirect()->route('console.index', ['team' => $team])->with('message', 'Indexing queued.');
     }
 
     /**
