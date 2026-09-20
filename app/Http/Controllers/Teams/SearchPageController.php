@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Teams;
 
 use App\Http\Controllers\Controller;
 use App\Models\Collection;
+use App\Models\CollectionArtifact;
 use App\Models\Team;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
@@ -28,6 +29,10 @@ class SearchPageController extends Controller
             'collection' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $canonicalIds = CollectionArtifact::query()
+            ->whereIn('collection_id', Collection::query()->where('team_id', $team->id)->where('canonical', true)->select('id'))
+            ->pluck('artifact_id')
+            ->all();
         $indexingEnabled = (bool) config('indexing.enabled');
         $query = trim((string) ($filters['q'] ?? ''));
         $results = [];
@@ -43,6 +48,7 @@ class SearchPageController extends Controller
                     'snippet' => $result->snippet,
                     'agent' => $result->agent,
                     'repoUrl' => $result->repoUrl,
+                    'canonical' => in_array($result->id, $canonicalIds, true),
                 ], $search->search(
                     $team,
                     $query,

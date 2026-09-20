@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
+use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Governance\AuditLogger;
@@ -61,6 +63,8 @@ class ConsoleController extends Controller
         $indexingEnabled = (bool) config('indexing.enabled');
 
         return Inertia::render('console/index', [
+            'collections' => Collection::query()->where('team_id', $team->id)->orderBy('name')->get(['id', 'name']),
+            'canCollect' => $user->teamRole($team) !== TeamRole::Viewer,
             'indexingEnabled' => $indexingEnabled,
             'indexing' => collect($artifactIds)->mapWithKeys(fn (string $id): array => [
                 $id => ! $indexingEnabled ? 'off' : (in_array($id, $indexed, true) ? 'indexed' : (in_array($id, $failed, true) ? 'failed' : 'pending')),

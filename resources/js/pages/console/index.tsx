@@ -30,6 +30,8 @@ interface ConsoleIndexProps {
     };
     nextCursor: string | null;
     isAdmin: boolean;
+    collections: { id: number; name: string }[];
+    canCollect: boolean;
     indexingEnabled: boolean;
     indexing: Record<string, 'indexed' | 'pending' | 'failed' | 'off'>;
     indexingFailures: {
@@ -46,6 +48,8 @@ export default function ConsoleIndex({
     filters,
     nextCursor,
     isAdmin,
+    collections,
+    canCollect,
     indexingEnabled,
     indexing,
     indexingFailures,
@@ -282,6 +286,44 @@ export default function ConsoleIndex({
                                                 Indexing:{' '}
                                                 {indexing[artifact.id] ?? 'off'}
                                             </div>
+                                            {canCollect &&
+                                                collections.length > 0 && (
+                                                    <select
+                                                        aria-label={`Add ${artifact.title || artifact.id} to a collection`}
+                                                        className="mt-1 rounded border border-border bg-background px-1 text-xs"
+                                                        value=""
+                                                        onChange={(e) => {
+                                                            if (
+                                                                e.target.value
+                                                            ) {
+                                                                router.post(
+                                                                    `/settings/teams/${team.slug}/collections/${e.target.value}/artifacts`,
+                                                                    {
+                                                                        artifact_id:
+                                                                            artifact.id,
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                );
+                                                            }
+                                                        }}
+                                                    >
+                                                        <option value="">
+                                                            Add to collection…
+                                                        </option>
+                                                        {collections.map(
+                                                            (c) => (
+                                                                <option
+                                                                    key={c.id}
+                                                                    value={c.id}
+                                                                >
+                                                                    {c.name}
+                                                                </option>
+                                                            ),
+                                                        )}
+                                                    </select>
+                                                )}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-muted-foreground">
                                             {artifact.provenance.repo_url ? (

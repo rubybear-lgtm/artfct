@@ -17,6 +17,7 @@ interface Result {
     snippet: string;
     agent: string | null;
     repoUrl: string | null;
+    canonical: boolean;
 }
 
 interface Props {
@@ -147,6 +148,9 @@ export default function Search({
                             )}
                             <p className="text-sm">{result.snippet}</p>
                             <div className="flex gap-2">
+                                {result.canonical && (
+                                    <Badge variant="success">canonical</Badge>
+                                )}
                                 {result.agent && (
                                     <Badge variant="outline">
                                         {result.agent}

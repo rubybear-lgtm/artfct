@@ -8,6 +8,7 @@ use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\BillingController;
 use App\Http\Controllers\Teams\CollectionController;
 use App\Http\Controllers\Teams\GovernanceController;
+use App\Http\Controllers\Teams\GovernancePageController;
 use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\SearchPageController;
@@ -45,6 +46,10 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('settings/teams/{team}/collections/{collection}/artifacts/{artifactId}', [CollectionController::class, 'removeArtifact'])->name('teams.collections.artifacts.remove');
     Route::post('settings/teams/{team}/collections/{collection}/pin', [CollectionController::class, 'pin'])->name('teams.collections.pin');
     Route::delete('settings/teams/{team}/collections/{collection}/pin', [CollectionController::class, 'unpin'])->name('teams.collections.unpin');
+    Route::get('settings/teams/{team}/governance', [GovernancePageController::class, 'show'])->name('teams.governance.show');
+    Route::post('settings/teams/{team}/governance/preview', [GovernancePageController::class, 'preview'])->name('teams.governance.preview');
+    Route::post('settings/teams/{team}/governance/holds', [GovernancePageController::class, 'placeHold'])->name('teams.governance.holds.place');
+    Route::delete('settings/teams/{team}/governance/holds/{artifactId}', [GovernancePageController::class, 'releaseHold'])->name('teams.governance.holds.release');
     Route::get('settings/teams/{team}/search', SearchPageController::class)->name('teams.search');
     Route::get('settings/teams/{team}/audit', [AuditLogController::class, 'index'])->name('teams.audit.index');
     Route::get('settings/teams/{team}/audit/export', [AuditLogController::class, 'export'])->name('teams.audit.export');

@@ -108,3 +108,20 @@ test('invite_resend_revoke_flow', function () {
 
     expect($team->invitations()->count())->toBe(0);
 });
+
+test('search_and_collections_pages_render_without_errors', function () {
+    config(['indexing.enabled' => false]);
+    $owner = User::factory()->create(['email' => 'searcher@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Search Co');
+
+    test()->actingAs($owner);
+
+    visit(route('teams.search', $team))
+        ->assertSee('Search indexing is turned off')
+        ->assertNoJavaScriptErrors();
+
+    visit(route('teams.collections.index', $team))
+        ->assertSee('Collections')
+        ->assertSee('No collections yet.')
+        ->assertNoJavaScriptErrors();
+});

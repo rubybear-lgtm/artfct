@@ -5,6 +5,7 @@ use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
+use App\Models\Collection;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use Illuminate\Support\Facades\Bus;
@@ -67,4 +68,15 @@ test('retry_is_refused_when_indexing_is_off', function () {
     config(['indexing.enabled' => false]);
 
     test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertStatus(409);
+});
+
+test('the_console_offers_collections_to_editors_but_not_viewers', function () {
+    [$team, $admin] = indexingTeam();
+    Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $admin->id]);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    test()->actingAs($admin)->get(route('console.index', $team))
+        ->assertInertia(fn (Assert $page) => $page->where('canCollect', true)->where('collections.0.name', 'c'));
+    test()->actingAs($viewer)->get(route('console.index', $team))
+        ->assertInertia(fn (Assert $page) => $page->where('canCollect', false));
 });

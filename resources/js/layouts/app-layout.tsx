@@ -107,11 +107,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             </Link>
                             {teams.find((t) => t.slug === team.slug)?.role ===
                                 'admin' && (
-                                <Link
-                                    href={`/settings/teams/${team.slug}/audit`}
-                                >
-                                    Audit log
-                                </Link>
+                                <>
+                                    <Link
+                                        href={`/settings/teams/${team.slug}/governance`}
+                                    >
+                                        Governance
+                                    </Link>
+                                    <Link
+                                        href={`/settings/teams/${team.slug}/audit`}
+                                    >
+                                        Audit log
+                                    </Link>
+                                </>
                             )}
                         </nav>
                     )}

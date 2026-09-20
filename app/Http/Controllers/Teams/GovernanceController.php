@@ -39,6 +39,6 @@ class GovernanceController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Retention policy updated.')]);
 
-        return to_route('teams.edit', ['team' => $team->slug]);
+        return to_route('teams.governance.show', ['team' => $team->slug]);
     }
 }
