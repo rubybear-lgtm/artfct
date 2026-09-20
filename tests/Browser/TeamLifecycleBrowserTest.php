@@ -64,3 +64,25 @@ test('admin_can_change_a_role_and_owner_is_protected', function () {
 
     expect($team->memberships()->where('user_id', $member->id)->value('role'))->toBe(TeamRole::Member);
 });
+
+test('account_and_audit_pages_render_without_errors', function () {
+    $owner = User::factory()->create(['email' => 'admin@example.com', 'name' => 'Ada Admin']);
+    $team = app(CreateTeam::class)->handle($owner, 'Audit Co');
+
+    test()->actingAs($owner);
+
+    visit(route('account.show'))
+        ->assertSee('Account')
+        ->assertSee('Linked identities')
+        ->assertSee('Delete account')
+        ->assertNoJavaScriptErrors();
+
+    visit(route('teams.audit.index', $team))
+        ->assertSee('Audit log')
+        ->assertNoJavaScriptErrors();
+
+    visit(route('dashboard', $team))
+        ->assertSee('Get your team set up')
+        ->assertSee('Invite your teammates')
+        ->assertNoJavaScriptErrors();
+});
