@@ -3,6 +3,7 @@
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\TeamInvitation;
+use App\Models\User;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use Illuminate\Support\Facades\Notification;
 
@@ -21,11 +22,14 @@ test('resending_emails_the_invitee_again_and_extends_expiry', function () {
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
     $invitation = resendableInvitation($team);
+    $oldCode = $invitation->code;
 
     test()->actingAs($admin)->post(route('teams.invitations.resend', [$team, $invitation]))->assertRedirect();
 
     Notification::assertSentOnDemand(TeamInvitationNotification::class);
-    expect($invitation->fresh()->expires_at->gt(now()->addDays(2)))->toBeTrue();
+    expect($invitation->fresh()->expires_at->gt(now()->addDays(2)))->toBeTrue()
+        ->and($invitation->fresh()->code)->not->toBe($oldCode);
+    test()->actingAs(User::factory()->create())->get(route('invitations.show', $oldCode))->assertNotFound();
 });
 
 test('viewers_cannot_resend', function () {

@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class TeamInvitationController extends Controller
@@ -57,7 +58,8 @@ class TeamInvitationController extends Controller
 
         Gate::authorize('inviteMember', $team);
 
-        $invitation->update(['expires_at' => now()->addDays(3)]);
+        // A new code invalidates the link in the earlier email.
+        $invitation->forceFill(['code' => Str::random(64), 'expires_at' => now()->addDays(3)])->save();
 
         Notification::route('mail', $invitation->email)
             ->notify(new TeamInvitationNotification($invitation));
