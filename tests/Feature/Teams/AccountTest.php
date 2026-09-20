@@ -35,7 +35,7 @@ test('deletion_is_blocked_while_owning_a_team_with_other_members', function () {
     $team->forceFill(['owner_user_id' => $owner->id])->save();
     memberOfTeam($team, TeamRole::Member);
 
-    test()->actingAs($owner)->delete(route('account.destroy'))->assertRedirect();
+    test()->actingAs($owner)->delete(route('account.destroy'), ['confirmation' => 'DELETE'])->assertRedirect();
 
     expect($owner->fresh()->deactivated_at)->toBeNull();
     expect($team->fresh()->trashed())->toBeFalse();
@@ -46,7 +46,7 @@ test('deletion_closes_the_account_and_removes_solely_owned_teams', function () {
     $owner = memberOfTeam($team, TeamRole::Admin);
     $team->forceFill(['owner_user_id' => $owner->id])->save();
 
-    test()->actingAs($owner)->delete(route('account.destroy'))->assertRedirect(route('home'));
+    test()->actingAs($owner)->delete(route('account.destroy'), ['confirmation' => 'DELETE'])->assertRedirect(route('home'));
 
     $owner->refresh();
     expect($owner->deactivated_at)->not->toBeNull();
@@ -63,7 +63,24 @@ test('account_deletion_is_audited', function () {
     $other = Team::factory()->create();
     $other->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Member]);
 
-    test()->actingAs($owner)->delete(route('account.destroy'))->assertRedirect(route('home'));
+    test()->actingAs($owner)->delete(route('account.destroy'), ['confirmation' => 'DELETE'])->assertRedirect(route('home'));
 
     expect(AuditEvent::query()->where('event_type', AuditEventType::AccountDeleted)->where('team_id', $other->id)->exists())->toBeTrue();
+});
+
+test('deletion_requires_the_typed_confirmation', function () {
+    $owner = User::factory()->create();
+
+    test()->actingAs($owner)->delete(route('account.destroy'), ['confirmation' => 'nope'])->assertSessionHasErrors('confirmation');
+
+    expect($owner->fresh()->deactivated_at)->toBeNull();
+});
+
+test('account_page_lists_the_users_teams', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    $member->switchTeam($team);
+
+    test()->actingAs($member)->get(route('account.show'))
+        ->assertInertia(fn (Assert $page) => $page->where('teams.0.slug', $team->slug));
 });

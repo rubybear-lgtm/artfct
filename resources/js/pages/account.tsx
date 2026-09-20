@@ -1,4 +1,5 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { Alert } from '@/components/ui/alert';
@@ -16,11 +17,13 @@ import AppLayout from '@/layouts/app-layout';
 import type { SharedProps } from '@/types/shared';
 
 interface Props {
+    teams: { slug: string; name: string; role: string | null }[];
     identities: { provider: string; email: string }[];
     blockingTeams: string[];
 }
 
-export default function Account({ identities, blockingTeams }: Props) {
+export default function Account({ teams, identities, blockingTeams }: Props) {
+    const [confirmation, setConfirmation] = useState('');
     const { auth } = usePage<SharedProps>().props;
     const form = useForm({ name: auth.user?.name ?? '' });
 
@@ -29,15 +32,8 @@ export default function Account({ identities, blockingTeams }: Props) {
         form.patch('/settings/account');
     };
 
-    const deleteAccount = () => {
-        if (
-            window.confirm(
-                'Delete your account? Your tokens are revoked and you leave every team. This cannot be undone.',
-            )
-        ) {
-            router.delete('/settings/account');
-        }
-    };
+    const deleteAccount = () =>
+        router.delete('/settings/account', { data: { confirmation } });
 
     return (
         <>
@@ -100,6 +96,39 @@ export default function Account({ identities, blockingTeams }: Props) {
 
                 <Card>
                     <CardHeader>
+                        <CardTitle>Teams</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ul className="divide-y divide-border text-sm">
+                            {teams.map((team) => (
+                                <li
+                                    key={team.slug}
+                                    className="flex items-center gap-3 py-2"
+                                >
+                                    <span>{team.name}</span>
+                                    <span className="text-muted-foreground">
+                                        {team.role}
+                                    </span>
+                                    <Button
+                                        className="ml-auto"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                            router.delete(
+                                                `/settings/teams/${team.slug}/leave`,
+                                            )
+                                        }
+                                    >
+                                        Leave
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle>Delete account</CardTitle>
                         <CardDescription>
                             Revokes your API tokens and removes you from every
@@ -113,10 +142,23 @@ export default function Account({ identities, blockingTeams }: Props) {
                                 {blockingTeams.join(', ')}.
                             </Alert>
                         )}
-                        <div>
+                        <div className="flex max-w-sm flex-col gap-2">
+                            <Label htmlFor="confirmation">
+                                Type DELETE to confirm
+                            </Label>
+                            <Input
+                                id="confirmation"
+                                value={confirmation}
+                                onChange={(event) =>
+                                    setConfirmation(event.target.value)
+                                }
+                            />
                             <Button
                                 variant="destructive"
-                                disabled={blockingTeams.length > 0}
+                                disabled={
+                                    blockingTeams.length > 0 ||
+                                    confirmation !== 'DELETE'
+                                }
                                 onClick={deleteAccount}
                             >
                                 Delete my account

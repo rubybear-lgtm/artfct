@@ -29,6 +29,11 @@ class AccountController extends Controller
                     'provider' => $identity->provider,
                     'email' => $identity->email,
                 ])->values(),
+            'teams' => $user->toUserTeams(includeCurrent: true)->map(fn ($team): array => [
+                'slug' => $team->slug,
+                'name' => $team->name,
+                'role' => $team->roleLabel,
+            ])->values(),
             'blockingTeams' => $this->teamsBlockingDeletion($user)->map->name->values(),
         ]);
     }
@@ -52,6 +57,8 @@ class AccountController extends Controller
      */
     public function destroy(Request $request, AuditLogger $auditLogger): RedirectResponse
     {
+        $request->validate(['confirmation' => ['required', 'in:DELETE']]);
+
         $user = $request->user();
 
         if ($this->teamsBlockingDeletion($user)->isNotEmpty()) {
