@@ -1,0 +1,74 @@
+name: Polis security advisories
+
+# Spec 10 requires a watch on boxyhq/jackson (Ory Polis) security advisories.
+# GitHub's own "watch" cannot be limited to security alerts through the API, so
+# this checks the advisories daily with the gh CLI and opens an issue here when
+# one affects the pinned image in docker-compose.polis.yml, or was published in
+# the last 7 days, and when a newer release than the pin exists.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: boxyhq/jackson
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the pinned Polis version
+        id: pin
+        run: |
+          pin=$(grep -oE 'boxyhq/jackson:[0-9][0-9.]*' docker-compose.polis.yml | head -1 | cut -d: -f2)
+          test -n "$pin"
+          echo "version=$pin" >> "$GITHUB_OUTPUT"
+          echo "Pinned Polis: $pin"
+
+      - name: Check advisories and releases
+        env:
+          PIN: ${{ steps.pin.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh label create security --color B60205 --description "Security advisory" --force >/dev/null 2>&1 || true
+          older() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ]; }
+          seven_days_ago=$(date -u -d '7 days ago' +%Y-%m-%d)
+
+          gh api "repos/$UPSTREAM/security-advisories?state=published&per_page=30" \
+            --jq '.[] | [.ghsa_id, .published_at[0:10], .severity, .summary, (.vulnerabilities[0].patched_versions // ""), .html_url] | @tsv' |
+          while IFS=$'\t' read -r ghsa published severity summary patched url; do
+            fixed=$(printf '%s' "$patched" | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true)
+            affected=no
+            if [ -z "$fixed" ] || older "$PIN" "$fixed"; then affected=yes; fi
+            recent=no
+            if [[ "$published" > "$seven_days_ago" ]]; then recent=yes; fi
+            if [ "$affected" = no ] && [ "$recent" = no ]; then continue; fi
+            if [ -n "$(gh issue list --state all --search "$ghsa in:title" --json number --jq '.[0].number')" ]; then continue; fi
+            gh issue create --label security \
+              --title "Polis advisory $ghsa ($severity): $summary" \
+              --body "Upstream advisory: $url
+
+          - Severity: $severity
+          - Published: $published
+          - Fixed in: ${patched:-unknown}
+          - Pinned here: $PIN
+          - Affects the pinned version: $affected
+
+          Update the pin in \`docker-compose.polis.yml\` and the Railway \`staging-polis\` service, following the upgrade runbook in DOCUMENTATION.md."
+          done
+
+          latest=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name | sed 's/^v//')
+          if older "$PIN" "$latest"; then
+            if [ -z "$(gh issue list --state all --search "Polis $latest in:title" --json number --jq '.[0].number')" ]; then
+              gh issue create --label security \
+                --title "Polis $latest is available (pinned: $PIN)" \
+                --body "A newer Ory Polis release exists: https://github.com/$UPSTREAM/releases/tag/v$latest. Review its notes, then bump the pin per the upgrade runbook in DOCUMENTATION.md."
+            fi
+          fi
