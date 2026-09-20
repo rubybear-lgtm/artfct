@@ -10,7 +10,7 @@ namespace App\Services\Billing;
 interface UsageContract
 {
     /**
-     * @return array{storage_bytes: int, artifacts_this_period: int, render_minutes_this_period: int}
+     * @return array{storage_bytes: int, artifacts_this_period: int, render_minutes_this_period: int, limits?: array{storage_bytes: int, artifacts_per_month: int}|null}
      */
     public function currentUsage(string $orgSlug): array;
 }

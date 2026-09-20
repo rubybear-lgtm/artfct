@@ -29,11 +29,16 @@ final class QuotaService
         $limits = $this->limitsFor($team);
         $usage = $this->usage->currentUsage($team->slug);
 
-        $storagePercent = $limits->storageBytes > 0
-            ? $usage['storage_bytes'] / $limits->storageBytes
+        // Prefer the limits the Worker reports enforcing over the plan's, so the
+        // meter can never disagree with what a create would actually hit.
+        $storageLimit = $usage['limits']['storage_bytes'] ?? $limits->storageBytes;
+        $artifactsLimit = $usage['limits']['artifacts_per_month'] ?? $limits->artifactsPerMonth;
+
+        $storagePercent = $storageLimit > 0
+            ? $usage['storage_bytes'] / $storageLimit
             : 0.0;
-        $artifactsPercent = $limits->artifactsPerMonth > 0
-            ? $usage['artifacts_this_period'] / $limits->artifactsPerMonth
+        $artifactsPercent = $artifactsLimit > 0
+            ? $usage['artifacts_this_period'] / $artifactsLimit
             : 0.0;
 
         return new QuotaStatus(

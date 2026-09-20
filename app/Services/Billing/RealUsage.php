@@ -29,10 +29,20 @@ final class RealUsage implements UsageContract
             ->get(rtrim($baseUrl, '/')."/v1/orgs/{$orgSlug}/usage")
             ->throw();
 
-        return [
+        $usage = [
             'storage_bytes' => (int) $response->json('storage_bytes'),
             'artifacts_this_period' => (int) $response->json('artifacts_this_period'),
             'render_minutes_this_period' => 0,
         ];
+
+        // What the Worker actually enforces, when it says so.
+        if (is_array($response->json('limits'))) {
+            $usage['limits'] = [
+                'storage_bytes' => (int) $response->json('limits.storage_bytes'),
+                'artifacts_per_month' => (int) $response->json('limits.artifacts_per_month'),
+            ];
+        }
+
+        return $usage;
     }
 }

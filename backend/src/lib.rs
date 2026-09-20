@@ -2364,11 +2364,21 @@ async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response>
         }
         OrgReadDecision::Allowed => {}
     }
-    let usage = load_org_usage(&env.d1("ARTIFACTS_DB")?, org).await?;
+    let database = env.d1("ARTIFACTS_DB")?;
+    let usage = load_org_usage(&database, org).await?;
+    // The limits the create gate actually enforces, so a meter never
+    // disagrees with the Worker about how full an org is.
+    let limits = load_org_limits(&database, env, org).await?;
     JsonResponseDefinition::json(
         serde_json::json!({
             "storage_bytes": usage.storage_bytes,
             "artifacts_this_period": usage.artifacts_this_period,
+            "limits": {
+                "storage_bytes": limits.storage_bytes,
+                "artifacts_per_month": limits.artifacts_per_month,
+                "bundle_ceiling_bytes": limits.bundle_ceiling_bytes,
+                "read_only": limits.read_only,
+            },
         }),
         200,
     )
