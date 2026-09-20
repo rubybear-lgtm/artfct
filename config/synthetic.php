@@ -12,6 +12,9 @@ return [
 
     'email_domain' => 'northwind.example',
 
+    // Token for remote `wrangler d1 execute` (seed-only backdating). Unset falls back to `wrangler login`.
+    'cloudflare_api_token' => env('SYNTHETIC_CLOUDFLARE_API_TOKEN'),
+
     'targets' => [
         'local' => [
             'a' => [

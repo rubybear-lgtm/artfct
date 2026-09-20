@@ -154,7 +154,15 @@ final class WorkerDeployer
             $command[] = $this->target->persistTo;
         }
 
-        $result = Process::path(base_path('backend'))->timeout(300)->run($command);
+        // The app's own .env may carry a Cloudflare token scoped for something else,
+        // which wrangler would prefer over `wrangler login`. Remote runs use a token
+        // dedicated to the seed, or fall back to the logged-in session.
+        $process = Process::path(base_path('backend'))->timeout(300);
+        if ($this->target->remote) {
+            $process = $process->env(['CLOUDFLARE_API_TOKEN' => config('synthetic.cloudflare_api_token') ?: false]);
+        }
+
+        $result = $process->run($command);
 
         if ($result->failed()) {
             throw new RuntimeException('wrangler d1 execute failed: '.$result->errorOutput());
