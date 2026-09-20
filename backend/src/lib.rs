@@ -696,6 +696,12 @@ fn validate_permanent_manifest(raw: &Value) -> Result<(PermanentManifest, String
     Ok((manifest, store::content_hash(&canonical)))
 }
 
+/// A string field trimmed to `max` characters; empty or non-string is `None`.
+fn clipped_text(value: Option<&Value>, max: usize) -> Option<String> {
+    let text = value?.as_str()?.trim();
+    (!text.is_empty()).then(|| text.chars().take(max).collect())
+}
+
 async fn create_permanent_artifact(
     raw: &Value,
     authorization: Option<&str>,
@@ -777,6 +783,8 @@ async fn create_permanent_artifact(
         .get("provenance")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
+    let artifact_title = clipped_text(raw.get("title"), 200);
+    let artifact_description = clipped_text(raw.get("description"), 1000);
     let agent = provenance.get("agent").and_then(Value::as_str);
     let repo_url = provenance.get("repo_url").and_then(Value::as_str);
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
@@ -831,7 +839,7 @@ async fn create_permanent_artifact(
                     JsValue::from_str(&now),
                 ])?,
             database
-                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, expires_at, tier, manifest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, expires_at, tier, manifest, title, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 .bind(&[
                     JsValue::from_str(&row_id),
                     JsValue::from_str(&artifact_id),
@@ -846,6 +854,8 @@ async fn create_permanent_artifact(
                         ArtifactTier::Ephemeral => "ephemeral",
                     }),
                     JsValue::from_str(&serde_json::to_string(&manifest)?),
+                    artifact_title.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    artifact_description.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
                 ])?,
             database
                 .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
@@ -2016,6 +2026,7 @@ async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Resp
         agent: params.get("agent").cloned(),
         created_after: params.get("created_after").cloned(),
         created_before: params.get("created_before").cloned(),
+        query: params.get("q").filter(|value| !value.is_empty()).cloned(),
     };
     let cursor = params
         .get("cursor")
@@ -2041,6 +2052,8 @@ async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Resp
                 "size_bytes": item.size_bytes,
                 "created_at": item.created_at,
                 "revoked_at": item.revoked_at,
+                "title": item.title,
+                "description": item.description,
                 "provenance": {
                     "agent": item.agent,
                     "repo_url": item.repo_url,
@@ -3992,6 +4005,28 @@ mod tests {
     }
 
     #[test]
+    fn like_pattern_escapes_wildcards_in_the_query() {
+        assert_eq!(store::like_pattern("billing"), "%billing%");
+        assert_eq!(store::like_pattern("50%_off"), "%50\\%\\_off%");
+        assert_eq!(store::like_pattern("a\\b"), "%a\\\\b%");
+    }
+
+    #[test]
+    fn clipped_text_trims_clips_and_rejects_non_strings() {
+        assert_eq!(
+            clipped_text(Some(&serde_json::json!("  Title  ")), 200),
+            Some("Title".to_string())
+        );
+        assert_eq!(
+            clipped_text(Some(&serde_json::json!("abcdef")), 3),
+            Some("abc".to_string())
+        );
+        assert_eq!(clipped_text(Some(&serde_json::json!("   ")), 10), None);
+        assert_eq!(clipped_text(Some(&serde_json::json!(5)), 10), None);
+        assert_eq!(clipped_text(None, 10), None);
+    }
+
+    #[test]
     fn permanent_mode_requires_auth() {
         assert!(!authorization_matches(None, Some("Bearer token")));
         assert!(!authorization_matches(Some("token"), None));
@@ -4989,6 +5024,8 @@ mod tests {
             agent: agent.map(str::to_string),
             repo_url: repo_url.map(str::to_string),
             commit_sha: None,
+            title: None,
+            description: None,
             created_at: created_at.to_string(),
             revoked_at: None,
         }
@@ -5011,6 +5048,7 @@ mod tests {
             ),
         ];
         let filter = store::ArtifactListFilter {
+            query: None,
             org: "acme".to_string(),
             repo_url: Some("https://github.com/acme/one".to_string()),
             ..Default::default()
@@ -5030,6 +5068,7 @@ mod tests {
             list_item("2", None, Some("claude-code"), "2026-01-02T00:00:00Z"),
         ];
         let filter = store::ArtifactListFilter {
+            query: None,
             org: "acme".to_string(),
             agent: Some("cursor".to_string()),
             ..Default::default()
@@ -5050,6 +5089,7 @@ mod tests {
             list_item("3", None, None, "2026-02-01T00:00:00Z"),
         ];
         let filter = store::ArtifactListFilter {
+            query: None,
             org: "acme".to_string(),
             created_after: Some("2026-01-10T00:00:00Z".to_string()),
             created_before: Some("2026-01-31T00:00:00Z".to_string()),

@@ -77,6 +77,8 @@ pub struct ArtifactListItem {
     pub agent: Option<String>,
     pub repo_url: Option<String>,
     pub commit_sha: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
     pub created_at: String,
     pub revoked_at: Option<String>,
 }
@@ -93,6 +95,8 @@ pub struct ArtifactListFilter {
     pub created_after: Option<String>,
     /// Inclusive upper bound on `created_at`.
     pub created_before: Option<String>,
+    /// Free-text search over title and description.
+    pub query: Option<String>,
 }
 
 /// A cursor pagination position, spec 8: "cursor pagination on
@@ -545,6 +549,14 @@ impl D1R2ArtifactStore {
             clauses.push("a.created_at <= ?".to_string());
             binds.push(worker::wasm_bindgen::JsValue::from_str(before));
         }
+        if let Some(query) = &filter.query {
+            clauses.push(
+                "(a.title LIKE ? ESCAPE '\\' OR a.description LIKE ? ESCAPE '\\')".to_string(),
+            );
+            let pattern = like_pattern(query);
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&pattern));
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&pattern));
+        }
         if let Some(cursor) = cursor {
             clauses.push("(a.created_at > ? OR (a.created_at = ? AND a.id > ?))".to_string());
             binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.created_at));
@@ -556,7 +568,7 @@ impl D1R2ArtifactStore {
         let fetch_limit = page_size as f64 + 1.0;
         let query = format!(
             "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-             p.agent, p.repo_url, p.commit_sha, \
+             p.agent, p.repo_url, p.commit_sha, a.title, a.description, \
              (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
              FROM artifacts a \
              JOIN orgs o ON o.id = a.org_id \
@@ -926,6 +938,10 @@ struct D1ListRow {
     agent: Option<String>,
     repo_url: Option<String>,
     commit_sha: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
     size_bytes: i64,
 }
 
@@ -939,10 +955,22 @@ impl From<D1ListRow> for ArtifactListItem {
             agent: row.agent,
             repo_url: row.repo_url,
             commit_sha: row.commit_sha,
+            title: row.title,
+            description: row.description,
             created_at: row.created_at,
             revoked_at: row.revoked_at,
         }
     }
+}
+
+/// A `LIKE` pattern matching `query` anywhere, with the wildcard characters
+/// in the query itself escaped (`\\` is the ESCAPE character).
+pub fn like_pattern(query: &str) -> String {
+    let escaped = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
 }
 
 #[derive(Default)]
