@@ -768,8 +768,19 @@ reversible through configuration or a follow-up change, as noted.
   the SCIM service existed but was never wired to a route.
 * **Fixtures left on staging:** Polis SAML connection and SCIM directory for
   tenant `zz-northwind`, plus synthetic users and the `zz-oidc` org.
-* **Still yours:** enable the GitHub advisory watch on `boxyhq/jackson`, and
-  approve the production promotion.
+* **Advisory watch (done with the gh CLI):** GitHub's "watch" cannot be limited
+  to security alerts through the API (it is all activity or nothing, and needs
+  an extra token scope), so `.github/workflows/polis-advisories.yml` checks
+  `boxyhq/jackson`'s published security advisories and latest release every day
+  with `gh`, and opens an issue in this repo when an advisory affects the pin in
+  `docker-compose.polis.yml`, was published in the last 7 days, or a newer
+  release exists. GitHub runs scheduled workflows only from the default branch,
+  so it starts working when `develop` reaches `main`; the logic was validated
+  locally against the live API. Today there is one advisory,
+  GHSA-3wjr-6gw8-9j22 (high, an XSS in the login page), fixed in 26.2.0, which
+  is the pinned version.
+* **Production:** on hold by decision (below); nothing is promoted until staging
+  is fully built and validated.
 
 ### Running commands on staging
 
@@ -795,3 +806,20 @@ meters.
   past due; paying with a good card produced `invoice.payment_succeeded` and it
   recovered; deleting the subscription returned the team to Free.
 
+
+### No production changes until staging is validated (2026-09-20)
+
+Production is not touched until staging is fully built and validated. Every
+item in the issues that says "production" (production Postgres, backups and a
+restore test, production queue and scheduler, no-sleep web, the Polis
+production deployment, the Node 22 pin on `main`, deploying the org-scoped id
+Worker to production) is deferred on purpose, not blocked. When staging signs
+off, they are done together, staging first.
+
+### First-run team (RUB-328)
+
+A user nobody invited to a team is asked to create one: if every team they
+belong to is the personal team made at sign-up and no team leader has invited
+their email, the dashboard sends them to `/onboarding/team` (name, becomes
+owner and admin). A pending invitation shows first on the dashboard instead,
+and declining the last one leads to the same screen.
