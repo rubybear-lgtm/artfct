@@ -4,6 +4,7 @@ use App\Actions\Teams\CreateTeam;
 use App\Enums\TeamRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
 
@@ -85,4 +86,25 @@ test('account_and_audit_pages_render_without_errors', function () {
         ->assertSee('Get your team set up')
         ->assertSee('Invite your teammates')
         ->assertNoJavaScriptErrors();
+});
+
+test('invite_resend_revoke_flow', function () {
+    Notification::fake();
+    $owner = User::factory()->create(['email' => 'owner2@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Resend Co');
+    $invitation = $team->invitations()->create(['email' => 'pending@example.com', 'role' => TeamRole::Member, 'invited_by' => $owner->id, 'expires_at' => now()->addDay()]);
+    $oldCode = $invitation->code;
+
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.edit', $team))
+        ->assertSee('pending@example.com')
+        ->click('Resend')
+        ->wait(1);
+
+    expect($invitation->fresh()->code)->not->toBe($oldCode);
+
+    $page->click('Cancel')->wait(1)->assertDontSee('pending@example.com')->assertNoJavaScriptErrors();
+
+    expect($team->invitations()->count())->toBe(0);
 });

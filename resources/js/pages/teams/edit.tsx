@@ -31,6 +31,7 @@ interface Member {
     email: string;
     role: string;
     role_label: string;
+    deactivated: boolean;
 }
 
 interface Invitation {
@@ -156,6 +157,14 @@ export default function TeamEdit({
                                                     variant="success"
                                                 >
                                                     owner
+                                                </Badge>
+                                            )}
+                                            {member.deactivated && (
+                                                <Badge
+                                                    className="ml-2"
+                                                    variant="outline"
+                                                >
+                                                    deactivated
                                                 </Badge>
                                             )}
                                         </TableCell>

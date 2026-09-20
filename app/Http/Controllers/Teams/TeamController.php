@@ -86,6 +86,7 @@ class TeamController extends Controller
                     'avatar' => $member->avatar ?? null,
                     'role' => $membership->role->value,
                     'role_label' => $membership->role->label(),
+                    'deactivated' => $member->deactivated_at !== null,
                 ];
             }),
             'invitations' => $team->invitations()
