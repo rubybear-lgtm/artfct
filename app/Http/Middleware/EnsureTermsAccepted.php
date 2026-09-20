@@ -25,6 +25,10 @@ class EnsureTermsAccepted
             return $next($request);
         }
 
+        if ($request->isMethod('GET') && ! $request->expectsJson()) {
+            $request->session()->put('url.intended', $request->fullUrl());
+        }
+
         return redirect()->route('terms.accept.show');
     }
 

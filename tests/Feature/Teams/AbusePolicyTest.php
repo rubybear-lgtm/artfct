@@ -77,3 +77,13 @@ test('logout_is_never_blocked_by_consent', function () {
 
     test()->actingAs(User::factory()->create())->post(route('logout'))->assertRedirect(route('home'));
 });
+
+test('accepting_the_terms_returns_the_user_to_the_page_they_wanted', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
+    $team = Team::factory()->create();
+    $user = memberOfTeam($team, TeamRole::Member);
+    $user->switchTeam($team);
+
+    test()->actingAs($user)->get(route('dashboard', $team))->assertRedirect(route('terms.accept.show'));
+    test()->post(route('terms.accept'), ['accepted' => true])->assertRedirect(route('dashboard', $team));
+});

@@ -125,3 +125,45 @@ test('search_and_collections_pages_render_without_errors', function () {
         ->assertSee('No collections yet.')
         ->assertNoJavaScriptErrors();
 });
+
+test('terms_and_privacy_pages_are_public_and_render', function () {
+    visit('/terms')
+        ->assertSee('Terms of service')
+        ->assertSee('Draft text')
+        ->assertNoJavaScriptErrors();
+
+    visit('/privacy')
+        ->assertSee('Privacy policy')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a_new_user_must_accept_the_terms_before_the_app', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'browser-v1']);
+    $owner = User::factory()->create(['email' => 'consent@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Consent Co');
+
+    test()->actingAs($owner);
+
+    visit(route('dashboard', $team))
+        ->assertSee('One more step')
+        ->check('accepted')
+        ->click('Accept and continue')
+        ->wait(2)
+        ->assertSee('Get your team set up')
+        ->assertNoJavaScriptErrors();
+
+    expect($owner->fresh()->terms_version)->toBe('browser-v1');
+});
+
+test('governance_page_renders_for_admins', function () {
+    $owner = User::factory()->create(['email' => 'gov@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Gov Co');
+
+    test()->actingAs($owner);
+
+    visit(route('teams.governance.show', $team))
+        ->assertSee('Governance')
+        ->assertSee('Preview what would be deleted')
+        ->assertSee('Legal hold')
+        ->assertNoJavaScriptErrors();
+});

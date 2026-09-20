@@ -31,6 +31,8 @@ export default function Accept({ version }: { version: string }) {
                 <label className="flex items-start gap-2 text-sm">
                     <input
                         type="checkbox"
+                        id="accepted"
+                        name="accepted"
                         className="mt-1"
                         checked={form.data.accepted}
                         onChange={(e) =>
