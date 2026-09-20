@@ -747,6 +747,25 @@ export default function Welcome() {
                 />
             </Head>
             <ThemeToggle />
+            <a
+                href={
+                    auth?.user && currentTeam
+                        ? `/settings/teams/${currentTeam.slug}/console`
+                        : '/login'
+                }
+                style={{
+                    position: 'fixed',
+                    top: '1rem',
+                    left: '1.25rem',
+                    zIndex: 10,
+                    fontFamily: MONO,
+                    fontSize: '13px',
+                    color: S.base1,
+                    textDecoration: 'none',
+                }}
+            >
+                {auth?.user && currentTeam ? 'open console' : 'sign in'}
+            </a>
             <div
                 style={{
                     minHeight: '100dvh',

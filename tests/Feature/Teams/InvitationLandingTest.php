@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
@@ -78,4 +80,27 @@ test('invitation_email_links_to_the_landing_page', function () {
     $mail = (new TeamInvitationNotification($invitation))->toMail(new stdClass);
 
     expect($mail->actionUrl)->toBe(route('invitations.show', $invitation));
+});
+
+test('declining_an_invitation_is_audited_and_removes_it', function () {
+    $team = Team::factory()->create();
+    $inviter = memberOfTeam($team, TeamRole::Admin);
+    $invitee = User::factory()->create(['email' => 'decliner@example.com']);
+    $invitation = $team->invitations()->create(['email' => 'decliner@example.com', 'role' => TeamRole::Member, 'invited_by' => $inviter->id, 'expires_at' => now()->addDay()]);
+
+    test()->actingAs($invitee)->delete(route('invitations.decline', $invitation))->assertRedirect();
+
+    expect(TeamInvitation::query()->find($invitation->id))->toBeNull()
+        ->and(AuditEvent::query()->where('team_id', $team->id)->where('event_type', AuditEventType::InvitationDeclined)->exists())->toBeTrue();
+});
+
+test('an_invitation_for_another_email_cannot_be_accepted', function () {
+    $team = Team::factory()->create();
+    $inviter = memberOfTeam($team, TeamRole::Admin);
+    $other = User::factory()->create(['email' => 'not-invited@example.com']);
+    $invitation = $team->invitations()->create(['email' => 'someone-else@example.com', 'role' => TeamRole::Member, 'invited_by' => $inviter->id, 'expires_at' => now()->addDay()]);
+
+    test()->actingAs($other)->post(route('invitations.accept', $invitation))->assertSessionHasErrors('invitation');
+
+    expect($team->memberships()->where('user_id', $other->id)->exists())->toBeFalse();
 });

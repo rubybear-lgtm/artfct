@@ -120,12 +120,16 @@ class TeamInvitationController extends Controller
     /**
      * Decline the invitation.
      */
-    public function decline(RespondToTeamInvitationRequest $request, TeamInvitation $invitation): RedirectResponse
+    public function decline(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, AuditLogger $auditLogger): RedirectResponse
     {
+        $auditLogger->recordForRequest($request, AuditEventType::InvitationDeclined, $invitation->team, (string) $request->user()->id, "invitation:{$invitation->id}");
+
         $invitation->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation declined.')]);
 
-        return to_route('dashboard');
+        return $request->user()->currentTeam !== null
+            ? to_route('dashboard', ['current_team' => $request->user()->currentTeam->slug])
+            : to_route('teams.index');
     }
 }
