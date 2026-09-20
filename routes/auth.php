@@ -7,7 +7,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\PolisCallbackController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['guest'])->group(function () {
+Route::middleware(['guest', 'throttle:auth'])->group(function () {
     Route::get('login', AuthKitLoginController::class)->name('login');
     Route::get('authenticate', AuthKitCallbackController::class)->name('authenticate');
     Route::get('teams/{team}/sso/authenticate', PolisCallbackController::class)->name('sso.authenticate');

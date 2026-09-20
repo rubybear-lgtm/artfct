@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AuthKit\AuthKitClientContract;
+use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\Identity\IdentityResolver;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -27,6 +28,21 @@ class AuthKitCallbackController extends Controller
         $code = $request->query('code');
 
         abort_if(! is_string($code) || $code === '', 400);
+
+        // The hosted WorkOS flow round-trips a `state` we stored in the session
+        // before redirecting; without checking it, an attacker could log a
+        // victim in as the attacker's account (login CSRF). The dev stand-in
+        // has no redirect leg, and its codes are already signed.
+        if (! $client instanceof FakeAuthKitClient) {
+            $expected = $request->session()->pull('authkit_state');
+            $received = $request->query('state');
+
+            abort_unless(
+                is_string($expected) && $expected !== '' && is_string($received) && hash_equals($expected, $received),
+                403,
+                'Invalid sign-in state. Start again from the sign-in page.',
+            );
+        }
 
         try {
             $profile = $client->authenticateWithCode($code);

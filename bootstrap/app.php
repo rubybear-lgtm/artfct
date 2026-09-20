@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CacheControl;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\NoIndexOutsideProduction;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             CacheControl::class,
+            NoIndexOutsideProduction::class,
             AddLinkHeadersForPreloadedAssets::class,
             SetTeamUrlDefaults::class,
         ]);
