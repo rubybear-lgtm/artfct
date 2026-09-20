@@ -29,4 +29,5 @@ enum AuditEventType: string
     case SearchPerformed = 'search.performed';
     case OwnershipTransferred = 'owner.transferred';
     case SeatsSynced = 'billing.seats_synced';
+    case AccountDeleted = 'account.deleted';
 }

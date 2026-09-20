@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AuditEventType;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\RevocationWriter;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -48,7 +50,7 @@ class AccountController extends Controller
      * audit history stays intact). Blocked while they own a team that still
      * has other members: ownership must be transferred first.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, AuditLogger $auditLogger): RedirectResponse
     {
         $user = $request->user();
 
@@ -57,6 +59,14 @@ class AccountController extends Controller
 
             return back();
         }
+
+        $ownedTeamIds = Team::query()->where('owner_user_id', $user->id)->pluck('id');
+        Team::query()
+            ->whereIn('id', Membership::query()->where('user_id', $user->id)->pluck('team_id'))
+            ->whereNotIn('id', $ownedTeamIds)
+            ->get()
+            ->each(fn (Team $team) => $auditLogger->recordForRequest($request, AuditEventType::AccountDeleted, $team, (string) $user->id, "user:{$user->id}"));
+        $auditLogger->recordForRequest($request, AuditEventType::AccountDeleted, null, (string) $user->id, "user:{$user->id}");
 
         $user->orgTokens()->whereNull('revoked_at')->get()->each(function ($token): void {
             $token->revoked_at = now();

@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     encryptArtifactBody,
@@ -416,6 +416,10 @@ function FaqItem({ q, children }: { q: string; children: React.ReactNode }) {
 }
 
 export default function Welcome() {
+    const { auth, currentTeam } = usePage<{
+        auth: { user: { id: number } | null };
+        currentTeam: { slug: string } | null;
+    }>().props;
     const [gradient] = useState<[string, string]>(pickGradient);
     const [phase, setPhase] = useState<Phase>({ t: 'idle' });
     const [dragOver, setDragOver] = useState(false);
@@ -2074,13 +2078,19 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 blog
                             </Link>
                             <a
-                                href="/login"
+                                href={
+                                    auth?.user && currentTeam
+                                        ? `/settings/teams/${currentTeam.slug}/console`
+                                        : '/login'
+                                }
                                 style={{
                                     color: S.base1,
                                     textDecoration: 'none',
                                 }}
                             >
-                                sign up / log in
+                                {auth?.user && currentTeam
+                                    ? 'open console'
+                                    : 'sign up / log in'}
                             </a>
                             <a
                                 href="https://github.com/rubybear-lgtm/artfct"

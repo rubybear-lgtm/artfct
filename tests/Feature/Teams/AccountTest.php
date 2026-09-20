@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\AuditEvent;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
@@ -52,4 +54,16 @@ test('deletion_closes_the_account_and_removes_solely_owned_teams', function () {
     expect(Membership::query()->where('user_id', $owner->id)->count())->toBe(0);
     expect(Team::query()->find($team->id))->toBeNull();
     test()->assertGuest();
+});
+
+test('account_deletion_is_audited', function () {
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $team->forceFill(['owner_user_id' => $owner->id])->save();
+    $other = Team::factory()->create();
+    $other->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Member]);
+
+    test()->actingAs($owner)->delete(route('account.destroy'))->assertRedirect(route('home'));
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::AccountDeleted)->where('team_id', $other->id)->exists())->toBeTrue();
 });
