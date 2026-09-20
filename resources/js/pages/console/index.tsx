@@ -210,7 +210,14 @@ export default function ConsoleIndex({
                                     >
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-medium text-foreground">
-                                                {artifact.title}
+                                                {artifact.title || (
+                                                    <span className="font-mono">
+                                                        {artifact.id.slice(
+                                                            0,
+                                                            8,
+                                                        )}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-xs text-muted-foreground">
                                                 {artifact.description}
