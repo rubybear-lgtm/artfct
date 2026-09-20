@@ -255,3 +255,29 @@ test('domain_verification_requires_dns_txt', function () {
     $resolver->seed($domain->txtRecordName(), $domain->verification_token);
     expect($verifier->verify($domain))->toBeTrue();
 });
+
+test('forged_unsigned_fake_authkit_code_is_rejected', function () {
+    $victim = User::factory()->create(['email' => 'victim@example.com']);
+    $forged = base64_encode(json_encode([
+        'external_id' => 'forged',
+        'provider' => 'Passkey',
+        'email' => 'victim@example.com',
+        'email_verified' => true,
+    ]));
+
+    test()->get(route('authenticate', ['code' => $forged]))->assertForbidden();
+
+    test()->assertGuest();
+    expect($victim->externalIdentities()->count())->toBe(0);
+});
+
+test('tampered_or_expired_fake_authkit_code_is_rejected', function () {
+    $profile = new AuthKitProfile('id-1', 'MagicAuth', 'someone@example.com', true, 'S', null, null);
+    $code = FakeAuthKitClient::codeFor($profile);
+
+    test()->get(route('authenticate', ['code' => substr($code, 0, -4).'AAAA']))->assertForbidden();
+
+    test()->travel(6)->minutes();
+    test()->get(route('authenticate', ['code' => $code]))->assertForbidden();
+    test()->assertGuest();
+});

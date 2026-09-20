@@ -28,7 +28,11 @@ class AuthKitCallbackController extends Controller
 
         abort_if(! is_string($code) || $code === '', 400);
 
-        $profile = $client->authenticateWithCode($code);
+        try {
+            $profile = $client->authenticateWithCode($code);
+        } catch (\RuntimeException) {
+            abort(403, 'Invalid or expired sign-in code.');
+        }
 
         [$user, $wasCreated] = $resolver->resolve($profile);
 
