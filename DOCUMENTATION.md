@@ -753,9 +753,23 @@ reversible through configuration or a follow-up change, as noted.
   to the Laravel callback. It signed in the existing member (one user, one
   `polis` identity, no duplicate) and then hit the terms gate. The connection
   for tenant `zz-northwind` is left in place as a test fixture.
-* **Not verified yet:** an OIDC login and a SCIM create and deactivate. The
-  advisory watch on `boxyhq/jackson` is yours to enable, and production needs
-  your approval.
+* **OIDC verified live:** a temporary mock OIDC provider on Railway (deleted
+  afterwards) and a Polis OIDC connection for tenant `zz-oidc`. A member signed
+  in through Laravel with one user and one `polis` identity; a stranger's email
+  was refused and created no account.
+* **SCIM verified live:** `POST /webhooks/polis` (new; it verifies the
+  `BoxyHQ-Signature: t=<ms>,s=<hmac-sha256 of "t.body">` header, accepts single
+  events or batches, and is idempotent) receives Polis directory events. A SCIM
+  user created in Polis was provisioned in Laravel (user, membership, `scim`
+  identity). A SCIM deactivate kept the row, set `deactivated_at`, revoked the
+  user's org token, and the Worker began refusing that token after the
+  denylist window (about 60 seconds).
+* **Found while testing:** nothing received Polis directory events before this;
+  the SCIM service existed but was never wired to a route.
+* **Fixtures left on staging:** Polis SAML connection and SCIM directory for
+  tenant `zz-northwind`, plus synthetic users and the `zz-oidc` org.
+* **Still yours:** enable the GitHub advisory watch on `boxyhq/jackson`, and
+  approve the production promotion.
 
 ### Running commands on staging
 
