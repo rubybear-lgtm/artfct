@@ -49,6 +49,25 @@ class TeamInvitationController extends Controller
     }
 
     /**
+     * Email a pending invitation again and give it a fresh three days.
+     */
+    public function resend(Team $team, TeamInvitation $invitation): RedirectResponse
+    {
+        abort_unless($invitation->team_id === $team->id && $invitation->accepted_at === null, 404);
+
+        Gate::authorize('inviteMember', $team);
+
+        $invitation->update(['expires_at' => now()->addDays(3)]);
+
+        Notification::route('mail', $invitation->email)
+            ->notify(new TeamInvitationNotification($invitation));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation sent again.')]);
+
+        return to_route('teams.edit', ['team' => $team->slug]);
+    }
+
+    /**
      * Cancel the specified invitation.
      */
     public function destroy(Team $team, TeamInvitation $invitation): RedirectResponse

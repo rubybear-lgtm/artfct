@@ -59,6 +59,7 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'destroy'])->name('teams.members.destroy');
 
         Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->middleware('throttle:invitations')->name('teams.invitations.store');
+        Route::post('settings/teams/{team}/invitations/{invitation}/resend', [TeamInvitationController::class, 'resend'])->middleware('throttle:invitations')->name('teams.invitations.resend');
         Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
 
         Route::patch('settings/teams/{team}/auth-mode', [AuthModeController::class, 'update'])->name('teams.auth-mode.update');

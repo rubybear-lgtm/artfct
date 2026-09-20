@@ -319,6 +319,17 @@ export default function TeamEdit({
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() =>
+                                                            router.post(
+                                                                `${base}/invitations/${invitation.code}/resend`,
+                                                            )
+                                                        }
+                                                    >
+                                                        Resend
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
                                                             router.delete(
                                                                 `${base}/invitations/${invitation.code}`,
                                                             )
