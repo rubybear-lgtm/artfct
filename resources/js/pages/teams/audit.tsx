@@ -1,8 +1,11 @@
 import { Head, Link, router } from '@inertiajs/react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 
@@ -10,6 +13,7 @@ interface AuditRow {
     id: number;
     type: string;
     actor: string;
+    actorName: string;
     target: string;
     outcome: string;
     ip: string;
@@ -24,11 +28,40 @@ interface Props {
         next_page_url: string | null;
     };
     types: string[];
-    selectedType: string | null;
+    filters: {
+        type: string | null;
+        actor: string | null;
+        from: string | null;
+        to: string | null;
+    };
+    canExport: boolean;
 }
 
-export default function Audit({ team, events, types, selectedType }: Props) {
+export default function Audit({
+    team,
+    events,
+    types,
+    filters,
+    canExport,
+}: Props) {
     const base = `/settings/teams/${team.slug}/audit`;
+    const [form, setForm] = useState({
+        type: filters.type ?? '',
+        actor: filters.actor ?? '',
+        from: filters.from ?? '',
+        to: filters.to ?? '',
+    });
+
+    const apply = (event: FormEvent) => {
+        event.preventDefault();
+        router.get(
+            base,
+            Object.fromEntries(
+                Object.entries(form).filter(([, v]) => v !== ''),
+            ),
+            { preserveState: true },
+        );
+    };
 
     return (
         <>
@@ -39,30 +72,73 @@ export default function Audit({ team, events, types, selectedType }: Props) {
                 {team.name}. Entries cannot be edited or deleted.
             </p>
 
-            <div className="mb-4 flex items-center gap-2 text-sm">
-                <label htmlFor="type">Event</label>
-                <select
-                    id="type"
-                    className="rounded-md border border-border bg-background px-2 py-1"
-                    value={selectedType ?? ''}
-                    onChange={(event) =>
-                        router.get(
-                            base,
-                            event.target.value
-                                ? { type: event.target.value }
-                                : {},
-                            { preserveState: true },
-                        )
-                    }
-                >
-                    <option value="">All events</option>
-                    {types.map((type) => (
-                        <option key={type} value={type}>
-                            {type}
-                        </option>
-                    ))}
-                </select>
-            </div>
+            <form
+                onSubmit={apply}
+                className="mb-4 flex flex-wrap items-end gap-3 text-sm"
+            >
+                <label className="flex flex-col gap-1">
+                    Event
+                    <select
+                        className="rounded-md border border-border bg-background px-2 py-2"
+                        value={form.type}
+                        onChange={(e) =>
+                            setForm({ ...form, type: e.target.value })
+                        }
+                    >
+                        <option value="">All events</option>
+                        {types.map((type) => (
+                            <option key={type} value={type}>
+                                {type}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                    Actor id
+                    <Input
+                        value={form.actor}
+                        onChange={(e) =>
+                            setForm({ ...form, actor: e.target.value })
+                        }
+                    />
+                </label>
+                <label className="flex flex-col gap-1">
+                    From
+                    <Input
+                        type="date"
+                        value={form.from}
+                        onChange={(e) =>
+                            setForm({ ...form, from: e.target.value })
+                        }
+                    />
+                </label>
+                <label className="flex flex-col gap-1">
+                    To
+                    <Input
+                        type="date"
+                        value={form.to}
+                        onChange={(e) =>
+                            setForm({ ...form, to: e.target.value })
+                        }
+                    />
+                </label>
+                <Button type="submit">Filter</Button>
+                {canExport ? (
+                    <Button asChild variant="outline">
+                        <a href={`${base}/export`}>Export JSON Lines</a>
+                    </Button>
+                ) : (
+                    <span className="text-muted-foreground">
+                        SIEM export is an Enterprise feature.{' '}
+                        <Link
+                            className="underline"
+                            href={`/settings/teams/${team.slug}/billing`}
+                        >
+                            See plans
+                        </Link>
+                    </span>
+                )}
+            </form>
 
             <Card>
                 <CardContent className="pt-4">
@@ -90,7 +166,9 @@ export default function Audit({ team, events, types, selectedType }: Props) {
                                         <TableCell>
                                             <Badge>{row.type}</Badge>
                                         </TableCell>
-                                        <TableCell>{row.actor}</TableCell>
+                                        <TableCell title={row.actor}>
+                                            {row.actorName}
+                                        </TableCell>
                                         <TableCell className="font-mono text-xs">
                                             {row.target}
                                         </TableCell>

@@ -37,6 +37,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/teams/{team}/billing', [BillingController::class, 'show'])->name('teams.billing.show');
     Route::post('settings/teams/{team}/billing/cancel', [BillingController::class, 'cancel'])->name('teams.billing.cancel');
     Route::get('settings/teams/{team}/audit', [AuditLogController::class, 'index'])->name('teams.audit.index');
+    Route::get('settings/teams/{team}/audit/export', [AuditLogController::class, 'export'])->name('teams.audit.export');
     Route::get('settings/teams/{team}/tokens', [OrgTokenController::class, 'index'])->name('teams.tokens.index');
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
