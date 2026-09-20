@@ -15,9 +15,34 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class OrgTokenController extends Controller
 {
+    public function index(Request $request, Team $team): Response
+    {
+        abort_unless($request->user()->belongsToTeam($team), 404);
+
+        return Inertia::render('teams/tokens', [
+            'team' => ['slug' => $team->slug, 'name' => $team->name],
+            'canCreate' => $request->user()->can('create', [OrgToken::class, $team]),
+            'roles' => collect(TeamRole::cases())
+                ->filter(fn (TeamRole $role) => $request->user()->teamRole($team)?->canGrant($role))
+                ->map(fn (TeamRole $role) => ['value' => $role->value, 'label' => $role->label()])
+                ->values(),
+            'tokens' => OrgToken::query()->where('team_id', $team->id)->latest()->get()->map(fn (OrgToken $token) => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'role' => $token->role->value,
+                'lastFour' => $token->last_four,
+                'expiresAt' => $token->expires_at->toIso8601String(),
+                'revokedAt' => $token->revoked_at?->toIso8601String(),
+                'status' => $token->revoked_at !== null ? 'revoked' : ($token->expires_at->isPast() ? 'expired' : 'active'),
+            ]),
+        ]);
+    }
+
     /**
      * Mint a new org token (spec 07 `orgToken`) for the CLI/MCP server/CI.
      * The raw JWT is returned exactly once, here, in this response — the
@@ -29,6 +54,9 @@ class OrgTokenController extends Controller
         Gate::authorize('create', [OrgToken::class, $team]);
 
         $role = TeamRole::from($request->validated('role'));
+
+        // A token can never carry more privilege than the person minting it.
+        abort_unless($request->user()->teamRole($team)?->canGrant($role), 403, __('You cannot create a token with a higher role than your own.'));
         $ttlSeconds = (int) $request->validated('ttl_seconds', 31536000);
 
         $minted = OrgJwtService::default()->mint($team, $request->user(), $role, $ttlSeconds);

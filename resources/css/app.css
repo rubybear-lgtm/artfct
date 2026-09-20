@@ -10,6 +10,21 @@
         'Noto Color Emoji';
 }
 
+/* Semantic tokens for the starter-kit components, mapped onto Solarized. */
+@theme inline {
+    --color-background: var(--sol-base3);
+    --color-foreground: var(--sol-base00);
+    --color-muted: var(--sol-base2);
+    --color-muted-foreground: var(--sol-base0);
+    --color-border: color-mix(in srgb, var(--sol-base1) 40%, transparent);
+    --color-primary: var(--sol-blue);
+    --color-primary-foreground: var(--sol-base3);
+    --color-destructive: var(--sol-red);
+    --color-success: var(--sol-green);
+    --color-warning: var(--sol-yellow);
+    --color-ring: var(--sol-blue);
+}
+
 /* ── Solarized palette ──────────────────────────────────────────────────── */
 :root {
     --sol-base3: #fdf6e3;

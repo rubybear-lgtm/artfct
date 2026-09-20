@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\CreateTeam;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
@@ -62,6 +63,17 @@ class TeamController extends Controller
                 'slug' => $team->slug,
                 'isPersonal' => $team->is_personal,
                 'authMode' => $team->auth_mode->value,
+                'plan' => ($team->plan ?? Plan::Free)->value,
+                'ownerId' => $team->owner_user_id,
+            ],
+            'viewer' => [
+                'id' => $user->id,
+                'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $user->id,
+                'canUpdateMember' => $user->can('updateMember', $team),
+                'canRemoveMember' => $user->can('removeMember', $team),
+                'canDelete' => $user->can('delete', $team),
+                'canTransfer' => $user->can('transferOwnership', $team),
+                'canLeave' => $user->can('leave', $team),
             ],
             'members' => $team->members()->get()->map(function (User $member) {
                 /** @var Membership $membership */
@@ -85,6 +97,7 @@ class TeamController extends Controller
                     'role' => $invitation->role->value,
                     'role_label' => $invitation->role->label(),
                     'created_at' => $invitation->created_at->toISOString(),
+                    'url' => route('invitations.show', $invitation),
                 ]),
             'domains' => $team->domains()->get()->map(fn ($domain) => [
                 'id' => $domain->id,

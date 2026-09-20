@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\TeamPermission;
+use App\Enums\TeamRole;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
@@ -14,7 +15,8 @@ class OrgTokenPolicy
      */
     public function create(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        // Viewers are read-only and get no credentials of their own.
+        return $user->belongsToTeam($team) && $user->teamRole($team) !== TeamRole::Viewer;
     }
 
     /**

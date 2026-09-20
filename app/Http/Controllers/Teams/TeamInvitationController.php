@@ -26,6 +26,13 @@ class TeamInvitationController extends Controller
     {
         Gate::authorize('inviteMember', $team);
 
+        // An invitation can never grant more privilege than the inviter holds.
+        abort_unless(
+            $request->user()->teamRole($team)?->canGrant(TeamRole::from($request->validated('role'))),
+            403,
+            __('You cannot invite someone with a higher role than your own.'),
+        );
+
         $invitation = $team->invitations()->create([
             'email' => $request->validated('email'),
             'role' => TeamRole::from($request->validated('role')),

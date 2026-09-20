@@ -28,6 +28,10 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('invitations/{invitation}', [TeamInvitationController::class, 'decline'])->name('invitations.decline');
 
     // Console routes (manually resolve team for 404 on cross-org access, not 403)
+    Route::get('settings/teams/{team}/billing', [BillingController::class, 'show'])->name('teams.billing.show');
+    Route::post('settings/teams/{team}/billing/cancel', [BillingController::class, 'cancel'])->name('teams.billing.cancel');
+    Route::get('settings/teams/{team}/tokens', [OrgTokenController::class, 'index'])->name('teams.tokens.index');
+
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');

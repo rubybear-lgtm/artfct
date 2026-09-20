@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\PaymentStatus;
+use App\Enums\Plan;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,6 +43,18 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'teams' => fn () => $request->user()?->toUserTeams(includeCurrent: true) ?? [],
+            'currentTeam' => function () use ($request) {
+                $team = $request->user()?->currentTeam;
+
+                return $team === null ? null : [
+                    'slug' => $team->slug,
+                    'name' => $team->name,
+                    'plan' => ($team->plan ?? Plan::Free)->value,
+                    'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
+                    'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
+                ];
+            },
         ];
     }
 }

@@ -15,6 +15,27 @@ enum TeamRole: string
     /**
      * Get the display label for the role.
      */
+    /**
+     * Higher is more privileged: admin > member > viewer.
+     */
+    public function rank(): int
+    {
+        return match ($this) {
+            self::Admin => 3,
+            self::Member => 2,
+            self::Viewer => 1,
+        };
+    }
+
+    /**
+     * Whether someone holding this role may hand `$target` to a credential
+     * (an org token or an invitation): never above their own role.
+     */
+    public function canGrant(self $target): bool
+    {
+        return $target->rank() <= $this->rank();
+    }
+
     public function label(): string
     {
         return ucfirst($this->value);

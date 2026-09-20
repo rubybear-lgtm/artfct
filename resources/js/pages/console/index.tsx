@@ -1,6 +1,8 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 
+import AppLayout from '@/layouts/app-layout';
+
 interface Artifact {
     id: string;
     title: string;
@@ -310,3 +312,5 @@ export default function ConsoleIndex({
         </div>
     );
 }
+
+ConsoleIndex.layout = (page: React.ReactNode) => <AppLayout>{page}</AppLayout>;

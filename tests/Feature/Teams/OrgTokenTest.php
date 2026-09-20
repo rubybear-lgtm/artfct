@@ -129,3 +129,27 @@ test('member_cannot_revoke_another_users_token', function () {
     $response->assertForbidden();
     expect($token->fresh()->revoked_at)->toBeNull();
 });
+
+test('member_cannot_mint_an_admin_token', function () {
+    $team = Team::factory()->create(['slug' => 'acme']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'sneaky', 'role' => 'admin'])->assertForbidden();
+
+    expect(OrgToken::query()->where('team_id', $team->id)->count())->toBe(0);
+});
+
+test('member_can_mint_a_member_or_viewer_token', function () {
+    $team = Team::factory()->create(['slug' => 'acme']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    configureOrgJwt();
+
+    test()->actingAs($member)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'ok', 'role' => 'viewer'])->assertCreated();
+});
+
+test('viewer_cannot_create_tokens', function () {
+    $team = Team::factory()->create(['slug' => 'acme']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    test()->actingAs($viewer)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'nope', 'role' => 'viewer'])->assertForbidden();
+});
