@@ -29,8 +29,23 @@ class PolisCallbackController extends Controller
         $code = $request->query('code');
         abort_if(! is_string($code) || $code === '', 400);
 
+        // The state we stored before redirecting proves this callback answers a
+        // sign-in this browser started (login CSRF), same as the AuthKit flow.
+        $expected = $request->session()->pull('polis_state');
+        $received = $request->query('state');
+
+        abort_unless(
+            is_string($expected) && $expected !== '' && is_string($received) && hash_equals($expected, $received),
+            403,
+            'Invalid sign-in state. Start again from the sign-in page.',
+        );
+
         $organization = Team::query()->where('slug', $team)->firstOrFail();
-        $profile = $client->authenticateWithCode($code, $organization->slug, 'artfct');
+        try {
+            $profile = $client->authenticateWithCode($code, $organization->slug, 'artfct');
+        } catch (\RuntimeException) {
+            abort(403, 'Invalid or expired sign-in code.');
+        }
 
         $result = $resolver->resolveOrgLogin($organization, $profile);
 

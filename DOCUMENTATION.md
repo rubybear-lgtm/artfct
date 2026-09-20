@@ -722,3 +722,33 @@ reversible through configuration or a follow-up change, as noted.
 * **Status:** deployed to the two staging Workers and covered by a Rust test
   and by `scripts/multi-org-isolation-local.sh`. The production Worker has not
   been deployed.
+
+### Polis on Railway staging (RUB-319)
+
+* **Where:** Railway project `artfct`, environment `staging`: service
+  `staging-polis` (image `boxyhq/jackson:26.2.0`, public domain
+  `staging-polis-staging.up.railway.app`, health `/api/health`) and its own
+  Postgres `Postgres-XPCc` (not Laravel's database). Production is not deployed:
+  it needs your approval to promote.
+* **Pinned tag:** `26.2.0`. The old pin `1.27.5` never existed on Docker Hub, so
+  the first deploy failed with "image could not be found"; the compose file and
+  this section now name the tag that runs.
+* **Variables that matter:** the compose file was missing `DB_ENGINE`,
+  `DB_TYPE`, `EXTERNAL_URL`, `NEXTAUTH_URL`, `SAML_AUDIENCE`,
+  `DB_ENCRYPTION_KEY` and `CLIENT_SECRET_VERIFIER`; they are now listed there.
+  Version 26.2.0 answered 401 to the API key until `JACKSON_API_KEYS` was set,
+  although the docs name `API_KEYS`; both are set. All secrets live only in
+  Railway, and Laravel gets `POLIS_BASE_URL`, `POLIS_API_KEY` and
+  `POLIS_CLIENT_SECRET_VERIFIER`.
+* **Laravel side:** `RealPolisClient` now implements the OAuth flow
+  (`/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/userinfo`) and refuses
+  a login issued for another tenant. `GET /teams/{team}/sso/login` starts a
+  sign-in and stores a one-time `state`; the callback rejects a missing, wrong or
+  reused `state`.
+* **Verified live on staging:** a SAML login through MockSAML returned a code,
+  `RealPolisClient` exchanged it for the right profile, and the connection
+  survived a restart of the Polis service.
+* **Not verified yet:** an OIDC login, a SCIM create and deactivate, and the
+  Laravel callback with a real team and member on staging (needs a team on the
+  staging database whose slug is the Polis tenant). The advisory watch on
+  `boxyhq/jackson` is yours to enable.

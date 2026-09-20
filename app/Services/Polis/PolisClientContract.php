@@ -20,6 +20,13 @@ use App\Services\AuthKit\AuthKitProfile;
 interface PolisClientContract
 {
     /**
+     * The Polis URL that starts a SAML or OIDC sign-in for a tenant (the org
+     * id) and product. Polis sends the browser to the org's identity
+     * provider, then back to `$redirectUri` with a `code` and this `state`.
+     */
+    public function authorizationUrl(string $tenant, string $product, string $redirectUri, string $state): string;
+
+    /**
      * Exchange a Polis authorization code for a normalized profile, keyed
      * by tenant (the org id) and product (always "artfct" for this app).
      */

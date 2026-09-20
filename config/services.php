@@ -58,6 +58,12 @@ return [
         'team_price_id' => env('STRIPE_TEAM_PRICE_ID'),
     ],
 
+    'polis' => [
+        'base_url' => env('POLIS_BASE_URL'),
+        'api_key' => env('POLIS_API_KEY'),
+        'client_secret_verifier' => env('POLIS_CLIENT_SECRET_VERIFIER'),
+    ],
+
     'authkit' => [
         // The passwordless dev login is on by default only locally and in tests;
         // any other environment must opt in with AUTHKIT_DEV_LOGIN_ENABLED=true.

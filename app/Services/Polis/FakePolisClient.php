@@ -29,6 +29,16 @@ final class FakePolisClient implements PolisClientContract
         ], JSON_THROW_ON_ERROR));
     }
 
+    public function authorizationUrl(string $tenant, string $product, string $redirectUri, string $state): string
+    {
+        return 'https://polis.fake/api/oauth/authorize?'.http_build_query([
+            'tenant' => $tenant,
+            'product' => $product,
+            'redirect_uri' => $redirectUri,
+            'state' => $state,
+        ]);
+    }
+
     public function authenticateWithCode(string $code, string $tenant, string $product): AuthKitProfile
     {
         $decoded = json_decode((string) base64_decode($code, true), true);
