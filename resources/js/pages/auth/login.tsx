@@ -1,5 +1,18 @@
 import { Head, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
+
 import AuthKitDevLoginController from '@/actions/App/Http/Controllers/Auth/AuthKitDevLoginController';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import AuthLayout from '@/layouts/auth-layout';
 
 /**
  * Dev/test stand-in for WorkOS AuthKit's hosted login screen (spec 06).
@@ -20,69 +33,82 @@ export default function Login() {
     return (
         <>
             <Head title="Log in" />
-            <div
-                style={{
-                    maxWidth: 360,
-                    margin: '4rem auto',
-                    fontFamily: 'ui-sans-serif, system-ui',
-                }}
-            >
-                <h1>Continue to artfct</h1>
-                <p style={{ color: 'var(--sol-base00, #657B83)' }}>
-                    Dev login — stands in for WorkOS AuthKit (Google, passkeys,
-                    etc.) locally.
-                </p>
-
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        post(AuthKitDevLoginController.url());
-                    }}
-                >
-                    <label htmlFor="email">Email</label>
-                    <input
-                        id="email"
-                        type="email"
-                        value={data.email}
-                        onChange={(e) => setData('email', e.target.value)}
-                        style={{
-                            display: 'block',
-                            width: '100%',
-                            marginBottom: 8,
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-xl">
+                        Continue to artfct
+                    </CardTitle>
+                    <CardDescription>
+                        Test sign-in. It stands in for Google, passkeys and the
+                        other methods until real sign-in is switched on.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form
+                        className="flex flex-col gap-3"
+                        onSubmit={(e: FormEvent) => {
+                            e.preventDefault();
+                            post(AuthKitDevLoginController.url());
                         }}
-                    />
-                    {errors.email && <div role="alert">{errors.email}</div>}
-
-                    <label htmlFor="name">Name (first registration only)</label>
-                    <input
-                        id="name"
-                        type="text"
-                        value={data.name}
-                        onChange={(e) => setData('name', e.target.value)}
-                        style={{
-                            display: 'block',
-                            width: '100%',
-                            marginBottom: 16,
-                        }}
-                    />
-
-                    <button
-                        type="submit"
-                        disabled={processing}
-                        onClick={() => submit('GoogleOAuth')}
                     >
-                        Continue with Google
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={processing}
-                        onClick={() => submit('Passkey')}
-                        style={{ marginLeft: 8 }}
-                    >
-                        Continue with passkey
-                    </button>
-                </form>
-            </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                autoComplete="email"
+                                value={data.email}
+                                onChange={(e) =>
+                                    setData('email', e.target.value)
+                                }
+                            />
+                            {errors.email && (
+                                <div
+                                    role="alert"
+                                    className="text-sm text-destructive"
+                                >
+                                    {errors.email}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="name">
+                                Name (first registration only)
+                            </Label>
+                            <Input
+                                id="name"
+                                name="name"
+                                type="text"
+                                autoComplete="name"
+                                value={data.name}
+                                onChange={(e) =>
+                                    setData('name', e.target.value)
+                                }
+                            />
+                        </div>
+
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            onClick={() => submit('GoogleOAuth')}
+                        >
+                            Continue with Google
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            onClick={() => submit('Passkey')}
+                        >
+                            Continue with passkey
+                        </Button>
+                    </form>
+                </CardContent>
+            </Card>
         </>
     );
 }
+
+Login.layout = (page: React.ReactNode) => <AuthLayout>{page}</AuthLayout>;
