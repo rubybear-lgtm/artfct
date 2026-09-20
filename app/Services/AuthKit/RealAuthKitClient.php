@@ -35,6 +35,19 @@ final class RealAuthKitClient implements AuthKitClientContract
             firstName: $result->user->firstName,
             lastName: $result->user->lastName,
             avatar: $result->user->profilePictureUrl,
+            sessionId: self::sessionIdFrom($result->accessToken),
         );
+    }
+
+    /**
+     * The WorkOS session id is the access token's `sid` claim. The token came
+     * straight from WorkOS over TLS in this exchange, so it is read, not verified.
+     */
+    private static function sessionIdFrom(?string $accessToken): ?string
+    {
+        $payload = explode('.', (string) $accessToken)[1] ?? null;
+        $claims = $payload === null ? null : json_decode((string) base64_decode(strtr($payload, '-_', '+/')), true);
+
+        return is_array($claims) && is_string($claims['sid'] ?? null) ? $claims['sid'] : null;
     }
 }

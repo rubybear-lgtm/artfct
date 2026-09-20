@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\ExternalIdentity;
 use App\Models\User;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\AuthKitProfile;
+use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
 
 /**
@@ -72,4 +74,36 @@ test('login_state_round_trips_to_the_callback_check', function () {
     parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
 
     expect(session('authkit_state'))->toBe($query['state']);
+});
+
+test('dev_login_is_hidden_when_the_flag_is_off', function () {
+    config(['services.authkit.dev_login_enabled' => false]);
+
+    test()->post(route('authkit.dev-login'), ['email' => 'a@example.com', 'provider' => 'GoogleOAuth'])->assertNotFound();
+});
+
+test('a_deactivated_user_is_refused_at_sign_in', function () {
+    $user = User::factory()->create(['email' => 'gone@example.com', 'deactivated_at' => now()]);
+    $profile = new AuthKitProfile(hash('sha256', 'GoogleOAuth|gone@example.com'), 'GoogleOAuth', 'gone@example.com', true, 'Gone', null, null);
+    ExternalIdentity::create(['user_id' => $user->id, 'provider' => 'GoogleOAuth', 'external_id' => $profile->externalId, 'email' => $profile->email, 'verified_at' => now()]);
+
+    test()->get(route('authenticate', ['code' => FakeAuthKitClient::codeFor($profile)]))
+        ->assertForbidden();
+    test()->assertGuest();
+});
+
+test('logout_also_ends_the_workos_session', function () {
+    $user = User::factory()->create();
+
+    $response = test()->actingAs($user)->withSession(['workos_session_id' => 'session_123'])
+        ->post(route('logout'), [], ['X-Inertia' => 'true']);
+
+    $response->assertStatus(409);
+    expect($response->headers->get('X-Inertia-Location'))->toContain('user_management/sessions/logout')->toContain('session_123');
+    test()->assertGuest();
+});
+
+test('logout_without_a_workos_session_returns_home', function () {
+    test()->actingAs(User::factory()->create())->post(route('logout'))->assertRedirect(route('home'));
+    test()->assertGuest();
 });

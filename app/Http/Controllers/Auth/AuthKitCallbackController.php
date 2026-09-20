@@ -52,12 +52,18 @@ class AuthKitCallbackController extends Controller
 
         [$user, $wasCreated] = $resolver->resolve($profile);
 
+        abort_if($user->deactivated_at !== null, 403, 'This account has been deactivated.');
+
         if ($wasCreated) {
             event(new Registered($user));
         }
 
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
+
+        if ($profile->sessionId !== null) {
+            $request->session()->put('workos_session_id', $profile->sessionId);
+        }
 
         /** @var User $user */
         $user = $user->fresh();

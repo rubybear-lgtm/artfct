@@ -16,6 +16,7 @@ final class AuthKitProfile
         public readonly ?string $firstName,
         public readonly ?string $lastName,
         public readonly ?string $avatar,
+        public readonly ?string $sessionId = null,
     ) {}
 
     public function fullName(): string

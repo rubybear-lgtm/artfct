@@ -20,6 +20,8 @@ class AuthKitDevLoginController extends Controller
 {
     public function __invoke(Request $request): RedirectResponse
     {
+        abort_unless(config('services.authkit.dev_login_enabled'), 404);
+
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],
             'name' => ['nullable', 'string'],
