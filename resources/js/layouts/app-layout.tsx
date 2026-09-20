@@ -114,6 +114,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         {auth.user.email}
                                     </DropdownMenuLabel>
                                     <DropdownMenuItem
+                                        onSelect={() =>
+                                            router.get('/settings/account')
+                                        }
+                                    >
+                                        Account settings
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
                                         onSelect={() => router.post('/logout')}
                                     >
                                         <LogOut className="size-4" /> Sign out

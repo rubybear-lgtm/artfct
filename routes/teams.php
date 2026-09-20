@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
@@ -24,6 +25,10 @@ Route::prefix('{current_team}')
     });
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('settings/account', [AccountController::class, 'show'])->name('account.show');
+    Route::patch('settings/account', [AccountController::class, 'update'])->name('account.update');
+    Route::delete('settings/account', [AccountController::class, 'destroy'])->name('account.destroy');
+
     Route::post('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
     Route::delete('invitations/{invitation}', [TeamInvitationController::class, 'decline'])->name('invitations.decline');
 
