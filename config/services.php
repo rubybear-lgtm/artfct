@@ -36,6 +36,12 @@ return [
         ],
     ],
 
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET_KEY'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'team_price_id' => env('STRIPE_TEAM_PRICE_ID'),
+    ],
+
     'authkit' => [
         // Comma-separated email domains allowed through the non-production dev login.
         // Empty means unrestricted (local and tests).

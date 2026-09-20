@@ -94,6 +94,22 @@ final class BillingService
         $this->limitsWriter->push($team);
     }
 
+    /**
+     * Applies `customer.subscription.deleted`: the team drops to the free
+     * plan (and its limits); nothing is deleted.
+     */
+    public function applySubscriptionEnded(Team $team): void
+    {
+        $team->forceFill([
+            'plan' => Plan::Free,
+            'payment_status' => PaymentStatus::Active,
+            'stripe_subscription_id' => null,
+            'seats_billed' => null,
+        ])->save();
+
+        $this->limitsWriter->push($team);
+    }
+
     public function cancelSubscription(Team $team): void
     {
         if ($team->stripe_subscription_id !== null) {

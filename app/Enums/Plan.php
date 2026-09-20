@@ -11,6 +11,7 @@ use App\Services\Billing\PlanGate;
  */
 enum Plan: string
 {
+    case Free = 'free';
     case Team = 'team';
     case Enterprise = 'enterprise';
 }

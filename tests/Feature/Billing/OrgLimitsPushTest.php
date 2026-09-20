@@ -46,10 +46,11 @@ test('payment_succeeded_pushes_restore', function () {
 
 test('billing_sync_limits_pushes_current_config', function () {
     fakeWorker();
-    config(['billing.quota' => [
+    config(['billing.plans.free' => [
         'storage_bytes' => 1234,
         'artifacts_per_month' => 5,
         'bundle_size_ceiling_bytes' => 99,
+        'render_minutes_per_month' => 1,
     ]]);
     Team::factory()->create(['slug' => 'acme']);
 

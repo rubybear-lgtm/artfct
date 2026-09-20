@@ -3,6 +3,7 @@
 namespace App\Services\Billing;
 
 use App\Enums\PaymentStatus;
+use App\Enums\Plan;
 use App\Models\Team;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -37,7 +38,7 @@ final class OrgLimitsWriter
             return false;
         }
 
-        $limits ??= QuotaLimits::default();
+        $limits ??= QuotaLimits::forPlan($team->plan ?? Plan::Free);
 
         try {
             $response = Http::withToken($this->secret)
