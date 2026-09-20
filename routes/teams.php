@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuditLogController;
 use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\BillingController;
+use App\Http\Controllers\Teams\CollectionController;
 use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Http\Controllers\Teams\OrgTokenController;
@@ -37,6 +38,13 @@ Route::middleware(['auth'])->group(function () {
     // Console routes (manually resolve team for 404 on cross-org access, not 403)
     Route::get('settings/teams/{team}/billing', [BillingController::class, 'show'])->name('teams.billing.show');
     Route::post('settings/teams/{team}/billing/cancel', [BillingController::class, 'cancel'])->name('teams.billing.cancel');
+    Route::get('settings/teams/{team}/collections', [CollectionController::class, 'index'])->name('teams.collections.index');
+    Route::post('settings/teams/{team}/collections', [CollectionController::class, 'store'])->name('teams.collections.store');
+    Route::patch('settings/teams/{team}/collections/{collection}', [CollectionController::class, 'update'])->name('teams.collections.update');
+    Route::post('settings/teams/{team}/collections/{collection}/artifacts', [CollectionController::class, 'addArtifact'])->name('teams.collections.artifacts.add');
+    Route::delete('settings/teams/{team}/collections/{collection}/artifacts/{artifactId}', [CollectionController::class, 'removeArtifact'])->name('teams.collections.artifacts.remove');
+    Route::post('settings/teams/{team}/collections/{collection}/pin', [CollectionController::class, 'pin'])->name('teams.collections.pin');
+    Route::delete('settings/teams/{team}/collections/{collection}/pin', [CollectionController::class, 'unpin'])->name('teams.collections.unpin');
     Route::get('settings/teams/{team}/search', SearchPageController::class)->name('teams.search');
     Route::get('settings/teams/{team}/audit', [AuditLogController::class, 'index'])->name('teams.audit.index');
     Route::get('settings/teams/{team}/audit/export', [AuditLogController::class, 'export'])->name('teams.audit.export');
