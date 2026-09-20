@@ -26,4 +26,10 @@ interface BillingContract
     public function updateSeats(string $subscriptionId, int $seatCount): void;
 
     public function cancelSubscription(string $subscriptionId): void;
+
+    /**
+     * A Stripe customer-portal URL where the team manages its payment method
+     * and downloads invoices.
+     */
+    public function createPortalSession(Team $team): string;
 }

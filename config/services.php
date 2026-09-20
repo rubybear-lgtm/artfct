@@ -36,6 +36,11 @@ return [
         ],
     ],
 
+    'cloudflare_email' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'api_token' => env('CLOUDFLARE_EMAIL_API_TOKEN'),
+    ],
+
     'org_jwt' => [
         // PEM, or base64 of the PEM (`ORG_JWT_PRIVATE_KEY_B64`) so it survives env-var line handling.
         'private_key' => env('ORG_JWT_PRIVATE_KEY_B64')

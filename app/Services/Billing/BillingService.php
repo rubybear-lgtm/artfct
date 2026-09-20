@@ -21,6 +21,11 @@ final class BillingService
         return $this->billing->createCheckoutSession($team, $this->activeSeatCount($team));
     }
 
+    public function portalUrl(Team $team): string
+    {
+        return $this->billing->createPortalSession($team);
+    }
+
     /**
      * Applies Stripe's `checkout.session.completed` webhook: sets
      * `plan = team` and records the subscription — DoD: "Stripe checkout

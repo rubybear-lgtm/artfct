@@ -92,6 +92,11 @@ test('one_failure_does_not_stop_the_others', function () {
         }
 
         public function cancelSubscription(string $subscriptionId): void {}
+
+        public function createPortalSession(Team $team): string
+        {
+            return 'https://portal.test';
+        }
     });
     $failing->forceFill(['seats_billed' => 99])->save();
 

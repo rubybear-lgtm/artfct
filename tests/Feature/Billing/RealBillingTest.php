@@ -72,3 +72,14 @@ test('stripe_error_surfaces_as_an_exception_not_a_silent_success', function () {
 
     expect(fn () => (new RealBilling)->createCheckoutSession($team, 1))->toThrow(RequestException::class);
 });
+
+test('portal_session_returns_to_the_billing_page_for_the_teams_customer', function () {
+    config(['services.stripe.secret' => 'sk_test_x']);
+    Http::fake(['api.stripe.com/v1/billing_portal/sessions' => Http::response(['url' => 'https://billing.stripe.test/p'])]);
+    $team = Team::factory()->create(['stripe_customer_id' => 'cus_1']);
+
+    expect((new RealBilling)->createPortalSession($team))->toBe('https://billing.stripe.test/p');
+
+    Http::assertSent(fn (Request $request) => $request['customer'] === 'cus_1'
+        && $request['return_url'] === route('teams.billing.show', ['team' => $team->slug]));
+});

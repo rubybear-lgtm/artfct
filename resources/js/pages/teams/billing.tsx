@@ -138,9 +138,7 @@ export default function Billing({
                         {!paid && canManage && (
                             <Button
                                 disabled={!stripeConfigured}
-                                onClick={() =>
-                                    (window.location.href = `${base}/checkout`)
-                                }
+                                onClick={() => router.post(`${base}/checkout`)}
                             >
                                 Upgrade to Team
                             </Button>
@@ -150,6 +148,14 @@ export default function Billing({
                                 Payments are not enabled on this environment
                                 yet.
                             </p>
+                        )}
+                        {team.hasSubscription && canManage && (
+                            <Button
+                                variant="outline"
+                                onClick={() => router.post(`${base}/portal`)}
+                            >
+                                Payment method &amp; invoices
+                            </Button>
                         )}
                         {paid &&
                             team.hasSubscription &&

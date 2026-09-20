@@ -50,4 +50,9 @@ final class FakeBilling implements BillingContract
             $this->subscriptions[$subscriptionId]['cancelled'] = true;
         }
     }
+
+    public function createPortalSession(Team $team): string
+    {
+        return "https://billing.stripe.test/portal/{$team->slug}";
+    }
 }

@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Listeners\CreatePersonalTeam;
+use App\Mail\CloudflareEmailTransport;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\HttpArtifactContentSource;
@@ -55,6 +56,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -74,7 +76,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(WorkerEventHandlers::class);
         $this->app->bind(OrgLimitsWriter::class, fn (): OrgLimitsWriter => OrgLimitsWriter::default());
 
-        $workosConfigured = ! app()->environment('testing') && config('services.workos.client_id');
+        $workosConfigured = ! app()->environment('testing')
+            && config('services.workos.client_id')
+            && config('services.workos.secret')
+            && config('services.workos.redirect_url');
 
         $this->app->singleton(
             AuthKitClientContract::class,
@@ -140,6 +145,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        Mail::extend('cloudflare', fn (): CloudflareEmailTransport => new CloudflareEmailTransport(
+            (string) config('services.cloudflare_email.account_id'),
+            (string) config('services.cloudflare_email.api_token'),
+        ));
 
         Event::listen(Registered::class, CreatePersonalTeam::class);
 

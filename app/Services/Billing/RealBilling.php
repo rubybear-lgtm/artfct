@@ -29,8 +29,8 @@ final class RealBilling implements BillingContract
             'customer' => $this->customerFor($team),
             'line_items' => [['price' => $priceId, 'quantity' => max(1, $seatCount)]],
             'subscription_data' => ['metadata' => ['team_id' => (string) $team->id]],
-            'success_url' => route('teams.edit', ['team' => $team->slug]).'?checkout=success',
-            'cancel_url' => route('teams.edit', ['team' => $team->slug]).'?checkout=cancelled',
+            'success_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=success',
+            'cancel_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=cancelled',
         ])->throw();
 
         return (string) $response->json('url');
@@ -50,6 +50,14 @@ final class RealBilling implements BillingContract
     public function cancelSubscription(string $subscriptionId): void
     {
         $this->http()->asForm()->post(self::BASE."/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => 'true'])->throw();
+    }
+
+    public function createPortalSession(Team $team): string
+    {
+        return (string) $this->http()->asForm()->post(self::BASE.'/billing_portal/sessions', [
+            'customer' => $this->customerFor($team),
+            'return_url' => route('teams.billing.show', ['team' => $team->slug]),
+        ])->throw()->json('url');
     }
 
     /**

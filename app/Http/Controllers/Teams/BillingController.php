@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Spec 14: checkout and custom hostname. Stripe webhook processing
@@ -79,13 +80,20 @@ class BillingController extends Controller
         return to_route('teams.billing.show', ['team' => $team->slug]);
     }
 
-    public function checkout(Team $team, BillingService $billing): RedirectResponse
+    public function checkout(Team $team, BillingService $billing): SymfonyResponse
     {
         Gate::authorize('manageBilling', $team);
 
         $url = $billing->startCheckout($team);
 
-        return redirect()->away($url);
+        return Inertia::location($url);
+    }
+
+    public function portal(Team $team, BillingService $billing): SymfonyResponse
+    {
+        Gate::authorize('manageBilling', $team);
+
+        return Inertia::location($billing->portalUrl($team));
     }
 
     public function updateHostname(Request $request, Team $team): RedirectResponse

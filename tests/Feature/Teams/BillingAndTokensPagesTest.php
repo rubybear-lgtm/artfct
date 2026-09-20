@@ -107,3 +107,23 @@ test('dashboard_reports_first_run_progress_for_the_current_team', function () {
             ->where('setup.createdToken', true)
             ->where('setup.choseAPlan', true));
 });
+
+test('checkout_and_portal_send_admins_to_stripe_via_an_inertia_location', function () {
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [], ['X-Inertia' => 'true'])
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location');
+
+    test()->actingAs($admin)->post(route('teams.billing.portal', $team), [], ['X-Inertia' => 'true'])
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location', "https://billing.stripe.test/portal/{$team->slug}");
+});
+
+test('members_cannot_open_the_billing_portal', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->post(route('teams.billing.portal', $team))->assertForbidden();
+});

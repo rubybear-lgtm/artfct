@@ -63,6 +63,7 @@ Route::middleware(['auth'])->group(function () {
         Route::patch('settings/teams/{team}/retention', [GovernanceController::class, 'updateRetention'])->name('teams.retention.update');
 
         Route::post('settings/teams/{team}/billing/checkout', [BillingController::class, 'checkout'])->name('teams.billing.checkout');
+        Route::post('settings/teams/{team}/billing/portal', [BillingController::class, 'portal'])->name('teams.billing.portal');
         Route::patch('settings/teams/{team}/billing/hostname', [BillingController::class, 'updateHostname'])->name('teams.billing.hostname');
 
         Route::post('settings/teams/{team}/domains', [TeamDomainController::class, 'store'])->name('teams.domains.store');
