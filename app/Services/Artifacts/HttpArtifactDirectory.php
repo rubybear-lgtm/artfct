@@ -110,6 +110,10 @@ final class HttpArtifactDirectory implements ArtifactDirectory
      */
     private function sessionJwt(): string
     {
-        return request()->bearerToken() ?? '';
+        // A browser session carries no bearer token, so the console falls back
+        // to the environment's org token. The Worker maps that token to its one
+        // configured org; per-team credentials arrive with the multi-org Worker
+        // (RUB-344).
+        return request()->bearerToken() ?: (string) config('services.worker.org_token');
     }
 }

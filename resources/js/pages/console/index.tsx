@@ -77,27 +77,27 @@ export default function ConsoleIndex({
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 px-4 py-12">
+        <div className="min-h-screen bg-muted px-4 py-12">
             <div className="mx-auto max-w-7xl">
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">
+                    <h1 className="text-3xl font-bold text-foreground">
                         {team.name} Console
                     </h1>
-                    <p className="mt-2 text-gray-600">
+                    <p className="mt-2 text-muted-foreground">
                         Manage artifacts produced by your team
                     </p>
                 </div>
 
                 {/* Filters */}
-                <div className="mb-8 rounded-lg bg-white p-6 shadow-sm">
-                    <h2 className="mb-4 text-lg font-semibold text-gray-900">
+                <div className="mb-8 rounded-lg bg-background p-6 shadow-sm">
+                    <h2 className="mb-4 text-lg font-semibold text-foreground">
                         Filters
                     </h2>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div>
                             <label
                                 htmlFor="repo_url"
-                                className="mb-2 block text-sm font-medium text-gray-700"
+                                className="mb-2 block text-sm font-medium text-foreground"
                             >
                                 Repository
                             </label>
@@ -113,11 +113,11 @@ export default function ConsoleIndex({
                                     )
                                 }
                                 placeholder="github.com/example/repo"
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
                             />
                         </div>
                         <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                            <label className="mb-2 block text-sm font-medium text-foreground">
                                 Agent
                             </label>
                             <select
@@ -125,7 +125,7 @@ export default function ConsoleIndex({
                                 onChange={(e) =>
                                     handleFilterChange('agent', e.target.value)
                                 }
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
                             >
                                 <option value="">All agents</option>
                                 <option value="cursor">Cursor</option>
@@ -133,7 +133,7 @@ export default function ConsoleIndex({
                             </select>
                         </div>
                         <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                            <label className="mb-2 block text-sm font-medium text-foreground">
                                 Search
                             </label>
                             <input
@@ -143,17 +143,17 @@ export default function ConsoleIndex({
                                     handleFilterChange('q', e.target.value)
                                 }
                                 placeholder="Title or description..."
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
                             />
                         </div>
                         {isAdmin && (
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-gray-700">
+                                <label className="mb-2 block text-sm font-medium text-foreground">
                                     Actions
                                 </label>
                                 <button
                                     onClick={handleExport}
-                                    className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                    className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
                                 >
                                     Export All
                                 </button>
@@ -164,40 +164,40 @@ export default function ConsoleIndex({
 
                 {/* Artifact List */}
                 <div
-                    className="overflow-hidden rounded-lg bg-white shadow-sm"
+                    className="overflow-hidden rounded-lg bg-background shadow-sm"
                     data-testid="artifact-list"
                 >
                     <table className="w-full">
-                        <thead className="border-b border-gray-200 bg-gray-50">
+                        <thead className="border-b border-border bg-muted">
                             <tr>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Title
                                 </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Repository
                                 </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Agent
                                 </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Created
                                 </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Status
                                 </th>
                                 {isAdmin && (
-                                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                         Actions
                                     </th>
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-border">
                             {artifacts.length === 0 ? (
                                 <tr>
                                     <td
                                         colSpan={isAdmin ? 6 : 5}
-                                        className="px-6 py-4 text-center text-gray-500"
+                                        className="px-6 py-4 text-center text-muted-foreground"
                                     >
                                         No artifacts found
                                     </td>
@@ -206,17 +206,17 @@ export default function ConsoleIndex({
                                 artifacts.map((artifact) => (
                                     <tr
                                         key={artifact.id}
-                                        className="hover:bg-gray-50"
+                                        className="hover:bg-muted"
                                     >
                                         <td className="px-6 py-4">
-                                            <div className="text-sm font-medium text-gray-900">
+                                            <div className="text-sm font-medium text-foreground">
                                                 {artifact.title}
                                             </div>
-                                            <div className="text-xs text-gray-500">
+                                            <div className="text-xs text-muted-foreground">
                                                 {artifact.description}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground">
                                             {artifact.provenance.repo_url ? (
                                                 <a
                                                     href={
@@ -225,7 +225,7 @@ export default function ConsoleIndex({
                                                     }
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-blue-600 hover:underline"
+                                                    className="text-primary hover:underline"
                                                 >
                                                     {artifact.provenance.repo_url
                                                         .split('/')
@@ -233,27 +233,27 @@ export default function ConsoleIndex({
                                                         .join('/')}
                                                 </a>
                                             ) : (
-                                                <span className="text-gray-400">
+                                                <span className="text-muted-foreground">
                                                     Unknown
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground">
                                             {artifact.provenance.agent ||
                                                 'Unknown'}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground">
                                             {new Date(
                                                 artifact.created_at,
                                             ).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4">
                                             {artifact.revoked_at ? (
-                                                <span className="inline-block rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">
+                                                <span className="inline-block rounded bg-destructive/15 px-2 py-1 text-xs font-semibold text-destructive">
                                                     Revoked
                                                 </span>
                                             ) : (
-                                                <span className="inline-block rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                                                <span className="inline-block rounded bg-success/15 px-2 py-1 text-xs font-semibold text-success">
                                                     Active
                                                 </span>
                                             )}
@@ -267,7 +267,7 @@ export default function ConsoleIndex({
                                                                 artifact.id,
                                                             )
                                                         }
-                                                        className="font-medium text-red-600 hover:text-red-900"
+                                                        className="font-medium text-destructive hover:text-red-900"
                                                     >
                                                         {confirmingRevoke ===
                                                         artifact.id
@@ -302,7 +302,7 @@ export default function ConsoleIndex({
                                     `/settings/teams/${team.slug}/console?${params.toString()}`,
                                 );
                             }}
-                            className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+                            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90"
                         >
                             Load More
                         </button>
