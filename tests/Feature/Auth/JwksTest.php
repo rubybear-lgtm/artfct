@@ -9,24 +9,6 @@ use Firebase\JWT\JWT;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
-function testSigningKey(): string
-{
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-    openssl_pkey_export($key, $pem);
-
-    return $pem;
-}
-
-function configureSigning(string $pem, string $kid = 'staging-2026-09'): void
-{
-    config([
-        'services.org_jwt.private_key' => $pem,
-        'services.org_jwt.kid' => $kid,
-        'services.org_jwt.worker_base_url' => 'https://worker.test',
-        'services.org_jwt.jwks_write_secret' => 'jwks-secret',
-    ]);
-}
-
 test('jwks_endpoint_serves_the_public_key_only', function () {
     configureSigning(testSigningKey());
 

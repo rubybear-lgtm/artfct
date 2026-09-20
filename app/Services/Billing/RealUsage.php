@@ -2,6 +2,8 @@
 
 namespace App\Services\Billing;
 
+use App\Enums\TeamRole;
+use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -16,13 +18,14 @@ final class RealUsage implements UsageContract
     public function currentUsage(string $orgSlug): array
     {
         $baseUrl = config('services.worker.base_url');
-        $orgToken = config('services.worker.org_token');
 
-        if (! $baseUrl || ! $orgToken) {
-            throw new RuntimeException('services.worker.base_url and services.worker.org_token must be configured to read usage.');
+        if (! $baseUrl) {
+            throw new RuntimeException('services.worker.base_url must be configured to read usage.');
         }
 
-        $response = Http::withToken($orgToken)
+        $token = OrgJwtService::default()->mintFor($orgSlug, 'system', TeamRole::Member)['token'];
+
+        $response = Http::withToken($token)
             ->get(rtrim($baseUrl, '/')."/v1/orgs/{$orgSlug}/usage")
             ->throw();
 

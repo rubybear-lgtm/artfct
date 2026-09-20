@@ -3,6 +3,8 @@
 namespace App\Services\Artifacts;
 
 use App\Contracts\ArtifactDirectory;
+use App\Models\Team;
+use App\Services\Auth\OrgJwtService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Http;
 
@@ -43,7 +45,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             }
         }
 
-        $response = Http::withToken($this->sessionJwt())
+        $response = Http::withToken($this->tokenFor($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts", $params);
 
         if ($response->status() === 404) {
@@ -63,7 +65,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             throw new \Exception('Worker base URL not configured');
         }
 
-        $response = Http::withToken($this->sessionJwt())
+        $response = Http::withToken($this->tokenFor($orgSlug))
             ->patch(
                 rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}",
                 ['revoked_at' => now()->toIso8601String()]
@@ -86,7 +88,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             throw new \Exception('Worker base URL not configured');
         }
 
-        $response = Http::withToken($this->sessionJwt())
+        $response = Http::withToken($this->tokenFor($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/export");
 
         if ($response->status() === 404) {
@@ -105,15 +107,26 @@ final class HttpArtifactDirectory implements ArtifactDirectory
     }
 
     /**
-     * Get the session JWT for the authenticated user.
-     * This would be implemented by the backend unit based on session context.
+     * The credential for a Worker call about `$orgSlug`: the caller's own
+     * bearer token when the request carries one (API callers), otherwise a
+     * short-lived org token minted for the signed-in user with their role in
+     * that team. A user who is not a member of the team gets no credential, so
+     * the Worker never sees a request about a team the user cannot access.
      */
-    private function sessionJwt(): string
+    private function tokenFor(string $orgSlug): string
     {
-        // A browser session carries no bearer token, so the console falls back
-        // to the environment's org token. The Worker maps that token to its one
-        // configured org; per-team credentials arrive with the multi-org Worker
-        // (RUB-344).
-        return request()->bearerToken() ?: (string) config('services.worker.org_token');
+        if ($bearer = request()->bearerToken()) {
+            return $bearer;
+        }
+
+        $user = auth()->user();
+        $team = Team::query()->where('slug', $orgSlug)->first();
+        $role = $user !== null && $team !== null ? $user->teamRole($team) : null;
+
+        if ($role === null) {
+            throw new HttpResponseException(response()->json(['error' => 'Forbidden'], 403));
+        }
+
+        return OrgJwtService::default()->mintFor($orgSlug, (string) $user->id, $role)['token'];
     }
 }

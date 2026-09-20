@@ -84,6 +84,28 @@ final class OrgJwtService
     }
 
     /**
+     * Mints a short-lived token for an org by slug, for server-to-Worker
+     * calls made on behalf of a signed-in user (`$userId` is their id) or the
+     * system (`'system'`). The Worker takes the org from this claim only.
+     *
+     * @return array{token: string, jti: string, expires_at: Carbon}
+     */
+    public function mintFor(string $orgSlug, string $userId, TeamRole $role, int $ttlSeconds = 300): array
+    {
+        $jti = (string) Str::uuid();
+        $expiresAt = Carbon::now()->addSeconds($ttlSeconds);
+
+        $token = JWT::encode(
+            ['org_id' => $orgSlug, 'user_id' => $userId, 'role' => $role->value, 'exp' => $expiresAt->timestamp, 'jti' => $jti],
+            $this->privateKeyPem,
+            'RS256',
+            $this->kid,
+        );
+
+        return ['token' => $token, 'jti' => $jti, 'expires_at' => $expiresAt];
+    }
+
+    /**
      * Verifies a bearer token minted by {@see mint()} and returns its
      * claims. New for spec 13: the Worker's edge verification (spec 07)
      * is unchanged and remains the authority for the artifact-serving

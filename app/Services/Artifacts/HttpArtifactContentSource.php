@@ -3,6 +3,8 @@
 namespace App\Services\Artifacts;
 
 use App\Contracts\ArtifactContentSource;
+use App\Enums\TeamRole;
+use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -13,24 +15,25 @@ final class HttpArtifactContentSource implements ArtifactContentSource
 {
     public function __construct(
         private readonly ?string $baseUrl = null,
-        private readonly ?string $orgToken = null,
     ) {}
 
     public static function default(): self
     {
         return new self(
             config('services.worker.base_url') ?: null,
-            config('services.worker.org_token') ?: null,
         );
     }
 
     public function fetch(string $orgSlug, string $artifactId): ?array
     {
-        if (! $this->baseUrl || ! $this->orgToken) {
-            throw new \RuntimeException('Worker base URL or org token not configured');
+        if (! $this->baseUrl) {
+            throw new \RuntimeException('Worker base URL not configured');
         }
 
-        $response = Http::withToken($this->orgToken)
+        // Server-side read (no signed-in user): a short-lived system token for the org.
+        $token = OrgJwtService::default()->mintFor($orgSlug, 'system', TeamRole::Member)['token'];
+
+        $response = Http::withToken($token)
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}/content");
 
         if ($response->status() === 404) {

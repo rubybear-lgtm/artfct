@@ -70,6 +70,7 @@ test('billing_sync_limits_fails_when_push_is_dropped', function () {
 });
 
 test('real_usage_reads_worker_usage_endpoint', function () {
+    configureSigning(testSigningKey());
     fakeWorker(Http::response(['storage_bytes' => 2048, 'artifacts_this_period' => 7]));
 
     expect((new RealUsage)->currentUsage('acme'))->toBe([
@@ -77,5 +78,5 @@ test('real_usage_reads_worker_usage_endpoint', function () {
         'artifacts_this_period' => 7,
         'render_minutes_this_period' => 0,
     ]);
-    Http::assertSent(fn (Request $request) => $request->hasHeader('Authorization', 'Bearer org-token'));
+    Http::assertSent(fn (Request $request) => str_starts_with($request->header('Authorization')[0], 'Bearer eyJ'));
 });

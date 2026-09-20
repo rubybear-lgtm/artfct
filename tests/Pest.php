@@ -118,3 +118,24 @@ function postWorkerEvent(array $overrides = [], ?int $timestamp = null, ?string 
         'HTTP_X_ARTFCT_SIGNATURE' => WorkerEventSignature::sign($secret ?? '', $timestamp, $body),
     ], $body);
 }
+
+/**
+ * Shared helpers for tests that need the org-token signing key.
+ */
+function testSigningKey(): string
+{
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    openssl_pkey_export($key, $pem);
+
+    return $pem;
+}
+
+function configureSigning(string $pem, string $kid = 'staging-2026-09'): void
+{
+    config([
+        'services.org_jwt.private_key' => $pem,
+        'services.org_jwt.kid' => $kid,
+        'services.org_jwt.worker_base_url' => 'https://worker.test',
+        'services.org_jwt.jwks_write_secret' => 'jwks-secret',
+    ]);
+}

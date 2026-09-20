@@ -1085,6 +1085,7 @@ async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Respon
 
 #[derive(Debug, Deserialize)]
 struct PermanentArtifactRow {
+    org: String,
     content_hash: String,
     entrypoint: String,
     tier: String,
@@ -1129,10 +1130,9 @@ async fn resolve_permanent_artifact(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
     let row = database
-        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest, o.slug AS org FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
         .bind(&[
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&env_string(env, "ARTFCT_ORG_SLUG", "default")),
             requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
             JsValue::from_str(&Utc::now().to_rfc3339()),
         ])?
@@ -1170,8 +1170,16 @@ async fn resolve_permanent_artifact(
             // check below for isolated-origin requests.
         }
         IsolatedAccess::NotIsolated => {
-            if row.tier == "secure" && !authorized_for_org(authorization.as_deref(), env) {
-                return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+            // A secure artifact is served only to a credential of the org that
+            // owns it (the public id says nothing about the org).
+            if row.tier == "secure" {
+                let owner_credential =
+                    resolve_request_credential(authorization.as_deref(), env, Utc::now())
+                        .await
+                        .is_ok_and(|credential| credential.org_id == row.org);
+                if !owner_credential {
+                    return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+                }
             }
         }
     }
@@ -1207,13 +1215,10 @@ async fn resolve_permanent_artifact(
 
 async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(
-            ErrorCode::Unauthorized,
-            "An organization token is required.",
-            401,
-        );
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let suffix = path.trim_start_matches("/v1/artifacts/");
     let Some((artifact_id, content_hash)) = suffix.split_once("/files/") else {
         return json_error(
@@ -1237,7 +1242,7 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
-    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    let org = credential.org_id.clone();
     let row_statement = match database
         .prepare("SELECT a.row_id, json_extract(mf.value, '$.content_type') AS content_type, json_extract(mf.value, '$.size_bytes') AS expected_size, a.expires_at, a.manifest FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN blobs b ON b.content_hash = ? JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? LIMIT 1")
         .bind(&[
@@ -1606,14 +1611,18 @@ fn isolated_forbidden_response() -> Result<Response> {
     )
 }
 
-fn authorized_for_org(authorization: Option<&str>, env: &Env) -> bool {
-    authorization_matches(
-        env.var("ARTFCT_ORG_TOKEN")
-            .ok()
-            .map(|value| value.to_string())
-            .as_deref(),
-        authorization,
-    )
+/// Resolves the caller's verified credential: a signed org token (its `org_id`
+/// claim is the org) or the legacy static token (the one org configured in
+/// `ARTFCT_ORG_SLUG`). The org is never taken from a request field. The
+/// inner `Err` is the ready-to-send refusal.
+async fn require_org_credential(
+    authorization: Option<&str>,
+    env: &Env,
+) -> Result<std::result::Result<OrgCredential, Response>> {
+    match resolve_request_credential(authorization, env, Utc::now()).await {
+        Ok(credential) => Ok(Ok(credential)),
+        Err(error) => Ok(Err(credential_error_response(error)?)),
+    }
 }
 
 fn authorization_matches(expected: Option<&str>, authorization: Option<&str>) -> bool {
@@ -1984,13 +1993,10 @@ async fn delete_artifact(path: &str, req: &Request, env: &Env) -> Result<Respons
 /// way `export_organization` already does.
 async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(
-            ErrorCode::Unauthorized,
-            "An organization token is required.",
-            401,
-        );
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let org = path
         .trim_start_matches("/v1/orgs/")
         .trim_end_matches("/artifacts")
@@ -1998,12 +2004,8 @@ async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Resp
     if let Err(message) = store::validate_slug(org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
-        return json_error(
-            ErrorCode::Forbidden,
-            "Token is not authorized for this organization.",
-            403,
-        );
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
     }
     let query = req.url()?;
     let params: std::collections::HashMap<String, String> =
@@ -2086,19 +2088,12 @@ enum OrgReadDecision {
 /// The single gate for the content read. A bad or missing org credential is
 /// 401; an org other than the token's is indistinguishable from a missing
 /// artifact (404, not 403) so the read never confirms another org's ids.
-fn decide_org_read(
-    expected_token: Option<&str>,
-    authorization: Option<&str>,
-    path_org: &str,
-    credential_org: &str,
-) -> OrgReadDecision {
-    if !authorization_matches(expected_token, authorization) {
-        return OrgReadDecision::Unauthorized;
+fn decide_org_read(credential_org: Option<&str>, path_org: &str) -> OrgReadDecision {
+    match credential_org {
+        None => OrgReadDecision::Unauthorized,
+        Some(org) if org != path_org => OrgReadDecision::NotFound,
+        Some(_) => OrgReadDecision::Allowed,
     }
-    if path_org != credential_org {
-        return OrgReadDecision::NotFound;
-    }
-    OrgReadDecision::Allowed
 }
 
 /// `GET /v1/orgs/{org}/artifacts/{id}/content` — org-credentialed read of
@@ -2109,16 +2104,11 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
     let Some((org, artifact_id)) = parse_content_path(path) else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    let expected_token = env
-        .var("ARTFCT_ORG_TOKEN")
+    let credential_org = resolve_request_credential(authorization.as_deref(), env, Utc::now())
+        .await
         .ok()
-        .map(|value| value.to_string());
-    match decide_org_read(
-        expected_token.as_deref(),
-        authorization.as_deref(),
-        org,
-        &env_string(env, "ARTFCT_ORG_SLUG", "default"),
-    ) {
+        .map(|credential| credential.org_id);
+    match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
                 ErrorCode::Unauthorized,
@@ -2344,16 +2334,11 @@ fn parse_usage_path(path: &str) -> Option<&str> {
 async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let org = parse_usage_path(path).unwrap_or_default();
-    let expected_token = env
-        .var("ARTFCT_ORG_TOKEN")
+    let credential_org = resolve_request_credential(authorization.as_deref(), env, Utc::now())
+        .await
         .ok()
-        .map(|value| value.to_string());
-    match decide_org_read(
-        expected_token.as_deref(),
-        authorization.as_deref(),
-        org,
-        &env_string(env, "ARTFCT_ORG_SLUG", "default"),
-    ) {
+        .map(|credential| credential.org_id);
+    match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
                 ErrorCode::Unauthorized,
@@ -2655,13 +2640,10 @@ async fn write_jwks(req: &mut Request, env: &Env) -> Result<Response> {
 /// whether a hard-deleted artifact's blob goes, unaffected by this path).
 async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(
-            ErrorCode::Unauthorized,
-            "An organization token is required.",
-            401,
-        );
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let rest = path.trim_start_matches("/v1/orgs/");
     let Some((org, tail)) = rest.split_once("/artifacts/") else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
@@ -2673,12 +2655,8 @@ async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) -> Result<Res
     if let Err(message) = store::validate_slug(org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
-        return json_error(
-            ErrorCode::Forbidden,
-            "Token is not authorized for this organization.",
-            403,
-        );
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
@@ -2718,13 +2696,10 @@ struct ExportRow {
 
 async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(
-            ErrorCode::Unauthorized,
-            "An organization token is required.",
-            401,
-        );
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let org = path
         .trim_start_matches("/v1/orgs/")
         .trim_end_matches("/export")
@@ -2732,12 +2707,8 @@ async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Res
     if let Err(message) = store::validate_slug(org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    if org != env_string(env, "ARTFCT_ORG_SLUG", "default") {
-        return json_error(
-            ErrorCode::Forbidden,
-            "Token is not authorized for this organization.",
-            403,
-        );
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
     }
     let database = env.d1("ARTIFACTS_DB")?;
     let rows = database
@@ -2789,12 +2760,13 @@ async fn delete_permanent_artifact(
     env: &Env,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
-    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    let org = credential.org_id.clone();
     match hard_delete_permanent(&storage, &org, artifact_id).await? {
         HardDeleteOutcome::Deleted => build_delete_response().into_worker_response(),
         HardDeleteOutcome::NotFound => {
@@ -2960,9 +2932,10 @@ fn governance_audit_statement(
 
 async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    if !authorized_for_org(authorization.as_deref(), env) {
-        return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
-    }
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let hash = path.trim_start_matches("/v1/blobs/");
     if hash.len() != 64
         || !hash
@@ -2972,7 +2945,7 @@ async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Re
         return json_error(ErrorCode::InvalidArtifactId, "Invalid blob hash.", 400);
     }
     let database = env.d1("ARTIFACTS_DB")?;
-    let org = env_string(env, "ARTFCT_ORG_SLUG", "default");
+    let org = credential.org_id.clone();
     if database
         .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
         .bind(&[JsValue::from_str(hash), JsValue::from_str(&org)])?
@@ -3830,23 +3803,12 @@ mod tests {
 
     #[test]
     fn content_read_requires_org_credential() {
-        for authorization in [None, Some("Bearer wrong"), Some("Basic org-token")] {
-            assert_eq!(
-                decide_org_read(Some("org-token"), authorization, "org-a", "org-a"),
-                OrgReadDecision::Unauthorized
-            );
-        }
         assert_eq!(
-            decide_org_read(None, Some("Bearer org-token"), "org-a", "org-a"),
+            decide_org_read(None, "org-a"),
             OrgReadDecision::Unauthorized
         );
         assert_eq!(
-            decide_org_read(
-                Some("org-token"),
-                Some("Bearer org-token"),
-                "org-a",
-                "org-a"
-            ),
+            decide_org_read(Some("org-a"), "org-a"),
             OrgReadDecision::Allowed
         );
     }
@@ -3854,14 +3816,20 @@ mod tests {
     #[test]
     fn content_read_for_other_org_returns_404() {
         assert_eq!(
-            decide_org_read(
-                Some("org-token"),
-                Some("Bearer org-token"),
-                "org-b",
-                "org-a"
-            ),
+            decide_org_read(Some("org-b"), "org-a"),
             OrgReadDecision::NotFound
         );
+    }
+
+    #[test]
+    fn credential_org_governs_every_route() {
+        // The org is the credential's; a different path org is never served.
+        for path_org in ["org-b", "ORG-A", "org-a ", ""] {
+            assert_eq!(
+                decide_org_read(Some("org-a"), path_org),
+                OrgReadDecision::NotFound
+            );
+        }
     }
 
     #[test]

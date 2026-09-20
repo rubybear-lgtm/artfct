@@ -2,6 +2,8 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\TeamRole;
+use App\Models\Team;
 use App\Providers\AppServiceProvider;
 use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Artifacts\HttpArtifactDirectory;
@@ -17,8 +19,12 @@ test('real_directory_is_built_with_the_configured_worker_url', function () {
     app()->detectEnvironment(fn () => 'staging');
     app()->forgetInstance(ArtifactDirectory::class);
     (new AppServiceProvider(app()))->register();
-    config(['services.worker.base_url' => 'https://worker.test', 'services.worker.org_token' => 'org-token']);
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake(['worker.test/*' => Http::response(['artifacts' => [['id' => 'a1']], 'next_cursor' => null])]);
+
+    $team = Team::factory()->create(['slug' => 'zz-northwind']);
+    test()->actingAs(memberOfTeam($team, TeamRole::Member));
 
     $directory = app(ArtifactDirectory::class);
 
@@ -31,7 +37,8 @@ test('real_content_source_is_built_with_the_configured_worker_url', function () 
     app()->detectEnvironment(fn () => 'staging');
     app()->forgetInstance(ArtifactContentSource::class);
     (new AppServiceProvider(app()))->register();
-    config(['services.worker.base_url' => 'https://worker.test', 'services.worker.org_token' => 'org-token']);
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake(['worker.test/*' => Http::response(['content' => '<h1>x</h1>', 'provenance' => ['agent' => 'a']])]);
 
     $source = app(ArtifactContentSource::class);
