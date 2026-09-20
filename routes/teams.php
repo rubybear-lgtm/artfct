@@ -9,6 +9,7 @@ use App\Http\Controllers\Teams\BillingController;
 use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Http\Controllers\Teams\OrgTokenController;
+use App\Http\Controllers\Teams\SearchPageController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamDomainController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -36,6 +37,7 @@ Route::middleware(['auth'])->group(function () {
     // Console routes (manually resolve team for 404 on cross-org access, not 403)
     Route::get('settings/teams/{team}/billing', [BillingController::class, 'show'])->name('teams.billing.show');
     Route::post('settings/teams/{team}/billing/cancel', [BillingController::class, 'cancel'])->name('teams.billing.cancel');
+    Route::get('settings/teams/{team}/search', SearchPageController::class)->name('teams.search');
     Route::get('settings/teams/{team}/audit', [AuditLogController::class, 'index'])->name('teams.audit.index');
     Route::get('settings/teams/{team}/audit/export', [AuditLogController::class, 'export'])->name('teams.audit.export');
     Route::get('settings/teams/{team}/tokens', [OrgTokenController::class, 'index'])->name('teams.tokens.index');

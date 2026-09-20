@@ -88,6 +88,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <Link href={`/settings/teams/${team.slug}/console`}>
                                 Artifacts
                             </Link>
+                            <Link href={`/settings/teams/${team.slug}/search`}>
+                                Search
+                            </Link>
                             <Link href={`/settings/teams/${team.slug}`}>
                                 Team
                             </Link>
