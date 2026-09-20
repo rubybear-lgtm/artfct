@@ -153,3 +153,15 @@ test('viewer_cannot_create_tokens', function () {
 
     test()->actingAs($viewer)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'nope', 'role' => 'viewer'])->assertForbidden();
 });
+
+test('sending_invitations_is_rate_limited_per_team', function () {
+    config(['auth.invitations_per_hour' => 2]);
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    foreach (['a', 'b'] as $name) {
+        test()->actingAs($admin)->post(route('teams.invitations.store', $team), ['email' => "{$name}@example.com", 'role' => 'member'])->assertRedirect();
+    }
+
+    test()->actingAs($admin)->post(route('teams.invitations.store', $team), ['email' => 'c@example.com', 'role' => 'member'])->assertStatus(429);
+});

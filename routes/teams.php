@@ -44,7 +44,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
-    Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');
+    Route::post('settings/teams', [TeamController::class, 'store'])->middleware('throttle:team-creation')->name('teams.store');
 
     Route::middleware(EnsureTeamMembership::class)->group(function () {
         Route::get('settings/teams/{team}', [TeamController::class, 'edit'])->name('teams.edit');
@@ -57,7 +57,7 @@ Route::middleware(['auth'])->group(function () {
         Route::patch('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'update'])->name('teams.members.update');
         Route::delete('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'destroy'])->name('teams.members.destroy');
 
-        Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->name('teams.invitations.store');
+        Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->middleware('throttle:invitations')->name('teams.invitations.store');
         Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
 
         Route::patch('settings/teams/{team}/auth-mode', [AuthModeController::class, 'update'])->name('teams.auth-mode.update');

@@ -167,6 +167,11 @@ class AppServiceProvider extends ServiceProvider
         Date::use(CarbonImmutable::class);
 
         // Sign-in and invitation endpoints: per IP, generous for people, tight for scripts.
+        RateLimiter::for('invitations', fn (Request $request) => [
+            Limit::perHour((int) config('auth.invitations_per_hour', 30))->by('user:'.$request->user()?->id),
+            Limit::perHour((int) config('auth.invitations_per_hour', 30))->by('team:'.$request->route('team')),
+        ]);
+        RateLimiter::for('team-creation', fn (Request $request) => Limit::perHour(10)->by('user:'.$request->user()?->id));
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute((int) config('auth.throttle_per_minute', 20))->by($request->ip()));
 
         DB::prohibitDestructiveCommands(
