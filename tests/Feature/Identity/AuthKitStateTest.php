@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\AuthKitProfile;
+use App\Services\AuthKit\RealAuthKitClient;
 
 /**
  * A stand-in for the real hosted client: it accepts any code, so these tests
@@ -60,4 +61,15 @@ test('sign_in_endpoints_are_rate_limited_per_ip', function () {
     }
 
     test()->get(route('authenticate', ['code' => $code]))->assertStatus(429);
+});
+
+test('login_state_round_trips_to_the_callback_check', function () {
+    config(['services.workos.client_id' => 'client_x', 'services.workos.secret' => 'sk_test_x', 'services.workos.redirect_url' => 'https://app.test/authenticate']);
+    app()->instance(AuthKitClientContract::class, new RealAuthKitClient);
+
+    $response = test()->get(route('login'));
+    $location = $response->headers->get('X-Inertia-Location') ?? $response->headers->get('Location');
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
+
+    expect(session('authkit_state'))->toBe($query['state']);
 });

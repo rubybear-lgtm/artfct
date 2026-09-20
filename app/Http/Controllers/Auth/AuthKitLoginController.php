@@ -38,7 +38,9 @@ class AuthKitLoginController extends Controller
         WorkOSSdk::setApiKey(config('services.workos.secret'));
 
         $state = ['state' => Str::random(20)];
-        $request->session()->put('authkit_state', $state['state']);
+        // The SDK JSON-encodes the state it sends, and WorkOS returns it verbatim,
+        // so the session must hold the encoded form for the callback to match.
+        $request->session()->put('authkit_state', json_encode($state));
 
         $url = (new UserManagement)->getAuthorizationUrl(
             config('services.workos.redirect_url'),
