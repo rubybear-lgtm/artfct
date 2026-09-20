@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\CreateTeam;
+use App\Enums\AuditEventType;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -11,6 +12,8 @@ use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Auth\RevocationWriter;
+use App\Services\Governance\AuditLogger;
 use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,13 +39,15 @@ class TeamController extends Controller
     /**
      * Store a newly created team.
      */
-    public function store(SaveTeamRequest $request, CreateTeam $createTeam): RedirectResponse
+    public function store(SaveTeamRequest $request, CreateTeam $createTeam, AuditLogger $auditLogger): RedirectResponse
     {
         $team = $createTeam->handle(
             $request->user(),
             $request->validated('name'),
             slug: $request->validated('slug'),
         );
+
+        $auditLogger->recordForRequest($request, AuditEventType::TeamCreated, $team, (string) $request->user()->id, $team->slug);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 
@@ -115,9 +120,11 @@ class TeamController extends Controller
     /**
      * Update the specified team.
      */
-    public function update(SaveTeamRequest $request, Team $team): RedirectResponse
+    public function update(SaveTeamRequest $request, Team $team, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('update', $team);
+
+        $previousName = $team->name;
 
         $team = DB::transaction(function () use ($request, $team) {
             $team = Team::whereKey($team->id)->lockForUpdate()->firstOrFail();
@@ -126,6 +133,10 @@ class TeamController extends Controller
 
             return $team;
         });
+
+        if ($previousName !== $team->name) {
+            $auditLogger->recordForRequest($request, AuditEventType::TeamRenamed, $team, (string) $request->user()->id, "{$previousName} -> {$team->name}");
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team updated.')]);
 
@@ -147,7 +158,7 @@ class TeamController extends Controller
     /**
      * Leave the specified team.
      */
-    public function leave(Request $request, Team $team): RedirectResponse
+    public function leave(Request $request, Team $team, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('leave', $team);
 
@@ -164,6 +175,8 @@ class TeamController extends Controller
             ->where('user_id', $user->id)
             ->delete();
 
+        $auditLogger->recordForRequest($request, AuditEventType::MemberLeft, $team, (string) $user->id, "user:{$user->id}");
+
         if ($fallbackTeam) {
             $user->switchTeam($fallbackTeam);
         }
@@ -176,12 +189,21 @@ class TeamController extends Controller
     /**
      * Delete the specified team.
      */
-    public function destroy(DeleteTeamRequest $request, Team $team): RedirectResponse
+    public function destroy(DeleteTeamRequest $request, Team $team, AuditLogger $auditLogger): RedirectResponse
     {
         $user = $request->user();
         $fallbackTeam = $user->isCurrentTeam($team)
             ? $user->fallbackTeam($team)
             : null;
+
+        // A deleted team's tokens must stop working at the edge, not just here.
+        $team->orgTokens()->whereNull('revoked_at')->get()->each(function ($token): void {
+            $token->revoked_at = now();
+            $token->save();
+            RevocationWriter::default()->revoke($token->jti, $token->expires_at);
+        });
+
+        $auditLogger->recordForRequest($request, AuditEventType::TeamDeleted, $team, (string) $user->id, $team->slug);
 
         DB::transaction(function () use ($user, $team) {
             User::where('current_team_id', $team->id)

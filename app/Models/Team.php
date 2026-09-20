@@ -55,6 +55,14 @@ class Team extends Model
     use GeneratesUniqueTeamSlugs, HasFactory, SoftDeletes;
 
     /**
+     * @return HasMany<OrgToken, $this>
+     */
+    public function orgTokens(): HasMany
+    {
+        return $this->hasMany(OrgToken::class);
+    }
+
+    /**
      * The user who owns the team: the only one who may delete it or hand it
      * over (an admin, set at creation and by ownership transfer).
      *

@@ -30,6 +30,10 @@ enum AuditEventType: string
     case OwnershipTransferred = 'owner.transferred';
     case SeatsSynced = 'billing.seats_synced';
     case AccountDeleted = 'account.deleted';
+    case TeamCreated = 'team.created';
+    case TeamRenamed = 'team.renamed';
+    case TeamDeleted = 'team.deleted';
+    case MemberLeft = 'member.left';
     case SubscriptionCancelled = 'billing.subscription_cancelled';
     case SubscriptionResumed = 'billing.subscription_resumed';
 }
