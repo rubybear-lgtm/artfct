@@ -62,6 +62,7 @@ return [
         'base_url' => env('POLIS_BASE_URL'),
         'api_key' => env('POLIS_API_KEY'),
         'client_secret_verifier' => env('POLIS_CLIENT_SECRET_VERIFIER'),
+        'webhook_secret' => env('POLIS_WEBHOOK_SECRET'),
     ],
 
     'authkit' => [
