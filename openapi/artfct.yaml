@@ -459,6 +459,50 @@
         }
       }
     },
+    "/v1/internal/jwks": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Publish the org-token public keys",
+        "description": "Internal. Laravel publishes the JWKS the Worker verifies org tokens against. Authenticated with its own shared secret, not an org token. The body must contain at least one complete key (kid, n, e).",
+        "operationId": "writeJwks",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["keys"],
+                "properties": {
+                  "keys": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["kid", "n", "e"],
+                      "properties": {
+                        "kty": { "type": "string" },
+                        "use": { "type": "string" },
+                        "alg": { "type": "string" },
+                        "kid": { "type": "string" },
+                        "n": { "type": "string" },
+                        "e": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Keys stored." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
     "/v1/internal/org-limits": {
       "post": {
         "tags": ["Administration"],

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DocsController;
+use App\Http\Controllers\JwksController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
 use Illuminate\Support\Facades\Route;
@@ -94,3 +95,5 @@ require __DIR__.'/teams.php';
 Route::post('internal/worker-events', WorkerEventController::class)->name('internal.worker-events');
 
 Route::post('webhooks/stripe', StripeWebhookController::class)->name('webhooks.stripe');
+
+Route::get('.well-known/jwks.json', JwksController::class)->name('jwks');

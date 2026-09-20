@@ -115,6 +115,34 @@ final class OrgJwtService
         ];
     }
 
+    /**
+     * The public key as a JWK (RFC 7517): `n` and `e` are base64url,
+     * unpadded, the form the Worker's `DecodingKey::from_rsa_components`
+     * expects. Contains no private material.
+     *
+     * @return array{kty: string, use: string, alg: string, kid: string, n: string, e: string}
+     */
+    public function jwk(): array
+    {
+        $privateKey = openssl_pkey_get_private($this->privateKeyPem);
+        $details = $privateKey === false ? false : openssl_pkey_get_details($privateKey);
+
+        if ($details === false || ! isset($details['rsa']['n'], $details['rsa']['e'])) {
+            throw new RuntimeException('services.org_jwt.private_key is not a valid RSA private key.');
+        }
+
+        $encode = fn (string $binary): string => rtrim(strtr(base64_encode($binary), '+/', '-_'), '=');
+
+        return [
+            'kty' => 'RSA',
+            'use' => 'sig',
+            'alg' => 'RS256',
+            'kid' => $this->kid,
+            'n' => $encode($details['rsa']['n']),
+            'e' => $encode($details['rsa']['e']),
+        ];
+    }
+
     private function derivePublicKey(): string
     {
         $privateKey = openssl_pkey_get_private($this->privateKeyPem);

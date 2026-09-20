@@ -333,6 +333,7 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         (method, path) if path.starts_with("/v1/internal/orgs/") => {
             governance_route(method, path, &mut req, &env).await
         }
+        (Method::Post, "/v1/internal/jwks") => write_jwks(&mut req, &env).await,
         (Method::Post, "/v1/internal/org-limits") => write_org_limits(&mut req, &env).await,
         (Method::Get, path) if parse_usage_path(path).is_some() => {
             get_org_usage(path, &req, &env).await
@@ -2602,6 +2603,52 @@ async fn governance_route(
     }
 }
 
+const JWKS_WRITE_SECRET_ENV: &str = "ARTFCT_JWKS_WRITE_SECRET";
+
+/// An unset secret fails closed.
+fn jwks_write_authorized(secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(secret, authorization)
+}
+
+/// A publishable JWKS has at least one key and every key has a kid, n and e.
+fn validate_jwks(jwks: &Jwks) -> bool {
+    !jwks.keys.is_empty()
+        && jwks
+            .keys
+            .iter()
+            .all(|key| !key.kid.is_empty() && !key.n.is_empty() && !key.e.is_empty())
+}
+
+/// `POST /v1/internal/jwks` — Laravel publishes the org-token public key(s)
+/// here (RUB-343); the Worker verifies credentials against `auth:jwks` in KV.
+/// Own shared secret, same shape as the limits and revocation writes.
+async fn write_jwks(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(JWKS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !jwks_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid JWKS credential.", 401);
+    }
+    let jwks = match req.json::<Jwks>().await {
+        Ok(jwks) if validate_jwks(&jwks) => jwks,
+        _ => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "A JWKS with at least one complete key is required.",
+                422,
+            );
+        }
+    };
+    env.kv(KV_BINDING)?
+        .put(JWKS_KV_KEY, serde_json::to_string(&jwks)?)?
+        .execute()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"keys": jwks.keys.len()}), 200)
+        .into_worker_response()
+}
+
 /// Admin console revocation (spec 8): `PATCH /v1/orgs/{org}/artifacts/{id}`.
 /// A soft delete — sets `revoked_at`, retains the row and blob (spec 8's
 /// "Revocation" section; reference counting from spec 3 still governs
@@ -3934,6 +3981,46 @@ mod tests {
             Some(("2026-01-01T00:00:00Z".to_string(), "abc".to_string()))
         );
         assert_eq!(decode_governance_cursor("not-a-cursor!"), None);
+    }
+
+    #[test]
+    fn jwks_write_requires_secret() {
+        assert!(!jwks_write_authorized(None, Some("Bearer anything")));
+        assert!(!jwks_write_authorized(Some("jw"), None));
+        assert!(!jwks_write_authorized(Some("jw"), Some("Bearer wrong")));
+        assert!(!jwks_write_authorized(Some("jw"), Some("Bearer org-token")));
+        assert!(jwks_write_authorized(Some("jw"), Some("Bearer jw")));
+    }
+
+    #[test]
+    fn jwks_body_must_have_complete_keys() {
+        let key = |kid: &str, n: &str, e: &str| JwkKey {
+            kid: kid.to_string(),
+            n: n.to_string(),
+            e: e.to_string(),
+        };
+        assert!(validate_jwks(&Jwks {
+            keys: vec![key("k1", "n", "AQAB")]
+        }));
+        assert!(!validate_jwks(&Jwks { keys: vec![] }));
+        assert!(!validate_jwks(&Jwks {
+            keys: vec![key("", "n", "AQAB")]
+        }));
+        assert!(!validate_jwks(&Jwks {
+            keys: vec![key("k1", "n", "AQAB"), key("k2", "", "AQAB")]
+        }));
+    }
+
+    #[test]
+    fn published_jwks_round_trips_through_kv_json() {
+        let raw =
+            r#"{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"k1","n":"abc","e":"AQAB"}]}"#;
+        let jwks = parse_jwks(raw).expect("extra JWK fields are tolerated");
+        assert_eq!(jwks.keys[0].kid, "k1");
+        assert_eq!(
+            parse_jwks(&serde_json::to_string(&jwks).unwrap()),
+            Some(jwks)
+        );
     }
 
     #[test]

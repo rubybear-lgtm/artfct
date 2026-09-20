@@ -36,6 +36,17 @@ return [
         ],
     ],
 
+    'org_jwt' => [
+        // PEM, or base64 of the PEM (`ORG_JWT_PRIVATE_KEY_B64`) so it survives env-var line handling.
+        'private_key' => env('ORG_JWT_PRIVATE_KEY_B64')
+            ? (string) base64_decode((string) env('ORG_JWT_PRIVATE_KEY_B64'), true)
+            : env('ORG_JWT_PRIVATE_KEY'),
+        'kid' => env('ORG_JWT_KID'),
+        'worker_base_url' => env('ARTFCT_WORKER_BASE_URL'),
+        'revocation_write_secret' => env('ARTFCT_REVOCATION_WRITE_SECRET'),
+        'jwks_write_secret' => env('ARTFCT_JWKS_WRITE_SECRET'),
+    ],
+
     'stripe' => [
         'secret' => env('STRIPE_SECRET_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
