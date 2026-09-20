@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\BillingController;
 use App\Http\Controllers\Teams\GovernanceController;
+use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamDomainController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Teams\TeamMemberController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
+
+Route::get('invitations/{invitation}', InvitationLandingController::class)->name('invitations.show');
 
 Route::prefix('{current_team}')
     ->middleware(['auth', EnsureTeamMembership::class])

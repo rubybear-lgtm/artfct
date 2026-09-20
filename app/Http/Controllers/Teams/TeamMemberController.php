@@ -9,6 +9,7 @@ use App\Http\Requests\Teams\UpdateTeamMemberRequest;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Governance\AuditLogger;
+use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -24,6 +25,8 @@ class TeamMemberController extends Controller
         Gate::authorize('updateMember', $team);
 
         $newRole = TeamRole::from($request->validated('role'));
+
+        app(LastAdminGuard::class)->ensureAdminRemains($team, $user, $newRole);
 
         $team->memberships()
             ->where('user_id', $user->id)

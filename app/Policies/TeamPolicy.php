@@ -45,9 +45,9 @@ class TeamPolicy
      */
     public function leave(User $user, Team $team): bool
     {
+        // Admins may leave too; `LastAdminGuard` refuses when they are the last one.
         return ! $team->is_personal
-            && $user->belongsToTeam($team)
-            && ! $user->isAdminOf($team);
+            && $user->belongsToTeam($team);
     }
 
     /**

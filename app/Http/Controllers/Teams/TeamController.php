@@ -10,6 +10,7 @@ use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -137,6 +138,8 @@ class TeamController extends Controller
         Gate::authorize('leave', $team);
 
         $user = $request->user();
+
+        app(LastAdminGuard::class)->ensureAdminRemains($team, $user);
 
         $fallbackTeam = $user->isCurrentTeam($team)
             ? $user->fallbackTeam($team)
