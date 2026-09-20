@@ -775,7 +775,7 @@ async fn create_permanent_artifact(
     if let Err(message) = store::validate_slug(&org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    let artifact_id = store::public_id(content_hash);
+    let artifact_id = store::public_id(&org, content_hash);
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -3797,7 +3797,28 @@ mod tests {
         let label = store::hostname_label("acme", &artifact_id).expect("valid host label");
         assert_eq!(label, format!("acme--{}", artifact_id.0));
         assert_eq!(hash.len(), 64);
-        assert_eq!(store::public_id(&hash).len(), store::PUBLIC_ID_LENGTH);
+        assert_eq!(
+            store::public_id("acme", &hash).len(),
+            store::PUBLIC_ID_LENGTH
+        );
+    }
+
+    #[test]
+    fn public_ids_are_scoped_to_the_org_but_stable_within_it() {
+        let hash = store::content_hash(b"<h1>same bytes</h1>");
+
+        assert_eq!(
+            store::public_id("acme", &hash),
+            store::public_id("acme", &hash)
+        );
+        assert_ne!(
+            store::public_id("acme", &hash),
+            store::public_id("globex", &hash)
+        );
+        assert_ne!(
+            store::public_id("acme", &hash),
+            hash[..store::PUBLIC_ID_LENGTH]
+        );
     }
 
     #[test]

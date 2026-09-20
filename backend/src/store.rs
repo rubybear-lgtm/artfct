@@ -323,7 +323,7 @@ impl ArtifactStore for KvArtifactStore {
         };
         validate_slug(&artifact.org).map_err(StoreError::InvalidSlug)?;
         let hash = content_hash(&artifact.content);
-        let id = ArtifactId(public_id(&hash));
+        let id = ArtifactId(public_id(&artifact.org, &hash));
         let stored = Artifact {
             row_id: 0,
             id: id.clone(),
@@ -659,7 +659,7 @@ impl ArtifactStore for D1R2ArtifactStore {
     async fn put(&self, artifact: NewArtifact) -> Result<StoredRef, StoreError> {
         validate_slug(&artifact.org).map_err(StoreError::InvalidSlug)?;
         let hash = content_hash(&artifact.content);
-        let id = ArtifactId(public_id(&hash));
+        let id = ArtifactId(public_id(&artifact.org, &hash));
         let row_id = Uuid::new_v4().simple().to_string();
         let size_bytes = artifact.content.len();
         let now = Utc::now().to_rfc3339();
@@ -1140,7 +1140,7 @@ impl ArtifactStore for MemoryArtifactStore {
     async fn put(&self, artifact: NewArtifact) -> Result<StoredRef, StoreError> {
         validate_slug(&artifact.org).map_err(StoreError::InvalidSlug)?;
         let hash = content_hash(&artifact.content);
-        let id = ArtifactId(public_id(&hash));
+        let id = ArtifactId(public_id(&artifact.org, &hash));
         let row_id = self.next_row_id.fetch_add(1, Ordering::Relaxed);
         let stored = Artifact {
             row_id,
@@ -1274,8 +1274,18 @@ pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     sha256(&outer_message)
 }
 
-pub fn public_id(hash: &str) -> String {
-    hash.chars().take(PUBLIC_ID_LENGTH).collect()
+/// The public artifact id: the first `PUBLIC_ID_LENGTH` hex characters of
+/// `sha256("{org}:{content_hash}")`. Scoping the id to the org keeps two orgs
+/// that publish byte-identical bundles from sharing one `/p/{id}`, while the
+/// same org re-publishing the same bundle still gets the same id. Blobs stay
+/// keyed by content hash, so storage dedupe is unchanged. Ids minted before
+/// this change (bare content-hash prefixes) keep resolving because lookups go
+/// by stored id.
+pub fn public_id(org: &str, hash: &str) -> String {
+    content_hash(format!("{org}:{hash}").as_bytes())
+        .chars()
+        .take(PUBLIC_ID_LENGTH)
+        .collect()
 }
 
 fn sha256(input: &[u8]) -> [u8; 32] {
@@ -1400,7 +1410,7 @@ mod tests {
             hash,
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
-        let id = public_id(&hash);
+        let id = public_id("acme", &hash);
         assert_eq!(id.len(), 32);
         assert!(id
             .bytes()

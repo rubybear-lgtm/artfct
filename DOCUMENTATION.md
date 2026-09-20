@@ -656,3 +656,69 @@ was actually opened" needs a signal from wherever "opened" happens (the
 Worker's serving path again, or an MCP client reporting back) matched
 against the search that returned it. `UsageEventLogger`'s methods for
 both are real and tested; nothing currently calls them for real traffic.
+
+## Product decisions (2026-09-20)
+
+Three open questions were decided by taking the recommended option. Each is
+reversible through configuration or a follow-up change, as noted.
+
+### Retention and legal hold (RUB-333)
+
+* **Retention** means age: an artifact older than the team's retention period
+  is deleted for good by the scheduled retention job. The period is
+  `teams.retention_days` (Enterprise only) or `governance.default_retention_days`
+  (90 days) when unset.
+* **Legal hold** always wins: a held artifact survives retention and erasure
+  until the hold is released. Placing a hold is Enterprise only; releasing one
+  is always allowed.
+* **The UI never deletes.** The Governance page (`/settings/teams/{team}/governance`,
+  admins only) shows the policy, previews what a retention run would remove
+  (a dry run that deletes nothing and is audited), and places or releases
+  holds. Running the job and GDPR erasure stay operator commands
+  (`governance:retention`, `governance:erase`), so a destructive action always
+  has a human operator and a dry run first.
+* **Why:** the destructive paths were already built dry-runnable; exposing them
+  as buttons would trade that safety for convenience. Revisit if teams ask to
+  run erasure themselves.
+
+### Abuse controls and consent (RUB-350)
+
+* **Rate limits** (config, all reversible): sign-in routes 20 per minute per IP
+  (`auth.throttle_per_minute`); sending or resending invitations 30 per hour
+  per user and per team (`auth.invitations_per_hour`); creating teams 10 per
+  hour per user.
+* **Invite policy:** members can invite by default, because teams grow
+  bottom-up, but a team may hold at most 25 unaccepted invitations
+  (`TEAMS_MAX_PENDING_INVITATIONS`), and an invitation can never grant a role
+  above the inviter's own. Set `TEAMS_MEMBERS_CAN_INVITE=false` to make
+  invitations admin-only, which is the stricter option if the sending domain is
+  abused.
+* **Consent:** when `LEGAL_CONSENT_REQUIRED=true` (on for staging) a signed-in
+  user must accept the current terms before reaching the app. The accepted
+  version and time are stored on the user (`terms_version`,
+  `terms_accepted_at`). Change `LEGAL_TERMS_VERSION` to ask everyone again.
+* **Terms and privacy text** (`/terms`, `/privacy`) are drafts written from how
+  the service actually works (data collected, processors, retention, deletion).
+  **They have had no legal review and the contact address is a placeholder;
+  both must be fixed before a public launch.**
+* **Crawlers:** every non-production environment sends `X-Robots-Tag: noindex`
+  and disallows all in `robots.txt`.
+* **Not done:** CAPTCHA (add only if abuse is seen) and full DPA tooling.
+
+### Public artifact ids are scoped to the org (RUB-351)
+
+* **Decision:** the public id is now the first 32 hex characters of
+  `sha256("{org}:{content_hash}")` instead of a bare content-hash prefix, so two
+  orgs publishing byte-identical bundles no longer share one `/p/{id}`.
+* **Unchanged:** blobs stay keyed by content hash, so storage dedupe and
+  refcounts are untouched; the same org publishing the same bundle again still
+  gets the same id; the id is still 32 characters, so every id-shape check and
+  hostname label keeps working.
+* **Compatibility:** artifacts created earlier keep their old ids, which keep
+  resolving because lookup is by stored id. Two legacy artifacts that already
+  collided stay collided; the secure tier already failed closed for those.
+* **Alternative rejected:** org-prefixed paths (`/p/{org}/{id}`) would change
+  every shared link and every client that builds one.
+* **Status:** deployed to the two staging Workers and covered by a Rust test
+  and by `scripts/multi-org-isolation-local.sh`. The production Worker has not
+  been deployed.

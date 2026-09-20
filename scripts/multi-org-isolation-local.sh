@@ -39,6 +39,12 @@ check "A deletes B's artifact" 404 -X DELETE -H "Authorization: Bearer $TA" "$W/
 check "A revokes B's artifact" 404 -X PATCH -H "Authorization: Bearer $TA" -H 'content-type: application/json' -d '{"revoked_at":"2026-01-01T00:00:00Z"}' "$W/v1/orgs/iso-b/artifacts/$IDB"
 check "B's artifact survives" 200 -H "Authorization: Bearer $TB" "$W/p/$IDB"
 check "no credential lists" 401 "$W/v1/orgs/iso-a/artifacts"
+# RUB-351: byte-identical bundles from two orgs must not collide on /p/{id}.
+SAME_A=$(mk same "$TA"); SAME_B=$(mk same "$TB")
+if [ "$SAME_A" != "$SAME_B" ]; then echo "ok   identical bundles get different ids per org"; else echo "FAIL identical bundles share id $SAME_A"; fail=1; fi
+check "A serves its own copy of the shared bundle" 200 -H "Authorization: Bearer $TA" "$W/p/$SAME_A"
+check "B serves its own copy of the shared bundle" 200 -H "Authorization: Bearer $TB" "$W/p/$SAME_B"
+check "A cannot serve B's copy of the shared bundle" 401 -H "Authorization: Bearer $TA" "$W/p/$SAME_B"
 # Quota and payment state are per org on the shared Worker: put org A into read-only
 # (past due) and check only A's creates are refused.
 curl -sf -X POST -H 'Authorization: Bearer lim' -H 'content-type: application/json' \
