@@ -17,10 +17,18 @@ interface PendingInvitation {
     team: { name: string; slug: string };
 }
 
+interface SetupProgress {
+    invitedTeammates: boolean;
+    createdToken: boolean;
+    choseAPlan: boolean;
+}
+
 export default function Dashboard({
     pendingInvitations,
+    setup,
 }: {
     pendingInvitations: PendingInvitation[];
+    setup: SetupProgress | null;
 }) {
     const { currentTeam } = usePage<SharedProps>().props;
     const base = currentTeam
@@ -82,47 +90,76 @@ export default function Dashboard({
                     </Card>
                 )}
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Get your team set up</CardTitle>
-                        <CardDescription>
-                            The few things a new team usually does first.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ul className="flex flex-col gap-2 text-sm">
-                            <li>
-                                <Link className="underline" href={base}>
-                                    Invite your teammates
+                {setup === null ? (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Create your first team</CardTitle>
+                            <CardDescription>
+                                A team owns your artifacts, tokens and billing.
+                                You become its owner.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button asChild>
+                                <Link href="/settings/teams">
+                                    Create a team
                                 </Link>
-                            </li>
-                            <li>
-                                <Link
-                                    className="underline"
-                                    href={`${base}/tokens`}
-                                >
-                                    Create an API token for the CLI
-                                </Link>
-                            </li>
-                            <li>
-                                <Link
-                                    className="underline"
-                                    href={`${base}/billing`}
-                                >
-                                    Choose a plan
-                                </Link>
-                            </li>
-                            <li>
-                                <Link
-                                    className="underline"
-                                    href="/settings/teams"
-                                >
-                                    Your orgs
-                                </Link>
-                            </li>
-                        </ul>
-                    </CardContent>
-                </Card>
+                            </Button>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Get your team set up</CardTitle>
+                            <CardDescription>
+                                The few things a new team usually does first.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ul className="flex flex-col gap-2 text-sm">
+                                {[
+                                    {
+                                        done: setup.invitedTeammates,
+                                        href: base,
+                                        label: 'Invite your teammates',
+                                    },
+                                    {
+                                        done: setup.createdToken,
+                                        href: `${base}/tokens`,
+                                        label: 'Create an API token for the CLI',
+                                    },
+                                    {
+                                        done: setup.choseAPlan,
+                                        href: `${base}/billing`,
+                                        label: 'Choose a plan',
+                                    },
+                                ].map((step) => (
+                                    <li
+                                        key={step.label}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <span
+                                            aria-hidden="true"
+                                            className="font-mono"
+                                        >
+                                            {step.done ? '[x]' : '[ ]'}
+                                        </span>
+                                        <Link
+                                            className={
+                                                step.done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : 'underline'
+                                            }
+                                            href={step.href}
+                                        >
+                                            {step.label}
+                                        </Link>
+                                    </li>
+                                ))}
+                            </ul>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </>
     );

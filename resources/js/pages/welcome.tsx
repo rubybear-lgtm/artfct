@@ -2074,6 +2074,15 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 blog
                             </Link>
                             <a
+                                href="/login"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                sign up / log in
+                            </a>
+                            <a
                                 href="https://github.com/rubybear-lgtm/artfct"
                                 target="_blank"
                                 rel="noreferrer"

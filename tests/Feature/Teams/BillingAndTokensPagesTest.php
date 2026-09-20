@@ -84,3 +84,26 @@ test('team_edit_page_carries_owner_and_viewer_permissions', function () {
     test()->actingAs($admin)->get(route('teams.edit', $team))
         ->assertInertia(fn (Assert $page) => $page->where('viewer.isOwner', false)->where('viewer.canDelete', false)->where('viewer.canTransfer', false));
 });
+
+test('dashboard_reports_first_run_progress_for_the_current_team', function () {
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $admin->switchTeam($team);
+
+    test()->actingAs($admin)->get(route('dashboard', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('dashboard')
+            ->where('setup.invitedTeammates', false)
+            ->where('setup.createdToken', false)
+            ->where('setup.choseAPlan', false));
+
+    OrgToken::factory()->create(['team_id' => $team->id]);
+    $team->forceFill(['plan' => Plan::Team])->save();
+    memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($admin)->get(route('dashboard', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('setup.invitedTeammates', true)
+            ->where('setup.createdToken', true)
+            ->where('setup.choseAPlan', true));
+});
