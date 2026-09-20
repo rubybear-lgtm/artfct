@@ -27,7 +27,8 @@ function initials(name: string) {
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-    const { auth, teams, currentTeam, flash } = usePage<SharedProps>().props;
+    const { auth, teams, currentTeam, flash, quota } =
+        usePage<SharedProps>().props;
     const toastMessage = flash?.toast;
 
     useEffect(() => {
@@ -140,6 +141,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </div>
             </header>
 
+            {team && quota?.exceeded && (
+                <div className="mx-auto max-w-5xl px-4 pt-4">
+                    <Alert variant="warning">
+                        This team is over its plan limits. New artifacts are
+                        blocked; existing ones keep serving.{' '}
+                        <Link
+                            className="underline"
+                            href={`/settings/teams/${team.slug}/billing`}
+                        >
+                            See usage
+                        </Link>
+                    </Alert>
+                </div>
+            )}
+            {team && quota?.warning && !quota.exceeded && (
+                <div className="mx-auto max-w-5xl px-4 pt-4">
+                    <Alert>
+                        This team has used over 80% of a plan limit.{' '}
+                        <Link
+                            className="underline"
+                            href={`/settings/teams/${team.slug}/billing`}
+                        >
+                            See usage
+                        </Link>
+                    </Alert>
+                </div>
+            )}
             {team?.paymentStatus === 'past_due' && (
                 <div className="mx-auto max-w-5xl px-4 pt-4">
                     <Alert variant="warning">

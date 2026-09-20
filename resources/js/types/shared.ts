@@ -21,5 +21,6 @@ export type SharedProps = {
     auth: { user: { id: number; name: string; email: string } | null };
     teams: SharedTeam[];
     currentTeam: CurrentTeam;
+    quota: { warning: boolean; exceeded: boolean } | null;
     flash?: { toast?: { type: 'success' | 'error' | 'info'; message: string } };
 };

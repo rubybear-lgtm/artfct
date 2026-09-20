@@ -3,6 +3,7 @@
 namespace App\Services\Billing;
 
 use App\Enums\PaymentStatus;
+use App\Enums\Plan;
 use App\Models\Team;
 
 /**
@@ -82,6 +83,6 @@ final class QuotaService
 
     private function limitsFor(Team $team): QuotaLimits
     {
-        return $this->limits ?? QuotaLimits::default();
+        return $this->limits ?? QuotaLimits::forPlan($team->plan ?? Plan::Free);
     }
 }

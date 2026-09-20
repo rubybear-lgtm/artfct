@@ -293,6 +293,12 @@ export default function Billing({
                     </Card>
                 )}
 
+                {!usage && (
+                    <Alert>
+                        Usage is unavailable right now. Your artifacts are
+                        unaffected; try again shortly.
+                    </Alert>
+                )}
                 {usage && (
                     <Card>
                         <CardHeader>

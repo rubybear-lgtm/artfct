@@ -4,7 +4,9 @@ namespace App\Http\Middleware;
 
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
+use App\Services\Billing\QuotaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -44,6 +46,28 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'teams' => fn () => $request->user()?->toUserTeams(includeCurrent: true) ?? [],
+            // A cached read of the current team's quota so every page can show a
+            // warning or over-quota banner; null when the Worker is unreachable.
+            'quota' => function () use ($request): ?array {
+                $team = $request->user()?->currentTeam;
+
+                if ($team === null) {
+                    return null;
+                }
+
+                try {
+                    return Cache::remember("quota-banner:{$team->id}", 60, function () use ($team): array {
+                        $status = app(QuotaService::class)->status($team);
+
+                        return [
+                            'warning' => $status->anyWarning(),
+                            'exceeded' => $status->anyExceeded(),
+                        ];
+                    });
+                } catch (\Throwable) {
+                    return null;
+                }
+            },
             'currentTeam' => function () use ($request) {
                 $team = $request->user()?->currentTeam;
 
