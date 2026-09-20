@@ -52,6 +52,28 @@ final class RealBilling implements BillingContract
         $this->http()->asForm()->post(self::BASE."/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => 'true'])->throw();
     }
 
+    public function resumeSubscription(string $subscriptionId): void
+    {
+        $this->http()->asForm()->post(self::BASE."/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => 'false'])->throw();
+    }
+
+    public function listInvoices(Team $team): array
+    {
+        if (! $team->stripe_customer_id) {
+            return [];
+        }
+
+        return collect($this->http()->get(self::BASE.'/invoices', ['customer' => $team->stripe_customer_id, 'limit' => 12])->throw()->json('data', []))
+            ->map(fn (array $invoice): array => [
+                'number' => $invoice['number'] ?? null,
+                'amount' => (int) ($invoice['amount_paid'] ?? $invoice['total'] ?? 0),
+                'currency' => (string) ($invoice['currency'] ?? 'usd'),
+                'status' => $invoice['status'] ?? null,
+                'date' => (int) ($invoice['created'] ?? 0),
+                'url' => $invoice['hosted_invoice_url'] ?? null,
+            ])->values()->all();
+    }
+
     public function createPortalSession(Team $team): string
     {
         return (string) $this->http()->asForm()->post(self::BASE.'/billing_portal/sessions', [

@@ -54,6 +54,7 @@ class StripeSetupCommand extends Command
                 'invoice.payment_failed',
                 'invoice.payment_succeeded',
                 'customer.subscription.deleted',
+                'customer.subscription.updated',
             ],
         ])->throw();
 

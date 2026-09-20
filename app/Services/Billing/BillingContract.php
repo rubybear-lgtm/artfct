@@ -28,6 +28,18 @@ interface BillingContract
     public function cancelSubscription(string $subscriptionId): void;
 
     /**
+     * Undo a scheduled cancellation before the period ends.
+     */
+    public function resumeSubscription(string $subscriptionId): void;
+
+    /**
+     * The team's most recent invoices, newest first.
+     *
+     * @return list<array{number: string|null, amount: int, currency: string, status: string|null, date: int, url: string|null}>
+     */
+    public function listInvoices(Team $team): array;
+
+    /**
      * A Stripe customer-portal URL where the team manages its payment method
      * and downloads invoices.
      */

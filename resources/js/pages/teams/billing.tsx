@@ -1,4 +1,5 @@
 import { Head, router } from '@inertiajs/react';
+import { useEffect } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 
 interface PlanLimits {
@@ -27,7 +29,17 @@ interface Props {
         hasSubscription: boolean;
         seatsBilled: number | null;
         activeSeats: number;
+        cancelAtPeriodEnd: boolean;
+        renewsAt: string | null;
     };
+    invoices: {
+        number: string | null;
+        amount: number;
+        currency: string;
+        status: string | null;
+        date: number;
+        url: string | null;
+    }[];
     canManage: boolean;
     isOwner: boolean;
     stripeConfigured: boolean;
@@ -93,10 +105,34 @@ export default function Billing({
     stripeConfigured,
     usage,
     limits,
+    invoices,
     checkout,
 }: Props) {
     const base = `/settings/teams/${team.slug}/billing`;
     const paid = team.plan !== 'free';
+    const awaitingWebhook = checkout === 'success' && !paid;
+
+    // The redirect back from Stripe never grants access; poll until the webhook lands.
+    useEffect(() => {
+        if (!awaitingWebhook) {
+            return;
+        }
+
+        let attempts = 0;
+        const timer = window.setInterval(() => {
+            attempts += 1;
+
+            if (attempts > 15) {
+                window.clearInterval(timer);
+
+                return;
+            }
+
+            router.reload({ only: ['team', 'invoices'] });
+        }, 2000);
+
+        return () => window.clearInterval(timer);
+    }, [awaitingWebhook]);
 
     return (
         <>
@@ -104,10 +140,22 @@ export default function Billing({
             <h1 className="mb-6 text-2xl font-semibold">Billing</h1>
 
             <div className="flex flex-col gap-6">
-                {checkout === 'success' && (
+                {awaitingWebhook && (
                     <Alert>
                         Thanks. Your payment is being confirmed; this page
                         updates when Stripe reports it.
+                    </Alert>
+                )}
+                {checkout === 'success' && paid && (
+                    <Alert>You are on the Team plan. Thanks!</Alert>
+                )}
+                {team.cancelAtPeriodEnd && (
+                    <Alert variant="warning">
+                        Your subscription ends
+                        {team.renewsAt
+                            ? ` on ${new Date(team.renewsAt).toLocaleDateString()}`
+                            : ' at the end of the billing period'}
+                        . Resume it to keep the Team plan.
                     </Alert>
                 )}
                 {checkout === 'cancelled' && (
@@ -130,7 +178,7 @@ export default function Billing({
                         </CardTitle>
                         <CardDescription>
                             {paid
-                                ? `${team.activeSeats} active seats${team.seatsBilled !== null ? `, ${team.seatsBilled} billed` : ''}. Seats sync daily.`
+                                ? `${team.activeSeats} active seats${team.seatsBilled !== null ? `, ${team.seatsBilled} billed` : ''}. Seats sync daily.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${new Date(team.renewsAt).toLocaleDateString()}.` : ''}`
                                 : 'Free plan. Upgrade when you need more room for your team.'}
                         </CardDescription>
                     </CardHeader>
@@ -160,7 +208,16 @@ export default function Billing({
                         {paid &&
                             team.hasSubscription &&
                             canManage &&
-                            isOwner && (
+                            isOwner &&
+                            (team.cancelAtPeriodEnd ? (
+                                <Button
+                                    onClick={() =>
+                                        router.post(`${base}/resume`)
+                                    }
+                                >
+                                    Resume subscription
+                                </Button>
+                            ) : (
                                 <Button
                                     variant="outline"
                                     onClick={() =>
@@ -169,7 +226,7 @@ export default function Billing({
                                 >
                                     Cancel subscription
                                 </Button>
-                            )}
+                            ))}
                         {!canManage && (
                             <p className="text-sm text-muted-foreground">
                                 Only admins can change the plan.
@@ -177,6 +234,64 @@ export default function Billing({
                         )}
                     </CardContent>
                 </Card>
+
+                {invoices.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Invoices</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <thead>
+                                    <tr>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Number</TableHead>
+                                        <TableHead>Amount</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead />
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invoices.map((invoice) => (
+                                        <TableRow
+                                            key={invoice.number ?? invoice.date}
+                                        >
+                                            <TableCell>
+                                                {new Date(
+                                                    invoice.date * 1000,
+                                                ).toLocaleDateString()}
+                                            </TableCell>
+                                            <TableCell>
+                                                {invoice.number}
+                                            </TableCell>
+                                            <TableCell>
+                                                {(invoice.amount / 100).toFixed(
+                                                    2,
+                                                )}{' '}
+                                                {invoice.currency.toUpperCase()}
+                                            </TableCell>
+                                            <TableCell>
+                                                {invoice.status}
+                                            </TableCell>
+                                            <TableCell>
+                                                {invoice.url && (
+                                                    <a
+                                                        className="underline"
+                                                        href={invoice.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                    >
+                                                        View
+                                                    </a>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {usage && (
                     <Card>

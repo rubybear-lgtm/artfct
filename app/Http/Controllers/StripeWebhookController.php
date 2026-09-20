@@ -46,6 +46,11 @@ class StripeWebhookController extends Controller
             'invoice.payment_failed' => $this->forCustomer($object, fn (Team $team) => $billing->applyPaymentFailed($team)),
             'invoice.payment_succeeded' => $this->forCustomer($object, fn (Team $team) => $billing->applyPaymentSucceeded($team)),
             'customer.subscription.deleted' => $this->forCustomer($object, fn (Team $team) => $billing->applySubscriptionEnded($team)),
+            'customer.subscription.updated' => $this->forCustomer($object, fn (Team $team) => $billing->applySubscriptionUpdated(
+                $team,
+                (bool) ($object['cancel_at_period_end'] ?? false),
+                isset($object['current_period_end']) ? (int) $object['current_period_end'] : ($object['items']['data'][0]['current_period_end'] ?? null),
+            )),
             default => Log::info('Ignoring Stripe event type.', ['type' => $event['type']]),
         };
 

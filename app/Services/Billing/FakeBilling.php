@@ -51,6 +51,21 @@ final class FakeBilling implements BillingContract
         }
     }
 
+    public function resumeSubscription(string $subscriptionId): void
+    {
+        if (isset($this->subscriptions[$subscriptionId])) {
+            $this->subscriptions[$subscriptionId]['cancelled'] = false;
+        }
+    }
+
+    /** @var list<array{number: string|null, amount: int, currency: string, status: string|null, date: int, url: string|null}> */
+    public array $invoices = [];
+
+    public function listInvoices(Team $team): array
+    {
+        return $this->invoices;
+    }
+
     public function createPortalSession(Team $team): string
     {
         return "https://billing.stripe.test/portal/{$team->slug}";

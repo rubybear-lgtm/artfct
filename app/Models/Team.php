@@ -36,6 +36,8 @@ use Illuminate\Support\Carbon;
  * @property PaymentStatus $payment_status
  * @property string|null $stripe_subscription_id
  * @property int|null $seats_billed
+ * @property bool $cancel_at_period_end
+ * @property Carbon|null $current_period_end
  * @property string|null $custom_hostname
  * @property string|null $slack_workspace_id
  * @property Carbon|null $created_at
@@ -172,6 +174,8 @@ class Team extends Model
             'provisioned_at' => 'datetime',
             'plan' => Plan::class,
             'payment_status' => PaymentStatus::class,
+            'cancel_at_period_end' => 'boolean',
+            'current_period_end' => 'datetime',
         ];
     }
 

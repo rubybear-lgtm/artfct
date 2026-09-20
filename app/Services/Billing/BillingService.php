@@ -5,6 +5,7 @@ namespace App\Services\Billing;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Models\Team;
+use Illuminate\Support\Carbon;
 
 /**
  * Stripe checkout, seat sync, and payment-status webhooks (spec 14).
@@ -110,6 +111,8 @@ final class BillingService
             'payment_status' => PaymentStatus::Active,
             'stripe_subscription_id' => null,
             'seats_billed' => null,
+            'cancel_at_period_end' => false,
+            'current_period_end' => null,
         ])->save();
 
         $this->limitsWriter->push($team);
@@ -119,6 +122,39 @@ final class BillingService
     {
         if ($team->stripe_subscription_id !== null) {
             $this->billing->cancelSubscription($team->stripe_subscription_id);
+            $team->forceFill(['cancel_at_period_end' => true])->save();
+        }
+    }
+
+    public function resumeSubscription(Team $team): void
+    {
+        if ($team->stripe_subscription_id !== null) {
+            $this->billing->resumeSubscription($team->stripe_subscription_id);
+            $team->forceFill(['cancel_at_period_end' => false])->save();
+        }
+    }
+
+    /**
+     * Applies Stripe's `customer.subscription.updated`: the renewal date and
+     * whether the subscription is set to end with the current period.
+     */
+    public function applySubscriptionUpdated(Team $team, bool $cancelAtPeriodEnd, ?int $periodEnd): void
+    {
+        $team->forceFill([
+            'cancel_at_period_end' => $cancelAtPeriodEnd,
+            'current_period_end' => $periodEnd === null ? null : Carbon::createFromTimestamp($periodEnd),
+        ])->save();
+    }
+
+    /**
+     * @return list<array{number: string|null, amount: int, currency: string, status: string|null, date: int, url: string|null}>
+     */
+    public function invoices(Team $team): array
+    {
+        try {
+            return $this->billing->listInvoices($team);
+        } catch (\Throwable) {
+            return [];
         }
     }
 

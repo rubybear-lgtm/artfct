@@ -98,3 +98,13 @@ test('plan_limits_differ_by_plan', function () {
     expect($free->storageBytes)->toBeLessThan($team->storageBytes)
         ->and($free->artifactsPerMonth)->toBeLessThan($team->artifactsPerMonth);
 });
+
+test('the_subscription_updated_webhook_records_renewal_and_scheduled_cancel', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_subscription_id' => 'sub_1', 'stripe_customer_id' => 'cus_1']);
+    $end = now()->addMonth()->timestamp;
+
+    stripeEvent('customer.subscription.updated', ['customer' => 'cus_1', 'cancel_at_period_end' => true, 'current_period_end' => $end])->assertOk();
+
+    $team->refresh();
+    expect($team->cancel_at_period_end)->toBeTrue()->and($team->current_period_end->timestamp)->toBe($end);
+});

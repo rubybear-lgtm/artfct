@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Teams;
 
+use App\Enums\AuditEventType;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Services\Billing\BillingService;
 use App\Services\Billing\QuotaService;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -54,6 +56,8 @@ class BillingController extends Controller
                 'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
                 'hasSubscription' => $team->stripe_subscription_id !== null,
                 'seatsBilled' => $team->seats_billed,
+                'cancelAtPeriodEnd' => (bool) $team->cancel_at_period_end,
+                'renewsAt' => $team->current_period_end?->toIso8601String(),
                 'activeSeats' => $billing->activeSeatCount($team),
             ],
             'canManage' => $request->user()->can('manageBilling', $team),
@@ -64,18 +68,33 @@ class BillingController extends Controller
                 'free' => config('billing.plans.free'),
                 'team' => config('billing.plans.team'),
             ],
+            'invoices' => $team->stripe_customer_id ? $billing->invoices($team) : [],
             'checkout' => $request->query('checkout'),
         ]);
     }
 
-    public function cancel(Request $request, Team $team, BillingService $billing): RedirectResponse
+    public function cancel(Request $request, Team $team, BillingService $billing, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('manageBilling', $team);
         abort_unless($team->owner_user_id === null || $team->owner_user_id === $request->user()->id, 403, __('Only the team owner can cancel the subscription.'));
 
         $billing->cancelSubscription($team);
+        $auditLogger->recordForRequest($request, AuditEventType::SubscriptionCancelled, $team, (string) $request->user()->id, $team->slug);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Subscription will end at the end of the billing period.')]);
+
+        return to_route('teams.billing.show', ['team' => $team->slug]);
+    }
+
+    public function resume(Request $request, Team $team, BillingService $billing, AuditLogger $auditLogger): RedirectResponse
+    {
+        Gate::authorize('manageBilling', $team);
+        abort_unless($team->owner_user_id === null || $team->owner_user_id === $request->user()->id, 403, __('Only the team owner can resume the subscription.'));
+
+        $billing->resumeSubscription($team);
+        $auditLogger->recordForRequest($request, AuditEventType::SubscriptionResumed, $team, (string) $request->user()->id, $team->slug);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Subscription resumed.')]);
 
         return to_route('teams.billing.show', ['team' => $team->slug]);
     }
