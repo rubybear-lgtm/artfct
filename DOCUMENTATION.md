@@ -748,7 +748,36 @@ reversible through configuration or a follow-up change, as noted.
 * **Verified live on staging:** a SAML login through MockSAML returned a code,
   `RealPolisClient` exchanged it for the right profile, and the connection
   survived a restart of the Polis service.
-* **Not verified yet:** an OIDC login, a SCIM create and deactivate, and the
-  Laravel callback with a real team and member on staging (needs a team on the
-  staging database whose slug is the Polis tenant). The advisory watch on
-  `boxyhq/jackson` is yours to enable.
+* **Also verified live:** a full browser sign-in that starts at
+  `/teams/zz-northwind/sso/login`, goes through Polis and MockSAML, and returns
+  to the Laravel callback. It signed in the existing member (one user, one
+  `polis` identity, no duplicate) and then hit the terms gate. The connection
+  for tenant `zz-northwind` is left in place as a test fixture.
+* **Not verified yet:** an OIDC login and a SCIM create and deactivate. The
+  advisory watch on `boxyhq/jackson` is yours to enable, and production needs
+  your approval.
+
+### Running commands on staging
+
+`railway ssh` needs a registered key and a trusted host key. To avoid touching
+`~/.ssh`, generate a scoped config with
+`railway ssh config --service staging-web --environment staging --path <file> --alias staging-web -i ~/.ssh/id_ed25519`
+and connect with `ssh -F <file> -o UserKnownHostsFile=<file2> -o StrictHostKeyChecking=accept-new staging-web '<command>'`.
+Commands run inside the deployment, so they reach the staging database and see
+its secrets. `php artisan staging:verify-usage` (with `STAGING_VERIFY_USAGE=true`)
+cycles the synthetic org through the quota and payment states and prints the
+meters.
+
+### Live verification results (2026-09-20)
+
+* **Usage meters (RUB-335):** near-quota 85% (warning), over-quota 100%
+  (exceeded), past-due flips the payment state, healthy clears them. This found
+  that the meter used the plan's limits, not the ones the Worker enforces; the
+  Worker's usage endpoint now returns its limits and the meter prefers them.
+* **Billing lifecycle (RUB-336), real Stripe test mode and the staging webhook:**
+  subscription created and applied; cancel set the scheduled-cancel flag and the
+  renewal date from the real `customer.subscription.updated` webhook; resume
+  cleared it; a failing card produced `invoice.payment_failed` and the team went
+  past due; paying with a good card produced `invoice.payment_succeeded` and it
+  recovered; deleting the subscription returned the team to Free.
+
