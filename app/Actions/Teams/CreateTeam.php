@@ -26,6 +26,7 @@ class CreateTeam
                 'is_personal' => $isPersonal,
                 'slug' => $slug,
             ]);
+            $team->forceFill(['owner_user_id' => $user->id])->save();
 
             $team->memberships()->create([
                 'user_id' => $user->id,

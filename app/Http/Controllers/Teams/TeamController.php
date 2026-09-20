@@ -139,6 +139,7 @@ class TeamController extends Controller
 
         $user = $request->user();
 
+        app(LastAdminGuard::class)->ensureNotOwner($team, $user);
         app(LastAdminGuard::class)->ensureAdminRemains($team, $user);
 
         $fallbackTeam = $user->isCurrentTeam($team)

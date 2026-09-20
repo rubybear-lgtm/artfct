@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -28,6 +29,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $release_version
  * @property int $schema_version
  * @property string|null $region
+ * @property int|null $owner_user_id
+ * @property string|null $billing_email
  * @property int|null $retention_days
  * @property Plan $plan
  * @property PaymentStatus $payment_status
@@ -48,6 +51,17 @@ class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
     use GeneratesUniqueTeamSlugs, HasFactory, SoftDeletes;
+
+    /**
+     * The user who owns the team: the only one who may delete it or hand it
+     * over (an admin, set at creation and by ownership transfer).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_user_id');
+    }
 
     /**
      * Bootstrap the model and its traits.

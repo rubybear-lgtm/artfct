@@ -139,6 +139,16 @@ class TeamPolicy
      */
     public function delete(User $user, Team $team): bool
     {
-        return ! $team->is_personal && $user->hasTeamPermission($team, TeamPermission::DeleteTeam);
+        return ! $team->is_personal
+            && $user->hasTeamPermission($team, TeamPermission::DeleteTeam)
+            && ($team->owner_user_id === null || $team->owner_user_id === $user->id);
+    }
+
+    /**
+     * Only the owner hands the team over, and only to a current admin.
+     */
+    public function transferOwnership(User $user, Team $team): bool
+    {
+        return ! $team->is_personal && $team->owner_user_id === $user->id;
     }
 }

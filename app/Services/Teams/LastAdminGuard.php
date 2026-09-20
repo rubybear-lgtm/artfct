@@ -45,4 +45,19 @@ final class LastAdminGuard
             ]);
         }
     }
+
+    /**
+     * The owner cannot leave, be removed or be demoted until ownership is
+     * transferred.
+     *
+     * @throws ValidationException
+     */
+    public function ensureNotOwner(Team $team, User $user): void
+    {
+        if ($team->owner_user_id !== null && $team->owner_user_id === $user->id) {
+            throw ValidationException::withMessages([
+                'role' => __('Transfer ownership to another admin first.'),
+            ]);
+        }
+    }
 }

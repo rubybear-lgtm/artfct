@@ -26,6 +26,9 @@ class TeamMemberController extends Controller
 
         $newRole = TeamRole::from($request->validated('role'));
 
+        if ($newRole !== TeamRole::Admin) {
+            app(LastAdminGuard::class)->ensureNotOwner($team, $user);
+        }
         app(LastAdminGuard::class)->ensureAdminRemains($team, $user, $newRole);
 
         $team->memberships()
@@ -46,6 +49,8 @@ class TeamMemberController extends Controller
     public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
     {
         Gate::authorize('removeMember', $team);
+
+        app(LastAdminGuard::class)->ensureNotOwner($team, $user);
 
         $memberCount = $team->memberships()->count();
         $memberRole = $team->memberships()->where('user_id', $user->id)->value('role');

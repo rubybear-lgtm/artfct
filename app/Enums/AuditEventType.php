@@ -27,4 +27,5 @@ enum AuditEventType: string
     case RetentionApplied = 'retention.applied';
     case LegalHoldApplied = 'legal_hold.applied';
     case SearchPerformed = 'search.performed';
+    case OwnershipTransferred = 'owner.transferred';
 }
