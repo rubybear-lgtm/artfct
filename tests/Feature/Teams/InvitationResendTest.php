@@ -6,7 +6,7 @@ use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use Illuminate\Support\Facades\Notification;
 
-function pendingInvitation(Team $team, string $email = 'new@example.com'): TeamInvitation
+function resendableInvitation(Team $team, string $email = 'new@example.com'): TeamInvitation
 {
     return $team->invitations()->create([
         'email' => $email,
@@ -20,7 +20,7 @@ test('resending_emails_the_invitee_again_and_extends_expiry', function () {
     Notification::fake();
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
-    $invitation = pendingInvitation($team);
+    $invitation = resendableInvitation($team);
 
     test()->actingAs($admin)->post(route('teams.invitations.resend', [$team, $invitation]))->assertRedirect();
 
@@ -33,7 +33,7 @@ test('viewers_cannot_resend', function () {
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
     $viewer = memberOfTeam($team, TeamRole::Viewer);
-    $invitation = pendingInvitation($team);
+    $invitation = resendableInvitation($team);
 
     test()->actingAs($viewer)->post(route('teams.invitations.resend', [$team, $invitation]))->assertForbidden();
 
@@ -46,7 +46,7 @@ test('an_invitation_from_another_team_cannot_be_resent', function () {
     $admin = memberOfTeam($team, TeamRole::Admin);
     $other = Team::factory()->create();
     memberOfTeam($other, TeamRole::Admin);
-    $foreign = pendingInvitation($other);
+    $foreign = resendableInvitation($other);
 
     test()->actingAs($admin)->post(route('teams.invitations.resend', [$team, $foreign]))->assertNotFound();
 });
