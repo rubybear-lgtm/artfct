@@ -167,3 +167,18 @@ test('governance_page_renders_for_admins', function () {
         ->assertSee('Legal hold')
         ->assertNoJavaScriptErrors();
 });
+
+test('authentication_page_renders_with_mode_previews', function () {
+    config(['services.polis' => []]);
+    $owner = User::factory()->create(['email' => 'sso-admin@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'SSO Co');
+
+    test()->actingAs($owner);
+
+    visit(route('teams.authentication.show', $team))
+        ->assertSee('Authentication')
+        ->assertSee('Verified domains')
+        ->assertSee('Enterprise feature')
+        ->assertSee('no verified domain')
+        ->assertNoJavaScriptErrors();
+});
