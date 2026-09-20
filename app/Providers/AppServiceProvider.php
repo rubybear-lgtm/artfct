@@ -83,11 +83,11 @@ class AppServiceProvider extends ServiceProvider
         );
         $this->app->singleton(
             ArtifactDirectory::class,
-            app()->environment('testing') ? FakeArtifactDirectory::class : HttpArtifactDirectory::class,
+            app()->environment('testing') ? FakeArtifactDirectory::class : fn (): HttpArtifactDirectory => HttpArtifactDirectory::default(),
         );
         $this->app->singleton(
             ArtifactContentSource::class,
-            app()->environment('testing') ? FakeArtifactContentSource::class : HttpArtifactContentSource::class,
+            app()->environment('testing') ? FakeArtifactContentSource::class : fn (): HttpArtifactContentSource => HttpArtifactContentSource::default(),
         );
         $this->app->singleton(
             TenantProvisionerContract::class,
