@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,13 @@ Route::inertia('/', 'welcome', [
 ])->name('home');
 
 Route::get('/docs', DocsController::class)->name('docs');
+
+Route::get('/terms', [LegalController::class, 'terms'])->name('terms');
+Route::get('/privacy', [LegalController::class, 'privacy'])->name('privacy');
+Route::middleware('auth')->group(function () {
+    Route::get('/terms/accept', [LegalController::class, 'showAcceptance'])->name('terms.accept.show');
+    Route::post('/terms/accept', [LegalController::class, 'accept'])->name('terms.accept');
+});
 
 Route::inertia('/blog', 'blog', [
     'meta' => [

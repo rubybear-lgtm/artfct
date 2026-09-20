@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\TeamPermission;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 
@@ -79,6 +80,10 @@ class TeamPolicy
      */
     public function inviteMember(User $user, Team $team): bool
     {
+        if (! config('teams.members_can_invite') && $user->teamRole($team) !== TeamRole::Admin) {
+            return false;
+        }
+
         return $user->hasTeamPermission($team, TeamPermission::CreateInvitation);
     }
 

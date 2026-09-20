@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CacheControl;
+use App\Http\Middleware\EnsureTermsAccepted;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NoIndexOutsideProduction;
 use App\Http\Middleware\SetTeamUrlDefaults;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             NoIndexOutsideProduction::class,
             AddLinkHeadersForPreloadedAssets::class,
             SetTeamUrlDefaults::class,
+            EnsureTermsAccepted::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

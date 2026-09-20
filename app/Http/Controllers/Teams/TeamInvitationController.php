@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class TeamInvitationController extends Controller
@@ -26,6 +27,10 @@ class TeamInvitationController extends Controller
     public function store(CreateTeamInvitationRequest $request, Team $team): RedirectResponse
     {
         Gate::authorize('inviteMember', $team);
+
+        if ($team->invitations()->whereNull('accepted_at')->count() >= (int) config('teams.max_pending_invitations')) {
+            throw ValidationException::withMessages(['email' => __('This team has too many pending invitations. Cancel some before inviting more.')]);
+        }
 
         // An invitation can never grant more privilege than the inviter holds.
         abort_unless(

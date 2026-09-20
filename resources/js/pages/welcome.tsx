@@ -2077,6 +2077,24 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             >
                                 blog
                             </Link>
+                            <Link
+                                href="/terms"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                terms
+                            </Link>
+                            <Link
+                                href="/privacy"
+                                style={{
+                                    color: S.base1,
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                privacy
+                            </Link>
                             <a
                                 href={
                                     auth?.user && currentTeam
