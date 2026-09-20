@@ -109,6 +109,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 'admin' && (
                                 <>
                                     <Link
+                                        href={`/settings/teams/${team.slug}/authentication`}
+                                    >
+                                        Authentication
+                                    </Link>
+                                    <Link
                                         href={`/settings/teams/${team.slug}/governance`}
                                     >
                                         Governance

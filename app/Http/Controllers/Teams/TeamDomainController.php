@@ -27,7 +27,7 @@ class TeamDomainController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Domain added. Add the TXT record to verify it.')]);
 
-        return to_route('teams.edit', ['team' => $team->slug]);
+        return to_route('teams.authentication.show', ['team' => $team->slug]);
     }
 
     /**
@@ -47,7 +47,7 @@ class TeamDomainController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Domain verified.')]);
 
-        return to_route('teams.edit', ['team' => $team->slug]);
+        return to_route('teams.authentication.show', ['team' => $team->slug]);
     }
 
     /**
@@ -63,6 +63,6 @@ class TeamDomainController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Domain removed.')]);
 
-        return to_route('teams.edit', ['team' => $team->slug]);
+        return to_route('teams.authentication.show', ['team' => $team->slug]);
     }
 }

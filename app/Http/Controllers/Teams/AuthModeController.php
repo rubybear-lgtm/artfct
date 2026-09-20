@@ -51,6 +51,6 @@ class AuthModeController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Auth mode updated.')]);
 
-        return to_route('teams.edit', ['team' => $team->slug]);
+        return to_route('teams.authentication.show', ['team' => $team->slug]);
     }
 }

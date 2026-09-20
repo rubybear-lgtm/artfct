@@ -38,31 +38,69 @@ final class AuthModeTransitioner
             return;
         }
 
-        if ($this->movesForward($team->auth_mode, $target)) {
-            if (! $team->hasVerifiedDomain()) {
-                throw new AuthModeTransitionException(
-                    "Cannot move auth_mode to [{$target->value}]: the org has no verified domain."
-                );
-            }
-
-            if ($target === AuthMode::Polis) {
-                if (! $this->hasAdminWithPolisIdentity($team)) {
-                    throw new AuthModeTransitionException(
-                        'Cannot move auth_mode to [polis]: no admin holds an active Polis identity — this would lock every admin out of SSO configuration.'
-                    );
-                }
-
-                $atRisk = $this->membersWithoutPolisIdentity($team);
-                if ($atRisk->isNotEmpty() && ! $confirmed) {
-                    $names = $atRisk->pluck('email')->implode(', ');
-                    throw new AuthModeTransitionException(
-                        "Cannot move auth_mode to [polis] without confirmation: {$atRisk->count()} member(s) without a Polis identity will lose access ({$names}). Pass confirmed: true to proceed."
-                    );
-                }
-            }
-        }
+        $this->assertAllowed($team, $target, $confirmed);
 
         $team->forceFill(['auth_mode' => $target])->save();
+    }
+
+    /**
+     * What moving to `$target` would do, without doing it: whether it is
+     * allowed, why not, and who would lose access. Uses the same checks as
+     * `transition()` and never writes.
+     *
+     * @return array{allowed: bool, reason: string|null, needsConfirmation: bool, atRisk: list<string>}
+     */
+    public function preview(Team $team, AuthMode $target): array
+    {
+        $atRisk = $target === AuthMode::Polis && $this->movesForward($team->auth_mode, $target)
+            ? $this->membersWithoutPolisIdentity($team)->pluck('email')->values()->all()
+            : [];
+
+        if ($target === $team->auth_mode) {
+            return ['allowed' => true, 'reason' => null, 'needsConfirmation' => false, 'atRisk' => []];
+        }
+
+        try {
+            $this->assertAllowed($team, $target, true);
+        } catch (AuthModeTransitionException $exception) {
+            return ['allowed' => false, 'reason' => $exception->getMessage(), 'needsConfirmation' => false, 'atRisk' => $atRisk];
+        }
+
+        return ['allowed' => true, 'reason' => null, 'needsConfirmation' => $atRisk !== [], 'atRisk' => $atRisk];
+    }
+
+    /**
+     * @throws AuthModeTransitionException
+     */
+    private function assertAllowed(Team $team, AuthMode $target, bool $confirmed): void
+    {
+        if (! $this->movesForward($team->auth_mode, $target)) {
+            return;
+        }
+
+        if (! $team->hasVerifiedDomain()) {
+            throw new AuthModeTransitionException(
+                "Cannot move auth_mode to [{$target->value}]: the org has no verified domain."
+            );
+        }
+
+        if ($target !== AuthMode::Polis) {
+            return;
+        }
+
+        if (! $this->hasAdminWithPolisIdentity($team)) {
+            throw new AuthModeTransitionException(
+                'Cannot move auth_mode to [polis]: no admin holds an active Polis identity — this would lock every admin out of SSO configuration.'
+            );
+        }
+
+        $atRisk = $this->membersWithoutPolisIdentity($team);
+        if ($atRisk->isNotEmpty() && ! $confirmed) {
+            $names = $atRisk->pluck('email')->implode(', ');
+            throw new AuthModeTransitionException(
+                "Cannot move auth_mode to [polis] without confirmation: {$atRisk->count()} member(s) without a Polis identity will lose access ({$names}). Pass confirmed: true to proceed."
+            );
+        }
     }
 
     /**

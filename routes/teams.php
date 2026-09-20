@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Teams\AuditLogController;
+use App\Http\Controllers\Teams\AuthenticationController;
 use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\BillingController;
 use App\Http\Controllers\Teams\CollectionController;
@@ -78,6 +79,9 @@ Route::middleware(['auth'])->group(function () {
         Route::post('settings/teams/{team}/invitations/{invitation}/resend', [TeamInvitationController::class, 'resend'])->middleware('throttle:invitations')->name('teams.invitations.resend');
         Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
 
+        Route::get('settings/teams/{team}/authentication', [AuthenticationController::class, 'show'])->name('teams.authentication.show');
+        Route::post('settings/teams/{team}/authentication/connection', [AuthenticationController::class, 'storeConnection'])->name('teams.authentication.connection.store');
+        Route::delete('settings/teams/{team}/authentication/connection', [AuthenticationController::class, 'destroyConnection'])->name('teams.authentication.connection.destroy');
         Route::patch('settings/teams/{team}/auth-mode', [AuthModeController::class, 'update'])->name('teams.auth-mode.update');
 
         Route::patch('settings/teams/{team}/retention', [GovernanceController::class, 'updateRetention'])->name('teams.retention.update');
