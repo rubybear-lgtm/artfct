@@ -658,7 +658,7 @@ final class AuthorizationServerController extends Controller
 
     private function issuer(): string
     {
-        $issuer = rtrim((string) config('services.org_jwt.issuer'), '/');
+        $issuer = rtrim((string) (config('services.oauth.issuer') ?: config('services.org_jwt.issuer')), '/');
 
         return $issuer !== '' ? $issuer : url('/');
     }

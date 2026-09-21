@@ -41,6 +41,13 @@ return [
         'api_token' => env('CLOUDFLARE_EMAIL_API_TOKEN'),
     ],
 
+    'oauth' => [
+        // The authorization server's own issuer URL (RFC 8414). It must match
+        // the host clients fetch the metadata from, so it is separate from the
+        // org-token `iss` claim, which is a fixed contract with the Worker.
+        'issuer' => env('OAUTH_ISSUER'),
+    ],
+
     'org_jwt' => [
         // PEM, or base64 of the PEM (`ORG_JWT_PRIVATE_KEY_B64`) so it survives env-var line handling.
         'private_key' => env('ORG_JWT_PRIVATE_KEY_B64')

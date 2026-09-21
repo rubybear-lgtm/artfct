@@ -57,6 +57,20 @@ test('OAuth metadata follows the configured JWT issuer contract', function () {
         ->assertJsonPath('authorization_servers.0', 'https://issuer.example.test');
 });
 
+test('a dedicated OAuth issuer overrides the org-token issuer in discovery documents', function () {
+    config([
+        'services.org_jwt.issuer' => 'https://artfct.dev',
+        'services.oauth.issuer' => 'https://staging.example.test/',
+    ]);
+
+    $this->getJson('/.well-known/oauth-authorization-server')
+        ->assertOk()
+        ->assertJsonPath('issuer', 'https://staging.example.test');
+    $this->getJson('/.well-known/oauth-protected-resource')
+        ->assertOk()
+        ->assertJsonPath('authorization_servers.0', 'https://staging.example.test');
+});
+
 test('registers a public client and pins its redirect URIs', function () {
     $response = $this->postJson('/oauth/register', [
         'client_name' => 'Acme Agent',
