@@ -123,17 +123,23 @@ revoked-credential, or malformed-request errors.
 
 ## Staging verification
 
-The live smoke suite must use two isolated staging organizations:
+The live smoke suite must use two isolated staging organizations, and the
+signed-in user must be a member of both. By default it authenticates through
+OAuth with PKCE: it opens the consent page for each organization in turn, you
+approve, and the tokens stay in memory (nothing is written to disk or logs).
 
 ```sh
 MCP_LIVE_BASE_URL=https://staging.artfct.dev \
-MCP_LIVE_TOKEN_A=... \
-MCP_LIVE_TOKEN_B=... \
 MCP_LIVE_EXPECTED_ORG_A=acme \
 MCP_LIVE_EXPECTED_ORG_B=beta \
-MCP_LIVE_PRIVATE_ARTIFACT_A=... \
 npm run mcp:live
 ```
+
+Without `MCP_LIVE_PRIVATE_ARTIFACT_A` the suite deploys a secure fixture as
+organization A and checks that organization B cannot read it. For
+non-interactive runs (the `mcp-live` workflow) set `MCP_LIVE_TOKEN_A` and
+`MCP_LIVE_TOKEN_B` instead, plus `MCP_LIVE_PRIVATE_ARTIFACT_A` if you want to
+reuse an existing artifact.
 
 The suite verifies protocol negotiation, session continuity, the exact tool
 catalog, self-describing tool metadata, usage metadata, collection discovery,

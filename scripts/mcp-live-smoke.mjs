@@ -1,9 +1,25 @@
+import { createServer } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
+
+/**
+ * Credentials come from OAuth (PKCE, browser consent per organization) unless
+ * both MCP_LIVE_TOKEN_A and MCP_LIVE_TOKEN_B are set, which keeps
+ * non-interactive CI runs working. OAuth tokens live in memory only.
+ */
 const baseUrl = requiredEnv('MCP_LIVE_BASE_URL').replace(/\/$/, '');
-const tokenA = requiredEnv('MCP_LIVE_TOKEN_A');
-const tokenB = requiredEnv('MCP_LIVE_TOKEN_B');
 const expectedOrgA = requiredEnv('MCP_LIVE_EXPECTED_ORG_A');
 const expectedOrgB = requiredEnv('MCP_LIVE_EXPECTED_ORG_B');
-const privateArtifactA = requiredEnv('MCP_LIVE_PRIVATE_ARTIFACT_A');
+const usingEnvTokens = Boolean(
+    process.env.MCP_LIVE_TOKEN_A?.trim() &&
+    process.env.MCP_LIVE_TOKEN_B?.trim(),
+);
+const tokenA = usingEnvTokens
+    ? { access: requiredEnv('MCP_LIVE_TOKEN_A') }
+    : await oauthLogin(expectedOrgA);
+const tokenB = usingEnvTokens
+    ? { access: requiredEnv('MCP_LIVE_TOKEN_B') }
+    : await oauthLogin(expectedOrgB);
 const concurrency = optionalInteger('MCP_LIVE_CONCURRENCY', 8, 2, 32);
 
 const supportedTools = new Set([
@@ -24,6 +40,10 @@ const client = {
 
 const sessionA = await initialize(tokenA, expectedOrgA);
 const sessionB = await initialize(tokenB, expectedOrgB);
+
+const privateArtifactA =
+    process.env.MCP_LIVE_PRIVATE_ARTIFACT_A?.trim() ||
+    (await deployPrivateFixture(tokenA, sessionA));
 
 const tools = await rpc(tokenA, sessionA, 'tools/list', {});
 const toolNames = new Set((tools.result?.tools ?? []).map((tool) => tool.name));
@@ -150,6 +170,23 @@ console.log(
     }),
 );
 
+async function deployPrivateFixture(token, session) {
+    const deployed = await rpc(token, session, 'tools/call', {
+        name: 'deploy_to_canvas',
+        arguments: {
+            html: '<!doctype html><title>mcp-live fixture</title><p>isolation fixture</p>',
+            tier: 'secure',
+        },
+    });
+    const id = deployed.result?.structuredContent?.id;
+    assert(
+        typeof id === 'string' && id !== '',
+        'Could not deploy the private isolation fixture for organization A',
+    );
+
+    return id;
+}
+
 async function initialize(token, expectedOrg) {
     const response = await rpc(token, null, 'initialize', {
         protocolVersion: '2025-11-25',
@@ -185,7 +222,7 @@ async function assertConnection(token, session, expectedOrganization) {
 async function rpc(token, session, method, params) {
     const headers = {
         Accept: 'application/json, text/event-stream',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${token.access}`,
         'Content-Type': 'application/json',
     };
 
@@ -193,16 +230,25 @@ async function rpc(token, session, method, params) {
         headers['MCP-Session-Id'] = session.id;
     }
 
-    const response = await fetch(`${baseUrl}/mcp`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: crypto.randomUUID(),
-            method,
-            params,
-        }),
-    });
+    const send = () =>
+        fetch(`${baseUrl}/mcp`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: crypto.randomUUID(),
+                method,
+                params,
+            }),
+        });
+
+    let response = await send();
+
+    if (response.status === 401 && token.refresh) {
+        await refresh(token);
+        headers.Authorization = `Bearer ${token.access}`;
+        response = await send();
+    }
 
     if (!response.ok) {
         throw new Error(`${method} failed with HTTP ${response.status}`);
@@ -251,5 +297,134 @@ function optionalInteger(name, fallback, minimum, maximum) {
 function assert(condition, message) {
     if (!condition) {
         throw new Error(message);
+    }
+}
+
+async function oauthLogin(organization) {
+    const verifier = randomBytes(48).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const state = randomBytes(16).toString('hex');
+    const redirectUri = await new Promise((resolve, reject) => {
+        const server = createServer();
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => resolve(server));
+    }).then((server) => {
+        oauthLogin.server = server;
+
+        return `http://127.0.0.1:${server.address().port}/callback`;
+    });
+
+    const authorizeUrl = new URL(`${baseUrl}/oauth/authorize`);
+    authorizeUrl.search = new URLSearchParams({
+        response_type: 'code',
+        client_id: 'artfct-cli',
+        redirect_uri: redirectUri,
+        scope: 'artifacts:read artifacts:deploy collections:read usage:read',
+        state,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        team: organization,
+    }).toString();
+
+    console.error(
+        `Approve access for organization "${organization}" in your browser:\n${authorizeUrl}`,
+    );
+    openBrowser(authorizeUrl.toString());
+
+    const code = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+            () =>
+                reject(
+                    new Error(
+                        `Timed out waiting for consent (${organization})`,
+                    ),
+                ),
+            300_000,
+        );
+        oauthLogin.server.on('request', (request, response) => {
+            const url = new URL(request.url, redirectUri);
+
+            if (url.pathname !== '/callback') {
+                response.writeHead(404).end();
+
+                return;
+            }
+
+            clearTimeout(timeout);
+            response.writeHead(200, { 'Content-Type': 'text/plain' });
+            response.end('Artfct live smoke: you can close this tab.');
+
+            if (url.searchParams.get('state') !== state) {
+                reject(new Error('OAuth state mismatch'));
+            } else if (url.searchParams.get('error')) {
+                reject(
+                    new Error(
+                        `Consent denied: ${url.searchParams.get('error')}`,
+                    ),
+                );
+            } else {
+                resolve(url.searchParams.get('code'));
+            }
+        });
+    }).finally(() => oauthLogin.server.close());
+
+    const token = await tokenRequest({
+        grant_type: 'authorization_code',
+        code,
+        client_id: 'artfct-cli',
+        redirect_uri: redirectUri,
+        code_verifier: verifier,
+    });
+    assert(
+        token.organization === organization,
+        `Consent resolved to "${token.organization}" instead of "${organization}"`,
+    );
+
+    return { access: token.access_token, refresh: token.refresh_token };
+}
+
+async function refresh(token) {
+    const renewed = await tokenRequest({
+        grant_type: 'refresh_token',
+        refresh_token: token.refresh,
+        client_id: 'artfct-cli',
+    });
+    token.access = renewed.access_token;
+    token.refresh = renewed.refresh_token;
+}
+
+async function tokenRequest(body) {
+    const response = await fetch(`${baseUrl}/oauth/token`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            `OAuth token request failed with HTTP ${response.status}`,
+        );
+    }
+
+    return response.json();
+}
+
+function openBrowser(url) {
+    const command =
+        process.platform === 'darwin'
+            ? 'open'
+            : process.platform === 'win32'
+              ? 'explorer'
+              : 'xdg-open';
+
+    try {
+        spawn(command, [url], { stdio: 'ignore', detached: true })
+            .on('error', () => {})
+            .unref();
+    } catch {
+        // The URL is already printed; the user can open it by hand.
     }
 }
