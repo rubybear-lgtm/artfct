@@ -5,6 +5,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('.well-known/oauth-authorization-server', [AuthorizationServerController::class, 'authorizationServerMetadata'])
     ->name('oauth.metadata');
+Route::get('.well-known/oauth-authorization-server/{path}', [AuthorizationServerController::class, 'authorizationServerMetadata'])
+    ->where('path', 'mcp')
+    ->name('oauth.metadata.nested');
 Route::get('.well-known/oauth-protected-resource', [AuthorizationServerController::class, 'protectedResourceMetadata'])
     ->name('oauth.resource-metadata');
 Route::get('.well-known/oauth-protected-resource/{path}', [AuthorizationServerController::class, 'protectedResourceMetadata'])

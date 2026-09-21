@@ -405,3 +405,36 @@ test('the path-suffixed protected-resource document names the same authorization
 
     $this->getJson('/.well-known/oauth-protected-resource/anything-else')->assertNotFound();
 });
+
+test('browser-based MCP clients can reach discovery, registration, token and MCP endpoints cross-origin', function () {
+    $origin = 'http://localhost:6274';
+
+    foreach (['/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server'] as $uri) {
+        $this->withHeaders(['Origin' => $origin])->get($uri)
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    foreach (['/oauth/register', '/oauth/token', '/oauth/revoke', '/mcp'] as $uri) {
+        $this->withHeaders([
+            'Origin' => $origin,
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'authorization,content-type,mcp-protocol-version',
+        ])->call('OPTIONS', $uri)
+            ->assertSuccessful()
+            ->assertHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    $this->withHeaders(['Origin' => $origin])->postJson('/mcp', [])
+        ->assertUnauthorized()
+        ->assertHeader('Access-Control-Allow-Origin', '*')
+        ->assertHeader('Access-Control-Expose-Headers');
+
+    expect($this->withHeaders(['Origin' => $origin])->get('/oauth/authorize')->headers->has('Access-Control-Allow-Origin'))->toBeFalse();
+    expect($this->withHeaders(['Origin' => $origin])->get('/login')->headers->has('Access-Control-Allow-Origin'))->toBeFalse();
+});
+
+test('the path-inserted authorization-server document is served for the MCP resource only', function () {
+    $this->getJson('/.well-known/oauth-authorization-server/mcp')->assertOk()->assertJsonPath('code_challenge_methods_supported.0', 'S256');
+    $this->getJson('/.well-known/oauth-authorization-server/other')->assertNotFound();
+});
