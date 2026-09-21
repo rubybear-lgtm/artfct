@@ -88,3 +88,33 @@ test('the_search_page_returns_the_teams_matches_and_flags_canonical_ones', funct
             ->where('results.0.id', 'billing-dash')
             ->where('results.0.canonical', true));
 });
+
+test('provenance_and_date_filters_narrow_the_results', function () {
+    config(['indexing.enabled' => true]);
+    $team = Team::factory()->create(['slug' => 'filter-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    $text = 'billing dashboard revenue overview';
+    foreach ([['old-cursor', 'cursor', 10], ['new-claude', 'claude', 1]] as [$id, $agent, $daysAgo]) {
+        $createdAt = now()->subDays($daysAgo)->toIso8601String();
+        $directory->seedArtifact([
+            'id' => $id, 'org_id' => $team->slug, 'user_id' => 1, 'title' => "Artifact {$id}", 'description' => 'd',
+            'content_hash' => md5($id), 'created_at' => $createdAt, 'revoked_at' => null,
+            'provenance' => ['agent' => $agent, 'repo_url' => 'https://github.com/acme/misc', 'commit_sha' => 'abc'],
+        ]);
+        $index->upsertChunks($team->slug, $id, [new VectorChunk(
+            text: $text, vector: app(EmbeddingsContract::class)->embed([$text])[0], artifactId: $id, orgId: $team->slug,
+            createdAt: $createdAt, agent: $agent, repoUrl: 'https://github.com/acme/misc', commitSha: 'abc',
+        )]);
+    }
+
+    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => $text, 'agent' => 'claude']))
+        ->assertInertia(fn (Assert $page) => $page->has('results', 1)->where('results.0.id', 'new-claude'));
+
+    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => $text, 'since' => now()->subDays(3)->toDateString()]))
+        ->assertInertia(fn (Assert $page) => $page->has('results', 1)->where('results.0.id', 'new-claude')->where('filters.since', now()->subDays(3)->toDateString()));
+});

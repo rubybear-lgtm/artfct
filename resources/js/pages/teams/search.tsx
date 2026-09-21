@@ -23,7 +23,13 @@ interface Result {
 interface Props {
     team: { slug: string; name: string };
     indexingEnabled: boolean;
-    filters: { q: string; agent: string; repo: string; collection: string };
+    filters: {
+        q: string;
+        agent: string;
+        repo: string;
+        collection: string;
+        since: string;
+    };
     collections: { name: string; canonical: boolean }[];
     results: Result[];
     searched: boolean;
@@ -93,6 +99,16 @@ export default function Search({
                     value={form.repo}
                     disabled={!indexingEnabled}
                     onChange={(e) => setForm({ ...form, repo: e.target.value })}
+                />
+                <Input
+                    aria-label="Created since"
+                    type="date"
+                    className="w-40"
+                    value={form.since}
+                    disabled={!indexingEnabled}
+                    onChange={(e) =>
+                        setForm({ ...form, since: e.target.value })
+                    }
                 />
                 {collections.length > 0 && (
                     <select

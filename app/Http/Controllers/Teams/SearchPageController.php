@@ -27,6 +27,7 @@ class SearchPageController extends Controller
             'agent' => ['nullable', 'string', 'max:100'],
             'repo' => ['nullable', 'string', 'max:255'],
             'collection' => ['nullable', 'string', 'max:255'],
+            'since' => ['nullable', 'date'],
         ]);
 
         $canonicalIds = CollectionArtifact::query()
@@ -56,6 +57,7 @@ class SearchPageController extends Controller
                         'agent' => $filters['agent'] ?? null,
                         'repo' => $filters['repo'] ?? null,
                         'collection' => $filters['collection'] ?? null,
+                        'since' => $filters['since'] ?? null,
                     ],
                     20,
                     actor: (string) $request->user()->id,
@@ -75,6 +77,7 @@ class SearchPageController extends Controller
                 'agent' => $filters['agent'] ?? '',
                 'repo' => $filters['repo'] ?? '',
                 'collection' => $filters['collection'] ?? '',
+                'since' => $filters['since'] ?? '',
             ],
             'collections' => Collection::query()->where('team_id', $team->id)->orderBy('name')->get(['name', 'canonical']),
             'results' => $results,
