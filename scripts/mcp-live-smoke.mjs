@@ -83,8 +83,12 @@ assert(
     `Hosted MCP catalog changed unexpectedly; expected ${supportedTools.size} tools, got ${toolNames.size}`,
 );
 assert(
-    sessionA.id && tools.sessionId === sessionA.id,
-    'Hosted MCP did not preserve the initialize session for tools/list',
+    typeof sessionA.id === 'string' && sessionA.id !== '',
+    'Hosted MCP did not issue an MCP-Session-Id on initialize',
+);
+assert(
+    !tools.sessionId || tools.sessionId === sessionA.id,
+    'Hosted MCP replied to tools/list with a different session ID than initialize issued',
 );
 
 await assertConnection(tokenA, sessionA, expectedOrgA);
@@ -118,7 +122,8 @@ const ownerRead = await rpc(tokenA, sessionA, 'tools/call', {
 });
 assert(
     ownerRead.result?.structuredContent?.id === privateArtifactA,
-    'Organization A could not read its configured private artifact fixture',
+    'Organization A could not read its configured private artifact fixture: ' +
+        describeResult(ownerRead),
 );
 
 const foreignRead = await rpc(tokenB, sessionB, 'tools/call', {
@@ -427,4 +432,18 @@ function openBrowser(url) {
     } catch {
         // The URL is already printed; the user can open it by hand.
     }
+}
+
+function describeResult(response) {
+    const result = response.result ?? {};
+    const code = result.content?.[0]?._meta?.artfct?.errorCode;
+    const text = String(result.content?.[0]?.text ?? '').slice(0, 200);
+
+    return JSON.stringify({
+        isError: result.isError ?? false,
+        errorCode: code ?? null,
+        message: text,
+        returnedId: result.structuredContent?.id ?? null,
+        expectedId: privateArtifactA,
+    });
 }

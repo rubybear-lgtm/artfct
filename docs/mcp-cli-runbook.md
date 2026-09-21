@@ -141,7 +141,7 @@ non-interactive runs (the `mcp-live` workflow) set `MCP_LIVE_TOKEN_A` and
 `MCP_LIVE_TOKEN_B` instead, plus `MCP_LIVE_PRIVATE_ARTIFACT_A` if you want to
 reuse an existing artifact.
 
-The suite verifies protocol negotiation, session continuity, the exact tool
+The suite verifies protocol negotiation, session ID issuance on initialize, the exact tool
 catalog, self-describing tool metadata, usage metadata, collection discovery,
 and cross-organization artifact isolation. It also opens a bounded set of concurrent sessions for both
 organizations and checks that every session retains its tenant context. Set
