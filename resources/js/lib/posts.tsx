@@ -28,6 +28,8 @@ export interface Post {
     title: string;
     tag: string;
     description: string;
+    /** Header image for the article, relative to /public. */
+    image?: string;
     body: React.ReactNode;
 }
 
@@ -136,6 +138,7 @@ export const POSTS: Post[] = [
         date: '2026-06-04',
         title: 'Four developer tools, one skill install',
         tag: 'skills',
+        image: '/images/blog/developer-tools.png',
         description:
             'A walkthrough of the artfct developer-tools skill and the four utilities it deploys.',
         body: (
@@ -220,6 +223,7 @@ export const POSTS: Post[] = [
         date: '2026-06-04',
         title: 'AI-generated slide decks, deployed in one step',
         tag: 'skills',
+        image: '/images/blog/ai-presentations.png',
         description:
             'How the artfct presentation skill turns a prompt into a shareable HTML deck.',
         body: (
@@ -297,6 +301,7 @@ export const POSTS: Post[] = [
         date: '2026-06-06',
         title: 'Share Mermaid diagrams as live links — no screenshots needed',
         tag: 'skills',
+        image: '/images/blog/mermaid-diagrams.png',
         description:
             'Why the artfct Mermaid skill exists and how it helps people share diagrams faster.',
         body: (

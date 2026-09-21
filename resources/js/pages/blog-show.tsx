@@ -68,6 +68,25 @@ export default function BlogShow({ post }: BlogShowProps) {
                         <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
                             {post.description}
                         </p>
+                        {fullPost.image && (
+                            <picture>
+                                {/* Written alongside each PNG by `npm run images:webp`. */}
+                                <source
+                                    srcSet={fullPost.image.replace(
+                                        /\.png$/,
+                                        '.webp',
+                                    )}
+                                    type="image/webp"
+                                />
+                                <img
+                                    src={fullPost.image}
+                                    alt=""
+                                    width={1024}
+                                    height={576}
+                                    className="mt-9 w-full rounded-[6px]"
+                                />
+                            </picture>
+                        )}
                     </header>
 
                     <div className="pt-10">{fullPost.body}</div>

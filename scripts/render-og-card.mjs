@@ -170,15 +170,23 @@ await page.evaluate(() => document.fonts.ready);
 await page.screenshot({ path: OUT });
 await browser.close();
 
-const [w, h] = execFileSync('sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', OUT])
-    .toString()
-    .trim()
-    .split('\n')
-    .map((line) => line.split(': ')[1]);
+// `sips` prints the file path first, so match by key rather than by line position.
+const dimensions = Object.fromEntries(
+    execFileSync('sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', OUT])
+        .toString()
+        .split('\n')
+        .map((line) => line.match(/^\s*(pixel\w+):\s*(\d+)\s*$/))
+        .filter(Boolean)
+        .map((match) => [match[1], Number(match[2])]),
+);
 
-if (Number(w) !== WIDTH || Number(h) !== HEIGHT) {
-    console.error(`Expected ${WIDTH}x${HEIGHT}, rendered ${w}x${h}.`);
+if (dimensions.pixelWidth !== WIDTH || dimensions.pixelHeight !== HEIGHT) {
+    console.error(
+        `Expected ${WIDTH}x${HEIGHT}, rendered ${dimensions.pixelWidth}x${dimensions.pixelHeight}.`,
+    );
     process.exit(1);
 }
 
-console.log(`Rendered public/og-image.png at ${w}x${h}`);
+console.log(
+    `Rendered public/og-image.png at ${dimensions.pixelWidth}x${dimensions.pixelHeight}`,
+);

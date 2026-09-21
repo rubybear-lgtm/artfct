@@ -21,11 +21,11 @@
 
         {{-- OG / social meta --}}
         <meta property="og:site_name" content="artfct" />
-        <meta property="og:image" content="{{ asset('og-image.svg') }}" />
+        <meta property="og:image" content="{{ asset('og-image.png') }}" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content="{{ asset('og-image.svg') }}" />
+        <meta name="twitter:image" content="{{ asset('og-image.png') }}" />
 
         {{-- canonical --}}
         <link rel="canonical" href="{{ url()->current() }}" />
