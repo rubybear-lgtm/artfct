@@ -5,6 +5,7 @@ use App\Models\Collection;
 use App\Models\CollectionArtifact;
 use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
+use Illuminate\Support\Facades\Http;
 
 function collectionDirectoryToken(Team $team): string
 {
@@ -72,4 +73,27 @@ test('example', function () {
     $response = $this->get('/');
 
     $response->assertStatus(200);
+});
+
+test('the REST API only adds artifacts the callers org can see', function () {
+    $team = Team::factory()->create();
+    configureSigning(testSigningKey());
+    $member = memberOfTeam($team, TeamRole::Member);
+    $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'Beta', 'created_by_user_id' => $member->id]);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/real123' => Http::response(['id' => 'real123'], 200),
+        'worker.test/v1/artifacts/ghost123' => Http::response([], 404),
+        'worker.test/v1/artifacts/down123' => Http::response([], 500),
+    ]);
+
+    $this->withToken($token)->postJson("/api/collections/{$collection->id}/artifacts", ['artifact_id' => 'real123'])
+        ->assertOk()->assertJsonPath('artifact_id', 'real123');
+    $this->withToken($token)->postJson("/api/collections/{$collection->id}/artifacts", ['artifact_id' => 'ghost123'])
+        ->assertNotFound()->assertJsonPath('error', 'artifact_not_found');
+    $this->withToken($token)->postJson("/api/collections/{$collection->id}/artifacts", ['artifact_id' => 'down123'])
+        ->assertStatus(503);
+
+    expect(CollectionArtifact::query()->where('collection_id', $collection->id)->pluck('artifact_id')->all())->toBe(['real123']);
 });

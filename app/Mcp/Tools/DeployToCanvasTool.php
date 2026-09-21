@@ -26,7 +26,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Encrypt and deploy a self-contained HTML artifact to the authenticated workspace.')]
+#[Description('Deprecated: use deploy_artifact. Encrypts and publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count.')]
 #[Name('deploy_to_canvas')]
 #[IsReadOnly(false)]
 #[IsIdempotent(false)]
@@ -41,7 +41,8 @@ final class DeployToCanvasTool extends Tool
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
-            'compatibility' => 'stable',
+            'compatibility' => 'deprecated',
+            'replacedBy' => 'deploy_artifact',
             'examples' => [[
                 'description' => 'Publish a generated dashboard for review.',
                 'arguments' => ['html' => '<!doctype html><title>Dashboard</title>', 'tier' => 'public'],

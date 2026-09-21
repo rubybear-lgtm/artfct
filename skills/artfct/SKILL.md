@@ -1,11 +1,11 @@
 ---
 name: artfct
-description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_to_canvas MCP tool, tier selection, and best practices for self-contained HTML.
+description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_artifact and deploy_to_canvas MCP tools, tier selection, and best practices for self-contained HTML.
 ---
 
 # artfct — Artifact Deployment Skill
 
-artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. When `deploy_to_canvas` is available, deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence.
+artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. When `deploy_artifact` is available (a signed-in workspace), use it: the artifact is stored in the workspace, searchable and reusable by the team. Otherwise, when `deploy_to_canvas` is available, use it for an anonymous, expiring link. Either way, deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence. `deploy_to_canvas` is deprecated for signed-in workspaces.
 
 ## When to Deploy
 

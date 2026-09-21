@@ -165,7 +165,8 @@ To configure it manually in your client's settings file (Cursor's `mcp.json` or 
 
 The local server exposes these tools:
 
-- `deploy_to_canvas` — publish encrypted HTML and return a shareable URL.
+- `deploy_artifact` — publish HTML as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage.
+- `deploy_to_canvas` — **deprecated**, use `deploy_artifact`. Publishes an anonymous, encrypted, expiring artifact that the workspace cannot search or retrieve.
 - `search_artifacts` — search previously deployed artifacts without returning HTML.
 - `get_connection` — inspect the authenticated workspace, scopes, and client context.
 - `get_usage` — inspect customer-safe storage, artifact, render, and quota totals.
@@ -191,9 +192,11 @@ supports OAuth should discover authorization through
 scopes it needs. The dashboard's **MCP connections** page shows the same setup
 instructions and lets workspace administrators inspect, monitor, and revoke
 connections. Hosted connections use Streamable HTTP; local setup uses stdio.
-For safe retries of `deploy_to_canvas`, send a stable `MCP-Request-Id` (or
-`Idempotency-Key`) header. Reusing it with the same payload returns the original
-result; reusing it with a different payload is rejected.
+`deploy_artifact` is naturally idempotent: publishing identical content to the
+same workspace returns the same artifact. For safe retries of the deprecated
+`deploy_to_canvas`, send a stable `MCP-Request-Id` (or `Idempotency-Key`)
+header. Reusing it with the same payload returns the original result; reusing
+it with a different payload is rejected.
 
 For release verification, run the live staging smoke suite with two isolated
 organization credentials and a private artifact that belongs only to
@@ -311,16 +314,18 @@ Rate limited to 60 creates / minute per IP.
 
 When artfct is configured as an MCP server, agents get the publishing,
 retrieval, collection, usage, and connection tools documented in [MCP Server
-Setup](#mcp-server-setup). `deploy_to_canvas` accepts a complete HTML payload
-and returns a preview URL — agents should deploy instead of emitting raw code
-blocks whenever they produce visual output.
+Setup](#mcp-server-setup). `deploy_artifact` accepts a complete HTML payload
+and publishes it to the workspace — agents should deploy instead of emitting raw
+code blocks whenever they produce visual output. Artifacts are stored readable
+by the workspace (that is what makes them searchable); `secure` limits who can
+open the link, `public` does not.
 
 ```json
 {
-  "name": "deploy_to_canvas",
+  "name": "deploy_artifact",
   "arguments": {
     "html": "<!DOCTYPE html>...",
-    "tier": "public",
+    "tier": "secure",
     "model": "optional-agent-attested-model"
   }
 }

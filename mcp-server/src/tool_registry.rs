@@ -20,7 +20,8 @@ fn tool_meta(tool_name: &str, required_scopes: &[&str], tool_version: &str) -> V
             "toolVersion": tool_version,
             "owner": "artfct-mcp",
             "requiredScopes": required_scopes,
-            "compatibility": "stable",
+            "compatibility": if tool_name == "deploy_to_canvas" { "deprecated" } else { "stable" },
+            "replacedBy": if tool_name == "deploy_to_canvas" { Value::from("deploy_artifact") } else { Value::Null },
             "examples": tool_examples(tool_name)
         }
     })
@@ -28,6 +29,10 @@ fn tool_meta(tool_name: &str, required_scopes: &[&str], tool_version: &str) -> V
 
 fn tool_examples(tool_name: &str) -> Value {
     match tool_name {
+        "deploy_artifact" => json!([{
+            "description": "Publish a generated report to the team so it can be found and reused.",
+            "arguments": {"html": "<!doctype html><title>Q3 report</title><p>Summary</p>", "tier": "secure"}
+        }]),
         "deploy_to_canvas" => json!([{
             "description": "Publish a generated dashboard for review.",
             "arguments": {"html": "<!doctype html><title>Dashboard</title>", "tier": "public"}
@@ -67,8 +72,47 @@ fn tool_examples(tool_name: &str) -> Value {
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
+            name: "deploy_artifact",
+            description: "Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "html": {
+                        "type": "string",
+                        "description": "A self-contained HTML document."
+                    },
+                    "tier": {
+                        "type": "string",
+                        "enum": ["public", "secure"],
+                        "description": "Who can open the link: secure (default, signed-in workspace members) or public."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Optional title; defaults to the document title."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional summary used in search results."
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Optional model name for provenance."
+                    }
+                },
+                "required": ["html"]
+            }),
+            annotations: json!({
+                "readOnlyHint": false,
+                "idempotentHint": true,
+                "destructiveHint": false,
+                "openWorldHint": true
+            }),
+            required_scopes: &["artifacts:deploy"],
+            meta: tool_meta("deploy_artifact", &["artifacts:deploy"], "1.0.0"),
+        },
+        ToolDefinition {
             name: "deploy_to_canvas",
-            description: "Call this tool whenever you generate a self-contained HTML/CSS/JS page, template, or visual dashboard that the user needs to view or share via Slack. Do not emit raw code markdown blocks if this tool is available.",
+            description: "Deprecated: use deploy_artifact. Publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count.",
             input_schema: json!({
                 "type": "object",
                 "properties": {

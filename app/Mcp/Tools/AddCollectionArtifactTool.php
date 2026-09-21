@@ -6,6 +6,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Models\Collection;
+use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -50,6 +51,20 @@ final class AddCollectionArtifactTool extends Tool
             'collection_id' => ['required', 'integer', 'min:1'],
             'artifact_id' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9]+$/'],
         ]);
+
+        $existence = app(ArtifactExistence::class)->check(McpContext::httpRequest()->bearerToken(), $validated['artifact_id']);
+
+        if ($existence === ArtifactExistence::MISSING) {
+            app(McpTelemetry::class)->record('add_collection_artifact', 'not_found', $startedAt);
+
+            return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
+        }
+
+        if ($existence === ArtifactExistence::UNAVAILABLE) {
+            app(McpTelemetry::class)->record('add_collection_artifact', 'error', $startedAt);
+
+            return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
+        }
 
         try {
             $collection = Collection::query()

@@ -30,7 +30,7 @@ Add to your Claude Code MCP config (`.claude/mcp.json` or project `.mcp.json`):
 }
 ```
 
-Restart Claude Code. The tool will appear as `mcp__artfct__deploy_to_canvas`.
+Restart Claude Code. The tools will appear as `mcp__artfct__deploy_artifact` (signed-in workspace) and `mcp__artfct__deploy_to_canvas` (anonymous, deprecated for workspaces).
 
 ## Verify Installation
 

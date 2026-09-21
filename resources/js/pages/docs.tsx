@@ -698,10 +698,12 @@ export default function Docs({ contract }: DocsProps) {
                     >
                         <Prose>
                             Start Artfct as a local MCP server over stdio. It
-                            supports the <Code>deploy_to_canvas</Code> tool, so
-                            Claude Desktop, Claude Code, Cursor and other
+                            publishes to your workspace with the{' '}
+                            <Code>deploy_artifact</Code> tool, so Claude
+                            Desktop, Claude Code, Cursor and other
                             MCP-compatible tools can publish HTML without
                             leaving the session.
+                            <Code>deploy_to_canvas</Code> is deprecated.
                         </Prose>
                         <CodeBlock code={CLI_MCP} />
 
@@ -793,7 +795,7 @@ export default function Docs({ contract }: DocsProps) {
                         <CodeBlock code={SKILLS_INSTALL} />
                         <Prose>
                             Once installed, your AI tool calls{' '}
-                            <Code>deploy_to_canvas</Code> whenever it produces
+                            <Code>deploy_artifact</Code> whenever it produces
                             visual HTML such as a dashboard, report, chart or
                             interactive demo, instead of printing raw code.
                         </Prose>

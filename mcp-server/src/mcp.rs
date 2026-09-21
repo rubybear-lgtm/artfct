@@ -16,7 +16,7 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
     &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const MCP_SERVER_VERSION: &str = "1.0.0";
 const SERVER_INSTRUCTIONS: &str =
-    "Publish encrypted HTML artifacts and search the authenticated workspace.";
+    "Publish HTML artifacts to the authenticated workspace, then search, retrieve and organize them. deploy_to_canvas is deprecated: it creates anonymous expiring artifacts the workspace cannot search.";
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -325,6 +325,16 @@ struct DeployToolArguments {
     html: String,
     tier: String,
     ttl_minutes: Option<u64>,
+    model: Option<String>,
+}
+
+/// Arguments for `deploy_artifact`: a permanent, org-scoped publish.
+#[derive(Debug, Deserialize)]
+struct DeployArtifactArguments {
+    html: String,
+    tier: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
     model: Option<String>,
 }
 
@@ -789,6 +799,9 @@ where
     }
 
     match params.name.as_str() {
+        "deploy_artifact" => call_deploy_artifact(session, params.arguments)
+            .await
+            .map_err(McpError::from),
         "deploy_to_canvas" => call_deploy_to_canvas(session, params.arguments)
             .await
             .map_err(McpError::from),
@@ -838,6 +851,70 @@ fn connection_result(session: &Session) -> Value {
             "started_at": session.started_at.to_rfc3339(),
         }
     })
+}
+
+async fn call_deploy_artifact(session: &Session, arguments: Value) -> Result<Value> {
+    let arguments: DeployArtifactArguments =
+        serde_json::from_value(arguments).context("Invalid deploy_artifact arguments")?;
+    let tier = arguments.tier.unwrap_or_else(|| "secure".to_string());
+    if tier != "public" && tier != "secure" {
+        anyhow::bail!("deploy_artifact tier must be public or secure");
+    }
+    let html = arguments.html.trim();
+    if html.is_empty() || html.len() > 1024 * 1024 {
+        anyhow::bail!("deploy_artifact html must be between 1 byte and 1 MB");
+    }
+
+    let (host, source) = session_identity(session);
+    eprintln!(
+        "mcp tool preparation: host={host} source={}",
+        source.as_str()
+    );
+    let cwd = std::env::current_dir().context("Failed to determine current directory")?;
+    let provenance = provenance::build_mcp_provenance(
+        &cwd,
+        McpProvenanceInput {
+            agent: session.host.normalized.clone(),
+            agent_raw: session.host.raw.clone(),
+            agent_version: session.client_version.clone(),
+            agent_source: provenance_source(source),
+            session_id: session.session_id.clone(),
+            model: arguments.model.clone(),
+        },
+    );
+    let mut request = artifact_crypto::prepare_permanent_artifact_request(html, tier, provenance)?;
+    if let Some(title) = arguments.title.filter(|value| !value.trim().is_empty()) {
+        request.title = title;
+    }
+    if let Some(description) = arguments
+        .description
+        .filter(|value| !value.trim().is_empty())
+    {
+        request.description = description;
+    }
+
+    let api_base_url = crate::auth::api_base_url(DEFAULT_API_BASE_URL);
+    let client = reqwest::Client::new();
+    let token = crate::auth::access_token(&client, &api_base_url)
+        .await?
+        .context("deploy_artifact requires `artfct login` or ARTFCT_ORG_TOKEN")?;
+    let created =
+        api::deploy_permanent_artifact(&client, &api_base_url, &request, html.as_bytes(), &token)
+            .await?;
+
+    Ok(json!({
+        "content": [{
+            "type": "text",
+            "text": format!("Artifact published: {}", created.url)
+        }],
+        "structuredContent": {
+            "id": created.id,
+            "url": created.url,
+            "tier": created.tier,
+            "title": request.title,
+            "organization": session.connection.organization
+        }
+    }))
 }
 
 async fn call_deploy_to_canvas(session: &Session, arguments: Value) -> Result<Value> {
@@ -1466,7 +1543,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lists_deploy_to_canvas_tool() {
+    async fn lists_deploy_tools() {
         let mut session = Session::new(None);
         let response = handle_json_rpc(
             &mut session,
@@ -1480,7 +1557,26 @@ mod tests {
         .await
         .expect("response");
 
-        assert_eq!(response["result"]["tools"][0]["name"], "deploy_to_canvas");
+        let tools = response["result"]["tools"].as_array().expect("tools");
+        assert_eq!(tools[0]["name"], "deploy_artifact");
+        let legacy = tools
+            .iter()
+            .find(|tool| tool["name"] == "deploy_to_canvas")
+            .expect("legacy tool stays listed");
+        assert_eq!(legacy["_meta"]["artfct"]["compatibility"], "deprecated");
+        assert_eq!(legacy["_meta"]["artfct"]["replacedBy"], "deploy_artifact");
+        assert_eq!(tools[0]["_meta"]["artfct"]["compatibility"], "stable");
+    }
+
+    #[tokio::test]
+    async fn deploy_artifact_rejects_unknown_tiers_before_any_network_call() {
+        let session = Session::new_with_resolution(None, None, None);
+        let error =
+            super::call_deploy_artifact(&session, json!({"html": "<p>x</p>", "tier": "ephemeral"}))
+                .await
+                .expect_err("ephemeral is not a permanent tier");
+
+        assert!(error.to_string().contains("public or secure"));
     }
 
     fn deploy_arguments(model: Option<&str>) -> DeployToolArguments {

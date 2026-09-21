@@ -39,7 +39,7 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.serverInfo.name', 'artfct')
         ->assertJsonPath('result.serverInfo.version', '1.0.0')
         ->assertJsonPath('result.capabilities.tools.listChanged', false)
-        ->assertJsonPath('result.instructions', 'Publish encrypted HTML artifacts and search the authenticated workspace.')
+        ->assertJsonPath('result.instructions', 'Publish HTML artifacts to the authenticated workspace, then search, retrieve and organize them. deploy_to_canvas is deprecated: it creates anonymous expiring artifacts the workspace cannot search.')
         ->assertJsonMissingPath('result.capabilities.resources');
 
     expect(McpConnection::query()
@@ -59,9 +59,10 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         'method' => 'tools/list',
         'params' => [],
     ])->assertOk()
-        ->assertJsonPath('result.tools.0.name', 'deploy_to_canvas')
-        ->assertJsonPath('result.tools.1.name', 'search_artifacts')
-        ->assertJsonPath('result.tools.2.name', 'get_connection')
+        ->assertJsonPath('result.tools.0.name', 'deploy_artifact')
+        ->assertJsonPath('result.tools.1.name', 'deploy_to_canvas')
+        ->assertJsonPath('result.tools.2.name', 'search_artifacts')
+        ->assertJsonPath('result.tools.3.name', 'get_connection')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy');
 });
@@ -613,6 +614,24 @@ test('collection mutations require the explicit write scope and stay organizatio
         ->assertJsonPath('result.structuredContent.artifact_count', 0);
 
     $collectionId = $created->json('result.structuredContent.id');
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response(['id' => 'artifact123', 'tier' => 'secure'], 200),
+        'worker.test/v1/artifacts/ghost123' => Http::response(['error' => ['code' => 'artifact_not_found']], 404),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 4,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'add_collection_artifact',
+            'arguments' => ['collection_id' => $collectionId, 'artifact_id' => 'ghost123'],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'artifact_not_found');
+    expect(CollectionArtifact::query()->where('artifact_id', 'ghost123')->exists())->toBeFalse();
 
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0',
@@ -668,4 +687,104 @@ test('remote deployment reports an unavailable artifact service instead of an in
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'upstream_unavailable')
         ->assertJsonPath('result.content.0._meta.artfct.retryable', true);
+});
+
+test('deploy_artifact publishes a permanent org artifact in two steps', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>Q3 report</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response(['id' => 'abc1234567', 'url' => 'https://worker.test/p/abc1234567', 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/abc1234567/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', 'abc1234567')
+        ->assertJsonPath('result.structuredContent.tier', 'secure')
+        ->assertJsonPath('result.structuredContent.title', 'Q3 report')
+        ->assertJsonPath('result.structuredContent.organization', $team->slug);
+
+    Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+        && str_ends_with((string) $request->url(), '/v1/artifacts')
+        && $request['mode'] === 'permanent'
+        && $request['manifest']['files'][0]['sha256'] === $sha
+        && ! isset($request['body_ciphertext_b64']));
+    Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+        && str_ends_with((string) $request->url(), "/v1/artifacts/abc1234567/files/{$sha}")
+        && $request->body() === $html);
+});
+
+test('deploy_artifact skips the upload when the Worker already has the content', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/v1/artifacts' => Http::response(['id' => 'abc1234567', 'url' => 'https://worker.test/p/abc1234567', 'tier' => 'secure', 'missing_files' => []], 200)]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>same</p>', 'tier' => 'public']],
+    ])->assertOk()->assertJsonPath('result.structuredContent.id', 'abc1234567');
+
+    Http::assertNotSent(fn ($request): bool => $request->method() === 'PUT');
+});
+
+test('deploy_artifact refuses over-quota workspaces before contacting the Worker', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    /** @var FakeUsage $usage */
+    $usage = app(UsageContract::class);
+    $usage->setUsage($team->slug, storageBytes: PHP_INT_MAX, artifactsThisPeriod: 0);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>x</p>']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'quota_exceeded')
+        ->assertJsonPath('result.content.0._meta.artfct.nextAction', 'get_usage');
+
+    Http::assertNothingSent();
+});
+
+test('deploy_artifact maps Worker refusals to stable errors', function (int $status, array $body, string $code, bool $retryable) {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/v1/artifacts' => Http::response($body, $status)]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>x</p>']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', $code)
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', $retryable);
+})->with([
+    'rate limited' => [429, [], 'rate_limited', true],
+    'worker quota' => [403, ['error' => ['code' => 'quota_exceeded']], 'quota_exceeded', false],
+    'invalid manifest' => [422, ['error' => ['code' => 'validation_failed']], 'deployment_rejected', false],
+]);
+
+test('deploy_artifact requires the deploy scope', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team, TeamRole::Viewer);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>x</p>']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true);
+
+    expect(McpActivity::query()->where('team_id', $team->id)->where('tool', 'deploy_artifact')->where('outcome', 'denied')->exists())->toBeTrue();
 });

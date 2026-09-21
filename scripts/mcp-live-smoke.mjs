@@ -1,6 +1,6 @@
-import { createServer } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import { createServer } from 'node:http';
 
 /**
  * Credentials come from OAuth (PKCE, browser consent per organization) unless
@@ -23,6 +23,7 @@ const tokenB = usingEnvTokens
 const concurrency = optionalInteger('MCP_LIVE_CONCURRENCY', 8, 2, 32);
 
 const supportedTools = new Set([
+    'deploy_artifact',
     'deploy_to_canvas',
     'search_artifacts',
     'get_connection',
@@ -54,9 +55,14 @@ for (const tool of tools.result?.tools ?? []) {
         metadata?.owner === 'artfct-mcp',
         tool.name + ' omitted its owner metadata',
     );
+    const legacy = tool.name === 'deploy_to_canvas';
     assert(
-        metadata?.compatibility === 'stable',
-        tool.name + ' omitted stable compatibility metadata',
+        metadata?.compatibility === (legacy ? 'deprecated' : 'stable'),
+        tool.name + ' reported unexpected compatibility metadata',
+    );
+    assert(
+        !legacy || metadata?.replacedBy === 'deploy_artifact',
+        'deploy_to_canvas must point at deploy_artifact',
     );
     assert(
         Array.isArray(metadata?.requiredScopes),
@@ -177,7 +183,7 @@ console.log(
 
 async function deployPrivateFixture(token, session) {
     const deployed = await rpc(token, session, 'tools/call', {
-        name: 'deploy_to_canvas',
+        name: 'deploy_artifact',
         arguments: {
             html: '<!doctype html><title>mcp-live fixture</title><p>isolation fixture</p>',
             tier: 'secure',

@@ -12,8 +12,18 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
     );
 
     $expectedContracts = [
+        'deploy_artifact' => [
+            'scopes' => ['artifacts:deploy'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => true,
+            ],
+        ],
         'deploy_to_canvas' => [
             'scopes' => ['artifacts:deploy'],
+            'compatibility' => 'deprecated',
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => false,
@@ -88,6 +98,8 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
 
     expect($tools->keys()->all())->toBe(array_keys($expectedContracts));
 
+    expect($tools->keys()->all())->toEqualCanonicalizing(array_keys($expectedContracts));
+
     foreach ($expectedContracts as $name => $contract) {
         $tool = $tools->get($name);
         $annotations = $tool['annotations'];
@@ -102,7 +114,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'toolVersion' => '1.0.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => $contract['scopes'],
-                'compatibility' => 'stable',
+                'compatibility' => $contract['compatibility'] ?? 'stable',
             ])
             ->and($metadata['examples'])->not->toBeEmpty();
 

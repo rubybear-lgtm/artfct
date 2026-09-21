@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionDirectory;
 use App\Services\Collections\CollectionService;
 use Illuminate\Http\JsonResponse;
@@ -67,6 +68,16 @@ final class CollectionController extends Controller
         $validated = $request->validate([
             'artifact_id' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9]+$/'],
         ]);
+
+        $existence = app(ArtifactExistence::class)->check($request->bearerToken(), $validated['artifact_id']);
+
+        if ($existence === ArtifactExistence::MISSING) {
+            return response()->json(['error' => 'artifact_not_found', 'message' => 'That artifact was not found in the authenticated workspace.'], 404);
+        }
+
+        if ($existence === ArtifactExistence::UNAVAILABLE) {
+            return response()->json(['error' => 'upstream_unavailable', 'message' => 'The artifact service is temporarily unavailable.'], 503);
+        }
 
         $collections->addArtifact($model, $validated['artifact_id']);
 

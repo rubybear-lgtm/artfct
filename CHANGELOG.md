@@ -6,6 +6,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
+- Added the MCP `deploy_artifact` tool (RUB-364): permanent, org-scoped publishing for authenticated workspaces on both the hosted and local servers, so artifacts are searchable, retrievable, collectable and counted in usage. `deploy_to_canvas` is deprecated (catalog metadata `compatibility: deprecated`, `replacedBy: deploy_artifact`) but keeps working. `add_collection_artifact` (MCP and REST) now verifies the artifact is visible to the caller's org before adding it.
 - Added the OpenAPI 3.1 contract, blocking contract-drift CI checks, and a generated API reference on `/docs` for Spec 0.
 - Added stateful MCP client identity, deterministic host-source resolution, per-process session IDs, and host-aware setup configuration for Spec 1.
 - Added required CLI/MCP provenance with Git discovery, per-field source attribution, credential-safe remotes, and optional self-reported model identity for Spec 2.
