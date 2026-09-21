@@ -118,6 +118,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         Account settings
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
+                                        onSelect={() => router.visit('/docs')}
+                                    >
+                                        Documentation
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onSelect={() => router.visit('/blog')}
+                                    >
+                                        Blog
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
                                         onSelect={() => router.post('/logout')}
                                     >
                                         <LogOut className="size-4" /> Sign out
@@ -256,6 +267,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
 
             <main className="mx-auto max-w-5xl px-5 py-12">{children}</main>
+            <footer className="border-t border-border">
+                <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-6 text-sm text-muted-foreground">
+                    <Link className="hover:text-foreground" href="/docs">
+                        Documentation
+                    </Link>
+                    <Link className="hover:text-foreground" href="/blog">
+                        Blog
+                    </Link>
+                    <Link className="hover:text-foreground" href="/terms">
+                        Terms
+                    </Link>
+                    <Link className="hover:text-foreground" href="/privacy">
+                        Privacy
+                    </Link>
+                </div>
+            </footer>
             <Toaster />
         </div>
     );

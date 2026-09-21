@@ -212,7 +212,8 @@ export default function Landing() {
                     <div className="navlinks">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
-                        <Link href="/docs">Help</Link>
+                        <Link href="/docs">Docs</Link>
+                        <Link href="/blog">Blog</Link>
                     </div>
                     <div className="navright">
                         <Link href="/login">Sign in</Link>
@@ -776,7 +777,8 @@ export default function Landing() {
                     <div className="r">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
-                        <Link href="/docs">Help</Link>
+                        <Link href="/docs">Docs</Link>
+                        <Link href="/blog">Blog</Link>
                         <Link href="/privacy">Privacy</Link>
                         <Link href="/terms">Terms</Link>
                     </div>
