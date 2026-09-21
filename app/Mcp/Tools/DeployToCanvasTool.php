@@ -9,6 +9,8 @@ use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -22,6 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use RuntimeException;
 
 #[Description('Encrypt and deploy a self-contained HTML artifact to the authenticated workspace.')]
 #[Name('deploy_to_canvas')]
@@ -115,6 +118,13 @@ final class DeployToCanvasTool extends Tool
                 'retryable' => false,
                 'nextAction' => 'get_usage',
             ]);
+        } catch (RequestException|ConnectionException|RuntimeException) {
+            app(McpTelemetry::class)->record('deploy_to_canvas', 'upstream_unavailable', $startedAt);
+            if ($lockKey !== null) {
+                Cache::forget($lockKey);
+            }
+
+            return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
         $shareCode = $this->shareCode();

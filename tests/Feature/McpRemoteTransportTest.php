@@ -8,6 +8,7 @@ use App\Models\McpConnection;
 use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
+use App\Services\Billing\RealUsage;
 use App\Services\Billing\UsageContract;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
@@ -648,4 +649,23 @@ test('collection mutations require the explicit write scope and stay organizatio
         ->where('tool', 'create_collection')
         ->where('outcome', 'denied')
         ->exists())->toBeTrue();
+});
+
+test('remote deployment reports an unavailable artifact service instead of an internal error', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/*' => Http::response(['error' => 'unauthorized'], 401)]);
+    app()->bind(UsageContract::class, RealUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => '<h1>x</h1>']],
+    ])->assertOk()
+        ->assertJsonMissingPath('error')
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'upstream_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', true);
 });
