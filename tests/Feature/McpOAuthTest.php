@@ -438,3 +438,26 @@ test('the path-inserted authorization-server document is served for the MCP reso
     $this->getJson('/.well-known/oauth-authorization-server/mcp')->assertOk()->assertJsonPath('code_challenge_methods_supported.0', 'S256');
     $this->getJson('/.well-known/oauth-authorization-server/other')->assertNotFound();
 });
+
+test('the consent page hands the browser to the client callback with a location visit instead of a cross-origin redirect', function () {
+    $verifier = str_repeat('i', 64);
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($team);
+    configureSigning(testSigningKey());
+    $client = OAuthClient::factory()->create(['client_id' => 'inspector-client', 'redirect_uris' => ['http://localhost:6274/oauth/callback']]);
+    $parameters = oauthParameters(oauthChallenge($verifier), ['client_id' => $client->client_id, 'redirect_uri' => 'http://localhost:6274/oauth/callback']);
+
+    foreach (['approve', 'deny'] as $decision) {
+        $response = $this->actingAs($user)->withHeaders(['X-Inertia' => 'true'])->post('/oauth/authorize', [
+            ...$parameters,
+            'decision' => $decision,
+            'team' => $team->slug,
+        ]);
+
+        $response->assertStatus(409);
+        expect($response->headers->get('X-Inertia-Location'))->toStartWith('http://localhost:6274/oauth/callback?')
+            ->and($response->headers->get('X-Inertia-Location'))->toContain($decision === 'approve' ? 'code=' : 'error=access_denied');
+    }
+});

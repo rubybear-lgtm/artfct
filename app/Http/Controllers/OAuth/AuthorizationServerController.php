@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 final class AuthorizationServerController extends Controller
 {
@@ -172,7 +173,7 @@ final class AuthorizationServerController extends Controller
         ]);
     }
 
-    public function approve(Request $request): RedirectResponse
+    public function approve(Request $request): SymfonyResponse
     {
         $parameters = $this->authorizationParameters($request);
 
@@ -634,11 +635,16 @@ final class AuthorizationServerController extends Controller
     }
 
     /** @param array<string, string> $parameters */
-    private function redirectWith(string $redirectUri, array $parameters): RedirectResponse
+    /**
+     * Send the browser to the client's redirect URI. The consent page submits
+     * through Inertia's XHR, and an XHR cannot follow a redirect to another
+     * origin (CORS), so Inertia requests get a 409 location visit instead.
+     */
+    private function redirectWith(string $redirectUri, array $parameters): SymfonyResponse
     {
         $separator = str_contains($redirectUri, '?') ? '&' : '?';
 
-        return redirect()->away($redirectUri.$separator.http_build_query($parameters));
+        return Inertia::location($redirectUri.$separator.http_build_query($parameters));
     }
 
     private function tokenError(string $error, string $description): JsonResponse
