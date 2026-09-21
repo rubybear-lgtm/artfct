@@ -50,6 +50,7 @@ function notPages(): array
         'oauth.metadata' => 'OAuth discovery JSON',
         'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',
         'mcp.oauth.protected-resource.nested' => 'OAuth protected-resource discovery JSON',
+        'oauth.metadata.nested' => 'OAuth discovery JSON (path-inserted)',
         'oauth.organizations' => 'OAuth organization context JSON',
         'api.collections.index' => 'organization-scoped collection directory JSON',
         'oauth.authorize' => 'OAuth authorization handshake and consent flow',
