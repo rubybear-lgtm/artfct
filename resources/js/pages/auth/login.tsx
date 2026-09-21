@@ -36,7 +36,7 @@ export default function Login() {
             <Card>
                 <CardHeader>
                     <CardTitle className="text-xl">
-                        Continue to artfct
+                        Continue to Artfct
                     </CardTitle>
                     <CardDescription>
                         Test sign-in. It stands in for Google, passkeys and the

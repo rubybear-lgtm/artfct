@@ -95,16 +95,14 @@ export default function ConsoleIndex({
         <div>
             <div>
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-foreground">
-                        {team.name} Console
-                    </h1>
+                    <h1 className="text-foreground">Artifacts</h1>
                     <p className="mt-2 text-muted-foreground">
                         Manage artifacts produced by your team
                     </p>
                 </div>
 
                 {/* Filters */}
-                <div className="mb-8 rounded-lg bg-background p-6 shadow-sm">
+                <div className="mb-8 rounded-[10px] border border-border bg-paper p-6">
                     <h2 className="mb-4 text-lg font-semibold text-foreground">
                         Filters
                     </h2>
@@ -184,7 +182,7 @@ export default function ConsoleIndex({
                     </p>
                 )}
                 {indexingEnabled && indexingFailures.length > 0 && (
-                    <div className="rounded-lg bg-background p-4 shadow-sm">
+                    <div className="rounded-[10px] border border-border bg-paper p-4">
                         <h2 className="mb-2 text-sm font-semibold">
                             Indexing failures
                         </h2>
@@ -194,7 +192,7 @@ export default function ConsoleIndex({
                                     key={failure.artifact_id}
                                     className="flex items-center gap-3 py-2"
                                 >
-                                    <span className="font-mono">
+                                    <span className="tabular-nums">
                                         {failure.artifact_id.slice(0, 8)}
                                     </span>
                                     <span className="text-muted-foreground">
@@ -221,7 +219,7 @@ export default function ConsoleIndex({
 
                 {/* Artifact List */}
                 <div
-                    className="overflow-hidden rounded-lg bg-background shadow-sm"
+                    className="overflow-hidden rounded-[10px] border border-border bg-paper"
                     data-testid="artifact-list"
                 >
                     <table className="w-full">
@@ -268,7 +266,7 @@ export default function ConsoleIndex({
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-medium text-foreground">
                                                 {artifact.title || (
-                                                    <span className="font-mono">
+                                                    <span className="tabular-nums">
                                                         {artifact.id.slice(
                                                             0,
                                                             8,

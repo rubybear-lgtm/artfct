@@ -81,6 +81,13 @@
             @endphp
 
             @switch($page['component'] ?? '')
+                @case('landing')
+                    <h1>Your AI makes things. Artfct remembers them.</h1>
+                    <p>{{ $pageDescription }}</p>
+                    <p>Share the reports, tables, documents and mockups your AI makes. Everything shared is stored and indexed for your team, and every AI tool on the team can read it and cite its sources. You choose what to share. Your artifacts are never used to train AI, and you can export everything any time.</p>
+                    <p>Set up once: sign up, invite your team and add Artfct to your AI tool. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools. Start with Free, try Team free, or talk about Enterprise.</p>
+                    @break
+
                 @case('welcome')
                     <h1>{{ $fallbackTitle }}</h1>
                     <p>{{ $pageDescription }}</p>

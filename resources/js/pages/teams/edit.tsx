@@ -123,7 +123,7 @@ export default function TeamEdit({
             <div className="mb-6 flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold">{team.name}</h1>
                 <Badge variant="outline">{team.plan}</Badge>
-                <span className="font-mono text-sm text-muted-foreground">
+                <span className="text-sm text-muted-foreground tabular-nums">
                     {team.slug}
                 </span>
             </div>

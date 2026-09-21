@@ -74,7 +74,7 @@ function CollectionCard({
                     <ul className="text-sm">
                         {collection.artifactIds.map((id) => (
                             <li key={id} className="flex items-center gap-2">
-                                <span className="font-mono">{id}</span>
+                                <span className="tabular-nums">{id}</span>
                                 {canEdit && (
                                     <button
                                         className="ml-auto underline"

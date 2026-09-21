@@ -28,7 +28,7 @@ function signedInPages(): array
 /** @return list<string> */
 function publicPages(): array
 {
-    return ['home', 'blog', 'docs', 'terms', 'privacy', 'login'];
+    return ['home', 'free', 'blog', 'docs', 'terms', 'privacy', 'login'];
 }
 
 /** @return array<string, string> route name => where it is covered */
@@ -83,7 +83,7 @@ test('public_pages_have_no_javascript_errors', function () {
 
 test('public docs expose the MCP onboarding path', function () {
     visit(route('docs'))
-        ->assertSee('mcp onboarding')
+        ->assertSee('Sign in from the command line')
         ->assertSee('artfct login --oauth')
         ->assertSee('https://artfct.dev/mcp')
         ->assertSee('artifacts:read')

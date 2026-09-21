@@ -33,12 +33,19 @@ $blogPosts = [
     ],
 ];
 
-Route::inertia('/', 'welcome', [
+Route::inertia('/', 'landing', [
+    'meta' => [
+        'title' => 'Artfct — what your AI makes, remembered',
+        'description' => 'Share the reports, tables and documents your AI makes, and every AI tool on your team can read them, with sources. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools.',
+    ],
+])->name('home');
+
+Route::inertia('/free', 'welcome', [
     'meta' => [
         'title' => 'artfct — share HTML & markdown instantly',
         'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Encrypted by default.',
     ],
-])->name('home');
+])->name('free');
 
 Route::get('/docs', DocsController::class)->name('docs');
 
@@ -78,6 +85,7 @@ Route::get('/blog/{slug}', function (string $slug) use ($blogPosts) {
 Route::get('/sitemap.xml', function () use ($blogPosts) {
     $urls = [
         ['loc' => url('/'), 'priority' => '1.0', 'changefreq' => 'weekly'],
+        ['loc' => url('/free'), 'priority' => '0.8', 'changefreq' => 'weekly'],
         ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
         ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
     ];

@@ -67,7 +67,7 @@ export default function Search({
             </p>
 
             {!indexingEnabled && (
-                <Alert>
+                <Alert className="mb-4">
                     Search indexing is turned off on this environment, so there
                     is nothing to search yet. Artifacts still work as links.
                 </Alert>
@@ -76,7 +76,7 @@ export default function Search({
             <form onSubmit={submit} className="mb-6 flex flex-wrap gap-3">
                 <Input
                     aria-label="Search query"
-                    className="min-w-64 flex-1"
+                    className="h-11 min-w-64 flex-1 text-base"
                     placeholder="What are you looking for?"
                     value={form.q}
                     disabled={!indexingEnabled}

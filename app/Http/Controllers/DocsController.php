@@ -17,7 +17,7 @@ class DocsController extends Controller
     {
         return Inertia::render('docs', [
             'meta' => [
-                'title' => 'api reference — artfct',
+                'title' => 'Documentation — Artfct',
                 'description' => 'REST API reference and CLI documentation for artfct. Create, serve, and manage HTML artifacts programmatically.',
             ],
             'contract' => fn (): array => json_decode(

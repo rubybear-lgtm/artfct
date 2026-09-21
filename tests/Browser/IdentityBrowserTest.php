@@ -13,7 +13,7 @@ test('registration_and_org_creation_flow', function () {
         ->click('Continue with Google')
         ->assertSee('Create your first team')
         ->click('Create team')
-        ->assertSee('Dashboard');
+        ->assertSee('What your AI makes');
 
     $page->navigate('/settings/teams');
 
@@ -36,7 +36,7 @@ test('console_pages_have_no_js_errors', function () {
         ->click('Continue with Google')
         ->assertSee('Create your first team')
         ->click('Create team')
-        ->assertSee('Dashboard');
+        ->assertSee('What your AI makes');
 
     // Navigate to console
     $page->navigate('/settings/teams');
@@ -51,7 +51,7 @@ test('admin_finds_artifact_by_repo_and_revokes_it', function () {
         ->click('Continue with Google')
         ->assertSee('Create your first team')
         ->click('Create team')
-        ->assertSee('Dashboard');
+        ->assertSee('What your AI makes');
 
     // The page now shows the team; navigate to console for that team
     // Since we're using the fake artifact directory, it will have test data
