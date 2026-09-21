@@ -13,15 +13,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
-function remoteMcpToken(Team $team, TeamRole $role = TeamRole::Admin): string
-{
-    configureSigning(testSigningKey());
-
-    $user = memberOfTeam($team, $role);
-
-    return OrgJwtService::default()->mint($team, $user, $role)['token'];
-}
-
 test('serves the native Streamable HTTP MCP transport with bearer authentication', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);

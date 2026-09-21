@@ -3,6 +3,7 @@
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Auth\OrgJwtService;
 use App\Services\WorkerEvents\WorkerEventSignature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -140,4 +141,49 @@ function configureSigning(string $pem, string $kid = 'staging-2026-09'): void
         'services.org_jwt.worker_base_url' => 'https://worker.test',
         'services.org_jwt.jwks_write_secret' => 'jwks-secret',
     ]);
+}
+
+function oauthParameters(string $challenge, array $overrides = []): array
+{
+    $parameters = array_merge([
+        'response_type' => 'code',
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => 'http://127.0.0.1:43123/callback',
+        'scope' => 'artifacts:read artifacts:deploy',
+        'state' => 'state-123',
+        'code_challenge' => $challenge,
+        'code_challenge_method' => 'S256',
+    ], $overrides);
+
+    $parameters['consent_token'] = oauthConsentToken($parameters);
+
+    return $parameters;
+}
+
+function oauthConsentToken(array $parameters): string
+{
+    $payload = json_encode([
+        'client_id' => $parameters['client_id'],
+        'redirect_uri' => $parameters['redirect_uri'],
+        'scope' => $parameters['scope'],
+        'state' => $parameters['state'] ?? null,
+        'code_challenge' => $parameters['code_challenge'],
+        'code_challenge_method' => $parameters['code_challenge_method'],
+    ], JSON_THROW_ON_ERROR);
+
+    return hash_hmac('sha256', $payload, (string) config('app.key'));
+}
+
+function oauthChallenge(string $verifier): string
+{
+    return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+}
+
+function remoteMcpToken(Team $team, TeamRole $role = TeamRole::Admin): string
+{
+    configureSigning(testSigningKey());
+
+    $user = memberOfTeam($team, $role);
+
+    return OrgJwtService::default()->mint($team, $user, $role)['token'];
 }
