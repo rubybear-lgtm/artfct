@@ -379,3 +379,15 @@ test('returns OAuth JSON errors for malformed token requests', function () {
 
     expect($response->headers->get('Cache-Control'))->toContain('no-store');
 });
+
+test('non-browser OAuth endpoints are exempt from CSRF', function (string $uri) {
+    app()['env'] = 'local';
+
+    expect($this->postJson($uri, [])->getStatusCode())->not->toBe(419);
+})->with(['/oauth/token', '/oauth/revoke', '/oauth/register']);
+
+test('the consent approval stays protected by CSRF', function () {
+    app()['env'] = 'local';
+
+    $this->actingAs(User::factory()->create())->post('/oauth/authorize', [])->assertStatus(419);
+});

@@ -21,7 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
 
-        $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis']);
+        $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis', 'oauth/register', 'oauth/token', 'oauth/revoke']);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,
