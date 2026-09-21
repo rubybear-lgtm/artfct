@@ -99,6 +99,7 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
 // ── identity (spec 06) ──────────────────────────────────────────────────────
 
 require __DIR__.'/auth.php';
+require __DIR__.'/oauth.php';
 require __DIR__.'/teams.php';
 
 Route::post('internal/worker-events', WorkerEventController::class)->name('internal.worker-events');

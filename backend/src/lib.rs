@@ -365,7 +365,9 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         (Method::Get, path) if path.starts_with("/v1/blobs/") => {
             download_export_blob(path, &req, &env).await
         }
-        (Method::Get, path) if path.starts_with("/p/") => resolve_artifact(path, &req, &env).await,
+        (Method::Get, path) if path.starts_with("/p/") => {
+            resolve_artifact(path, &req, &env, &ctx).await
+        }
         (Method::Options, _) => options_response(),
         _ => not_found_response(),
     }
@@ -958,11 +960,49 @@ fn emit_artifact_created(
     ctx.wait_until(async move { events::send(&url, event).await });
 }
 
+/// Queues `artifact.viewed` after a permanent artifact is served. The event
+/// carries only the owning org, artifact id, and optional verified viewer id;
+/// it never includes content, bearer tokens, or query-string access tokens.
+fn emit_artifact_viewed(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    viewer_user_id: Option<&str>,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.viewed",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "viewer_user_id": viewer_user_id,
+            "source": "worker_preview",
+        }),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
 #[derive(Debug, Deserialize)]
 struct ArtifactMetadataRow {
     id: String,
     org_id: String,
     tier: String,
+    entrypoint: String,
+    created_at: String,
+    expires_at: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
 }
 
 /// `GET /v1/artifacts/{id}` — the credential-scoped metadata read spec 07's
@@ -987,7 +1027,7 @@ async fn get_artifact_metadata(path: &str, req: &Request, env: &Env) -> Result<R
     let database = env.d1("ARTIFACTS_DB")?;
     let row = database
         .prepare(
-            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
+            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
         )
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<ArtifactMetadataRow>(None)
@@ -1002,8 +1042,19 @@ async fn get_artifact_metadata(path: &str, req: &Request, env: &Env) -> Result<R
         }
         ArtifactLookupDecision::Visible => {
             let row = row.expect("Visible is only returned when a row was fetched");
-            JsonResponseDefinition::json(serde_json::json!({"id": row.id, "tier": row.tier}), 200)
-                .into_worker_response()
+            JsonResponseDefinition::json(
+                serde_json::json!({
+                    "id": row.id,
+                    "tier": row.tier,
+                    "entrypoint": row.entrypoint,
+                    "created_at": row.created_at,
+                    "expires_at": row.expires_at,
+                    "title": row.title,
+                    "description": row.description,
+                }),
+                200,
+            )
+            .into_worker_response()
         }
     }
 }
@@ -1044,7 +1095,12 @@ async fn write_revocation(req: &mut Request, env: &Env) -> Result<Response> {
     JsonResponseDefinition::json(serde_json::json!({"revoked": true}), 200).into_worker_response()
 }
 
-async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
+async fn resolve_artifact(
+    path: &str,
+    req: &Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
     let suffix = path.trim_start_matches("/p/");
     let (artifact_id, requested_path) = suffix
         .split_once('/')
@@ -1054,7 +1110,7 @@ async fn resolve_artifact(path: &str, req: &Request, env: &Env) -> Result<Respon
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
-        return resolve_permanent_artifact(artifact_id, requested_path, req, env).await;
+        return resolve_permanent_artifact(artifact_id, requested_path, req, env, ctx).await;
     }
     if !is_valid_artifact_id(artifact_id) {
         return expired_response();
@@ -1132,6 +1188,7 @@ async fn resolve_permanent_artifact(
     requested_path: Option<&str>,
     req: &Request,
     env: &Env,
+    ctx: &worker::Context,
 ) -> Result<Response> {
     if requested_path.is_some_and(|path| !is_valid_relative_path(path)) {
         return expired_response();
@@ -1173,6 +1230,7 @@ async fn resolve_permanent_artifact(
         artifact_token_secret(env).as_deref(),
         Utc::now(),
     );
+    let mut viewer_user_id = None;
     match isolated_access {
         IsolatedAccess::Forbidden => return isolated_forbidden_response(),
         IsolatedAccess::Authorized => {
@@ -1183,12 +1241,17 @@ async fn resolve_permanent_artifact(
             // A secure artifact is served only to a credential of the org that
             // owns it (the public id says nothing about the org).
             if row.tier == "secure" {
-                let owner_credential =
-                    resolve_request_credential(authorization.as_deref(), env, Utc::now())
-                        .await
-                        .is_ok_and(|credential| credential.org_id == row.org);
-                if !owner_credential {
-                    return json_error(ErrorCode::Unauthorized, "Invalid organization token.", 401);
+                match resolve_request_credential(authorization.as_deref(), env, Utc::now()).await {
+                    Ok(credential) if credential.org_id == row.org => {
+                        viewer_user_id = Some(credential.user_id);
+                    }
+                    _ => {
+                        return json_error(
+                            ErrorCode::Unauthorized,
+                            "Invalid organization token.",
+                            401,
+                        )
+                    }
                 }
             }
         }
@@ -1218,6 +1281,9 @@ async fn resolve_permanent_artifact(
     for (name, value) in permanent_file_response_headers(&row.content_type, &manifest, is_isolated)
     {
         response.headers_mut().set(name, &value)?;
+    }
+    if requested_path.is_none() {
+        emit_artifact_viewed(ctx, env, &row.org, artifact_id, viewer_user_id.as_deref());
     }
     let _ = row.expires_at;
     Ok(response)
@@ -1670,6 +1736,8 @@ struct Jwks {
 /// `orgToken` share one shape; only `exp` distance differs).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct OrgJwtClaims {
+    iss: String,
+    aud: String,
     org_id: String,
     user_id: String,
     role: String,
@@ -1739,6 +1807,8 @@ fn decode_org_jwt(
     token: &str,
     jwks: &Jwks,
     now: chrono::DateTime<Utc>,
+    issuer: &str,
+    audience: &str,
 ) -> std::result::Result<OrgJwtClaims, CredentialError> {
     let header = decode_header(token).map_err(|_| CredentialError::Malformed)?;
     let kid = header.kid.ok_or(CredentialError::Malformed)?;
@@ -1754,7 +1824,9 @@ fn decode_org_jwt(
     // never the library's own wall-clock read, so tests never need to sleep
     // or mock global time.
     validation.validate_exp = false;
-    validation.set_required_spec_claims(&["exp", "org_id", "user_id", "role", "jti"]);
+    validation.set_required_spec_claims(&["exp", "iss", "aud", "org_id", "user_id", "role", "jti"]);
+    validation.set_issuer(&[issuer]);
+    validation.set_audience(&[audience]);
     let data = decode::<OrgJwtClaims>(token, &decoding_key, &validation)
         .map_err(|_| CredentialError::BadSignature)?;
     if data.claims.exp <= now.timestamp() {
@@ -1852,7 +1924,9 @@ async fn resolve_request_credential(
     // rather than re-decoding, so the denylist check below and the one
     // inside `resolve_org_credential` are provably checking the same `jti`,
     // not just two decodes of the same token that happen to agree today.
-    let claims = decode_org_jwt(token, &jwks, now)?;
+    let issuer = env_string(env, "ARTFCT_JWT_ISSUER", "https://artfct.dev");
+    let audience = env_string(env, "ARTFCT_JWT_AUDIENCE", "artfct-engine");
+    let claims = decode_org_jwt(token, &jwks, now, &issuer, &audience)?;
     let jti = claims.jti.clone();
     let denylisted = kv
         .get(&denylist_kv_key(&jti))
@@ -2369,10 +2443,13 @@ async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response>
     // The limits the create gate actually enforces, so a meter never
     // disagrees with the Worker about how full an org is.
     let limits = load_org_limits(&database, env, org).await?;
+    let now = Utc::now();
     JsonResponseDefinition::json(
         serde_json::json!({
             "storage_bytes": usage.storage_bytes,
             "artifacts_this_period": usage.artifacts_this_period,
+            "period_start": quota::month_start(now),
+            "period_end": quota::next_month_start(now),
             "limits": {
                 "storage_bytes": limits.storage_bytes,
                 "artifacts_per_month": limits.artifacts_per_month,
@@ -4823,6 +4900,8 @@ mod tests {
 
     fn test_claims(org_id: &str, exp: i64) -> OrgJwtClaims {
         OrgJwtClaims {
+            iss: "https://artfct.dev".to_string(),
+            aud: "artfct-engine".to_string(),
             org_id: org_id.to_string(),
             user_id: "user-1".to_string(),
             role: "admin".to_string(),
@@ -4847,7 +4926,14 @@ mod tests {
         let claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
         let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
 
-        let decoded = decode_org_jwt(&token, &test_jwks(), now).expect("valid token decodes");
+        let decoded = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("valid token decodes");
         let credential =
             resolve_org_credential(decoded, |_jti| false).expect("valid token resolves");
 
@@ -4875,7 +4961,14 @@ mod tests {
         let claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
         let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
 
-        let decoded = decode_org_jwt(&token, &test_jwks(), now).expect("valid token decodes");
+        let decoded = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("valid token decodes");
         let result = resolve_org_credential(decoded, |jti| jti == "jti-1");
 
         assert_eq!(result, Err(CredentialError::Revoked));
@@ -4887,9 +4980,51 @@ mod tests {
         let claims = test_claims("org-a", (now - chrono::Duration::minutes(1)).timestamp());
         let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
 
-        let result = decode_org_jwt(&token, &test_jwks(), now);
+        let result = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        );
 
         assert_eq!(result, Err(CredentialError::Expired));
+    }
+
+    #[test]
+    fn jwt_with_wrong_issuer_rejected() {
+        let now = Utc::now();
+        let mut claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
+        claims.iss = "https://evil.example".to_string();
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+
+        let result = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        );
+
+        assert_eq!(result, Err(CredentialError::BadSignature));
+    }
+
+    #[test]
+    fn jwt_with_wrong_audience_rejected() {
+        let now = Utc::now();
+        let mut claims = test_claims("org-a", (now + chrono::Duration::minutes(5)).timestamp());
+        claims.aud = "another-service".to_string();
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+
+        let result = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        );
+
+        assert_eq!(result, Err(CredentialError::BadSignature));
     }
 
     #[test]
@@ -4901,7 +5036,13 @@ mod tests {
         // check must fail even though the `kid` lookup succeeds.
         let token = sign_test_jwt(TEST_KEY_B_DER_B64, "test-key-a", &claims);
 
-        let result = decode_org_jwt(&token, &test_jwks(), now);
+        let result = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            now,
+            "https://artfct.dev",
+            "artfct-engine",
+        );
 
         assert_eq!(result, Err(CredentialError::BadSignature));
     }

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::provenance::Provenance;
@@ -131,6 +131,440 @@ pub struct SearchResponse {
     pub results: Vec<SearchResultDto>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CollectionDto {
+    pub id: u64,
+    pub name: String,
+    pub description: Option<String>,
+    pub canonical: bool,
+    pub artifact_count: u64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CollectionListResponse {
+    pub collections: Vec<CollectionDto>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateCollectionRequest<'a> {
+    pub name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateCollectionResponse {
+    pub id: u64,
+    pub name: String,
+    pub description: Option<String>,
+    pub canonical: bool,
+    pub artifact_count: u64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AddCollectionArtifactResponse {
+    pub collection_id: u64,
+    pub artifact_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArtifactMetadataResponse {
+    pub id: String,
+    pub tier: String,
+    pub entrypoint: String,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UsageResponse {
+    pub storage_bytes: u64,
+    pub artifacts_this_period: u64,
+    #[serde(default)]
+    pub render_minutes_this_period: u64,
+    #[serde(default)]
+    pub period_start: Option<String>,
+    #[serde(default)]
+    pub period_end: Option<String>,
+    #[serde(default)]
+    pub limits: Option<UsageLimits>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UsageLimits {
+    pub storage_bytes: u64,
+    pub artifacts_per_month: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisterMcpConnectionRequest<'a> {
+    pub client_name: &'a str,
+    pub client_version: Option<&'a str>,
+    pub host: Option<&'a str>,
+    pub transport: &'a str,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpConnectionResponse {
+    pub connection_id: String,
+    pub organization: String,
+    pub user_id: String,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OAuthTokenResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: u64,
+    #[serde(default)]
+    pub organization: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrganizationSummary {
+    pub name: String,
+    pub slug: String,
+    pub role: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrganizationsResponse {
+    pub organizations: Vec<OrganizationSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpHealth {
+    pub protocol_version: String,
+    pub server_name: String,
+    pub tool_count: usize,
+}
+
+/// Probe the hosted MCP transport using the same initialize and tool discovery
+/// sequence an MCP client uses. The response body is parsed locally and is
+/// never copied into an error, keeping `artfct doctor` safe to run in logs.
+pub async fn probe_mcp(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+) -> Result<McpHealth> {
+    let initialize = client
+        .post(format!("{}/mcp", api_base_url.trim_end_matches('/')))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(ACCEPT, "application/json, text/event-stream")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "clientInfo": {"name": "artfct-doctor", "version": env!("CARGO_PKG_VERSION")},
+                "capabilities": {}
+            }
+        }))
+        .send()
+        .await
+        .context("Failed to reach the hosted MCP endpoint")?;
+
+    let status = initialize.status();
+    let session_id = initialize
+        .headers()
+        .get("MCP-Session-Id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let body = initialize
+        .json::<serde_json::Value>()
+        .await
+        .context("Hosted MCP returned an invalid initialize response")?;
+    if !status.is_success() {
+        anyhow::bail!("Hosted MCP initialize returned HTTP {status}");
+    }
+    if let Some(error) = body.get("error") {
+        anyhow::bail!("Hosted MCP initialize failed: {}", safe_json_error(error));
+    }
+
+    let result = body
+        .get("result")
+        .context("Hosted MCP initialize response omitted result")?;
+    let protocol_version = result
+        .get("protocolVersion")
+        .and_then(serde_json::Value::as_str)
+        .context("Hosted MCP initialize response omitted protocolVersion")?
+        .to_string();
+    let server_name = result
+        .get("serverInfo")
+        .and_then(|info| info.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .context("Hosted MCP initialize response omitted serverInfo.name")?
+        .to_string();
+
+    let mut tools_request = client
+        .post(format!("{}/mcp", api_base_url.trim_end_matches('/')))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(ACCEPT, "application/json, text/event-stream")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        }));
+    if let Some(session_id) = session_id {
+        tools_request = tools_request.header("MCP-Session-Id", session_id);
+    }
+    let tools = tools_request
+        .send()
+        .await
+        .context("Failed to reach hosted MCP tool discovery")?;
+    let tools_status = tools.status();
+    let tools_body = tools
+        .json::<serde_json::Value>()
+        .await
+        .context("Hosted MCP returned an invalid tool discovery response")?;
+    if !tools_status.is_success() {
+        anyhow::bail!("Hosted MCP tool discovery returned HTTP {tools_status}");
+    }
+    if let Some(error) = tools_body.get("error") {
+        anyhow::bail!(
+            "Hosted MCP tool discovery failed: {}",
+            safe_json_error(error)
+        );
+    }
+    let tool_count = tools_body
+        .get("result")
+        .and_then(|result| result.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .context("Hosted MCP tool discovery response omitted tools")?
+        .len();
+
+    Ok(McpHealth {
+        protocol_version,
+        server_name,
+        tool_count,
+    })
+}
+
+fn safe_json_error(error: &serde_json::Value) -> String {
+    error
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown MCP error")
+        .chars()
+        .take(200)
+        .collect()
+}
+
+fn safe_response_body(body: &str, secrets: &[&str]) -> String {
+    let mut summary: String = body.chars().take(200).collect();
+    for secret in secrets.iter().copied().filter(|secret| !secret.is_empty()) {
+        summary = summary.replace(secret, "[REDACTED]");
+    }
+    summary
+}
+
+pub async fn exchange_authorization_code(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    code: &str,
+    client_id: &str,
+    redirect_uri: &str,
+    code_verifier: &str,
+) -> Result<OAuthTokenResponse> {
+    exchange_oauth_token(
+        client,
+        api_base_url,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("client_id", client_id),
+            ("redirect_uri", redirect_uri),
+            ("code_verifier", code_verifier),
+        ],
+    )
+    .await
+}
+
+pub async fn refresh_access_token(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    refresh_token: &str,
+    client_id: &str,
+) -> Result<OAuthTokenResponse> {
+    exchange_oauth_token(
+        client,
+        api_base_url,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", client_id),
+        ],
+    )
+    .await
+}
+
+pub async fn revoke_oauth_token(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    token_type_hint: &str,
+) -> Result<()> {
+    let response = client
+        .post(format!(
+            "{}/oauth/revoke",
+            api_base_url.trim_end_matches('/')
+        ))
+        .form(&[
+            ("token", token),
+            ("token_type_hint", token_type_hint),
+            ("client_id", "artfct-cli"),
+        ])
+        .send()
+        .await
+        .context("Failed to reach the Artfct OAuth revocation endpoint")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!(
+            "Artfct OAuth revocation endpoint returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    Ok(())
+}
+
+pub async fn organizations(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+) -> Result<OrganizationsResponse> {
+    let response = client
+        .get(format!(
+            "{}/oauth/organizations",
+            api_base_url.trim_end_matches('/')
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("Failed to reach the Artfct organizations endpoint")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read the Artfct organizations response")?;
+
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artfct organizations endpoint returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    serde_json::from_str(&body).context("Artfct returned an invalid organizations response")
+}
+
+async fn exchange_oauth_token(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    form: &[(&str, &str)],
+) -> Result<OAuthTokenResponse> {
+    let response = client
+        .post(format!(
+            "{}/oauth/token",
+            api_base_url.trim_end_matches('/')
+        ))
+        .form(form)
+        .send()
+        .await
+        .context("Failed to reach the Artfct OAuth token endpoint")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read the Artfct OAuth token response")?;
+
+    if !status.is_success() {
+        let form_values = form.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+        return Err(anyhow!(
+            "Artfct OAuth token endpoint returned {status}: {}",
+            safe_response_body(&body, &form_values)
+        ));
+    }
+
+    serde_json::from_str(&body).context("Artfct returned an invalid OAuth token response")
+}
+
+pub async fn register_mcp_connection(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    request: &RegisterMcpConnectionRequest<'_>,
+) -> Result<McpConnectionResponse> {
+    post_mcp_connection_request(
+        client
+            .post(format!(
+                "{}/api/mcp/connections",
+                api_base_url.trim_end_matches('/')
+            ))
+            .json(request),
+        token,
+        "register MCP connection",
+    )
+    .await
+}
+
+pub async fn heartbeat_mcp_connection(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+) -> Result<McpConnectionResponse> {
+    post_mcp_connection_request(
+        client.post(format!(
+            "{}/api/mcp/connections/heartbeat",
+            api_base_url.trim_end_matches('/')
+        )),
+        token,
+        "refresh MCP connection",
+    )
+    .await
+}
+
+async fn post_mcp_connection_request(
+    request: reqwest::RequestBuilder,
+    token: &str,
+    operation: &str,
+) -> Result<McpConnectionResponse> {
+    let response = request
+        .bearer_auth(token)
+        .send()
+        .await
+        .with_context(|| format!("Failed to {operation}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .with_context(|| format!("Failed to read response while attempting to {operation}"))?;
+
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artfct rejected request to {operation}: {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    serde_json::from_str(&body).with_context(|| {
+        format!("Artfct returned an invalid response while attempting to {operation}")
+    })
+}
+
 pub fn artifact_endpoint(api_base_url: &str) -> String {
     format!("{}/v1/artifacts", api_base_url.trim_end_matches('/'))
 }
@@ -188,7 +622,10 @@ pub async fn deploy_permanent_artifact_files(
         .await
         .context("Failed to read Artifact Engine response")?;
     if !status.is_success() {
-        return Err(anyhow!("Artifact Engine returned {status}: {body_text}"));
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body_text, &[token])
+        ));
     }
     let created: PermanentArtifactResponse =
         serde_json::from_str(&body_text).context("Artifact Engine returned an invalid response")?;
@@ -258,7 +695,10 @@ pub async fn export_artifacts(
         .await
         .context("Failed to read export response")?;
     if !status.is_success() {
-        return Err(anyhow!("Artifact Engine returned {status}: {body}"));
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
     }
     serde_json::from_str(&body).context("Artifact Engine returned an invalid export")
 }
@@ -285,9 +725,172 @@ pub async fn search_artifacts(
         .await
         .context("Failed to read search response")?;
     if !status.is_success() {
-        return Err(anyhow!("Artifact Engine returned {status}: {body}"));
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
     }
     serde_json::from_str(&body).context("Artifact Engine returned an invalid search response")
+}
+
+/// Calls the org-scoped collection directory. The organization is resolved
+/// exclusively from the bearer token by the Laravel API.
+pub async fn list_collections(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    cursor: Option<&str>,
+    limit: u32,
+) -> Result<CollectionListResponse> {
+    let mut query = vec![("limit", limit.to_string())];
+    if let Some(cursor) = cursor {
+        query.push(("cursor", cursor.to_string()));
+    }
+
+    let response = client
+        .get(format!(
+            "{}/api/collections",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .query(&query)
+        .send()
+        .await
+        .context("Failed to reach the Artfct collection directory")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read collection directory response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artfct collection directory returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    serde_json::from_str(&body).context("Artfct returned an invalid collection directory")
+}
+
+pub async fn create_collection(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    request: &CreateCollectionRequest<'_>,
+) -> Result<CreateCollectionResponse> {
+    let response = client
+        .post(format!(
+            "{}/api/collections",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .json(request)
+        .send()
+        .await
+        .context("Failed to reach the Artfct collection directory")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read collection creation response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artfct collection creation returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    serde_json::from_str(&body).context("Artfct returned an invalid collection")
+}
+
+pub async fn add_collection_artifact(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    token: &str,
+    collection_id: u64,
+    artifact_id: &str,
+) -> Result<AddCollectionArtifactResponse> {
+    let response = client
+        .post(format!(
+            "{}/api/collections/{collection_id}/artifacts",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .json(&serde_json::json!({"artifact_id": artifact_id}))
+        .send()
+        .await
+        .context("Failed to reach the Artfct collection directory")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read collection artifact response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artfct collection mutation returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+
+    serde_json::from_str(&body).context("Artfct returned an invalid collection mutation")
+}
+
+pub async fn artifact_metadata(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    artifact_id: &str,
+    token: &str,
+) -> Result<ArtifactMetadataResponse> {
+    let response = client
+        .get(format!(
+            "{}/v1/artifacts/{artifact_id}",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read artifact metadata response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+    serde_json::from_str(&body).context("Artifact Engine returned invalid artifact metadata")
+}
+
+pub async fn usage(
+    client: &reqwest::Client,
+    api_base_url: &str,
+    org: &str,
+    token: &str,
+) -> Result<UsageResponse> {
+    let response = client
+        .get(format!(
+            "{}/v1/orgs/{org}/usage",
+            api_base_url.trim_end_matches('/')
+        ))
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .send()
+        .await
+        .context("Failed to reach Artifact Engine")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("Failed to read usage response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body, &[token])
+        ));
+    }
+    serde_json::from_str(&body).context("Artifact Engine returned an invalid usage response")
 }
 
 pub async fn deploy_artifact_payload<T: Serialize + ?Sized>(
@@ -308,7 +911,10 @@ pub async fn deploy_artifact_payload<T: Serialize + ?Sized>(
         .context("Failed to read Artifact Engine response")?;
 
     if !status.is_success() {
-        return Err(anyhow!("Artifact Engine returned {status}: {body}"));
+        return Err(anyhow!(
+            "Artifact Engine returned {status}: {}",
+            safe_response_body(&body, &[])
+        ));
     }
 
     serde_json::from_str(&body).context("Artifact Engine returned an invalid response")
@@ -339,7 +945,11 @@ pub async fn delete_artifact(
         .text()
         .await
         .context("Failed to read Artifact Engine response")?;
-    Err(anyhow!("Artifact Engine returned {status}: {body}"))
+    let secrets = token.into_iter().collect::<Vec<_>>();
+    Err(anyhow!(
+        "Artifact Engine returned {status}: {}",
+        safe_response_body(&body, &secrets)
+    ))
 }
 
 #[cfg(test)]
@@ -350,7 +960,10 @@ pub(crate) mod tests {
     use anyhow::{anyhow, Context, Result};
     use serde_json::{json, Map, Value};
 
-    use super::{artifact_endpoint, CreateArtifactRequest, ExportResponse};
+    use super::{
+        artifact_endpoint, safe_json_error, safe_response_body, CreateArtifactRequest,
+        ExportResponse,
+    };
     use crate::artifact_crypto;
     use crate::provenance::build_cli_provenance;
 
@@ -360,6 +973,37 @@ pub(crate) mod tests {
             artifact_endpoint("https://artfct.dev/"),
             "https://artfct.dev/v1/artifacts"
         );
+    }
+
+    #[test]
+    fn doctor_error_summary_is_bounded_and_does_not_dump_json() {
+        let message = "x".repeat(400);
+        let error = json!({"code": -32600, "message": message, "data": {"secret": "do-not-print"}});
+
+        let summary = safe_json_error(&error);
+
+        assert_eq!(summary.len(), 200);
+        assert!(!summary.contains("do-not-print"));
+    }
+
+    #[test]
+    fn doctor_error_summary_has_safe_fallback() {
+        assert_eq!(
+            safe_json_error(&json!({"code": -32600})),
+            "unknown MCP error"
+        );
+    }
+
+    #[test]
+    fn response_error_summary_is_bounded_and_redacts_credentials() {
+        let token = "bearer-secret";
+        let body = format!("{{\"error\":\"{token}\"}}{}", "x".repeat(400));
+
+        let summary = safe_response_body(&body, &[token]);
+
+        assert!(summary.chars().count() <= 200);
+        assert!(!summary.contains(token));
+        assert!(summary.contains("[REDACTED]"));
     }
 
     #[test]

@@ -37,4 +37,7 @@ enum AuditEventType: string
     case MemberLeft = 'member.left';
     case SubscriptionCancelled = 'billing.subscription_cancelled';
     case SubscriptionResumed = 'billing.subscription_resumed';
+    case McpConnectionCreated = 'mcp.connection_created';
+    case McpConnectionRefreshed = 'mcp.connection_refreshed';
+    case McpConnectionRevoked = 'mcp.connection_revoked';
 }

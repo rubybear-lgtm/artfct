@@ -135,6 +135,8 @@ function configureSigning(string $pem, string $kid = 'staging-2026-09'): void
     config([
         'services.org_jwt.private_key' => $pem,
         'services.org_jwt.kid' => $kid,
+        'services.org_jwt.issuer' => 'https://artfct.dev',
+        'services.org_jwt.audience' => 'artfct-engine',
         'services.org_jwt.worker_base_url' => 'https://worker.test',
         'services.org_jwt.jwks_write_secret' => 'jwks-secret',
     ]);

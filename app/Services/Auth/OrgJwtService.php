@@ -17,7 +17,7 @@ use UnexpectedValueException;
  * signs; it never verifies its own tokens on the request path — that
  * happens entirely in the Worker against the published JWKS.
  *
- * Claims: `org_id`, `user_id`, `role`, `exp`, `jti` — the exact shape
+ * Claims: `iss`, `aud`, `org_id`, `user_id`, `role`, `exp`, `jti` — the exact shape
  * `backend/src/lib.rs`'s `OrgJwtClaims` decodes.
  */
 final class OrgJwtService
@@ -25,30 +25,28 @@ final class OrgJwtService
     public function __construct(
         private readonly string $privateKeyPem,
         private readonly string $kid,
+        private readonly string $issuer = 'https://artfct.dev',
+        private readonly string $audience = 'artfct-engine',
     ) {}
 
     /**
-     * Builds the signer from configuration. `services.org_jwt.private_key`
-     * and `services.org_jwt.kid` are not currently defined in
-     * `config/services.php` — that file is outside this spec's owned-files
-     * list (see partition.md); wiring the real production key material is
-     * flagged as a follow-up rather than done here. Fails closed: no key
-     * configured means no tokens can be minted, the same fail-closed
-     * pattern as `ARTFCT_ORG_TOKEN`/`ARTFCT_ARTIFACT_TOKEN_SECRET` on the
-     * Worker side.
+     * Builds the signer and registered-claim policy from configuration. Fails
+     * closed when key material or the issuer/audience contract is missing.
      */
     public static function default(): self
     {
         $privateKey = config('services.org_jwt.private_key');
         $kid = config('services.org_jwt.kid');
+        $issuer = rtrim((string) config('services.org_jwt.issuer'), '/');
+        $audience = (string) config('services.org_jwt.audience');
 
-        if (! is_string($privateKey) || $privateKey === '' || ! is_string($kid) || $kid === '') {
+        if (! is_string($privateKey) || $privateKey === '' || ! is_string($kid) || $kid === '' || $issuer === '' || $audience === '') {
             throw new RuntimeException(
-                'services.org_jwt.private_key and services.org_jwt.kid must be configured to mint org tokens.',
+                'services.org_jwt.private_key, services.org_jwt.kid, services.org_jwt.issuer, and services.org_jwt.audience must be configured to mint org tokens.',
             );
         }
 
-        return new self($privateKey, $kid);
+        return new self($privateKey, $kid, $issuer, $audience);
     }
 
     /**
@@ -56,21 +54,30 @@ final class OrgJwtService
      * from now (default: 5 minutes, matching `sessionJwt`'s lifetime;
      * callers minting a longer-lived `orgToken` pass a larger value).
      *
+     * @param  list<string>|null  $scopes  Optional least-privilege scope restriction.
      * @return array{token: string, jti: string, expires_at: Carbon}
      */
-    public function mint(Team $team, User $user, TeamRole $role, int $ttlSeconds = 300): array
+    public function mint(Team $team, User $user, TeamRole $role, int $ttlSeconds = 300, ?array $scopes = null): array
     {
         $jti = (string) Str::uuid();
         $expiresAt = Carbon::now()->addSeconds($ttlSeconds);
 
+        $claims = [
+            'iss' => $this->issuer(),
+            'aud' => $this->audience(),
+            'org_id' => $team->slug,
+            'user_id' => (string) $user->id,
+            'role' => $role->value,
+            'exp' => $expiresAt->timestamp,
+            'jti' => $jti,
+        ];
+
+        if ($scopes !== null) {
+            $claims['scope'] = implode(' ', $scopes);
+        }
+
         $token = JWT::encode(
-            [
-                'org_id' => $team->slug,
-                'user_id' => (string) $user->id,
-                'role' => $role->value,
-                'exp' => $expiresAt->timestamp,
-                'jti' => $jti,
-            ],
+            $claims,
             $this->privateKeyPem,
             'RS256',
             $this->kid,
@@ -96,7 +103,15 @@ final class OrgJwtService
         $expiresAt = Carbon::now()->addSeconds($ttlSeconds);
 
         $token = JWT::encode(
-            ['org_id' => $orgSlug, 'user_id' => $userId, 'role' => $role->value, 'exp' => $expiresAt->timestamp, 'jti' => $jti],
+            [
+                'iss' => $this->issuer(),
+                'aud' => $this->audience(),
+                'org_id' => $orgSlug,
+                'user_id' => $userId,
+                'role' => $role->value,
+                'exp' => $expiresAt->timestamp,
+                'jti' => $jti,
+            ],
             $this->privateKeyPem,
             'RS256',
             $this->kid,
@@ -115,7 +130,7 @@ final class OrgJwtService
      * public key from the private key already held (RSA public material
      * is not secret), so no separate key needs configuring.
      *
-     * @return array{org_id: string, user_id: string, role: string, jti: string}
+     * @return array{iss: string, aud: string, org_id: string, user_id: string, role: string, jti: string, scope?: string}
      *
      * @throws RuntimeException on an invalid, expired, or malformed token.
      */
@@ -129,12 +144,36 @@ final class OrgJwtService
             throw new RuntimeException("Invalid org token: {$exception->getMessage()}", previous: $exception);
         }
 
-        return [
+        if (! isset($decoded->iss, $decoded->aud)
+            || ! hash_equals($this->issuer(), (string) $decoded->iss)
+            || ! hash_equals($this->audience(), (string) $decoded->aud)) {
+            throw new RuntimeException('Invalid org token: issuer or audience mismatch.');
+        }
+
+        $claims = [
+            'iss' => (string) $decoded->iss,
+            'aud' => (string) $decoded->aud,
             'org_id' => (string) $decoded->org_id,
             'user_id' => (string) $decoded->user_id,
             'role' => (string) $decoded->role,
             'jti' => (string) $decoded->jti,
         ];
+
+        if (isset($decoded->scope)) {
+            $claims['scope'] = (string) $decoded->scope;
+        }
+
+        return $claims;
+    }
+
+    private function issuer(): string
+    {
+        return $this->issuer;
+    }
+
+    private function audience(): string
+    {
+        return $this->audience;
     }
 
     /**

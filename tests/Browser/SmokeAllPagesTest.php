@@ -21,6 +21,7 @@ function signedInPages(): array
         'dashboard', 'account.show', 'teams.index', 'teams.edit', 'teams.audit.index',
         'teams.authentication.show', 'teams.billing.show', 'teams.collections.index',
         'console.index', 'teams.governance.show', 'teams.search', 'teams.tokens.index',
+        'teams.mcp-connections.index',
     ];
 }
 
@@ -46,6 +47,12 @@ function notPages(): array
 {
     return [
         'jwks' => 'JSON', 'sitemap' => 'XML', 'authenticate' => 'sign-in callback (redirect)',
+        'oauth.metadata' => 'OAuth discovery JSON',
+        'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',
+        'mcp.oauth.protected-resource.nested' => 'OAuth protected-resource discovery JSON',
+        'oauth.organizations' => 'OAuth organization context JSON',
+        'api.collections.index' => 'organization-scoped collection directory JSON',
+        'oauth.authorize' => 'OAuth authorization handshake and consent flow',
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
         'teams.audit.export' => 'file download', 'console.export' => 'JSON download',
     ];
@@ -72,6 +79,15 @@ test('public_pages_have_no_javascript_errors', function () {
     foreach (publicPages() as $name) {
         visit(route($name))->assertNoJavaScriptErrors();
     }
+});
+
+test('public docs expose the MCP onboarding path', function () {
+    visit(route('docs'))
+        ->assertSee('mcp onboarding')
+        ->assertSee('artfct login --oauth')
+        ->assertSee('https://artfct.dev/mcp')
+        ->assertSee('artifacts:read')
+        ->assertNoJavaScriptErrors();
 });
 
 test('every_page_route_is_accounted_for', function () {

@@ -8,6 +8,7 @@ use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 test('jwks_endpoint_serves_the_public_key_only', function () {
     configureSigning(testSigningKey());
@@ -37,6 +38,27 @@ test('minted_token_verifies_against_the_published_jwk', function () {
     $claims = JWT::decode($token, $keys);
 
     expect($claims->org_id)->toBe('acme')->and($claims->role)->toBe('admin');
+});
+
+test('verification_rejects_wrong_issuer_or_audience', function () {
+    $key = testSigningKey();
+    configureSigning($key);
+    $baseClaims = [
+        'iss' => 'https://artfct.dev',
+        'aud' => 'artfct-engine',
+        'org_id' => 'acme',
+        'user_id' => '1',
+        'role' => 'admin',
+        'exp' => now()->addMinutes(5)->timestamp,
+        'jti' => (string) Str::uuid(),
+    ];
+
+    foreach ([['iss' => 'https://evil.example'], ['aud' => 'another-service']] as $override) {
+        $token = JWT::encode([...$baseClaims, ...$override], $key, 'RS256', 'staging-2026-09');
+
+        expect(fn () => OrgJwtService::default()->verify($token))
+            ->toThrow(RuntimeException::class, 'issuer or audience mismatch');
+    }
 });
 
 test('publish_posts_the_jwks_with_the_secret', function () {

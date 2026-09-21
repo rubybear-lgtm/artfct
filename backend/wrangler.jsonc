@@ -43,6 +43,8 @@
     ],
     "vars": {
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
+        "ARTFCT_JWT_ISSUER": "https://artfct.dev",
+        "ARTFCT_JWT_AUDIENCE": "artfct-engine",
         "ARTFCT_MAX_HTML_BYTES": "1048576",
         "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
         "ARTFCT_MAX_TTL_MINUTES": "525600",

@@ -24,6 +24,11 @@ final class UsageEventLogger
         $this->record($team, $artifactId, UsageEventType::Viewed, $viewerUserId, occurredAt: $occurredAt);
     }
 
+    public function recordAnonymousView(Team $team, string $artifactId, ?Carbon $occurredAt = null): void
+    {
+        $this->record($team, $artifactId, UsageEventType::Viewed, null, occurredAt: $occurredAt);
+    }
+
     public function recordSlackShare(Team $team, string $artifactId, ?int $actorUserId = null, ?Carbon $occurredAt = null): void
     {
         $this->record($team, $artifactId, UsageEventType::SlackShared, $actorUserId, occurredAt: $occurredAt);

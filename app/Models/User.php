@@ -42,6 +42,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<McpConnection, $this>
+     */
+    public function mcpConnections(): HasMany
+    {
+        return $this->hasMany(McpConnection::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

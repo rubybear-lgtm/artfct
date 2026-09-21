@@ -98,6 +98,20 @@ pub fn month_start(now: DateTime<Utc>) -> String {
         .to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
+/// First instant of the next UTC calendar month, RFC 3339 with `Z`.
+pub fn next_month_start(now: DateTime<Utc>) -> String {
+    let (year, month) = if now.month() == 12 {
+        (now.year() + 1, 1)
+    } else {
+        (now.year(), now.month() + 1)
+    };
+
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+        .single()
+        .expect("the first of a month at midnight always exists")
+        .to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
 /// Sum of the declared sizes in a manifest.
 pub fn declared_bytes(sizes: impl IntoIterator<Item = usize>) -> u64 {
     sizes
@@ -288,6 +302,12 @@ mod tests {
     fn month_start_is_first_of_utc_month() {
         let now = Utc.with_ymd_and_hms(2026, 9, 19, 21, 43, 0).unwrap();
         assert_eq!(month_start(now), "2026-09-01T00:00:00Z");
+    }
+
+    #[test]
+    fn next_month_start_handles_year_rollover() {
+        let now = Utc.with_ymd_and_hms(2026, 12, 19, 21, 43, 0).unwrap();
+        assert_eq!(next_month_start(now), "2027-01-01T00:00:00Z");
     }
 
     #[test]

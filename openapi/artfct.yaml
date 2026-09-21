@@ -18,7 +18,8 @@
     { "name": "Artifacts", "description": "Create, update, delete, and upload artifacts." },
     { "name": "Previews", "description": "Resolve public artifact preview URLs." },
     { "name": "Administration", "description": "Organization governance and export operations." },
-    { "name": "Retrieval", "description": "Search an organization's accessible artifacts." }
+    { "name": "Retrieval", "description": "Search an organization's accessible artifacts." },
+    { "name": "MCP", "description": "MCP client registration and connection lifecycle." }
   ],
   "paths": {
     "/internal/worker-events": {
@@ -118,6 +119,21 @@
       "parameters": [
         { "$ref": "#/components/parameters/ArtifactId" }
       ],
+      "get": {
+        "tags": ["Artifacts"],
+        "summary": "Read one artifact's credential-scoped metadata",
+        "description": "Returns safe artifact metadata for the organization resolved from the bearer credential. It never returns the artifact HTML or bundle contents.",
+        "operationId": "getArtifactMetadata",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Artifact metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactMetadata" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
       "patch": {
         "tags": ["Artifacts"],
         "summary": "Update an artifact expiration",
@@ -775,6 +791,280 @@
           "204": { "$ref": "#/components/responses/Preflight" }
         }
       }
+    },
+    "/api/mcp/connections": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Register an MCP client connection",
+        "description": "Registers an MCP client using the authenticated organization token. The credential itself is never returned or persisted; only its non-secret token identifier is retained for revocation and usage tracking.",
+        "operationId": "registerMcpConnection",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterMcpConnectionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "MCP connection registered.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "200": {
+            "description": "Existing MCP connection refreshed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/collections": {
+      "get": {
+        "tags": ["Retrieval"],
+        "summary": "List organization artifact collections",
+        "description": "Returns bounded, organization-scoped collection metadata. Results are cursor-paginated and never include collection artifact IDs.",
+        "operationId": "listCollections",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 512 } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of organization collections.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionListResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      },
+      "post": {
+        "tags": ["Retrieval"],
+        "summary": "Create an organization artifact collection",
+        "description": "Creates a collection only for credentials with the explicit collections:write scope. Admin and member roles may receive this scope; viewers may not.",
+        "operationId": "createCollection",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCollectionRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Collection created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionMetadata" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/collections/{collection}/artifacts": {
+      "post": {
+        "tags": ["Retrieval"],
+        "summary": "Add an artifact to a collection",
+        "description": "Adds an artifact to a collection in the credential's organization. Requires collections:write and is idempotent.",
+        "operationId": "addCollectionArtifact",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          { "name": "collection", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCollectionArtifactRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Artifact membership is present.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCollectionArtifactResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/mcp/connections/heartbeat": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Refresh an MCP connection heartbeat",
+        "description": "Updates last-used time for the current token-bound MCP connection and rejects revoked or expired connections.",
+        "operationId": "heartbeatMcpConnection",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "MCP connection is active.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "Discover the MCP authorization server",
+        "operationId": "oauthAuthorizationServerMetadata",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OAuth authorization server metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthAuthorizationServerMetadata" } } }
+          },
+          "404": { "description": "Metadata endpoint not found." }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Process a Streamable HTTP MCP request",
+        "description": "Authenticated JSON-RPC MCP transport. Clients discover bearer authorization through the protected-resource metadata endpoint and send the resulting access token in the Authorization header.",
+        "operationId": "mcpStreamableHttp",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          {
+            "name": "MCP-Session-Id",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "MCP-Request-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional stable request identity used to safely replay a mutating tool call.",
+            "schema": { "type": "string", "maxLength": 128 }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Alias for MCP-Request-Id for clients with generic retry middleware.",
+            "schema": { "type": "string", "maxLength": 128 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/JsonRpcRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonRpcResponse" } } }
+          },
+          "202": { "description": "JSON-RPC notification accepted." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "405": { "description": "Method not allowed." }
+        }
+      }
+    },
+    "/.well-known/oauth-protected-resource": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "Discover the protected MCP resource",
+        "operationId": "oauthProtectedResourceMetadata",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OAuth protected resource metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthProtectedResourceMetadata" } } }
+          },
+          "404": { "description": "Metadata endpoint not found." }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Exchange an MCP authorization code or refresh token",
+        "operationId": "oauthToken",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/OAuthTokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bearer access token.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthTokenResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Revoke an MCP OAuth access or refresh token",
+        "operationId": "oauthRevokeToken",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/OAuthRevocationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Token revocation accepted." },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/oauth/organizations": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "List organizations available to the authenticated OAuth user",
+        "operationId": "oauthOrganizations",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Organizations available to the OAuth user.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthOrganizationsResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Register a public MCP OAuth client",
+        "operationId": "oauthRegisterClient",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OAuthClientRegistrationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered public OAuth client.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthClientRegistrationResponse" } } }
+          },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
     }
   },
   "components": {
@@ -919,6 +1209,229 @@
       }
     },
     "schemas": {
+      "RegisterMcpConnectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_name", "transport"],
+        "properties": {
+          "client_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "client_version": { "type": ["string", "null"], "maxLength": 50 },
+          "host": { "type": ["string", "null"], "maxLength": 100 },
+          "transport": { "type": "string", "enum": ["stdio", "sse", "streamable-http"] }
+        }
+      },
+      "McpConnectionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["connection_id", "organization", "user_id", "scopes", "last_used_at"],
+        "properties": {
+          "connection_id": { "type": "string", "format": "uuid" },
+          "organization": { "type": "string" },
+          "user_id": { "type": "string" },
+          "scopes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "last_used_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "OAuthAuthorizationServerMetadata": {
+        "type": "object",
+        "required": ["issuer", "authorization_endpoint", "token_endpoint", "revocation_endpoint", "registration_endpoint", "response_types_supported", "grant_types_supported", "code_challenge_methods_supported"],
+        "properties": {
+          "issuer": { "type": "string", "format": "uri" },
+          "authorization_endpoint": { "type": "string", "format": "uri" },
+          "token_endpoint": { "type": "string", "format": "uri" },
+          "revocation_endpoint": { "type": "string", "format": "uri" },
+          "registration_endpoint": { "type": "string", "format": "uri" },
+          "response_types_supported": { "type": "array", "items": { "type": "string" } },
+          "grant_types_supported": { "type": "array", "items": { "type": "string" } },
+          "code_challenge_methods_supported": { "type": "array", "items": { "type": "string" } },
+          "scopes_supported": { "type": "array", "items": { "type": "string" } },
+          "token_endpoint_auth_methods_supported": { "type": "array", "items": { "type": "string" } },
+          "client_id_metadata_document_supported": { "type": "boolean" }
+        }
+      },
+      "JsonRpcRequest": {
+        "type": "object",
+        "required": ["jsonrpc", "method"],
+        "properties": {
+          "jsonrpc": { "type": "string", "const": "2.0" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
+          "method": { "type": "string" },
+          "params": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": { "type": "string", "const": "2.0" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
+          "result": { "type": "object", "additionalProperties": true },
+          "error": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "OAuthProtectedResourceMetadata": {
+        "type": "object",
+        "required": ["resource", "authorization_servers"],
+        "properties": {
+          "resource": { "type": "string", "format": "uri" },
+          "authorization_servers": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "scopes_supported": { "type": "array", "items": { "type": "string" } },
+          "bearer_methods_supported": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "OAuthTokenRequest": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/OAuthAuthorizationCodeTokenRequest" },
+          { "$ref": "#/components/schemas/OAuthRefreshTokenRequest" }
+        ]
+      },
+      "OAuthRevocationRequest": {
+        "type": "object",
+        "required": ["token"],
+        "properties": {
+          "token": { "type": "string", "minLength": 1 },
+          "token_type_hint": { "type": "string", "enum": ["access_token", "refresh_token"] },
+          "client_id": { "type": "string" }
+        }
+      },
+      "OAuthOrganizationsResponse": {
+        "type": "object",
+        "required": ["organizations"],
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "slug", "role", "selected"],
+              "properties": {
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "role": { "type": "string", "nullable": true },
+                "selected": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "OAuthAuthorizationCodeTokenRequest": {
+        "type": "object",
+        "required": ["grant_type", "code", "client_id", "redirect_uri", "code_verifier"],
+        "properties": {
+          "grant_type": { "type": "string", "const": "authorization_code" },
+          "code": { "type": "string" },
+          "client_id": { "type": "string" },
+          "redirect_uri": { "type": "string", "format": "uri" },
+          "code_verifier": { "type": "string", "minLength": 43, "maxLength": 128 }
+        }
+      },
+      "OAuthRefreshTokenRequest": {
+        "type": "object",
+        "required": ["grant_type", "refresh_token", "client_id"],
+        "properties": {
+          "grant_type": { "type": "string", "const": "refresh_token" },
+          "refresh_token": { "type": "string", "minLength": 1 },
+          "client_id": { "type": "string" }
+        }
+      },
+      "OAuthTokenResponse": {
+        "type": "object",
+        "required": ["access_token", "token_type", "expires_in", "scope", "organization", "refresh_token"],
+        "properties": {
+          "access_token": { "type": "string" },
+          "token_type": { "type": "string", "enum": ["Bearer"] },
+          "expires_in": { "type": "integer", "minimum": 1 },
+          "scope": { "type": "string" },
+          "organization": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "refresh_token_expires_in": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "OAuthClientRegistrationRequest": {
+        "type": "object",
+        "required": ["client_name", "redirect_uris"],
+        "properties": {
+          "client_name": { "type": "string", "maxLength": 255 },
+          "redirect_uris": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "format": "uri" } },
+          "grant_types": { "type": "array", "items": { "type": "string", "enum": ["authorization_code", "refresh_token"] } },
+          "response_types": { "type": "array", "items": { "type": "string", "const": "code" } },
+          "token_endpoint_auth_method": { "type": "string", "enum": ["none"] }
+        }
+      },
+      "OAuthClientRegistrationResponse": {
+        "type": "object",
+        "required": ["client_id", "client_id_issued_at", "client_name", "redirect_uris", "grant_types", "response_types", "token_endpoint_auth_method"],
+        "properties": {
+          "client_id": { "type": "string" },
+          "client_id_issued_at": { "type": "integer" },
+          "client_name": { "type": "string" },
+          "redirect_uris": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "grant_types": { "type": "array", "items": { "type": "string" } },
+          "response_types": { "type": "array", "items": { "type": "string" } },
+          "token_endpoint_auth_method": { "type": "string", "enum": ["none"] }
+        }
+      },
+    "ArtifactMetadata": {
+        "type": "object",
+        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "tier": { "type": "string", "enum": ["public", "secure", "ephemeral"] },
+          "entrypoint": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": ["string", "null"], "format": "date-time" },
+          "title": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] }
+      }
+    },
+    "CollectionListResponse": {
+      "type": "object",
+      "required": ["collections", "next_cursor"],
+      "properties": {
+        "collections": {
+          "type": "array",
+          "items": { "$ref": "#/components/schemas/CollectionMetadata" }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    },
+    "CollectionMetadata": {
+      "type": "object",
+      "required": ["id", "name", "description", "canonical", "artifact_count", "created_at", "updated_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "canonical": { "type": "boolean" },
+        "artifact_count": { "type": "integer", "minimum": 0 },
+        "created_at": { "type": ["string", "null"], "format": "date-time" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "CreateCollectionRequest": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
+    "AddCollectionArtifactRequest": {
+      "type": "object",
+      "required": ["artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9]+$" }
+      }
+    },
+    "AddCollectionArtifactResponse": {
+      "type": "object",
+      "required": ["collection_id", "artifact_id"],
+      "properties": {
+        "collection_id": { "type": "integer", "minimum": 1 },
+        "artifact_id": { "type": "string" }
+      }
+    },
       "CreateArtifactRequest": {
         "oneOf": [
           { "$ref": "#/components/schemas/EphemeralArtifactRequest" },

@@ -63,6 +63,14 @@ class Team extends Model
     }
 
     /**
+     * @return HasMany<McpConnection, $this>
+     */
+    public function mcpConnections(): HasMany
+    {
+        return $this->hasMany(McpConnection::class);
+    }
+
+    /**
      * The user who owns the team: the only one who may delete it or hand it
      * over (an admin, set at creation and by ownership transfer).
      *

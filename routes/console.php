@@ -13,3 +13,6 @@ Schedule::command('billing:sync-limits')->hourly();
 
 // Bills teammates: reconcile Stripe seat quantities with active members daily (RUB-342).
 Schedule::command('billing:sync-seats')->daily();
+
+// Keeps customer-facing MCP activity bounded without affecting live calls.
+Schedule::command('mcp:prune-activity')->dailyAt('02:15')->withoutOverlapping();

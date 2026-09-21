@@ -102,6 +102,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <Link href={`/settings/teams/${team.slug}/tokens`}>
                                 API tokens
                             </Link>
+                            <Link
+                                href={`/settings/teams/${team.slug}/mcp-connections`}
+                            >
+                                MCP connections
+                            </Link>
                             <Link href={`/settings/teams/${team.slug}/billing`}>
                                 Billing
                             </Link>

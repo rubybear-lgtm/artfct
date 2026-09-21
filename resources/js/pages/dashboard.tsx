@@ -20,6 +20,7 @@ interface PendingInvitation {
 interface SetupProgress {
     invitedTeammates: boolean;
     createdToken: boolean;
+    connectedMcp: boolean;
     choseAPlan: boolean;
 }
 
@@ -127,6 +128,11 @@ export default function Dashboard({
                                         done: setup.createdToken,
                                         href: `${base}/tokens`,
                                         label: 'Create an API token for the CLI',
+                                    },
+                                    {
+                                        done: setup.connectedMcp,
+                                        href: `${base}/mcp-connections`,
+                                        label: 'Connect an MCP client',
                                     },
                                     {
                                         done: setup.choseAPlan,

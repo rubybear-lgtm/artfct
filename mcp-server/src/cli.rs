@@ -32,6 +32,21 @@ pub enum Command {
   printf '<h1>Hello</h1>' | artfct deploy --stdin"
     )]
     Deploy(DeployArgs),
+    #[command(
+        about = "Authenticate the CLI and local MCP server",
+        after_help = "Examples:
+  artfct login --oauth
+  artfct login
+  artfct login --token $ARTFCT_ORG_TOKEN"
+    )]
+    Login(LoginArgs),
+    #[command(about = "Remove the saved local organization token")]
+    Logout,
+    #[command(
+        name = "organizations",
+        about = "List organizations available to the signed-in account"
+    )]
+    Organizations,
     #[command(about = "Manage the artfct MCP server entrypoint")]
     Mcp {
         #[command(subcommand)]
@@ -107,6 +122,31 @@ pub struct DeployArgs {
         help = "Entrypoint path for a permanent directory bundle"
     )]
     pub entrypoint: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct LoginArgs {
+    #[arg(
+        long,
+        conflicts_with = "token",
+        help = "Open the browser and sign in with OAuth 2.1 + PKCE"
+    )]
+    pub oauth: bool,
+
+    #[arg(
+        long,
+        value_name = "ORG",
+        requires = "oauth",
+        help = "Select the organization/workspace for OAuth consent"
+    )]
+    pub organization: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "TOKEN",
+        help = "Organization token; omit to enter it securely"
+    )]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -276,6 +316,39 @@ mod tests {
         let cli = Cli::parse_from(["artfct", "doctor"]);
 
         assert!(matches!(cli.command, Command::Doctor));
+    }
+
+    #[test]
+    fn parses_login_and_logout() {
+        let cli = Cli::parse_from(["artfct", "login", "--token", "token"]);
+
+        let Command::Login(args) = cli.command else {
+            panic!("expected login command");
+        };
+
+        assert_eq!(args.token.as_deref(), Some("token"));
+        assert!(matches!(
+            Cli::parse_from(["artfct", "logout"]).command,
+            Command::Logout
+        ));
+
+        let Command::Login(args) = Cli::parse_from(["artfct", "login", "--oauth"]).command else {
+            panic!("expected OAuth login command");
+        };
+        assert!(args.oauth);
+
+        let Command::Login(args) =
+            Cli::parse_from(["artfct", "login", "--oauth", "--organization", "acme"]).command
+        else {
+            panic!("expected OAuth login command with organization");
+        };
+        assert_eq!(args.organization.as_deref(), Some("acme"));
+        assert!(Cli::try_parse_from(["artfct", "login", "--organization", "acme"]).is_err());
+
+        assert!(matches!(
+            Cli::parse_from(["artfct", "organizations"]).command,
+            Command::Organizations
+        ));
     }
 
     #[test]

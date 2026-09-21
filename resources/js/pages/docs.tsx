@@ -54,6 +54,37 @@ artfct doctor`;
 
 const CLI_MCP = `artfct mcp serve`;
 
+const CLI_AUTH = `# browser sign-in with PKCE
+artfct login --oauth
+
+# sign in and pin a workspace
+artfct login --oauth --organization acme
+
+# inspect available workspaces
+artfct organizations
+
+# check credentials, workspace context, and MCP health
+artfct doctor
+
+# revoke the remote session and remove local credentials
+artfct logout`;
+
+const HOSTED_MCP = `MCP endpoint:
+https://artfct.dev/mcp
+
+OAuth protected-resource metadata:
+https://artfct.dev/.well-known/oauth-protected-resource
+
+OAuth authorization-server metadata:
+https://artfct.dev/.well-known/oauth-authorization-server`;
+
+const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
+artifacts:deploy     deploy artifacts to the workspace
+artifacts:delete     delete artifacts when policy permits
+collections:read     list workspace collections
+collections:write    create collections and add artifacts
+usage:read           read customer-safe usage and quota totals`;
+
 const CLI_DEPLOY_FLAGS = [
     {
         name: 'FILE',
@@ -551,6 +582,7 @@ export default function Docs({ contract }: DocsProps) {
     );
     const NAV_LINKS = [
         { href: '#cli', label: 'cli' },
+        { href: '#mcp', label: 'mcp' },
         { href: '#skills', label: 'skills' },
         { href: '#overview', label: 'rest api' },
         ...operationLinks,
@@ -776,6 +808,92 @@ export default function Docs({ contract }: DocsProps) {
                     <Prose>
                         Pass <code>--silent</code> to run the uninstallation
                         without interactive prompts.
+                    </Prose>
+
+                    {/* ── mcp ────────────────────────────────────────────── */}
+                    <SectionDivider id="mcp" label="mcp onboarding" />
+
+                    <Prose>
+                        Local stdio and hosted Streamable HTTP use the same
+                        organization-scoped tool catalog. For interactive use,
+                        authenticate in a browser with OAuth and PKCE. Tokens
+                        are stored in the platform credential store when
+                        available; the CLI never writes them to agent config.
+                    </Prose>
+
+                    <Label>local authentication</Label>
+                    <CodeBlock code={CLI_AUTH} />
+
+                    <Prose>
+                        Add the local server to an MCP-compatible agent with{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            artfct setup
+                        </code>{' '}
+                        or configure{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            artfct mcp serve
+                        </code>{' '}
+                        directly. The{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            doctor
+                        </code>{' '}
+                        command reports selected organization, available
+                        organizations, and hosted MCP initialize/tool health
+                        without printing credentials.
+                    </Prose>
+
+                    <Label>hosted MCP</Label>
+                    <Prose>
+                        For clients that support OAuth discovery, add the MCP
+                        endpoint below. The client opens browser consent and
+                        requests only the scopes it needs; no bearer token needs
+                        to be copied into configuration.
+                    </Prose>
+                    <CodeBlock code={HOSTED_MCP} />
+
+                    <Label>scopes</Label>
+                    <CodeBlock code={MCP_SCOPES} />
+
+                    <Prose>
+                        If a connection expires or is revoked, sign in again for
+                        the intended workspace, then run{' '}
+                        <code
+                            style={{
+                                fontFamily: MONO,
+                                fontSize: '12px',
+                                color: S.base00,
+                            }}
+                        >
+                            artfct doctor
+                        </code>{' '}
+                        to verify recovery. Workspace administrators can revoke
+                        hosted connections from the team MCP connections page.
+                        See the{' '}
+                        <Link
+                            href="/docs#mcp"
+                            style={{ color: S.blue, textDecoration: 'none' }}
+                        >
+                            MCP onboarding section
+                        </Link>{' '}
+                        for the complete path.
                     </Prose>
 
                     {/* ── skills ───────────────────────────────────────────── */}

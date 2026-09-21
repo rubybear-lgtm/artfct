@@ -3,9 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use console::Term;
 use dialoguer::{theme::ColorfulTheme, MultiSelect};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ui;
 
@@ -585,10 +586,23 @@ fn read_json(path: &Path, default: serde_json::Value) -> Result<serde_json::Valu
     if content.trim().is_empty() {
         return Ok(default);
     }
-    serde_json::from_str(&content).with_context(|| format!("Invalid JSON in {}", path.display()))
+    match serde_json::from_str(&content) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let backup_message = backup_existing(path)?
+                .map(|path| format!(" Backup created at {}.", path.display()))
+                .unwrap_or_default();
+            Err(anyhow!(
+                "Invalid JSON in {}.{backup_message} Fix the file manually and retry.",
+                path.display()
+            )
+            .context(error))
+        }
+    }
 }
 
 fn write_json(path: &Path, value: &serde_json::Value) -> Result<InstallResult> {
+    backup_existing(path)?;
     let formatted = serde_json::to_string_pretty(value)?;
     fs::write(path, formatted).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(InstallResult::Written)
@@ -615,13 +629,47 @@ fn read_toml(path: &Path) -> Result<toml::Value> {
     if content.trim().is_empty() {
         return Ok(toml::Value::Table(Default::default()));
     }
-    toml::from_str(&content).with_context(|| format!("Invalid TOML in {}", path.display()))
+    match toml::from_str(&content) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let backup_message = backup_existing(path)?
+                .map(|path| format!(" Backup created at {}.", path.display()))
+                .unwrap_or_default();
+            Err(anyhow!(
+                "Invalid TOML in {}.{backup_message} Fix the file manually and retry.",
+                path.display()
+            )
+            .context(error))
+        }
+    }
 }
 
 fn write_toml(path: &Path, value: &toml::Value) -> Result<InstallResult> {
+    backup_existing(path)?;
     let formatted = toml::to_string_pretty(value)?;
     fs::write(path, formatted).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(InstallResult::Written)
+}
+
+fn backup_existing(path: &Path) -> Result<Option<PathBuf>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("System clock is before the Unix epoch")?
+        .as_millis();
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .ok_or_else(|| anyhow!("Cannot create a backup for {}", path.display()))?;
+    let backup = path.with_file_name(format!("{file_name}.bak-{timestamp}"));
+
+    fs::copy(path, &backup)
+        .with_context(|| format!("Failed to back up {} before changing it", path.display()))?;
+
+    Ok(Some(backup))
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -799,6 +847,64 @@ mod tests {
             "/usr/local/bin/artfct"
         );
         assert_eq!(parsed["mcpServers"]["artfct"]["args"][0], "mcp");
+    }
+
+    #[test]
+    fn json_update_creates_a_timestamped_backup() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("existing.mcp.json");
+        let existing = r#"{"mcpServers":{"other":{"command":"keep"}}}"#;
+        fs::write(&path, existing).unwrap();
+
+        install_into(
+            &path,
+            "/usr/local/bin/artfct",
+            &ConfigFormat::JsonMcpServers,
+        )
+        .expect("update config");
+
+        let backups: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("existing.mcp.json.bak-")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(backups[0].path()).unwrap(), existing.as_bytes());
+    }
+
+    #[test]
+    fn invalid_json_is_backed_up_and_not_overwritten() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("broken.mcp.json");
+        let invalid = b"{not valid json";
+        fs::write(&path, invalid).unwrap();
+
+        let error = install_into(
+            &path,
+            "/usr/local/bin/artfct",
+            &ConfigFormat::JsonMcpServers,
+        )
+        .expect_err("invalid config should require manual recovery");
+
+        assert!(format!("{error:#}").contains("Fix the file manually"));
+        assert_eq!(fs::read(&path).unwrap(), invalid);
+        let backups: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("broken.mcp.json.bak-")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(backups[0].path()).unwrap(), invalid);
     }
 
     #[test]

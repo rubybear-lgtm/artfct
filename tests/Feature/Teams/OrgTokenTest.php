@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\McpConnection;
 use App\Models\OrgToken;
 use App\Models\Team;
 use Firebase\JWT\JWT;
@@ -101,11 +102,14 @@ test('token_revocation_writes_denylist', function () {
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create(['jti' => 'jti-under-test']);
+    $connection = McpConnection::factory()->for($team)->for($admin)->create();
+    $connection->forceFill(['credential_jti' => $token->jti])->save();
 
     $response = test()->actingAs($admin)->deleteJson("/settings/teams/{$team->slug}/tokens/{$token->id}");
 
     $response->assertOk();
     expect($token->fresh()->revoked_at)->not->toBeNull();
+    expect($connection->fresh()->revoked_at)->not->toBeNull();
 
     Http::assertSent(function ($request) {
         return $request->url() === 'https://worker.test/v1/internal/revocations'

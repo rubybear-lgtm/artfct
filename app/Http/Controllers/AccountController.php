@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AuditEventType;
 use App\Models\Membership;
+use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\RevocationWriter;
@@ -80,6 +81,7 @@ class AccountController extends Controller
             $token->save();
             RevocationWriter::default()->revoke($token->jti, $token->expires_at);
         });
+        OAuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
         DB::transaction(function () use ($user): void {
             Team::query()->where('owner_user_id', $user->id)->get()->each(function (Team $team): void {

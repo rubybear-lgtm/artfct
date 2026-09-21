@@ -4,6 +4,7 @@ use App\Actions\Teams\CreateTeam;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
+use App\Models\McpConnection;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
@@ -95,9 +96,11 @@ test('dashboard_reports_first_run_progress_for_the_current_team', function () {
             ->component('dashboard')
             ->where('setup.invitedTeammates', false)
             ->where('setup.createdToken', false)
+            ->where('setup.connectedMcp', false)
             ->where('setup.choseAPlan', false));
 
     OrgToken::factory()->create(['team_id' => $team->id]);
+    McpConnection::factory()->create(['team_id' => $team->id]);
     $team->forceFill(['plan' => Plan::Team])->save();
     memberOfTeam($team, TeamRole::Member);
 
@@ -105,6 +108,7 @@ test('dashboard_reports_first_run_progress_for_the_current_team', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('setup.invitedTeammates', true)
             ->where('setup.createdToken', true)
+            ->where('setup.connectedMcp', true)
             ->where('setup.choseAPlan', true));
 });
 

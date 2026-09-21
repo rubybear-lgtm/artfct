@@ -35,6 +35,10 @@ class BillingController extends Controller
         try {
             $status = $quota->status($team);
             $usage = [
+                'storageBytes' => $status->storageBytes,
+                'storageLimitBytes' => $status->storageLimitBytes,
+                'artifactsThisPeriod' => $status->artifactsThisPeriod,
+                'artifactsLimit' => $status->artifactsLimit,
                 'storagePercent' => round($status->storagePercent * 100, 1),
                 'artifactsPercent' => round($status->artifactsPercent * 100, 1),
                 'storageWarning' => $status->storageWarning,

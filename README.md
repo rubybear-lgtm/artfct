@@ -163,7 +163,60 @@ To configure it manually in your client's settings file (Cursor's `mcp.json` or 
 }
 ```
 
-The server exposes two tools: `deploy_to_canvas`, which accepts a complete HTML payload and returns a preview URL, and `search_artifacts`, which searches the org's previously deployed artifacts — call it before regenerating something that may already exist.
+The local server exposes these tools:
+
+- `deploy_to_canvas` — publish encrypted HTML and return a shareable URL.
+- `search_artifacts` — search previously deployed artifacts without returning HTML.
+- `get_connection` — inspect the authenticated workspace, scopes, and client context.
+- `get_usage` — inspect customer-safe storage, artifact, render, and quota totals.
+- `get_artifact` — retrieve artifact metadata without exposing bundle contents.
+- `list_collections` — list organization-scoped artifact collections with cursor pagination.
+- `create_collection` — create a collection for an authenticated member or admin.
+- `add_collection_artifact` — add an artifact to an organization-scoped collection.
+
+Run `artfct login --oauth` for browser-based OAuth with PKCE. Use
+`artfct login --oauth --organization acme` to pin consent to a workspace, or
+`artfct login` to save an organization token. OAuth credentials use the macOS
+Keychain or Linux Secret Service when available. If neither is available, the
+CLI falls back to a 0600 file under the user config directory and warns.
+`artfct logout` revokes the remote session and removes the local credential.
+Run `artfct organizations` to inspect the organizations
+available to the signed-in account and the currently selected context; run
+`artfct login --oauth --organization <slug>` to switch. `ARTFCT_ORG_TOKEN` takes
+precedence and is useful for CI.
+
+For hosted MCP, use `https://artfct.dev/mcp` as the server URL. A client that
+supports OAuth should discover authorization through
+`https://artfct.dev/.well-known/oauth-protected-resource` and request only the
+scopes it needs. The dashboard's **MCP connections** page shows the same setup
+instructions and lets workspace administrators inspect, monitor, and revoke
+connections. Hosted connections use Streamable HTTP; local setup uses stdio.
+For safe retries of `deploy_to_canvas`, send a stable `MCP-Request-Id` (or
+`Idempotency-Key`) header. Reusing it with the same payload returns the original
+result; reusing it with a different payload is rejected.
+
+For release verification, run the live staging smoke suite with two isolated
+organization credentials and a private artifact that belongs only to
+organization A:
+
+```sh
+MCP_LIVE_BASE_URL=https://staging.artfct.dev \
+MCP_LIVE_TOKEN_A=… \
+MCP_LIVE_TOKEN_B=… \
+MCP_LIVE_EXPECTED_ORG_A=acme \
+MCP_LIVE_EXPECTED_ORG_B=beta \
+MCP_LIVE_PRIVATE_ARTIFACT_A=… \
+npm run mcp:live
+```
+
+The smoke check validates protocol/session continuity, the exact tool catalog,
+usage reset metadata, collection discovery, and cross-organization artifact
+isolation. The same check is available as the manual `mcp-live` GitHub Actions workflow.
+Keep the credentials in the staging environment secrets; never commit them or
+put them in ordinary pull-request CI.
+
+See [the MCP and CLI launch runbook](docs/mcp-cli-runbook.md) for supported
+client setup, recovery, policy errors, and incident procedures.
 
 ### Diagnostics
 
@@ -256,7 +309,11 @@ Rate limited to 60 creates / minute per IP.
 
 ### MCP Tool
 
-When artfct is configured as an MCP server, agents get access to two tools. `deploy_to_canvas` accepts a complete HTML payload and returns a preview URL — agents should deploy instead of emitting raw code blocks whenever they produce visual output.
+When artfct is configured as an MCP server, agents get the publishing,
+retrieval, collection, usage, and connection tools documented in [MCP Server
+Setup](#mcp-server-setup). `deploy_to_canvas` accepts a complete HTML payload
+and returns a preview URL — agents should deploy instead of emitting raw code
+blocks whenever they produce visual output.
 
 ```json
 {

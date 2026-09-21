@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
 use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
+use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\RevocationWriter;
@@ -174,6 +175,11 @@ class TeamController extends Controller
         $team->memberships()
             ->where('user_id', $user->id)
             ->delete();
+        OAuthRefreshToken::query()
+            ->where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => now()]);
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberLeft, $team, (string) $user->id, "user:{$user->id}");
 

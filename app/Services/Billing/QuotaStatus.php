@@ -10,6 +10,10 @@ namespace App\Services\Billing;
 final readonly class QuotaStatus
 {
     public function __construct(
+        public int $storageBytes,
+        public int $storageLimitBytes,
+        public int $artifactsThisPeriod,
+        public int $artifactsLimit,
         public float $storagePercent,
         public float $artifactsPercent,
         public bool $storageWarning,

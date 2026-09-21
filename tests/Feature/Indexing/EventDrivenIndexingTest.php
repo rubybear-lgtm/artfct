@@ -3,6 +3,7 @@
 use App\Contracts\ArtifactContentSource;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
+use App\Jobs\ProcessWorkerEvent;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
@@ -13,6 +14,7 @@ use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\RendererContract;
 use App\Services\Indexing\RenderTimeoutException;
 use App\Services\Indexing\VectorIndexContract;
+use App\Services\WorkerEvents\WorkerEventHandlers;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -27,12 +29,19 @@ beforeEach(function () {
 
 function artifactCreatedEvent(string $org, string $artifactId, ?string $eventId = null): TestResponse
 {
-    return postWorkerEvent([
+    $queuedBeforeRequest = Queue::pushed(ProcessWorkerEvent::class)->count();
+    $response = postWorkerEvent([
         'id' => $eventId ?? (string) Str::uuid(),
         'type' => 'artifact.created',
         'org_id' => $org,
         'data' => ['artifact_id' => $artifactId, 'tier' => 'secure'],
     ]);
+
+    Queue::pushed(ProcessWorkerEvent::class)->slice($queuedBeforeRequest)->each(
+        fn (ProcessWorkerEvent $job): mixed => $job->handle(app(WorkerEventHandlers::class)),
+    );
+
+    return $response;
 }
 
 function seedContent(string $org, string $artifactId, string $html = '<html><body><h1>Quarterly Report</h1><p>Revenue was strong across every region this quarter. Revenue was strong across every region this quarter.</p></body></html>', array $provenance = ['agent' => 'claude-code', 'repo_url' => 'github.com/acme/billing', 'commit_sha' => 'abc123']): void
@@ -72,7 +81,7 @@ test('event_for_foreign_org_artifact_dispatches_nothing', function () {
 
     artifactCreatedEvent('acme', 'art-foreign')->assertStatus(202);
 
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(IndexArtifactJob::class);
 });
 
 test('indexing_disabled_records_event_without_dispatch', function () {
@@ -84,7 +93,7 @@ test('indexing_disabled_records_event_without_dispatch', function () {
 
     artifactCreatedEvent('acme', 'art-1', $eventId)->assertStatus(202);
 
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(IndexArtifactJob::class);
     expect(DB::table('worker_events_received')->where('event_id', $eventId)->count())->toBe(1)
         ->and(ArtifactIndexEntry::query()->count())->toBe(0)
         ->and(ArtifactIndexingFailure::query()->count())->toBe(0);
@@ -148,5 +157,5 @@ test('already_indexed_artifact_is_not_redispatched', function () {
 
     artifactCreatedEvent('acme', 'art-1')->assertStatus(202);
 
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(IndexArtifactJob::class);
 });

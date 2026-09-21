@@ -73,7 +73,7 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
-            "@php artisan test"
+            "@php -d memory_limit=512M vendor/bin/pest"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

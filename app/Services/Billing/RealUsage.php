@@ -35,6 +35,14 @@ final class RealUsage implements UsageContract
             'render_minutes_this_period' => 0,
         ];
 
+        foreach (['period_start', 'period_end'] as $periodKey) {
+            $periodValue = $response->json($periodKey);
+
+            if (is_string($periodValue) && $periodValue !== '') {
+                $usage[$periodKey] = $periodValue;
+            }
+        }
+
         // What the Worker actually enforces, when it says so.
         if (is_array($response->json('limits'))) {
             $usage['limits'] = [

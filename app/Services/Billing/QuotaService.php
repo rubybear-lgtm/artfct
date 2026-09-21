@@ -42,6 +42,10 @@ final class QuotaService
             : 0.0;
 
         return new QuotaStatus(
+            storageBytes: (int) $usage['storage_bytes'],
+            storageLimitBytes: (int) $storageLimit,
+            artifactsThisPeriod: (int) $usage['artifacts_this_period'],
+            artifactsLimit: (int) $artifactsLimit,
             storagePercent: $storagePercent,
             artifactsPercent: $artifactsPercent,
             storageWarning: $storagePercent >= self::WARNING_THRESHOLD,

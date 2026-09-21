@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $team_id
  * @property int $user_id
+ * @property int|null $mcp_connection_id
  * @property string $name
  * @property string $jti
  * @property TeamRole $role
@@ -31,7 +32,7 @@ use Illuminate\Support\Carbon;
  * @property-read Team $team
  * @property-read User $user
  */
-#[Fillable(['team_id', 'user_id', 'name', 'jti', 'role', 'last_four', 'expires_at', 'slack_channels'])]
+#[Fillable(['team_id', 'user_id', 'mcp_connection_id', 'name', 'jti', 'role', 'last_four', 'expires_at', 'slack_channels'])]
 class OrgToken extends Model
 {
     /** @use HasFactory<OrgTokenFactory> */
@@ -55,6 +56,12 @@ class OrgToken extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsTo<McpConnection, $this> */
+    public function mcpConnection(): BelongsTo
+    {
+        return $this->belongsTo(McpConnection::class);
     }
 
     /**

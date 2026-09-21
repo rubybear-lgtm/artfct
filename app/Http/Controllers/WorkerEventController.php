@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\WorkerEvents\WorkerEventHandlers;
+use App\Jobs\ProcessWorkerEvent;
 use App\Services\WorkerEvents\WorkerEventSignature;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -19,7 +18,7 @@ use Illuminate\Support\Facades\Validator;
  */
 class WorkerEventController extends Controller
 {
-    public function __invoke(Request $request, WorkerEventHandlers $handlers): JsonResponse
+    public function __invoke(Request $request): JsonResponse
     {
         $secret = config('services.worker_events.secret');
         $signature = new WorkerEventSignature(is_string($secret) ? $secret : null);
@@ -59,9 +58,7 @@ class WorkerEventController extends Controller
             return response()->json(['status' => 'duplicate']);
         }
 
-        if (! $handlers->dispatch($event)) {
-            Log::info('Ignoring unknown worker event type.', ['type' => $event['type']]);
-        }
+        ProcessWorkerEvent::dispatch($event);
 
         return response()->json(['status' => 'accepted'], 202);
     }

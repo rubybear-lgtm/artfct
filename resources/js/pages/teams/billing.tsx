@@ -44,6 +44,10 @@ interface Props {
     isOwner: boolean;
     stripeConfigured: boolean;
     usage: {
+        storageBytes: number;
+        storageLimitBytes: number;
+        artifactsThisPeriod: number;
+        artifactsLimit: number;
         storagePercent: number;
         artifactsPercent: number;
         storageWarning: boolean;
@@ -55,18 +59,31 @@ interface Props {
     checkout: string | null;
 }
 
-const size = (bytes: number) =>
-    bytes >= 1024 ** 3
-        ? `${(bytes / 1024 ** 3).toFixed(0)} GB`
-        : `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+const size = (bytes: number) => {
+    if (bytes >= 1024 ** 3) {
+        return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    }
+
+    if (bytes >= 1024 ** 2) {
+        return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+    }
+
+    if (bytes >= 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${bytes} B`;
+};
 
 function Meter({
     label,
+    detail,
     percent,
     warning,
     exceeded,
 }: {
     label: string;
+    detail: string;
     percent: number;
     warning: boolean;
     exceeded: boolean;
@@ -81,7 +98,9 @@ function Meter({
         <div>
             <div className="mb-1 flex justify-between text-sm">
                 <span>{label}</span>
-                <span className="text-muted-foreground">{percent}%</span>
+                <span className="text-muted-foreground">
+                    {detail} · {percent}%
+                </span>
             </div>
             <div
                 className="h-2 rounded-full bg-muted"
@@ -307,12 +326,14 @@ export default function Billing({
                         <CardContent className="flex flex-col gap-4">
                             <Meter
                                 label="Storage"
+                                detail={`${size(usage.storageBytes)} / ${size(usage.storageLimitBytes)}`}
                                 percent={usage.storagePercent}
                                 warning={usage.storageWarning}
                                 exceeded={usage.storageExceeded}
                             />
                             <Meter
                                 label="Artifacts"
+                                detail={`${usage.artifactsThisPeriod.toLocaleString()} / ${usage.artifactsLimit.toLocaleString()}`}
                                 percent={usage.artifactsPercent}
                                 warning={usage.artifactsWarning}
                                 exceeded={usage.artifactsExceeded}

@@ -19,7 +19,8 @@
         "worker:deploy": "node scripts/deploy-worker-version.mjs",
         "worker:deploy:triggers": "cd backend && ../node_modules/.bin/wrangler triggers deploy",
         "waf:rate-limits": "node cloudflare-rate-limits.mjs",
-        "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs"
+        "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs",
+        "mcp:live": "node scripts/mcp-live-smoke.mjs"
     },
     "devDependencies": {
         "@emnapi/core": "^1.10.0",

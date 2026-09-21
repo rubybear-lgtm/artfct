@@ -6,6 +6,7 @@ use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\UpdateTeamMemberRequest;
+use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Governance\AuditLogger;
@@ -64,6 +65,11 @@ class TeamMemberController extends Controller
         $team->memberships()
             ->where('user_id', $user->id)
             ->delete();
+        OAuthRefreshToken::query()
+            ->where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => now()]);
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberRemoved, $team, (string) $request->user()->id, "user:{$user->id}");
 

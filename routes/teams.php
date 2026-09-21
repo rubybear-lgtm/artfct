@@ -12,6 +12,7 @@ use App\Http\Controllers\Teams\CollectionController;
 use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\GovernancePageController;
 use App\Http\Controllers\Teams\InvitationLandingController;
+use App\Http\Controllers\Teams\McpConnectionController;
 use App\Http\Controllers\Teams\OrgTokenController;
 use App\Http\Controllers\Teams\SearchPageController;
 use App\Http\Controllers\Teams\TeamController;
@@ -59,6 +60,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/teams/{team}/audit', [AuditLogController::class, 'index'])->name('teams.audit.index');
     Route::get('settings/teams/{team}/audit/export', [AuditLogController::class, 'export'])->name('teams.audit.export');
     Route::get('settings/teams/{team}/tokens', [OrgTokenController::class, 'index'])->name('teams.tokens.index');
+    Route::get('settings/teams/{team}/mcp-connections', [McpConnectionController::class, 'index'])->name('teams.mcp-connections.index');
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
@@ -101,5 +103,6 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('settings/teams/{team}/tokens', [OrgTokenController::class, 'store'])->name('teams.tokens.store');
         Route::delete('settings/teams/{team}/tokens/{token}', [OrgTokenController::class, 'destroy'])->name('teams.tokens.destroy');
+        Route::delete('settings/teams/{team}/mcp-connections/{connection}', [McpConnectionController::class, 'destroy'])->name('teams.mcp-connections.destroy');
     });
 });

@@ -5,11 +5,13 @@ use clap::Parser;
 
 mod api;
 mod artifact_crypto;
+mod auth;
 mod cli;
 mod doctor;
 mod mcp;
 mod provenance;
 mod setup;
+mod tool_registry;
 mod ui;
 mod uninstall;
 
@@ -29,6 +31,17 @@ async fn run() -> Result<()> {
 
     match cli.command {
         cli::Command::Deploy(args) => deploy_from_cli(args).await,
+        cli::Command::Login(args) => {
+            let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+
+            if args.oauth {
+                auth::oauth_login(&api_base_url, args.organization.as_deref()).await
+            } else {
+                auth::login(args.token, &api_base_url)
+            }
+        }
+        cli::Command::Logout => auth::logout(&auth::api_base_url(DEFAULT_API_BASE_URL)).await,
+        cli::Command::Organizations => list_organizations().await,
         cli::Command::Mcp {
             command: cli::McpCommand::Serve(args),
         } => mcp::run_stdio_server(args.host).await,
@@ -36,32 +49,53 @@ async fn run() -> Result<()> {
         cli::Command::Setup(args) => run_setup(args),
         cli::Command::Uninstall(args) => run_uninstall(args),
         cli::Command::Doctor => {
-            let api_base_url = env::var("ARTFCT_API_BASE_URL")
-                .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
-            doctor::print_report(&api_base_url);
-            Ok(())
+            let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+            doctor::run_report(&api_base_url).await
         }
         cli::Command::Export(args) => export_from_cli(args).await,
     }
 }
 
+async fn list_organizations() -> Result<()> {
+    let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+    let client = reqwest::Client::new();
+    let token = auth::access_token(&client, &api_base_url)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!("Organizations requires `artfct login` or ARTFCT_ORG_TOKEN")
+        })?;
+    let response = api::organizations(&client, &api_base_url, &token).await?;
+
+    ui::header("Organizations");
+    for organization in response.organizations {
+        let marker = if organization.selected { "*" } else { " " };
+        let role = organization.role.as_deref().unwrap_or("unknown");
+        eprintln!(
+            "{marker} {:<24} {} ({role})",
+            organization.slug, organization.name
+        );
+    }
+
+    Ok(())
+}
+
 async fn export_from_cli(args: cli::ExportArgs) -> Result<()> {
-    let token = args
-        .org_token
-        .or_else(|| env::var("ARTFCT_ORG_TOKEN").ok())
-        .ok_or_else(|| anyhow::anyhow!("Export requires ARTFCT_ORG_TOKEN"))?;
-    let api_base_url =
-        env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
-    let export =
-        api::export_artifacts(&reqwest::Client::new(), &api_base_url, &args.org, &token).await?;
+    let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+    let client = reqwest::Client::new();
+    let token = match args.org_token {
+        Some(token) => token,
+        None => auth::access_token(&client, &api_base_url)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Export requires `artfct login` or ARTFCT_ORG_TOKEN"))?,
+    };
+    let export = api::export_artifacts(&client, &api_base_url, &args.org, &token).await?;
     fs::create_dir_all(args.directory.join("blobs"))?;
     fs::write(
         args.directory.join("metadata.json"),
         serde_json::to_vec_pretty(&export)?,
     )?;
-    let http = reqwest::Client::new();
     for (hash, url) in export.blobs {
-        let response = http
+        let response = client
             .get(url)
             .bearer_auth(&token)
             .send()
@@ -95,13 +129,13 @@ async fn delete_from_cli(args: cli::DeleteArgs) -> Result<()> {
         .artifact_id()
         .ok_or_else(|| anyhow::anyhow!("Invalid artifact ID or URL: {}", args.id_or_url))?;
 
-    let api_base_url =
-        env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+    let client = reqwest::Client::new();
 
     let pb = ui::spinner(format!("Deleting {id}…"));
 
-    let token = env::var("ARTFCT_ORG_TOKEN").ok();
-    match api::delete_artifact(&reqwest::Client::new(), &api_base_url, id, token.as_deref()).await {
+    let token = auth::access_token(&client, &api_base_url).await?;
+    match api::delete_artifact(&client, &api_base_url, id, token.as_deref()).await {
         Ok(()) => ui::finish_success(pb, format!("Deleted {id}")),
         Err(e) => {
             ui::finish_error(pb, e.to_string());
@@ -133,8 +167,7 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
         return deploy_permanent_directory(&args).await;
     }
     let html = read_deploy_html(&args)?;
-    let api_base_url =
-        env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
     let cwd = env::current_dir().context("Failed to determine current directory")?;
     let input = args.input();
     let source_path = match &input {
@@ -144,11 +177,17 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
     let provenance = provenance::build_cli_provenance(&cwd, source_path);
 
     if args.tier == "permanent" {
-        let token = args
-            .org_token
-            .clone()
-            .or_else(|| env::var("ARTFCT_ORG_TOKEN").ok())
-            .ok_or_else(|| anyhow::anyhow!("Permanent artifacts require ARTFCT_ORG_TOKEN"))?;
+        let client = reqwest::Client::new();
+        let token = match args.org_token.clone() {
+            Some(token) => token,
+            None => auth::access_token(&client, &api_base_url)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Permanent artifacts require `artfct login` or ARTFCT_ORG_TOKEN"
+                    )
+                })?,
+        };
         let request = artifact_crypto::prepare_permanent_artifact_request(
             &html,
             "public".to_string(),
@@ -156,7 +195,7 @@ async fn deploy_from_cli(args: cli::DeployArgs) -> Result<()> {
         )?;
         let pb = ui::spinner("Uploading permanent artifact…");
         let result = api::deploy_permanent_artifact(
-            &reqwest::Client::new(),
+            &client,
             &api_base_url,
             &request,
             html.trim().as_bytes(),
@@ -231,22 +270,20 @@ async fn deploy_permanent_directory(args: &cli::DeployArgs) -> Result<()> {
         manifest,
         provenance,
     };
-    let token = args
-        .org_token
-        .clone()
-        .or_else(|| env::var("ARTFCT_ORG_TOKEN").ok())
-        .ok_or_else(|| anyhow::anyhow!("Permanent artifacts require ARTFCT_ORG_TOKEN"))?;
-    let api_base_url =
-        env::var("ARTFCT_API_BASE_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+    let api_base_url = auth::api_base_url(DEFAULT_API_BASE_URL);
+    let client = reqwest::Client::new();
+    let token = match args.org_token.clone() {
+        Some(token) => token,
+        None => auth::access_token(&client, &api_base_url)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!("Permanent artifacts require `artfct login` or ARTFCT_ORG_TOKEN")
+            })?,
+    };
     let pb = ui::spinner("Uploading permanent bundle…");
-    let result = api::deploy_permanent_artifact_files(
-        &reqwest::Client::new(),
-        &api_base_url,
-        &request,
-        &files,
-        &token,
-    )
-    .await;
+    let result =
+        api::deploy_permanent_artifact_files(&client, &api_base_url, &request, &files, &token)
+            .await;
     match result {
         Ok(artifact) => {
             ui::finish_success(pb, &artifact.url);

@@ -6,6 +6,7 @@ use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\CreateOrgTokenRequest;
+use App\Models\McpConnection;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
@@ -93,6 +94,10 @@ class OrgTokenController extends Controller
 
         $token->revoked_at = now();
         $token->save();
+        McpConnection::query()
+            ->where('credential_jti', $token->jti)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => $token->revoked_at]);
 
         RevocationWriter::default()->revoke($token->jti, $token->expires_at);
 

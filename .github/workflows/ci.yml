@@ -125,7 +125,7 @@ jobs:
         run: npm run build
 
       - name: Run Pest
-        run: php artisan test --compact
+        run: php -d memory_limit=512M vendor/bin/pest --compact
 
   secrets:
     runs-on: ubuntu-latest
@@ -221,6 +221,83 @@ jobs:
       - name: Smoke test CLI commands
         run: |
           cargo run -p artfct --locked -- --help
+          cargo run -p artfct --locked -- login --help
           cargo run -p artfct --locked -- deploy --help
           cargo run -p artfct --locked -- mcp --help
           cargo run -p artfct --locked -- doctor
+
+  mcp_quality:
+    name: MCP contract and quality gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-mcp-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Check MCP formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check MCP lint
+        run: cargo clippy -p artfct --all-targets --locked -- -D warnings
+
+      - name: Run MCP contract tests
+        run: cargo test -p artfct --locked
+
+  mcp_application:
+    name: Hosted MCP application contract gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          touch database/database.sqlite
+
+      - name: Run hosted MCP contract tests
+        run: >-
+          php -d memory_limit=512M vendor/bin/pest --compact
+          tests/Feature/McpContractTest.php
+          tests/Feature/McpOAuthTest.php
+          tests/Feature/McpRemoteTransportTest.php
+          tests/Feature/McpConnectionApiTest.php
+          tests/Feature/McpConnectionsPageTest.php
+          tests/Feature/McpActivityTest.php

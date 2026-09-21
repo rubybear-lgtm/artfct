@@ -97,3 +97,28 @@ test('real_usage_returns_the_limits_the_worker_enforces', function () {
 
     expect($usage['limits'])->toBe(['storage_bytes' => 12, 'artifacts_per_month' => 5]);
 });
+
+test('billing_exposes_worker_usage_and_limits_for_precise_meters', function () {
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $member->switchTeam($team);
+    app()->instance(UsageContract::class, new class implements UsageContract
+    {
+        public function currentUsage(string $orgSlug): array
+        {
+            return [
+                'storage_bytes' => 900,
+                'artifacts_this_period' => 4,
+                'render_minutes_this_period' => 0,
+                'limits' => ['storage_bytes' => 1000, 'artifacts_per_month' => 5],
+            ];
+        }
+    });
+
+    test()->actingAs($member)->get(route('teams.billing.show', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('usage.storageBytes', 900)
+            ->where('usage.storageLimitBytes', 1000)
+            ->where('usage.artifactsThisPeriod', 4)
+            ->where('usage.artifactsLimit', 5));
+});

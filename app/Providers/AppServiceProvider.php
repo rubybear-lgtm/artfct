@@ -48,6 +48,7 @@ use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
 use App\Services\WorkerEvents\ArtifactCreatedHandler;
+use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
@@ -157,6 +158,10 @@ class AppServiceProvider extends ServiceProvider
             'artifact.created',
             fn (array $event) => $this->app->make(ArtifactCreatedHandler::class)->handle($event),
         );
+        $this->app->make(WorkerEventHandlers::class)->register(
+            'artifact.viewed',
+            fn (array $event) => $this->app->make(ArtifactViewedHandler::class)->handle($event),
+        );
     }
 
     /**
@@ -173,6 +178,18 @@ class AppServiceProvider extends ServiceProvider
         ]);
         RateLimiter::for('team-creation', fn (Request $request) => Limit::perHour(10)->by('user:'.$request->user()?->id));
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute((int) config('auth.throttle_per_minute', 20))->by($request->ip()));
+        RateLimiter::for('oauth-registration', fn (Request $request) => Limit::perHour((int) config('auth.oauth_registration_per_hour', 10))
+            ->by('oauth-registration:'.$request->ip()));
+        RateLimiter::for('mcp', function (Request $request): array {
+            $limit = (int) config('auth.mcp_throttle_per_minute', 120);
+            $claims = $request->attributes->get('org_jwt_claims');
+            $team = $request->attributes->get('org_jwt_team');
+
+            return [
+                Limit::perMinute($limit)->by('mcp-org:'.($team?->slug ?? $request->ip())),
+                Limit::perMinute($limit)->by('mcp:'.($claims['jti'] ?? $request->ip())),
+            ];
+        });
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
