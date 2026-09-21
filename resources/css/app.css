@@ -23,6 +23,9 @@
     --color-success: var(--sol-green);
     --color-warning: var(--sol-yellow);
     --color-ring: var(--sol-blue);
+    --color-paper: var(--sol-paper, var(--sol-base3));
+    --color-primary-deep: var(--sol-blue-deep, var(--sol-blue));
+    --color-tint: var(--sol-tint, var(--sol-base2));
 }
 
 /* ── Solarized palette ──────────────────────────────────────────────────── */
@@ -60,6 +63,55 @@
     --sol-base1: #586e75;
     --sol-base0: #839496;
     --sol-base00: #93a1a1;
+}
+
+/* ── Oxblood & Bone: the signed-in app (see DESIGN.md) ─────────────────────
+   Scoped by a class that AppLayout puts on <html>, so the free tool and the
+   marketing pages keep their current look until they are redesigned. Remaps
+   the semantic tokens above; always light, whatever the system theme. */
+:root:root.app-theme {
+    --sol-base3: #f7f5f2;
+    --sol-base2: #efece6;
+    --sol-base1: #8c8a83;
+    --sol-base0: #66655f;
+    --sol-base00: #262624;
+    --sol-blue: #701a24;
+    --sol-blue-deep: #58141c;
+    --sol-paper: #fbfaf8;
+    --sol-tint: #f1e4e5;
+    --sol-green: #2f6b4f;
+    --sol-red: #a12a2a;
+    --sol-cyan: #701a24;
+    --sol-orange: #a12a2a;
+    --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Newsreader', ui-serif, Georgia, serif;
+    color-scheme: light;
+}
+
+.app-theme main h1,
+.app-theme h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+.app-theme input:focus-visible,
+.app-theme textarea:focus-visible,
+.app-theme select:focus-visible {
+    outline: none;
+    border-color: var(--sol-blue);
+    box-shadow: 0 0 0 3px var(--sol-tint);
+}
+
+.app-theme .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sol-base1);
 }
 
 html {

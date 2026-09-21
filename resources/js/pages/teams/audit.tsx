@@ -160,7 +160,7 @@ export default function Audit({
                             <tbody>
                                 {events.data.map((row) => (
                                     <TableRow key={row.id}>
-                                        <TableCell className="font-mono text-xs whitespace-nowrap">
+                                        <TableCell className="text-xs whitespace-nowrap tabular-nums">
                                             {new Date(row.at).toLocaleString()}
                                         </TableCell>
                                         <TableCell>
@@ -169,7 +169,7 @@ export default function Audit({
                                         <TableCell title={row.actor}>
                                             {row.actorName}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">
+                                        <TableCell className="text-xs tabular-nums">
                                             {row.target}
                                         </TableCell>
                                         <TableCell>{row.outcome}</TableCell>

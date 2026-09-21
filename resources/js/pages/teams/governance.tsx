@@ -160,7 +160,9 @@ export default function Governance({
                                         key={id}
                                         className="flex items-center gap-2"
                                     >
-                                        <span className="font-mono">{id}</span>
+                                        <span className="tabular-nums">
+                                            {id}
+                                        </span>
                                         <button
                                             className="ml-auto underline"
                                             onClick={() =>

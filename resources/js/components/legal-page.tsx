@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import type { ReactNode } from 'react';
 
 import { Alert } from '@/components/ui/alert';
+import { useAppTheme } from '@/lib/useAppTheme';
 
 export function LegalPage({
     title,
@@ -12,12 +13,14 @@ export function LegalPage({
     version: string;
     children: ReactNode;
 }) {
+    useAppTheme();
+
     return (
         <div className="min-h-screen bg-background text-foreground">
             <Head title={title} />
-            <main className="mx-auto max-w-2xl px-4 py-10">
-                <Link href="/" className="font-mono text-sm font-semibold">
-                    artfct
+            <main className="mx-auto max-w-2xl px-5 py-12">
+                <Link href="/" className="font-serif text-2xl tracking-tight">
+                    Artfct
                 </Link>
                 <h1 className="mt-6 mb-2 text-2xl font-semibold">{title}</h1>
                 <Alert variant="warning">

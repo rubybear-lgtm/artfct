@@ -104,8 +104,8 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                         <CardHeader>
                             <CardTitle>Create a token</CardTitle>
                             <CardDescription>
-                                For the CLI, MCP server or CI. The value is
-                                shown once.
+                                Lets an AI tool share to and read from this
+                                team. The value is shown once.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -186,7 +186,7 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                         <TableRow key={token.id}>
                                             <TableCell>{token.name}</TableCell>
                                             <TableCell>{token.role}</TableCell>
-                                            <TableCell className="font-mono">
+                                            <TableCell className="tabular-nums">
                                                 …{token.lastFour}
                                             </TableCell>
                                             <TableCell>

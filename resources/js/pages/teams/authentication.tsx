@@ -156,7 +156,7 @@ export default function Authentication({
                                     </span>
                                 </div>
                                 {!domain.verified && (
-                                    <p className="mt-1 font-mono text-xs text-muted-foreground">
+                                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                                         Add a TXT record named{' '}
                                         {domain.txtRecordName} with the value{' '}
                                         {domain.verificationToken}
