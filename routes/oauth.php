@@ -7,16 +7,9 @@ Route::get('.well-known/oauth-authorization-server', [AuthorizationServerControl
     ->name('oauth.metadata');
 Route::get('.well-known/oauth-protected-resource', [AuthorizationServerController::class, 'protectedResourceMetadata'])
     ->name('oauth.resource-metadata');
-Route::get('.well-known/oauth-protected-resource/{path}', function (string $path) {
-    $issuer = rtrim((string) config('services.org_jwt.issuer'), '/') ?: url('/');
-
-    return response()->json([
-        'resource' => url('/'.$path),
-        'authorization_servers' => [$issuer],
-        'scopes_supported' => ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read'],
-        'bearer_methods_supported' => ['header'],
-    ]);
-})->where('path', '.*')->name('mcp.oauth.protected-resource.nested');
+Route::get('.well-known/oauth-protected-resource/{path}', [AuthorizationServerController::class, 'protectedResourceMetadata'])
+    ->where('path', 'mcp')
+    ->name('mcp.oauth.protected-resource.nested');
 
 Route::post('oauth/register', [AuthorizationServerController::class, 'register'])
     ->middleware('throttle:oauth-registration')

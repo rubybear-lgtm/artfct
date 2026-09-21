@@ -391,3 +391,17 @@ test('the consent approval stays protected by CSRF', function () {
 
     $this->actingAs(User::factory()->create())->post('/oauth/authorize', [])->assertStatus(419);
 });
+
+test('the path-suffixed protected-resource document names the same authorization server and only exists for the MCP resource', function () {
+    config([
+        'services.org_jwt.issuer' => 'https://artfct.dev',
+        'services.oauth.issuer' => 'https://staging.example.test',
+    ]);
+
+    $this->getJson('/.well-known/oauth-protected-resource/mcp')
+        ->assertOk()
+        ->assertJsonPath('resource', url('/mcp'))
+        ->assertJsonPath('authorization_servers.0', 'https://staging.example.test');
+
+    $this->getJson('/.well-known/oauth-protected-resource/anything-else')->assertNotFound();
+});
