@@ -17,7 +17,7 @@ export const S = {
 
 export const MONO =
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-export const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
+export const SANS = 'var(--font-sans)';
 export const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 
 // ── post type ──────────────────────────────────────────────────────────────────
@@ -35,33 +35,13 @@ export interface Post {
 
 export function P({ children }: { children: React.ReactNode }) {
     return (
-        <p
-            style={{
-                fontFamily: SANS,
-                fontSize: '15px',
-                lineHeight: 1.75,
-                color: S.base0,
-                margin: '0 0 1.1rem',
-            }}
-        >
-            {children}
-        </p>
+        <p className="mb-5 leading-[1.75] text-muted-foreground">{children}</p>
     );
 }
 
 export function H3({ children }: { children: React.ReactNode }) {
     return (
-        <h3
-            style={{
-                fontFamily: MONO,
-                fontSize: '12px',
-                fontWeight: 400,
-                color: S.base00,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                margin: '2rem 0 0.75rem',
-            }}
-        >
+        <h3 className="mt-12 mb-4 font-serif text-2xl leading-tight font-medium tracking-tight text-foreground">
             {children}
         </h3>
     );
@@ -69,15 +49,7 @@ export function H3({ children }: { children: React.ReactNode }) {
 
 export function Mono({ children }: { children: React.ReactNode }) {
     return (
-        <code
-            style={{
-                fontFamily: MONO,
-                fontSize: '13px',
-                color: S.base00,
-                backgroundColor: S.base2,
-                padding: '0.1em 0.4em',
-            }}
-        >
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
             {children}
         </code>
     );
@@ -95,7 +67,7 @@ export function A({
             href={href}
             target={href.startsWith('http') ? '_blank' : undefined}
             rel={href.startsWith('http') ? 'noreferrer' : undefined}
-            style={{ color: S.blue, textDecoration: 'none' }}
+            className="font-semibold text-primary underline-offset-4 hover:underline"
         >
             {children}
         </a>
@@ -104,19 +76,7 @@ export function A({
 
 export function CodeBlock({ code }: { code: string }) {
     return (
-        <pre
-            style={{
-                fontFamily: MONO,
-                fontSize: '12px',
-                lineHeight: 1.65,
-                color: S.base00,
-                backgroundColor: S.base2,
-                padding: '1rem 1.1rem',
-                margin: '0 0 1.25rem',
-                overflowX: 'auto',
-                whiteSpace: 'pre',
-            }}
-        >
+        <pre className="mb-6 overflow-x-auto rounded-[10px] border border-border bg-paper p-4 font-mono text-[13px] leading-relaxed whitespace-pre text-foreground">
             {code}
         </pre>
     );
