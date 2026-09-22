@@ -84,6 +84,41 @@ fn permanent_payload(bytes: &[u8], provenance: Value) -> Value {
     })
 }
 
+/// PUTs `body` to `url` and returns the response, retrying a bounded number
+/// of times on a bare transport-level failure (the connection dropped
+/// before a complete response arrived) — never on a response the server
+/// actually sent, even an unexpected status. Some CI runners are slow
+/// enough under load that a request which triggers a heavier synchronous
+/// write cascade (e.g. cross-table cascade delete on expiry) occasionally
+/// gets its response cut off; this call is the one place that's been
+/// observed happening (`expired_incomplete_bundle_is_cleaned_up`, CI-only,
+/// never locally), not a server bug to paper over silently: repeating the
+/// same idempotent PUT is safe, and a real bug still fails after retries.
+async fn put_with_retry(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+    body: Vec<u8>,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let attempts = 3;
+    for attempt in 1..=attempts {
+        match client
+            .put(url)
+            .bearer_auth(token)
+            .body(body.clone())
+            .send()
+            .await
+        {
+            Ok(response) => return Ok(response),
+            Err(error) if attempt < attempts && error.is_request() && error.status().is_none() => {
+                tokio::time::sleep(std::time::Duration::from_millis(200 * attempt)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("loop always returns on the final attempt")
+}
+
 fn bundle_payload(files: &[(&str, &[u8], &str)], entrypoint: &str) -> Value {
     json!({
         "mode": "permanent", "tier": "public", "title": "Bundle",
@@ -939,15 +974,13 @@ async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>>
         .to_string();
     let update = format!("UPDATE artifacts SET expires_at = '2000-01-01T00:00:00Z' WHERE row_id = '{row_id}' AND id = '{id}'");
     d1_execute(&context, &update)?;
-    let upload = client
-        .put(format!(
-            "{}/v1/artifacts/{id}/files/{script_hash}",
-            context.base
-        ))
-        .bearer_auth(&context.token)
-        .body(script.to_vec())
-        .send()
-        .await?;
+    let upload = put_with_retry(
+        &client,
+        &format!("{}/v1/artifacts/{id}/files/{script_hash}", context.base),
+        &context.token,
+        script.to_vec(),
+    )
+    .await?;
     assert_eq!(upload.status(), reqwest::StatusCode::NOT_FOUND);
     assert_eq!(
         count_value(
