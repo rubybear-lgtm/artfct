@@ -5,6 +5,7 @@ namespace App\Services\Governance;
 use App\Enums\AuditEventType;
 use App\Models\AuditEvent;
 use App\Models\Team;
+use App\Support\ClientIp;
 use Illuminate\Http\Request;
 
 /**
@@ -53,7 +54,7 @@ final class AuditLogger
             $team,
             $actor,
             $target,
-            $request->ip() ?? 'unknown',
+            ClientIp::for($request),
             $request->userAgent() ?? 'unknown',
             $outcome,
         );

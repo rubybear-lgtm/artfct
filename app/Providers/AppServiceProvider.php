@@ -50,6 +50,7 @@ use App\Services\Tenancy\TenantProvisionerContract;
 use App\Services\WorkerEvents\ArtifactCreatedHandler;
 use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
+use App\Support\ClientIp;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -177,9 +178,9 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour((int) config('auth.invitations_per_hour', 30))->by('team:'.$request->route('team')),
         ]);
         RateLimiter::for('team-creation', fn (Request $request) => Limit::perHour(10)->by('user:'.$request->user()?->id));
-        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute((int) config('auth.throttle_per_minute', 20))->by($request->ip()));
+        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute((int) config('auth.throttle_per_minute', 20))->by(ClientIp::for($request)));
         RateLimiter::for('oauth-registration', fn (Request $request) => Limit::perHour((int) config('auth.oauth_registration_per_hour', 10))
-            ->by('oauth-registration:'.$request->ip()));
+            ->by('oauth-registration:'.ClientIp::for($request)));
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);
             $claims = $request->attributes->get('org_jwt_claims');

@@ -19,6 +19,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Deliberately broad, and it stays that way (RUB-372). X-Forwarded-Proto
+        // is what keeps generated URLs https behind the platform's edge, and
+        // narrowing this to a range would break the OAuth redirect URIs. The
+        // cost is that $request->ip() returns the leftmost X-Forwarded-For
+        // entry -- the value the caller wrote -- so throttling and the audit
+        // log key on App\Support\ClientIp instead, which reads only an address
+        // the platform or Cloudflare recorded. Do not key a security decision
+        // on $request->ip() in this application.
         $middleware->trustProxies(at: '*');
 
         $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis', 'oauth/register', 'oauth/token', 'oauth/revoke']);
