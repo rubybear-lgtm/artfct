@@ -1306,7 +1306,7 @@
               "properties": {
                 "name": { "type": "string" },
                 "slug": { "type": "string" },
-                "role": { "type": "string", "nullable": true },
+                "role": { "type": ["string", "null"] },
                 "selected": { "type": "boolean" }
               }
             }
