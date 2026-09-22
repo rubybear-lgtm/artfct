@@ -32,3 +32,67 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
         ->assertSee('View usage and quota totals')
         ->assertNoJavaScriptErrors();
 });
+
+test('the consent form completes a CLI login by handing an authorization code to the loopback callback', function () {
+    $user = User::factory()->create(['name' => 'CLI Approver']);
+    $team = app(CreateTeam::class)->handle($user, 'CLI Workspace');
+
+    test()->actingAs($user);
+
+    // `artfct login --oauth` binds 127.0.0.1 on an ephemeral port and sends the
+    // resulting loopback redirect URI with a PKCE S256 challenge. This suite
+    // already serves the browser from a listening loopback address of its own,
+    // so the callback is aimed there: same scheme, host and path shape the CLI
+    // sends, and a port something actually answers on. A handoff that never
+    // happens cannot be mistaken for one that did -- the browser is left on
+    // chrome-error://chromewebdata/ when nothing is listening.
+    $callback = url('/oauth/callback');
+    $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
+    $verifier = str_repeat('v', 64);
+    $state = 'cli-browser-state';
+
+    $parameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
+        'state' => $state,
+        'code_challenge' => oauthChallenge($verifier),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+
+    $page = visit('/oauth/authorize?'.$parameters)
+        ->assertSee('Connect artfct-cli')
+        ->assertSee('CLI Workspace')
+        ->assertSee('Read artifacts and search your workspace')
+        ->assertNoJavaScriptErrors();
+
+    // Everything above passes on a rendered consent screen alone, so the flow
+    // is only proven once the form is submitted for real.
+    $page->click('Allow access');
+
+    $page->assertHostIs('127.0.0.1')
+        ->assertPortIs($callbackPort)
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('state', $state)
+        ->assertQueryStringHas('code');
+
+    parse_str((string) parse_url($page->url(), PHP_URL_QUERY), $callbackQuery);
+
+    // Receiving a code is half a login: it is only a real authorization code if
+    // the verifier the CLI never put in a URL completes the PKCE exchange.
+    configureSigning(testSigningKey());
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $callbackQuery['code'],
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => $callback,
+        'code_verifier' => $verifier,
+    ])->assertOk()
+        ->assertJsonPath('token_type', 'Bearer')
+        ->assertJsonPath('organization', $team->slug)
+        ->assertJsonPath('scope', 'artifacts:read artifacts:deploy collections:read collections:write usage:read')
+        ->assertJsonStructure(['access_token', 'refresh_token']);
+});
