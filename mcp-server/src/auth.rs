@@ -97,9 +97,7 @@ pub async fn oauth_login(api_base_url: &str, organization: Option<&str>) -> Resu
         .await
         .context("OAuth callback task failed")??;
     let (code, returned_state) = parse_callback(&callback_request)?;
-    if returned_state != state {
-        anyhow::bail!("OAuth state verification failed; refusing to save credentials");
-    }
+    verify_callback_state(&state, &returned_state)?;
 
     let tokens = crate::api::exchange_authorization_code(
         &reqwest::Client::new(),
@@ -329,6 +327,16 @@ fn receive_callback(listener: TcpListener) -> Result<String, std::io::Error> {
     )?;
     stream.flush()?;
     Ok(request)
+}
+
+/// The CLI's terminal check on the callback: the state it generated must be the
+/// state that came back, or the code is not ours and no credential is written.
+fn verify_callback_state(expected: &str, returned: &str) -> Result<()> {
+    if returned != expected {
+        anyhow::bail!("OAuth state verification failed; refusing to save credentials");
+    }
+
+    Ok(())
 }
 
 fn parse_callback(request: &str) -> Result<(String, String)> {
@@ -681,9 +689,12 @@ mod tests {
 
     use tempfile::tempdir;
 
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+
     use super::{
-        build_authorization_url, credential_base_url, parse_callback, save_credential,
-        StoredCredential,
+        build_authorization_url, credential_base_url, parse_callback, receive_callback,
+        save_credential, verify_callback_state, StoredCredential,
     };
 
     #[cfg(target_os = "macos")]
@@ -828,5 +839,56 @@ mod tests {
         assert_eq!(loaded.api_base_url, credential.api_base_url);
         assert_eq!(loaded.refresh_token, credential.refresh_token);
         assert_eq!(loaded.organization, credential.organization);
+    }
+
+    #[test]
+    fn receive_callback_serves_a_real_loopback_socket_and_returns_the_request() {
+        // The CLI's receiver was only ever exercised through a hand-built request
+        // string passed to `parse_callback`. This drives the real socket path:
+        // bind, accept, read, respond -- so a regression in `receive_callback`
+        // itself is caught rather than bypassed.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback");
+        let port = listener.local_addr().expect("local addr").port();
+
+        let receiver = std::thread::spawn(move || receive_callback(listener));
+
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to the receiver");
+        stream
+            .write_all(
+                b"GET /oauth/callback?code=abc123&state=state%2Dvalue HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            )
+            .expect("write the callback request");
+
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("read the response");
+
+        assert!(
+            response.starts_with("HTTP/1.1 200 OK"),
+            "the receiver must answer the browser so the user is not left on a dead page: {response}"
+        );
+        assert!(response.contains("Artfct connected"));
+
+        let request = receiver
+            .join()
+            .expect("receiver thread panicked")
+            .expect("receive_callback failed");
+        assert_eq!(
+            parse_callback(&request).expect("the served request should parse"),
+            ("abc123".to_string(), "state-value".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_callback_state_refuses_a_mismatch() {
+        verify_callback_state("state-value", "state-value").expect("matching state is accepted");
+
+        let error = verify_callback_state("state-value", "attacker-value")
+            .expect_err("a mismatched state must refuse the credential");
+        assert!(
+            error.to_string().contains("state verification failed"),
+            "the refusal must say why: {error}"
+        );
     }
 }
