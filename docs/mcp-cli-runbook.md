@@ -121,6 +121,37 @@ after the indicated delay, reduce the request rate, or ask a workspace admin
 to review the plan and connection scopes. Do not retry invalid scope,
 revoked-credential, or malformed-request errors.
 
+## Local end-to-end verification
+
+`scripts/mcp-e2e-stack.sh run` boots a full local stack — Postgres (not
+SQLite, matching staging/production), a `wrangler dev` Worker with D1/R2
+persisted, and Laravel with `auth:publish-jwks` wiring its org-JWT signing
+key into that Worker — seeds two synthetic organizations
+(`zz-mcp-e2e`/`zz-mcp-e2e-b`), and runs the live smoke suite against it, all
+without touching staging or your real `.env`/database:
+
+```sh
+scripts/mcp-e2e-stack.sh run    # up, run the smoke suite, tear everything down
+scripts/mcp-e2e-stack.sh up     # start the stack and leave it running
+scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
+```
+
+It authenticates through `MCP_LIVE_DEV_LOGIN_EMAIL`, which drives the same
+`/oauth/authorize` consent decision as a real browser but over plain HTTP,
+using `authkit/dev-login` (`AuthKitDevLoginController`) — a stand-in for
+WorkOS that is only ever registered outside production and is force-enabled
+by this script regardless of what your real `.env` has configured, so a
+developer machine with real WorkOS credentials still gets the fake client
+(otherwise `/authenticate` hands the fake login code to the real WorkOS
+client, which rejects it). Set `MCP_E2E_LARAVEL_PORT`/`MCP_E2E_WORKER_PORT`
+to change the default ports (8990/8991), or `MCP_E2E_EXTERNAL_POSTGRES=true`
+plus `MCP_E2E_DB_*` to point it at a Postgres you're already running (CI does
+this with a native GitHub Actions service container instead of
+`docker-compose.e2e.yml`).
+
+This is what the `mcp_e2e` CI job runs on every push/PR — the same script,
+not a separate reimplementation, so a local failure reproduces the CI one.
+
 ## Staging verification
 
 The live smoke suite must use two isolated staging organizations, and the

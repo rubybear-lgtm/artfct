@@ -14,12 +14,24 @@ const usingEnvTokens = Boolean(
     process.env.MCP_LIVE_TOKEN_A?.trim() &&
     process.env.MCP_LIVE_TOKEN_B?.trim(),
 );
+// MCP_LIVE_DEV_LOGIN_EMAIL drives the same OAuth consent endpoint over plain
+// HTTP instead of a browser, using the `authkit/dev-login` stand-in that
+// scripts/mcp-e2e-stack.sh enables locally (AuthKitDevLoginController; never
+// available in production). Faster and non-flaky compared to a headless
+// browser, and exercises the real consent decision, not a shortcut around
+// it — only *how the session is established* differs from oauthLogin.
+const devLoginEmail = process.env.MCP_LIVE_DEV_LOGIN_EMAIL?.trim();
+const login = usingEnvTokens
+    ? null
+    : devLoginEmail
+      ? (organization) => devLoginConsent(devLoginEmail, organization)
+      : oauthLogin;
 const tokenA = usingEnvTokens
     ? { access: requiredEnv('MCP_LIVE_TOKEN_A') }
-    : await oauthLogin(expectedOrgA);
+    : await login(expectedOrgA);
 const tokenB = usingEnvTokens
     ? { access: requiredEnv('MCP_LIVE_TOKEN_B') }
-    : await oauthLogin(expectedOrgB);
+    : await login(expectedOrgB);
 const concurrency = optionalInteger('MCP_LIVE_CONCURRENCY', 8, 2, 32);
 
 const supportedTools = new Set([
@@ -414,6 +426,147 @@ function assert(condition, message) {
     if (!condition) {
         throw new Error(message);
     }
+}
+
+/**
+ * Same outcome as oauthLogin (an access+refresh token pair scoped to
+ * `organization`), but establishes the session via the dev-login stand-in
+ * and drives OAuth consent as a direct POST instead of opening a browser and
+ * waiting for a loopback redirect. Requires AUTHKIT_DEV_LOGIN_ENABLED=true
+ * on the target — true for scripts/mcp-e2e-stack.sh, never true in
+ * production (AuthKitDevLoginController is not even registered there).
+ */
+async function devLoginConsent(email, organization) {
+    const jar = new Map();
+    const captureCookies = (response) => {
+        for (const raw of response.headers.getSetCookie?.() ?? []) {
+            const pair = raw.split(';', 1)[0];
+            const separator = pair.indexOf('=');
+            if (separator > 0) {
+                jar.set(pair.slice(0, separator), pair.slice(separator + 1));
+            }
+        }
+    };
+    const cookieHeader = () =>
+        [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+    const xsrfToken = () => decodeURIComponent(jar.get('XSRF-TOKEN') ?? '');
+
+    // GET any guest page to establish a session + XSRF-TOKEN cookie before
+    // the first CSRF-protected POST.
+    captureCookies(await fetch(`${baseUrl}/login`, { redirect: 'manual' }));
+
+    const devLogin = await fetch(`${baseUrl}/authkit/dev-login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Cookie: cookieHeader(),
+            'X-XSRF-TOKEN': xsrfToken(),
+        },
+        body: JSON.stringify({ email, provider: 'MagicAuth' }),
+    });
+    captureCookies(devLogin);
+    assert(
+        devLogin.status === 302,
+        `Dev login did not redirect (HTTP ${devLogin.status}); is AUTHKIT_DEV_LOGIN_ENABLED=true on ${baseUrl}?`,
+    );
+
+    const authenticate = await fetch(devLogin.headers.get('Location'), {
+        redirect: 'manual',
+        headers: { Cookie: cookieHeader() },
+    });
+    captureCookies(authenticate);
+    assert(
+        authenticate.status === 302,
+        `/authenticate did not redirect (HTTP ${authenticate.status})`,
+    );
+
+    const verifier = randomBytes(48).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const state = randomBytes(16).toString('hex');
+    const redirectUri = 'http://127.0.0.1:0/callback';
+    const parameters = {
+        response_type: 'code',
+        client_id: 'artfct-cli',
+        redirect_uri: redirectUri,
+        scope: 'artifacts:read artifacts:deploy collections:read usage:read',
+        state,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        team: organization,
+    };
+
+    // The consent form is HMAC-bound to these exact parameters
+    // (client/redirect/scope/state/PKCE) to stop tampering — the server
+    // computes it from the app key and hands it back embedded in the
+    // rendered page, never derivable by the client. A plain GET (no
+    // X-Inertia header, which would instead trigger a 409 "asset version
+    // stale" reload response) renders the full page with it embedded in
+    // `<script data-page="app" type="application/json">`.
+    const authorizeUrl = new URL(`${baseUrl}/oauth/authorize`);
+    authorizeUrl.search = new URLSearchParams(parameters).toString();
+    const authorizePage = await fetch(authorizeUrl, {
+        headers: { Cookie: cookieHeader() },
+    });
+    captureCookies(authorizePage);
+    const html = await authorizePage.text();
+    const pageDataMatch = html.match(
+        /<script data-page="app" type="application\/json">(.+?)<\/script>/s,
+    );
+    assert(
+        authorizePage.status === 200 && pageDataMatch,
+        `OAuth consent page did not render (HTTP ${authorizePage.status})`,
+    );
+    const consentToken = JSON.parse(pageDataMatch[1]).props?.consentToken;
+    assert(
+        typeof consentToken === 'string' && consentToken !== '',
+        'OAuth consent page omitted its consent_token',
+    );
+
+    const consent = await fetch(`${baseUrl}/oauth/authorize`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-Inertia': 'true',
+            Cookie: cookieHeader(),
+            'X-XSRF-TOKEN': xsrfToken(),
+        },
+        body: JSON.stringify({
+            ...parameters,
+            decision: 'approve',
+            consent_token: consentToken,
+        }),
+    });
+    const location = consent.headers.get('X-Inertia-Location');
+    assert(
+        consent.status === 409 && location,
+        `OAuth consent did not return a client redirect (HTTP ${consent.status})`,
+    );
+
+    const redirected = new URL(location);
+    assert(
+        !redirected.searchParams.get('error'),
+        `Consent denied: ${redirected.searchParams.get('error')}`,
+    );
+    const code = redirected.searchParams.get('code');
+    assert(code, 'Consent redirect omitted an authorization code');
+
+    const token = await tokenRequest({
+        grant_type: 'authorization_code',
+        code,
+        client_id: 'artfct-cli',
+        redirect_uri: redirectUri,
+        code_verifier: verifier,
+    });
+    assert(
+        token.organization === organization,
+        `Consent resolved to "${token.organization}" instead of "${organization}"`,
+    );
+
+    return { access: token.access_token, refresh: token.refresh_token };
 }
 
 async function oauthLogin(organization) {

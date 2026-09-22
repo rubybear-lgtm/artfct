@@ -16,6 +16,7 @@
 /backend/target
 /backend/build
 /backend/.wrangler
+/.mcp-e2e
 .env
 .env.backup
 .env.production
