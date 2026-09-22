@@ -88,12 +88,12 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
         ]);
 
         $request = app('request');
-        $limit = (RateLimiter::limiter('auth'))($request);
 
         return [
             'header' => $request->headers->get('X-Forwarded-For'),
             'ip' => (string) $request->ip(),
-            'key' => $limit->key,
+            'key' => collect((RateLimiter::limiter('auth'))($request))
+                ->map(fn ($limit) => $limit->key)->values()->all(),
         ];
     };
 
@@ -105,7 +105,7 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
     expect($first['header'])->toBe('203.0.113.1')
         ->and($second['header'])->toBe('203.0.113.2')
         ->and($first['key'])->toBe($second['key'], 'rotating the forged header must not create a fresh bucket')
-        ->and($first['key'])->toBe('10.20.30.40')
+        ->and($first['key'])->toContain('10.20.30.40')
         ->and($first['ip'])->toBe('10.20.30.40', 'untrusted peers must not have their forwarded header read');
 });
 
@@ -122,9 +122,12 @@ test('a cloudflare-shaped forwarded entry does not earn trust on the direct path
         ]);
 
         $request = app('request');
-        $limit = (RateLimiter::limiter('auth'))($request);
 
-        return ['client' => ClientIp::for($request), 'key' => $limit->key];
+        return [
+            'client' => ClientIp::for($request),
+            'key' => collect((RateLimiter::limiter('auth'))($request))
+                ->map(fn ($limit) => $limit->key)->values()->all(),
+        ];
     };
 
     $first = $probe('203.0.113.1');
@@ -135,7 +138,7 @@ test('a cloudflare-shaped forwarded entry does not earn trust on the direct path
     expect($first['client'])->toBe('10.20.30.40')
         ->and($second['client'])->toBe('10.20.30.40')
         ->and($first['key'])->toBe($second['key'], 'rotating CF-Connecting-IP must not create a fresh bucket')
-        ->and($first['key'])->toBe('10.20.30.40');
+        ->and($first['key'])->toContain('10.20.30.40');
 });
 
 test('a forgery prepended to a trusted cloudflare chain is not the client', function () {
@@ -154,6 +157,37 @@ test('a forgery prepended to a trusted cloudflare chain is not the client', func
     expect($request->headers->get('X-Forwarded-For'))->toBe('203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE)
         ->and((string) $request->ip())->not->toBe('203.0.113.9', 'the prepended forgery must not be read as the client')
         ->and(ClientIp::for($request))->toBe('198.51.100.4');
+});
+
+test('the throttle carries a per-account key and a forged header changes neither', function () {
+    // The client address is not truthfully available in this topology, so the
+    // limit is expressed on an unforgeable address plus an account key where the
+    // request names one. This pins both halves: the keys are stable under a
+    // forged header, and two different accounts do not share a bucket.
+    $keysFor = function (string $team, string $forged): array {
+        test()->call('GET', '/teams/'.$team.'/sso/authenticate', [], [], [], [
+            'HTTP_X_FORWARDED_FOR' => $forged,
+            'HTTP_CF_CONNECTING_IP' => $forged,
+            'REMOTE_ADDR' => '10.20.30.40',
+        ]);
+
+        $request = app('request');
+
+        return collect((RateLimiter::limiter('auth'))($request))
+            ->map(fn ($limit) => $limit->key)
+            ->values()
+            ->all();
+    };
+
+    $first = $keysFor('acme', '203.0.113.1');
+    $sameButForgedDifferently = $keysFor('acme', '203.0.113.2');
+    $otherTeam = $keysFor('globex', '203.0.113.1');
+
+    expect($first)->toBe($sameButForgedDifferently, 'rotating the forged header must not move the caller')
+        ->and($first)->toContain('10.20.30.40')
+        ->and($first)->toContain('auth-team:acme')
+        ->and($otherTeam)->toContain('auth-team:globex')
+        ->and($otherTeam)->not->toBe($first, 'a different account must not share the bucket');
 });
 
 test('the audit log records the resolved address, not a forged header', function () {

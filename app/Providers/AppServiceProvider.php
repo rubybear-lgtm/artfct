@@ -195,9 +195,44 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour((int) config('auth.invitations_per_hour', 30))->by('team:'.$request->route('team')),
         ]);
         RateLimiter::for('team-creation', fn (Request $request) => Limit::perHour(10)->by('user:'.$request->user()?->id));
-        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute((int) config('auth.throttle_per_minute', 20))->by(ClientIp::for($request)));
-        RateLimiter::for('oauth-registration', fn (Request $request) => Limit::perHour((int) config('auth.oauth_registration_per_hour', 10))
-            ->by('oauth-registration:'.ClientIp::for($request)));
+        // RUB-372: a truthful client address is not available in this topology.
+        // The transport peer is the platform's edge, and every header that could
+        // carry the client is written by the caller, so any limit keyed on a
+        // client address is either forgeable or coarser than it looks. The limit
+        // is therefore expressed on an address the caller cannot set, and a
+        // second key is added wherever the request itself names the account
+        // being attacked. Per-client granularity is given up deliberately: the
+        // cost is that callers arriving through one edge address share this
+        // bucket, and the per-account key is what keeps that from being the only
+        // control.
+        RateLimiter::for('auth', function (Request $request): array {
+            $perMinute = (int) config('auth.throttle_per_minute', 20);
+            $limits = [Limit::perMinute($perMinute)->by(ClientIp::for($request))];
+
+            $team = $request->route('team');
+            $teamKey = is_object($team) ? ($team->slug ?? null) : $team;
+
+            if (is_string($teamKey) && $teamKey !== '') {
+                $limits[] = Limit::perMinute($perMinute)->by('auth-team:'.$teamKey);
+            }
+
+            return $limits;
+        });
+        RateLimiter::for('oauth-registration', function (Request $request): array {
+            $perHour = (int) config('auth.oauth_registration_per_hour', 10);
+            $limits = [Limit::perHour($perHour)->by('oauth-registration:'.ClientIp::for($request))];
+
+            // Registration has no account to key on, but it does name the client
+            // it is creating, so one name cannot be hammered even from many
+            // addresses.
+            $name = mb_strtolower(trim((string) $request->input('client_name')));
+
+            if ($name !== '') {
+                $limits[] = Limit::perHour($perHour)->by('oauth-registration-name:'.$name);
+            }
+
+            return $limits;
+        });
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);
             $claims = $request->attributes->get('org_jwt_claims');
