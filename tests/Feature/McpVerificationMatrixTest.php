@@ -79,6 +79,9 @@ function mcpVerificationCapabilities(): array
         'load.concurrent_sessions',
         // Definition of done: the release gate.
         'release.approval_gate',
+        // Definition of done: a compatibility failure names client, transport,
+        // protocol version and remediation.
+        'telemetry.failure_attribution',
     ];
 }
 

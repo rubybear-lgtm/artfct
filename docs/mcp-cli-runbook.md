@@ -225,7 +225,7 @@ Known, currently verified compatibility:
   registration): verified against the official MCP Inspector on staging
   (see RUB-355). Verification against other specific hosted clients (Claude
   Desktop/Code, Cursor, Codex CLI, Gemini CLI, OpenCode) is tracked as
-  ongoing work on RUB-363 and not yet recorded here — do not assume a client
+  ongoing work on RUB-383 and not yet recorded here — do not assume a client
   works hosted until it has been run against staging and its result added to
   this list.
 

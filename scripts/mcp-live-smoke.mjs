@@ -161,11 +161,13 @@ console.log(
 );
 
 /**
- * Proves the tenancy property the verification matrix names as the headline
- * DoD clause: the owning organization can read its artifact, and a second
- * organization holding a valid credential for its own tenant cannot. Both
- * halves are asserted, because a blanket denial of every read would satisfy the
- * second half on its own.
+ * Proves the tenancy property the verification matrix names as the headline DoD
+ * clause: "two organizations cannot see or mutate each other's artifacts". Both
+ * halves are asserted -- the owner can read its artifact and a second
+ * organization cannot, and the second organization's attempt to put the
+ * other's artifact into a collection of its own is refused with no state change.
+ * A blanket denial of every read would satisfy the read half alone, which is why
+ * the owner's successful read is asserted too.
  */
 async function assertTenantIsolation(
     ownerToken,
@@ -191,6 +193,57 @@ async function assertTenantIsolation(
     assert(
         foreignRead.result?.isError === true,
         'Organization B could read organization A artifact metadata',
+    );
+
+    // The DoD says "cannot see or mutate", so the read denial is only half of it:
+    // the foreign organization also attempts a state-changing call that names the
+    // other organization's artifact. Its credential is valid for its own tenant,
+    // so ownership is the only thing that can refuse this. The collection is
+    // asserted rather than branched on, so a broken setup fails loudly instead of
+    // silently skipping the mutation check.
+    const foreignCollection = await rpc(foreignToken, foreignSession, 'tools/call', {
+        name: 'create_collection',
+        arguments: { name: 'cross-tenant-probe' },
+    });
+    const foreignCollectionId = foreignCollection.result?.structuredContent?.id;
+    assert(
+        typeof foreignCollectionId === 'number',
+        'Organization B could not create its own collection to attempt the mutation with: ' +
+            describeResult(foreignCollection),
+    );
+
+    const foreignMutation = await rpc(foreignToken, foreignSession, 'tools/call', {
+        name: 'add_collection_artifact',
+        arguments: { collection_id: foreignCollectionId, artifact_id: artifactId },
+    });
+    assert(
+        foreignMutation.result?.isError === true,
+        'Organization B could add organization A artifact to its own collection: ' +
+            describeResult(foreignMutation),
+    );
+
+    // Control for the denial above: the same call shape, with the owner's token
+    // and the owner's collection, must succeed. Without this the previous
+    // assertion would still pass if the call were broken for an unrelated
+    // reason, so this is what makes "refused" mean "refused on ownership".
+    const ownerCollection = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'create_collection',
+        arguments: { name: 'own-artifact-probe' },
+    });
+    const ownerCollectionId = ownerCollection.result?.structuredContent?.id;
+    assert(
+        typeof ownerCollectionId === 'number',
+        'Organization A could not create its own collection: ' + describeResult(ownerCollection),
+    );
+
+    const ownerMutation = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'add_collection_artifact',
+        arguments: { collection_id: ownerCollectionId, artifact_id: artifactId },
+    });
+    assert(
+        ownerMutation.result?.isError !== true,
+        'Organization A could not add its own artifact to its own collection: ' +
+            describeResult(ownerMutation),
     );
 }
 
@@ -550,7 +603,7 @@ async function devLoginConsent(email, organization) {
         response_type: 'code',
         client_id: 'artfct-cli',
         redirect_uri: redirectUri,
-        scope: 'artifacts:read artifacts:deploy collections:read usage:read',
+        scope: 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
         state,
         code_challenge: challenge,
         code_challenge_method: 'S256',
@@ -648,7 +701,7 @@ async function oauthLogin(organization) {
         response_type: 'code',
         client_id: 'artfct-cli',
         redirect_uri: redirectUri,
-        scope: 'artifacts:read artifacts:deploy collections:read usage:read',
+        scope: 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
         state,
         code_challenge: challenge,
         code_challenge_method: 'S256',

@@ -18,6 +18,12 @@
  * that must appear). Prefer the named kinds: a marker matches any string in the
  * file, including one in a log line, so it survives the assertion being deleted.
  *
+ * This file covers the capabilities the issue names. The capability list lives
+ * in McpVerificationMatrixTest beside it rather than here, and it is transcribed
+ * from the issue body by review -- CI cannot read Linear -- so an entry missing
+ * from both sides would not be caught. That limit is deliberate and recorded
+ * rather than glossed.
+ *
  * @see tests/Feature/McpVerificationMatrixTest.php
  */
 
@@ -27,7 +33,7 @@ return [
         'surface' => 'transport',
         'gap' => [
             'issue' => 'RUB-384',
-            'reason' => 'Protocol logic is tested in process and argument parsing is covered, but nothing drives the stdio loop itself; a stray stdout write would corrupt every host client session and no test would notice.',
+            'reason' => 'deferred, not impossible: it needs an integration harness that spawns the built binary through CARGO_BIN_EXE, which the Rust suite has no precedent for; the dispatch itself is covered in process, only the transport loop is not.',
         ],
     ],
     'transport.streamable_http' => [
@@ -76,7 +82,7 @@ return [
         'surface' => 'protocol',
         'gap' => [
             'issue' => 'RUB-380',
-            'reason' => 'Nothing tests a transport drop: whether a stale session id is refused, or whether a retry after an interrupted request can produce a second artifact.',
+            'reason' => 'deferred, not impossible: it needs a harness that induces a transport drop mid-request, which the e2e stack cannot do today -- client and server share the script process, so nothing can sever the connection at the moment the assertion needs.',
         ],
     ],
 
@@ -166,7 +172,7 @@ return [
         'surface' => 'robustness',
         'gap' => [
             'issue' => 'RUB-382',
-            'reason' => 'Only hand-written example inputs exist; no generated-input test proves that no envelope produces a 5xx or a panic.',
+            'reason' => 'deferred, not impossible: it needs a generated-input dependency (proptest, or equivalent) added and locked, which is a repo toolchain decision rather than something to slip in beside a test.',
         ],
     ],
     'robustness.secret_persistence' => [
@@ -192,7 +198,16 @@ return [
         'surface' => 'release',
         'gap' => [
             'issue' => 'RUB-385',
-            'reason' => 'release-cli.yml gates only on the ci workflow conclusion, with no named authentication, tenancy or quota check and no rollback path anywhere in .github/, so the DoD clause is filed rather than claimed.',
+            'reason' => 'deferred, not impossible: the gate is a decision about which checks must pass, and the rollback half has no mechanism at all -- release-cli.yml gates only on the blanket ci conclusion, and grep -rn rollback .github/ returns nothing.',
+        ],
+    ],
+
+    // ── Failure attribution ────────────────────────────────────────────────
+    'telemetry.failure_attribution' => [
+        'surface' => 'protocol',
+        'gap' => [
+            'issue' => 'RUB-386',
+            'reason' => 'deferred, not impossible: the negotiated protocol version is dropped after initialize, so recording it is a schema change plus a backfill decision for existing activity rows rather than an assertion to add.',
         ],
     ],
 ];
