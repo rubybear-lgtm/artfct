@@ -371,21 +371,52 @@ async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
     };
     let client = reqwest::Client::new();
     let bytes = unique_html("concurrent");
-    let left = create_and_upload(&context, &client, &bytes, json!({}));
-    let right = create_and_upload(&context, &client, &bytes, json!({}));
-    let (left, right) = tokio::join!(left, right);
-    let (left_id, hash) = left?;
-    let (right_id, right_hash) = right?;
-    assert_eq!(left_id, right_id);
-    assert_eq!(hash, right_hash);
+
+    // Six at once rather than two. A sequential re-post is closed by the
+    // pre-flight existence check; what this exercises is the window where
+    // several creates pass that check before any of them inserts. Then the
+    // unique index refuses all but one, and the losers have to return the
+    // winner's artifact rather than a 500 -- a re-post that fails depending on
+    // timing is exactly the flakiness this is meant to rule out.
+    let results = {
+        let (a, b, c, d, e, f) = tokio::join!(
+            create_and_upload(&context, &client, &bytes, json!({})),
+            create_and_upload(&context, &client, &bytes, json!({})),
+            create_and_upload(&context, &client, &bytes, json!({})),
+            create_and_upload(&context, &client, &bytes, json!({})),
+            create_and_upload(&context, &client, &bytes, json!({})),
+            create_and_upload(&context, &client, &bytes, json!({})),
+        );
+
+        [a, b, c, d, e, f]
+    };
+
+    let mut ids = std::collections::HashSet::new();
+    let mut hash = String::new();
+    for (index, result) in results.into_iter().enumerate() {
+        let (id, bundle_hash) =
+            result.map_err(|error| format!("concurrent create {} failed: {error}", index + 1))?;
+        ids.insert(id);
+        hash = bundle_hash;
+    }
+    assert_eq!(
+        ids.len(),
+        1,
+        "every concurrent create must name the same artifact"
+    );
+    let id = ids
+        .into_iter()
+        .next()
+        .expect("at least one create returned");
+
     assert_eq!(
         count_value(
             &context,
-            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{left_id}'"),
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}'"),
             "count"
         )?,
         1,
-        "two concurrent posts of identical bytes race for the same id; exactly one row may survive"
+        "six concurrent posts of identical bytes must leave exactly one row"
     );
     assert_eq!(
         count_value(
@@ -393,7 +424,8 @@ async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
             &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
             "count"
         )?,
-        1
+        1,
+        "and exactly one reference, however many creates lost the race"
     );
     Ok(())
 }

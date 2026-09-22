@@ -719,6 +719,57 @@ struct ExistingArtifactRow {
     manifest: String,
 }
 
+/// Builds the response for a permanent artifact that already exists.
+///
+/// Used twice: on the ordinary re-post, and when the unique index refuses an
+/// insert because a concurrent create won the race. Both must look the same to
+/// the caller, so `missing_files` is computed from blob existence rather than
+/// assumed empty — an artifact whose earlier upload was interrupted still tells
+/// the client what to send.
+///
+async fn existing_permanent_response(
+    storage: &store::D1R2ArtifactStore,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    tier: ArtifactTier,
+) -> Result<Option<Response>> {
+    let Some(existing) = storage
+        .database
+        .prepare("SELECT manifest FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
+        .first::<ExistingArtifactRow>(None)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let existing_manifest: PermanentManifest = serde_json::from_str(&existing.manifest)?;
+    let mut present = Vec::with_capacity(existing_manifest.files.len());
+    for file in &existing_manifest.files {
+        present.push(
+            storage
+                .blob_exists(&file.sha256)
+                .await
+                .map_err(|error| worker::Error::RustError(error.to_string()))?,
+        );
+    }
+    let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+
+    Ok(Some(
+        JsonResponseDefinition::json(
+            PermanentCreateArtifactResponse {
+                id: artifact_id.to_string(),
+                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
+                tier,
+                missing_files: missing_manifest_files(&existing_manifest, &present),
+            },
+            201,
+        )
+        .into_worker_response()?,
+    ))
+}
+
 async fn create_permanent_artifact(
     raw: &Value,
     authorization: Option<&str>,
@@ -831,49 +882,18 @@ async fn create_permanent_artifact(
     // Returning it is the point: inserting again added a second row, a second
     // file set and another refcount bump per file, which left blobs
     // unreclaimable and let a DELETE answer 204 while a duplicate row kept
-    // serving. The partial unique index on live (org_id, id) is the backstop
-    // for the race this pre-flight cannot close on its own.
+    // serving.
     //
     // Live rows only: a revoked artifact does not serve, so re-publishing the
     // same bytes after a revocation must create a new row rather than resurrect
     // the revoked one.
     //
     // Checked before the content locks are taken so the early return cannot
-    // leak one. `missing_files` is computed from blob existence rather than
-    // assumed empty, so an artifact whose earlier upload was interrupted still
-    // tells the client what to send.
-    if let Some(existing) = storage
-        .database
-        .prepare("SELECT manifest FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
-        .bind(&[
-            JsValue::from_str(&org),
-            JsValue::from_str(&artifact_id),
-        ])?
-        .first::<ExistingArtifactRow>(None)
-        .await?
+    // leak one.
+    if let Some(response) =
+        existing_permanent_response(&storage, env, &org, &artifact_id, tier).await?
     {
-        let existing_manifest: PermanentManifest = serde_json::from_str(&existing.manifest)?;
-        let mut present = Vec::with_capacity(existing_manifest.files.len());
-        for file in &existing_manifest.files {
-            present.push(
-                storage
-                    .blob_exists(&file.sha256)
-                    .await
-                    .map_err(|error| worker::Error::RustError(error.to_string()))?,
-            );
-        }
-        let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-
-        return JsonResponseDefinition::json(
-            PermanentCreateArtifactResponse {
-                id: artifact_id.clone(),
-                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
-                tier,
-                missing_files: missing_manifest_files(&existing_manifest, &present),
-            },
-            201,
-        )
-        .into_worker_response();
+        return Ok(response);
     }
 
     let locks = storage
@@ -882,6 +902,9 @@ async fn create_permanent_artifact(
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
     let database = &storage.database;
     let row_id = Uuid::new_v4().simple().to_string();
+    // Cleared when the insert was refused because a concurrent create won, so a
+    // re-post does not announce an artifact that was not created.
+    let mut created = true;
     let operation: Result<Response> = async {
         let mut existing = Vec::with_capacity(manifest.files.len());
         for file in &manifest.files {
@@ -964,10 +987,25 @@ async fn create_permanent_artifact(
                 );
             }
         }
-        storage
-            .execute_batch(statements)
-            .await
-            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+        if let Err(error) = storage.execute_batch(statements).await {
+            let message = error.to_string();
+            // The partial unique index refuses a second live row for the same
+            // (org, id). That is the race the pre-flight above cannot close on
+            // its own: two concurrent creates of one bundle both pass it, one
+            // wins the insert, and the loser has to return the artifact that won
+            // -- a 500 here would mean a re-post fails depending on timing.
+            if is_artifact_id_conflict(&message) {
+                if let Some(response) =
+                    existing_permanent_response(&storage, env, &org, &artifact_id, tier).await?
+                {
+                    created = false;
+
+                    return Ok(response);
+                }
+            }
+
+            return Err(worker::Error::RustError(message));
+        }
         let missing_files = missing_manifest_files(&manifest, &existing);
         let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
         JsonResponseDefinition::json(
@@ -985,7 +1023,7 @@ async fn create_permanent_artifact(
     let release_result = storage.release_content_locks(&locks).await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
-    if response.status_code() == 201 {
+    if created && response.status_code() == 201 {
         emit_artifact_created(ctx, env, &org, &artifact_id, tier);
     }
     Ok(response)
@@ -3691,9 +3729,49 @@ fn escape_text(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Whether a failed batch was refused by the live-`(org_id, id)` unique index
+/// rather than failing for some other reason.
+///
+/// The message is the only signal D1 gives for a constraint violation, so this
+/// matches SQLite's wording (`UNIQUE constraint failed: artifacts.org_id,
+/// artifacts.id`) without depending on how D1 wraps it. Kept as a named
+/// predicate because the branch it guards is a race that a test cannot reliably
+/// provoke through HTTP -- the pre-flight existence check wins every time in
+/// practice -- so this is the part that is unit tested instead.
+fn is_artifact_id_conflict(message: &str) -> bool {
+    message.contains("UNIQUE constraint failed") && message.contains("artifacts")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artifact_id_conflicts_are_recognised_and_other_failures_are_not() {
+        // The wording SQLite produced when the constraint was exercised directly
+        // against the schema, plus the shapes a wrapper is likely to put around
+        // it. D1 gives no structured error code here, so the message is the
+        // signal -- which is exactly why it is pinned.
+        assert!(is_artifact_id_conflict(
+            "UNIQUE constraint failed: artifacts.org_id, artifacts.id"
+        ));
+        assert!(is_artifact_id_conflict(
+            "Error: UNIQUE constraint failed: artifacts.org_id, artifacts.id"
+        ));
+        assert!(is_artifact_id_conflict(
+            "D1_ERROR: UNIQUE constraint failed: artifacts.org_id, artifacts.id: SQLITE_CONSTRAINT"
+        ));
+
+        // Everything else must propagate instead of being swallowed as an
+        // idempotent success: a conflict on another table, a different
+        // constraint, or a transport failure are all real errors.
+        assert!(!is_artifact_id_conflict(
+            "UNIQUE constraint failed: blobs.content_hash"
+        ));
+        assert!(!is_artifact_id_conflict("FOREIGN KEY constraint failed"));
+        assert!(!is_artifact_id_conflict("D1_ERROR: network unreachable"));
+        assert!(!is_artifact_id_conflict(""));
+    }
 
     fn openapi_contract() -> serde_json::Value {
         serde_json::from_str(include_str!("../../openapi/artfct.yaml"))
