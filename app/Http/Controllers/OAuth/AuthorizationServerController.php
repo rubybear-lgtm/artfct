@@ -585,23 +585,47 @@ final class AuthorizationServerController extends Controller
      * unlike a registered client there is no redirect list to pin it to. It is
      * a native app, so it may claim only a loopback redirect (RFC 8252), where
      * the authorization code cannot leave the machine holding the PKCE
-     * verifier. Allowing it to claim an arbitrary HTTPS host would deliver that
-     * code directly to whoever supplied the host.
+     * verifier.
+     *
+     * Loopback is decided by an anchored pattern over the raw string rather
+     * than by reading parse_url's host, because PHP and the WHATWG parser that
+     * browsers use disagree about some authorities: for
+     * `http://evil.example\@127.0.0.1/cb` PHP reports host 127.0.0.1 while a
+     * browser navigates to evil.example, and the authorization code follows the
+     * browser. One parser -- ours -- removes the disagreement entirely.
      */
     private function isAllowedRedirectUri(string $redirectUri, bool $loopbackOnly = false): bool
     {
+        if ($loopbackOnly) {
+            return preg_match('~\Ahttps?://(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?(?:[/?][^\s\\\\\x00-\x1f\x7f#]*)?\z~i', $redirectUri) === 1;
+        }
+
         $parts = parse_url($redirectUri);
-        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || isset($parts['user'], $parts['pass'], $parts['fragment'])) {
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
             return false;
         }
 
-        $isLoopback = in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true);
-
-        if ($isLoopback) {
-            return in_array($parts['scheme'], ['http', 'https'], true);
+        // Refuse anything PHP and a browser can read differently, and anything
+        // with no legitimate place in a redirect target. A raw backslash or a
+        // control character lets the two disagree about the destination, and
+        // userinfo and fragments are never valid here (RFC 6749 section 3.1.2
+        // forbids fragments outright). The userinfo test is deliberately
+        // per-key: requiring all three keys was an && in disguise, so a URI
+        // carrying only `user` slipped past it.
+        if (str_contains($redirectUri, '\\') || preg_match('/[\x00-\x20\x7f]/', $redirectUri) === 1) {
+            return false;
         }
 
-        return ! $loopbackOnly && $parts['scheme'] === 'https';
+        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+            return false;
+        }
+
+        if ($parts['scheme'] === 'https') {
+            return true;
+        }
+
+        return $parts['scheme'] === 'http'
+            && in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true);
     }
 
     private function codeKey(string $code): string

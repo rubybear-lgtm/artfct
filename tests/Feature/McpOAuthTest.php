@@ -210,6 +210,56 @@ test('issues no authorization code for a non-loopback CLI redirect', function ()
     ]))->toThrow(ValidationException::class, 'The redirect URI is not allowed.');
 });
 
+test('rejects a redirect URI that PHP and browsers parse differently', function () {
+    // parse_url reads this as host 127.0.0.1 (loopback); a browser reads host
+    // evil.example and hands the authorization code to it. A loopback rule
+    // cannot rest on parse_url's host while the browser decides the
+    // destination, so the raw string is matched instead.
+    $redirectUri = 'http://evil.example\@127.0.0.1/cb';
+
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'redirect_uri' => $redirectUri,
+    ])))->assertSessionHasErrors('redirect_uri');
+
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $this->withoutExceptionHandling();
+
+    expect(fn () => $this->actingAs($user)->postJson('/oauth/authorize', [
+        ...oauthParameters(oauthChallenge(str_repeat('v', 64)), ['redirect_uri' => $redirectUri]),
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]))->toThrow(ValidationException::class, 'The redirect URI is not allowed.');
+});
+
+test('rejects a redirect URI carrying userinfo or a fragment', function (string $redirectUri) {
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'redirect_uri' => $redirectUri,
+    ])))->assertSessionHasErrors('redirect_uri');
+})->with([
+    'userinfo only, which the old three-key guard let through' => ['http://127.0.0.1@evil.example/cb'],
+    'fragment, which RFC 6749 section 3.1.2 forbids' => ['https://evil.example/cb#@127.0.0.1'],
+]);
+
+test('refuses to register a redirect URI carrying userinfo or a fragment', function (string $redirectUri) {
+    // This is the branch the three-key guard actually governed. It was an &&
+    // in disguise -- isset($parts['user'], $parts['pass'], $parts['fragment'])
+    // -- so a URI carrying only `user` satisfied none of it and was stored.
+    $response = $this->postJson('/oauth/register', [
+        'client_name' => 'Sketchy Agent',
+        'redirect_uris' => [$redirectUri],
+    ]);
+
+    expect($response->status())->toBe(400)
+        ->and($response->json('error'))->toBe('invalid_client_metadata');
+})->with([
+    'plain userinfo' => ['https://evil.example@127.0.0.1/cb'],
+    'userinfo plus a raw backslash' => ['https://evil.example\@127.0.0.1/cb'],
+    'fragment' => ['https://evil.example/cb#frag'],
+]);
+
 test('accepts a loopback redirect URI for the built-in CLI client', function () {
     // The real CLI binds an ephemeral loopback port, so this is the shape it
     // actually sends; the rule must not cut it off.
