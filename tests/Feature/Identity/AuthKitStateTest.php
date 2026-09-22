@@ -76,6 +76,26 @@ test('login_state_round_trips_to_the_callback_check', function () {
     expect(session('authkit_state'))->toBe($query['state']);
 });
 
+test('login_redirects_an_inertia_visit_to_workos', function () {
+    config(['services.workos.client_id' => 'client_x', 'services.workos.secret' => 'sk_test_x', 'services.workos.redirect_url' => 'https://app.test/authenticate']);
+    app()->instance(AuthKitClientContract::class, new RealAuthKitClient);
+
+    // An in-app visit (the app shell's Log in link) arrives as an Inertia
+    // request, the branch that answers 409 rather than a 302. The version is
+    // read from a served page and echoed back the way a browser would: Inertia's
+    // own version-changed guard answers 409 for the current URL, and with a
+    // mismatched version it would mask the controller entirely.
+    $version = test()->get(route('home'))->viewData('page')['version'];
+
+    $response = test()->get(route('login'), [
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => $version,
+    ]);
+
+    $response->assertStatus(409);
+    expect($response->headers->get('X-Inertia-Location'))->toContain('user_management/authorize');
+});
+
 test('dev_login_is_hidden_when_the_flag_is_off', function () {
     config(['services.authkit.dev_login_enabled' => false]);
 

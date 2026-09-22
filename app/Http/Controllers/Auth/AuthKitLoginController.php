@@ -5,12 +5,12 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use WorkOS\UserManagement;
 use WorkOS\WorkOS as WorkOSSdk;
 
@@ -22,7 +22,7 @@ class AuthKitLoginController extends Controller
      * Microsoft, Apple, passkeys, Magic Auth). Otherwise it renders a
      * local dev/test login screen backed by FakeAuthKitClient.
      */
-    public function __invoke(Request $request, AuthKitClientContract $client): Response|RedirectResponse
+    public function __invoke(Request $request, AuthKitClientContract $client): Response|SymfonyResponse
     {
         if ($client instanceof FakeAuthKitClient) {
             return Inertia::render('auth/login');
