@@ -442,6 +442,7 @@ async function devLoginConsent(email, organization) {
         for (const raw of response.headers.getSetCookie?.() ?? []) {
             const pair = raw.split(';', 1)[0];
             const separator = pair.indexOf('=');
+
             if (separator > 0) {
                 jar.set(pair.slice(0, separator), pair.slice(separator + 1));
             }

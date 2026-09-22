@@ -1288,6 +1288,11 @@ pub fn public_id(org: &str, hash: &str) -> String {
         .collect()
 }
 
+// `as_chunks` (clippy's suggested replacement) landed after this crate's
+// pinned toolchain; keeping `chunks_exact` here so this still builds on
+// older stable Rust rather than picking up a newer MSRV for a hash
+// computation with no behavior to gain from the rewrite.
+#[allow(unknown_lints, clippy::chunks_exact_to_as_chunks)]
 fn sha256(input: &[u8]) -> [u8; 32] {
     let mut state: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,

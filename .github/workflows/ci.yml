@@ -276,6 +276,12 @@ jobs:
           php-version: '8.5'
           tools: composer:v2
 
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
       - name: Cache Composer dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
         with:
@@ -286,11 +292,17 @@ jobs:
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Install Node dependencies
+        run: npm ci
+
       - name: Prepare Laravel
         run: |
           cp .env.example .env
           php artisan key:generate --no-interaction
           touch database/database.sqlite
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Run hosted MCP contract tests
         run: >-

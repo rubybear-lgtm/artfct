@@ -639,7 +639,7 @@ pub async fn deploy_permanent_artifact_files(
                 "{}/v1/artifacts/{}/files/{}",
                 api_base_url.trim_end_matches('/'),
                 created.id,
-                &manifest_file.sha256
+                manifest_file.sha256
             ))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, &manifest_file.content_type)
