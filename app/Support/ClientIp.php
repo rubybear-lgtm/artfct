@@ -7,32 +7,22 @@ use Illuminate\Http\Request;
 /**
  * The client address that security decisions may key on.
  *
- * `trustProxies(at: '*')` is deliberate — it is what keeps `X-Forwarded-Proto`
- * honoured so generated URLs stay https behind the platform's edge, and
- * narrowing it would break the OAuth redirect URIs. The cost is that
- * `$request->ip()` returns the *leftmost* `X-Forwarded-For` entry, which is the
- * value the caller wrote: a client can rotate a forged header and land in a
- * fresh throttle bucket, and that same forged value is written into the audit
- * log.
+ * Only one value in a request is beyond the caller's reach: the transport peer,
+ * `REMOTE_ADDR`. Everything else — the whole `X-Forwarded-For` header,
+ * `CF-Connecting-IP`, `X-Forwarded-Proto` — is either written by the caller or
+ * indistinguishable from something the caller wrote, because on the direct path
+ * nothing appends behind them.
  *
- * Every proxy in front appends the address it received the connection from to
- * the right of whatever it was given, so the **rightmost** entry is the
- * platform's own record. That makes it usable to *recognise* the ingress — a
- * caller can only prepend to it — but not to name the client: a caller sending
- * a single forged entry is itself the rightmost value.
+ * So the peer gates everything else. When the peer is inside the configured edge
+ * ranges, the request arrived through that edge and the address the edge wrote
+ * can be believed; otherwise the peer is the answer. An earlier version of this
+ * class decided by looking for a Cloudflare-shaped address in
+ * `X-Forwarded-For`, which is itself caller-supplied — naming a Cloudflare
+ * address was enough to have a forged `CF-Connecting-IP` believed.
  *
- * So the address returned is either one Cloudflare wrote, or the peer:
- *
- * 1. If the rightmost entry is a Cloudflare address, the request came through
- *    Cloudflare, which sets `CF-Connecting-IP` itself and overwrites anything a
- *    client supplies — that value is the client.
- * 2. Otherwise the peer address. A header cannot influence it, which is the
- *    property that matters.
- *
- * What this gives up: traffic arriving outside Cloudflare is bucketed by the
- * edge address the platform recorded rather than by client. That is coarser,
- * and it is deliberate — an unforgeable coarse key beats an exact one a caller
- * chooses.
+ * What this gives up: when the peer is not a recognised edge address, every
+ * caller behind that peer shares one bucket. That is deliberate — an unforgeable
+ * coarse key beats an exact one the caller chooses.
  */
 final class ClientIp
 {
@@ -40,14 +30,12 @@ final class ClientIp
 
     public static function for(Request $request): string
     {
-        $edge = self::rightmostForwarded($request);
+        $peer = self::peer($request);
 
-        // A value here is authoritative: Cloudflare sets CF-Connecting-IP
-        // itself and overwrites anything a client supplies. It is consulted
-        // only when Cloudflare is the edge that recorded the connection, so a
-        // client reaching the app directly cannot promote its own forged header
-        // into a bucket key.
-        if ($edge !== null && self::isCloudflare($edge)) {
+        if (self::isTrustedEdge($peer)) {
+            // The edge writes this itself and overwrites anything a client
+            // supplies, so a value here is the client. Consulted only when the
+            // peer proves the request actually came through that edge.
             $connecting = trim((string) $request->headers->get('CF-Connecting-IP'));
 
             if ($connecting !== '') {
@@ -55,26 +43,7 @@ final class ClientIp
             }
         }
 
-        // Everything else falls back to the peer. The rightmost forwarded entry
-        // is deliberately NOT used here: a caller can send exactly one entry and
-        // be it.
-        return self::peer($request);
-    }
-
-    private static function rightmostForwarded(Request $request): ?string
-    {
-        $header = $request->headers->get('X-Forwarded-For');
-
-        if ($header === null) {
-            return null;
-        }
-
-        $chain = array_values(array_filter(
-            array_map('trim', explode(',', $header)),
-            static fn (string $entry): bool => $entry !== '',
-        ));
-
-        return $chain === [] ? null : $chain[count($chain) - 1];
+        return $peer;
     }
 
     private static function peer(Request $request): string
@@ -84,9 +53,9 @@ final class ClientIp
         return $peer === '' ? self::FALLBACK : $peer;
     }
 
-    private static function isCloudflare(string $address): bool
+    private static function isTrustedEdge(string $address): bool
     {
-        foreach ((array) config('trusted_ingress.cloudflare_ranges', []) as $range) {
+        foreach ((array) config('trusted_ingress.edge_ranges', []) as $range) {
             if (self::inRange($address, (string) $range)) {
                 return true;
             }

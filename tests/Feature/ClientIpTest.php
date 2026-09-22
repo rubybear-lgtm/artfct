@@ -109,6 +109,35 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
         ->and($first['ip'])->toBe('10.20.30.40', 'untrusted peers must not have their forwarded header read');
 });
 
+test('a cloudflare-shaped forwarded entry does not earn trust on the direct path', function () {
+    // The evasion this test exists for. On the direct path the caller supplies
+    // the whole X-Forwarded-For header, so naming a Cloudflare address in it must
+    // not be enough to have CF-Connecting-IP believed -- that would put the
+    // throttle key back under the caller's control through a different header.
+    $probe = function (string $connecting): array {
+        test()->call('GET', '/up', [], [], [], [
+            'HTTP_X_FORWARDED_FOR' => CLOUDFLARE_EDGE,
+            'HTTP_CF_CONNECTING_IP' => $connecting,
+            'REMOTE_ADDR' => '10.20.30.40',
+        ]);
+
+        $request = app('request');
+        $limit = (RateLimiter::limiter('auth'))($request);
+
+        return ['client' => ClientIp::for($request), 'key' => $limit->key];
+    };
+
+    $first = $probe('203.0.113.1');
+    $second = $probe('203.0.113.2');
+
+    // The declaration really did arrive, so this is not passing because the
+    // header was dropped.
+    expect($first['client'])->toBe('10.20.30.40')
+        ->and($second['client'])->toBe('10.20.30.40')
+        ->and($first['key'])->toBe($second['key'], 'rotating CF-Connecting-IP must not create a fresh bucket')
+        ->and($first['key'])->toBe('10.20.30.40');
+});
+
 test('a forgery prepended to a trusted cloudflare chain is not the client', function () {
     // The non-vacuity carrier. Here the peer IS trusted, so the forwarded chain
     // is read — and the forgery sits to the left of what Cloudflare appended.

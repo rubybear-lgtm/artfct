@@ -187,7 +187,7 @@ class AppServiceProvider extends ServiceProvider
         // public domain and publishes its ranges, so Cloudflare is trusted while
         // the Railway edge -- neither enumerable nor a trustworthy source for a
         // header a caller can write -- is not.
-        TrustProxies::at(array_values((array) config('trusted_ingress.cloudflare_ranges', [])));
+        TrustProxies::at(array_values((array) config('trusted_ingress.edge_ranges', [])));
 
         // Sign-in and invitation endpoints: per IP, generous for people, tight for scripts.
         RateLimiter::for('invitations', fn (Request $request) => [
