@@ -34,11 +34,41 @@ class StripeWebhookController extends Controller
         }
 
         try {
-            DB::table('stripe_events_received')->insert(['event_id' => $event['id'], 'type' => $event['type'], 'received_at' => now()]);
-        } catch (UniqueConstraintViolationException) {
+            // The idempotency row and the state it guards commit together. The row
+            // used to be written and committed first, so a failure partway through
+            // applying state left the event marked as received: Stripe's retry was
+            // then answered `duplicate` and the state was never applied, with
+            // nothing recording that it had been dropped (RUB-373). Inside one
+            // transaction a mid-apply failure rolls the row back, so the retry
+            // processes it for real.
+            DB::transaction(function () use ($billing, $event): void {
+                DB::table('stripe_events_received')->insert([
+                    'event_id' => $event['id'],
+                    'type' => $event['type'],
+                    'received_at' => now(),
+                ]);
+
+                $this->apply($billing, $event);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            // Only the event-id constraint means "already processed". Any other
+            // unique violation is a real failure, and answering it as a duplicate
+            // would reintroduce the same silent drop through a different door.
+            if (! str_contains($exception->getMessage(), 'stripe_events_received')) {
+                throw $exception;
+            }
+
             return response()->json(['status' => 'duplicate']);
         }
 
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    private function apply(BillingService $billing, array $event): void
+    {
         $object = $event['data']['object'] ?? [];
 
         match ($event['type']) {
@@ -53,8 +83,6 @@ class StripeWebhookController extends Controller
             )),
             default => Log::info('Ignoring Stripe event type.', ['type' => $event['type']]),
         };
-
-        return response()->json(['status' => 'ok']);
     }
 
     /**

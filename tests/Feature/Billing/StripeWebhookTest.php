@@ -108,3 +108,34 @@ test('the_subscription_updated_webhook_records_renewal_and_scheduled_cancel', fu
     $team->refresh();
     expect($team->cancel_at_period_end)->toBeTrue()->and($team->current_period_end->timestamp)->toBe($end);
 });
+
+test('a retry after a mid-apply failure is reprocessed, not swallowed', function () {
+    $team = Team::factory()->create(['stripe_customer_id' => 'cus_retry']);
+    $eventId = 'evt_retry_'.uniqid();
+    $fail = true;
+
+    // Induce a real failure partway through applying state: the model write the
+    // handler performs throws. BillingService is final so it cannot be faked, and
+    // a faked service would not prove the transaction covers the work it actually
+    // does. Note the Worker push swallows its own failures, so the state write is
+    // the failure that matters here.
+    Team::saving(function (Team $saving) use (&$fail, $team) {
+        if ($fail && $saving->is($team)) {
+            throw new RuntimeException('induced mid-apply failure');
+        }
+    });
+
+    // A 500 is the correct answer to Stripe: it is what makes it retry.
+    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_retry'], $eventId);
+
+    expect(DB::table('stripe_events_received')->where('event_id', $eventId)->count())
+        ->toBe(0, 'a failed apply must not leave the event marked received');
+
+    // The retry Stripe sends must therefore process the event for real.
+    $fail = false;
+    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_retry'], $eventId)->assertOk();
+
+    expect(DB::table('stripe_events_received')->where('event_id', $eventId)->count())
+        ->toBe(1, 'the retried event must be recorded once it has actually applied')
+        ->and($team->refresh()->payment_status)->toBe(PaymentStatus::Active);
+});
