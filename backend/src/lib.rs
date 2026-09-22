@@ -714,6 +714,11 @@ fn clipped_text(value: Option<&Value>, max: usize) -> Option<String> {
     (!text.is_empty()).then(|| text.chars().take(max).collect())
 }
 
+#[derive(Debug, Deserialize)]
+struct ExistingArtifactRow {
+    manifest: String,
+}
+
 async fn create_permanent_artifact(
     raw: &Value,
     authorization: Option<&str>,
@@ -821,6 +826,56 @@ async fn create_permanent_artifact(
         .iter()
         .map(|file| file.sha256.clone())
         .collect::<Vec<_>>();
+    // Idempotency (RUB-371). The public id is derived from (org, content_hash),
+    // so re-posting identical bytes names the artifact that already exists.
+    // Returning it is the point: inserting again added a second row, a second
+    // file set and another refcount bump per file, which left blobs
+    // unreclaimable and let a DELETE answer 204 while a duplicate row kept
+    // serving. The partial unique index on live (org_id, id) is the backstop
+    // for the race this pre-flight cannot close on its own.
+    //
+    // Live rows only: a revoked artifact does not serve, so re-publishing the
+    // same bytes after a revocation must create a new row rather than resurrect
+    // the revoked one.
+    //
+    // Checked before the content locks are taken so the early return cannot
+    // leak one. `missing_files` is computed from blob existence rather than
+    // assumed empty, so an artifact whose earlier upload was interrupted still
+    // tells the client what to send.
+    if let Some(existing) = storage
+        .database
+        .prepare("SELECT manifest FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_id),
+        ])?
+        .first::<ExistingArtifactRow>(None)
+        .await?
+    {
+        let existing_manifest: PermanentManifest = serde_json::from_str(&existing.manifest)?;
+        let mut present = Vec::with_capacity(existing_manifest.files.len());
+        for file in &existing_manifest.files {
+            present.push(
+                storage
+                    .blob_exists(&file.sha256)
+                    .await
+                    .map_err(|error| worker::Error::RustError(error.to_string()))?,
+            );
+        }
+        let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+
+        return JsonResponseDefinition::json(
+            PermanentCreateArtifactResponse {
+                id: artifact_id.clone(),
+                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
+                tier,
+                missing_files: missing_manifest_files(&existing_manifest, &present),
+            },
+            201,
+        )
+        .into_worker_response();
+    }
+
     let locks = storage
         .acquire_content_locks(&file_hashes)
         .await
@@ -1172,7 +1227,6 @@ struct PermanentArtifactRow {
 
 #[derive(Debug, Deserialize)]
 struct PermanentHashRow {
-    row_id: String,
     manifest: String,
     #[serde(default)]
     legal_hold: i64,
@@ -2931,7 +2985,7 @@ async fn hard_delete_permanent(
     artifact_id: &str,
 ) -> Result<HardDeleteOutcome> {
     let database = &storage.database;
-    let select = "SELECT a.row_id, a.manifest, a.legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
+    let select = "SELECT a.manifest, (SELECT MAX(legal_hold) FROM artifacts held WHERE held.id = a.id AND held.org_id = a.org_id) AS legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
     let lock_row = database
         .prepare(select)
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
@@ -2974,14 +3028,29 @@ async fn hard_delete_permanent(
             return Ok(HardDeleteOutcome::LegalHold);
         }
         let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
+        // Delete every row for this (org, id), not only the one the pre-flight
+        // resolution happened to return. Before RUB-371 a single-row delete
+        // reported 204 while a duplicate kept serving the artifact from
+        // `/p/{id}` — a revocation that silently did not revoke, which is what
+        // matters for the abuse and legal-hold paths.
         let mut statements = vec![database
-            .prepare("DELETE FROM artifacts WHERE row_id = ?")
-            .bind(&[JsValue::from_str(&row.row_id)])?];
+            .prepare(
+                "DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)",
+            )
+            .bind(&[
+                JsValue::from_str(artifact_id),
+                JsValue::from_str(org),
+            ])?];
+        // Recompute rather than decrement. `ref_count` counts file rows by
+        // construction, and the duplicates this delete is cleaning up had
+        // inflated it N-fold, so decrementing once would leave the count above
+        // zero and the blob unreclaimable forever. After the delete the
+        // surviving file rows are the source of truth.
         for file in &manifest.files {
             statements.push(
                 database
                     .prepare(
-                        "UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?",
+                        "UPDATE blobs SET ref_count = (SELECT COUNT(*) FROM files WHERE files.content_hash = blobs.content_hash) WHERE content_hash = ?",
                     )
                     .bind(&[JsValue::from_str(&file.sha256)])?,
             );

@@ -329,7 +329,8 @@ async fn duplicate_content_has_two_artifacts_and_one_blob() -> Result<(), Box<dy
             &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{first}'"),
             "count"
         )?,
-        2
+        1,
+        "a re-post of identical bytes names the same artifact, so it must not add a row"
     );
     assert_eq!(
         count_value(
@@ -337,7 +338,7 @@ async fn duplicate_content_has_two_artifacts_and_one_blob() -> Result<(), Box<dy
             &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{first}' AND content_hash != '{hash}'"),
             "count"
         )?,
-        2,
+        1,
         "artifact content_hash stores the canonical bundle id, not a file SHA"
     );
     assert_eq!(
@@ -354,14 +355,15 @@ async fn duplicate_content_has_two_artifacts_and_one_blob() -> Result<(), Box<dy
             &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
             "count"
         )?,
-        2
+        1,
+        "one artifact referencing the bundle once must leave the refcount at one"
     );
     Ok(())
 }
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
-async fn concurrent_identical_creates_have_one_blob_and_two_references(
+async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
 ) -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
@@ -381,7 +383,8 @@ async fn concurrent_identical_creates_have_one_blob_and_two_references(
             &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{left_id}'"),
             "count"
         )?,
-        2
+        1,
+        "two concurrent posts of identical bytes race for the same id; exactly one row may survive"
     );
     assert_eq!(
         count_value(
@@ -389,14 +392,14 @@ async fn concurrent_identical_creates_have_one_blob_and_two_references(
             &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
             "count"
         )?,
-        2
+        1
     );
     Ok(())
 }
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
-async fn concurrent_deletes_do_not_remove_a_live_blob() -> Result<(), Box<dyn Error>> {
+async fn concurrent_deletes_leave_no_artifact_and_no_orphan_blob() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
@@ -413,8 +416,25 @@ async fn concurrent_deletes_do_not_remove_a_live_blob() -> Result<(), Box<dyn Er
         .bearer_auth(&context.token)
         .send();
     let (left, right) = tokio::join!(left, right);
-    assert_eq!(left?.status(), reqwest::StatusCode::NO_CONTENT);
-    assert_eq!(right?.status(), reqwest::StatusCode::NO_CONTENT);
+    // Exactly one delete removes the artifact; the other finds nothing left.
+    // Both answering 204 was only possible while a duplicate row survived the
+    // first -- which is the false success RUB-371 describes, and why the old
+    // assertion in this test had to change rather than the code.
+    let mut no_content = 0;
+    let mut not_found = 0;
+    for status in [left?.status(), right?.status()] {
+        if status == reqwest::StatusCode::NO_CONTENT {
+            no_content += 1;
+        }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            not_found += 1;
+        }
+    }
+    assert_eq!(no_content, 1, "one delete should have removed the artifact");
+    assert_eq!(
+        not_found, 1,
+        "the other should report nothing left to delete, not a second success"
+    );
     assert_eq!(
         count_value(
             &context,
@@ -432,6 +452,95 @@ async fn concurrent_deletes_do_not_remove_a_live_blob() -> Result<(), Box<dyn Er
             .status(),
         reqwest::StatusCode::NOT_FOUND
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn deleting_a_permanent_artifact_stops_serving_it() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let bytes = unique_html("delete-stops-serving");
+    let (id, _hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+
+    // Serving first, so the 404 below means the delete did something rather
+    // than the artifact never having been reachable at all.
+    let serving = client
+        .get(format!("{}/p/{id}", context.base))
+        .send()
+        .await?;
+    assert_eq!(serving.status(), reqwest::StatusCode::OK);
+
+    let delete = client
+        .delete(format!("{}/v1/artifacts/{id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(delete.status(), reqwest::StatusCode::NO_CONTENT);
+
+    // The assertion RUB-371 asks for. A DELETE that reported success must stop
+    // the artifact serving; before the fix a duplicate row kept answering here
+    // while the response said the artifact was gone.
+    let after = client
+        .get(format!("{}/p/{id}", context.base))
+        .send()
+        .await?;
+    assert_eq!(
+        after.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "a DELETE that answered 204 left the artifact serving"
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}'"),
+            "count"
+        )?,
+        0,
+        "no row for the deleted id may survive, not even a revoked or duplicate one"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn create_delete_create_delete_returns_refcount_to_zero() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let bytes = unique_html("refcount-cycle");
+
+    // Two full cycles over the same bytes. The second create must succeed -- the
+    // first delete removed the row, so its id is free again, which the unique
+    // index is partial on revocation to allow -- and each delete must bring the
+    // refcount back to zero. An inflated count left the blob unreclaimable
+    // forever, which is the half of RUB-371 that outlives the duplicate row.
+    for cycle in 1..=2 {
+        let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+
+        let delete = client
+            .delete(format!("{}/v1/artifacts/{id}", context.base))
+            .bearer_auth(&context.token)
+            .send()
+            .await?;
+        assert_eq!(
+            delete.status(),
+            reqwest::StatusCode::NO_CONTENT,
+            "cycle {cycle}"
+        );
+        assert_eq!(
+            count_value(
+                &context,
+                &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash = '{hash}'"),
+                "count"
+            )?,
+            0,
+            "cycle {cycle}: the blob row should be gone once its last reference went"
+        );
+    }
     Ok(())
 }
 
@@ -507,61 +616,90 @@ async fn delete_once_keeps_shared_blob_and_delete_last_removes_it() -> Result<()
         return Ok(());
     };
     let client = reqwest::Client::new();
-    let bytes = unique_html("delete");
-    let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
-    create_and_upload(&context, &client, &bytes, json!({})).await?;
-    for last in [false, true] {
-        let response = client
-            .delete(format!("{}/v1/artifacts/{id}", context.base))
+    let shared = unique_html("delete-shared");
+    let extra = unique_html("delete-extra");
+    let shared_hash = sha256(&shared);
+
+    // Two genuinely different bundles that share one file's blob. Posting the
+    // same bundle twice no longer yields two artifacts -- that is the
+    // idempotency RUB-371 fixes -- so the shared reference this test is about
+    // has to come from two artifacts whose manifests differ while one file's
+    // bytes are identical.
+    let (first, _) = create_and_upload(&context, &client, &shared, json!({})).await?;
+    let second = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", shared.as_slice(), "text/html; charset=utf-8"),
+            ("extra.txt", extra.as_slice(), "text/plain; charset=utf-8"),
+        ],
+        "index.html",
+    )
+    .await?;
+    assert_ne!(
+        first, second,
+        "distinct manifests must get distinct artifact ids"
+    );
+
+    // Deleting one sharer drops one reference. The blob must survive, the
+    // deleted artifact must stop serving, and the other must be untouched.
+    let response = client
+        .delete(format!("{}/v1/artifacts/{first}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{shared_hash}'"),
+            "count"
+        )?,
+        1,
+        "the surviving artifact still references this blob"
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/p/{first}", context.base))
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/p/{second}", context.base))
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::OK,
+        "deleting one sharer must not disturb the other"
+    );
+
+    // Deleting the last sharer removes the last reference, so the blob goes too.
+    let response = client
+        .delete(format!("{}/v1/artifacts/{second}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash = '{shared_hash}'"),
+            "count"
+        )?,
+        0
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/v1/blobs/{shared_hash}", context.base))
             .bearer_auth(&context.token)
             .send()
-            .await?;
-        assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
-        if last {
-            assert_eq!(
-                count_value(
-                    &context,
-                    &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash = '{hash}'"),
-                    "count"
-                )?,
-                0
-            );
-            assert_eq!(
-                client
-                    .get(format!("{}/p/{id}", context.base))
-                    .send()
-                    .await?
-                    .status(),
-                reqwest::StatusCode::NOT_FOUND
-            );
-            assert_eq!(
-                client
-                    .get(format!("{}/v1/blobs/{hash}", context.base))
-                    .bearer_auth(&context.token)
-                    .send()
-                    .await?
-                    .status(),
-                reqwest::StatusCode::NOT_FOUND
-            );
-        } else {
-            assert_eq!(
-                count_value(
-                    &context,
-                    &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
-                    "count"
-                )?,
-                1
-            );
-            assert_eq!(
-                client
-                    .get(format!("{}/p/{id}", context.base))
-                    .send()
-                    .await?
-                    .status(),
-                reqwest::StatusCode::OK
-            );
-        }
-    }
+            .await?
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
     Ok(())
 }
 
