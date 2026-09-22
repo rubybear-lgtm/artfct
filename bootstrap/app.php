@@ -19,15 +19,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Deliberately broad, and it stays that way (RUB-372). X-Forwarded-Proto
-        // is what keeps generated URLs https behind the platform's edge, and
-        // narrowing this to a range would break the OAuth redirect URIs. The
-        // cost is that $request->ip() returns the leftmost X-Forwarded-For
-        // entry -- the value the caller wrote -- so throttling and the audit
-        // log key on App\Support\ClientIp instead, which reads only an address
-        // the platform or Cloudflare recorded. Do not key a security decision
-        // on $request->ip() in this application.
-        $middleware->trustProxies(at: '*');
+        // Scoped to the platform's real ingress (RUB-372). Cloudflare fronts the
+        // public domain and its ranges are published, so Cloudflare is trusted;
+        // the Railway edge is neither enumerable nor trustworthy for a header a
+        // caller can write.
+        //
+        // The consequence is that a request arriving on the direct Railway
+        // service domain is not trusted for X-Forwarded-Proto, so URL generation
+        // is pinned to the configured scheme in AppServiceProvider rather than
+        // inferred from the request. Do not key a security decision on
+        // $request->ip() in this application regardless: App\Support\ClientIp
+        // resolves the address from what Cloudflare wrote, or the peer.
+        // Trusted proxies are configured in AppServiceProvider, not here: the list
+        // comes from config/trusted_ingress.php, and this closure runs before the
+        // config repository is bound (RUB-372).
 
         $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis', 'oauth/register', 'oauth/token', 'oauth/revoke']);
 

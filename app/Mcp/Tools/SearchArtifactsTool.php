@@ -7,6 +7,7 @@ use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
+use App\Support\ClientIp;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -72,7 +73,7 @@ final class SearchArtifactsTool extends Tool
                 ],
                 (int) ($validated['limit'] ?? 10),
                 actor: McpContext::actor(),
-                ip: $httpRequest->ip() ?? 'mcp',
+                ip: ClientIp::for($httpRequest),
                 userAgent: $httpRequest->userAgent() ?? 'mcp',
             );
         } catch (\Throwable $exception) {

@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Billing\PlanGate;
 use App\Services\Billing\PlanGateException;
 use App\Services\Governance\SiemExportService;
+use App\Support\ClientIp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -80,7 +81,7 @@ class AuditLogController extends Controller
         $this->authorizeAdmin($request, $team);
 
         try {
-            $jsonl = $export->export($team, (string) $request->user()->id, (string) $request->ip(), (string) $request->userAgent());
+            $jsonl = $export->export($team, (string) $request->user()->id, (string) ClientIp::for($request), (string) $request->userAgent());
         } catch (PlanGateException $exception) {
             abort(403, $exception->getMessage());
         }

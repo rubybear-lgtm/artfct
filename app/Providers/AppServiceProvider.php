@@ -54,12 +54,14 @@ use App\Support\ClientIp;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -172,6 +174,21 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
+        // Trusted proxies are scoped to Cloudflare (RUB-372), so a request
+        // arriving on the direct Railway path is not trusted to tell us its
+        // scheme. Pin it to the configured application URL rather than inferring
+        // it per request, so redirect URIs and signed links stay https wherever
+        // the request came from.
+        if (str_starts_with((string) config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
+        // Scoped to the platform's real ingress (RUB-372): Cloudflare fronts the
+        // public domain and publishes its ranges, so Cloudflare is trusted while
+        // the Railway edge -- neither enumerable nor a trustworthy source for a
+        // header a caller can write -- is not.
+        TrustProxies::at(array_values((array) config('trusted_ingress.cloudflare_ranges', [])));
+
         // Sign-in and invitation endpoints: per IP, generous for people, tight for scripts.
         RateLimiter::for('invitations', fn (Request $request) => [
             Limit::perHour((int) config('auth.invitations_per_hour', 30))->by('user:'.$request->user()?->id),
@@ -187,8 +204,8 @@ class AppServiceProvider extends ServiceProvider
             $team = $request->attributes->get('org_jwt_team');
 
             return [
-                Limit::perMinute($limit)->by('mcp-org:'.($team?->slug ?? $request->ip())),
-                Limit::perMinute($limit)->by('mcp:'.($claims['jti'] ?? $request->ip())),
+                Limit::perMinute($limit)->by('mcp-org:'.($team?->slug ?? ClientIp::for($request))),
+                Limit::perMinute($limit)->by('mcp:'.($claims['jti'] ?? ClientIp::for($request))),
             ];
         });
 

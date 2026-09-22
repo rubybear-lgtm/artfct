@@ -9,14 +9,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * RUB-372. `trustProxies(at: '*')` is kept deliberately: it is what keeps
- * X-Forwarded-Proto honoured so generated URLs stay https behind the platform's
- * edge, and narrowing it breaks the OAuth redirect URIs. The cost is that
- * `$request->ip()` returns the leftmost X-Forwarded-For entry — the value the
- * caller wrote — so throttling and the audit log must not key on it.
+ * RUB-372. Two layers, tested separately because they fail differently.
  *
- * These tests pin the replacement: a header a caller controls cannot change the
- * address that security decisions use.
+ * Trust is scoped to Cloudflare in AppServiceProvider, so `$request->ip()` no
+ * longer reads a header written by whoever called us: on the public path
+ * Cloudflare appended the real client and only Cloudflare is trusted, and on the
+ * direct path nothing is trusted. `App\Support\ClientIp` covers what is left —
+ * resolving from what Cloudflare wrote, or the peer, for anything that must not
+ * key on a caller-supplied value whatever the trust list is.
  */
 
 /** A Cloudflare edge address, from their published range 172.64.0.0/13. */
@@ -76,8 +76,11 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
     // The request is built by the kernel rather than by hand, so the trusted
     // proxy state is whatever the application actually configures. A hand-built
     // request does not reproduce it, and a test that sets it up wrong passes for
-    // the wrong reasons -- which is how an earlier version of this test managed
+    // the wrong reasons — which is how an earlier version of this test managed
     // to pass against the vulnerable code.
+    //
+    // The peer is not a Cloudflare address, so this is the direct path: the
+    // forwarded header is not trusted at all.
     $probe = function (string $forged): array {
         test()->call('GET', '/up', [], [], [], [
             'HTTP_X_FORWARDED_FOR' => $forged,
@@ -87,18 +90,41 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
         $request = app('request');
         $limit = (RateLimiter::limiter('auth'))($request);
 
-        return ['ip' => (string) $request->ip(), 'key' => $limit->key];
+        return [
+            'header' => $request->headers->get('X-Forwarded-For'),
+            'ip' => (string) $request->ip(),
+            'key' => $limit->key,
+        ];
     };
 
     $first = $probe('203.0.113.1');
     $second = $probe('203.0.113.2');
 
-    // The first assertion is the guard: it proves the forged header still
-    // reaches `$request->ip()`, which is the vulnerability. Without it, this
-    // test would also pass on a request the header never reached.
-    expect($first['ip'])->not->toBe($second['ip'], 'the forged header must still move $request->ip(), or this proves nothing')
+    // The header guard keeps this from passing on a request the forgery never
+    // reached; the key assertion is the acceptance criterion.
+    expect($first['header'])->toBe('203.0.113.1')
+        ->and($second['header'])->toBe('203.0.113.2')
         ->and($first['key'])->toBe($second['key'], 'rotating the forged header must not create a fresh bucket')
-        ->and($first['key'])->toBe('10.20.30.40');
+        ->and($first['key'])->toBe('10.20.30.40')
+        ->and($first['ip'])->toBe('10.20.30.40', 'untrusted peers must not have their forwarded header read');
+});
+
+test('a forgery prepended to a trusted cloudflare chain is not the client', function () {
+    // The non-vacuity carrier. Here the peer IS trusted, so the forwarded chain
+    // is read — and the forgery sits to the left of what Cloudflare appended.
+    // Trusting every proxy, the configuration before RUB-372, returns the
+    // leftmost entry, i.e. the forgery, and both assertions below fail.
+    test()->call('GET', '/up', [], [], [], [
+        'HTTP_X_FORWARDED_FOR' => '203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE,
+        'HTTP_CF_CONNECTING_IP' => '198.51.100.4',
+        'REMOTE_ADDR' => CLOUDFLARE_EDGE,
+    ]);
+
+    $request = app('request');
+
+    expect($request->headers->get('X-Forwarded-For'))->toBe('203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE)
+        ->and((string) $request->ip())->not->toBe('203.0.113.9', 'the prepended forgery must not be read as the client')
+        ->and(ClientIp::for($request))->toBe('198.51.100.4');
 });
 
 test('the audit log records the resolved address, not a forged header', function () {
@@ -110,9 +136,9 @@ test('the audit log records the resolved address, not a forged header', function
 
     $request = app('request');
 
-    // Same guard: the forged value must be what `$request->ip()` gives, so the
-    // assertion below is about the fix rather than about an untouched request.
-    expect($request->ip())->toBe('203.0.113.99');
+    // The forgery arrived and is not what the request resolves to.
+    expect($request->headers->get('X-Forwarded-For'))->toBe('203.0.113.99')
+        ->and((string) $request->ip())->toBe('10.20.30.40');
 
     $team = Team::factory()->create();
 

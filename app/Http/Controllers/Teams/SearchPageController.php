@@ -8,6 +8,7 @@ use App\Models\CollectionArtifact;
 use App\Models\Team;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
+use App\Support\ClientIp;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -61,7 +62,7 @@ class SearchPageController extends Controller
                     ],
                     20,
                     actor: (string) $request->user()->id,
-                    ip: (string) $request->ip(),
+                    ip: ClientIp::for($request),
                     userAgent: (string) $request->userAgent(),
                 ));
             } catch (\Throwable) {

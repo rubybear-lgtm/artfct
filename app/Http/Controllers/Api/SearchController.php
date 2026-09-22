@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
+use App\Support\ClientIp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -37,7 +38,7 @@ class SearchController extends Controller
             ],
             (int) ($validated['limit'] ?? 10),
             actor: (string) ($claims['user_id'] ?? 'unknown'),
-            ip: $request->ip() ?? 'unknown',
+            ip: ClientIp::for($request),
             userAgent: $request->userAgent() ?? 'unknown',
         );
 
