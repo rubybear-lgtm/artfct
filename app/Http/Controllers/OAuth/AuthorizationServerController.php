@@ -559,7 +559,7 @@ final class AuthorizationServerController extends Controller
             throw ValidationException::withMessages(['redirect_uri' => 'The redirect URI is not allowed.']);
         }
 
-        if (! $this->isAllowedRedirectUri($parameters['redirect_uri'])) {
+        if (! $this->isAllowedRedirectUri($parameters['redirect_uri'], $isBuiltInCli)) {
             throw ValidationException::withMessages(['redirect_uri' => 'The redirect URI is not allowed.']);
         }
 
@@ -580,18 +580,28 @@ final class AuthorizationServerController extends Controller
         return $user->currentTeam ?? $user->personalTeam() ?? $user->teams()->first();
     }
 
-    private function isAllowedRedirectUri(string $redirectUri): bool
+    /**
+     * The built-in CLI ships in the open with a client_id anyone can type, so
+     * unlike a registered client there is no redirect list to pin it to. It is
+     * a native app, so it may claim only a loopback redirect (RFC 8252), where
+     * the authorization code cannot leave the machine holding the PKCE
+     * verifier. Allowing it to claim an arbitrary HTTPS host would deliver that
+     * code directly to whoever supplied the host.
+     */
+    private function isAllowedRedirectUri(string $redirectUri, bool $loopbackOnly = false): bool
     {
         $parts = parse_url($redirectUri);
         if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || isset($parts['user'], $parts['pass'], $parts['fragment'])) {
             return false;
         }
 
-        if ($parts['scheme'] === 'https') {
-            return true;
+        $isLoopback = in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true);
+
+        if ($isLoopback) {
+            return in_array($parts['scheme'], ['http', 'https'], true);
         }
 
-        return $parts['scheme'] === 'http' && in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true);
+        return ! $loopbackOnly && $parts['scheme'] === 'https';
     }
 
     private function codeKey(string $code): string

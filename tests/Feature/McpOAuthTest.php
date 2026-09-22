@@ -161,17 +161,38 @@ test('rejects a redirect URI that was not registered for the client', function (
 });
 
 test('requires a safe redirect URI and S256 PKCE', function () {
+    // These assert the validation error rather than the redirect: an
+    // unauthenticated request redirects either way, so `assertRedirect` alone
+    // passed whether the URI was accepted or refused.
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => 'https://evil.example/callback',
-    ])))->assertRedirect();
+    ])))->assertSessionHasErrors('redirect_uri');
 
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => 'javascript:alert(1)',
-    ])))->assertRedirect();
+    ])))->assertSessionHasErrors('redirect_uri');
 
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'code_challenge_method' => 'plain',
-    ])))->assertRedirect();
+    ])))->assertSessionHasErrors('code_challenge');
+});
+
+test('rejects a non-loopback redirect URI for the built-in CLI client', function () {
+    // The built-in CLI's client_id is public and anyone can type it, so it has
+    // no registered redirect list to pin it to. Without the loopback rule this
+    // request is accepted and the authorization code is delivered to whatever
+    // HTTPS host the requester named.
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'redirect_uri' => 'https://attacker.example/oauth/callback',
+    ])))->assertSessionHasErrors('redirect_uri');
+});
+
+test('accepts a loopback redirect URI for the built-in CLI client', function () {
+    // The real CLI binds an ephemeral loopback port, so this is the shape it
+    // actually sends; the rule must not cut it off.
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'redirect_uri' => 'http://127.0.0.1:43123/oauth/callback',
+    ])))->assertRedirect(route('login'))->assertSessionHasNoErrors();
 });
 
 test('rejects approval when the consent form parameters were modified', function () {
