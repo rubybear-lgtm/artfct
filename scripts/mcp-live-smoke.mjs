@@ -410,6 +410,11 @@ async function assertDeployIsIndexedAndCounted(token, session) {
     const nonce = `zq${Date.now()}`;
     const phrase = `mcp live indexed fixture ${nonce}`;
 
+    // Read the baseline BEFORE deploying. Reading it afterwards folds the
+    // deploy's own increment into the baseline and the probe can never observe
+    // it -- which is exactly the false negative this probe shipped with once.
+    const usedBefore = await usageArtifactsUsed(token, session);
+
     const deployed = await rpc(token, session, 'tools/call', {
         name: 'deploy_artifact',
         arguments: {
@@ -422,8 +427,6 @@ async function assertDeployIsIndexedAndCounted(token, session) {
         typeof id === 'string' && id !== '',
         'Could not deploy the indexing fixture',
     );
-
-    const usedBefore = await usageArtifactsUsed(token, session);
     let usedAfter = usedBefore;
     let foundInSearch = false;
 
@@ -447,15 +450,12 @@ async function assertDeployIsIndexedAndCounted(token, session) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    // Reported, not asserted: the deploy does not move the Worker's counter, so
-    // this is an unmet clause of RUB-364's DoD rather than a passing contract.
-    // Asserting it here would leave the e2e suite permanently red and hide the
-    // next real regression; RUB-392 tracks making both halves assertions.
-    if (usedAfter <= usedBefore) {
-        console.error(
-            `WARN: a deploy through deploy_artifact did not move artifacts.used (${usedBefore} -> ${usedAfter}) -- RUB-392`,
-        );
-    }
+    // A permanent deploy increments the Worker's monthly artifact counter, so
+    // this is a contract and is asserted.
+    assert(
+        usedAfter > usedBefore,
+        `A deploy through deploy_artifact did not move artifacts.used (${usedBefore} -> ${usedAfter})`,
+    );
 
     if (!indexingEnabled) {
         console.error(
