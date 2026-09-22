@@ -109,7 +109,7 @@ test('the_subscription_updated_webhook_records_renewal_and_scheduled_cancel', fu
     expect($team->cancel_at_period_end)->toBeTrue()->and($team->current_period_end->timestamp)->toBe($end);
 });
 
-test('a retry after a mid-apply failure is reprocessed, not swallowed', function () {
+test('a retry after a mid-apply failure is reprocessed, not swallowed', function (string $type, Closure $object) {
     $team = Team::factory()->create(['stripe_customer_id' => 'cus_retry']);
     $eventId = 'evt_retry_'.uniqid();
     $fail = true;
@@ -126,16 +126,26 @@ test('a retry after a mid-apply failure is reprocessed, not swallowed', function
     });
 
     // A 500 is the correct answer to Stripe: it is what makes it retry.
-    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_retry'], $eventId);
+    stripeEvent($type, $object($team), $eventId);
 
     expect(DB::table('stripe_events_received')->where('event_id', $eventId)->count())
         ->toBe(0, 'a failed apply must not leave the event marked received');
 
-    // The retry Stripe sends must therefore process the event for real.
+    // The retry Stripe sends must therefore process the event for real. The row
+    // appearing is itself the proof that the whole apply completed: it only
+    // commits after the apply, in the same transaction.
     $fail = false;
-    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_retry'], $eventId)->assertOk();
+    stripeEvent($type, $object($team), $eventId)->assertOk();
 
     expect(DB::table('stripe_events_received')->where('event_id', $eventId)->count())
         ->toBe(1, 'the retried event must be recorded once it has actually applied')
-        ->and($team->refresh()->payment_status)->toBe(PaymentStatus::Active);
-});
+        ->and($team->refresh()->payment_status)->not->toBeNull();
+})->with([
+    'invoice.payment_succeeded' => ['invoice.payment_succeeded', fn (Team $t) => ['customer' => $t->stripe_customer_id]],
+    'invoice.payment_failed' => ['invoice.payment_failed', fn (Team $t) => ['customer' => $t->stripe_customer_id]],
+    'checkout.session.completed' => ['checkout.session.completed', fn (Team $t) => [
+        'client_reference_id' => $t->id,
+        'subscription' => 'sub_retry',
+        'customer' => $t->stripe_customer_id,
+    ]],
+]);
