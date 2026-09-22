@@ -30,10 +30,16 @@ pub struct AgentConfig {
 }
 
 pub fn discover_agents() -> Vec<AgentConfig> {
-    let home = dirs_home();
+    discover_agents_in(None)
+}
+
+/// [`discover_agents`] against an explicit home directory: `Some` resolves the
+/// agent configs under that root, `None` under this machine's home directory.
+pub fn discover_agents_in(home: Option<&Path>) -> Vec<AgentConfig> {
+    let home = home.map(Path::to_path_buf).or_else(dirs_home);
     let mut agents = Vec::new();
 
-    if let Some(ref home) = home {
+    if let Some(home) = home.as_deref() {
         agents.push(AgentConfig {
             name: "Claude Code",
             host: Some("claude-code"),

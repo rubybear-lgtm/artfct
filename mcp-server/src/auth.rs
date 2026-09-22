@@ -285,12 +285,22 @@ pub fn credential_status() -> CredentialStatus {
     let Ok(path) = credential_path() else {
         return CredentialStatus::Invalid;
     };
+
+    credential_status_at(&path)
+}
+
+/// The state of the credential file at `path`, without consulting the
+/// platform credential store. [`credential_status`] is this plus the platform
+/// lookup, so a caller holding a file-only store — an injected
+/// [`AuthSeams::credential_path`], or the doctor reading an injected
+/// environment — reports the same judgement minus the Keychain.
+pub fn credential_status_at(path: &Path) -> CredentialStatus {
     if !path.exists() {
         return CredentialStatus::Missing;
     }
 
     #[cfg(unix)]
-    if fs::metadata(&path)
+    if fs::metadata(path)
         .ok()
         .map(|metadata| {
             use std::os::unix::fs::PermissionsExt;
@@ -302,7 +312,7 @@ pub fn credential_status() -> CredentialStatus {
         return CredentialStatus::InsecurePermissions;
     }
 
-    if load_credential().is_ok() {
+    if load_credential_at(path).is_ok() {
         CredentialStatus::Valid
     } else {
         CredentialStatus::Invalid
@@ -478,7 +488,7 @@ fn open_browser(url: &str) {
     let _ = Command::new(command).arg(url).spawn();
 }
 
-fn credential_path() -> Result<PathBuf> {
+pub(crate) fn credential_path() -> Result<PathBuf> {
     let config_root = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
@@ -549,6 +559,31 @@ fn remove_credential_at(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
+// Counts platform credential store accesses made on the calling thread.
+//
+// Every platform access funnels through the three `*_for` functions below, so
+// counting there is a complete measure of whether a flow reached the Keychain
+// (macOS) or the Secret Service (Linux) at all. Thread-local rather than global
+// because the test harness runs tests in parallel.
+#[cfg(test)]
+std::thread_local! {
+    static PLATFORM_STORE_TOUCHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Platform credential store accesses made on this thread so far. A flow
+/// driven through an injected credential path must leave this unchanged, which
+/// is how the onboarding chain proves it never read or wrote a developer's
+/// real Keychain entry.
+#[cfg(test)]
+pub(crate) fn platform_store_touches() -> usize {
+    PLATFORM_STORE_TOUCHES.with(|touches| touches.get())
+}
+
+#[cfg(test)]
+fn note_platform_store_touch() {
+    PLATFORM_STORE_TOUCHES.with(|touches| touches.set(touches.get() + 1));
+}
+
 fn platform_credential() -> Result<Option<StoredCredential>> {
     platform_credential_for(PLATFORM_CREDENTIAL_ACCOUNT, PLATFORM_CREDENTIAL_SERVICE)
 }
@@ -558,6 +593,8 @@ fn platform_credential() -> Result<Option<StoredCredential>> {
 /// platform credential store (Keychain/Secret Service) without touching the
 /// shared production entry a developer may be logged in with.
 fn platform_credential_for(account: &str, service: &str) -> Result<Option<StoredCredential>> {
+    #[cfg(test)]
+    note_platform_store_touch();
     #[cfg(target_os = "macos")]
     {
         let output = match Command::new("security")
@@ -620,6 +657,9 @@ fn save_platform_credential_for(
     service: &str,
     credential: &StoredCredential,
 ) -> Result<bool> {
+    #[cfg(test)]
+    note_platform_store_touch();
+
     let payload = serde_json::to_vec(credential)?;
 
     #[cfg(target_os = "macos")]
@@ -698,6 +738,8 @@ fn remove_platform_credential() -> Result<bool> {
 /// Same removal as [`remove_platform_credential`], but against an explicit
 /// account/service pair; see [`platform_credential_for`].
 fn remove_platform_credential_for(account: &str, service: &str) -> Result<bool> {
+    #[cfg(test)]
+    note_platform_store_touch();
     #[cfg(target_os = "macos")]
     {
         let output = match Command::new("security")
@@ -767,7 +809,7 @@ fn save_credential(path: &Path, credential: &StoredCredential) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::{
         fs,
         io::{Read, Write},
@@ -991,7 +1033,7 @@ mod tests {
     /// exchange over the wire rather than through a mocked client. Serves
     /// `/oauth/token` with `token_response` and `/oauth/revoke` with an empty
     /// success, recording every request verbatim for assertions.
-    struct StubAuthorizationServer {
+    pub(crate) struct StubAuthorizationServer {
         base_url: String,
         requests: Arc<Mutex<Vec<String>>>,
         stop: Arc<AtomicBool>,
@@ -999,7 +1041,7 @@ mod tests {
     }
 
     impl StubAuthorizationServer {
-        fn start(token_response: &str) -> Self {
+        pub(crate) fn start(token_response: &str) -> Self {
             let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind the stub server");
             let port = listener.local_addr().expect("stub server address").port();
             listener
@@ -1035,11 +1077,11 @@ mod tests {
             }
         }
 
-        fn base_url(&self) -> &str {
+        pub(crate) fn base_url(&self) -> &str {
             &self.base_url
         }
 
-        fn requests(&self) -> Vec<String> {
+        pub(crate) fn requests(&self) -> Vec<String> {
             self.requests.lock().expect("stub requests").clone()
         }
     }
@@ -1124,7 +1166,7 @@ mod tests {
         String::from_utf8_lossy(&request).into_owned()
     }
 
-    fn authorization_url_parameter(url: &str, name: &str) -> String {
+    pub(crate) fn authorization_url_parameter(url: &str, name: &str) -> String {
         url.split_once('?')
             .map(|(_, query)| query)
             .and_then(|query| {
@@ -1176,7 +1218,7 @@ mod tests {
     /// the callback must go to -- and fires the callback from a separate
     /// thread, the way a browser process would. Returns the flow's result and
     /// the authorization URL.
-    async fn run_login(
+    pub(crate) async fn run_login(
         stub: &StubAuthorizationServer,
         credential_path: &Path,
         organization: Option<&str>,

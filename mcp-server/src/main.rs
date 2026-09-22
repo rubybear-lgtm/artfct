@@ -9,6 +9,8 @@ mod auth;
 mod cli;
 mod doctor;
 mod mcp;
+#[cfg(test)]
+mod onboarding;
 mod provenance;
 mod setup;
 mod tool_registry;

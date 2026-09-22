@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::api;
 use crate::auth::{self, CredentialStatus};
@@ -107,15 +107,38 @@ pub struct DoctorReport {
     pub agents: Vec<AgentReport>,
 }
 
+/// Where the doctor reads the state it reports. Production reads this
+/// machine: the platform credential store and the real home directory. An
+/// explicit `credential_path` or `home` replaces those sources, so a report
+/// collected through this type never reads a developer's real Keychain entry
+/// or credential file.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DoctorEnvironment<'a> {
+    /// Read the saved credential from this file instead of the platform
+    /// credential store. `None` is the platform store.
+    pub credential_path: Option<&'a Path>,
+    /// Discover the agent configs under this directory instead of the real
+    /// home directory. `None` is the real home directory.
+    pub home: Option<&'a Path>,
+}
+
 impl DoctorReport {
     /// The report for this machine, read from the same sources the command
     /// itself uses.
     pub fn collect(api_base_url: &str) -> Self {
+        Self::collect_with(api_base_url, &DoctorEnvironment::default())
+    }
+
+    /// [`collect`] with the sources it reads from injectable.
+    pub fn collect_with(api_base_url: &str, environment: &DoctorEnvironment<'_>) -> Self {
         Self {
             api_base_url: api_base_url.to_string(),
             environment_token_configured: auth::environment_token_configured(),
-            saved_credential: CredentialState::from_status(auth::credential_status()),
-            agents: setup::discover_agents()
+            saved_credential: CredentialState::from_status(match environment.credential_path {
+                Some(path) => auth::credential_status_at(path),
+                None => auth::credential_status(),
+            }),
+            agents: setup::discover_agents_in(environment.home)
                 .into_iter()
                 .map(AgentReport::from_agent)
                 .collect(),
