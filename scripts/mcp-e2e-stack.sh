@@ -116,6 +116,24 @@ up() {
         }
     " >/dev/null
 
+    # A long-lived org JWT for the Rust storage/provenance integration
+    # tests (mcp-server/tests/storage_integration.rs,
+    # provenance_integration.rs) — real production-path checks against a
+    # live Worker that `cargo test` otherwise silently skips
+    # (#[ignore]d) because nothing sets up a Worker + token for them.
+    INTEGRATION_TOKEN=$(php artisan tinker --execute "
+        \$team = App\Models\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
+        \$admin = App\Models\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
+        echo App\Services\Auth\OrgJwtService::default()->mint(\$team, \$admin, App\Enums\TeamRole::Admin, 3600)['token'];
+    " 2>/dev/null | tail -1)
+    echo "ARTFCT_INTEGRATION_TOKEN=$INTEGRATION_TOKEN" >> "$STATE_DIR/env"
+    {
+        echo "ARTFCT_INTEGRATION_BASE_URL=http://127.0.0.1:${WORKER_PORT}"
+        echo "ARTFCT_INTEGRATION_ORG=${ORG_A_SLUG}"
+        echo "ARTFCT_INTEGRATION_PERSIST_TO=${STATE_DIR}/wrangler"
+        echo "ARTFCT_WRANGLER_BIN=$(pwd)/${WRANGLER#./}"
+    } >> "$STATE_DIR/env"
+
     echo "==> Starting Laravel (serve + queue worker)" >&2
     # Not `php artisan serve`: its ServeCommand re-execs the actual worker
     # with a filtered environment (only PATH/APP_ENV survive — verified by
@@ -145,6 +163,9 @@ up() {
     MCP_LIVE_DEV_LOGIN_EMAIL=${ADMIN_EMAIL} \\
     node scripts/mcp-live-smoke.mjs
 
+    Run the Rust storage/provenance integration tests against it with:
+    scripts/mcp-e2e-stack.sh rust
+
     Tear down with: scripts/mcp-e2e-stack.sh down
 EOF
 }
@@ -167,6 +188,23 @@ down() {
     echo "==> Stack torn down." >&2
 }
 
+rust() {
+    set -a
+    # shellcheck disable=SC1090
+    . "$STATE_DIR/env"
+    set +a
+    # --test-threads=1: these tests share one org on one live Worker
+    # (unlike unit tests, there's no per-test isolated state), and
+    # storage_integration.rs mixes tests that create/delete blobs with
+    # export_metadata_round_trips, which exports every artifact currently in
+    # the org — run concurrently, a delete from one test can race a
+    # concurrently-running export in another and 404. Confirmed by running
+    # the failing test alone: passes every time in isolation.
+    cargo test -p artfct --locked \
+        --test storage_integration --test provenance_integration \
+        -- --ignored --test-threads=1
+}
+
 run() {
     trap down EXIT
     up
@@ -179,14 +217,16 @@ run() {
         MCP_LIVE_EXPECTED_ORG_B="$ORG_B_SLUG" \
         MCP_LIVE_DEV_LOGIN_EMAIL="$ADMIN_EMAIL" \
         node scripts/mcp-live-smoke.mjs
+    rust
 }
 
 case "${1:-}" in
     up) up ;;
     down) down ;;
     run) run ;;
+    rust) rust ;;
     *)
-        echo "Usage: $0 {up|down|run}" >&2
+        echo "Usage: $0 {up|down|run|rust}" >&2
         exit 1
         ;;
 esac

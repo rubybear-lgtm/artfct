@@ -131,10 +131,23 @@ key into that Worker — seeds two synthetic organizations
 without touching staging or your real `.env`/database:
 
 ```sh
-scripts/mcp-e2e-stack.sh run    # up, run the smoke suite, tear everything down
+scripts/mcp-e2e-stack.sh run    # up, smoke suite, Rust integration tests, tear down
 scripts/mcp-e2e-stack.sh up     # start the stack and leave it running
+scripts/mcp-e2e-stack.sh rust   # run the Rust storage/provenance integration tests against a running stack
 scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
 ```
+
+`run` also drives `mcp-server/tests/storage_integration.rs` and
+`provenance_integration.rs` — 20 tests that assert real production-path
+behavior (blob refcounting, concurrent creates/deletes, export round-trips,
+bundle redeploys) against a live Worker, and that were previously
+`#[ignore]`d with nothing in CI ever running them. They share one org on one
+live Worker rather than getting isolated per-test state, so `run`
+(`--test-threads=1`) always serializes them; running `rust` standalone
+against a stack you've already exercised once is not supported — the tests
+assume fresh D1/R2 state, and rerunning against already-populated state
+produces failures that are about reused fixtures, not real bugs. Tear down
+and `up` again for a clean run.
 
 It authenticates through `MCP_LIVE_DEV_LOGIN_EMAIL`, which drives the same
 `/oauth/authorize` consent decision as a real browser but over plain HTTP,
