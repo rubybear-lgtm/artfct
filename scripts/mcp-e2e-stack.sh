@@ -144,7 +144,11 @@ up() {
     # normally, same as the artisan commands above.
     php -S "127.0.0.1:${LARAVEL_PORT}" -t public public/index.php >"$STATE_DIR/laravel.log" 2>&1 &
     echo $! > "$STATE_DIR/laravel.pid"
-    php artisan queue:work --queue=indexing,default --tries=1 >"$STATE_DIR/queue.log" 2>&1 &
+    # LOG_CHANNEL=stderr for the worker only, so the worker's own log lines
+    # (the queue probe's among them) land in queue.log where they can be
+    # attributed to the worker process, instead of mixing into the shared
+    # storage/logs file that the web process also writes to.
+    LOG_CHANNEL=stderr php artisan queue:work --queue=indexing,default --tries=1 >"$STATE_DIR/queue.log" 2>&1 &
     echo $! > "$STATE_DIR/queue.pid"
     until curl -s -o /dev/null "http://127.0.0.1:${LARAVEL_PORT}/up"; do sleep 0.5; done
 
@@ -205,6 +209,40 @@ rust() {
         -- --ignored --test-threads=1
 }
 
+# The probe runs on the queue worker, so what it reports is the origin that
+# worker would put in a user-facing link. The queue holds its own copy of
+# APP_URL, and a drifted copy is invisible from the web service -- staging
+# served invitation links on a Railway service domain while every web-facing
+# check passed. Assert the copy the worker actually resolves, rather than the
+# one a dashboard claims it has.
+assert_queue_worker_uses_the_public_origin() {
+    local expected="http://127.0.0.1:${LARAVEL_PORT}"
+    local marker="origin-check-$$"
+    local line
+
+    php artisan tinker --execute "App\Jobs\QueueProbeJob::dispatch('${marker}');" >/dev/null
+
+    for _ in $(seq 1 120); do
+        if grep -q "QUEUE_PROBE ${marker}" "$STATE_DIR/queue.log" 2>/dev/null; then
+            line=$(grep "QUEUE_PROBE ${marker}" "$STATE_DIR/queue.log" | tail -1)
+
+            if [[ "$line" == *"app_url ${expected}"* ]]; then
+                echo "==> Queue worker resolves the public origin (${expected})" >&2
+                return 0
+            fi
+
+            echo "❌ The queue worker resolved a different origin than the web service:" >&2
+            echo "   ${line}" >&2
+            return 1
+        fi
+
+        sleep 0.5
+    done
+
+    echo "❌ The queue probe was never handled; see ${STATE_DIR}/queue.log" >&2
+    return 1
+}
+
 run() {
     trap down EXIT
     up
@@ -212,6 +250,7 @@ run() {
     # shellcheck disable=SC1090
     . "$STATE_DIR/env"
     set +a
+    assert_queue_worker_uses_the_public_origin
     MCP_LIVE_BASE_URL="http://127.0.0.1:${LARAVEL_PORT}" \
         MCP_LIVE_EXPECTED_ORG_A="$ORG_A_SLUG" \
         MCP_LIVE_EXPECTED_ORG_B="$ORG_B_SLUG" \
