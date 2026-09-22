@@ -459,17 +459,18 @@ fn remove_secure_credential() -> Result<bool> {
 }
 
 fn platform_credential() -> Result<Option<StoredCredential>> {
+    platform_credential_for(PLATFORM_CREDENTIAL_ACCOUNT, PLATFORM_CREDENTIAL_SERVICE)
+}
+
+/// Same lookup as [`platform_credential`], but against an explicit
+/// account/service pair. Exists so tests can round-trip through the real
+/// platform credential store (Keychain/Secret Service) without touching the
+/// shared production entry a developer may be logged in with.
+fn platform_credential_for(account: &str, service: &str) -> Result<Option<StoredCredential>> {
     #[cfg(target_os = "macos")]
     {
         let output = match Command::new("security")
-            .args([
-                "find-generic-password",
-                "-a",
-                PLATFORM_CREDENTIAL_ACCOUNT,
-                "-s",
-                PLATFORM_CREDENTIAL_SERVICE,
-                "-w",
-            ])
+            .args(["find-generic-password", "-a", account, "-s", service, "-w"])
             .output()
         {
             Ok(output) => output,
@@ -489,13 +490,7 @@ fn platform_credential() -> Result<Option<StoredCredential>> {
     #[cfg(target_os = "linux")]
     {
         let output = match Command::new("secret-tool")
-            .args([
-                "lookup",
-                "service",
-                PLATFORM_CREDENTIAL_SERVICE,
-                "account",
-                PLATFORM_CREDENTIAL_ACCOUNT,
-            ])
+            .args(["lookup", "service", service, "account", account])
             .output()
         {
             Ok(output) => output,
@@ -514,40 +509,59 @@ fn platform_credential() -> Result<Option<StoredCredential>> {
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
+        let _ = (account, service);
         Ok(None)
     }
 }
 
 fn save_platform_credential(credential: &StoredCredential) -> Result<bool> {
+    save_platform_credential_for(
+        PLATFORM_CREDENTIAL_ACCOUNT,
+        PLATFORM_CREDENTIAL_SERVICE,
+        credential,
+    )
+}
+
+/// Same write as [`save_platform_credential`], but against an explicit
+/// account/service pair; see [`platform_credential_for`].
+fn save_platform_credential_for(
+    account: &str,
+    service: &str,
+    credential: &StoredCredential,
+) -> Result<bool> {
     let payload = serde_json::to_vec(credential)?;
 
     #[cfg(target_os = "macos")]
     {
-        let mut child = match Command::new("security")
+        // `security add-generic-password -w` takes the password as the next
+        // command-line argument; it does not read it from stdin. Piping the
+        // payload to stdin here (as a prior version of this code did) left
+        // `-w` with no value, so the Keychain item was created with an empty
+        // password and every later read failed to parse as JSON, even
+        // though this call reported success.
+        let payload =
+            String::from_utf8(payload).context("Credential payload was not valid UTF-8")?;
+        let output = match Command::new("security")
             .args([
                 "add-generic-password",
                 "-a",
-                PLATFORM_CREDENTIAL_ACCOUNT,
+                account,
                 "-s",
-                PLATFORM_CREDENTIAL_SERVICE,
+                service,
                 "-U",
                 "-w",
+                &payload,
             ])
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
+            .output()
         {
-            Ok(child) => child,
+            Ok(output) => output,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(error) => return Err(error.into()),
         };
-        child
-            .stdin
-            .take()
-            .context("Could not open Keychain input")?
-            .write_all(&payload)?;
-        Ok(child.wait()?.success())
+        Ok(output.status.success())
     }
 
     #[cfg(target_os = "linux")]
@@ -558,9 +572,9 @@ fn save_platform_credential(credential: &StoredCredential) -> Result<bool> {
                 "--label",
                 "Artfct CLI credentials",
                 "service",
-                PLATFORM_CREDENTIAL_SERVICE,
+                service,
                 "account",
-                PLATFORM_CREDENTIAL_ACCOUNT,
+                account,
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -581,22 +595,22 @@ fn save_platform_credential(credential: &StoredCredential) -> Result<bool> {
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        let _ = payload;
+        let _ = (account, service, payload);
         Ok(false)
     }
 }
 
 fn remove_platform_credential() -> Result<bool> {
+    remove_platform_credential_for(PLATFORM_CREDENTIAL_ACCOUNT, PLATFORM_CREDENTIAL_SERVICE)
+}
+
+/// Same removal as [`remove_platform_credential`], but against an explicit
+/// account/service pair; see [`platform_credential_for`].
+fn remove_platform_credential_for(account: &str, service: &str) -> Result<bool> {
     #[cfg(target_os = "macos")]
     {
         let output = match Command::new("security")
-            .args([
-                "delete-generic-password",
-                "-a",
-                PLATFORM_CREDENTIAL_ACCOUNT,
-                "-s",
-                PLATFORM_CREDENTIAL_SERVICE,
-            ])
+            .args(["delete-generic-password", "-a", account, "-s", service])
             .output()
         {
             Ok(output) => output,
@@ -609,13 +623,7 @@ fn remove_platform_credential() -> Result<bool> {
     #[cfg(target_os = "linux")]
     {
         let output = match Command::new("secret-tool")
-            .args([
-                "clear",
-                "service",
-                PLATFORM_CREDENTIAL_SERVICE,
-                "account",
-                PLATFORM_CREDENTIAL_ACCOUNT,
-            ])
+            .args(["clear", "service", service, "account", account])
             .output()
         {
             Ok(output) => output,
@@ -627,6 +635,7 @@ fn remove_platform_credential() -> Result<bool> {
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
+        let _ = (account, service);
         Ok(false)
     }
 }
@@ -675,6 +684,12 @@ mod tests {
     use super::{
         build_authorization_url, credential_base_url, parse_callback, save_credential,
         StoredCredential,
+    };
+
+    #[cfg(target_os = "macos")]
+    #[cfg(target_os = "macos")]
+    use super::{
+        platform_credential_for, remove_platform_credential_for, save_platform_credential_for,
     };
 
     #[test]
@@ -767,5 +782,51 @@ mod tests {
             credential_base_url(&credential, "https://artfct.dev"),
             "https://artfct.dev"
         );
+    }
+
+    // Regression test for a bug where `security add-generic-password -w` was
+    // fed its value over stdin instead of as a command-line argument: the
+    // Keychain item was created with an empty password, `artfct login`
+    // reported success, and every later read failed. Round-trips through
+    // the real macOS Keychain to catch that class of bug directly.
+    //
+    // Uses a dedicated test-only account/service, never the constants the
+    // real CLI logs in with: this test previously shared production's
+    // Keychain entry, so running `cargo test` deleted a developer's actual
+    // logged-in session as a side effect of this test's own cleanup.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn round_trips_a_credential_through_the_macos_keychain() {
+        const TEST_ACCOUNT: &str = "artfct-test";
+        const TEST_SERVICE: &str = "artfct-cli-test";
+
+        let _ = remove_platform_credential_for(TEST_ACCOUNT, TEST_SERVICE);
+
+        let credential = StoredCredential {
+            token: "round-trip-secret".to_string(),
+            api_base_url: "https://staging.example.test".to_string(),
+            refresh_token: Some("refresh-value".to_string()),
+            expires_at: Some(1_700_000_000),
+            organization: Some("zz-mcp-a".to_string()),
+        };
+
+        let saved = save_platform_credential_for(TEST_ACCOUNT, TEST_SERVICE, &credential);
+        let loaded = platform_credential_for(TEST_ACCOUNT, TEST_SERVICE);
+        let _ = remove_platform_credential_for(TEST_ACCOUNT, TEST_SERVICE);
+
+        let saved = saved.expect("saving to the Keychain should not error");
+        if !saved {
+            // No Keychain available in this environment (e.g. a locked CI
+            // runner); nothing to assert against.
+            return;
+        }
+
+        let loaded = loaded
+            .expect("reading back should not error")
+            .expect("a just-saved credential should be found");
+        assert_eq!(loaded.token, credential.token);
+        assert_eq!(loaded.api_base_url, credential.api_base_url);
+        assert_eq!(loaded.refresh_token, credential.refresh_token);
+        assert_eq!(loaded.organization, credential.organization);
     }
 }
