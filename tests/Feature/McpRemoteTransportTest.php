@@ -310,7 +310,32 @@ test('remote tool failures expose stable safe error metadata', function () {
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'configuration_error')
-        ->assertJsonPath('result.content.0._meta.artfct.retryable', false);
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
+        // `nextAction` is conditional (`app/Mcp/Support/McpErrorResponse.php:23`
+        // only sets it when there is guidance), so its absence has to be
+        // asserted: otherwise a client cannot tell "no action available" from
+        // "the server stopped sending the field", and a later change could
+        // start emitting `nextAction: null` without any test noticing.
+        ->assertJsonMissingPath('result.content.0._meta.artfct.nextAction');
+});
+
+test('an error that has guidance does send nextAction', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $jti = OrgJwtService::default()->verify($token)['jti'];
+    RateLimiter::clear('mcp:'.$jti);
+    RateLimiter::clear('mcp-org:'.$team->slug);
+    config(['auth.mcp_throttle_per_minute' => 1]);
+
+    $payload = ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => []];
+
+    $this->withToken($token)->postJson('/mcp', $payload)->assertOk();
+
+    // The positive half of the same contract: the field is absent when there is
+    // nothing to suggest, and present when there is.
+    $this->withToken($token)->postJson('/mcp', $payload)
+        ->assertTooManyRequests()
+        ->assertJsonPath('error.data.artfct.nextAction', 'retry_after');
 });
 
 test('hosted activity uses the client identity captured during initialize', function () {
