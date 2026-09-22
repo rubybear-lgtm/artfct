@@ -115,14 +115,19 @@ jobs:
       - name: Check frontend formatting
         run: npm run format:check
 
+      # Wayfinder generates resources/js/actions|routes|wayfinder (gitignored,
+      # build-only) from the currently-registered routes. Lint and type-check
+      # import from there, so on a fresh checkout they must run after a
+      # build, not before — a stale local checkout with old generated files
+      # lying around masks this, which is how it went unnoticed.
+      - name: Build frontend
+        run: npm run build
+
       - name: Check frontend lint
         run: npm run lint:check
 
       - name: Check frontend types
         run: npm run types:check
-
-      - name: Build frontend
-        run: npm run build
 
       - name: Run Pest
         run: php -d memory_limit=512M vendor/bin/pest --compact
