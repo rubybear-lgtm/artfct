@@ -788,3 +788,52 @@ test('deploy_artifact requires the deploy scope', function () {
 
     expect(McpActivity::query()->where('team_id', $team->id)->where('tool', 'deploy_artifact')->where('outcome', 'denied')->exists())->toBeTrue();
 });
+
+// The retrieval half of the telemetry chain, and the join the open-correlation
+// depends on. ArtifactViewedHandler correlates a later open by matching
+// `mcp_activities.actor` against the Worker event's `viewer_user_id`, and
+// McpTelemetry writes `actor` from the credential's `user_id` claim. So if the
+// claim were anything other than the user id, the correlation would never fire
+// in production -- while handler tests that set `actor` through the factory
+// would still pass. This asserts the value a real call actually records.
+test('a real retrieval records the artifact and the actor the correlation matches on', function () {
+    $team = Team::factory()->create();
+
+    configureSigning(testSigningKey());
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response([
+            'id' => 'artifact-123',
+            'tier' => 'permanent',
+            'entrypoint' => 'index.html',
+            'created_at' => '2026-09-20T00:00:00Z',
+            'expires_at' => null,
+            'title' => 'A report',
+            'description' => 'A safe summary',
+        ], 200),
+    ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$token,
+        'Accept' => 'application/json',
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'artifact123']],
+    ])->assertOk();
+
+    $activity = McpActivity::query()
+        ->where('team_id', $team->id)
+        ->where('tool', 'get_artifact')
+        ->latest('id')
+        ->first();
+
+    expect($activity)->not->toBeNull()
+        ->and($activity->artifact_id)->toBe('artifact123', 'the retrieval must record which artifact was retrieved')
+        ->and($activity->outcome)->toBe('success')
+        ->and($activity->actor)->toBe((string) $user->id, 'actor must be the user id the open-correlation matches against');
+});
