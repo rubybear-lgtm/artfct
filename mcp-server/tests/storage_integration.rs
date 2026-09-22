@@ -312,7 +312,8 @@ async fn six_megabyte_permanent_file_succeeds() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
-async fn duplicate_content_has_two_artifacts_and_one_blob() -> Result<(), Box<dyn Error>> {
+async fn reposting_identical_content_keeps_one_artifact_and_one_blob() -> Result<(), Box<dyn Error>>
+{
     let Some(context) = context() else {
         return Ok(());
     };
