@@ -8,6 +8,12 @@ import { createServer } from 'node:http';
  * non-interactive CI runs working. OAuth tokens live in memory only.
  */
 const baseUrl = requiredEnv('MCP_LIVE_BASE_URL').replace(/\/$/, '');
+
+// Check the advertised origin before spending any OAuth work on it. A drifted
+// APP_URL/OAUTH_ISSUER still serves this metadata with a 200 and still issues
+// tokens, so nothing downstream would notice: clients would simply resolve
+// every endpoint on the wrong host.
+await assertDiscoveryMatchesBaseUrl();
 const expectedOrgA = requiredEnv('MCP_LIVE_EXPECTED_ORG_A');
 const expectedOrgB = requiredEnv('MCP_LIVE_EXPECTED_ORG_B');
 const usingEnvTokens = Boolean(
@@ -426,6 +432,33 @@ function assert(condition, message) {
     if (!condition) {
         throw new Error(message);
     }
+}
+
+/**
+ * The authorization server and the protected resource must both name the host
+ * clients came in on. A mismatch means the deployment's environment has drifted
+ * from the domain it is actually served on.
+ */
+async function assertDiscoveryMatchesBaseUrl() {
+    const authorizationServer = await (
+        await fetch(`${baseUrl}/.well-known/oauth-authorization-server`)
+    ).json();
+    assert(
+        authorizationServer.issuer === baseUrl,
+        `Authorization server issuer ${authorizationServer.issuer} is not ${baseUrl}`,
+    );
+
+    const protectedResource = await (
+        await fetch(`${baseUrl}/.well-known/oauth-protected-resource`)
+    ).json();
+    assert(
+        protectedResource.resource === `${baseUrl}/mcp`,
+        `Protected resource ${protectedResource.resource} is not ${baseUrl}/mcp`,
+    );
+    assert(
+        protectedResource.authorization_servers?.includes(baseUrl),
+        `Protected resource does not list ${baseUrl} as an authorization server`,
+    );
 }
 
 /**
