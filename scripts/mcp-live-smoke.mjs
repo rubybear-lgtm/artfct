@@ -171,6 +171,11 @@ concurrentConnections.forEach((connection, index) => {
     );
 });
 
+const rateLimitCheck = optionalBoolean('MCP_LIVE_RATE_LIMIT_CHECK', true);
+const rateLimitResult = rateLimitCheck
+    ? await assertRateLimiting(tokenB, sessionB)
+    : 'skipped';
+
 console.log(
     JSON.stringify({
         status: 'passed',
@@ -178,8 +183,93 @@ console.log(
         tools: [...toolNames].sort(),
         tenantIsolation: 'passed',
         concurrentSessions: concurrency * 2,
+        rateLimit: rateLimitResult,
     }),
 );
+
+/**
+ * Sends a bounded burst of raw JSON-RPC calls on a single connection until
+ * the server returns a rate-limited (429) response, then asserts the
+ * JSON-RPC error envelope and `Retry-After` header the runbook documents.
+ * Runs on organization B's connection so it never contends with organization
+ * A's fixture reads used earlier in the suite.
+ */
+async function assertRateLimiting(token, session) {
+    const maxAttempts = optionalInteger(
+        'MCP_LIVE_RATE_LIMIT_BURST',
+        160,
+        20,
+        400,
+    );
+    const batchSize = 20;
+    const headers = {
+        Accept: 'application/json, text/event-stream',
+        Authorization: `Bearer ${token.access}`,
+        'Content-Type': 'application/json',
+        'MCP-Session-Id': session.id,
+    };
+    const call = () =>
+        fetch(`${baseUrl}/mcp`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: crypto.randomUUID(),
+                method: 'tools/call',
+                params: { name: 'get_connection', arguments: {} },
+            }),
+        });
+
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+        const batch = await Promise.all(
+            Array.from({ length: batchSize }, call),
+        );
+        attempts += batchSize;
+
+        const limited = batch.find((response) => response.status === 429);
+
+        if (limited) {
+            const retryAfter = limited.headers.get('Retry-After');
+            assert(
+                retryAfter !== null && Number(retryAfter) > 0,
+                'Rate-limited response omitted a positive Retry-After header',
+            );
+
+            const payload = await limited.json();
+            assert(
+                payload.error?.code === -32029,
+                'Rate-limited JSON-RPC response used an unexpected error code',
+            );
+            assert(
+                payload.error?.data?.artfct?.errorCode === 'rate_limit' &&
+                    payload.error?.data?.artfct?.retryable === true &&
+                    typeof payload.error?.data?.artfct?.retryAfterSeconds ===
+                        'number',
+                'Rate-limited response omitted the stable artfct error envelope',
+            );
+
+            return {
+                tripped: true,
+                attempts,
+                retryAfterSeconds: Number(retryAfter),
+            };
+        }
+
+        for (const response of batch) {
+            if (!response.ok) {
+                throw new Error(
+                    `Unexpected HTTP ${response.status} while probing the MCP rate limit`,
+                );
+            }
+        }
+    }
+
+    throw new Error(
+        `MCP rate limit was not enforced after ${attempts} requests on one connection`,
+    );
+}
 
 async function deployPrivateFixture(token, session) {
     const deployed = await rpc(token, session, 'tools/call', {
@@ -303,6 +393,21 @@ function optionalInteger(name, fallback, minimum, maximum) {
     );
 
     return parsed;
+}
+
+function optionalBoolean(name, fallback) {
+    const value = process.env[name]?.trim().toLowerCase();
+
+    if (!value) {
+        return fallback;
+    }
+
+    assert(
+        value === 'true' || value === 'false',
+        `${name} must be "true" or "false"`,
+    );
+
+    return value === 'true';
 }
 
 function assert(condition, message) {

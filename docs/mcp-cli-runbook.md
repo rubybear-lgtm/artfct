@@ -146,9 +146,48 @@ catalog, self-describing tool metadata, usage metadata, collection discovery,
 and cross-organization artifact isolation. It also opens a bounded set of concurrent sessions for both
 organizations and checks that every session retains its tenant context. Set
 `MCP_LIVE_CONCURRENCY` to an integer from 2 to 32 to adjust that check; it
-defaults to 8 sessions per organization. Run it manually through the
-`mcp-live` GitHub Actions workflow when staging secrets are configured. Never
-place those credentials in pull-request logs or repository files.
+defaults to 8 sessions per organization.
+
+Finally, on organization B's connection it bursts `get_connection` calls
+until the server returns `429` and asserts the `Retry-After` header and the
+stable JSON-RPC rate-limit envelope (`-32029`, `data.artfct.errorCode =
+"rate_limit"`). Set `MCP_LIVE_RATE_LIMIT_BURST` (default 160, range 20-400)
+if the configured `auth.mcp_throttle_per_minute` limit needs more requests to
+trip, or set `MCP_LIVE_RATE_LIMIT_CHECK=false` to skip it. This burst counts
+against organization B's per-minute quota for the rest of that minute, so it
+runs last.
+
+Run the suite manually through the `mcp-live` GitHub Actions workflow when
+staging secrets are configured. Never place those credentials in
+pull-request logs or repository files.
+
+## Client compatibility
+
+The hosted endpoint negotiates protocol versions `2025-11-25` (default),
+`2025-06-18`, `2025-03-26`, and `2024-11-05`; `initialize` rejects any other
+value with `unsupported_protocol_version`. It only implements the stateless
+Streamable HTTP shape described above: `POST /mcp` for JSON-RPC, and `405` on
+`GET`/`DELETE` because there is no server-side event stream or session store
+to resume. A client that assumes it can open a long-lived SSE stream or
+reconnect a session by ID against this deployment will not work; it must
+re-authenticate and re-initialize instead.
+
+Known, currently verified compatibility:
+
+- **Local stdio** (the `artfct` CLI binary): fully supported and covered by
+  the Rust integration suite; this is the transport for clients that only
+  speak stdio MCP.
+- **Hosted Streamable HTTP with OAuth discovery** (PKCE, dynamic
+  registration): verified against the official MCP Inspector on staging
+  (see RUB-355). Verification against other specific hosted clients (Claude
+  Desktop/Code, Cursor, Codex CLI, Gemini CLI, OpenCode) is tracked as
+  ongoing work on RUB-363 and not yet recorded here — do not assume a client
+  works hosted until it has been run against staging and its result added to
+  this list.
+
+Record each additional client verified against staging here with the date,
+protocol version it negotiated, and any workaround needed, so this table
+stays a source of truth rather than a claim.
 
 ## Incident checklist
 
