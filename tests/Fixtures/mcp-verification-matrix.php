@@ -13,6 +13,11 @@
  *
  * Views:
  *
+ * The evidence kinds are 'php' (a test or it name in a Pest file), 'rust' (an
+ * fn name), 'js' (a function name in a live script) and 'marker' (a literal
+ * that must appear). Prefer the named kinds: a marker matches any string in the
+ * file, including one in a log line, so it survives the assertion being deleted.
+ *
  * @see tests/Feature/McpVerificationMatrixTest.php
  */
 
@@ -112,7 +117,7 @@ return [
     ],
     'tenancy.isolation_live' => [
         'surface' => 'tenancy',
-        'evidence' => ['kind' => 'marker', 'file' => 'scripts/mcp-live-smoke.mjs', 'name' => 'tenantIsolation'],
+        'evidence' => ['kind' => 'js', 'file' => 'scripts/mcp-live-smoke.mjs', 'name' => 'assertTenantIsolation'],
     ],
 
     // ── Policy, quota, degraded states ────────────────────────────────────
@@ -179,6 +184,15 @@ return [
     // ── Load ──────────────────────────────────────────────────────────────
     'load.concurrent_sessions' => [
         'surface' => 'load',
-        'evidence' => ['kind' => 'marker', 'file' => 'scripts/mcp-live-smoke.mjs', 'name' => 'MCP_LIVE_CONCURRENCY'],
+        'evidence' => ['kind' => 'js', 'file' => 'scripts/mcp-live-smoke.mjs', 'name' => 'assertConcurrentSessionsKeepTheirTenant'],
+    ],
+
+    // ── Release gate ──────────────────────────────────────────────────────
+    'release.approval_gate' => [
+        'surface' => 'release',
+        'gap' => [
+            'issue' => 'RUB-385',
+            'reason' => 'release-cli.yml gates only on the ci workflow conclusion, with no named authentication, tenancy or quota check and no rollback path anywhere in .github/, so the DoD clause is filed rather than claimed.',
+        ],
     ],
 ];

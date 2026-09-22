@@ -24,6 +24,13 @@ function mcpVerificationMatrix(): array
  * that dropping one from the matrix is a visible failure rather than a silent
  * reduction in coverage.
  *
+ * Honest limit: this list is hand-transcribed from the issue body and kept in
+ * sync by review, not asserted against Linear -- CI cannot read it. A
+ * capability omitted from both this list and the matrix would therefore pass
+ * silently, which is why the transcription is checked into the repo next to the
+ * matrix where a reviewer sees both at once, and why the matrix side is asserted
+ * exactly rather than as a subset.
+ *
  * @return list<string>
  */
 function mcpVerificationCapabilities(): array
@@ -70,6 +77,8 @@ function mcpVerificationCapabilities(): array
         'robustness.secret_redaction',
         // Scope: load.
         'load.concurrent_sessions',
+        // Definition of done: the release gate.
+        'release.approval_gate',
     ];
 }
 
@@ -104,7 +113,7 @@ test('every capability is either covered or filed, never both and never neither'
             $problems[] = $capability.' declares evidence='.var_export($hasEvidence, true).' gap='.var_export($hasGap, true);
         }
 
-        if (! is_string($entry['surface'] ?? null) || ! in_array($entry['surface'], ['transport', 'protocol', 'oauth', 'tenancy', 'policy', 'clients', 'ui', 'robustness', 'load'], true)) {
+        if (! is_string($entry['surface'] ?? null) || ! in_array($entry['surface'], ['transport', 'protocol', 'oauth', 'tenancy', 'policy', 'clients', 'ui', 'robustness', 'load', 'release'], true)) {
             $problems[] = $capability.' declares unknown surface '.var_export($entry['surface'] ?? null, true);
         }
     }
@@ -134,7 +143,7 @@ test('every covered capability points at a test that exists', function () {
 
         $found = match ($evidence['kind']) {
             'php' => str_contains($source, "test('{$name}'") || str_contains($source, "it('{$name}'"),
-            'rust' => str_contains($source, "fn {$name}("),
+            'rust', 'js' => str_contains($source, "function {$name}(") || str_contains($source, "fn {$name}("),
             'marker' => str_contains($source, $name),
             default => false,
         };

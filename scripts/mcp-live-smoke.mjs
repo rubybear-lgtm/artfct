@@ -140,54 +140,9 @@ assert(
     'Collection discovery did not return a bounded collection list',
 );
 
-const ownerRead = await rpc(tokenA, sessionA, 'tools/call', {
-    name: 'get_artifact',
-    arguments: { id: privateArtifactA },
-});
-assert(
-    ownerRead.result?.structuredContent?.id === privateArtifactA,
-    'Organization A could not read its configured private artifact fixture: ' +
-        describeResult(ownerRead),
-);
+await assertTenantIsolation(tokenA, sessionA, tokenB, sessionB, privateArtifactA);
 
-const foreignRead = await rpc(tokenB, sessionB, 'tools/call', {
-    name: 'get_artifact',
-    arguments: { id: privateArtifactA },
-});
-assert(
-    foreignRead.result?.isError === true,
-    'Organization B could read organization A artifact metadata',
-);
-
-const concurrentSessions = await Promise.all([
-    ...Array.from({ length: concurrency }, async () => ({
-        expectedOrganization: expectedOrgA,
-        session: await initialize(tokenA, expectedOrgA),
-        token: tokenA,
-    })),
-    ...Array.from({ length: concurrency }, async () => ({
-        expectedOrganization: expectedOrgB,
-        session: await initialize(tokenB, expectedOrgB),
-        token: tokenB,
-    })),
-]);
-const concurrentConnections = await Promise.all(
-    concurrentSessions.map(({ session, token }) =>
-        rpc(token, session, 'tools/call', {
-            name: 'get_connection',
-            arguments: {},
-        }),
-    ),
-);
-
-concurrentConnections.forEach((connection, index) => {
-    const expectedOrganization = concurrentSessions[index].expectedOrganization;
-    assert(
-        connection.result?.structuredContent?.organization ===
-            expectedOrganization,
-        `Concurrent session ${index + 1} resolved to the wrong organization`,
-    );
-});
+await assertConcurrentSessionsKeepTheirTenant(concurrency);
 
 const rateLimitCheck = optionalBoolean('MCP_LIVE_RATE_LIMIT_CHECK', true);
 const rateLimitResult = rateLimitCheck
@@ -204,6 +159,77 @@ console.log(
         rateLimit: rateLimitResult,
     }),
 );
+
+/**
+ * Proves the tenancy property the verification matrix names as the headline
+ * DoD clause: the owning organization can read its artifact, and a second
+ * organization holding a valid credential for its own tenant cannot. Both
+ * halves are asserted, because a blanket denial of every read would satisfy the
+ * second half on its own.
+ */
+async function assertTenantIsolation(
+    ownerToken,
+    ownerSession,
+    foreignToken,
+    foreignSession,
+    artifactId,
+) {
+    const ownerRead = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'get_artifact',
+        arguments: { id: artifactId },
+    });
+    assert(
+        ownerRead.result?.structuredContent?.id === artifactId,
+        'Organization A could not read its configured private artifact fixture: ' +
+            describeResult(ownerRead),
+    );
+
+    const foreignRead = await rpc(foreignToken, foreignSession, 'tools/call', {
+        name: 'get_artifact',
+        arguments: { id: artifactId },
+    });
+    assert(
+        foreignRead.result?.isError === true,
+        'Organization B could read organization A artifact metadata',
+    );
+}
+
+/**
+ * Opens a bounded set of concurrent remote sessions across both organizations
+ * and asserts every one of them kept its own tenant context. This is the
+ * concurrency half of the load check the verification matrix names.
+ */
+async function assertConcurrentSessionsKeepTheirTenant(concurrency) {
+    const sessions = await Promise.all([
+        ...Array.from({ length: concurrency }, async () => ({
+            expectedOrganization: expectedOrgA,
+            session: await initialize(tokenA, expectedOrgA),
+            token: tokenA,
+        })),
+        ...Array.from({ length: concurrency }, async () => ({
+            expectedOrganization: expectedOrgB,
+            session: await initialize(tokenB, expectedOrgB),
+            token: tokenB,
+        })),
+    ]);
+
+    const connections = await Promise.all(
+        sessions.map(({ session, token }) =>
+            rpc(token, session, 'tools/call', {
+                name: 'get_connection',
+                arguments: {},
+            }),
+        ),
+    );
+
+    connections.forEach((connection, index) => {
+        const expectedOrganization = sessions[index].expectedOrganization;
+        assert(
+            connection.result?.structuredContent?.organization === expectedOrganization,
+            `Concurrent session ${index + 1} resolved to the wrong organization`,
+        );
+    });
+}
 
 /**
  * Sends a bounded burst of raw JSON-RPC calls on a single connection until
