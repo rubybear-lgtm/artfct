@@ -187,6 +187,29 @@ test('rejects a non-loopback redirect URI for the built-in CLI client', function
     ])))->assertSessionHasErrors('redirect_uri');
 });
 
+test('issues no authorization code for a non-loopback CLI redirect', function () {
+    // The full attack needs an authenticated approval, so this is the half the
+    // unauthenticated test above cannot speak to. approve() validates the
+    // request before it mints anything, so the attack dies before a code
+    // exists: none is written and the attacker's host is never handed one.
+    // Asserted as a thrown exception because a ValidationException on this
+    // route renders as a redirect, which no status code can distinguish from
+    // the successful redirect the vulnerable code produced.
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $this->withoutExceptionHandling();
+
+    expect(fn () => $this->actingAs($user)->postJson('/oauth/authorize', [
+        ...oauthParameters(oauthChallenge(str_repeat('v', 64)), [
+            'redirect_uri' => 'https://evil.example/callback',
+        ]),
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]))->toThrow(ValidationException::class, 'The redirect URI is not allowed.');
+});
+
 test('accepts a loopback redirect URI for the built-in CLI client', function () {
     // The real CLI binds an ephemeral loopback port, so this is the shape it
     // actually sends; the rule must not cut it off.
