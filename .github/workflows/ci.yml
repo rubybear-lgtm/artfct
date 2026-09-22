@@ -367,6 +367,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Run the local MCP stack end to end
         env:
           MCP_E2E_EXTERNAL_POSTGRES: 'true'
