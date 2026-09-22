@@ -12,7 +12,7 @@ Exploration only. No code, no migrations, no dependency changes.
 |---|---|
 | `backend/src/lib.rs` (804 LOC) | The entire product. Cloudflare Worker, Rust/WASM. `POST/PATCH/DELETE /v1/artifacts`, `GET /p/{id}`. |
 | Storage | **KV only** (`ARTIFACTS_KV`). One key per artifact, value = `StoredArtifact` JSON. No index, no owner, no query. |
-| Crypto | E2EE. Ciphertext + IV stored; key in the URL fragment, derived client-side. Server cannot read content. |
+| Crypto | E2EE. Ciphertext + IV stored; key in the URL fragment, derived client-side. Server cannot read content. Derivation is PBKDF2-HMAC-SHA256 over a per-artifact salt (`v=2` in the fragment); the CLI, the browser encryptor and the Worker-served viewer must agree byte-for-byte, pinned by a shared test vector. Fragments without `v` predate it and use the original unsalted SHA-256 ([RUB-370](https://linear.app/rubyapps/issue/RUB-370). |
 | Identity | None. Anonymous. Rate limit per-IP via Cloudflare WAF (`cloudflare-rate-limits.mjs`). |
 | Laravel app | Marketing only — `Route::inertia` for `/`, `/docs`, `/blog`. `app/Models/User.php` is unused scaffolding. |
 | Limits | 1 MB HTML, default TTL 5 days, max 1 year. |

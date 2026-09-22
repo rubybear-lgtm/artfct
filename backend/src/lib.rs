@@ -3349,7 +3349,37 @@ body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
     return bytes;
   }}
 
-  async function deriveKey(passcode) {{
+  // Must match `KDF_ITERATIONS` in the CLI and the browser encryptor. All three
+  // derive the same key or nothing opens.
+  const KDF_ITERATIONS = 210000;
+
+  async function deriveKey(passcode, salt, version) {{
+    if (version === 2 && salt) {{
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        textEncoder.encode(passcode),
+        'PBKDF2',
+        false,
+        ['deriveBits']
+      );
+      const bits = await crypto.subtle.deriveBits(
+        {{ name: 'PBKDF2', salt, iterations: KDF_ITERATIONS, hash: 'SHA-256' }},
+        keyMaterial,
+        256,
+      );
+
+      return crypto.subtle.importKey(
+        'raw',
+        bits,
+        {{ name: 'AES-GCM' }},
+        false,
+        ['decrypt']
+      );
+    }}
+
+    // Links minted before the salted KDF carry neither a salt nor a version, so
+    // they keep the original single-SHA-256 derivation. Removable once no such
+    // link can still be live.
     const digest = await crypto.subtle.digest(
       'SHA-256',
       textEncoder.encode(passcode),
@@ -3367,6 +3397,8 @@ body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
   async function decrypt() {{
     const hash = new URLSearchParams(window.location.hash.slice(1));
     const keyEncoded = hash.get('p') ?? window.location.hash.slice(1);
+    const saltEncoded = hash.get('s');
+    const version = Number(hash.get('v'));
 
     if (!keyEncoded) {{
       preview.hidden = false;
@@ -3380,7 +3412,11 @@ body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
     setOverlay('Decrypting artifact...');
 
     try {{
-      const cryptoKey = await deriveKey(keyEncoded);
+      const cryptoKey = await deriveKey(
+        keyEncoded,
+        saltEncoded ? base64UrlToBytes(saltEncoded) : null,
+        version,
+      );
       const iv = base64UrlToBytes(payload.bodyIvB64);
       const ciphertext = base64UrlToBytes(payload.bodyCiphertextB64);
       const plaintext = await crypto.subtle.decrypt(
