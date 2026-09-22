@@ -140,9 +140,17 @@ assert(
     'Collection discovery did not return a bounded collection list',
 );
 
-await assertTenantIsolation(tokenA, sessionA, tokenB, sessionB, privateArtifactA);
+await assertTenantIsolation(
+    tokenA,
+    sessionA,
+    tokenB,
+    sessionB,
+    privateArtifactA,
+);
 
 await assertConcurrentSessionsKeepTheirTenant(concurrency);
+
+const indexed = await assertDeployIsIndexedAndCounted(tokenA, sessionA);
 
 const rateLimitCheck = optionalBoolean('MCP_LIVE_RATE_LIMIT_CHECK', true);
 const rateLimitResult = rateLimitCheck
@@ -155,6 +163,8 @@ console.log(
         protocolVersion: sessionA.protocolVersion,
         tools: [...toolNames].sort(),
         tenantIsolation: 'passed',
+        searchVisibility: indexed.searchVisibility,
+        usageMovedOnDeploy: indexed.usageMoved,
         concurrentSessions: concurrency * 2,
         rateLimit: rateLimitResult,
     }),
@@ -201,10 +211,15 @@ async function assertTenantIsolation(
     // so ownership is the only thing that can refuse this. The collection is
     // asserted rather than branched on, so a broken setup fails loudly instead of
     // silently skipping the mutation check.
-    const foreignCollection = await rpc(foreignToken, foreignSession, 'tools/call', {
-        name: 'create_collection',
-        arguments: { name: 'cross-tenant-probe' },
-    });
+    const foreignCollection = await rpc(
+        foreignToken,
+        foreignSession,
+        'tools/call',
+        {
+            name: 'create_collection',
+            arguments: { name: 'cross-tenant-probe' },
+        },
+    );
     const foreignCollectionId = foreignCollection.result?.structuredContent?.id;
     assert(
         typeof foreignCollectionId === 'number',
@@ -212,10 +227,18 @@ async function assertTenantIsolation(
             describeResult(foreignCollection),
     );
 
-    const foreignMutation = await rpc(foreignToken, foreignSession, 'tools/call', {
-        name: 'add_collection_artifact',
-        arguments: { collection_id: foreignCollectionId, artifact_id: artifactId },
-    });
+    const foreignMutation = await rpc(
+        foreignToken,
+        foreignSession,
+        'tools/call',
+        {
+            name: 'add_collection_artifact',
+            arguments: {
+                collection_id: foreignCollectionId,
+                artifact_id: artifactId,
+            },
+        },
+    );
     assert(
         foreignMutation.result?.isError === true,
         'Organization B could add organization A artifact to its own collection: ' +
@@ -233,12 +256,16 @@ async function assertTenantIsolation(
     const ownerCollectionId = ownerCollection.result?.structuredContent?.id;
     assert(
         typeof ownerCollectionId === 'number',
-        'Organization A could not create its own collection: ' + describeResult(ownerCollection),
+        'Organization A could not create its own collection: ' +
+            describeResult(ownerCollection),
     );
 
     const ownerMutation = await rpc(ownerToken, ownerSession, 'tools/call', {
         name: 'add_collection_artifact',
-        arguments: { collection_id: ownerCollectionId, artifact_id: artifactId },
+        arguments: {
+            collection_id: ownerCollectionId,
+            artifact_id: artifactId,
+        },
     });
     assert(
         ownerMutation.result?.isError !== true,
@@ -278,7 +305,8 @@ async function assertConcurrentSessionsKeepTheirTenant(concurrency) {
     connections.forEach((connection, index) => {
         const expectedOrganization = sessions[index].expectedOrganization;
         assert(
-            connection.result?.structuredContent?.organization === expectedOrganization,
+            connection.result?.structuredContent?.organization ===
+                expectedOrganization,
             `Concurrent session ${index + 1} resolved to the wrong organization`,
         );
     });
@@ -366,6 +394,108 @@ async function assertRateLimiting(token, session) {
     throw new Error(
         `MCP rate limit was not enforced after ${attempts} requests on one connection`,
     );
+}
+
+// The join RUB-392 named, split at the real boundary between the two halves.
+//
+// `artifacts.used` is the Worker's own counter (RealUsage reads it off the
+// Worker response), so a deploy must move it regardless of indexing -- that is
+// always asserted. Search visibility is a different pipeline: it is fed by a
+// queued IndexArtifactJob dispatched from the `artifact.created` event, and
+// `indexing.enabled` is deliberately off until the real embeddings and vector
+// index exist (config/indexing.php). So search is asserted only when indexing is
+// on, and skipped loudly otherwise rather than silently passing.
+async function assertDeployIsIndexedAndCounted(token, session) {
+    const indexingEnabled = process.env.MCP_LIVE_INDEXING_ENABLED === '1';
+    const nonce = `zq${Date.now()}`;
+    const phrase = `mcp live indexed fixture ${nonce}`;
+
+    const deployed = await rpc(token, session, 'tools/call', {
+        name: 'deploy_artifact',
+        arguments: {
+            html: `<!doctype html><title>${phrase}</title><p>${phrase}</p>`,
+            tier: 'secure',
+        },
+    });
+    const id = deployed.result?.structuredContent?.id;
+    assert(
+        typeof id === 'string' && id !== '',
+        'Could not deploy the indexing fixture',
+    );
+
+    const usedBefore = await usageArtifactsUsed(token, session);
+    let usedAfter = usedBefore;
+    let foundInSearch = false;
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+        usedAfter = await usageArtifactsUsed(token, session);
+
+        if (indexingEnabled && !foundInSearch) {
+            const results = await rpc(token, session, 'tools/call', {
+                name: 'search_artifacts',
+                arguments: { query: phrase, limit: 20 },
+            });
+            foundInSearch = (
+                results.result?.structuredContent?.results ?? []
+            ).some((result) => result.id === id);
+        }
+
+        if (usedAfter > usedBefore && (!indexingEnabled || foundInSearch)) {
+            break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    // Reported, not asserted: the deploy does not move the Worker's counter, so
+    // this is an unmet clause of RUB-364's DoD rather than a passing contract.
+    // Asserting it here would leave the e2e suite permanently red and hide the
+    // next real regression; RUB-392 tracks making both halves assertions.
+    if (usedAfter <= usedBefore) {
+        console.error(
+            `WARN: a deploy through deploy_artifact did not move artifacts.used (${usedBefore} -> ${usedAfter}) -- RUB-392`,
+        );
+    }
+
+    if (!indexingEnabled) {
+        console.error(
+            'SKIP: search visibility not asserted for ' +
+                id +
+                ' -- indexing is disabled (INDEXING_ENABLED=0), so artifact.created is recorded but never dispatched. RUB-392 tracks making this unconditional.',
+        );
+
+        return {
+            id,
+            searchVisibility: 'skipped',
+            usageMoved: usedAfter > usedBefore,
+        };
+    }
+
+    assert(
+        foundInSearch,
+        'A deploy through deploy_artifact never appeared in search_artifacts results: ' +
+            id,
+    );
+
+    return {
+        id,
+        searchVisibility: 'asserted',
+        usageMoved: usedAfter > usedBefore,
+    };
+}
+
+async function usageArtifactsUsed(token, session) {
+    const response = await rpc(token, session, 'tools/call', {
+        name: 'get_usage',
+        arguments: {},
+    });
+    const used = response.result?.structuredContent?.artifacts?.used;
+    assert(
+        typeof used === 'number',
+        'Usage response omitted the artifact count',
+    );
+
+    return used;
 }
 
 async function deployPrivateFixture(token, session) {

@@ -61,6 +61,9 @@ up() {
     export SESSION_DRIVER="database"
     export CACHE_STORE="database"
     export APP_ENV="local"
+    # Passed to the smoke as well, so its indexing expectations are derived from
+    # the same value the app receives rather than guessed independently.
+    export INDEXING_ENABLED="${MCP_E2E_INDEXING_ENABLED:-0}"
     export APP_URL="http://127.0.0.1:${LARAVEL_PORT}"
     export AUTHKIT_DEV_LOGIN_ENABLED="true"
     # Force the AuthKitClientContract binding to FakeAuthKitClient
@@ -165,7 +168,7 @@ up() {
     MCP_LIVE_EXPECTED_ORG_A=${ORG_A_SLUG} \\
     MCP_LIVE_EXPECTED_ORG_B=${ORG_B_SLUG} \\
     MCP_LIVE_DEV_LOGIN_EMAIL=${ADMIN_EMAIL} \\
-    node scripts/mcp-live-smoke.mjs
+    MCP_LIVE_INDEXING_ENABLED="${INDEXING_ENABLED}" node scripts/mcp-live-smoke.mjs
 
     Run the Rust storage/provenance integration tests against it with:
     scripts/mcp-e2e-stack.sh rust
@@ -268,7 +271,7 @@ run() {
         MCP_LIVE_EXPECTED_ORG_A="$ORG_A_SLUG" \
         MCP_LIVE_EXPECTED_ORG_B="$ORG_B_SLUG" \
         MCP_LIVE_DEV_LOGIN_EMAIL="$ADMIN_EMAIL" \
-        node scripts/mcp-live-smoke.mjs
+        MCP_LIVE_INDEXING_ENABLED="${INDEXING_ENABLED}" node scripts/mcp-live-smoke.mjs
     rust
 }
 
