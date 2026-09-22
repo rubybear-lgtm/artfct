@@ -1329,6 +1329,7 @@ async fn resolve_permanent_artifact(
         host.as_deref(),
         token.as_deref(),
         artifact_id,
+        &row.org,
         artifact_token_secret(env).as_deref(),
         Utc::now(),
         &artifact_origin_suffix(env),
@@ -1745,11 +1746,13 @@ enum IsolatedAccess {
     /// host — free-tier and legacy shared-origin `/p/{id}` behavior applies
     /// unchanged.
     NotIsolated,
-    /// Arrived on an isolated host with a token that verifies for this
-    /// artifact.
+    /// Arrived on this artifact's own isolated host — tenant slug and artifact
+    /// id both match the artifact being served — with a token that verifies
+    /// for it.
     Authorized,
-    /// Arrived on an isolated host without a token that verifies for this
-    /// artifact — callers must reject with 403.
+    /// Arrived on an isolated host that is not this artifact's own origin, or
+    /// without a token that verifies for this artifact — callers must reject
+    /// with 403.
     Forbidden,
 }
 
@@ -1757,10 +1760,17 @@ enum IsolatedAccess {
 /// optional bearer/query token, given an explicit "now" and secret so it is
 /// testable without a live Worker. Cookieless by design: nothing here reads
 /// or sets a session cookie, so a stolen artifact origin cannot ride one.
+///
+/// A verifying token is not sufficient on its own: the host's artifact id and
+/// tenant slug must both name the artifact actually being served, or one
+/// tenant's isolated origin could serve another artifact (spec 05's one-origin-
+/// per-artifact guarantee). A host that is not an isolated origin at all stays
+/// `NotIsolated` so shared-origin `/p/{id}` behaviour is untouched.
 fn isolated_access_check(
     host: Option<&str>,
     token: Option<&str>,
     artifact_id: &str,
+    artifact_org: &str,
     secret: Option<&str>,
     now: chrono::DateTime<Utc>,
     origin_suffix: &str,
@@ -1768,8 +1778,11 @@ fn isolated_access_check(
     let Some(host) = host else {
         return IsolatedAccess::NotIsolated;
     };
-    if parse_isolated_hostname(host, origin_suffix).is_none() {
+    let Some((host_org, host_artifact_id)) = parse_isolated_hostname(host, origin_suffix) else {
         return IsolatedAccess::NotIsolated;
+    };
+    if host_artifact_id != artifact_id || host_org != artifact_org {
+        return IsolatedAccess::Forbidden;
     }
     match token {
         Some(token) if verify_access_token(secret, token, artifact_id, now) => {
@@ -4958,8 +4971,9 @@ mod tests {
         // suffix technically still matches the tail of a staging host too.
         // Document that explicitly rather than assume it can't happen: the
         // parsed artifact_id then carries the literal "--stg" marker, which
-        // can never match a real artifact id, so the D1 lookup that follows
-        // simply 404s. Not a parsing bug to "fix" — just not exploitable.
+        // can never match a real artifact id, so the isolated-access check
+        // rejects the mismatch as Forbidden before any D1 lookup. Not a
+        // parsing bug to "fix" — just not exploitable.
         assert_eq!(
             parse_isolated_hostname(&host, ARTIFACT_ORIGIN_SUFFIX),
             Some(("acme".to_string(), format!("{artifact_id}--stg"))),
@@ -5100,6 +5114,7 @@ mod tests {
                 Some(&host),
                 Some(&token),
                 artifact_id,
+                "acme",
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
@@ -5111,6 +5126,7 @@ mod tests {
                 Some(&host),
                 None,
                 artifact_id,
+                "acme",
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
@@ -5122,11 +5138,126 @@ mod tests {
                 Some("artfct.dev"),
                 None,
                 artifact_id,
+                "acme",
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
             ),
             IsolatedAccess::NotIsolated
+        );
+    }
+
+    #[test]
+    fn isolated_host_rejects_token_minted_for_another_artifact() {
+        let secret = "s3cr3t";
+        let artifact_id = "artifact-a";
+        let host = isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        let now = Utc::now();
+
+        // Control: a token minted for this artifact, on this artifact's host
+        // and owning org, authorizes.
+        let own_token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
+        assert_eq!(
+            isolated_access_check(
+                Some(&host),
+                Some(&own_token),
+                artifact_id,
+                "acme",
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Authorized
+        );
+        // A token minted for a different artifact is not a credential for this
+        // origin, even though the host and org both match.
+        let other_token =
+            mint_access_token(secret, "artifact-b", now + chrono::Duration::minutes(5));
+        assert_eq!(
+            isolated_access_check(
+                Some(&host),
+                Some(&other_token),
+                artifact_id,
+                "acme",
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Forbidden
+        );
+    }
+
+    #[test]
+    fn isolated_host_serving_another_artifact_is_forbidden() {
+        // RUB-365: the host is an isolated origin, its slug matches the org
+        // that owns the artifact, and the token verifies — but the host's
+        // artifact id is not the artifact named in the served path. One
+        // artifact's origin must never serve another artifact, so this is
+        // Forbidden rather than NotIsolated (it did arrive on an isolated
+        // origin) or Authorized.
+        let secret = "s3cr3t";
+        let served_artifact_id = "artifact-a";
+        let host =
+            isolated_artifact_hostname("acme", "artifact-b", ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        let now = Utc::now();
+        let token = mint_access_token(
+            secret,
+            served_artifact_id,
+            now + chrono::Duration::minutes(5),
+        );
+
+        assert_eq!(
+            isolated_access_check(
+                Some(&host),
+                Some(&token),
+                served_artifact_id,
+                "acme",
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Forbidden
+        );
+    }
+
+    #[test]
+    fn isolated_host_of_another_tenant_is_forbidden() {
+        // The host names this artifact and the token verifies for it, but the
+        // host's tenant slug is not the org that owns the artifact, so the
+        // origin belongs to someone else.
+        let secret = "s3cr3t";
+        let artifact_id = "artifact-a";
+        let host = isolated_artifact_hostname("other-tenant", artifact_id, ARTIFACT_ORIGIN_SUFFIX)
+            .unwrap();
+        let now = Utc::now();
+        let token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
+
+        assert_eq!(
+            isolated_access_check(
+                Some(&host),
+                Some(&token),
+                artifact_id,
+                "acme",
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Forbidden
+        );
+        // Control: the same request against the owning org's host authorizes.
+        let owning_host =
+            isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        assert_eq!(
+            isolated_access_check(
+                Some(&owning_host),
+                Some(&token),
+                artifact_id,
+                "acme",
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Authorized
         );
     }
 
