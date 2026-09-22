@@ -110,10 +110,15 @@ configuration file, repository, issue, or support ticket.
 
 ## Safe retries and policy errors
 
-Remote mutation callers should send a stable `MCP-Request-Id` or
-`Idempotency-Key` for retries. Repeating the same key with the same payload
-returns the original result. Reusing the key with a different payload is
-rejected. A concurrent duplicate reports an in-progress, retryable error.
+`deploy_to_canvas` is the only tool that deduplicates retries. Send a stable
+`MCP-Request-Id` (or `Idempotency-Key`) header to opt in: repeating the same
+key with the same payload returns the original result, reusing the key with a
+different payload is rejected with the non-retryable
+`idempotency_key_reused` code, and a concurrent duplicate reports the
+retryable `idempotency_in_progress` code. Cached results are kept for
+`auth.mcp_idempotency_ttl_seconds` (default 600). `deploy_artifact`,
+`create_collection`, and `add_collection_artifact` do not deduplicate retries,
+and `deploy_to_canvas` itself is deprecated in favor of `deploy_artifact`.
 
 Rate-limit responses include `Retry-After`; quota and policy errors include a
 stable machine-readable error code and remediation-safe usage details. Retry
@@ -138,11 +143,11 @@ scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
 ```
 
 `run` also drives `mcp-server/tests/storage_integration.rs` and
-`provenance_integration.rs` — 20 tests that assert real production-path
-behavior (blob refcounting, concurrent creates/deletes, export round-trips,
-bundle redeploys) against a live Worker, and that were previously
-`#[ignore]`d with nothing in CI ever running them. They share one org on one
-live Worker rather than getting isolated per-test state, so `run`
+`provenance_integration.rs` — 22 tests (21 and 1 respectively) that assert
+real production-path behavior (blob refcounting, concurrent creates/deletes,
+export round-trips, bundle redeploys) against a live Worker, and that were
+previously `#[ignore]`d with nothing in CI ever running them. They share one
+org on one live Worker rather than getting isolated per-test state, so `run`
 (`--test-threads=1`) always serializes them; running `rust` standalone
 against a stack you've already exercised once is not supported — the tests
 assume fresh D1/R2 state, and rerunning against already-populated state
@@ -209,7 +214,8 @@ pull-request logs or repository files.
 
 The hosted endpoint negotiates protocol versions `2025-11-25` (default),
 `2025-06-18`, `2025-03-26`, and `2024-11-05`; `initialize` rejects any other
-value with `unsupported_protocol_version`. It only implements the stateless
+value with JSON-RPC error `-32602` (`Unsupported protocol version`, with the
+supported list in `error.data.supported`). It only implements the stateless
 Streamable HTTP shape described above: `POST /mcp` for JSON-RPC, and `405` on
 `GET`/`DELETE` because there is no server-side event stream or session store
 to resume. A client that assumes it can open a long-lived SSE stream or
@@ -219,8 +225,10 @@ re-authenticate and re-initialize instead.
 Known, currently verified compatibility:
 
 - **Local stdio** (the `artfct` CLI binary): fully supported and covered by
-  the Rust integration suite; this is the transport for clients that only
-  speak stdio MCP.
+  the crate's unit tests in `mcp-server/src/mcp.rs` (protocol negotiation,
+  tool listing, session/host capture); the `mcp-server/tests/` integration
+  suite exercises the hosted Worker over HTTP, not stdio. This is the
+  transport for clients that only speak stdio MCP.
 - **Hosted Streamable HTTP with OAuth discovery** (PKCE, dynamic
   registration): verified against the official MCP Inspector on staging
   (see RUB-355). Verification against other specific hosted clients (Claude
@@ -236,8 +244,11 @@ stays a source of truth rather than a claim.
 ## Incident checklist
 
 1. Run `artfct doctor` and capture only its redacted output.
-2. Identify the workspace, connection name, client, transport, and request ID
-   from the MCP connections page or activity view.
+2. Identify the workspace, connection name, client, and transport from the
+   MCP connections page. Each activity row also carries the request ID
+   (`activity[].requestId`, from `mcp_activities.request_id`) but the table
+   does not render it and the audit/SIEM export does not include it, so read
+   it from the page payload or the database row.
 3. Revoke the affected connection if compromise is suspected.
 4. Rotate the affected OAuth session or CI token through the normal credential
    owner; do not edit database rows manually.
