@@ -29,10 +29,20 @@ const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
 const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
 const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none';";
-/// Wildcard suffix for the per-artifact isolated origin scheme:
+/// Default wildcard suffix for the per-artifact isolated origin scheme:
 /// `<tenant-slug>--<artifact-id>.artfct.dev`. One wildcard level, covered by
-/// Universal SSL (spec 05).
+/// Universal SSL (spec 05). Overridable per environment via
+/// `ARTIFACT_ORIGIN_SUFFIX_ENV` (RUB-366): production's free-tier Universal
+/// SSL only covers one wildcard level at the zone apex, so a second
+/// environment sharing the same apex (staging) needs its artifact hosts to
+/// still be exactly one label — `--stg.artfct.dev` as the whole suffix
+/// keeps `<tenant-slug>--<artifact-id>--stg.artfct.dev` one label, reusing
+/// the same cert, rather than nesting under its own `*.staging.artfct.dev`
+/// wildcard (which would need a paid certificate for the second level).
 const ARTIFACT_ORIGIN_SUFFIX: &str = ".artfct.dev";
+/// Env var overriding `ARTIFACT_ORIGIN_SUFFIX` for a non-production
+/// environment. Unset (production) keeps today's suffix exactly.
+const ARTIFACT_ORIGIN_SUFFIX_ENV: &str = "ARTFCT_ARTIFACT_ORIGIN_SUFFIX";
 /// Env var carrying the HMAC secret used to sign/verify isolated-origin
 /// access tokens. Follows the same fail-closed pattern as `ARTFCT_ORG_TOKEN`:
 /// a missing binding never authorizes a token, regardless of signature.
@@ -1229,6 +1239,7 @@ async fn resolve_permanent_artifact(
         artifact_id,
         artifact_token_secret(env).as_deref(),
         Utc::now(),
+        &artifact_origin_suffix(env),
     );
     let mut viewer_user_id = None;
     match isolated_access {
@@ -1507,24 +1518,29 @@ async fn upload_permanent_file(path: &str, req: &mut Request, env: &Env) -> Resu
 }
 
 /// Derives the isolated per-artifact hostname
-/// `<tenant-slug>--<artifact-id>.artfct.dev` (spec 05). Pure function over
-/// the slug/id character-set rules already enforced by spec 3
-/// (`store::hostname_label`).
+/// `<tenant-slug>--<artifact-id><suffix>` (spec 05; `suffix` is
+/// `ARTIFACT_ORIGIN_SUFFIX` in production, see `artifact_origin_suffix`).
+/// Pure function over the slug/id character-set rules already enforced by
+/// spec 3 (`store::hostname_label`).
 #[allow(
     dead_code,
     reason = "minted by the control plane, not this Worker; exercised directly by hostname_derives_from_slug_and_id"
 )]
-fn isolated_artifact_hostname(tenant_slug: &str, artifact_id: &str) -> Result<String, String> {
+fn isolated_artifact_hostname(
+    tenant_slug: &str,
+    artifact_id: &str,
+    suffix: &str,
+) -> Result<String, String> {
     let label = store::hostname_label(tenant_slug, &store::ArtifactId(artifact_id.to_string()))?;
-    Ok(format!("{label}{ARTIFACT_ORIGIN_SUFFIX}"))
+    Ok(format!("{label}{suffix}"))
 }
 
 /// Splits an isolated-origin `Host` header back into `(tenant_slug,
-/// artifact_id)`. Returns `None` for any host that isn't under
-/// `ARTIFACT_ORIGIN_SUFFIX`, including the shared `artfct.dev` host used by
-/// free-tier `/p/{id}` links.
-fn parse_isolated_hostname(host: &str) -> Option<(String, String)> {
-    let label = host.strip_suffix(ARTIFACT_ORIGIN_SUFFIX)?;
+/// artifact_id)`. Returns `None` for any host that isn't under `suffix`
+/// (this environment's `artifact_origin_suffix`), including the shared
+/// `artfct.dev` host used by free-tier `/p/{id}` links.
+fn parse_isolated_hostname(host: &str, suffix: &str) -> Option<(String, String)> {
+    let label = host.strip_suffix(suffix)?;
     let (slug, artifact_id) = label.split_once("--")?;
     (!slug.is_empty() && !artifact_id.is_empty())
         .then(|| (slug.to_string(), artifact_id.to_string()))
@@ -1655,11 +1671,12 @@ fn isolated_access_check(
     artifact_id: &str,
     secret: Option<&str>,
     now: chrono::DateTime<Utc>,
+    origin_suffix: &str,
 ) -> IsolatedAccess {
     let Some(host) = host else {
         return IsolatedAccess::NotIsolated;
     };
-    if parse_isolated_hostname(host).is_none() {
+    if parse_isolated_hostname(host, origin_suffix).is_none() {
         return IsolatedAccess::NotIsolated;
     }
     match token {
@@ -1674,6 +1691,16 @@ fn artifact_token_secret(env: &Env) -> Option<String> {
     env.var(ARTIFACT_TOKEN_SECRET_ENV)
         .ok()
         .map(|value| value.to_string())
+}
+
+/// Resolves this environment's isolated-origin suffix: `ARTIFACT_ORIGIN_SUFFIX_ENV`
+/// if set (staging), otherwise the production default.
+fn artifact_origin_suffix(env: &Env) -> String {
+    env.var(ARTIFACT_ORIGIN_SUFFIX_ENV)
+        .ok()
+        .map(|value| value.to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| ARTIFACT_ORIGIN_SUFFIX.to_string())
 }
 
 /// 403 response for a rejected isolated-origin request. Uses the plain HTML
@@ -4707,18 +4734,52 @@ mod tests {
     #[test]
     fn hostname_derives_from_slug_and_id() {
         let artifact_id = "0123456789abcdef0123456789abcdef";
-        let host_a = isolated_artifact_hostname("acme", artifact_id).unwrap();
+        let host_a =
+            isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
         assert_eq!(host_a, format!("acme--{artifact_id}.artfct.dev"));
 
-        let host_b =
-            isolated_artifact_hostname("acme", "ffffffffffffffffffffffffffffffff").unwrap();
+        let host_b = isolated_artifact_hostname(
+            "acme",
+            "ffffffffffffffffffffffffffffffff",
+            ARTIFACT_ORIGIN_SUFFIX,
+        )
+        .unwrap();
         assert_ne!(
             host_a, host_b,
             "artifact A and artifact B must serve from different hostnames"
         );
         assert_eq!(
-            parse_isolated_hostname(&host_a),
+            parse_isolated_hostname(&host_a, ARTIFACT_ORIGIN_SUFFIX),
             Some(("acme".to_string(), artifact_id.to_string()))
+        );
+    }
+
+    #[test]
+    fn hostname_suffix_is_configurable_without_ambiguity() {
+        // RUB-366: staging reuses the same *.artfct.dev wildcard cert by
+        // folding its own marker into the whole suffix ("--stg.artfct.dev"),
+        // not by appending a bare "--stg" after the artifact id — the latter
+        // would corrupt parsing, since parse_isolated_hostname splits on the
+        // first "--" and would read "id--stg" as the artifact id.
+        let staging_suffix = "--stg.artfct.dev";
+        let artifact_id = "0123456789abcdef0123456789abcdef";
+        let host = isolated_artifact_hostname("acme", artifact_id, staging_suffix).unwrap();
+        assert_eq!(host, format!("acme--{artifact_id}--stg.artfct.dev"));
+        assert_eq!(
+            parse_isolated_hostname(&host, staging_suffix),
+            Some(("acme".to_string(), artifact_id.to_string())),
+        );
+        // Each environment's Worker only ever checks its own suffix — a
+        // staging host never reaches the production Worker's route in
+        // practice — but plain string suffix-stripping means production's
+        // suffix technically still matches the tail of a staging host too.
+        // Document that explicitly rather than assume it can't happen: the
+        // parsed artifact_id then carries the literal "--stg" marker, which
+        // can never match a real artifact id, so the D1 lookup that follows
+        // simply 404s. Not a parsing bug to "fix" — just not exploitable.
+        assert_eq!(
+            parse_isolated_hostname(&host, ARTIFACT_ORIGIN_SUFFIX),
+            Some(("acme".to_string(), format!("{artifact_id}--stg"))),
         );
     }
 
@@ -4847,20 +4908,41 @@ mod tests {
     fn isolated_host_requires_verified_token() {
         let secret = "s3cr3t";
         let artifact_id = "artifact-a";
-        let host = isolated_artifact_hostname("acme", artifact_id).unwrap();
+        let host = isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
         let now = Utc::now();
         let token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
 
         assert_eq!(
-            isolated_access_check(Some(&host), Some(&token), artifact_id, Some(secret), now),
+            isolated_access_check(
+                Some(&host),
+                Some(&token),
+                artifact_id,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
             IsolatedAccess::Authorized
         );
         assert_eq!(
-            isolated_access_check(Some(&host), None, artifact_id, Some(secret), now),
+            isolated_access_check(
+                Some(&host),
+                None,
+                artifact_id,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
             IsolatedAccess::Forbidden
         );
         assert_eq!(
-            isolated_access_check(Some("artfct.dev"), None, artifact_id, Some(secret), now),
+            isolated_access_check(
+                Some("artfct.dev"),
+                None,
+                artifact_id,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
             IsolatedAccess::NotIsolated
         );
     }
