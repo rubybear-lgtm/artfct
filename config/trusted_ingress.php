@@ -5,22 +5,29 @@
 | Trusted Ingress
 |--------------------------------------------------------------------------
 |
-| The edge ranges whose word is believed. `App\Support\ClientIp` trusts the
-| `CF-Connecting-IP` header only when the transport peer falls inside one of
-| these, because the peer is the only value a caller cannot set.
+| The ranges passed to `TrustProxies::at()` in AppServiceProvider. They decide
+| one thing: whether `X-Forwarded-Proto` and `X-Forwarded-Host` are believed, so
+| that URL generation is correct behind the platform's edge. The scheme is pinned
+| with `URL::forceScheme('https')` as well, so requests from outside these ranges
+| still produce https links.
 |
-| `TrustProxies::at()` is configured from the same list in AppServiceProvider,
-| so the trusted-proxy set and the ClientIp signal cannot drift apart. Trusted
-| proxies are what make `X-Forwarded-Proto` and `X-Forwarded-Host` usable for URL
-| generation; the scheme is pinned with `URL::forceScheme('https')` as well, so
-| requests from outside these ranges still produce https links.
+| They do NOT make any header trustworthy as a client address. App\Support\ClientIp
+| reads no header at all and returns the transport peer, so nothing here can
+| promote `CF-Connecting-IP` — or anything else a caller writes — into a throttle
+| or audit key.
 |
-| Cloudflare's published ranges are the default because they are the ingress
-| that fronts the public domain and publishes its addresses. Refresh from
+| Extending this list does not restore per-client bucket granularity, and must not
+| be presented as a way to. The platform does not attest a client address, so a
+| per-client key would rest on a header the caller writes; a previous revision of
+| this file recommended adding the platform's edge ranges here for exactly that
+| purpose, which would have handed back a rotating key while honest callers gained
+| nothing. Granularity is provided instead by the per-account keys in
+| AppServiceProvider.
+|
+| Cloudflare's published ranges are the default because they are the ingress that
+| fronts the public domain and publishes its addresses. Refresh from
 | https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6, or set
-| the env var to override — including to add the platform's own edge ranges if
-| they are ever enumerated, which is what restores per-client buckets for
-| traffic that does not arrive through Cloudflare.
+| TRUSTED_INGRESS_EDGE_RANGES to override.
 |
 */
 
@@ -49,7 +56,7 @@ $edgeRanges = [
     '2c0f:f248::/32',
 ];
 
-$override = env('TRUSTED_INGRESS_EDGE_RANGES') ?? env('TRUSTED_INGRESS_CLOUDFLARE_RANGES');
+$override = env('TRUSTED_INGRESS_EDGE_RANGES');
 
 return [
     'edge_ranges' => $override

@@ -9,14 +9,18 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * RUB-372. Two layers, tested separately because they fail differently.
+ * RUB-372. No header a caller writes may reach a throttle or audit key.
  *
- * Trust is scoped to Cloudflare in AppServiceProvider, so `$request->ip()` no
- * longer reads a header written by whoever called us: on the public path
- * Cloudflare appended the real client and only Cloudflare is trusted, and on the
- * direct path nothing is trusted. `App\Support\ClientIp` covers what is left —
- * resolving from what Cloudflare wrote, or the peer, for anything that must not
- * key on a caller-supplied value whatever the trust list is.
+ * `ClientIp::for()` returns the transport peer and reads nothing, because in
+ * this topology no header can be trusted: the peer is the platform's edge, and
+ * every header that could carry a client address is written by the caller. The
+ * tests below pin that from several directions, including the shape that broke
+ * an earlier revision — a configured trust range that promoted
+ * `CF-Connecting-IP` into a key.
+ *
+ * The consequence, deliberate and stated at the throttles: callers arriving
+ * through one edge address share a bucket, and per-account keys provide the
+ * granularity instead.
  */
 
 /** A Cloudflare edge address, from their published range 172.64.0.0/13. */
@@ -35,37 +39,54 @@ function forgedRequest(array $headers, string $peer = '10.20.30.40'): Request
 }
 
 test('a forged x forwarded for does not become the client address', function () {
-    // Sent on its own — the shape that defeats a naive "take the rightmost
-    // entry" rule, because the forged value *is* the rightmost entry.
-    expect(ClientIp::for(forgedRequest(['X-Forwarded-For' => '203.0.113.9'])))
-        ->toBe('10.20.30.40');
-
-    // Prepended to a chain, and rotated between requests.
-    expect(ClientIp::for(forgedRequest(['X-Forwarded-For' => '203.0.113.9, 10.20.30.40'])))
-        ->toBe('10.20.30.40')
-        ->and(ClientIp::for(forgedRequest(['X-Forwarded-For' => '198.51.100.9, 10.20.30.40'])))
-        ->toBe('10.20.30.40');
+    // Sent alone — the shape that defeats a "take the rightmost entry" rule —
+    // prepended to a chain, and claiming to be Cloudflare.
+    foreach ([
+        '203.0.113.9',
+        '203.0.113.9, 10.20.30.40',
+        CLOUDFLARE_EDGE,
+        '203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE,
+    ] as $forged) {
+        expect(ClientIp::for(forgedRequest(['X-Forwarded-For' => $forged])))
+            ->toBe('10.20.30.40', 'forged: '.$forged);
+    }
 });
 
-test('a forged cf connecting ip is ignored when the request did not come through cloudflare', function () {
-    // The direct Railway path: nothing Cloudflare wrote is present, so the
-    // header is just another caller-supplied value.
+test('a forged cf connecting ip is never the client address', function () {
     expect(ClientIp::for(forgedRequest([
         'X-Forwarded-For' => '203.0.113.9, 10.20.30.40',
         'CF-Connecting-IP' => '203.0.113.77',
     ])))->toBe('10.20.30.40');
 });
 
-test('through cloudflare the address cloudflare wrote is used', function () {
-    // Cloudflare appended the real client, then the platform recorded
-    // Cloudflare's own address as the last hop.
-    expect(ClientIp::for(forgedRequest(
-        [
-            'X-Forwarded-For' => '203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE,
-            'CF-Connecting-IP' => '198.51.100.4',
-        ],
-        CLOUDFLARE_EDGE,
-    )))->toBe('198.51.100.4');
+test('trusting a non-cloudflare range does not turn a header into a key', function () {
+    // The shape that broke an earlier revision: the trust list is also what
+    // gates the Cloudflare branch, so a maintainer following the old config note
+    // and adding the platform's own edge ranges would have made CF-Connecting-IP
+    // caller-chosen again. This pins that the list cannot do that.
+    config(['trusted_ingress.edge_ranges' => ['10.20.30.0/24']]);
+
+    $probe = function (string $connecting): array {
+        test()->call('GET', '/up', [], [], [], [
+            'HTTP_CF_CONNECTING_IP' => $connecting,
+            'REMOTE_ADDR' => '10.20.30.40',
+        ]);
+
+        $request = app('request');
+
+        return [
+            'client' => ClientIp::for($request),
+            'keys' => collect((RateLimiter::limiter('auth'))($request))
+                ->map(fn ($limit) => $limit->key)->values()->all(),
+        ];
+    };
+
+    $first = $probe('203.0.113.1');
+    $second = $probe('203.0.113.2');
+
+    expect($first['client'])->toBe('10.20.30.40')
+        ->and($second['client'])->toBe('10.20.30.40')
+        ->and($first['keys'])->toBe($second['keys'], 'a trusted range must not promote a caller-written header into a key');
 });
 
 test('without any forwarded header the peer address is used', function () {
@@ -73,14 +94,10 @@ test('without any forwarded header the peer address is used', function () {
 });
 
 test('a forged x forwarded for does not change the rate-limit key', function () {
-    // The request is built by the kernel rather than by hand, so the trusted
-    // proxy state is whatever the application actually configures. A hand-built
-    // request does not reproduce it, and a test that sets it up wrong passes for
-    // the wrong reasons — which is how an earlier version of this test managed
-    // to pass against the vulnerable code.
-    //
-    // The peer is not a Cloudflare address, so this is the direct path: the
-    // forwarded header is not trusted at all.
+    // Built by the kernel, so the trusted-proxy state is whatever the
+    // application configures. A hand-built request does not reproduce it, and an
+    // earlier version of this test passed against the vulnerable code because of
+    // exactly that.
     $probe = function (string $forged): array {
         test()->call('GET', '/up', [], [], [], [
             'HTTP_X_FORWARDED_FOR' => $forged,
@@ -100,8 +117,6 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
     $first = $probe('203.0.113.1');
     $second = $probe('203.0.113.2');
 
-    // The header guard keeps this from passing on a request the forgery never
-    // reached; the key assertion is the acceptance criterion.
     expect($first['header'])->toBe('203.0.113.1')
         ->and($second['header'])->toBe('203.0.113.2')
         ->and($first['key'])->toBe($second['key'], 'rotating the forged header must not create a fresh bucket')
@@ -110,10 +125,6 @@ test('a forged x forwarded for does not change the rate-limit key', function () 
 });
 
 test('a cloudflare-shaped forwarded entry does not earn trust on the direct path', function () {
-    // The evasion this test exists for. On the direct path the caller supplies
-    // the whole X-Forwarded-For header, so naming a Cloudflare address in it must
-    // not be enough to have CF-Connecting-IP believed -- that would put the
-    // throttle key back under the caller's control through a different header.
     $probe = function (string $connecting): array {
         test()->call('GET', '/up', [], [], [], [
             'HTTP_X_FORWARDED_FOR' => CLOUDFLARE_EDGE,
@@ -133,37 +144,13 @@ test('a cloudflare-shaped forwarded entry does not earn trust on the direct path
     $first = $probe('203.0.113.1');
     $second = $probe('203.0.113.2');
 
-    // The declaration really did arrive, so this is not passing because the
-    // header was dropped.
     expect($first['client'])->toBe('10.20.30.40')
         ->and($second['client'])->toBe('10.20.30.40')
         ->and($first['key'])->toBe($second['key'], 'rotating CF-Connecting-IP must not create a fresh bucket')
         ->and($first['key'])->toContain('10.20.30.40');
 });
 
-test('a forgery prepended to a trusted cloudflare chain is not the client', function () {
-    // The non-vacuity carrier. Here the peer IS trusted, so the forwarded chain
-    // is read — and the forgery sits to the left of what Cloudflare appended.
-    // Trusting every proxy, the configuration before RUB-372, returns the
-    // leftmost entry, i.e. the forgery, and both assertions below fail.
-    test()->call('GET', '/up', [], [], [], [
-        'HTTP_X_FORWARDED_FOR' => '203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE,
-        'HTTP_CF_CONNECTING_IP' => '198.51.100.4',
-        'REMOTE_ADDR' => CLOUDFLARE_EDGE,
-    ]);
-
-    $request = app('request');
-
-    expect($request->headers->get('X-Forwarded-For'))->toBe('203.0.113.9, 198.51.100.4, '.CLOUDFLARE_EDGE)
-        ->and((string) $request->ip())->not->toBe('203.0.113.9', 'the prepended forgery must not be read as the client')
-        ->and(ClientIp::for($request))->toBe('198.51.100.4');
-});
-
 test('the throttle carries a per-account key and a forged header changes neither', function () {
-    // The client address is not truthfully available in this topology, so the
-    // limit is expressed on an unforgeable address plus an account key where the
-    // request names one. This pins both halves: the keys are stable under a
-    // forged header, and two different accounts do not share a bucket.
     $keysFor = function (string $team, string $forged): array {
         test()->call('GET', '/teams/'.$team.'/sso/authenticate', [], [], [], [
             'HTTP_X_FORWARDED_FOR' => $forged,
@@ -193,13 +180,13 @@ test('the throttle carries a per-account key and a forged header changes neither
 test('the audit log records the resolved address, not a forged header', function () {
     test()->call('GET', '/up', [], [], [], [
         'HTTP_X_FORWARDED_FOR' => '203.0.113.99',
+        'HTTP_CF_CONNECTING_IP' => '203.0.113.98',
         'HTTP_USER_AGENT' => 'probe/1.0',
         'REMOTE_ADDR' => '10.20.30.40',
     ]);
 
     $request = app('request');
 
-    // The forgery arrived and is not what the request resolves to.
     expect($request->headers->get('X-Forwarded-For'))->toBe('203.0.113.99')
         ->and((string) $request->ip())->toBe('10.20.30.40');
 
@@ -217,5 +204,6 @@ test('the audit log records the resolved address, not a forged header', function
 
     expect($event)->not->toBeNull()
         ->and($event->ip)->toBe('10.20.30.40')
-        ->and($event->ip)->not->toBe('203.0.113.99');
+        ->and($event->ip)->not->toBe('203.0.113.99')
+        ->and($event->ip)->not->toBe('203.0.113.98');
 });
