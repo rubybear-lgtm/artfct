@@ -206,17 +206,19 @@ test('no bearer credential is persisted in activity, connections or refresh toke
 });
 
 test('a past-due workspace keeps reading artifacts but cannot deploy', function () {
+    configureArtifactLinks();
+
     $team = Team::factory()->create(['payment_status' => PaymentStatus::PastDue]);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake(['worker.test/v1/artifacts/artifact123' => Http::response([
-        'id' => 'artifact-123', 'tier' => 'permanent', 'entrypoint' => 'index.html',
+    Http::fake(['worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+        'id' => ARTIFACT_LINK_ID, 'tier' => 'permanent', 'entrypoint' => 'index.html',
         'created_at' => '2026-09-20T00:00:00Z', 'expires_at' => null, 'title' => 'Still readable',
     ], 200)]);
 
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'artifact123']],
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
     ])->assertOk()->assertJsonPath('result.structuredContent.title', 'Still readable');
 
     $this->withToken($token)->postJson('/mcp', [

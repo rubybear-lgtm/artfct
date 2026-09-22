@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
@@ -18,7 +19,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle.')]
+#[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle. The returned url is a short-lived signed link that opens the artifact on its own isolated origin.')]
 #[Name('get_artifact')]
 #[IsReadOnly]
 #[IsIdempotent]
@@ -81,10 +82,20 @@ final class GetArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service could not retrieve that artifact.', 'artifact_retrieval_failed', true);
         }
 
+        $artifactId = (string) $response->json('id');
+        $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId);
+
+        if ($link instanceof Response) {
+            app(McpTelemetry::class)->record('get_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $validated['id']);
+
+            return $link;
+        }
+
         app(McpTelemetry::class)->record('get_artifact', 'success', $startedAt, $validated['id']);
 
         return Response::structured([
-            'id' => $response->json('id'),
+            'id' => $artifactId,
+            'url' => $link,
             'tier' => $response->json('tier'),
             'entrypoint' => $response->json('entrypoint'),
             'created_at' => $response->json('created_at'),

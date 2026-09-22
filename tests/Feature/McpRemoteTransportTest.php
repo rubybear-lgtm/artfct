@@ -532,12 +532,14 @@ test('remote usage returns customer-safe quota and render totals', function () {
 });
 
 test('remote artifact retrieval returns metadata without bundle content', function () {
+    configureArtifactLinks();
+
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
-        'worker.test/v1/artifacts/artifact123' => Http::response([
-            'id' => 'artifact-123',
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+            'id' => ARTIFACT_LINK_ID,
             'tier' => 'permanent',
             'entrypoint' => 'index.html',
             'created_at' => '2026-09-20T00:00:00Z',
@@ -556,16 +558,16 @@ test('remote artifact retrieval returns metadata without bundle content', functi
         'method' => 'tools/call',
         'params' => [
             'name' => 'get_artifact',
-            'arguments' => ['id' => 'artifact123'],
+            'arguments' => ['id' => ARTIFACT_LINK_ID],
         ],
     ])->assertOk();
 
-    $response->assertJsonPath('result.structuredContent.id', 'artifact-123')
+    $response->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
         ->assertJsonPath('result.structuredContent.title', 'A report')
         ->assertJsonMissingPath('result.structuredContent.content')
         ->assertJsonMissingPath('result.structuredContent.html');
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/v1/artifacts/artifact123')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/v1/artifacts/'.ARTIFACT_LINK_ID)
         && str_starts_with((string) $request->header('Authorization')[0], 'Bearer '));
 });
 
@@ -715,6 +717,8 @@ test('remote deployment reports an unavailable artifact service instead of an in
 });
 
 test('deploy_artifact publishes a permanent org artifact in two steps', function () {
+    configureArtifactLinks();
+
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Q3 report</title><p>Summary</p>';
@@ -722,8 +726,8 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
         'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
-        'worker.test/v1/artifacts' => Http::response(['id' => 'abc1234567', 'url' => 'https://worker.test/p/abc1234567', 'tier' => 'secure', 'missing_files' => [$sha]], 201),
-        'worker.test/v1/artifacts/abc1234567/files/*' => Http::response('', 204),
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
     ]);
     app()->bind(UsageContract::class, FakeUsage::class);
 
@@ -731,7 +735,7 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
     ])->assertOk()
-        ->assertJsonPath('result.structuredContent.id', 'abc1234567')
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
         ->assertJsonPath('result.structuredContent.tier', 'secure')
         ->assertJsonPath('result.structuredContent.title', 'Q3 report')
         ->assertJsonPath('result.structuredContent.organization', $team->slug);
@@ -742,23 +746,180 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         && $request['manifest']['files'][0]['sha256'] === $sha
         && ! isset($request['body_ciphertext_b64']));
     Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
-        && str_ends_with((string) $request->url(), "/v1/artifacts/abc1234567/files/{$sha}")
+        && str_ends_with((string) $request->url(), '/v1/artifacts/'.ARTIFACT_LINK_ID."/files/{$sha}")
         && $request->body() === $html);
 });
 
 test('deploy_artifact skips the upload when the Worker already has the content', function () {
+    configureArtifactLinks();
+
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake(['worker.test/v1/artifacts' => Http::response(['id' => 'abc1234567', 'url' => 'https://worker.test/p/abc1234567', 'tier' => 'secure', 'missing_files' => []], 200)]);
+    Http::fake(['worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => []], 200)]);
     app()->bind(UsageContract::class, FakeUsage::class);
 
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>same</p>', 'tier' => 'public']],
-    ])->assertOk()->assertJsonPath('result.structuredContent.id', 'abc1234567');
+    ])->assertOk()->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID);
 
     Http::assertNotSent(fn ($request): bool => $request->method() === 'PUT');
+});
+
+test('deploy_artifact returns a signed link on the artifact isolated origin', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-367-org']);
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>Signed report</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeFalse()
+        // The Worker's raw `/p/{id}` URL is exactly what a browser cannot
+        // present a credential to, so its host must not appear in the result.
+        // (Matched on the host, not the full URL: the transport escapes the
+        // slashes, so a full-URL `toContain` could never fail.)
+        ->and($response->getContent())->not->toContain('worker.test');
+
+    $url = parse_url((string) $response->json('result.structuredContent.url'));
+
+    expect($url)->toBeArray()
+        ->and($url['scheme'] ?? null)->toBe('https')
+        // The tenant in the host comes from the credential's workspace, and is
+        // what binds the link to the org the Worker authorizes.
+        ->and($url['host'] ?? null)->toBe('rub-367-org--'.ARTIFACT_LINK_ID.'.artfct.dev')
+        ->and($url['path'] ?? null)->toBe('/p/'.ARTIFACT_LINK_ID);
+
+    parse_str((string) ($url['query'] ?? ''), $query);
+    $minted = (string) ($query['token'] ?? '');
+    $now = now()->timestamp;
+
+    expect($minted)->not->toBe('')
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
+        ->and(artifactTokenVerifies($minted, str_repeat('f', 32), ARTIFACT_LINK_SECRET, $now))->toBeFalse()
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
+
+    expect($response->json('result.structuredContent.organization'))->toBe($team->slug);
+});
+
+test('get_artifact returns a signed link on the artifact isolated origin', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-367-fetch']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'tier' => 'permanent',
+            'entrypoint' => 'index.html',
+            'created_at' => '2026-09-20T00:00:00Z',
+            'expires_at' => null,
+            'title' => 'A report',
+            'description' => 'A safe summary',
+        ], 200),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeFalse()
+        ->and($response->getContent())->not->toContain('worker.test');
+
+    $url = parse_url((string) $response->json('result.structuredContent.url'));
+
+    expect($url)->toBeArray()
+        ->and($url['scheme'] ?? null)->toBe('https')
+        ->and($url['host'] ?? null)->toBe('rub-367-fetch--'.ARTIFACT_LINK_ID.'.artfct.dev')
+        ->and($url['path'] ?? null)->toBe('/p/'.ARTIFACT_LINK_ID);
+
+    parse_str((string) ($url['query'] ?? ''), $query);
+    $minted = (string) ($query['token'] ?? '');
+    $now = now()->timestamp;
+
+    expect($minted)->not->toBe('')
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
+        ->and(artifactTokenVerifies($minted, str_repeat('f', 32), ARTIFACT_LINK_SECRET, $now))->toBeFalse()
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
+});
+
+test('artifact links fail closed when no signing secret is configured', function () {
+    config(['services.artifact_access.token_secret' => null]);
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>No secret</title><p>Summary</p>';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => []], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response(['id' => ARTIFACT_LINK_ID, 'tier' => 'permanent', 'entrypoint' => 'index.html'], 200),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $deploy = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
+    ]);
+
+    $deploy->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0.type', 'text')
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
+        ->assertJsonMissingPath('result.content.0._meta.artfct.nextAction')
+        ->assertJsonMissingPath('result.structuredContent.url');
+
+    $retrieval = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
+    ]);
+
+    $retrieval->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
+        ->assertJsonMissingPath('result.structuredContent.url');
+
+    // No raw URL is offered as a substitute for the missing signed link.
+    expect($deploy->getContent())->not->toContain('worker.test')
+        ->and($retrieval->getContent())->not->toContain('worker.test')
+        ->and($deploy->json('result.content.0.text'))->toContain('not configured')
+        ->and(McpActivity::query()->where('team_id', $team->id)->where('outcome', 'signed_link_unavailable')->count())->toBe(2);
+});
+
+test('an artifact whose id cannot form an isolated hostname is refused rather than linked', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response([
+            'id' => 'artifact-123', 'tier' => 'permanent', 'entrypoint' => 'index.html',
+        ], 200),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'artifact123']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
+        ->assertJsonMissingPath('result.structuredContent.url');
 });
 
 test('deploy_artifact refuses over-quota workspaces before contacting the Worker', function () {
@@ -822,6 +983,8 @@ test('deploy_artifact requires the deploy scope', function () {
 // in production -- while handler tests that set `actor` through the factory
 // would still pass. This asserts the value a real call actually records.
 test('a real retrieval records the artifact and the actor the correlation matches on', function () {
+    configureArtifactLinks();
+
     $team = Team::factory()->create();
 
     configureSigning(testSigningKey());
@@ -830,8 +993,8 @@ test('a real retrieval records the artifact and the actor the correlation matche
 
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
-        'worker.test/v1/artifacts/artifact123' => Http::response([
-            'id' => 'artifact-123',
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+            'id' => ARTIFACT_LINK_ID,
             'tier' => 'permanent',
             'entrypoint' => 'index.html',
             'created_at' => '2026-09-20T00:00:00Z',
@@ -848,7 +1011,7 @@ test('a real retrieval records the artifact and the actor the correlation matche
         'jsonrpc' => '2.0',
         'id' => 1,
         'method' => 'tools/call',
-        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'artifact123']],
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
     ])->assertOk();
 
     $activity = McpActivity::query()
@@ -858,7 +1021,7 @@ test('a real retrieval records the artifact and the actor the correlation matche
         ->first();
 
     expect($activity)->not->toBeNull()
-        ->and($activity->artifact_id)->toBe('artifact123', 'the retrieval must record which artifact was retrieved')
+        ->and($activity->artifact_id)->toBe(ARTIFACT_LINK_ID, 'the retrieval must record which artifact was retrieved')
         ->and($activity->outcome)->toBe('success')
         ->and($activity->actor)->toBe((string) $user->id, 'actor must be the user id the open-correlation matches against');
 });

@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
@@ -25,7 +26,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact.')]
+#[Description('Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned url is a short-lived signed link that opens the artifact on its own isolated origin; call get_artifact for a fresh link once it expires.')]
 #[Name('deploy_artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
@@ -159,11 +160,20 @@ final class DeployArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service could not accept this deployment.', 'deployment_rejected');
         }
 
-        app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, (string) $created->json('id'));
+        $artifactId = (string) $created->json('id');
+        $link = McpArtifactLink::forArtifact($team->slug, $artifactId);
+
+        if ($link instanceof Response) {
+            app(McpTelemetry::class)->record('deploy_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $artifactId);
+
+            return $link;
+        }
+
+        app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
 
         return Response::structured([
-            'id' => $created->json('id'),
-            'url' => $created->json('url'),
+            'id' => $artifactId,
+            'url' => $link,
             'tier' => $created->json('tier'),
             'title' => $title,
             'organization' => $team->slug,

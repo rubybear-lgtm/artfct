@@ -7,45 +7,6 @@ use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use Illuminate\Support\Facades\Http;
 
-/** Shared signing secret for the isolated-origin link tests. */
-const ARTIFACT_LINK_SECRET = 'artifact-link-test-secret';
-
-/** A 32-character lowercase hex public artifact id, the only shape the isolated hostname accepts. */
-const ARTIFACT_LINK_ID = '0123456789abcdef0123456789abcdef';
-
-function configureArtifactLinks(string $secret = ARTIFACT_LINK_SECRET, string $suffix = '.artfct.dev'): void
-{
-    config([
-        'services.artifact_access.token_secret' => $secret,
-        'services.artifact_access.origin_suffix' => $suffix,
-        'services.artifact_access.token_ttl_minutes' => 60,
-    ]);
-}
-
-/**
- * Stands in for the Worker's `verify_access_token` (`backend/src/lib.rs`),
- * re-deriving the HMAC from the documented wire form
- * `<artifact_id>.<expires_at_unix>.<hmac_hex>` instead of trusting the
- * minter — a disagreement about the token has to fail here, not pass because
- * one side asserted its own output.
- */
-function artifactTokenVerifies(string $token, string $artifactId, string $secret, int $now): bool
-{
-    $parts = explode('.', $token, 3);
-
-    if (count($parts) !== 3 || ! hash_equals($parts[0], $artifactId)) {
-        return false;
-    }
-
-    $expiresAt = $parts[1];
-
-    if (! ctype_digit($expiresAt) || $now >= (int) $expiresAt) {
-        return false;
-    }
-
-    return hash_equals($parts[2], hash_hmac('sha256', "{$parts[0]}.{$expiresAt}", $secret));
-}
-
 test('viewer_cannot_revoke', function () {
     Http::fake([
         'https://worker.test/v1/orgs/*' => Http::response([], 200),

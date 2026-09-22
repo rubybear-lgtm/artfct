@@ -189,6 +189,53 @@ function remoteMcpToken(Team $team, TeamRole $role = TeamRole::Admin): string
 }
 
 /*
+ * The isolated-origin link fixtures live here rather than in `ConsoleTest.php`
+ * for the same reason `configureOrgJwt()` does: the MCP tool tests mint through
+ * the same `ArtifactAccessLink` the console does, so a verifier defined in one
+ * of those files would leave it unrunnable on its own and could quietly become
+ * two verifiers that disagree.
+ */
+
+/** Shared signing secret for the isolated-origin link tests. */
+const ARTIFACT_LINK_SECRET = 'artifact-link-test-secret';
+
+/** A 32-character lowercase hex public artifact id, the only shape the isolated hostname accepts. */
+const ARTIFACT_LINK_ID = '0123456789abcdef0123456789abcdef';
+
+function configureArtifactLinks(string $secret = ARTIFACT_LINK_SECRET, string $suffix = '.artfct.dev'): void
+{
+    config([
+        'services.artifact_access.token_secret' => $secret,
+        'services.artifact_access.origin_suffix' => $suffix,
+        'services.artifact_access.token_ttl_minutes' => 60,
+    ]);
+}
+
+/**
+ * Stands in for the Worker's `verify_access_token` (`backend/src/lib.rs`),
+ * re-deriving the HMAC from the documented wire form
+ * `<artifact_id>.<expires_at_unix>.<hmac_hex>` instead of trusting the
+ * minter — a disagreement about the token has to fail here, not pass because
+ * one side asserted its own output.
+ */
+function artifactTokenVerifies(string $token, string $artifactId, string $secret, int $now): bool
+{
+    $parts = explode('.', $token, 3);
+
+    if (count($parts) !== 3 || ! hash_equals($parts[0], $artifactId)) {
+        return false;
+    }
+
+    $expiresAt = $parts[1];
+
+    if (! ctype_digit($expiresAt) || $now >= (int) $expiresAt) {
+        return false;
+    }
+
+    return hash_equals($parts[2], hash_hmac('sha256', "{$parts[0]}.{$expiresAt}", $secret));
+}
+
+/*
  * The RSA-2048 fixture keypair and `configureOrgJwt()` live here rather than in
  * one test file: `configureOrgJwt()` is used by both `Teams/OrgTokenTest.php`
  * and `ConsoleTest.php`, so a file-scoped definition made `ConsoleTest.php`
