@@ -253,6 +253,24 @@ rust() {
         -- --ignored --test-threads=1
 }
 
+# RUB-365: the console's own redirect, followed to the live Worker. The Pest
+# test creates an artifact through the Worker, drives the real
+# `ConsoleController::open` route for a real team, and re-issues the URL the
+# console emitted -- its host and token unchanged -- against the Worker
+# address from the state env, where the isolated `Host` header makes the
+# Worker's isolated-origin branch decide.
+#
+# It inherits the suite's RefreshDatabase, so it migrates the stack's Postgres
+# fresh. That is why `run` calls it last, after the smoke and the Rust
+# integration tests whose seeded orgs and memberships it would otherwise wipe.
+link() {
+    set -a
+    # shellcheck disable=SC1090
+    . "$STATE_DIR/env"
+    set +a
+    php -d memory_limit=512M vendor/bin/pest tests/Feature/Console/IsolatedOriginLinkTest.php --compact
+}
+
 # The probe runs on the queue worker, so what it reports is the origin that
 # worker would put in a user-facing link. The queue holds its own copy of
 # APP_URL, and a drifted copy is invisible from the web service -- staging
@@ -314,6 +332,7 @@ run() {
         MCP_LIVE_DEV_LOGIN_EMAIL="$ADMIN_EMAIL" \
         MCP_LIVE_INDEXING_ENABLED="${INDEXING_ENABLED}" node scripts/mcp-live-smoke.mjs
     rust
+    link
 }
 
 case "${1:-}" in
@@ -321,8 +340,9 @@ case "${1:-}" in
     down) down ;;
     run) run ;;
     rust) rust ;;
+    link) link ;;
     *)
-        echo "Usage: $0 {up|down|run|rust}" >&2
+        echo "Usage: $0 {up|down|run|rust|link}" >&2
         exit 1
         ;;
 esac

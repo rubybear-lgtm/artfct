@@ -129,48 +129,243 @@ fn mint_access_token(secret: &str, artifact_id: &str, expires_at_unix: i64) -> S
     format!("{message}.{signature}")
 }
 
-fn response_header(response: &reqwest::Response, name: &str) -> String {
-    response
-        .headers()
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_string()
+/// How many times a request is re-sent after a connection-level failure.
+/// Five attempts, backing off 200ms, 400ms, 800ms and 1.6s, is past the
+/// observed drop, which clears on the next request; a real outage still
+/// fails the test after about three seconds.
+const TRANSPORT_ATTEMPTS: u32 = 5;
+
+/// Whether `error` is a connection-level failure — nothing the server
+/// actually said — rather than a response it sent. `wrangler dev --local`
+/// serves behind a proxy that intermittently drops a connection (the dev
+/// session's log shows `Uncaught Error: Network connection lost.`; this side
+/// sees `hyper::Error(IncompleteMessage)`), and the request that never got a
+/// response is safe to repeat because every endpoint this suite uses is
+/// idempotent by design: content-addressed creates, uploads, and deletes.
+fn is_transport_failure(error: &reqwest::Error) -> bool {
+    error.status().is_none() && !error.is_builder() && !error.is_decode()
 }
 
-/// PUTs `body` to `url` and returns the response, retrying a bounded number
-/// of times on a bare transport-level failure (the connection dropped
-/// before a complete response arrived) — never on a response the server
-/// actually sent, even an unexpected status. Some CI runners are slow
-/// enough under load that a request which triggers a heavier synchronous
-/// write cascade (e.g. cross-table cascade delete on expiry) occasionally
-/// gets its response cut off; this call is the one place that's been
-/// observed happening (`expired_incomplete_bundle_is_cleaned_up`, CI-only,
-/// never locally), not a server bug to paper over silently: repeating the
-/// same idempotent PUT is safe, and a real bug still fails after retries.
-async fn put_with_retry(
+async fn backoff(attempt: u32) {
+    tokio::time::sleep(std::time::Duration::from_millis(200 * u64::from(attempt))).await;
+}
+
+/// Sends `request` until it answers or `TRANSPORT_ATTEMPTS` is exhausted.
+async fn execute_with_retry(
     client: &reqwest::Client,
-    url: &str,
-    token: &str,
-    body: Vec<u8>,
+    request: &reqwest::Request,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    let attempts = 3;
-    for attempt in 1..=attempts {
-        match client
-            .put(url)
-            .bearer_auth(token)
-            .body(body.clone())
-            .send()
-            .await
-        {
+    let mut attempt = 1;
+    loop {
+        let clone = request
+            .try_clone()
+            .expect("every body in this suite is buffered and therefore cloneable");
+        match client.execute(clone).await {
             Ok(response) => return Ok(response),
-            Err(error) if attempt < attempts && error.is_request() && error.status().is_none() => {
-                tokio::time::sleep(std::time::Duration::from_millis(200 * attempt)).await;
+            Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transport_failure(&error) => {
+                backoff(attempt).await;
+                attempt += 1;
             }
             Err(error) => return Err(error),
         }
     }
-    unreachable!("loop always returns on the final attempt")
+}
+
+/// The client this suite makes every request with. A transport-level failure
+/// re-sends the request instead of failing the test.
+///
+/// The retry used to cover one PUT in one test (`expired_incomplete_bundle_is_
+/// cleaned_up`), which is why the rest of the suite kept failing on an
+/// `IncompleteMessage` that landed on whichever request followed a
+/// `wrangler d1 execute` CLI access to the same persisted database. Hosting it
+/// in the client covers every call site, including body reads that are cut off
+/// after the response headers arrived.
+#[derive(Clone)]
+struct RetryingClient {
+    inner: reqwest::Client,
+}
+
+impl RetryingClient {
+    fn new() -> Self {
+        Self {
+            inner: reqwest::Client::new(),
+        }
+    }
+
+    fn get(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.get(url),
+        }
+    }
+
+    fn post(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.post(url),
+        }
+    }
+
+    fn put(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.put(url),
+        }
+    }
+
+    fn delete(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.delete(url),
+        }
+    }
+}
+
+/// One request under construction. Mirrors the `reqwest::RequestBuilder`
+/// methods this suite uses, and builds the request once in `send` so a retry
+/// re-executes an identical clone rather than rebuilding the chain.
+struct RetryingRequest {
+    client: reqwest::Client,
+    builder: reqwest::RequestBuilder,
+}
+
+impl RetryingRequest {
+    fn bearer_auth(mut self, token: &str) -> Self {
+        self.builder = self.builder.bearer_auth(token);
+        self
+    }
+
+    fn header(mut self, name: reqwest::header::HeaderName, value: &str) -> Self {
+        self.builder = self.builder.header(name, value);
+        self
+    }
+
+    fn json<T: serde::Serialize + ?Sized>(mut self, value: &T) -> Self {
+        self.builder = self.builder.json(value);
+        self
+    }
+
+    fn body(mut self, body: Vec<u8>) -> Self {
+        self.builder = self.builder.body(body);
+        self
+    }
+
+    async fn send(self) -> Result<RetryingResponse, reqwest::Error> {
+        let request = self.builder.build()?;
+        let response = execute_with_retry(&self.client, &request).await?;
+
+        Ok(RetryingResponse {
+            client: self.client,
+            request,
+            response,
+        })
+    }
+}
+
+/// A response whose body reads also retry: a transfer cut off after the
+/// headers arrived is re-read by re-executing the same request.
+struct RetryingResponse {
+    client: reqwest::Client,
+    request: reqwest::Request,
+    response: reqwest::Response,
+}
+
+impl RetryingResponse {
+    fn status(&self) -> reqwest::StatusCode {
+        self.response.status()
+    }
+
+    fn headers(&self) -> &reqwest::header::HeaderMap {
+        self.response.headers()
+    }
+
+    fn header(&self, name: &str) -> Option<&reqwest::header::HeaderValue> {
+        self.response.headers().get(name)
+    }
+
+    fn error_for_status(self) -> Result<Self, reqwest::Error> {
+        let Self {
+            client,
+            request,
+            response,
+        } = self;
+
+        Ok(Self {
+            client,
+            request,
+            response: response.error_for_status()?,
+        })
+    }
+
+    async fn bytes(
+        self,
+    ) -> Result<impl AsRef<[u8]> + std::ops::Deref<Target = [u8]>, reqwest::Error> {
+        let Self {
+            client,
+            request,
+            mut response,
+        } = self;
+        let mut attempt = 1;
+        loop {
+            match response.bytes().await {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transport_failure(&error) => {
+                    backoff(attempt).await;
+                    attempt += 1;
+                    response = execute_with_retry(&client, &request).await?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn text(self) -> Result<String, reqwest::Error> {
+        let Self {
+            client,
+            request,
+            mut response,
+        } = self;
+        let mut attempt = 1;
+        loop {
+            match response.text().await {
+                Ok(text) => return Ok(text),
+                Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transport_failure(&error) => {
+                    backoff(attempt).await;
+                    attempt += 1;
+                    response = execute_with_retry(&client, &request).await?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn json<T: serde::de::DeserializeOwned>(self) -> Result<T, reqwest::Error> {
+        let Self {
+            client,
+            request,
+            mut response,
+        } = self;
+        let mut attempt = 1;
+        loop {
+            match response.json::<T>().await {
+                Ok(value) => return Ok(value),
+                Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transport_failure(&error) => {
+                    backoff(attempt).await;
+                    attempt += 1;
+                    response = execute_with_retry(&client, &request).await?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+}
+
+fn response_header(response: &RetryingResponse, name: &str) -> String {
+    response
+        .header(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn bundle_payload(files: &[(&str, &[u8], &str)], entrypoint: &str) -> Value {
@@ -185,7 +380,7 @@ fn bundle_payload(files: &[(&str, &[u8], &str)], entrypoint: &str) -> Value {
 
 async fn create_and_upload_bundle(
     context: &Context,
-    client: &reqwest::Client,
+    client: &RetryingClient,
     files: &[(&str, &[u8], &str)],
     entrypoint: &str,
 ) -> Result<String, Box<dyn Error>> {
@@ -213,7 +408,7 @@ async fn create_and_upload_bundle(
         let upload = client
             .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
             .bearer_auth(&context.token)
-            .header(reqwest::header::CONTENT_TYPE, *content_type)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
             .body(bytes.to_vec())
             .send()
             .await?;
@@ -224,7 +419,7 @@ async fn create_and_upload_bundle(
 
 async fn create_and_upload(
     context: &Context,
-    client: &reqwest::Client,
+    client: &RetryingClient,
     bytes: &[u8],
     provenance: Value,
 ) -> Result<(String, String), Box<dyn Error>> {
@@ -233,7 +428,7 @@ async fn create_and_upload(
 
 async fn create_and_upload_payload(
     context: &Context,
-    client: &reqwest::Client,
+    client: &RetryingClient,
     bytes: &[u8],
     payload: Value,
 ) -> Result<(String, String), Box<dyn Error>> {
@@ -333,7 +528,7 @@ async fn permanent_roundtrip_stores_d1_and_r2() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("roundtrip");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({"agent": "integration", "repo_url": "https://github.com/example/repo", "commit_sha": "abcdef123456", "sources": {"agent": "self_reported"}})).await?;
     let preview = client
@@ -359,7 +554,7 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("isolated-origin");
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     let other_bytes = unique_html("isolated-origin-other");
@@ -506,7 +701,7 @@ async fn six_megabyte_permanent_file_succeeds() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = vec![b'x'; 6 * 1024 * 1024];
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     assert_eq!(
@@ -527,7 +722,7 @@ async fn reposting_identical_content_keeps_one_artifact_and_one_blob() -> Result
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("duplicate");
     let (first, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     let (second, second_hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -579,7 +774,7 @@ async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("concurrent");
 
     // Six at once rather than two. A sequential re-post is closed by the
@@ -646,7 +841,7 @@ async fn concurrent_deletes_leave_no_artifact_and_no_orphan_blob() -> Result<(),
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("concurrent-delete");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -704,7 +899,7 @@ async fn deleting_a_permanent_artifact_stops_serving_it() -> Result<(), Box<dyn 
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("delete-stops-serving");
     let (id, _hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
 
@@ -753,7 +948,7 @@ async fn create_delete_create_delete_returns_refcount_to_zero() -> Result<(), Bo
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("refcount-cycle");
 
     // Two full cycles over the same bytes. The second create must succeed -- the
@@ -793,7 +988,7 @@ async fn create_raced_with_final_delete_keeps_live_blob() -> Result<(), Box<dyn 
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("create-delete-race");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
 
@@ -858,7 +1053,7 @@ async fn delete_once_keeps_shared_blob_and_delete_last_removes_it() -> Result<()
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let shared = unique_html("delete-shared");
     let extra = unique_html("delete-extra");
     let shared_hash = sha256(&shared);
@@ -952,7 +1147,7 @@ async fn provenance_columns_and_complete_json_survive() -> Result<(), Box<dyn Er
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("provenance");
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({"agent": "integration-agent", "repo_url": "https://github.com/example/provenance", "commit_sha": "0123456789abcdef", "sources": {"agent": "process", "repo_url": "process", "commit_sha": "process"}, "unknown_tail": {"retained": true}})).await?;
     let row = d1_row(&context, &format!("SELECT p.agent, p.repo_url, p.commit_sha, p.payload FROM provenance p JOIN artifacts a ON a.row_id = p.artifact_row_id WHERE a.id = '{id}' ORDER BY a.row_id DESC LIMIT 1"))?;
@@ -972,7 +1167,7 @@ async fn export_writes_byte_identical_blobs() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("export");
     let (_, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     let response: Value = client
@@ -1004,7 +1199,7 @@ async fn export_metadata_round_trips() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let bytes = unique_html("cli-export");
     let (_, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     let directory = tempfile::tempdir()?;
@@ -1036,7 +1231,7 @@ async fn permanent_mode_requires_auth() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let response = reqwest::Client::new()
+    let response = RetryingClient::new()
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({"mode": "permanent"}))
         .send()
@@ -1051,7 +1246,7 @@ async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let response = reqwest::Client::new()
+    let response = RetryingClient::new()
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({"mode": "ephemeral", "manifest": {}}))
         .send()
@@ -1086,7 +1281,7 @@ async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
         .and_then(|line| line.trim().split('#').next())
         .ok_or("CLI deploy omitted preview URL")?
         .to_string();
-    let preview = reqwest::get(preview_url).await?;
+    let preview = RetryingClient::new().get(preview_url).send().await?;
     assert_eq!(preview.status(), reqwest::StatusCode::OK);
     let body = preview.text().await?;
     assert!(body.contains("bodyCiphertextB64"));
@@ -1137,7 +1332,7 @@ async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
         .next()
         .ok_or("bundle deploy URL was empty")?
         .to_string();
-    let preview = reqwest::get(&url).await?;
+    let preview = RetryingClient::new().get(&url).send().await?;
     assert_eq!(preview.status(), reqwest::StatusCode::OK);
     let index = preview.text().await?;
     assert!(index.contains("assets/"));
@@ -1165,7 +1360,7 @@ async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
         } else {
             format!("{}/{}", url.trim_end_matches('/'), relative)
         };
-        let response = reqwest::get(file_url).await?;
+        let response = RetryingClient::new().get(file_url).send().await?;
         assert_eq!(response.status(), reqwest::StatusCode::OK, "{relative}");
         assert_eq!(
             response
@@ -1212,7 +1407,7 @@ async fn incomplete_bundle_returns_404() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let index = b"<script src=\"app.js\"></script>";
     let app = b"console.log('bundle')";
     let response = client
@@ -1247,7 +1442,7 @@ async fn nested_bundle_asset_uses_manifest_content_type() -> Result<(), Box<dyn 
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let index = b"<h1>bundle</h1>";
     let app = b"console.log('bundle')";
     let id = create_and_upload_bundle(
@@ -1297,7 +1492,7 @@ async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>>
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
+    let client = RetryingClient::new();
     let index = b"<h1>expired</h1>";
     let script = b"console.log('expired')";
     let index_hash = sha256(index);
@@ -1355,13 +1550,15 @@ async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>>
         .to_string();
     let update = format!("UPDATE artifacts SET expires_at = '2000-01-01T00:00:00Z' WHERE row_id = '{row_id}' AND id = '{id}'");
     d1_execute(&context, &update)?;
-    let upload = put_with_retry(
-        &client,
-        &format!("{}/v1/artifacts/{id}/files/{script_hash}", context.base),
-        &context.token,
-        script.to_vec(),
-    )
-    .await?;
+    let upload = client
+        .put(format!(
+            "{}/v1/artifacts/{id}/files/{script_hash}",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .body(script.to_vec())
+        .send()
+        .await?;
     assert_eq!(upload.status(), reqwest::StatusCode::NOT_FOUND);
     assert_eq!(
         count_value(
@@ -1408,16 +1605,27 @@ async fn same_hash_paths_share_one_blob_and_manifest_types() -> Result<(), Box<d
     let Some(context) = context() else {
         return Ok(());
     };
-    let client = reqwest::Client::new();
-    let bytes = b"same bytes";
-    let hash = sha256(bytes);
+    let client = RetryingClient::new();
+    // Run-unique bytes: identical across the two paths so the sharing assertion
+    // means something, but never bytes an earlier run already stored. This suite
+    // shares one persisted D1/R2 store across every run in the same stack, and a
+    // re-post of identical content is idempotent, so fixed bytes would make the
+    // create report no missing files (and this test fail) on the second run.
+    let bytes = format!(
+        "same bytes {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    )
+    .into_bytes();
+    let hash = sha256(&bytes);
     let response = client
         .post(format!("{}/v1/artifacts", context.base))
         .bearer_auth(&context.token)
         .json(&bundle_payload(
             &[
-                ("index.html", bytes, "text/html"),
-                ("assets/app.js", bytes, "application/javascript"),
+                ("index.html", bytes.as_slice(), "text/html"),
+                ("assets/app.js", bytes.as_slice(), "application/javascript"),
             ],
             "index.html",
         ))
@@ -1515,6 +1723,20 @@ async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Err
             .env("ARTFCT_ORG_TOKEN", &context.token)
             .output()?)
     };
+    // The Vite build is deterministic and this store is shared with every
+    // earlier run in the same stack, so the build has to be revised into
+    // something no run has published before it is first deployed. Otherwise the
+    // second deploy's changed index.html is already stored and the CLI reports
+    // zero uploads -- an already-populated store, not a failed upload.
+    let revision = output_dir.path().join("index.html");
+    let mut html = fs::read_to_string(&revision)?;
+    html.push_str(&format!(
+        "<!-- run {} -->",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    ));
+    fs::write(&revision, html)?;
     let first = run(output_dir.path())?;
     assert!(first.status.success(), "first deploy failed");
     let changed = output_dir.path().join("index.html");

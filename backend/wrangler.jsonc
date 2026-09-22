@@ -20,6 +20,24 @@
             "pattern": "artfct.dev/p/*",
             "zone_name": "artfct.dev",
         },
+        // RUB-365: isolated artifact origins, `<tenant-slug>--<artifact-id>.artfct.dev`
+        // (spec 05). The whole host is one label, so the staging entry's
+        // `*--stg.artfct.dev/*` cannot be translated literally: Cloudflare route
+        // patterns allow one wildcard and it must begin the hostname — the
+        // literal translation `*--*.artfct.dev/*` is an infix wildcard and
+        // invalid, and production's suffix has no marker after the artifact id
+        // to anchor a literal. This leading-wildcard form is the only expressible
+        // one, and it is wider than the scheme: it matches every other
+        // single-label subhost of the zone. `staging.artfct.dev` is one of
+        // them, so it must have its own route (or move to the marker-suffix
+        // scheme) before this pattern is deployed; otherwise this Worker
+        // intercepts staging's requests and its origin never sees them.
+        // Reuses the zone's `*.artfct.dev` Universal SSL certificate and DNS
+        // wildcard record rather than a second wildcard level.
+        {
+            "pattern": "*.artfct.dev/*",
+            "zone_name": "artfct.dev",
+        },
     ],
     "kv_namespaces": [
         {
