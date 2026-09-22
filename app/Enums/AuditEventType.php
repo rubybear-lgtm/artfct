@@ -40,4 +40,5 @@ enum AuditEventType: string
     case McpConnectionCreated = 'mcp.connection_created';
     case McpConnectionRefreshed = 'mcp.connection_refreshed';
     case McpConnectionRevoked = 'mcp.connection_revoked';
+    case McpConnectionReauthorized = 'mcp.connection_reauthorized';
 }

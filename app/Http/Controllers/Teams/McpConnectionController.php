@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Teams;
 
 use App\Enums\AuditEventType;
 use App\Enums\TeamPermission;
+use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
@@ -14,11 +15,18 @@ use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class McpConnectionController extends Controller
 {
+    /** @var list<string> */
+    private const SUPPORTED_SCOPES = ['artifacts:read', 'artifacts:deploy', 'collections:read', 'collections:write', 'usage:read'];
+
+    /** @var list<string> */
+    private const DEFAULT_SCOPES = ['artifacts:read', 'collections:read', 'usage:read'];
+
     public function index(Request $request, Team $team): Response
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
@@ -56,6 +64,8 @@ class McpConnectionController extends Controller
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'mcpEndpoint' => url('/mcp'),
             'oauthMetadataUrl' => url('/.well-known/oauth-protected-resource'),
+            'scopeOptions' => $this->allowedScopesForRole($request->user()->teamRole($team)),
+            'defaultScopes' => self::DEFAULT_SCOPES,
             'usage' => [
                 'periodDays' => 30,
                 'since' => $usageSince->toIso8601String(),
@@ -101,6 +111,79 @@ class McpConnectionController extends Controller
         ]);
     }
 
+    /**
+     * Start a connection for a client without requiring the client to
+     * register itself first. Scopes are capped by the creator's role and
+     * default to the read-only set, never to everything the role carries.
+     */
+    public function store(Request $request, Team $team, AuditLogger $auditLogger): RedirectResponse
+    {
+        abort_unless($request->user()->belongsToTeam($team), 404);
+
+        $validated = $request->validate([
+            'client_name' => ['required', 'string', 'max:100'],
+            'scopes' => ['sometimes', 'array', 'min:1'],
+            'scopes.*' => ['string', Rule::in(self::SUPPORTED_SCOPES)],
+        ]);
+
+        $scopes = array_values(array_intersect(
+            $this->allowedScopesForRole($request->user()->teamRole($team)),
+            $validated['scopes'] ?? self::DEFAULT_SCOPES,
+        ));
+
+        abort_if($scopes === [], 403, __('You cannot grant scopes beyond your team role.'));
+
+        $connection = new McpConnection;
+        $connection->forceFill([
+            'team_id' => $team->id,
+            'user_id' => $request->user()->id,
+            'name' => "{$validated['client_name']} MCP",
+            'client_name' => $validated['client_name'],
+            'transport' => 'streamable-http',
+            'scopes' => $scopes,
+        ])->save();
+
+        $auditLogger->recordForRequest(
+            $request,
+            AuditEventType::McpConnectionCreated,
+            $team,
+            (string) $request->user()->id,
+            "mcp_connection:{$connection->public_id}",
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Connection created. Reconnect the client to authorize it.')]);
+
+        return back();
+    }
+
+    /**
+     * Force reauthorization: revoke the credentials the live client holds so
+     * it has to run the OAuth flow again, without retiring the connection
+     * record. Shares the credential-revocation mechanism with `destroy()`.
+     */
+    public function reauthorize(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger): RedirectResponse
+    {
+        abort_unless($request->user()->belongsToTeam($team), 404);
+        abort_unless($connection->team_id === $team->id, 404);
+
+        Gate::authorize('revoke', $connection);
+
+        if ($connection->revoked_at === null) {
+            $this->revokeLiveCredentials($connection);
+            $auditLogger->recordForRequest(
+                $request,
+                AuditEventType::McpConnectionReauthorized,
+                $team,
+                (string) $request->user()->id,
+                "mcp_connection:{$connection->public_id}",
+            );
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Reauthorization required. Live credentials were revoked; reconnect the client to authorize again.')]);
+
+        return back();
+    }
+
     public function destroy(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger): RedirectResponse
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
@@ -110,11 +193,7 @@ class McpConnectionController extends Controller
 
         if ($connection->revoked_at === null) {
             $connection->forceFill(['revoked_at' => now()])->save();
-            $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
-            $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken): void {
-                $orgToken->forceFill(['revoked_at' => now()])->saveQuietly();
-                RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
-            });
+            $this->revokeLiveCredentials($connection);
             $auditLogger->recordForRequest(
                 $request,
                 AuditEventType::McpConnectionRevoked,
@@ -125,5 +204,34 @@ class McpConnectionController extends Controller
         }
 
         return back();
+    }
+
+    /**
+     * Revoke the credentials a live client is holding: refresh tokens and
+     * org-scoped access tokens, including the Worker denylist entries. The
+     * connection row itself is untouched.
+     */
+    private function revokeLiveCredentials(McpConnection $connection): void
+    {
+        $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
+        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken): void {
+            $orgToken->forceFill(['revoked_at' => now()])->saveQuietly();
+            RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
+        });
+    }
+
+    /**
+     * The scopes a person may attach to a connection: never more than their
+     * own role carries, and read-only for viewers. Mirrors the capping the
+     * API's registration path applies (`Api\McpConnectionController`).
+     *
+     * @return list<string>
+     */
+    private function allowedScopesForRole(?TeamRole $role): array
+    {
+        return match ($role) {
+            TeamRole::Admin, TeamRole::Member => self::SUPPORTED_SCOPES,
+            default => ['artifacts:read', 'collections:read', 'usage:read'],
+        };
     }
 }

@@ -28,9 +28,8 @@ function initials(name: string) {
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-    const { auth, teams, currentTeam, flash, quota } =
-        usePage<SharedProps>().props;
-    const { url } = usePage();
+    const { auth, teams, currentTeam, quota } = usePage<SharedProps>().props;
+    const { flash, url } = usePage();
     const toastMessage = flash?.toast;
 
     useEffect(() => {

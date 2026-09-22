@@ -103,6 +103,8 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('settings/teams/{team}/tokens', [OrgTokenController::class, 'store'])->name('teams.tokens.store');
         Route::delete('settings/teams/{team}/tokens/{token}', [OrgTokenController::class, 'destroy'])->name('teams.tokens.destroy');
+        Route::post('settings/teams/{team}/mcp-connections', [McpConnectionController::class, 'store'])->name('teams.mcp-connections.store');
+        Route::post('settings/teams/{team}/mcp-connections/{connection}/reauthorize', [McpConnectionController::class, 'reauthorize'])->name('teams.mcp-connections.reauthorize');
         Route::delete('settings/teams/{team}/mcp-connections/{connection}', [McpConnectionController::class, 'destroy'])->name('teams.mcp-connections.destroy');
     });
 });

@@ -3,6 +3,8 @@
 use App\Actions\Teams\CreateTeam;
 use App\Enums\TeamRole;
 use App\Models\McpConnection;
+use App\Models\OAuthRefreshToken;
+use App\Models\OrgToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -55,6 +57,67 @@ test('the MCP connections page is available to team members without exposing cre
         ->assertDontSee('access_token')
         ->assertDontSee('refresh_token')
         ->assertNoJavaScriptErrors();
+});
+
+test('team members can start a new connection through the page', function () {
+    $owner = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($owner, 'MCP Create Co');
+
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.mcp-connections.index', $team))
+        ->assertSee('Start a connection')
+        ->assertNoJavaScriptErrors();
+
+    $page->fill('client_name', 'Browser-created agent')
+        ->check('scopes', 'artifacts:deploy')
+        ->click('Start connection')
+        ->wait(1)
+        ->assertSee('Browser-created agent')
+        ->assertNoJavaScriptErrors();
+
+    $connection = McpConnection::query()->where('team_id', $team->id)->sole();
+    expect($connection->user_id)->toBe($owner->id)
+        ->and($connection->client_name)->toBe('Browser-created agent')
+        ->and($connection->scopes)->toBe(['artifacts:read', 'artifacts:deploy', 'collections:read', 'usage:read']);
+});
+
+test('an active connection can be forced through reauthorization', function () {
+    $owner = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($owner, 'MCP Reauth Co');
+    $connection = McpConnection::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'name' => 'Reauthorizable browser agent',
+    ]);
+    $orgToken = OrgToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+    $refreshToken = OAuthRefreshToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.mcp-connections.index', $team))
+        ->assertSee('Reauthorizable browser agent')
+        ->assertSee('Reauthorize')
+        ->assertNoJavaScriptErrors();
+
+    $page->click('Reauthorize')
+        ->assertSee('Confirm reauthorize?')
+        ->click('Confirm reauthorize?')
+        ->wait(1)
+        ->assertSee('Reauthorization required')
+        ->assertNoJavaScriptErrors();
+
+    expect($orgToken->fresh()->revoked_at)->not->toBeNull()
+        ->and($refreshToken->fresh()->revoked_at)->not->toBeNull()
+        ->and($connection->fresh()->revoked_at)->toBeNull();
 });
 
 test('expired connections offer a direct reconnect command', function () {

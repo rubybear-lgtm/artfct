@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     Activity,
     Cable,
@@ -9,6 +9,7 @@ import {
     ShieldCheck,
 } from 'lucide-react';
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,8 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 
@@ -73,6 +76,8 @@ interface Props {
     connections: Connection[];
     activity: Activity[];
     usage: Usage;
+    scopeOptions: string[];
+    defaultScopes: string[];
 }
 
 function formatDate(value: string | null): string {
@@ -114,11 +119,20 @@ export default function McpConnections({
     connections,
     activity,
     usage,
+    scopeOptions,
+    defaultScopes,
 }: Props) {
     const base = `/settings/teams/${team.slug}/mcp-connections`;
     const [copied, setCopied] = useState<string | null>(null);
     const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
+    const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
+        string | null
+    >(null);
     const cliCommand = `artfct login --oauth --organization ${team.slug}`;
+    const createForm = useForm({
+        client_name: 'custom MCP client',
+        scopes: defaultScopes,
+    });
 
     const copy = (value: string, key: string) => {
         if (!navigator.clipboard) {
@@ -137,6 +151,28 @@ export default function McpConnections({
     const revoke = (connection: Connection) => {
         setPendingRevokeId(null);
         router.delete(`${base}/${connection.id}`);
+    };
+
+    const reauthorize = (connection: Connection) => {
+        setPendingReauthorizeId(null);
+        router.post(`${base}/${connection.id}/reauthorize`);
+    };
+
+    const submitCreate = (event: FormEvent) => {
+        event.preventDefault();
+        createForm.post(base, {
+            preserveScroll: true,
+            onSuccess: () => createForm.reset(),
+        });
+    };
+
+    const toggleScope = (scope: string, checked: boolean) => {
+        createForm.setData(
+            'scopes',
+            checked
+                ? [...createForm.data.scopes, scope]
+                : createForm.data.scopes.filter((item) => item !== scope),
+        );
     };
 
     return (
@@ -385,6 +421,96 @@ export default function McpConnections({
 
                 <Card>
                     <CardHeader>
+                        <CardTitle>Start a connection</CardTitle>
+                        <CardDescription>
+                            Register a client against {team.name}. Scopes
+                            default to read-only and can never exceed your team
+                            role.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form
+                            onSubmit={submitCreate}
+                            className="flex flex-col gap-4"
+                        >
+                            <div className="flex max-w-sm flex-col gap-1.5">
+                                <Label htmlFor="client-name">Client</Label>
+                                <Input
+                                    id="client-name"
+                                    name="client_name"
+                                    value={createForm.data.client_name}
+                                    onChange={(event) =>
+                                        createForm.setData(
+                                            'client_name',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                                {createForm.errors.client_name && (
+                                    <p
+                                        role="alert"
+                                        className="text-sm text-destructive"
+                                    >
+                                        {createForm.errors.client_name}
+                                    </p>
+                                )}
+                            </div>
+                            <fieldset className="flex flex-col gap-2">
+                                <legend className="text-sm font-medium">
+                                    Scopes
+                                </legend>
+                                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                    {scopeOptions.map((scope) => (
+                                        <label
+                                            key={scope}
+                                            className="flex items-center gap-2 text-sm"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                name="scopes"
+                                                value={scope}
+                                                checked={createForm.data.scopes.includes(
+                                                    scope,
+                                                )}
+                                                onChange={(event) =>
+                                                    toggleScope(
+                                                        scope,
+                                                        event.target.checked,
+                                                    )
+                                                }
+                                                className="size-4 accent-primary"
+                                            />
+                                            <span className="font-mono text-xs">
+                                                {scope}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {createForm.errors.scopes && (
+                                    <p
+                                        role="alert"
+                                        className="text-sm text-destructive"
+                                    >
+                                        {createForm.errors.scopes}
+                                    </p>
+                                )}
+                            </fieldset>
+                            <div>
+                                <Button
+                                    type="submit"
+                                    disabled={createForm.processing}
+                                >
+                                    {createForm.processing
+                                        ? 'Starting...'
+                                        : 'Start connection'}
+                                </Button>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Cable className="size-5" />
                             Connected agents
@@ -517,47 +643,90 @@ export default function McpConnections({
                                                         <div className="flex justify-end gap-2">
                                                             {status ===
                                                                 'active' &&
-                                                                connection.canRevoke &&
-                                                                (pendingRevokeId ===
-                                                                connection.id ? (
-                                                                    <div className="flex justify-end gap-2">
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            onClick={() =>
-                                                                                setPendingRevokeId(
-                                                                                    null,
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            Cancel
-                                                                        </Button>
-                                                                        <Button
-                                                                            variant="destructive"
-                                                                            size="sm"
-                                                                            onClick={() =>
-                                                                                revoke(
-                                                                                    connection,
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            Confirm
-                                                                            revoke?
-                                                                        </Button>
-                                                                    </div>
-                                                                ) : (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        onClick={() =>
-                                                                            setPendingRevokeId(
-                                                                                connection.id,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        Revoke
-                                                                    </Button>
-                                                                ))}
+                                                                connection.canRevoke && (
+                                                                    <>
+                                                                        {pendingReauthorizeId ===
+                                                                        connection.id ? (
+                                                                            <>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() =>
+                                                                                        setPendingReauthorizeId(
+                                                                                            null,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    Cancel
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    onClick={() =>
+                                                                                        reauthorize(
+                                                                                            connection,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    Confirm
+                                                                                    reauthorize?
+                                                                                </Button>
+                                                                            </>
+                                                                        ) : (
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={() =>
+                                                                                    setPendingReauthorizeId(
+                                                                                        connection.id,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Reauthorize
+                                                                            </Button>
+                                                                        )}
+                                                                        {pendingRevokeId ===
+                                                                        connection.id ? (
+                                                                            <>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() =>
+                                                                                        setPendingRevokeId(
+                                                                                            null,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    Cancel
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="destructive"
+                                                                                    size="sm"
+                                                                                    onClick={() =>
+                                                                                        revoke(
+                                                                                            connection,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    Confirm
+                                                                                    revoke?
+                                                                                </Button>
+                                                                            </>
+                                                                        ) : (
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={() =>
+                                                                                    setPendingRevokeId(
+                                                                                        connection.id,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Revoke
+                                                                            </Button>
+                                                                        )}
+                                                                    </>
+                                                                )}
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>

@@ -22,5 +22,4 @@ export type SharedProps = {
     teams: SharedTeam[];
     currentTeam: CurrentTeam;
     quota: { warning: boolean; exceeded: boolean } | null;
-    flash?: { toast?: { type: 'success' | 'error' | 'info'; message: string } };
 };
