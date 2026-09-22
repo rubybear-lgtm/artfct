@@ -243,8 +243,21 @@ assert_queue_worker_uses_the_public_origin() {
     return 1
 }
 
+# The matrix is the gate RUB-363 asked for, so the end-to-end run asserts it
+# too, not only the normal suite. It MUST run before up(): up() exports
+# DB_CONNECTION=pgsql for the stack's own processes, and PHPUnit's <env>
+# entries do not override an already-set environment variable, so a Pest run
+# after that point ignores phpunit.xml's sqlite :memory: pinning and
+# RefreshDatabase migrates the stack's Postgres fresh -- wiping the seeded orgs
+# and memberships the live smoke then needs. Confirmed by getting it wrong: the
+# consent page answered 403 because the dev-login user had lost their team.
+assert_verification_matrix_is_intact() {
+    php -d memory_limit=512M vendor/bin/pest tests/Feature/McpVerificationMatrixTest.php --compact
+}
+
 run() {
     trap down EXIT
+    assert_verification_matrix_is_intact
     up
     set -a
     # shellcheck disable=SC1090
