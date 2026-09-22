@@ -2,12 +2,18 @@
 //!
 //! These tests are ignored by default. They require all of
 //! `ARTFCT_INTEGRATION_BASE_URL`, `ARTFCT_INTEGRATION_TOKEN`,
-//! `ARTFCT_INTEGRATION_PERSIST_TO`, and `ARTFCT_WRANGLER_BIN`, then run with:
+//! `ARTFCT_INTEGRATION_PERSIST_TO`, `ARTFCT_WRANGLER_BIN`, and
+//! `ARTFCT_ARTIFACT_TOKEN_SECRET`, then run with:
 //! `cargo test -p artfct --test storage_integration -- --ignored`.
+//!
+//! The token secret is required rather than optional on purpose: it is what
+//! the Worker verifies isolated-origin links with, so a run without it can
+//! only silently skip the one test that proves a signed link opens. The stack
+//! that owns these variables (`scripts/mcp-e2e-stack.sh`) always sets it.
 
 use std::{env, error::Error, fs, process::Command};
 
-use ring::digest;
+use ring::{digest, hmac};
 use serde_json::{json, Value};
 
 #[derive(Clone)]
@@ -17,6 +23,12 @@ struct Context {
     org: String,
     persist_to: String,
     wrangler: String,
+    /// `ARTFCT_ARTIFACT_TOKEN_SECRET` on the live Worker: the key the Worker
+    /// verifies `<artifact_id>.<expires_at>.<hmac>` link tokens with.
+    token_secret: String,
+    /// The Worker's `ARTFCT_ARTIFACT_ORIGIN_SUFFIX`, defaulting to the
+    /// production `.artfct.dev` exactly as `artifact_origin_suffix` does.
+    origin_suffix: String,
 }
 
 fn context() -> Option<Context> {
@@ -25,6 +37,7 @@ fn context() -> Option<Context> {
         "ARTFCT_INTEGRATION_TOKEN",
         "ARTFCT_INTEGRATION_PERSIST_TO",
         "ARTFCT_WRANGLER_BIN",
+        "ARTFCT_ARTIFACT_TOKEN_SECRET",
     ];
     let present = names
         .iter()
@@ -36,7 +49,7 @@ fn context() -> Option<Context> {
     assert_eq!(
         present,
         names.len(),
-        "storage integration requires all four environment variables"
+        "storage integration requires all five environment variables"
     );
     let base = env::var(names[0]).expect("base URL is configured");
     assert!(
@@ -49,6 +62,11 @@ fn context() -> Option<Context> {
         org: env::var("ARTFCT_INTEGRATION_ORG").unwrap_or_else(|_| "default".to_string()),
         persist_to: env::var(names[2]).expect("persistence path is configured"),
         wrangler: env::var(names[3]).expect("Wrangler binary is configured"),
+        token_secret: env::var(names[4]).expect("artifact token secret is configured"),
+        origin_suffix: env::var("ARTFCT_ARTIFACT_ORIGIN_SUFFIX")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| ".artfct.dev".to_string()),
     })
 }
 
@@ -72,9 +90,13 @@ fn unique_html(label: &str) -> Vec<u8> {
 }
 
 fn permanent_payload(bytes: &[u8], provenance: Value) -> Value {
+    permanent_payload_with_tier(bytes, provenance, "public")
+}
+
+fn permanent_payload_with_tier(bytes: &[u8], provenance: Value, tier: &str) -> Value {
     let hash = sha256(bytes);
     json!({
-        "mode": "permanent", "tier": "public", "title": "Storage integration",
+        "mode": "permanent", "tier": tier, "title": "Storage integration",
         "description": "Storage integration", "thumbnail": "https://example.com/thumbnail.png",
         "preview_blurred": false,
         "manifest": {"entrypoint": "index.html", "external_origins": [], "files": [{
@@ -82,6 +104,38 @@ fn permanent_payload(bytes: &[u8], provenance: Value) -> Value {
         }]},
         "provenance": provenance
     })
+}
+
+/// The isolated origin `isolated_artifact_hostname` in backend/src/lib.rs and
+/// `ArtifactAccessLink::isolatedHostname` in Laravel both build for one
+/// artifact: `<tenant-slug>--<artifact-id><suffix>`.
+fn isolated_origin(tenant_slug: &str, artifact_id: &str, suffix: &str) -> String {
+    format!("{tenant_slug}--{artifact_id}{suffix}")
+}
+
+/// `<artifact_id>.<expires_at_unix>.<hmac_sha256_hex>` over
+/// `<artifact_id>.<expires_at_unix>` — the token `mint_access_token` in
+/// backend/src/lib.rs mints and `ArtifactAccessLink::mintToken` mirrors, built
+/// here with the same key so the live Worker's `verify_access_token` is what
+/// decides whether it is valid.
+fn mint_access_token(secret: &str, artifact_id: &str, expires_at_unix: i64) -> String {
+    let message = format!("{artifact_id}.{expires_at_unix}");
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret.as_bytes());
+    let signature: String = hmac::sign(&key, message.as_bytes())
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{message}.{signature}")
+}
+
+fn response_header(response: &reqwest::Response, name: &str) -> String {
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// PUTs `body` to `url` and returns the response, retrying a bounded number
@@ -174,11 +228,20 @@ async fn create_and_upload(
     bytes: &[u8],
     provenance: Value,
 ) -> Result<(String, String), Box<dyn Error>> {
+    create_and_upload_payload(context, client, bytes, permanent_payload(bytes, provenance)).await
+}
+
+async fn create_and_upload_payload(
+    context: &Context,
+    client: &reqwest::Client,
+    bytes: &[u8],
+    payload: Value,
+) -> Result<(String, String), Box<dyn Error>> {
     let hash = sha256(bytes);
     let created = client
         .post(format!("{}/v1/artifacts", context.base))
         .bearer_auth(&context.token)
-        .json(&permanent_payload(bytes, provenance))
+        .json(&payload)
         .send()
         .await?;
     assert_eq!(created.status(), reqwest::StatusCode::CREATED);
@@ -286,6 +349,153 @@ async fn permanent_roundtrip_stores_d1_and_r2() -> Result<(), Box<dyn Error>> {
             "count"
         )?,
         1
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let bytes = unique_html("isolated-origin");
+    let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    let other_bytes = unique_html("isolated-origin-other");
+    let (other_id, _) = create_and_upload(&context, &client, &other_bytes, json!({})).await?;
+    let expires_at_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64
+        + 3600;
+    let token = mint_access_token(&context.token_secret, &id, expires_at_unix);
+    let origin = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let path = format!("{}/p/{id}", context.base);
+
+    // 1. The link opens. This is the assertion RUB-365 is about: not the tab a
+    //    click asks for, but the artifact body served on the origin the link
+    //    names. The isolated hostname resolves nowhere from this machine and
+    //    terminates no TLS locally, so it travels in the `Host` header instead
+    //    of the URL authority — the Worker's decision is a function of that
+    //    header alone.
+    let opened = client
+        .get(format!("{path}?token={token}"))
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        opened.status(),
+        reqwest::StatusCode::OK,
+        "the signed link did not open {origin}{path}"
+    );
+    let opened_policy = response_header(&opened, "content-security-policy");
+    assert_eq!(
+        opened.bytes().await?.as_ref(),
+        bytes.as_slice(),
+        "the isolated origin served something other than the artifact body"
+    );
+    assert!(
+        opened_policy.starts_with("default-src 'self';"),
+        "a 200 on the isolated host has to be the authorized branch's per-artifact policy, not \
+         the shared-origin one that is also served there: {opened_policy}"
+    );
+
+    // 2. A token minted for a different artifact is not a credential for this
+    //    one, even with host and tenant both matching.
+    let other_token = mint_access_token(&context.token_secret, &other_id, expires_at_unix);
+    let wrong_token = client
+        .get(format!("{path}?token={other_token}"))
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        wrong_token.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "a token for {other_id} must not open {id}"
+    );
+
+    // 3. The host's artifact id must name the artifact being served: this
+    //    artifact's own valid token presented on another artifact's origin.
+    let wrong_artifact_origin = isolated_origin(&context.org, &other_id, &context.origin_suffix);
+    let wrong_artifact = client
+        .get(format!("{path}?token={token}"))
+        .header(reqwest::header::HOST, wrong_artifact_origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        wrong_artifact.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "{wrong_artifact_origin} is not {id}'s origin"
+    );
+
+    // 4. ...and the host's tenant must be the org that owns the artifact: a
+    //    token valid for this artifact, on a host naming another tenant.
+    let wrong_tenant_origin = isolated_origin(
+        &format!("{}-other", context.org),
+        &id,
+        &context.origin_suffix,
+    );
+    let wrong_tenant = client
+        .get(format!("{path}?token={token}"))
+        .header(reqwest::header::HOST, wrong_tenant_origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        wrong_tenant.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "{wrong_tenant_origin} does not name the org that owns {id}"
+    );
+
+    // 5. A non-isolated host keeps the shared-origin behaviour the isolated
+    //    check must not have tightened. `artfct.dev` is no artifact's origin,
+    //    so the isolated branch never runs: a public artifact is still served
+    //    with no credential at all, under the policy it had before isolated
+    //    origins existed.
+    let shared = client
+        .get(&path)
+        .header(reqwest::header::HOST, "artfct.dev")
+        .send()
+        .await?;
+    assert_eq!(shared.status(), reqwest::StatusCode::OK);
+    let shared_policy = response_header(&shared, "content-security-policy");
+    assert_eq!(shared.bytes().await?.as_ref(), bytes.as_slice());
+    assert!(
+        shared_policy.starts_with("default-src 'self' https:;"),
+        "the shared origin must keep the policy it had before isolated origins: {shared_policy}"
+    );
+
+    // 6. ...and the credential that behaviour demands is still demanded: a
+    //    secure artifact on the shared origin is a 401 without an org token,
+    //    and serves with one.
+    let secure_bytes = unique_html("isolated-origin-secure");
+    let (secure_id, _) = create_and_upload_payload(
+        &context,
+        &client,
+        &secure_bytes,
+        permanent_payload_with_tier(&secure_bytes, json!({}), "secure"),
+    )
+    .await?;
+    let secure_path = format!("{}/p/{secure_id}", context.base);
+    let uncredentialed = client
+        .get(&secure_path)
+        .header(reqwest::header::HOST, "artfct.dev")
+        .send()
+        .await?;
+    assert_eq!(
+        uncredentialed.status(),
+        reqwest::StatusCode::UNAUTHORIZED,
+        "a secure artifact on the shared origin still requires an org credential"
+    );
+    let credentialed = client
+        .get(&secure_path)
+        .bearer_auth(&context.token)
+        .header(reqwest::header::HOST, "artfct.dev")
+        .send()
+        .await?;
+    assert_eq!(credentialed.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        credentialed.bytes().await?.as_ref(),
+        secure_bytes.as_slice()
     );
     Ok(())
 }

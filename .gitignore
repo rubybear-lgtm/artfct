@@ -16,6 +16,9 @@
 /backend/target
 /backend/build
 /backend/.wrangler
+# Generated per run by scripts/mcp-e2e-stack.sh (backend/wrangler.jsonc with
+# `routes` removed) so `wrangler dev` stops rewriting the request Host.
+/backend/wrangler.e2e.jsonc
 /.mcp-e2e
 .env
 .env.backup
