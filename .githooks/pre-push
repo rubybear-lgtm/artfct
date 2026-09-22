@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Runs the same checks CI runs, before code leaves this machine. Unlike
+# pre-commit (which only checks files staged in *this* commit), this always
+# runs the full workspace: two real CI failures on 2026-09-22 slipped past
+# pre-commit because neither touched the files that failed — a clippy
+# toolchain drift in files nobody had staged in months, and a missing
+# `npm run build` step that only a full test run exercises. Bypass with
+# `git push --no-verify` when you know what you're doing (e.g. pushing a
+# docs-only branch and want to skip the Rust/PHP gates).
+
+export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
+
+echo "🦀 Rust workspace (fmt, clippy, wasm target, tests)..."
+if ! command -v cargo &>/dev/null; then
+    echo "❌ cargo is not installed or not on PATH."
+    exit 1
+fi
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
+cargo test --workspace --locked
+echo "✅ Rust workspace checks passed."
+
+echo "🎨 Frontend (format, lint, types, build)..."
+if ! command -v npx &>/dev/null; then
+    echo "❌ npx is not available; ensure Node.js is installed."
+    exit 1
+fi
+npm run format:check
+npm run lint:check
+npm run types:check
+npm run build
+echo "✅ Frontend checks passed."
+
+echo "🐘 PHP (style, full Pest suite)..."
+if [ ! -f vendor/bin/pint ]; then
+    echo "❌ vendor/bin/pint not found. Run: composer install"
+    exit 1
+fi
+vendor/bin/pint --test --format agent
+php -d memory_limit=512M vendor/bin/pest --compact
+echo "✅ PHP checks passed."
+
+if [ "${MCP_E2E_PRE_PUSH:-false}" = "true" ]; then
+    echo "🔌 Local MCP end-to-end stack (Postgres + Worker + hosted OAuth)..."
+    scripts/mcp-e2e-stack.sh run
+    echo "✅ MCP end-to-end checks passed."
+else
+    echo "⏭  Skipping the local MCP e2e stack (set MCP_E2E_PRE_PUSH=true to include it; it's what mcp_e2e CI runs, needs Docker, and takes ~30s)."
+fi
+
+echo "✅ All pre-push checks passed."
