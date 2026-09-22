@@ -40,6 +40,69 @@ struct StoredCredential {
     organization: Option<String>,
 }
 
+/// Launches an authorization URL; production spawns the platform browser.
+type BrowserOpener<'a> = Box<dyn Fn(&str) + Send + 'a>;
+
+/// The parts of a login or logout flow that production takes from global
+/// state but a test must supply. The default is production: the platform
+/// browser and the platform credential store. An explicit `credential_path`
+/// replaces the store entirely, so a flow driven through these seams can
+/// never read or write a developer's real Keychain entry or credential file.
+#[derive(Default)]
+pub struct AuthSeams<'a> {
+    /// Launches the authorization URL. Defaults to the platform browser.
+    pub open_browser: Option<BrowserOpener<'a>>,
+    /// Reads, writes and removes the credential at this path.
+    pub credential_path: Option<PathBuf>,
+}
+
+impl AuthSeams<'_> {
+    fn credential_store(&self) -> CredentialStore<'_> {
+        match self.credential_path.as_deref() {
+            Some(path) => CredentialStore::File(path),
+            None => CredentialStore::Platform,
+        }
+    }
+
+    fn launch_browser(&self, url: &str) {
+        match &self.open_browser {
+            Some(opener) => opener(url),
+            None => open_browser(url),
+        }
+    }
+}
+
+/// Where one flow reads and writes its credential. Production resolves the
+/// platform store with its restricted file fallback; an injected path is the
+/// whole store, so the platform store is never consulted.
+enum CredentialStore<'a> {
+    Platform,
+    File(&'a Path),
+}
+
+impl CredentialStore<'_> {
+    fn load(&self) -> Result<StoredCredential> {
+        match self {
+            Self::Platform => load_secure_credential(),
+            Self::File(path) => load_credential_at(path),
+        }
+    }
+
+    fn save(&self, credential: &StoredCredential) -> Result<()> {
+        match self {
+            Self::Platform => save_secure_credential(&credential_path()?, credential),
+            Self::File(path) => save_credential(path, credential),
+        }
+    }
+
+    fn remove(&self) -> Result<bool> {
+        match self {
+            Self::Platform => remove_secure_credential(),
+            Self::File(path) => remove_credential_at(path),
+        }
+    }
+}
+
 pub fn login(token: Option<String>, api_base_url: &str) -> Result<()> {
     let token = match token {
         Some(token) => token,
@@ -73,6 +136,15 @@ pub fn login(token: Option<String>, api_base_url: &str) -> Result<()> {
 }
 
 pub async fn oauth_login(api_base_url: &str, organization: Option<&str>) -> Result<()> {
+    oauth_login_with(api_base_url, organization, AuthSeams::default()).await
+}
+
+/// [`oauth_login`] with the browser and the credential destination injectable.
+pub async fn oauth_login_with(
+    api_base_url: &str,
+    organization: Option<&str>,
+    seams: AuthSeams<'_>,
+) -> Result<()> {
     let listener =
         TcpListener::bind(("127.0.0.1", 0)).context("Could not open a local OAuth callback")?;
     let port = listener.local_addr()?.port();
@@ -91,7 +163,7 @@ pub async fn oauth_login(api_base_url: &str, organization: Option<&str>) -> Resu
 
     eprintln!("Opening Artfct sign-in in your browser…");
     eprintln!("If it does not open, visit:\n{authorization_url}");
-    open_browser(&authorization_url);
+    seams.launch_browser(&authorization_url);
 
     let callback_request = tokio::task::spawn_blocking(move || receive_callback(listener))
         .await
@@ -109,18 +181,15 @@ pub async fn oauth_login(api_base_url: &str, organization: Option<&str>) -> Resu
     )
     .await?;
 
-    save_secure_credential(
-        &credential_path()?,
-        &StoredCredential {
-            token: tokens.access_token,
-            api_base_url: api_base_url.trim_end_matches('/').to_string(),
-            refresh_token: Some(tokens.refresh_token),
-            expires_at: Some(Utc::now().timestamp() + tokens.expires_in as i64),
-            organization: tokens
-                .organization
-                .or_else(|| organization.map(str::to_string)),
-        },
-    )?;
+    seams.credential_store().save(&StoredCredential {
+        token: tokens.access_token,
+        api_base_url: api_base_url.trim_end_matches('/').to_string(),
+        refresh_token: Some(tokens.refresh_token),
+        expires_at: Some(Utc::now().timestamp() + tokens.expires_in as i64),
+        organization: tokens
+            .organization
+            .or_else(|| organization.map(str::to_string)),
+    })?;
 
     eprintln!(
         "Saved OAuth credentials for {}.",
@@ -130,7 +199,14 @@ pub async fn oauth_login(api_base_url: &str, organization: Option<&str>) -> Resu
 }
 
 pub async fn logout(api_base_url: &str) -> Result<()> {
-    if let Ok(credential) = load_secure_credential() {
+    logout_with(api_base_url, AuthSeams::default()).await
+}
+
+/// [`logout`] with the credential destination injectable.
+pub async fn logout_with(api_base_url: &str, seams: AuthSeams<'_>) -> Result<()> {
+    let store = seams.credential_store();
+
+    if let Ok(credential) = store.load() {
         let client = reqwest::Client::new();
         let revocation_base_url = credential_base_url(&credential, api_base_url);
         if let Some(refresh_token) = credential.refresh_token.as_deref() {
@@ -156,7 +232,7 @@ pub async fn logout(api_base_url: &str) -> Result<()> {
         }
     }
 
-    if remove_secure_credential()? {
+    if store.remove()? {
         eprintln!("Removed Artfct credentials.");
     } else {
         eprintln!("No saved Artfct credentials found.");
@@ -412,8 +488,11 @@ fn credential_path() -> Result<PathBuf> {
 }
 
 fn load_credential() -> Result<StoredCredential> {
-    let path = credential_path()?;
-    let content = fs::read_to_string(&path)
+    load_credential_at(&credential_path()?)
+}
+
+fn load_credential_at(path: &Path) -> Result<StoredCredential> {
+    let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read credentials at {}", path.display()))?;
 
     serde_json::from_str(&content).context("Saved Artfct credentials are invalid")
@@ -455,15 +534,19 @@ fn save_secure_credential(path: &Path, credential: &StoredCredential) -> Result<
 
 fn remove_secure_credential() -> Result<bool> {
     let removed_from_platform = remove_platform_credential()?;
-    let path = credential_path()?;
-    let removed_from_file = if path.exists() {
-        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
-        true
-    } else {
-        false
-    };
+    let removed_from_file = remove_credential_at(&credential_path()?)?;
 
     Ok(removed_from_platform || removed_from_file)
+}
+
+fn remove_credential_at(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    fs::remove_file(path).with_context(|| format!("Failed to remove {}", path.display()))?;
+
+    Ok(true)
 }
 
 fn platform_credential() -> Result<Option<StoredCredential>> {
@@ -685,16 +768,27 @@ fn save_credential(path: &Path, credential: &StoredCredential) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        path::Path,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc, Arc, Mutex,
+        },
+        thread,
+        time::Duration,
+    };
 
+    use anyhow::Result;
+    use chrono::Utc;
     use tempfile::tempdir;
 
-    use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
-
     use super::{
-        build_authorization_url, credential_base_url, parse_callback, receive_callback,
-        save_credential, verify_callback_state, StoredCredential,
+        build_authorization_url, credential_base_url, load_credential_at, logout_with,
+        oauth_login_with, parse_callback, percent_decode, percent_encode, receive_callback,
+        save_credential, verify_callback_state, AuthSeams, StoredCredential,
     };
 
     #[cfg(target_os = "macos")]
@@ -889,6 +983,423 @@ mod tests {
         assert!(
             error.to_string().contains("state verification failed"),
             "the refusal must say why: {error}"
+        );
+    }
+
+    /// Stands in for the hosted authorization server: a hand-rolled HTTP/1.1
+    /// responder on a real loopback socket, so the login and logout flows
+    /// exchange over the wire rather than through a mocked client. Serves
+    /// `/oauth/token` with `token_response` and `/oauth/revoke` with an empty
+    /// success, recording every request verbatim for assertions.
+    struct StubAuthorizationServer {
+        base_url: String,
+        requests: Arc<Mutex<Vec<String>>>,
+        stop: Arc<AtomicBool>,
+        accept_loop: Option<thread::JoinHandle<()>>,
+    }
+
+    impl StubAuthorizationServer {
+        fn start(token_response: &str) -> Self {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind the stub server");
+            let port = listener.local_addr().expect("stub server address").port();
+            listener
+                .set_nonblocking(true)
+                .expect("the stub server polls for connections");
+
+            let token_response = token_response.to_string();
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let stop = Arc::new(AtomicBool::new(false));
+            let accept_loop = {
+                let requests = Arc::clone(&requests);
+                let stop = Arc::clone(&stop);
+                thread::spawn(move || {
+                    while !stop.load(Ordering::SeqCst) {
+                        match listener.accept() {
+                            Ok((stream, _)) => {
+                                serve_stub_request(stream, &token_response, &requests)
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                                thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                })
+            };
+
+            Self {
+                base_url: format!("http://127.0.0.1:{port}"),
+                requests,
+                stop,
+                accept_loop: Some(accept_loop),
+            }
+        }
+
+        fn base_url(&self) -> &str {
+            &self.base_url
+        }
+
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().expect("stub requests").clone()
+        }
+    }
+
+    impl Drop for StubAuthorizationServer {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(accept_loop) = self.accept_loop.take() {
+                let _ = accept_loop.join();
+            }
+        }
+    }
+
+    fn serve_stub_request(
+        mut stream: TcpStream,
+        token_response: &str,
+        requests: &Mutex<Vec<String>>,
+    ) {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("the stub server bounds its reads");
+        let request = read_stub_request(&mut stream);
+        requests
+            .lock()
+            .expect("stub requests")
+            .push(request.clone());
+
+        let (status, body) = if request.starts_with("POST /oauth/token ") {
+            ("200 OK", token_response)
+        } else if request.starts_with("POST /oauth/revoke ") {
+            ("200 OK", "{}")
+        } else {
+            ("404 Not Found", "")
+        };
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        );
+        let _ = stream.flush();
+    }
+
+    /// Reads one HTTP request off `stream`: the headers, then the bytes the
+    /// `Content-Length` header announces.
+    fn read_stub_request(stream: &mut TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        let mut header_end = None;
+
+        while header_end.is_none() {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(length) => request.extend_from_slice(&buffer[..length]),
+            }
+            header_end = request
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|index| index + 4);
+        }
+
+        let header_end = header_end.unwrap_or(request.len());
+        let content_length = String::from_utf8_lossy(&request[..header_end])
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if !name.eq_ignore_ascii_case("content-length") {
+                    return None;
+                }
+                value.trim().parse::<usize>().ok()
+            })
+            .unwrap_or(0);
+
+        while request.len() - header_end < content_length {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(length) => request.extend_from_slice(&buffer[..length]),
+            }
+        }
+
+        String::from_utf8_lossy(&request).into_owned()
+    }
+
+    fn authorization_url_parameter(url: &str, name: &str) -> String {
+        url.split_once('?')
+            .map(|(_, query)| query)
+            .and_then(|query| {
+                query.split('&').find_map(|pair| {
+                    let (key, value) = pair.split_once('=')?;
+                    (key == name).then(|| percent_decode(value))
+                })
+            })
+            .unwrap_or_else(|| panic!("the authorization URL has no {name} parameter: {url}"))
+    }
+
+    /// Sends a real loopback HTTP GET to the callback listener named in the
+    /// authorization URL and waits for the CLI's response, so the connection
+    /// is still open when the CLI writes it.
+    fn deliver_callback(authorization_url: &str, query: &str) {
+        let redirect_uri = authorization_url_parameter(authorization_url, "redirect_uri");
+        let (port, route) = redirect_uri
+            .split_once("127.0.0.1:")
+            .map(|(_, rest)| rest.split_once('/').expect("the redirect URI route"))
+            .expect("the redirect URI carries the loopback port");
+        let port: u16 = port.parse().expect("the redirect URI port is numeric");
+
+        let mut stream = TcpStream::connect(("127.0.0.1", port))
+            .expect("connect to the CLI's callback listener");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("the callback read is bounded");
+        stream
+            .write_all(
+                format!(
+                    "GET /{route}?{query} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .expect("write the callback request");
+
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("read the CLI's callback response");
+        assert!(
+            response.starts_with("HTTP/1.1 200 OK"),
+            "the CLI must answer the callback so a real browser is not left on a dead page: {response}"
+        );
+    }
+
+    /// Runs one full login with the browser stubbed to an opener that reads the
+    /// authorization URL the CLI produced -- that URL names the loopback port
+    /// the callback must go to -- and fires the callback from a separate
+    /// thread, the way a browser process would. Returns the flow's result and
+    /// the authorization URL.
+    async fn run_login(
+        stub: &StubAuthorizationServer,
+        credential_path: &Path,
+        organization: Option<&str>,
+        callback_query: impl Fn(&str) -> String + Send + Sync + 'static,
+    ) -> (Result<()>, String) {
+        let authorization_url = Arc::new(Mutex::new(String::new()));
+        let url_slot = Arc::clone(&authorization_url);
+        let callback_query = Arc::new(callback_query);
+        let (callback_done, callback_handles) = mpsc::channel();
+
+        let seams = AuthSeams {
+            open_browser: Some(Box::new(move |url: &str| {
+                *url_slot.lock().expect("authorization URL slot") = url.to_string();
+                let url = url.to_string();
+                let callback_query = Arc::clone(&callback_query);
+                let handle = thread::spawn(move || {
+                    deliver_callback(&url, &callback_query(&url));
+                });
+                let _ = callback_done.send(handle);
+            })),
+            credential_path: Some(credential_path.to_path_buf()),
+        };
+
+        let result = oauth_login_with(stub.base_url(), organization, seams).await;
+
+        if let Ok(handle) = callback_handles.recv_timeout(Duration::from_secs(10)) {
+            handle.join().expect("the callback thread panicked");
+        }
+
+        let authorization_url = authorization_url
+            .lock()
+            .expect("authorization URL slot")
+            .clone();
+
+        (result, authorization_url)
+    }
+
+    fn read_credential(path: &Path) -> StoredCredential {
+        load_credential_at(path).expect("the flow should have written a credential")
+    }
+
+    #[tokio::test]
+    async fn oauth_login_completes_through_a_real_loopback_callback_and_persists_the_tokens() {
+        let stub = StubAuthorizationServer::start(
+            r#"{"access_token":"stub-access-token","refresh_token":"stub-refresh-token","expires_in":3600,"organization":"zz-mcp-a"}"#,
+        );
+        let directory = tempdir().expect("temporary directory");
+        let credential_path = directory.path().join("credentials.json");
+
+        let (result, authorization_url) = run_login(&stub, &credential_path, None, |url| {
+            format!(
+                "code=stub-authorization-code&state={}",
+                authorization_url_parameter(url, "state")
+            )
+        })
+        .await;
+        result.expect("the login flow should complete");
+
+        let redirect_uri = authorization_url_parameter(&authorization_url, "redirect_uri");
+        assert!(
+            authorization_url.starts_with(&format!("{}/oauth/authorize?", stub.base_url())),
+            "the CLI must open the hosted authorize endpoint: {authorization_url}"
+        );
+        assert!(
+            redirect_uri.starts_with("http://127.0.0.1:"),
+            "{redirect_uri}"
+        );
+        assert!(redirect_uri.ends_with("/oauth/callback"), "{redirect_uri}");
+        assert!(authorization_url.contains("code_challenge_method=S256"));
+
+        let credential = read_credential(&credential_path);
+        assert_eq!(credential.token, "stub-access-token");
+        assert_eq!(
+            credential.refresh_token.as_deref(),
+            Some("stub-refresh-token")
+        );
+        assert_eq!(credential.api_base_url, stub.base_url());
+        assert_eq!(credential.organization.as_deref(), Some("zz-mcp-a"));
+        assert!(
+            credential
+                .expires_at
+                .is_some_and(|expires_at| expires_at > Utc::now().timestamp()),
+            "the token's lifetime must be recorded so it can be refreshed before it expires"
+        );
+
+        let requests = stub.requests();
+        assert_eq!(requests.len(), 1, "one token exchange: {requests:?}");
+        assert!(
+            requests[0].starts_with("POST /oauth/token "),
+            "{}",
+            requests[0]
+        );
+        assert!(requests[0].contains("grant_type=authorization_code"));
+        assert!(requests[0].contains("code=stub-authorization-code"));
+        assert!(requests[0].contains("client_id=artfct-cli"));
+        assert!(requests[0].contains("code_verifier="), "{}", requests[0]);
+        assert!(
+            requests[0].contains(&format!("redirect_uri={}", percent_encode(&redirect_uri))),
+            "the exchange must send back the redirect URI that was authorized: {}",
+            requests[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_login_persists_the_requested_organization_and_asks_authorize_for_it() {
+        let stub = StubAuthorizationServer::start(
+            r#"{"access_token":"stub-access-token","refresh_token":"stub-refresh-token","expires_in":3600}"#,
+        );
+        let directory = tempdir().expect("temporary directory");
+        let credential_path = directory.path().join("credentials.json");
+
+        let (result, authorization_url) =
+            run_login(&stub, &credential_path, Some("team/acme west"), |url| {
+                format!(
+                    "code=stub-authorization-code&state={}",
+                    authorization_url_parameter(url, "state")
+                )
+            })
+            .await;
+        result.expect("the login flow should complete");
+
+        assert!(
+            authorization_url.contains("&team=team%2Facme%20west"),
+            "the authorize request must pin the chosen organization: {authorization_url}"
+        );
+
+        let credential = read_credential(&credential_path);
+        assert_eq!(credential.organization.as_deref(), Some("team/acme west"));
+        assert_eq!(credential.token, "stub-access-token");
+    }
+
+    #[tokio::test]
+    async fn oauth_login_refuses_a_denied_or_forged_callback_and_writes_no_credential() {
+        let stub = StubAuthorizationServer::start(
+            r#"{"access_token":"must-not-be-saved","refresh_token":"must-not-be-saved","expires_in":3600}"#,
+        );
+        let directory = tempdir().expect("temporary directory");
+
+        let denied_path = directory.path().join("denied.json");
+        let (denied, _) = run_login(&stub, &denied_path, None, |url| {
+            format!(
+                "error=access_denied&state={}",
+                authorization_url_parameter(url, "state")
+            )
+        })
+        .await;
+        let denied = denied.expect_err("a denied authorization must not complete the login");
+        assert!(denied.to_string().contains("access_denied"), "{denied}");
+        assert!(
+            !denied_path.exists(),
+            "a denied authorization must not write a credential"
+        );
+
+        let forged_path = directory.path().join("forged.json");
+        let (forged, _) = run_login(&stub, &forged_path, None, |_| {
+            "code=stolen-code&state=attacker-state".to_string()
+        })
+        .await;
+        let forged = forged.expect_err("a callback with a mismatched state must not log in");
+        assert!(
+            forged.to_string().contains("state verification failed"),
+            "{forged}"
+        );
+        assert!(
+            !forged_path.exists(),
+            "a forged state must not write a credential"
+        );
+
+        assert!(
+            stub.requests().is_empty(),
+            "a refused callback must never reach the token endpoint: {:?}",
+            stub.requests()
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_revokes_the_saved_refresh_token_and_removes_the_credential() {
+        let stub = StubAuthorizationServer::start("{}");
+        let directory = tempdir().expect("temporary directory");
+        let credential_path = directory.path().join("credentials.json");
+        save_credential(
+            &credential_path,
+            &StoredCredential {
+                token: "stub-access-token".to_string(),
+                api_base_url: stub.base_url().to_string(),
+                refresh_token: Some("stub-refresh-token".to_string()),
+                expires_at: Some(Utc::now().timestamp() + 3600),
+                organization: Some("zz-mcp-a".to_string()),
+            },
+        )
+        .expect("seed the credential");
+        assert!(credential_path.exists());
+
+        logout_with(
+            "https://must-not-be-used.artfct.invalid",
+            AuthSeams {
+                open_browser: None,
+                credential_path: Some(credential_path.clone()),
+            },
+        )
+        .await
+        .expect("logout should complete");
+
+        let requests = stub.requests();
+        assert_eq!(requests.len(), 1, "one revocation request: {requests:?}");
+        assert!(
+            requests[0].starts_with("POST /oauth/revoke "),
+            "{}",
+            requests[0]
+        );
+        assert!(
+            requests[0].contains("token=stub-refresh-token"),
+            "the revoke request must carry the saved refresh token: {}",
+            requests[0]
+        );
+        assert!(
+            requests[0].contains("token_type_hint=refresh_token"),
+            "{}",
+            requests[0]
+        );
+        assert!(
+            !credential_path.exists(),
+            "logout must remove the stored credential"
         );
     }
 }
