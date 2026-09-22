@@ -30,6 +30,7 @@ interface ConsoleIndexProps {
     };
     nextCursor: string | null;
     isAdmin: boolean;
+    canOpenArtifacts: boolean;
     collections: { id: number; name: string }[];
     canCollect: boolean;
     indexingEnabled: boolean;
@@ -48,6 +49,7 @@ export default function ConsoleIndex({
     filters,
     nextCursor,
     isAdmin,
+    canOpenArtifacts,
     collections,
     canCollect,
     indexingEnabled,
@@ -58,6 +60,7 @@ export default function ConsoleIndex({
     const [confirmingRevoke, setConfirmingRevoke] = useState<string | null>(
         null,
     );
+    const hasActionsColumn = isAdmin || canOpenArtifacts;
 
     const handleFilterChange = (key: keyof typeof filters, value: string) => {
         const newFilters = { ...localFilters, [key]: value || null };
@@ -240,7 +243,7 @@ export default function ConsoleIndex({
                                 <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Status
                                 </th>
-                                {isAdmin && (
+                                {hasActionsColumn && (
                                     <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                         Actions
                                     </th>
@@ -251,7 +254,7 @@ export default function ConsoleIndex({
                             {artifacts.length === 0 ? (
                                 <tr>
                                     <td
-                                        colSpan={isAdmin ? 6 : 5}
+                                        colSpan={hasActionsColumn ? 6 : 5}
                                         className="px-6 py-4 text-center text-muted-foreground"
                                     >
                                         No artifacts found
@@ -365,23 +368,38 @@ export default function ConsoleIndex({
                                                 </span>
                                             )}
                                         </td>
-                                        {isAdmin && (
+                                        {hasActionsColumn && (
                                             <td className="px-6 py-4 text-sm">
-                                                {!artifact.revoked_at && (
-                                                    <button
-                                                        onClick={() =>
-                                                            handleRevoke(
-                                                                artifact.id,
-                                                            )
-                                                        }
-                                                        className="font-medium text-destructive hover:text-red-900"
-                                                    >
-                                                        {confirmingRevoke ===
-                                                        artifact.id
-                                                            ? 'Confirm revoke?'
-                                                            : 'Revoke'}
-                                                    </button>
-                                                )}
+                                                <div className="flex items-center gap-3">
+                                                    {canOpenArtifacts &&
+                                                        !artifact.revoked_at && (
+                                                            <a
+                                                                href={`/settings/teams/${team.slug}/console/artifacts/${artifact.id}/open`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="font-medium text-primary hover:underline"
+                                                                data-testid="open-artifact"
+                                                            >
+                                                                Open
+                                                            </a>
+                                                        )}
+                                                    {isAdmin &&
+                                                        !artifact.revoked_at && (
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleRevoke(
+                                                                        artifact.id,
+                                                                    )
+                                                                }
+                                                                className="font-medium text-destructive hover:text-red-900"
+                                                            >
+                                                                {confirmingRevoke ===
+                                                                artifact.id
+                                                                    ? 'Confirm revoke?'
+                                                                    : 'Revoke'}
+                                                            </button>
+                                                        )}
+                                                </div>
                                             </td>
                                         )}
                                     </tr>

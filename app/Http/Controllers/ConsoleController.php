@@ -12,6 +12,7 @@ use App\Models\ArtifactIndexingFailure;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -74,6 +75,10 @@ class ConsoleController extends Controller
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
             'isAdmin' => $user->isAdminOf($team),
+            // The signing secret belongs to the environment, not the member:
+            // without one the page is not given an open control that could
+            // only 503. The token itself never reaches props.
+            'canOpenArtifacts' => ArtifactAccessLink::default()->configured(),
             // Spec 12 DoD: "parked in a dead-letter queue with the reason
             // recorded and surfaced in the console." The data is real and
             // tested; the page's own display of this list is a follow-up
@@ -175,6 +180,34 @@ class ConsoleController extends Controller
             }
             throw $e;
         }
+    }
+
+    /**
+     * Mint a short-lived signed link for one artifact and send the browser
+     * (typically a new tab) to it at its isolated origin (spec 05).
+     *
+     * Any member who can see the artifact may open it. The link is bound to
+     * this team's slug, so a member of another team is refused before anything
+     * is minted, and an artifact that is not in this team's org is a 404
+     * indistinguishable from a missing one — never an existence oracle for
+     * another org's ids.
+     */
+    public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content)
+    {
+        $user = $request->user();
+        $team = $this->resolveTeam($user, $teamSlug);
+
+        Gate::authorize('view', $team);
+
+        // Org-scoped existence check. A revoked artifact reads as absent here,
+        // matching the Worker, which serves no content for it either.
+        abort_if($content->fetch($team->slug, $artifactId) === null, 404);
+
+        $url = ArtifactAccessLink::default()->forArtifact($team->slug, $artifactId);
+
+        abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
+
+        return redirect()->away($url);
     }
 
     /**

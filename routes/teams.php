@@ -63,6 +63,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/teams/{team}/mcp-connections', [McpConnectionController::class, 'index'])->name('teams.mcp-connections.index');
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
+    Route::get('settings/teams/{team}/console/artifacts/{artifactId}/open', [ConsoleController::class, 'open'])->name('console.open');
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');

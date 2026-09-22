@@ -90,6 +90,20 @@ return [
         'governance_secret' => env('ARTFCT_GOVERNANCE_SECRET'),
     ],
 
+    'artifact_access' => [
+        // Shared HMAC secret for isolated-origin artifact links (spec 05),
+        // matching the Worker's `ARTFCT_ARTIFACT_TOKEN_SECRET` binding by
+        // name. Unset fails closed: no link is minted.
+        'token_secret' => env('ARTFCT_ARTIFACT_TOKEN_SECRET'),
+        // Mirrors the Worker's `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` override
+        // (staging folds its marker into the label: `--stg.artfct.dev`).
+        // Unset keeps the production default.
+        'origin_suffix' => env('ARTFCT_ARTIFACT_ORIGIN_SUFFIX', '.artfct.dev'),
+        // How long a minted link stays valid; the Worker rejects a token at
+        // or past its expiry.
+        'token_ttl_minutes' => (int) env('ARTFCT_ARTIFACT_TOKEN_TTL_MINUTES', 60),
+    ],
+
     'worker_events' => [
         'secret' => env('ARTFCT_WORKER_EVENT_SECRET'),
     ],

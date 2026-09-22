@@ -39,6 +39,7 @@ function coveredElsewhere(): array
         'invitations.show' => 'InvitationBrowserTest',
         'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
+        'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
     ];
 }
 
