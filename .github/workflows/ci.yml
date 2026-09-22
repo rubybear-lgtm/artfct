@@ -367,6 +367,11 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Prepare Laravel for the frontend build
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
       - name: Build frontend
         run: npm run build
 
