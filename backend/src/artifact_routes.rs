@@ -2,8 +2,8 @@ use super::*;
 
 #[derive(Debug, Deserialize)]
 struct ArtifactMetadataRow {
-    id: String,
-    org_id: String,
+    pub(crate) id: String,
+    pub(crate) org_id: String,
     tier: String,
     entrypoint: String,
     created_at: String,
@@ -447,6 +447,161 @@ pub(crate) async fn resolve_permanent_artifact(
     let _ = row.expires_at;
     Ok(response)
 }
+/// The row shape needed to decide whether an artifact is visible to a
+/// credential, deliberately narrower than the full artifact record — see
+/// `decide_artifact_visibility`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArtifactOrgRow {
+    #[allow(dead_code, reason = "carried through to the metadata response")]
+    pub(crate) id: String,
+    pub(crate) org_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArtifactLookupDecision {
+    NotFound,
+    Visible,
+}
+
+/// Gates a fetched artifact row against the credential's org. A row that
+/// doesn't exist and a row that exists but belongs to a different org
+/// resolve to the identical `NotFound` — the caller must map both to the
+/// same 404, never 403, so a cross-tenant probe can't distinguish "doesn't
+/// exist" from "exists, not yours" (spec 07 DoD item 4).
+pub(crate) fn decide_artifact_visibility(
+    row: Option<&ArtifactOrgRow>,
+    credential_org_id: &str,
+) -> ArtifactLookupDecision {
+    match row {
+        Some(row) if row.org_id == credential_org_id => ArtifactLookupDecision::Visible,
+        _ => ArtifactLookupDecision::NotFound,
+    }
+}
+
+/// Named separately from `authorized_for_org`'s check so a test can assert
+/// against the revocation-write endpoint's own guard without that
+/// assertion being indistinguishable from spec 05's existing
+/// `authorization_matches` coverage — see
+/// `revocation_write_endpoint_rejects_unauthenticated_or_wrong_credential`.
+pub(crate) fn revocation_write_authorized(
+    expected_secret: Option<&str>,
+    authorization: Option<&str>,
+) -> bool {
+    authorization_matches(expected_secret, authorization)
+}
+
+pub(crate) fn authorized_for_revocation_write(authorization: Option<&str>, env: &Env) -> bool {
+    revocation_write_authorized(
+        env.var(REVOCATION_WRITE_SECRET_ENV)
+            .ok()
+            .map(|value| value.to_string())
+            .as_deref(),
+        authorization,
+    )
+}
+
+pub(crate) fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
+    let mut difference = left.len() ^ right.len();
+    for index in 0..left.len().max(right.len()) {
+        difference |= usize::from(
+            left.get(index).copied().unwrap_or(0) ^ right.get(index).copied().unwrap_or(0),
+        );
+    }
+    difference == 0
+}
+
+pub(crate) async fn delete_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let artifact_id = path.trim_start_matches("/v1/artifacts/");
+    if artifact_id.len() == store::PUBLIC_ID_LENGTH {
+        return delete_permanent_artifact(artifact_id, req, env).await;
+    }
+    if !is_valid_artifact_id(artifact_id) {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
+    }
+
+    store::KvArtifactStore::new(env.kv(KV_BINDING)?)
+        .delete_record(artifact_id)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    build_delete_response().into_worker_response()
+}
+
+/// Admin console listing (spec 8): `GET /v1/orgs/{org}/artifacts`. Same
+/// bearer-token gate as export/delete — role-based UI gating (viewer sees
+/// no controls, member can't change auth_mode) is enforced by the Laravel
+/// console, not this Worker; this endpoint trusts the credential the same
+/// way `export_organization` already does.
+pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
+    let org = path
+        .trim_start_matches("/v1/orgs/")
+        .trim_end_matches("/artifacts")
+        .trim_end_matches('/');
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    let query = req.url()?;
+    let params: std::collections::HashMap<String, String> =
+        query.query_pairs().into_owned().collect();
+    let filter = store::ArtifactListFilter {
+        org: org.to_string(),
+        repo_url: params.get("repo_url").cloned(),
+        agent: params.get("agent").cloned(),
+        created_after: params.get("created_after").cloned(),
+        created_before: params.get("created_before").cloned(),
+        query: params.get("q").filter(|value| !value.is_empty()).cloned(),
+    };
+    let cursor = params
+        .get("cursor")
+        .and_then(|raw| store::decode_list_cursor(raw));
+    let limit = params
+        .get("limit")
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|value| *value > 0 && *value <= 200)
+        .unwrap_or(50);
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let (items, next_cursor) = storage
+        .list_org_artifacts(&filter, cursor.as_ref(), limit)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let artifacts: Vec<Value> = items
+        .into_iter()
+        .map(|item| {
+            serde_json::json!({
+                "id": item.id.0,
+                "org_id": item.org,
+                "content_hash": item.content_hash,
+                "size_bytes": item.size_bytes,
+                "created_at": item.created_at,
+                "revoked_at": item.revoked_at,
+                "title": item.title,
+                "description": item.description,
+                "provenance": {
+                    "agent": item.agent,
+                    "repo_url": item.repo_url,
+                    "commit_sha": item.commit_sha,
+                },
+            })
+        })
+        .collect();
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "artifacts": artifacts,
+            "next_cursor": next_cursor.as_ref().map(store::encode_list_cursor),
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
 #[derive(Debug, Deserialize)]
 struct ExistingArtifactRow {
     manifest: String,
