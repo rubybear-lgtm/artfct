@@ -50,6 +50,7 @@ const supportedTools = new Set([
     'list_collections',
     'create_collection',
     'add_collection_artifact',
+    'delete_artifact',
 ]);
 
 const client = {
