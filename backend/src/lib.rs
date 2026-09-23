@@ -13,6 +13,12 @@ pub mod governance;
 pub mod quota;
 pub mod store;
 
+mod preview;
+
+use preview::{
+    default_preview_blurred, error_html_page, escape_attr, escape_json_script, escape_text,
+};
+
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
 const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
@@ -3337,10 +3343,6 @@ fn normalize_metadata_value(value: Option<String>, default: &str) -> String {
     }
 }
 
-fn default_preview_blurred() -> bool {
-    true
-}
-
 fn render_preview_shell(artifact: &StoredArtifact, url: &str) -> String {
     let escaped_title = escape_text(&artifact.title);
     let escaped_description = escape_text(&artifact.description);
@@ -3571,13 +3573,6 @@ body.artfct-decrypted .frame{{position:fixed;inset:0;width:100%;height:100%;}}
     )
 }
 
-fn escape_json_script(value: &str) -> String {
-    value
-        .replace('&', "\\u0026")
-        .replace('<', "\\u003c")
-        .replace('>', "\\u003e")
-}
-
 fn is_valid_artifact_id(id: &str) -> bool {
     (id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric()))
         || (id.len() == store::PUBLIC_ID_LENGTH
@@ -3685,37 +3680,6 @@ fn build_delete_response() -> EmptyResponseDefinition {
     EmptyResponseDefinition::delete()
 }
 
-fn error_html_page(title: &str, message: &str) -> String {
-    let escaped_title = escape_text(title);
-    let escaped_message = escape_text(message);
-    let escaped_description =
-        escape_text("This link is expired or invalid — create a new artifact at artfct.dev.");
-    let og_image = "https://artfct.dev/og-image.svg";
-
-    format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{escaped_title}</title>
-<meta name="description" content="{escaped_description}">
-<meta property="og:title" content="{escaped_title}">
-<meta property="og:description" content="{escaped_description}">
-<meta property="og:type" content="website">
-<meta property="og:image" content="{og_image}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:site_name" content="artfct">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="{og_image}">
-<link rel="canonical" href="https://artfct.dev">
-</head>
-<body>{escaped_message}</body>
-</html>"#
-    )
-}
-
 fn html_error(message: &str, status: u16) -> Result<Response> {
     let html = error_html_page("Artifact unavailable — artfct", message);
     html_response(&html, status)
@@ -3735,17 +3699,6 @@ fn options_response() -> Result<Response> {
 
 fn build_options_response() -> EmptyResponseDefinition {
     EmptyResponseDefinition::options()
-}
-
-fn escape_attr(value: &str) -> String {
-    escape_text(value).replace('"', "&quot;")
-}
-
-fn escape_text(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Whether a failed batch was refused by the live-`(org_id, id)` unique index
