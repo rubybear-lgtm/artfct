@@ -62,3 +62,20 @@ pub(crate) fn error_html_page(title: &str, message: &str) -> String {
 </html>"#
     )
 }
+
+pub(crate) fn build_preview_response(body: String) -> crate::HtmlResponseDefinition {
+    crate::HtmlResponseDefinition::preview(body, 200)
+}
+
+pub(crate) fn html_error(message: &str, status: u16) -> crate::Result<worker::Response> {
+    let html = error_html_page("Artifact unavailable — artfct", message);
+    crate::html_response(&html, status)
+}
+
+pub(crate) fn expired_response() -> crate::Result<worker::Response> {
+    html_error("This artifact has expired or does not exist.", 404)
+}
+
+pub(crate) fn not_found_response() -> crate::Result<worker::Response> {
+    html_error("Not found.", 404)
+}

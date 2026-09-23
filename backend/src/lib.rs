@@ -16,8 +16,8 @@ pub mod store;
 mod preview;
 
 use preview::{
-    default_preview_blurred, error_html_page, escape_attr, escape_json_script, escape_text,
-    normalize_metadata_value,
+    build_preview_response, default_preview_blurred, escape_attr, escape_json_script, escape_text,
+    expired_response, html_error, normalize_metadata_value, not_found_response,
 };
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
@@ -3661,25 +3661,8 @@ fn html_response(html: &str, status: u16) -> Result<Response> {
     Response::from_html(html).map(|response| response.with_headers(headers).with_status(status))
 }
 
-fn build_preview_response(body: String) -> HtmlResponseDefinition {
-    HtmlResponseDefinition::preview(body, 200)
-}
-
 fn build_delete_response() -> EmptyResponseDefinition {
     EmptyResponseDefinition::delete()
-}
-
-fn html_error(message: &str, status: u16) -> Result<Response> {
-    let html = error_html_page("Artifact unavailable — artfct", message);
-    html_response(&html, status)
-}
-
-fn expired_response() -> Result<Response> {
-    html_error("This artifact has expired or does not exist.", 404)
-}
-
-fn not_found_response() -> Result<Response> {
-    html_error("Not found.", 404)
 }
 
 fn options_response() -> Result<Response> {
@@ -3706,6 +3689,7 @@ fn is_artifact_id_conflict(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::preview::error_html_page;
 
     #[test]
     fn artifact_id_conflicts_are_recognised_and_other_failures_are_not() {
