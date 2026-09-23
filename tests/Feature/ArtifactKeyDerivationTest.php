@@ -83,7 +83,7 @@ test('every derivation site uses the same parameters', function () {
     $sites = [
         'CLI encryptor' => 'mcp-server/src/artifact_crypto.rs',
         'browser encryptor' => 'resources/js/lib/artifactCrypto.ts',
-        'viewer decryptor' => 'backend/src/lib.rs',
+        'viewer decryptor' => 'backend/src/preview.rs',
     ];
 
     $problems = [];
@@ -100,7 +100,7 @@ test('every derivation site uses the same parameters', function () {
 
     $rust = (string) file_get_contents(base_path('mcp-server/src/artifact_crypto.rs'));
     $typescript = (string) file_get_contents(base_path('resources/js/lib/artifactCrypto.ts'));
-    $worker = (string) file_get_contents(base_path('backend/src/lib.rs'));
+    $worker = (string) file_get_contents(base_path('backend/src/preview.rs'));
 
     if (! str_contains($rust, 'pbkdf2::PBKDF2_HMAC_SHA256')) {
         $problems[] = 'the CLI encryptor does not derive with PBKDF2-HMAC-SHA256';
@@ -128,7 +128,7 @@ test('every derivation site uses the same parameters', function () {
 });
 
 test('the viewer still opens fragments minted before the salted KDF', function () {
-    $worker = (string) file_get_contents(base_path('backend/src/lib.rs'));
+    $worker = (string) file_get_contents(base_path('backend/src/preview.rs'));
 
     // A bare fragment has no `v`, so `Number(hash.get('v'))` is 0 rather than 2
     // and the legacy branch must be what runs. Both halves are asserted because
