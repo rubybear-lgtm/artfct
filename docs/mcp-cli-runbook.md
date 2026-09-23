@@ -425,8 +425,9 @@ and a local stdio `tools/list` probe against `target/debug/artfct mcp serve`
 passed. Its hosted connection and OAuth flow were not run. The preflight also
 observed non-fatal local-environment warnings from Cursor's
 macOS code-sign check, Codex's PATH-alias setup, and Gemini's cleanup attempt.
-None is a compatibility result; record any client-specific behavior only after
-the hosted run above completes.
+The Inspector's non-secret stored-auth probe reported no hosted server URLs,
+so there is no existing OAuth session to reuse. None is a compatibility result;
+record any client-specific behavior only after the hosted run above completes.
 
 ## Incident checklist
 
