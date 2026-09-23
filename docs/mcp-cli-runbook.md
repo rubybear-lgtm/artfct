@@ -118,6 +118,78 @@ If a client has cached an old connection, remove its MCP server entry, restart
 the client, and complete OAuth again. Never paste a bearer token into an agent
 configuration file, repository, issue, or support ticket.
 
+## Emergency response and key rotation
+
+If a client credential may have leaked, revoke its connection immediately from
+**Settings → MCP connections**. If the affected credential is a CI token,
+revoke that token in the workspace console and disable the corresponding CI
+secret before investigating logs. Do not delete database rows or edit JWTs by
+hand. The edge denylist is eventually consistent; treat the documented KV
+propagation window as active until a fresh `artfct doctor` or staging smoke
+check confirms the replacement connection.
+
+For a suspected signing-key compromise, pause new MCP connections, generate a
+replacement `ORG_JWT_PRIVATE_KEY_B64`, and publish the new public key while
+keeping the old key available for tokens that have not expired:
+
+```sh
+php artisan auth:publish-jwks --extra-jwks=/secure/path/previous-jwks.json
+```
+
+After the maximum old-token lifetime and the KV propagation window have
+passed, publish the new key alone, then rotate the Laravel and Worker write
+secrets (`ARTFCT_JWKS_WRITE_SECRET` and
+`ARTFCT_REVOCATION_WRITE_SECRET`) through the deployment secret store. Never
+put either value in a repository file or command history. Verify the result
+with the staging smoke suite and keep only redacted output:
+
+```sh
+MCP_LIVE_BASE_URL=https://staging.artfct.dev \
+MCP_LIVE_EXPECTED_ORG_A=acme \
+MCP_LIVE_EXPECTED_ORG_B=beta \
+npm run mcp:live
+```
+
+For an OAuth-provider or authorization-server incident, revoke affected MCP
+connections first, then rotate the provider credentials in the deployment
+secret store, redeploy the control plane, and rerun the same staging smoke
+suite before restoring client access. The smoke suite must confirm discovery,
+consent, tenant isolation, and revocation; a healthy `/up` response alone is
+not evidence that OAuth is repaired.
+
+## Rollback and release recovery
+
+Keep the last known-good Worker version and CLI release identifier in the
+deployment record. A Worker rollback is an operator action through Wrangler:
+deploy the known-good version to 100%, then rerun the staging smoke suite and
+check the running version before declaring recovery. `npm run worker:deploy`
+publishes the current build; it is not a rollback command, so do not rerun it
+against a broken checkout and call that a rollback.
+
+For a published CLI release, the repository's guarded rollback workflow is
+**Actions → rollback-cli-release**. Supply the tag, a public reason, and type
+`WITHDRAW`; it marks the release draft so new installs cannot select it. A
+withdrawn CLI does not revoke already-issued OAuth credentials, so perform the
+connection or token revocation steps above separately.
+
+## Protocol and tool-schema versioning
+
+The hosted endpoint negotiates an explicitly supported protocol version during
+`initialize`. Additive tool metadata and fields are backward-compatible, but
+removing or changing the meaning of a tool argument requires a new tool/schema
+version and a migration note in this runbook. Keep the legacy
+`deploy_to_canvas` tool available while clients migrate to `deploy_artifact`;
+its metadata is marked deprecated and it creates anonymous, expiring artifacts
+that are not searchable in the workspace catalog.
+
+When deprecating a protocol version or tool, record the first release that
+announced the deprecation, the last release that accepts it, the replacement,
+and the client remediation. Do not remove a version from the supported list
+until the compatibility matrix and the staging smoke suite have been updated.
+Unsupported versions must continue to return the structured
+`unsupported_protocol_version` error with the supported list rather than a
+500 or an ambiguous transport failure.
+
 ## Opening an artifact
 
 Tools that publish or describe an artifact return it as `view_url`. Which URL
