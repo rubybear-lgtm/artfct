@@ -1,6 +1,10 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 
+import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
+import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
 
 interface Artifact {
@@ -83,7 +87,12 @@ export default function ConsoleIndex({
             }
         });
 
-        router.get(`/settings/teams/${team.slug}/console?${params.toString()}`);
+        router.get(
+            ConsoleController.index.url(
+                { team: team.slug },
+                { query: Object.fromEntries(params.entries()) },
+            ),
+        );
     };
 
     const handleRevoke = (artifactId: string) => {
@@ -95,12 +104,12 @@ export default function ConsoleIndex({
 
         setConfirmingRevoke(null);
         router.patch(
-            `/settings/teams/${team.slug}/console/artifacts/${artifactId}/revoke`,
+            ConsoleController.revoke.url({ team: team.slug, artifactId }),
         );
     };
 
     const handleExport = () => {
-        router.get(`/settings/teams/${team.slug}/console/export`);
+        router.get(ConsoleController.export.url({ team: team.slug }));
     };
 
     /**
@@ -109,7 +118,7 @@ export default function ConsoleIndex({
      * its public URL or mints a short-lived signed link for a secure one.
      */
     const openHref = (artifactId: string) =>
-        `/settings/teams/${team.slug}/console/artifacts/${artifactId}/open`;
+        ConsoleController.open.url({ team: team.slug, artifactId });
 
     const revokedOpenTooltip =
         'This artifact is revoked, so it can no longer be opened.';
@@ -187,12 +196,12 @@ export default function ConsoleIndex({
                                 <label className="mb-2 block text-sm font-medium text-foreground">
                                     Actions
                                 </label>
-                                <button
+                                <Button
                                     onClick={handleExport}
                                     className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
                                 >
                                     Export All
-                                </button>
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -223,16 +232,22 @@ export default function ConsoleIndex({
                                         {failure.reason}
                                     </span>
                                     {isAdmin && (
-                                        <button
+                                        <Button
                                             className="ml-auto underline"
                                             onClick={() =>
                                                 router.post(
-                                                    `/settings/teams/${team.slug}/console/artifacts/${failure.artifact_id}/reindex`,
+                                                    ConsoleController.reindex.url(
+                                                        {
+                                                            team: team.slug,
+                                                            artifactId:
+                                                                failure.artifact_id,
+                                                        },
+                                                    ),
                                                 )
                                             }
                                         >
                                             Retry
-                                        </button>
+                                        </Button>
                                     )}
                                 </li>
                             ))}
@@ -277,7 +292,7 @@ export default function ConsoleIndex({
                                         colSpan={hasActionsColumn ? 6 : 5}
                                         className="px-6 py-4 text-center text-muted-foreground"
                                     >
-                                        No artifacts found
+                                        <EmptyState title="No artifacts found" />
                                     </td>
                                 </tr>
                             ) : (
@@ -332,7 +347,17 @@ export default function ConsoleIndex({
                                                                 e.target.value
                                                             ) {
                                                                 router.post(
-                                                                    `/settings/teams/${team.slug}/collections/${e.target.value}/artifacts`,
+                                                                    CollectionController.addArtifact.url(
+                                                                        {
+                                                                            team: team.slug,
+                                                                            collection:
+                                                                                Number(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value,
+                                                                                ),
+                                                                        },
+                                                                    ),
                                                                     {
                                                                         artifact_id:
                                                                             artifact.id,
@@ -432,7 +457,7 @@ export default function ConsoleIndex({
                                                         ))}
                                                     {isAdmin &&
                                                         !artifact.revoked_at && (
-                                                            <button
+                                                            <Button
                                                                 onClick={() =>
                                                                     handleRevoke(
                                                                         artifact.id,
@@ -444,7 +469,7 @@ export default function ConsoleIndex({
                                                                 artifact.id
                                                                     ? 'Confirm revoke?'
                                                                     : 'Revoke'}
-                                                            </button>
+                                                            </Button>
                                                         )}
                                                 </div>
                                             </td>
@@ -459,7 +484,7 @@ export default function ConsoleIndex({
                 {/* Pagination */}
                 {nextCursor && (
                     <div className="mt-6 flex justify-center">
-                        <button
+                        <Button
                             onClick={() => {
                                 const params = new URLSearchParams();
                                 params.set('cursor', nextCursor);
@@ -471,13 +496,20 @@ export default function ConsoleIndex({
                                     },
                                 );
                                 router.get(
-                                    `/settings/teams/${team.slug}/console?${params.toString()}`,
+                                    ConsoleController.index.url(
+                                        { team: team.slug },
+                                        {
+                                            query: Object.fromEntries(
+                                                params.entries(),
+                                            ),
+                                        },
+                                    ),
                                 );
                             }}
                             className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90"
                         >
                             Load More
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>

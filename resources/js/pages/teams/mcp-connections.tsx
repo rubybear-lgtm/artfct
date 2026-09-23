@@ -21,10 +21,13 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { docs } from '@/routes';
+import teamRoutes from '@/routes/teams';
 
 interface Connection {
     id: string;
@@ -122,7 +125,6 @@ export default function McpConnections({
     scopeOptions,
     defaultScopes,
 }: Props) {
-    const base = `/settings/teams/${team.slug}/mcp-connections`;
     const [copied, setCopied] = useState<string | null>(null);
     const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
     const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
@@ -150,20 +152,33 @@ export default function McpConnections({
 
     const revoke = (connection: Connection) => {
         setPendingRevokeId(null);
-        router.delete(`${base}/${connection.id}`);
+        router.delete(
+            teamRoutes.mcpConnections.destroy.url({
+                team: team.slug,
+                connection: connection.id,
+            }),
+        );
     };
 
     const reauthorize = (connection: Connection) => {
         setPendingReauthorizeId(null);
-        router.post(`${base}/${connection.id}/reauthorize`);
+        router.post(
+            teamRoutes.mcpConnections.reauthorize.url({
+                team: team.slug,
+                connection: connection.id,
+            }),
+        );
     };
 
     const submitCreate = (event: FormEvent) => {
         event.preventDefault();
-        createForm.post(base, {
-            preserveScroll: true,
-            onSuccess: () => createForm.reset(),
-        });
+        createForm.post(
+            teamRoutes.mcpConnections.store.url({ team: team.slug }),
+            {
+                preserveScroll: true,
+                onSuccess: () => createForm.reset(),
+            },
+        );
     };
 
     const toggleScope = (scope: string, checked: boolean) => {
@@ -293,7 +308,9 @@ export default function McpConnections({
                         </div>
                         <div className="flex flex-wrap items-center gap-3 md:col-span-2">
                             <Button asChild>
-                                <Link href="/docs#cli">Open setup guide</Link>
+                                <Link href={`${docs.url()}#cli`}>
+                                    Open setup guide
+                                </Link>
                             </Button>
                             <span className="text-xs text-muted-foreground">
                                 Access is scoped to this workspace and can be
@@ -523,24 +540,24 @@ export default function McpConnections({
                     </CardHeader>
                     <CardContent>
                         {connections.length === 0 ? (
-                            <div className="rounded-lg border border-dashed p-8 text-center">
-                                <p className="font-medium">Nothing connected</p>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    Use the connection guide above to add a
-                                    local or hosted MCP client.
-                                </p>
+                            <EmptyState
+                                title="Nothing connected"
+                                description="Use the connection guide above to add a local or hosted MCP client."
+                            >
                                 <Button
                                     asChild
                                     variant="outline"
                                     className="mt-4"
                                 >
                                     <Link
-                                        href={`/settings/teams/${team.slug}/tokens`}
+                                        href={teamRoutes.tokens.index.url({
+                                            team: team.slug,
+                                        })}
                                     >
                                         Manage API tokens
                                     </Link>
                                 </Button>
-                            </div>
+                            </EmptyState>
                         ) : (
                             <div className="overflow-x-auto">
                                 <Table>
@@ -749,9 +766,7 @@ export default function McpConnections({
                     </CardHeader>
                     <CardContent>
                         {activity.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No MCP tool calls yet.
-                            </p>
+                            <EmptyState title="No MCP tool calls yet." />
                         ) : (
                             <div className="overflow-x-auto">
                                 <Table>

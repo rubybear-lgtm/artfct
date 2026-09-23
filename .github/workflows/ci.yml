@@ -129,8 +129,25 @@ jobs:
       - name: Check frontend types
         run: npm run types:check
 
+      - name: Check frontend route references
+        run: npm run routes:check
+
       - name: Run Pest
         run: php -d memory_limit=512M vendor/bin/pest --compact
+
+  release_readiness:
+    name: 'Release readiness: authentication, tenancy and quota'
+    needs:
+      - application
+      - contract_drift
+      - cli
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm release-critical suites are required
+        run: |
+          set -euo pipefail
+          echo 'Authentication, tenancy, quota, contract, and CLI checks are required by this gate.'
 
   secrets:
     runs-on: ubuntu-latest
@@ -195,6 +212,7 @@ jobs:
         run: cargo test --workspace --locked
 
   cli:
+    name: CLI
     runs-on: ubuntu-latest
 
     steps:

@@ -62,6 +62,18 @@ final class SearchArtifactsTool extends Tool
 
         $team = McpContext::team();
         $httpRequest = McpContext::httpRequest();
+
+        if (! config('indexing.enabled')) {
+            app(McpTelemetry::class)->record('search_artifacts', 'search_not_configured', $startedAt);
+
+            return McpErrorResponse::error(
+                'Search is not enabled for this workspace yet.',
+                'search_not_configured',
+                false,
+                'enable_indexing',
+            );
+        }
+
         try {
             $results = $search->search(
                 $team,
@@ -80,6 +92,16 @@ final class SearchArtifactsTool extends Tool
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('search_artifacts', 'error', $startedAt);
+
+            if (str_contains($exception->getMessage(), 'must be configured')
+                || str_contains($exception->getMessage(), 'not implemented')) {
+                return McpErrorResponse::error(
+                    'Search is not enabled for this workspace yet.',
+                    'search_not_configured',
+                    false,
+                    'enable_indexing',
+                );
+            }
 
             return McpErrorResponse::error('The artifact search service is temporarily unavailable.', 'upstream_unavailable', true);
         }

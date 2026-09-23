@@ -68,6 +68,22 @@ test('search_artifacts returns a view_url on the apps open route and no raw url'
         ->and($results[0]['view_url'])->not->toContain('token');
 });
 
+test('search_artifacts explains when indexing is disabled instead of asking the client to retry', function () {
+    config(['indexing.enabled' => false]);
+
+    $team = Team::factory()->create(['slug' => 'search-disabled-org']);
+    $token = remoteMcpToken($team);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'search_artifacts', 'arguments' => ['query' => 'billing dashboard']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'search_not_configured')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
+        ->assertJsonPath('result.content.0._meta.artfct.nextAction', 'enable_indexing');
+});
+
 test('the search page links each row the same way the tool does', function () {
     config(['indexing.enabled' => true, 'app.public_base_url' => 'https://artfct.dev']);
 

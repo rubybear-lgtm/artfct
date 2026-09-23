@@ -4,6 +4,12 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 
+import AuthModeController from '@/actions/App/Http/Controllers/Teams/AuthModeController';
+import TeamController from '@/actions/App/Http/Controllers/Teams/TeamController';
+import TeamDomainController from '@/actions/App/Http/Controllers/Teams/TeamDomainController';
+import TeamInvitationController from '@/actions/App/Http/Controllers/Teams/TeamInvitationController';
+import TeamMemberController from '@/actions/App/Http/Controllers/Teams/TeamMemberController';
+import TeamOwnerController from '@/actions/App/Http/Controllers/Teams/TeamOwnerController';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +30,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface Member {
     id: number;
@@ -99,16 +106,18 @@ export default function TeamEdit({
     const deleteForm = useForm({ name: '' });
     const [removing, setRemoving] = useState<Member | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const base = `/settings/teams/${team.slug}`;
     const admins = members.filter(
         (member) => member.role === 'admin' && member.id !== viewer.id,
     );
 
     const invite = (e: FormEvent) => {
         e.preventDefault();
-        inviteForm.post(`${base}/invitations`, {
-            onSuccess: () => inviteForm.reset('email'),
-        });
+        inviteForm.post(
+            TeamInvitationController.store.url({ team: team.slug }),
+            {
+                onSuccess: () => inviteForm.reset('email'),
+            },
+        );
     };
 
     const copyLink = async (url: string) => {
@@ -177,7 +186,12 @@ export default function TeamEdit({
                                                     value={member.role}
                                                     onChange={(e) =>
                                                         router.patch(
-                                                            `${base}/members/${member.id}`,
+                                                            TeamMemberController.update.url(
+                                                                {
+                                                                    team: team.slug,
+                                                                    user: member.id,
+                                                                },
+                                                            ),
                                                             {
                                                                 role: e.target
                                                                     .value,
@@ -329,7 +343,13 @@ export default function TeamEdit({
                                                         size="sm"
                                                         onClick={() =>
                                                             router.post(
-                                                                `${base}/invitations/${invitation.code}/resend`,
+                                                                TeamInvitationController.resend.url(
+                                                                    {
+                                                                        team: team.slug,
+                                                                        invitation:
+                                                                            invitation.code,
+                                                                    },
+                                                                ),
                                                             )
                                                         }
                                                     >
@@ -340,7 +360,13 @@ export default function TeamEdit({
                                                         size="sm"
                                                         onClick={() =>
                                                             router.delete(
-                                                                `${base}/invitations/${invitation.code}`,
+                                                                TeamInvitationController.destroy.url(
+                                                                    {
+                                                                        team: team.slug,
+                                                                        invitation:
+                                                                            invitation.code,
+                                                                    },
+                                                                ),
                                                             )
                                                         }
                                                     >
@@ -372,9 +398,14 @@ export default function TeamEdit({
                                     variant="outline"
                                     size="sm"
                                     onClick={() =>
-                                        router.patch(`${base}/owner`, {
-                                            user_id: admin.id,
-                                        })
+                                        router.patch(
+                                            TeamOwnerController.url({
+                                                team: team.slug,
+                                            }),
+                                            {
+                                                user_id: admin.id,
+                                            },
+                                        )
                                     }
                                 >
                                     Make {admin.name} owner
@@ -430,7 +461,12 @@ export default function TeamEdit({
                                                 variant="outline"
                                                 onClick={() =>
                                                     router.post(
-                                                        `${base}/domains/${domain.id}/verify`,
+                                                        TeamDomainController.verify.url(
+                                                            {
+                                                                team: team.slug,
+                                                                domain: domain.id,
+                                                            },
+                                                        ),
                                                     )
                                                 }
                                             >
@@ -443,9 +479,14 @@ export default function TeamEdit({
                             <form
                                 onSubmit={(e) => {
                                     e.preventDefault();
-                                    domainForm.post(`${base}/domains`, {
-                                        onSuccess: () => domainForm.reset(),
-                                    });
+                                    domainForm.post(
+                                        TeamDomainController.store.url({
+                                            team: team.slug,
+                                        }),
+                                        {
+                                            onSuccess: () => domainForm.reset(),
+                                        },
+                                    );
                                 }}
                                 className="flex items-end gap-3"
                             >
@@ -482,7 +523,11 @@ export default function TeamEdit({
                             <form
                                 onSubmit={(e) => {
                                     e.preventDefault();
-                                    authModeForm.patch(`${base}/auth-mode`);
+                                    authModeForm.patch(
+                                        AuthModeController.update.url({
+                                            team: team.slug,
+                                        }),
+                                    );
                                 }}
                                 className="flex items-end gap-3"
                             >
@@ -542,7 +587,11 @@ export default function TeamEdit({
                                 <Button
                                     variant="outline"
                                     onClick={() =>
-                                        router.delete(`${base}/leave`)
+                                        router.delete(
+                                            teamRoutes.leave.url({
+                                                team: team.slug,
+                                            }),
+                                        )
                                     }
                                 >
                                     Leave team
@@ -579,7 +628,10 @@ export default function TeamEdit({
                             onClick={() => {
                                 if (removing) {
                                     router.delete(
-                                        `${base}/members/${removing.id}`,
+                                        TeamMemberController.destroy.url({
+                                            team: team.slug,
+                                            user: removing.id,
+                                        }),
                                     );
                                 }
 
@@ -603,7 +655,9 @@ export default function TeamEdit({
                         className="mt-4 flex flex-col gap-3"
                         onSubmit={(e) => {
                             e.preventDefault();
-                            deleteForm.delete(base);
+                            deleteForm.delete(
+                                TeamController.destroy.url({ team: team.slug }),
+                            );
                         }}
                     >
                         <Input

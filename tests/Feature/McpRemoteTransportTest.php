@@ -1,7 +1,9 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\AuditEvent;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
 use App\Models\McpActivity;
@@ -13,6 +15,7 @@ use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\RealUsage;
 use App\Services\Billing\UsageContract;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -186,7 +189,7 @@ test('stateless Streamable HTTP advertises POST-only session behavior', function
         ->assertHeader('Allow', 'POST');
 });
 
-test('hosted MCP resolves organization from the bearer credential, not the session header', function () {
+test('hosted MCP refuses a session presented with a different bearer credential', function () {
     $firstTeam = Team::factory()->create();
     $secondTeam = Team::factory()->create();
     configureSigning(testSigningKey());
@@ -218,8 +221,57 @@ test('hosted MCP resolves organization from the bearer credential, not the sessi
         'method' => 'tools/call',
         'params' => ['name' => 'get_connection', 'arguments' => []],
     ]);
-    $secondResponse->assertOk()
+    $secondResponse->assertStatus(400)
+        ->assertJsonPath('error.code', -32001)
+        ->assertJsonPath('error.data.artfct.errorCode', 'session_expired')
+        ->assertJsonPath('error.data.artfct.retryable', false)
+        ->assertJsonPath('error.data.artfct.nextAction', 'initialize');
+
+    $secondInitialize = $this->withToken($secondToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 3,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$secondToken,
+        'MCP-Session-Id' => $secondInitialize->headers->get('MCP-Session-Id'),
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 4,
+        'method' => 'tools/call',
+        'params' => ['name' => 'get_connection', 'arguments' => []],
+    ])->assertOk()
         ->assertJsonPath('result.structuredContent.organization', $secondTeam->slug);
+});
+
+test('remote MCP refuses an expired session with stable reinitialization guidance', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+
+    $initialize = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+    $sessionId = (string) $initialize->headers->get('MCP-Session-Id');
+    Cache::forget('mcp-session:'.$sessionId);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$token,
+        'MCP-Session-Id' => $sessionId,
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'tools/list',
+        'params' => [],
+    ])->assertStatus(400)
+        ->assertJsonPath('error.code', -32001)
+        ->assertJsonPath('error.message', 'MCP session is invalid or expired. Initialize a new session and retry.')
+        ->assertJsonPath('error.data.artfct.errorCode', 'session_expired')
+        ->assertJsonPath('error.data.artfct.nextAction', 'initialize');
 });
 
 test('remote MCP rate limits each credential and returns retry guidance', function () {
@@ -283,6 +335,7 @@ test('local MCP API calls share the organization and credential rate limits', fu
     RateLimiter::clear('mcp:'.$jti);
     RateLimiter::clear('mcp-org:'.$team->slug);
     config(['auth.mcp_throttle_per_minute' => 1]);
+    config(['indexing.enabled' => true]);
 
     $this->withToken($token)
         ->postJson('/api/search', ['query' => 'dashboard'])
@@ -379,6 +432,61 @@ test('remote MCP tools honor bearer scopes', function () {
         ->exists())->toBeTrue();
 });
 
+test('remote MCP can permanently delete an artifact with the destructive scope', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response('', 204),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'delete_artifact',
+            'arguments' => ['id' => 'artifact123'],
+        ],
+    ])->assertOk();
+
+    $response->assertJsonPath('result.structuredContent.id', 'artifact123')
+        ->assertJsonPath('result.structuredContent.deleted', true);
+
+    Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
+        && $request->url() === 'https://worker.test/v1/artifacts/artifact123');
+
+    expect(McpActivity::query()
+        ->where('team_id', $team->id)
+        ->where('tool', 'delete_artifact')
+        ->where('outcome', 'success')
+        ->exists())->toBeTrue();
+});
+
+test('remote MCP refuses destructive artifact deletion without the destructive scope', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team, TeamRole::Viewer);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'delete_artifact',
+            'arguments' => ['id' => 'artifact123'],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true);
+
+    expect($response->json('result.content.0.text'))->toStartWith('insufficient_scope:');
+    Http::assertNothingSent();
+    expect(McpActivity::query()
+        ->where('team_id', $team->id)
+        ->where('tool', 'delete_artifact')
+        ->where('outcome', 'denied')
+        ->exists())->toBeTrue();
+});
+
 test('remote tool failures expose stable safe error metadata', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
@@ -447,6 +555,37 @@ test('hosted activity uses the client identity captured during initialize', func
         ])->assertOk();
 
     expect(McpActivity::query()->latest('id')->value('client_name'))->toBe('fixture-agent');
+    expect(McpActivity::query()->latest('id')->value('protocol_version'))->toBe('2025-11-25');
+});
+
+test('compatibility failures identify client transport protocol version and remediation', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+
+    $initialize = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => [
+            'protocolVersion' => '2024-11-05',
+            'clientInfo' => ['name' => 'compatibility-fixture', 'version' => '1.0.0'],
+        ],
+    ])->assertOk();
+
+    $this->withToken($token)
+        ->withHeader('MCP-Session-Id', $initialize->headers->get('MCP-Session-Id'))
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/call',
+            'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<h1>failure</h1>']],
+        ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.client', 'compatibility-fixture')
+        ->assertJsonPath('result.content.0._meta.artfct.transport', 'streamable-http')
+        ->assertJsonPath('result.content.0._meta.artfct.protocolVersion', '2024-11-05')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'configuration_error');
 });
 
 test('remote deployment encrypts the body and returns a shareable result', function () {
@@ -608,9 +747,21 @@ test('remote deployment deduplicates retries with the same request ID', function
     ]);
 
     $requestId = 'retry-'.Str::uuid();
-    $payload = [
+    $firstInitialize = $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0',
         'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+    $secondInitialize = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+    $payload = [
+        'jsonrpc' => '2.0',
+        'id' => 3,
         'method' => 'tools/call',
         'params' => [
             'name' => 'deploy_to_canvas',
@@ -621,11 +772,13 @@ test('remote deployment deduplicates retries with the same request ID', function
     $first = $this->withHeaders([
         'Authorization' => 'Bearer '.$token,
         'MCP-Request-Id' => $requestId,
+        'MCP-Session-Id' => $firstInitialize->headers->get('MCP-Session-Id'),
     ])->postJson('/mcp', $payload)->assertOk();
 
     $second = $this->withHeaders([
         'Authorization' => 'Bearer '.$token,
         'MCP-Request-Id' => $requestId,
+        'MCP-Session-Id' => $secondInitialize->headers->get('MCP-Session-Id'),
     ])->postJson('/mcp', $payload)->assertOk();
 
     $second->assertJsonPath('result.structuredContent.id', 'artifact-retried')
@@ -1001,6 +1154,14 @@ test('deploy_artifact hands a secure artifact the apps own open route', function
     // it, and a string assertion is exactly what let `deploy_to_canvas`'s dead
     // link pass review.
     expect($response->json('result.structuredContent.organization'))->toBe($team->slug);
+
+    expect(AuditEvent::query()
+        ->where('team_id', $team->id)
+        ->where('event_type', AuditEventType::ArtifactDeployed)
+        ->where('actor', (string) OrgJwtService::default()->verify($token)['user_id'])
+        ->where('target', 'artifact:'.ARTIFACT_LINK_ID)
+        ->where('outcome', 'success')
+        ->exists())->toBeTrue();
 });
 
 test('deploy_artifact hands a public artifact the workspaces public url without a token', function () {

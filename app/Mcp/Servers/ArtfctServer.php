@@ -4,6 +4,7 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
+use App\Mcp\Tools\DeleteArtifactTool;
 use App\Mcp\Tools\DeployArtifactTool;
 use App\Mcp\Tools\DeployToCanvasTool;
 use App\Mcp\Tools\GetArtifactTool;
@@ -40,6 +41,7 @@ final class ArtfctServer extends Server
         ListCollectionsTool::class,
         CreateCollectionTool::class,
         AddCollectionArtifactTool::class,
+        DeleteArtifactTool::class,
     ];
 
     protected array $resources = [

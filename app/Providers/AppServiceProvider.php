@@ -56,6 +56,7 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -64,6 +65,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Mcp\Events\SessionInitialized;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -156,6 +158,23 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         Event::listen(Registered::class, CreatePersonalTeam::class);
+        Event::listen(SessionInitialized::class, function (SessionInitialized $event): void {
+            $claims = request()->attributes->get('org_jwt_claims');
+
+            if (! is_array($claims) || ! is_string($claims['jti'] ?? null) || ! is_string($claims['org_id'] ?? null)) {
+                return;
+            }
+
+            Cache::put(
+                'mcp-session:'.$event->sessionId,
+                [
+                    'jti' => $claims['jti'],
+                    'org_id' => $claims['org_id'],
+                    'protocol_version' => $event->protocolVersion,
+                ],
+                now()->addMinutes((int) config('auth.mcp_session_ttl_minutes', 30)),
+            );
+        });
 
         $this->app->make(WorkerEventHandlers::class)->register(
             'artifact.created',

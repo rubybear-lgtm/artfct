@@ -16,6 +16,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Toaster } from '@/components/ui/sonner';
 import { useAppTheme } from '@/lib/useAppTheme';
+import { blog, docs, home, logout, privacy, terms } from '@/routes';
+import accountRoutes from '@/routes/account';
+import consoleRoutes from '@/routes/console';
+import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
 function initials(name: string) {
@@ -55,7 +59,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <header className="border-b border-border bg-background">
                 <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-5">
                     <Link
-                        href="/"
+                        href={home.url()}
                         className="font-serif text-2xl tracking-tight"
                     >
                         Artfct
@@ -76,7 +80,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         key={item.slug}
                                         onSelect={() =>
                                             router.post(
-                                                `/settings/teams/${item.slug}/switch`,
+                                                teamRoutes.switch.url({
+                                                    team: item.slug,
+                                                }),
                                             )
                                         }
                                     >
@@ -86,7 +92,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                     onSelect={() =>
-                                        router.visit('/settings/teams')
+                                        router.visit(teamRoutes.index.url())
                                     }
                                 >
                                     All teams and new team
@@ -111,24 +117,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     </DropdownMenuLabel>
                                     <DropdownMenuItem
                                         onSelect={() =>
-                                            router.get('/settings/account')
+                                            router.get(accountRoutes.show.url())
                                         }
                                     >
                                         Account settings
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                        onSelect={() => router.visit('/docs')}
+                                        onSelect={() =>
+                                            router.visit(docs.url())
+                                        }
                                     >
                                         Documentation
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                        onSelect={() => router.visit('/blog')}
+                                        onSelect={() =>
+                                            router.visit(blog.url())
+                                        }
                                     >
                                         Blog
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
-                                        onSelect={() => router.post('/logout')}
+                                        onSelect={() =>
+                                            router.post(logout.url())
+                                        }
                                     >
                                         <LogOut className="size-4" /> Sign out
                                     </DropdownMenuItem>
@@ -141,58 +153,80 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="mx-auto max-w-5xl overflow-x-auto px-5">
                         <nav className="flex w-max items-center gap-x-6 text-sm font-medium whitespace-nowrap">
                             <Link
-                                href={`/settings/teams/${team.slug}/console`}
+                                href={consoleRoutes.index.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/console`,
+                                    consoleRoutes.index.url({
+                                        team: team.slug,
+                                    }),
                                 )}
                             >
                                 Artifacts
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}/search`}
+                                href={teamRoutes.search.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/search`,
+                                    teamRoutes.search.url({ team: team.slug }),
                                 )}
                             >
                                 Search
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}/collections`}
+                                href={teamRoutes.collections.index.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/collections`,
+                                    teamRoutes.collections.index.url({
+                                        team: team.slug,
+                                    }),
                                 )}
                             >
                                 Collections
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}`}
+                                href={teamRoutes.edit.url({ team: team.slug })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}`,
+                                    teamRoutes.edit.url({ team: team.slug }),
                                     true,
                                 )}
                             >
                                 Team
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}/tokens`}
+                                href={teamRoutes.tokens.index.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/tokens`,
+                                    teamRoutes.tokens.index.url({
+                                        team: team.slug,
+                                    }),
                                 )}
                             >
                                 API tokens
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}/mcp-connections`}
+                                href={teamRoutes.mcpConnections.index.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/mcp-connections`,
+                                    teamRoutes.mcpConnections.index.url({
+                                        team: team.slug,
+                                    }),
                                 )}
                             >
                                 MCP connections
                             </Link>
                             <Link
-                                href={`/settings/teams/${team.slug}/billing`}
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
                                 className={navLinkClass(
-                                    `/settings/teams/${team.slug}/billing`,
+                                    teamRoutes.billing.show.url({
+                                        team: team.slug,
+                                    }),
                                 )}
                             >
                                 Billing
@@ -201,25 +235,37 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 'admin' && (
                                 <>
                                     <Link
-                                        href={`/settings/teams/${team.slug}/authentication`}
+                                        href={teamRoutes.authentication.show.url(
+                                            { team: team.slug },
+                                        )}
                                         className={navLinkClass(
-                                            `/settings/teams/${team.slug}/authentication`,
+                                            teamRoutes.authentication.show.url({
+                                                team: team.slug,
+                                            }),
                                         )}
                                     >
                                         Authentication
                                     </Link>
                                     <Link
-                                        href={`/settings/teams/${team.slug}/governance`}
+                                        href={teamRoutes.governance.show.url({
+                                            team: team.slug,
+                                        })}
                                         className={navLinkClass(
-                                            `/settings/teams/${team.slug}/governance`,
+                                            teamRoutes.governance.show.url({
+                                                team: team.slug,
+                                            }),
                                         )}
                                     >
                                         Governance
                                     </Link>
                                     <Link
-                                        href={`/settings/teams/${team.slug}/audit`}
+                                        href={teamRoutes.audit.index.url({
+                                            team: team.slug,
+                                        })}
                                         className={navLinkClass(
-                                            `/settings/teams/${team.slug}/audit`,
+                                            teamRoutes.audit.index.url({
+                                                team: team.slug,
+                                            }),
                                         )}
                                     >
                                         Audit log
@@ -238,7 +284,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         blocked; existing ones keep serving.{' '}
                         <Link
                             className="underline"
-                            href={`/settings/teams/${team.slug}/billing`}
+                            href={teamRoutes.billing.show.url({
+                                team: team.slug,
+                            })}
                         >
                             See usage
                         </Link>
@@ -251,7 +299,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         This team has used over 80% of a plan limit.{' '}
                         <Link
                             className="underline"
-                            href={`/settings/teams/${team.slug}/billing`}
+                            href={teamRoutes.billing.show.url({
+                                team: team.slug,
+                            })}
                         >
                             See usage
                         </Link>
@@ -265,7 +315,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         ones keep serving.{' '}
                         <Link
                             className="underline"
-                            href={`/settings/teams/${team.slug}/billing`}
+                            href={teamRoutes.billing.show.url({
+                                team: team.slug,
+                            })}
                         >
                             Fix billing
                         </Link>
@@ -276,16 +328,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <main className="mx-auto max-w-5xl px-5 py-12">{children}</main>
             <footer className="border-t border-border">
                 <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-6 text-sm text-muted-foreground">
-                    <Link className="hover:text-foreground" href="/docs">
+                    <Link className="hover:text-foreground" href={docs.url()}>
                         Documentation
                     </Link>
-                    <Link className="hover:text-foreground" href="/blog">
+                    <Link className="hover:text-foreground" href={blog.url()}>
                         Blog
                     </Link>
-                    <Link className="hover:text-foreground" href="/terms">
+                    <Link className="hover:text-foreground" href={terms.url()}>
                         Terms
                     </Link>
-                    <Link className="hover:text-foreground" href="/privacy">
+                    <Link
+                        className="hover:text-foreground"
+                        href={privacy.url()}
+                    >
                         Privacy
                     </Link>
                 </div>

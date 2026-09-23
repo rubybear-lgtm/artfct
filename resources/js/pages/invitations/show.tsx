@@ -1,5 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
 
+import { Button } from '@/components/ui/button';
+import { login } from '@/routes';
+import invitations from '@/routes/invitations';
+
 type State = 'sign_in' | 'ready' | 'accepted' | 'expired' | 'wrong_email';
 
 interface Props {
@@ -26,8 +30,10 @@ export default function InvitationShow({
     invitation,
     signedInAs,
 }: Props) {
-    const accept = () => router.post(`/invitations/${invitation.code}/accept`);
-    const decline = () => router.delete(`/invitations/${invitation.code}`);
+    const accept = () =>
+        router.post(invitations.accept.url({ invitation: invitation.code }));
+    const decline = () =>
+        router.delete(invitations.decline.url({ invitation: invitation.code }));
 
     return (
         <>
@@ -48,15 +54,17 @@ export default function InvitationShow({
 
                 {state === 'sign_in' && (
                     <p>
-                        <Link href="/login">Sign in to accept</Link> as{' '}
+                        <Link href={login.url()}>Sign in to accept</Link> as{' '}
                         {invitation.email}. You will return here afterwards.
                     </p>
                 )}
 
                 {state === 'ready' && (
                     <p>
-                        <button onClick={accept}>Accept</button>{' '}
-                        <button onClick={decline}>Decline</button>
+                        <Button onClick={accept}>Accept</Button>{' '}
+                        <Button variant="outline" onClick={decline}>
+                            Decline
+                        </Button>
                     </p>
                 )}
 

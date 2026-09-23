@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 
 import { useAppTheme } from '@/lib/useAppTheme';
+import { blog, docs, home, login, privacy, terms } from '@/routes';
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 
@@ -10,7 +11,7 @@ type SiteSection = 'docs' | 'blog';
 function Wordmark({ className = '' }: { className?: string }) {
     return (
         <Link
-            href="/"
+            href={home.url()}
             className={`flex items-center gap-2 font-serif text-2xl font-medium tracking-tight ${className}`}
         >
             <span
@@ -37,23 +38,23 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                     aria-label="Site"
                     className="hidden gap-7 text-sm text-muted-foreground sm:flex"
                 >
-                    <Link href="/#how" className={link()}>
+                    <Link href={`${home.url()}#how`} className={link()}>
                         How it works
                     </Link>
-                    <Link href="/#plans" className={link()}>
+                    <Link href={`${home.url()}#plans`} className={link()}>
                         Pricing
                     </Link>
-                    <Link href="/docs" className={link('docs')}>
+                    <Link href={docs.url()} className={link('docs')}>
                         Docs
                     </Link>
-                    <Link href="/blog" className={link('blog')}>
+                    <Link href={blog.url()} className={link('blog')}>
                         Blog
                     </Link>
                 </nav>
                 <div className="flex items-center gap-[18px] text-sm">
-                    <Link href="/login">Sign in</Link>
+                    <Link href={login.url()}>Sign in</Link>
                     <Link
-                        href="/login"
+                        href={login.url()}
                         className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-deep"
                     >
                         Try free
@@ -73,13 +74,13 @@ export function SiteFooter() {
                     <span>© {new Date().getFullYear()} Artfct</span>
                 </div>
                 <div className="flex gap-5">
-                    <Link href="/docs">Docs</Link>
-                    <Link href="/blog">Blog</Link>
+                    <Link href={docs.url()}>Docs</Link>
+                    <Link href={blog.url()}>Blog</Link>
                     <a href={GITHUB} target="_blank" rel="noreferrer">
                         GitHub
                     </a>
-                    <Link href="/privacy">Privacy</Link>
-                    <Link href="/terms">Terms</Link>
+                    <Link href={privacy.url()}>Privacy</Link>
+                    <Link href={terms.url()}>Terms</Link>
                 </div>
             </div>
         </footer>

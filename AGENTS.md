@@ -211,6 +211,32 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 
 </laravel-boost-guidelines>
 
+## Implementation invariants (confirmed by running the code, not by reading docs)
+
+Check these before touching storage, request routing, identity, cryptography, or any service with more than one caller. Each one was found the hard way.
+
+**Storage shape decides routing.** D1 rows are addressable through the app's routes; anonymous KV records are not, because the app's content read selects from D1 only (`backend/src/lib.rs`). A rule derived from a D1-backed caller is usually wrong for a KV-backed one — enumerate callers before changing a shared service.
+
+**Only the transport peer is beyond the caller's reach.** Headers, session ids, JWT claims and query parameters are all caller-written. Never key a trust, throttle or authorization decision on one.
+
+**Fail-closed controls hide gaps.** `verify_access_token` rejects on an empty secret, so a harness that never set that secret reports every request as correctly refused while never exercising the path at all. A security control needs a test that fails when the control is removed.
+
+**Platform behaviour must be run, not read.**
+- `isset($a, $b, $c)` is an AND, not an OR.
+- `PRAGMA foreign_keys` is per-connection and defaults OFF, so `ON DELETE CASCADE` silently does not fire.
+- `wrangler dev` replaces the request `Host` with the host inferred from the first `routes` entry, and no flag disables it — run the dev session from a config copy with `routes` stripped.
+- Cloudflare route patterns allow exactly one wildcard and it must BEGIN the hostname; `*.artfct.dev/*` is the only expressible form and it over-matches `staging.artfct.dev`.
+- PHP and browsers parse URLs differently, so validating with one and navigating with the other leaves a gap.
+
+**A merged fix on a stale deployment is not live.** Confirm the running version carries the change, not just the branch.
+
+**Cross-language contracts need one shared fixture.** The same algorithm implemented in Rust, TypeScript and PHP drifts silently unless a single test vector or fixture is asserted from all of them.
+
+**Registries, matrices and runbooks are claim sets** and drift like prose — `tests/Fixtures/mcp-verification-matrix.php` and `docs/mcp-cli-runbook.md` have each carried claims the code contradicted.
+
+**Stage coverage is not flow coverage**, and an entry point with no test is invisible to every other check.
+
+
 ## Design Context
 
 ### Users

@@ -234,7 +234,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                         "minLength": 1,
                         "maxLength": 128,
                         "pattern": "^[A-Za-z0-9]+$",
-                        "description": "The artifact ID returned by deploy_to_canvas or search_artifacts."
+                        "description": "The artifact ID returned by deploy_artifact or search_artifacts."
                     }
                 },
                 "required": ["id"],

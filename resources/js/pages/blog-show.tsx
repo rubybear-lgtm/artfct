@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 
 import { SitePage } from '@/components/site-chrome';
 import { getPostBySlug } from '@/lib/posts';
+import { blog } from '@/routes';
 
 interface BlogShowProps {
     post: {
@@ -39,7 +40,7 @@ export default function BlogShow({ post }: BlogShowProps) {
 
             <main className="mx-auto max-w-[680px] px-5 py-14">
                 <Link
-                    href="/blog"
+                    href={blog.url()}
                     className="group inline-flex gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
                 >
                     <span
@@ -94,7 +95,7 @@ export default function BlogShow({ post }: BlogShowProps) {
 
                 <div className="mt-16 border-t border-border pt-8">
                     <Link
-                        href="/blog"
+                        href={blog.url()}
                         className="group inline-flex gap-2 text-sm font-semibold text-primary"
                     >
                         <span

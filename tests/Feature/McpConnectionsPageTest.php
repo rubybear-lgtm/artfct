@@ -31,7 +31,7 @@ test('team members can view connection metadata without credentials', function (
             ->where('connections.0.name', 'Cursor on laptop')
             ->where('connections.0.clientName', $connection->client_name)
             ->where('connections.0.canRevoke', true)
-            ->where('scopeOptions', ['artifacts:read', 'artifacts:deploy', 'collections:read', 'collections:write', 'usage:read'])
+            ->where('scopeOptions', ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read'])
             ->where('defaultScopes', ['artifacts:read', 'collections:read', 'usage:read'])
             ->has('activity', 0)
             ->missing('connections.0.token')

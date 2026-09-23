@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
     'name',
     'client_name',
     'client_version',
+    'protocol_version',
     'transport',
     'scopes',
     'metadata',

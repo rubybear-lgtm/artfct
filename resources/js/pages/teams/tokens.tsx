@@ -21,10 +21,12 @@ import {
     DialogDescription,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface Token {
     id: number;
@@ -56,7 +58,6 @@ const statusVariant = {
 } as const;
 
 export default function Tokens({ team, canCreate, roles, tokens }: Props) {
-    const base = `/settings/teams/${team.slug}/tokens`;
     const [name, setName] = useState('');
     const [role, setRole] = useState(
         roles[roles.length - 1]?.value ?? 'member',
@@ -70,15 +71,18 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
         e.preventDefault();
         setBusy(true);
         setError(null);
-        const response = await fetch(base, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                'X-XSRF-TOKEN': csrfToken(),
+        const response = await fetch(
+            teamRoutes.tokens.store.url({ team: team.slug }),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-XSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({ name, role }),
             },
-            body: JSON.stringify({ name, role }),
-        });
+        );
         setBusy(false);
 
         if (!response.ok) {
@@ -167,9 +171,7 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                     </CardHeader>
                     <CardContent>
                         {tokens.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No tokens yet.
-                            </p>
+                            <EmptyState title="No tokens yet." />
                         ) : (
                             <Table>
                                 <thead>
@@ -208,7 +210,12 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                                             size="sm"
                                                             onClick={() =>
                                                                 router.delete(
-                                                                    `${base}/${token.id}`,
+                                                                    teamRoutes.tokens.destroy.url(
+                                                                        {
+                                                                            team: team.slug,
+                                                                            token: token.id,
+                                                                        },
+                                                                    ),
                                                                 )
                                                             }
                                                         >

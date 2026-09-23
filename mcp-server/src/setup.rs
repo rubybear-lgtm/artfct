@@ -730,18 +730,45 @@ mod tests {
                 path: tmp.path().join("opencode.config"),
                 format: ConfigFormat::JsonOpenCode,
             },
+            AgentConfig {
+                name: "Current project",
+                host: None,
+                path: tmp.path().join("project.config"),
+                format: ConfigFormat::JsonMcpServers,
+            },
         ];
         let binary = tmp.path().join("artfct");
         let binary_string = binary.to_str().expect("binary path is utf-8");
 
         assert_eq!(
             setup_agents_with(&agents, &binary, true).expect("configure agents"),
-            5
+            6
         );
 
         for agent in &agents {
-            let host = agent.host.expect("named agent host");
             let content = fs::read_to_string(&agent.path).expect("read agent config");
+
+            for secret in [
+                "access-token-sentinel",
+                "refresh-token-sentinel",
+                "Authorization: Bearer access-token-sentinel",
+            ] {
+                assert!(
+                    !content.contains(secret),
+                    "{} config must not contain raw credential {secret}",
+                    agent.name
+                );
+            }
+
+            let Some(host) = agent.host else {
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&content).expect("parse project JSON config");
+                assert_eq!(
+                    parsed["mcpServers"]["artfct"]["args"],
+                    serde_json::json!(["mcp", "serve"])
+                );
+                continue;
+            };
 
             match agent.format {
                 ConfigFormat::JsonMcpServers => {

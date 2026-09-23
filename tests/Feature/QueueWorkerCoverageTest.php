@@ -33,8 +33,10 @@ test('every_worker_queue_list_covers_every_queue_the_application_dispatches_to',
 
     $queues = [...$dispatched, $fallback];
 
-    // Scanned rather than named: a new Railway service config or worker script
-    // must not be born with a drifted list that this test never looks at.
+    // Scanned rather than named: a new worker script must not be born with a
+    // drifted list that this test never looks at. Railway's queue service uses
+    // its service-level start command; there is no repository config file to
+    // inspect for that command.
     $lists = [];
     foreach ([...glob(base_path('railway*.json')), ...glob(base_path('scripts/*.sh'))] as $path) {
         $relative = str_replace(base_path().'/', '', $path);
@@ -45,8 +47,10 @@ test('every_worker_queue_list_covers_every_queue_the_application_dispatches_to',
     }
 
     // Guard the other half: if the worker commands move or change shape, this
-    // test must fail rather than find no lists and assert nothing.
-    expect($lists)->toHaveKeys(['railway.queue.json', 'scripts/mcp-e2e-stack.sh']);
+    // test must fail rather than find no lists and assert nothing. The deleted
+    // railway.queue.json was an unapplied mirror and must not return.
+    expect($lists)->toHaveKeys(['scripts/mcp-e2e-stack.sh']);
+    expect(File::exists(base_path('railway.queue.json')))->toBeFalse();
 
     foreach ($lists as $file => $fileLists) {
         foreach ($fileLists as $list) {

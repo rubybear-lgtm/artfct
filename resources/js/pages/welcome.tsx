@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
     encryptArtifactBody,
     extractArtifactMetadata,
@@ -8,6 +9,8 @@ import {
 import { AsciiLogo } from '@/lib/asciiLogo';
 import { renderMarkdownToFragment, renderMarkdownToHtml } from '@/lib/markdown';
 import { ThemeToggle } from '@/lib/theme';
+import { blog, docs, login, privacy, terms } from '@/routes';
+import consoleRoutes from '@/routes/console';
 
 const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
 
@@ -283,7 +286,7 @@ function Result({
                     {displayed}
                     {!done && <span className="cursor-blink" />}
                 </div>
-                <button
+                <Button
                     onClick={copy}
                     className={`result-action-btn ${copied ? 'copied' : ''}`}
                     style={{
@@ -301,7 +304,7 @@ function Result({
                     }}
                 >
                     {copied ? 'copied' : 'copy'}
-                </button>
+                </Button>
                 <a
                     href={url}
                     target="_blank"
@@ -344,7 +347,7 @@ function Result({
                 >
                     expires in {timeUntil(expiresAt)}
                 </span>
-                <button
+                <Button
                     onClick={onReset}
                     style={{
                         fontFamily: MONO,
@@ -358,7 +361,7 @@ function Result({
                     }}
                 >
                     deploy another
-                </button>
+                </Button>
             </div>
         </div>
     );
@@ -454,6 +457,7 @@ export default function Welcome() {
     const [modalSuccess, setModalSuccess] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
     const tagline = useRotatingTypewriter(TAGLINES, 38, 20, 3000);
 
     const saveCachedLinks = useCallback(
@@ -485,6 +489,60 @@ export default function Welcome() {
     const closeManageModal = useCallback(() => {
         setManagingLink(null);
     }, []);
+
+    useEffect(() => {
+        if (!managingLink) {
+            return;
+        }
+
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        const modal = modalRef.current;
+        const focusableSelector =
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+        modal?.focus();
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeManageModal();
+
+                return;
+            }
+
+            if (event.key !== 'Tab' || !modal) {
+                return;
+            }
+
+            const focusable = Array.from(
+                modal.querySelectorAll<HTMLElement>(focusableSelector),
+            ).filter((element) => !element.hasAttribute('disabled'));
+
+            if (focusable.length === 0) {
+                event.preventDefault();
+
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            previouslyFocused?.focus();
+        };
+    }, [closeManageModal, managingLink]);
 
     const handleUpdateTtl = useCallback(async () => {
         if (!managingLink) {
@@ -750,8 +808,8 @@ export default function Welcome() {
             <a
                 href={
                     auth?.user && currentTeam
-                        ? `/settings/teams/${currentTeam.slug}/console`
-                        : '/login'
+                        ? consoleRoutes.index.url({ team: currentTeam.slug })
+                        : login.url()
                 }
                 style={{
                     position: 'fixed',
@@ -974,7 +1032,7 @@ export default function Welcome() {
                             }}
                         >
                             {phase.message}{' '}
-                            <button
+                            <Button
                                 onClick={reset}
                                 style={{
                                     background: 'none',
@@ -988,13 +1046,13 @@ export default function Welcome() {
                                 }}
                             >
                                 try again
-                            </button>
+                            </Button>
                         </p>
                     )}
 
                     {/* ── deploy button ── */}
                     {showButton && (
-                        <button
+                        <Button
                             className="deploy-btn"
                             onClick={handleDeploy}
                             disabled={!canDeploy}
@@ -1018,7 +1076,7 @@ export default function Welcome() {
                             ) : (
                                 '[ deploy ]'
                             )}
-                        </button>
+                        </Button>
                     )}
 
                     {/* ── success ── */}
@@ -1056,7 +1114,7 @@ export default function Welcome() {
                                 }}
                             >
                                 <span>recent deployments</span>
-                                <button
+                                <Button
                                     onClick={() => {
                                         if (
                                             confirm('clear all cached links?')
@@ -1075,7 +1133,7 @@ export default function Welcome() {
                                     }}
                                 >
                                     clear history
-                                </button>
+                                </Button>
                             </h3>
                             <div
                                 style={{
@@ -1165,7 +1223,7 @@ export default function Welcome() {
                                                         ? 'expired'
                                                         : `expires in ${timeStr}`}
                                                 </span>
-                                                <button
+                                                <Button
                                                     onClick={() =>
                                                         openManageModal(link)
                                                     }
@@ -1184,7 +1242,7 @@ export default function Welcome() {
                                                     }}
                                                 >
                                                     manage
-                                                </button>
+                                                </Button>
                                             </div>
                                         </div>
                                     );
@@ -1212,6 +1270,11 @@ export default function Welcome() {
                         >
                             <div
                                 className="modal-content"
+                                ref={modalRef}
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="manage-deployment-title"
+                                tabIndex={-1}
                                 style={{
                                     backgroundColor: S.base3,
                                     border: `1px solid ${S.base1}`,
@@ -1236,6 +1299,7 @@ export default function Welcome() {
                                     }}
                                 >
                                     <h3
+                                        id="manage-deployment-title"
                                         style={{
                                             margin: 0,
                                             fontFamily: MONO,
@@ -1246,7 +1310,7 @@ export default function Welcome() {
                                     >
                                         manage deployment
                                     </h3>
-                                    <button
+                                    <Button
                                         onClick={closeManageModal}
                                         style={{
                                             background: 'none',
@@ -1258,7 +1322,7 @@ export default function Welcome() {
                                         }}
                                     >
                                         ✕
-                                    </button>
+                                    </Button>
                                 </div>
 
                                 <div
@@ -1470,7 +1534,7 @@ export default function Welcome() {
                                         </div>
                                     </label>
 
-                                    <button
+                                    <Button
                                         onClick={handleUpdateTtl}
                                         disabled={
                                             isUpdatingTtl || isDeletingLink
@@ -1493,7 +1557,7 @@ export default function Welcome() {
                                         {isUpdatingTtl
                                             ? 'updating...'
                                             : 'update duration'}
-                                    </button>
+                                    </Button>
                                 </div>
 
                                 {modalError && (
@@ -1538,7 +1602,7 @@ export default function Welcome() {
                                         danger zone: permanently delete
                                         deployment from server
                                     </div>
-                                    <button
+                                    <Button
                                         onClick={handleDeleteLink}
                                         disabled={
                                             isUpdatingTtl || isDeletingLink
@@ -1561,7 +1625,7 @@ export default function Welcome() {
                                         {isDeletingLink
                                             ? 'deleting...'
                                             : 'delete deployment'}
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -1614,7 +1678,7 @@ export default function Welcome() {
                                     gap: '0.75rem',
                                 }}
                             >
-                                <button
+                                <Button
                                     onClick={async () => {
                                         const nextState = !mcpExpanded;
                                         setMcpExpanded(nextState);
@@ -1658,7 +1722,7 @@ export default function Welcome() {
                                     >
                                         {mcpExpanded ? '▲' : '▼'}
                                     </span>
-                                </button>
+                                </Button>
                                 {copiedAgentPrompt && (
                                     <span
                                         className="fade-in"
@@ -1765,7 +1829,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                         curl -fsSL https://artfct.dev/install.sh
                                         | sh
                                     </pre>
-                                    <button
+                                    <Button
                                         onClick={async () => {
                                             await navigator.clipboard.writeText(
                                                 `curl -fsSL https://artfct.dev/install.sh | sh`,
@@ -1793,7 +1857,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                         }}
                                     >
                                         {copiedSelfInstall ? 'copied' : 'copy'}
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
 
@@ -1839,7 +1903,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                         npx skills add
                                         rubybear-lgtm/artfct@artfct
                                     </pre>
-                                    <button
+                                    <Button
                                         onClick={async () => {
                                             await navigator.clipboard.writeText(
                                                 `npx skills add rubybear-lgtm/artfct@artfct`,
@@ -1871,13 +1935,13 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                         {copiedSkillsInstall
                                             ? 'copied'
                                             : 'copy'}
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         </div>
 
                         <Link
-                            href="/docs#cli"
+                            href={`${docs.url()}#cli`}
                             style={{
                                 fontFamily: MONO,
                                 fontSize: '12px',
@@ -2052,7 +2116,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             diagrams, presentations, tools) and deploy them
                             automatically with a single MCP call. See the{' '}
                             <Link
-                                href="/docs"
+                                href={docs.url()}
                                 style={{
                                     color: S.blue,
                                     textDecoration: 'none',
@@ -2079,7 +2143,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                     >
                         <div style={{ display: 'flex', gap: '1.5rem' }}>
                             <Link
-                                href="/docs"
+                                href={docs.url()}
                                 style={{
                                     color: S.base1,
                                     textDecoration: 'none',
@@ -2088,7 +2152,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 docs
                             </Link>
                             <Link
-                                href="/blog"
+                                href={blog.url()}
                                 style={{
                                     color: S.base1,
                                     textDecoration: 'none',
@@ -2097,7 +2161,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 blog
                             </Link>
                             <Link
-                                href="/terms"
+                                href={terms.url()}
                                 style={{
                                     color: S.base1,
                                     textDecoration: 'none',
@@ -2106,7 +2170,7 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                                 terms
                             </Link>
                             <Link
-                                href="/privacy"
+                                href={privacy.url()}
                                 style={{
                                     color: S.base1,
                                     textDecoration: 'none',
@@ -2117,8 +2181,10 @@ curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`}
                             <a
                                 href={
                                     auth?.user && currentTeam
-                                        ? `/settings/teams/${currentTeam.slug}/console`
-                                        : '/login'
+                                        ? consoleRoutes.index.url({
+                                              team: currentTeam.slug,
+                                          })
+                                        : login.url()
                                 }
                                 style={{
                                     color: S.base1,

@@ -86,7 +86,17 @@ artfct login --oauth --organization <organization-slug>
 Workspace administrators can inspect and revoke hosted connections from
 **Settings → MCP connections**. Revocation invalidates the associated access
 credential and connection record; subsequent hosted requests fail with an
-authentication error. A revoked or expired local session should be repaired
+authentication error. The Worker-side denylist propagation is eventually
+consistent: the revocation window is bounded in seconds, not zero seconds, by
+Cloudflare KV propagation. JWT lifetimes are therefore minutes rather than
+hours. Laravel writes the `jti` to the Worker KV denylist through the internal
+revocation endpoint, and the MCP connection record is revoked at the same
+time; both checks enforce the normal hosted path. The normative explanation
+is in [spec 07](specs/07-auth-seam.md). If an environment's Worker or KV is
+unavailable, treat the window as unverified and follow the incident runbook
+rather than assuming immediate edge rejection.
+
+A revoked or expired local session should be repaired
 with:
 
 ```sh
@@ -253,10 +263,15 @@ The hosted endpoint negotiates protocol versions `2025-11-25` (default),
 value with JSON-RPC error `-32602` (`Unsupported protocol version`, with the
 supported list in `error.data.supported`). It only implements the stateless
 Streamable HTTP shape described above: `POST /mcp` for JSON-RPC, and `405` on
-`GET`/`DELETE` because there is no server-side event stream or session store
-to resume. A client that assumes it can open a long-lived SSE stream or
-reconnect a session by ID against this deployment will not work; it must
-re-authenticate and re-initialize instead.
+`GET`/`DELETE` because there is no server-side event stream to resume. The
+server keeps a short-lived correlation record for each issued
+`MCP-Session-Id`, bound to the bearer credential and protocol version; it is
+not an authentication token or a resumable event stream. If a connection drops
+and the ID is stale, expired, or presented with another credential, the server
+returns JSON-RPC `-32001` with `error.data.artfct.errorCode=session_expired` and
+`nextAction=initialize`. Re-authenticate and send `initialize` to obtain a new
+session before retrying the interrupted request. A stable `MCP-Request-Id`
+continues to deduplicate supported tool retries across that new session.
 
 Known, currently verified compatibility:
 

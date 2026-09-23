@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Enums\AuditEventType;
 use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
@@ -9,6 +10,7 @@ use App\Mcp\Support\McpTelemetry;
 use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -52,6 +54,8 @@ final class DeployArtifactTool extends Tool
     private const MAX_HTML_BYTES = 1024 * 1024;
 
     private const CONTENT_TYPE = 'text/html; charset=utf-8';
+
+    public function __construct(private readonly AuditLogger $audit) {}
 
     /**
      * Handle the tool request.
@@ -170,6 +174,13 @@ final class DeployArtifactTool extends Tool
         }
 
         app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
+        $this->audit->recordForRequest(
+            McpContext::httpRequest(),
+            AuditEventType::ArtifactDeployed,
+            $team,
+            McpContext::actor(),
+            "artifact:{$artifactId}",
+        );
 
         return Response::structured([
             'id' => $artifactId,

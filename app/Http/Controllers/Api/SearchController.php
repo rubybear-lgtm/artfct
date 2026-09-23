@@ -9,6 +9,7 @@ use App\Services\Search\SearchService;
 use App\Support\ClientIp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 class SearchController extends Controller
 {
@@ -27,20 +28,46 @@ class SearchController extends Controller
         $team = $request->attributes->get('org_jwt_team');
         $claims = $request->attributes->get('org_jwt_claims');
 
-        $results = $search->search(
-            $team,
-            $validated['query'],
-            [
-                'repo' => $validated['repo'] ?? null,
-                'agent' => $validated['agent'] ?? null,
-                'since' => $validated['since'] ?? null,
-                'collection' => $validated['collection'] ?? null,
-            ],
-            (int) ($validated['limit'] ?? 10),
-            actor: (string) ($claims['user_id'] ?? 'unknown'),
-            ip: ClientIp::for($request),
-            userAgent: $request->userAgent() ?? 'unknown',
-        );
+        if (! config('indexing.enabled')) {
+            return response()->json([
+                'errorCode' => 'search_not_configured',
+                'message' => 'Search is not enabled for this workspace yet.',
+                'retryable' => false,
+                'nextAction' => 'enable_indexing',
+            ], 503);
+        }
+
+        try {
+            $results = $search->search(
+                $team,
+                $validated['query'],
+                [
+                    'repo' => $validated['repo'] ?? null,
+                    'agent' => $validated['agent'] ?? null,
+                    'since' => $validated['since'] ?? null,
+                    'collection' => $validated['collection'] ?? null,
+                ],
+                (int) ($validated['limit'] ?? 10),
+                actor: (string) ($claims['user_id'] ?? 'unknown'),
+                ip: ClientIp::for($request),
+                userAgent: $request->userAgent() ?? 'unknown',
+            );
+        } catch (Throwable $exception) {
+            report($exception);
+
+            if (! config('indexing.enabled')
+                || str_contains($exception->getMessage(), 'must be configured')
+                || str_contains($exception->getMessage(), 'not implemented')) {
+                return response()->json([
+                    'errorCode' => 'search_not_configured',
+                    'message' => 'Search is not enabled for this workspace yet.',
+                    'retryable' => false,
+                    'nextAction' => 'enable_indexing',
+                ], 503);
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'results' => array_map(fn (SearchResult $result): array => [

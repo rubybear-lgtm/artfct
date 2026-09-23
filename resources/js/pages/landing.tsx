@@ -1,6 +1,9 @@
 import { Link } from '@inertiajs/react';
 import { useEffect, useRef } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { blog, docs, free, home, login, privacy, terms } from '@/routes';
+
 const QUERY = 'churn retry policy';
 const ANSWER =
     'Maya Chen’s analysis shows churn was concentrated in early-month onboarding drop-offs. Dev Patel’s payments plan recommends a longer retry grace period to reduce payment-related churn.';
@@ -206,20 +209,20 @@ export default function Landing() {
         <div ref={page} className="landing">
             <div className="wrap">
                 <nav>
-                    <Link href="/" className="logo">
+                    <Link href={home.url()} className="logo">
                         Artfct
                     </Link>
                     <div className="navlinks">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
-                        <Link href="/docs">Docs</Link>
-                        <Link href="/blog">Blog</Link>
+                        <Link href={docs.url()}>Docs</Link>
+                        <Link href={blog.url()}>Blog</Link>
                     </div>
                     <div className="navright">
-                        <Link href="/login">Sign in</Link>
-                        <Link className="btn btn-primary sm" href="/login">
-                            Try free
-                        </Link>
+                        <Link href={login.url()}>Sign in</Link>
+                        <Button asChild className="btn btn-primary sm">
+                            <Link href={login.url()}>Try free</Link>
+                        </Button>
                     </div>
                 </nav>
 
@@ -237,9 +240,11 @@ export default function Landing() {
                         your AI makes.
                     </p>
                     <div className="cta">
-                        <Link className="btn btn-primary" href="/login">
-                            Try Team free <span className="arrow">→</span>
-                        </Link>
+                        <Button asChild className="btn btn-primary">
+                            <Link href={login.url()}>
+                                Try Team free <span className="arrow">→</span>
+                            </Link>
+                        </Button>
                         <a className="link" href="#how">
                             See how it works <span className="arrow">→</span>
                         </a>
@@ -712,9 +717,9 @@ export default function Landing() {
                                 <li>Share a page with anyone</li>
                                 <li>Private link, no account needed to view</li>
                             </ul>
-                            <Link className="btn btn-ghost" href="/free">
-                                Use Free
-                            </Link>
+                            <Button asChild className="btn btn-ghost">
+                                <Link href={free.url()}>Use Free</Link>
+                            </Button>
                         </div>
                         <div className="plan hl">
                             <div className="nm">Team</div>
@@ -737,9 +742,9 @@ export default function Landing() {
                                 assistants can still open any shared document in
                                 full.
                             </p>
-                            <Link className="btn btn-primary" href="/login">
-                                Try Team free
-                            </Link>
+                            <Button asChild className="btn btn-primary">
+                                <Link href={login.url()}>Try Team free</Link>
+                            </Button>
                         </div>
                         <div className="plan">
                             <div className="nm">Enterprise</div>
@@ -763,9 +768,11 @@ export default function Landing() {
                         worth keeping.
                     </p>
                     <div className="cta" style={{ marginTop: 0 }}>
-                        <Link className="btn btn-primary" href="/login">
-                            Try Team free <span className="arrow">→</span>
-                        </Link>
+                        <Button asChild className="btn btn-primary">
+                            <Link href={login.url()}>
+                                Try Team free <span className="arrow">→</span>
+                            </Link>
+                        </Button>
                     </div>
                 </section>
 
@@ -777,10 +784,10 @@ export default function Landing() {
                     <div className="r">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
-                        <Link href="/docs">Docs</Link>
-                        <Link href="/blog">Blog</Link>
-                        <Link href="/privacy">Privacy</Link>
-                        <Link href="/terms">Terms</Link>
+                        <Link href={docs.url()}>Docs</Link>
+                        <Link href={blog.url()}>Blog</Link>
+                        <Link href={privacy.url()}>Privacy</Link>
+                        <Link href={terms.url()}>Terms</Link>
                     </div>
                 </footer>
             </div>

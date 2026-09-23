@@ -5,9 +5,11 @@ import type { FormEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface AuditRow {
     id: number;
@@ -44,7 +46,6 @@ export default function Audit({
     filters,
     canExport,
 }: Props) {
-    const base = `/settings/teams/${team.slug}/audit`;
     const [form, setForm] = useState({
         type: filters.type ?? '',
         actor: filters.actor ?? '',
@@ -55,7 +56,7 @@ export default function Audit({
     const apply = (event: FormEvent) => {
         event.preventDefault();
         router.get(
-            base,
+            teamRoutes.audit.index.url({ team: team.slug }),
             Object.fromEntries(
                 Object.entries(form).filter(([, v]) => v !== ''),
             ),
@@ -125,14 +126,22 @@ export default function Audit({
                 <Button type="submit">Filter</Button>
                 {canExport ? (
                     <Button asChild variant="outline">
-                        <a href={`${base}/export`}>Export JSON Lines</a>
+                        <a
+                            href={teamRoutes.audit.export.url({
+                                team: team.slug,
+                            })}
+                        >
+                            Export JSON Lines
+                        </a>
                     </Button>
                 ) : (
                     <span className="text-muted-foreground">
                         SIEM export is an Enterprise feature.{' '}
                         <Link
                             className="underline"
-                            href={`/settings/teams/${team.slug}/billing`}
+                            href={teamRoutes.billing.show.url({
+                                team: team.slug,
+                            })}
                         >
                             See plans
                         </Link>
@@ -143,9 +152,7 @@ export default function Audit({
             <Card>
                 <CardContent className="pt-4">
                     {events.data.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No audit events yet.
-                        </p>
+                        <EmptyState title="No audit events yet." />
                     ) : (
                         <Table>
                             <thead>

@@ -66,6 +66,25 @@ test('consent carries the risk level the server defines for each requested scope
             ->where('requestedScopes.2.risk', 'destructive'));
 });
 
+test('consent shows the requested workspace selector and preserves the chosen workspace', function () {
+    $user = User::factory()->create();
+    $firstTeam = Team::factory()->create(['name' => 'First workspace']);
+    $secondTeam = Team::factory()->create(['name' => 'Second workspace']);
+    $firstTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $secondTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $parameters = oauthParameters('challenge', ['team' => $secondTeam->slug]);
+
+    $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($parameters))
+        ->assertOk()
+        ->assertInertia(fn (AssertableJson $page) => $page
+            ->component('oauth/authorize')
+            ->where('team.slug', $secondTeam->slug)
+            ->where('teams', fn ($teams): bool => $teams->count() === 2
+                && $teams->contains('slug', $firstTeam->slug)
+                && $teams->contains('slug', $secondTeam->slug)));
+});
+
 test('OAuth metadata follows the configured JWT issuer contract', function () {
     config(['services.org_jwt.issuer' => 'https://issuer.example.test/']);
 
@@ -179,6 +198,38 @@ test('rejects a redirect URI that was not registered for the client', function (
         'client_id' => $client->client_id,
         'redirect_uri' => 'https://agent.acme.test/other',
     ])))->assertRedirect();
+});
+
+test('rejects a client impersonation that pairs client A with client B redirect metadata', function () {
+    $clientA = OAuthClient::factory()->create([
+        'redirect_uris' => ['https://agent-a.example.test/oauth/callback'],
+    ]);
+    $clientB = OAuthClient::factory()->create([
+        'redirect_uris' => ['https://agent-b.example.test/oauth/callback'],
+    ]);
+
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'client_id' => $clientA->client_id,
+        'redirect_uri' => $clientB->redirect_uris[0],
+    ])))->assertSessionHasErrors('redirect_uri');
+});
+
+test('dynamic registration cannot overwrite an existing client identifier or metadata', function () {
+    $existing = OAuthClient::factory()->create([
+        'client_id' => 'client-owned-by-a',
+        'client_name' => 'Existing Client',
+        'redirect_uris' => ['https://existing.example.test/callback'],
+    ]);
+
+    $response = $this->postJson('/oauth/register', [
+        'client_id' => $existing->client_id,
+        'client_name' => 'Impersonating Client',
+        'redirect_uris' => ['https://attacker.example.test/callback'],
+    ])->assertCreated();
+
+    expect($response->json('client_id'))->not->toBe($existing->client_id)
+        ->and($existing->refresh()->client_name)->toBe('Existing Client')
+        ->and($existing->redirect_uris)->toBe(['https://existing.example.test/callback']);
 });
 
 test('requires a safe redirect URI and S256 PKCE', function () {

@@ -3,13 +3,15 @@ import type { FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
+import { privacy, terms } from '@/routes';
+import termsRoutes from '@/routes/terms';
 
 export default function Accept({ version }: { version: string }) {
     const form = useForm({ accepted: false });
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        form.post('/terms/accept');
+        form.post(termsRoutes.accept.url());
     };
 
     return (
@@ -18,11 +20,15 @@ export default function Accept({ version }: { version: string }) {
             <h1 className="mb-2 text-xl font-semibold">One more step</h1>
             <p className="mb-4 text-sm text-muted-foreground">
                 Please read and accept the{' '}
-                <Link className="underline" href="/terms" target="_blank">
+                <Link className="underline" href={terms.url()} target="_blank">
                     terms
                 </Link>{' '}
                 and{' '}
-                <Link className="underline" href="/privacy" target="_blank">
+                <Link
+                    className="underline"
+                    href={privacy.url()}
+                    target="_blank"
+                >
                     privacy policy
                 </Link>{' '}
                 (version {version}) to continue.

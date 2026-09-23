@@ -205,6 +205,40 @@ test('no bearer credential is persisted in activity, connections or refresh toke
     expect(OAuthRefreshToken::query()->value('token_hash'))->not->toBe($tokens['refresh_token']);
 });
 
+test('OAuth and MCP entry points never write bearer credentials to application logs', function () {
+    $logPath = tempnam(sys_get_temp_dir(), 'mcp-security-log');
+    expect($logPath)->not->toBeFalse();
+
+    config([
+        'logging.default' => 'mcp-security-test',
+        'logging.channels.mcp-security-test' => [
+            'driver' => 'single',
+            'path' => $logPath,
+            'replace_placeholders' => true,
+        ],
+    ]);
+    app()->forgetInstance('log');
+
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    mcpInitialize($tokens['access_token'])->assertOk();
+
+    $refreshed = $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $tokens['refresh_token'],
+        'client_id' => 'artfct-cli',
+    ])->assertOk();
+    $this->postJson('/oauth/revoke', ['token' => $refreshed->json('refresh_token')])->assertOk();
+
+    $written = file_get_contents($logPath);
+    @unlink($logPath);
+
+    expect($written)->not->toContain($tokens['access_token'])
+        ->not->toContain($tokens['refresh_token'])
+        ->not->toContain($refreshed->json('access_token'))
+        ->not->toContain($refreshed->json('refresh_token'));
+});
+
 test('a past-due workspace keeps reading artifacts but cannot deploy', function () {
     configureArtifactLinks();
 

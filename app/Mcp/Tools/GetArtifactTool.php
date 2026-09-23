@@ -119,7 +119,7 @@ final class GetArtifactTool extends Tool
             'id' => $schema->string()
                 ->min(1)
                 ->max(128)
-                ->description('The artifact ID returned by deploy_to_canvas or search_artifacts.')
+                ->description('The artifact ID returned by deploy_artifact or search_artifacts.')
                 ->required(),
         ];
     }

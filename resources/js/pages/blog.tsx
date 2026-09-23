@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 
 import { SitePage } from '@/components/site-chrome';
 import { POSTS } from '@/lib/posts';
+import blogRoutes from '@/routes/blog';
 
 interface BlogPageProps {
     posts?: Array<{ slug: string; date: string; title: string; tag: string }>;
@@ -37,7 +38,7 @@ export default function Blog({ posts }: BlogPageProps) {
                     {visiblePosts.map((post) => (
                         <li key={post.slug}>
                             <Link
-                                href={`/blog/${post.slug}`}
+                                href={blogRoutes.show.url({ slug: post.slug })}
                                 className="group flex flex-col gap-3 py-8"
                             >
                                 <span className="flex items-center gap-3 text-xs">

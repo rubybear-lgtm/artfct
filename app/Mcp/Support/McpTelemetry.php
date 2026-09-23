@@ -33,6 +33,9 @@ final class McpTelemetry
                 'client_name' => $connection instanceof McpConnection
                     ? $connection->client_name
                     : $request->header('MCP-Client-Name'),
+                'protocol_version' => $connection instanceof McpConnection
+                    ? $connection->protocol_version
+                    : $request->attributes->get('mcp_protocol_version'),
                 'outcome' => $outcome,
                 'latency_ms' => max(0, (int) round((hrtime(true) - $startedAt) / 1_000_000)),
                 'created_at' => now(),

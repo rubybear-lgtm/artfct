@@ -459,8 +459,9 @@ async fn create_and_upload_payload(
 }
 
 fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
+    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
     let output = Command::new(&context.wrangler)
-        .current_dir(format!("{}/../backend", env!("CARGO_MANIFEST_DIR")))
+        .current_dir(&working_directory)
         .args([
             "d1",
             "execute",
@@ -472,7 +473,13 @@ fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
             sql,
             "--json",
         ])
-        .output()?;
+        .output()
+        .map_err(|error| {
+            format!(
+                "failed to launch Wrangler executable {} from {working_directory}: {error}",
+                context.wrangler
+            )
+        })?;
     if !output.status.success() {
         return Err(format!(
             "Wrangler D1 query failed: {}",
@@ -492,8 +499,9 @@ fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
 }
 
 fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
+    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
     let output = Command::new(&context.wrangler)
-        .current_dir(format!("{}/../backend", env!("CARGO_MANIFEST_DIR")))
+        .current_dir(&working_directory)
         .args([
             "d1",
             "execute",
@@ -504,7 +512,13 @@ fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
             "--command",
             sql,
         ])
-        .output()?;
+        .output()
+        .map_err(|error| {
+            format!(
+                "failed to launch Wrangler executable {} from {working_directory}: {error}",
+                context.wrangler
+            )
+        })?;
     if output.status.success() {
         Ok(())
     } else {
@@ -520,6 +534,98 @@ fn count_value(context: &Context, sql: &str, key: &str) -> Result<i64, Box<dyn E
     Ok(d1_row(context, sql)?[key]
         .as_i64()
         .ok_or_else(|| format!("D1 result field {key} was not an integer"))?)
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn an_expired_lock_from_a_crashed_holder_is_reclaimed() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("expired-lock");
+    let hash = sha256(&bytes);
+
+    d1_execute(
+        &context,
+        &format!(
+            "INSERT INTO blob_locks (content_hash, owner, expires_at) VALUES ('{hash}', 'crashed-holder', '2000-01-01T00:00:00Z')"
+        ),
+    )?;
+
+    let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}'"),
+            "count"
+        )?,
+        1,
+        "an expired lease must not block a new artifact"
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM blob_locks WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        0,
+        "a completed operation must release its reclaimed lease"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn an_active_lock_reports_contention_without_writing_an_artifact(
+) -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("active-lock");
+    let hash = sha256(&bytes);
+
+    d1_execute(
+        &context,
+        &format!(
+            "INSERT INTO blob_locks (content_hash, owner, expires_at) VALUES ('{hash}', 'live-holder', '2099-01-01T00:00:00Z')"
+        ),
+    )?;
+
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&permanent_payload(&bytes, json!({})))
+        .send()
+        .await?;
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        0,
+        "contention must fail before the artifact row is written"
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM blob_locks WHERE content_hash = '{hash}' AND owner = 'live-holder'"),
+            "count"
+        )?,
+        1,
+        "a live holder's lease must not be released by another caller"
+    );
+    d1_execute(
+        &context,
+        &format!("DELETE FROM blob_locks WHERE content_hash = '{hash}'"),
+    )?;
+    Ok(())
 }
 
 #[tokio::test]

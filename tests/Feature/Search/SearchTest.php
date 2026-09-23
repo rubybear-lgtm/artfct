@@ -80,6 +80,22 @@ test('semantic_query_finds_relevant_artifact', function () {
     expect($results[0]->id)->toBe('billing-dash');
 });
 
+test('api_search_explains_when_indexing_is_disabled', function () {
+    config(['indexing.enabled' => false]);
+
+    $team = Team::factory()->create(['slug' => 'api-search-disabled-org']);
+
+    $this->withToken(remoteMcpToken($team))
+        ->postJson('/api/search', ['query' => 'billing dashboard'])
+        ->assertStatus(503)
+        ->assertJson([
+            'errorCode' => 'search_not_configured',
+            'message' => 'Search is not enabled for this workspace yet.',
+            'retryable' => false,
+            'nextAction' => 'enable_indexing',
+        ]);
+});
+
 test('repo_filter_narrows_results', function () {
     $team = Team::factory()->create(['slug' => 'repo-org']);
     seedSearchArtifact($team, 'in-repo', ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/billing', 'commit_sha' => 'a']]);

@@ -14,6 +14,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
+import accountRoutes from '@/routes/account';
+import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
 interface Props {
@@ -29,11 +31,11 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
 
     const save = (event: FormEvent) => {
         event.preventDefault();
-        form.patch('/settings/account');
+        form.patch(accountRoutes.update.url());
     };
 
     const deleteAccount = () =>
-        router.delete('/settings/account', { data: { confirmation } });
+        router.delete(accountRoutes.destroy.url(), { data: { confirmation } });
 
     return (
         <>
@@ -115,7 +117,9 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                                         variant="outline"
                                         onClick={() =>
                                             router.delete(
-                                                `/settings/teams/${team.slug}/leave`,
+                                                teamRoutes.leave.url({
+                                                    team: team.slug,
+                                                }),
                                             )
                                         }
                                     >

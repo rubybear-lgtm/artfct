@@ -12,6 +12,7 @@ use App\Services\Auth\OrgJwtService;
 use App\Services\Governance\AuditLogger;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -41,7 +42,7 @@ class AuthenticateOrgToken
 
         if (! isset($claims['scope'])) {
             $claims['scope'] = match (TeamRole::tryFrom($claims['role'])) {
-                TeamRole::Admin, TeamRole::Member => 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
+                TeamRole::Admin, TeamRole::Member => 'artifacts:read artifacts:deploy artifacts:delete collections:read collections:write usage:read',
                 TeamRole::Viewer => 'artifacts:read collections:read usage:read',
                 default => '',
             };
@@ -78,7 +79,56 @@ class AuthenticateOrgToken
         $request->attributes->set('org_jwt_team', $team);
         $request->attributes->set('org_jwt_claims', $claims);
 
+        if ($request->is('mcp')) {
+            $sessionError = $this->validateMcpSession($request, $claims);
+
+            if ($sessionError !== null) {
+                return $sessionError;
+            }
+        }
+
         return $next($request);
+    }
+
+    /**
+     * Session IDs correlate requests but never authenticate them. A session
+     * presented with a different credential, or after its registry entry has
+     * expired, must be re-initialized instead of being silently accepted.
+     *
+     * @param  array{jti: string, org_id: string}  $claims
+     */
+    private function validateMcpSession(Request $request, array $claims): ?Response
+    {
+        $sessionId = $request->header('MCP-Session-Id');
+
+        if (! is_string($sessionId) || trim($sessionId) === '' || $request->input('method') === 'initialize') {
+            return null;
+        }
+
+        $session = Cache::get('mcp-session:'.$sessionId);
+        $matchesCredential = is_array($session)
+            && ($session['jti'] ?? null) === $claims['jti']
+            && ($session['org_id'] ?? null) === $claims['org_id'];
+
+        if ($matchesCredential) {
+            return null;
+        }
+
+        return response()->json([
+            'jsonrpc' => '2.0',
+            'id' => $request->input('id'),
+            'error' => [
+                'code' => -32001,
+                'message' => 'MCP session is invalid or expired. Initialize a new session and retry.',
+                'data' => [
+                    'artfct' => [
+                        'errorCode' => 'session_expired',
+                        'retryable' => false,
+                        'nextAction' => 'initialize',
+                    ],
+                ],
+            ],
+        ], 400);
     }
 
     /**
@@ -120,11 +170,13 @@ class AuthenticateOrgToken
         $connection->forceFill(array_filter([
             'client_name' => $clientName,
             'client_version' => $clientVersion,
+            'protocol_version' => $this->protocolVersion($params) ?? $connection->protocol_version,
             'transport' => 'streamable-http',
             'scopes' => preg_split('/\s+/', trim((string) ($claims['scope'] ?? ''))) ?: [],
             'last_used_at' => now(),
         ], static fn (mixed $value, string $key): bool => $key === 'client_name' || $key === 'client_version' ? $value !== null : true, ARRAY_FILTER_USE_BOTH))->saveQuietly();
         $request->attributes->set('mcp_connection', $connection);
+        $request->attributes->set('mcp_protocol_version', $connection->protocol_version);
 
         if ($isNew) {
             $auditLogger->recordForRequest(
@@ -144,5 +196,12 @@ class AuthenticateOrgToken
         }
 
         return mb_substr(trim($value), 0, $length);
+    }
+
+    private function protocolVersion(mixed $params): ?string
+    {
+        return is_array($params)
+            ? $this->boundedString($params['protocolVersion'] ?? null, 32)
+            : null;
     }
 }

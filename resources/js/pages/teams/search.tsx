@@ -6,8 +6,10 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface Result {
     id: string;
@@ -57,7 +59,7 @@ export default function Search({
     const submit = (event: FormEvent) => {
         event.preventDefault();
         router.get(
-            `/settings/teams/${team.slug}/search`,
+            teamRoutes.search.url({ team: team.slug }),
             Object.fromEntries(
                 Object.entries(form).filter(([, value]) => value !== ''),
             ),
@@ -147,9 +149,10 @@ export default function Search({
             {error && <Alert variant="warning">{error}</Alert>}
 
             {searched && !error && results.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                    No artifacts matched. Try fewer filters or different words.
-                </p>
+                <EmptyState
+                    title="No artifacts matched."
+                    description="Try fewer filters or different words."
+                />
             )}
 
             <div className="flex flex-col gap-3">

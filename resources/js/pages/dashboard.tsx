@@ -3,6 +3,8 @@ import { ArrowRight, Check } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import invitations from '@/routes/invitations';
+import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
 interface PendingInvitation {
@@ -26,32 +28,38 @@ export default function Dashboard({
     setup: SetupProgress | null;
 }) {
     const { currentTeam } = usePage<SharedProps>().props;
-    const base = currentTeam
-        ? `/settings/teams/${currentTeam.slug}`
-        : '/settings/teams';
-
     const steps = [
         {
             done: setup?.invitedTeammates ?? false,
-            href: base,
+            href: currentTeam
+                ? teamRoutes.edit.url({ team: currentTeam.slug })
+                : teamRoutes.index.url(),
             label: 'Invite your teammates',
             detail: 'Everyone on the team can then find what gets shared.',
         },
         {
             done: setup?.createdToken ?? false,
-            href: `${base}/tokens`,
+            href: currentTeam
+                ? teamRoutes.tokens.index.url({ team: currentTeam.slug })
+                : teamRoutes.index.url(),
             label: 'Connect your first AI tool',
             detail: 'So what it makes can be shared to the team.',
         },
         {
             done: setup?.connectedMcp ?? false,
-            href: `${base}/mcp-connections`,
+            href: currentTeam
+                ? teamRoutes.mcpConnections.index.url({
+                      team: currentTeam.slug,
+                  })
+                : teamRoutes.index.url(),
             label: 'Connect an MCP client',
             detail: 'Let your AI tools search and read what the team shares.',
         },
         {
             done: setup?.choseAPlan ?? false,
-            href: `${base}/billing`,
+            href: currentTeam
+                ? teamRoutes.billing.show.url({ team: currentTeam.slug })
+                : teamRoutes.index.url(),
             label: 'Choose a plan',
             detail: 'Start with the free team trial.',
         },
@@ -106,7 +114,10 @@ export default function Dashboard({
                                             size="sm"
                                             onClick={() =>
                                                 router.post(
-                                                    `/invitations/${invitation.code}/accept`,
+                                                    invitations.accept.url({
+                                                        invitation:
+                                                            invitation.code,
+                                                    }),
                                                 )
                                             }
                                         >
@@ -117,7 +128,10 @@ export default function Dashboard({
                                             variant="outline"
                                             onClick={() =>
                                                 router.delete(
-                                                    `/invitations/${invitation.code}`,
+                                                    invitations.decline.url({
+                                                        invitation:
+                                                            invitation.code,
+                                                    }),
                                                 )
                                             }
                                         >
@@ -133,7 +147,9 @@ export default function Dashboard({
                 {setup === null ? (
                     <section>
                         <Button asChild>
-                            <Link href="/settings/teams">Create a team</Link>
+                            <Link href={teamRoutes.index.url()}>
+                                Create a team
+                            </Link>
                         </Button>
                     </section>
                 ) : (

@@ -2,6 +2,7 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
+import AuthenticationController from '@/actions/App/Http/Controllers/Teams/AuthenticationController';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,8 +13,11 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import ssoRoutes from '@/routes/sso';
+import teamRoutes from '@/routes/teams';
 
 type Mode = 'authkit' | 'dual' | 'polis';
 
@@ -53,27 +57,29 @@ export default function Authentication({
     previews,
     connections,
 }: Props) {
-    const base = `/settings/teams/${team.slug}`;
     const domainForm = useForm({ domain: '' });
     const connectionForm = useForm({ metadata_url: '' });
     const [confirmed, setConfirmed] = useState(false);
 
     const addDomain = (event: FormEvent) => {
         event.preventDefault();
-        domainForm.post(`${base}/domains`, {
+        domainForm.post(teamRoutes.domains.store.url({ team: team.slug }), {
             onSuccess: () => domainForm.reset(),
         });
     };
 
     const addConnection = (event: FormEvent) => {
         event.preventDefault();
-        connectionForm.post(`${base}/authentication/connection`, {
-            onSuccess: () => connectionForm.reset(),
-        });
+        connectionForm.post(
+            AuthenticationController.storeConnection.url({ team: team.slug }),
+            {
+                onSuccess: () => connectionForm.reset(),
+            },
+        );
     };
 
     const switchTo = (mode: Mode) =>
-        router.patch(`${base}/auth-mode`, {
+        router.patch(teamRoutes.authMode.update.url({ team: team.slug }), {
             auth_mode: mode,
             confirmed,
         });
@@ -89,7 +95,10 @@ export default function Authentication({
             {!isEnterprise && (
                 <Alert>
                     Single sign-on is an Enterprise feature.{' '}
-                    <Link className="underline" href={`${base}/billing`}>
+                    <Link
+                        className="underline"
+                        href={teamRoutes.billing.show.url({ team: team.slug })}
+                    >
                         See plans
                     </Link>
                     . Standard sign-in stays available.
@@ -107,9 +116,7 @@ export default function Authentication({
                     </CardHeader>
                     <CardContent className="flex flex-col gap-4">
                         {domains.length === 0 && (
-                            <p className="text-sm text-muted-foreground">
-                                No domains yet.
-                            </p>
+                            <EmptyState title="No domains yet." />
                         )}
                         {domains.map((domain) => (
                             <div key={domain.id} className="text-sm">
@@ -135,7 +142,12 @@ export default function Authentication({
                                                 variant="outline"
                                                 onClick={() =>
                                                     router.post(
-                                                        `${base}/domains/${domain.id}/verify`,
+                                                        teamRoutes.domains.verify.url(
+                                                            {
+                                                                team: team.slug,
+                                                                domain: domain.id,
+                                                            },
+                                                        ),
                                                     )
                                                 }
                                             >
@@ -147,7 +159,12 @@ export default function Authentication({
                                             variant="ghost"
                                             onClick={() =>
                                                 router.delete(
-                                                    `${base}/domains/${domain.id}`,
+                                                    teamRoutes.domains.destroy.url(
+                                                        {
+                                                            team: team.slug,
+                                                            domain: domain.id,
+                                                        },
+                                                    ),
                                                 )
                                             }
                                         >
@@ -283,9 +300,7 @@ export default function Authentication({
                                 Connection status is unavailable right now.
                             </p>
                         ) : connections.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No identity provider is connected.
-                            </p>
+                            <EmptyState title="No identity provider is connected." />
                         ) : (
                             <ul className="text-sm">
                                 {connections.map((connection, index) => (
@@ -332,7 +347,9 @@ export default function Authentication({
                                 <>
                                     <Button asChild variant="outline" size="sm">
                                         <a
-                                            href={`/teams/${team.slug}/sso/login`}
+                                            href={ssoRoutes.login.url({
+                                                team: team.slug,
+                                            })}
                                         >
                                             Test sign-in
                                         </a>
@@ -342,7 +359,9 @@ export default function Authentication({
                                         variant="ghost"
                                         onClick={() =>
                                             router.delete(
-                                                `${base}/authentication/connection`,
+                                                AuthenticationController.destroyConnection.url(
+                                                    { team: team.slug },
+                                                ),
                                             )
                                         }
                                     >

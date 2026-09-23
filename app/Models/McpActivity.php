@@ -23,11 +23,12 @@ use Illuminate\Support\Carbon;
  * @property string|null $request_id
  * @property string|null $session_id
  * @property string|null $client_name
+ * @property string|null $protocol_version
  * @property string $outcome
  * @property int $latency_ms
  * @property Carbon $created_at
  */
-#[Fillable(['team_id', 'credential_jti', 'actor', 'tool', 'artifact_id', 'transport', 'request_id', 'session_id', 'client_name', 'outcome', 'latency_ms', 'created_at'])]
+#[Fillable(['team_id', 'credential_jti', 'actor', 'tool', 'artifact_id', 'transport', 'request_id', 'session_id', 'client_name', 'protocol_version', 'outcome', 'latency_ms', 'created_at'])]
 class McpActivity extends Model
 {
     /** @use HasFactory<McpActivityFactory> */

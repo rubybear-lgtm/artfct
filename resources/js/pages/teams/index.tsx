@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 import type { SharedTeam } from '@/types/shared';
 
 export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
@@ -23,7 +24,7 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        post('/settings/teams', { onSuccess: () => reset() });
+        post(teamRoutes.store.url(), { onSuccess: () => reset() });
     };
 
     return (
@@ -48,7 +49,9 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                                 >
                                     <Link
                                         className="font-medium hover:underline"
-                                        href={`/settings/teams/${team.slug}`}
+                                        href={teamRoutes.edit.url({
+                                            team: team.slug,
+                                        })}
                                     >
                                         {team.name}
                                     </Link>
@@ -69,7 +72,9 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                                             variant="outline"
                                             onClick={() =>
                                                 router.post(
-                                                    `/settings/teams/${team.slug}/switch`,
+                                                    teamRoutes.switch.url({
+                                                        team: team.slug,
+                                                    }),
                                                 )
                                             }
                                         >

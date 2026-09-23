@@ -1,6 +1,7 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
+import GovernancePageController from '@/actions/App/Http/Controllers/Teams/GovernancePageController';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,8 +11,10 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface Props {
     team: { slug: string; name: string };
@@ -34,18 +37,19 @@ export default function Governance({
     heldArtifacts,
     preview,
 }: Props) {
-    const base = `/settings/teams/${team.slug}/governance`;
     const retention = useForm({ retention_days: retentionDays ?? '' });
     const hold = useForm({ artifact_id: '' });
 
     const saveRetention = (event: FormEvent) => {
         event.preventDefault();
-        retention.patch(`/settings/teams/${team.slug}/retention`);
+        retention.patch(teamRoutes.retention.update.url({ team: team.slug }));
     };
 
     const placeHold = (event: FormEvent) => {
         event.preventDefault();
-        hold.post(`${base}/holds`, { onSuccess: () => hold.reset() });
+        hold.post(GovernancePageController.placeHold.url({ team: team.slug }), {
+            onSuccess: () => hold.reset(),
+        });
     };
 
     return (
@@ -114,7 +118,11 @@ export default function Governance({
                                 <Button
                                     variant="outline"
                                     onClick={() =>
-                                        router.post(`${base}/preview`)
+                                        router.post(
+                                            teamRoutes.governance.preview.url({
+                                                team: team.slug,
+                                            }),
+                                        )
                                     }
                                 >
                                     Preview what would be deleted
@@ -150,9 +158,7 @@ export default function Governance({
                                 now.
                             </p>
                         ) : heldArtifacts.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No artifacts are under legal hold.
-                            </p>
+                            <EmptyState title="No artifacts are under legal hold." />
                         ) : (
                             <ul className="text-sm">
                                 {heldArtifacts.map((id) => (
@@ -167,7 +173,12 @@ export default function Governance({
                                             className="ml-auto underline"
                                             onClick={() =>
                                                 router.delete(
-                                                    `${base}/holds/${id}`,
+                                                    GovernancePageController.releaseHold.url(
+                                                        {
+                                                            team: team.slug,
+                                                            artifactId: id,
+                                                        },
+                                                    ),
                                                 )
                                             }
                                         >

@@ -1,0 +1,40 @@
+name: rollback-cli-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to withdraw, for example v0.1.0
+        required: true
+        type: string
+      reason:
+        description: Public reason for withdrawing the release
+        required: true
+        type: string
+      confirm:
+        description: Type WITHDRAW to confirm making the release a draft
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  withdraw:
+    name: withdraw published release
+    if: ${{ inputs.confirm == 'WITHDRAW' }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      tag: ${{ inputs.tag }}
+      reason: ${{ inputs.reason }}
+
+    steps:
+      - name: Validate release exists
+        run: gh release view "$tag" >/dev/null
+
+      # ROLLBACK_PROCEDURE: gh release edit "$tag" --draft
+      - name: Withdraw release from public distribution
+        run: |
+          set -euo pipefail
+          gh release edit "$tag" --draft --notes "WITHDRAWN: $reason"

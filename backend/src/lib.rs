@@ -2791,9 +2791,9 @@ async fn governance_route(
                     database,
                     org,
                     if placing {
-                        "legal_hold.placed"
+                        governance::AuditEventType::LegalHoldPlaced
                     } else {
-                        "legal_hold.released"
+                        governance::AuditEventType::LegalHoldReleased
                     },
                     artifact_id,
                 )?])
@@ -3115,7 +3115,7 @@ async fn hard_delete_permanent(
         statements.push(governance_audit_statement(
             database,
             org,
-            "artifact.hard_deleted",
+            governance::AuditEventType::ArtifactHardDeleted,
             artifact_id,
         )?);
         storage
@@ -3169,7 +3169,7 @@ async fn release_blob_if_unreferenced(
 fn governance_audit_statement(
     database: &worker::D1Database,
     org: &str,
-    event_type: &str,
+    event_type: governance::AuditEventType,
     artifact_id: &str,
 ) -> Result<worker::d1::D1PreparedStatement> {
     database
@@ -3177,7 +3177,7 @@ fn governance_audit_statement(
         .bind(&[
             JsValue::from_str(&Uuid::new_v4().simple().to_string()),
             JsValue::from_str(org),
-            JsValue::from_str(event_type),
+            JsValue::from_str(event_type.wire_name()),
             JsValue::from_str(&serde_json::json!({"org": org, "artifact_id": artifact_id}).to_string()),
             JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
         ])

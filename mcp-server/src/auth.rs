@@ -1103,7 +1103,13 @@ pub(crate) mod tests {
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .expect("the stub server bounds its reads");
-        let request = read_stub_request(&mut stream);
+        let Some(request) = read_stub_request(&mut stream) else {
+            let _ = stream.write_all(
+                b"HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 36\r\nConnection: close\r\n\r\n{\"error\":{\"code\":\"invalid_request\"}}",
+            );
+            let _ = stream.flush();
+            return;
+        };
         requests
             .lock()
             .expect("stub requests")
@@ -1128,14 +1134,14 @@ pub(crate) mod tests {
 
     /// Reads one HTTP request off `stream`: the headers, then the bytes the
     /// `Content-Length` header announces.
-    fn read_stub_request(stream: &mut TcpStream) -> String {
+    fn read_stub_request(stream: &mut TcpStream) -> Option<String> {
         let mut request = Vec::new();
         let mut buffer = [0_u8; 1024];
         let mut header_end = None;
 
         while header_end.is_none() {
             match stream.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
+                Ok(0) | Err(_) => return None,
                 Ok(length) => request.extend_from_slice(&buffer[..length]),
             }
             header_end = request
@@ -1144,7 +1150,7 @@ pub(crate) mod tests {
                 .map(|index| index + 4);
         }
 
-        let header_end = header_end.unwrap_or(request.len());
+        let header_end = header_end?;
         let content_length = String::from_utf8_lossy(&request[..header_end])
             .lines()
             .find_map(|line| {
@@ -1158,12 +1164,12 @@ pub(crate) mod tests {
 
         while request.len() - header_end < content_length {
             match stream.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
+                Ok(0) | Err(_) => return None,
                 Ok(length) => request.extend_from_slice(&buffer[..length]),
             }
         }
 
-        String::from_utf8_lossy(&request).into_owned()
+        Some(String::from_utf8_lossy(&request).into_owned())
     }
 
     pub(crate) fn authorization_url_parameter(url: &str, name: &str) -> String {

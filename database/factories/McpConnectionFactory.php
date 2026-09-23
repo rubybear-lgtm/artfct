@@ -28,6 +28,7 @@ class McpConnectionFactory extends Factory
             'name' => fake()->words(2, true),
             'client_name' => fake()->randomElement(['claude-code', 'cursor', 'codex', 'gemini']),
             'client_version' => fake()->numerify('1.##.##'),
+            'protocol_version' => null,
             'transport' => 'stdio',
             'scopes' => ['artifacts:read', 'artifacts:deploy'],
             'metadata' => null,

@@ -22,7 +22,7 @@ use Inertia\Response;
 class McpConnectionController extends Controller
 {
     /** @var list<string> */
-    private const SUPPORTED_SCOPES = ['artifacts:read', 'artifacts:deploy', 'collections:read', 'collections:write', 'usage:read'];
+    private const SUPPORTED_SCOPES = ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read'];
 
     /** @var list<string> */
     private const DEFAULT_SCOPES = ['artifacts:read', 'collections:read', 'usage:read'];

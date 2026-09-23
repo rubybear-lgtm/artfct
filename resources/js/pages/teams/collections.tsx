@@ -2,6 +2,7 @@ import { Head, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
+import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,8 +12,10 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface CollectionRow {
     id: number;
@@ -33,25 +36,26 @@ interface Props {
 }
 
 function CollectionCard({
-    base,
+    team,
     collection,
     canEdit,
     canPin,
     canOpenArtifacts,
 }: {
-    base: string;
+    team: string;
     collection: CollectionRow;
     canEdit: boolean;
     canPin: boolean;
     canOpenArtifacts: boolean;
 }) {
     const [artifactId, setArtifactId] = useState('');
-    const url = `${base}/${collection.id}`;
-
     const add = (event: FormEvent) => {
         event.preventDefault();
         router.post(
-            `${url}/artifacts`,
+            CollectionController.addArtifact.url({
+                team,
+                collection: collection.id,
+            }),
             { artifact_id: artifactId },
             { onSuccess: () => setArtifactId('') },
         );
@@ -72,9 +76,7 @@ function CollectionCard({
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
                 {collection.artifactIds.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                        No artifacts yet.
-                    </p>
+                    <EmptyState title="No artifacts yet." />
                 ) : (
                     <ul className="text-sm">
                         {collection.artifactIds.map((id) => (
@@ -96,7 +98,14 @@ function CollectionCard({
                                         className="ml-auto underline"
                                         onClick={() =>
                                             router.delete(
-                                                `${url}/artifacts/${id}`,
+                                                CollectionController.removeArtifact.url(
+                                                    {
+                                                        team,
+                                                        collection:
+                                                            collection.id,
+                                                        artifactId: id,
+                                                    },
+                                                ),
                                             )
                                         }
                                     >
@@ -127,8 +136,18 @@ function CollectionCard({
                             size="sm"
                             onClick={() =>
                                 collection.canonical
-                                    ? router.delete(`${url}/pin`)
-                                    : router.post(`${url}/pin`)
+                                    ? router.delete(
+                                          CollectionController.unpin.url({
+                                              team,
+                                              collection: collection.id,
+                                          }),
+                                      )
+                                    : router.post(
+                                          CollectionController.pin.url({
+                                              team,
+                                              collection: collection.id,
+                                          }),
+                                      )
                             }
                         >
                             {collection.canonical
@@ -149,12 +168,13 @@ export default function Collections({
     canOpenArtifacts,
     collections,
 }: Props) {
-    const base = `/settings/teams/${team.slug}/collections`;
     const form = useForm({ name: '', description: '' });
 
     const create = (event: FormEvent) => {
         event.preventDefault();
-        form.post(base, { onSuccess: () => form.reset() });
+        form.post(teamRoutes.collections.store.url({ team: team.slug }), {
+            onSuccess: () => form.reset(),
+        });
     };
 
     return (
@@ -188,14 +208,12 @@ export default function Collections({
 
             <div className="flex flex-col gap-4">
                 {collections.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                        No collections yet.
-                    </p>
+                    <EmptyState title="No collections yet." />
                 )}
                 {collections.map((collection) => (
                     <CollectionCard
                         key={collection.id}
-                        base={base}
+                        team={team.slug}
                         collection={collection}
                         canEdit={canEdit}
                         canPin={canPin}

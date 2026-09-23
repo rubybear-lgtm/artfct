@@ -196,18 +196,12 @@ return [
     // ── Release gate ──────────────────────────────────────────────────────
     'release.approval_gate' => [
         'surface' => 'release',
-        'gap' => [
-            'issue' => 'RUB-385',
-            'reason' => 'deferred, not impossible: the gate is a decision about which checks must pass, and the rollback half has no mechanism at all -- release-cli.yml gates only on the blanket ci conclusion, and grep -rn rollback .github/ returns nothing.',
-        ],
+        'evidence' => ['kind' => 'marker', 'file' => '.github/workflows/release-cli.yml', 'name' => 'release approval gate'],
     ],
 
     // ── Failure attribution ────────────────────────────────────────────────
     'telemetry.failure_attribution' => [
         'surface' => 'protocol',
-        'gap' => [
-            'issue' => 'RUB-386',
-            'reason' => 'deferred, not impossible: the negotiated protocol version is dropped after initialize, so recording it is a schema change plus a backfill decision for existing activity rows rather than an assertion to add.',
-        ],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'compatibility failures identify client transport protocol version and remediation'],
     ],
 ];

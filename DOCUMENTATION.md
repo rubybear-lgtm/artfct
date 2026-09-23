@@ -379,15 +379,16 @@ first held artifact it finds.
 **The seam to storage.** `ArtifactGovernanceContract` is the same shape as
 spec 09's `TenantProvisionerContract`: `FakeArtifactGovernance` (an
 in-memory double) is bound in `testing`; `RealArtifactGovernance` fails
-closed everywhere else. **Not wired in this environment**: the Worker has
-D1 schema for `legal_hold`/`retention_class` (spec 3's migration) and the
-pure decision logic in `backend/src/governance.rs`
-(`plan_retention`/`plan_erasure`) plus dedupe accounting
-(`MemoryArtifactStore::hard_delete`, `blob_ref_count`), but no live HTTP
-route exposes "list artifacts older than X" / "hard-delete one" / "place a
-hold" to Laravel — building and verifying those against a live Wrangler
-dev instance is a follow-up, the same gap spec 9 left for tenant
-provisioning and for the same reason (no live account here).
+closed everywhere else. The Worker now exposes authenticated internal HTTP
+routes for listing artifacts, hard-deleting one, placing/releasing a legal
+hold, and sweeping orphaned blobs (`backend/src/lib.rs`, governance routes).
+The D1 schema for `legal_hold`/`retention_class` (spec 3's migration), pure
+decision logic in `backend/src/governance.rs`
+(`plan_retention`/`plan_erasure`), and dedupe accounting
+(`MemoryArtifactStore::hard_delete`, `blob_ref_count`) remain separately
+covered. Laravel's destructive governance commands still default to dry-run,
+and live Wrangler/D1/R2 verification remains an environment gate rather than
+an implicit claim of local tests.
 `gdpr_erasure_removes_bytes_from_r2` is an `#[ignore]`d Rust test stub for
 the same reason: proving a direct R2 read 404s after erasure needs a live
 bucket.
@@ -795,15 +796,13 @@ meters.
 
 ### The queue worker's start command is a Railway service setting (2026-09-23)
 
-`railway.queue.json` is a mirror, not applied configuration. Railway reads
-`railway.json` / `railway.toml` by default, and `staging-queue`'s start command
-is a service-level setting: the deployment of the commit that changed
-`railway.queue.json` (RUB-396, `e9ad3f2`) came up still consuming
-`indexing,default`, while the file said `events,indexing,default`. Change that
-list with `railway update-service` (or the dashboard), not by editing the file
-alone — and note that the change applies on the next deployment: a
-`railway redeploy` and a container restart both reuse the previous deployment's
-resolved start command, so a push-triggered deploy is what applies it.
+Railway reads `railway.json` / `railway.toml` by default, and `staging-queue`'s
+start command is a service-level setting. There is intentionally no
+`railway.queue.json`: it was an unapplied mirror, and keeping it in the repo
+made a queue change look deployed when it was not. Change the list with
+`railway update-service` (or the dashboard), then apply it with a push-triggered
+deployment. A `railway redeploy` and a container restart reuse the previous
+deployment's resolved start command.
 
 Redeploys of `staging-queue` also fail on their own. `railway redeploy` rebuilds
 without the repo's config, so Railpack auto-detects `composer install

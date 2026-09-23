@@ -11,8 +11,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Every event type spec 11 names. Kept as an enum (not a bare `&str`) so a
-/// typo in a call site is a compile error, not a silently-wrong SIEM row.
+/// Every event type emitted by the Worker governance paths. Kept as an enum
+/// (not a bare `&str`) so a typo in a call site is a compile error, not a
+/// silently-wrong SIEM row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditEventType {
@@ -21,6 +22,7 @@ pub enum AuditEventType {
     ArtifactShared,
     ArtifactRevoked,
     ArtifactDeleted,
+    ArtifactHardDeleted,
     ShareCreated,
     ShareRevoked,
     MemberAdded,
@@ -32,6 +34,8 @@ pub enum AuditEventType {
     ExportPerformed,
     RetentionApplied,
     LegalHoldApplied,
+    LegalHoldPlaced,
+    LegalHoldReleased,
 }
 
 impl AuditEventType {
@@ -45,6 +49,7 @@ impl AuditEventType {
             Self::ArtifactShared => "artifact.shared",
             Self::ArtifactRevoked => "artifact.revoked",
             Self::ArtifactDeleted => "artifact.deleted",
+            Self::ArtifactHardDeleted => "artifact.hard_deleted",
             Self::ShareCreated => "share.created",
             Self::ShareRevoked => "share.revoked",
             Self::MemberAdded => "member.added",
@@ -56,6 +61,8 @@ impl AuditEventType {
             Self::ExportPerformed => "export.performed",
             Self::RetentionApplied => "retention.applied",
             Self::LegalHoldApplied => "legal_hold.applied",
+            Self::LegalHoldPlaced => "legal_hold.placed",
+            Self::LegalHoldReleased => "legal_hold.released",
         }
     }
 }
@@ -127,11 +134,11 @@ pub fn events_to_jsonl(events: &[AuditEvent]) -> String {
     out
 }
 
-/// A dropped-audit-events counter. The DoD requires drops be "counted and
-/// surfaced, never silently discarded" — this is the counting half; a real
-/// deployment increments it wherever a `ctx.waitUntil()` audit write fails
-/// (see `lib.rs`'s call sites) and surfaces the total via the SIEM export
-/// or an admin endpoint.
+/// A pure dropped-audit-events counter. The Worker currently sends hot-path
+/// events to Laravel rather than writing this D1 audit table, so no live
+/// `ctx.waitUntil()` call site owns this counter yet; its deployment wiring is
+/// deliberately documented as a follow-up instead of being implied by this
+/// type.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DroppedAuditCounter(pub u64);
 
@@ -515,6 +522,47 @@ mod tests {
         counter.record_drop();
         counter.record_drop();
         assert_eq!(counter.0, 2);
+    }
+
+    #[test]
+    fn every_worker_emitted_audit_string_has_a_known_wire_name() {
+        let known = [
+            AuditEventType::ArtifactCreated,
+            AuditEventType::ArtifactViewed,
+            AuditEventType::ArtifactShared,
+            AuditEventType::ArtifactRevoked,
+            AuditEventType::ArtifactDeleted,
+            AuditEventType::ArtifactHardDeleted,
+            AuditEventType::ShareCreated,
+            AuditEventType::ShareRevoked,
+            AuditEventType::MemberAdded,
+            AuditEventType::MemberRemoved,
+            AuditEventType::RoleChanged,
+            AuditEventType::TokenCreated,
+            AuditEventType::TokenRevoked,
+            AuditEventType::AuthModeChanged,
+            AuditEventType::ExportPerformed,
+            AuditEventType::RetentionApplied,
+            AuditEventType::LegalHoldApplied,
+            AuditEventType::LegalHoldPlaced,
+            AuditEventType::LegalHoldReleased,
+        ];
+        let emitted = [
+            "artifact.created",
+            "artifact.viewed",
+            "legal_hold.placed",
+            "legal_hold.released",
+            "artifact.hard_deleted",
+        ];
+
+        for event_type in emitted {
+            assert!(
+                known
+                    .iter()
+                    .any(|candidate| candidate.wire_name() == event_type),
+                "unmapped audit event: {event_type}"
+            );
+        }
     }
 
     #[test]

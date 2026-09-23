@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import teams from '@/routes/teams';
 
 interface PlanLimits {
     storage_bytes: number;
@@ -127,7 +128,6 @@ export default function Billing({
     invoices,
     checkout,
 }: Props) {
-    const base = `/settings/teams/${team.slug}/billing`;
     const paid = team.plan !== 'free';
     const awaitingWebhook = checkout === 'success' && !paid;
 
@@ -205,7 +205,13 @@ export default function Billing({
                         {!paid && canManage && (
                             <Button
                                 disabled={!stripeConfigured}
-                                onClick={() => router.post(`${base}/checkout`)}
+                                onClick={() =>
+                                    router.post(
+                                        teams.billing.checkout.url({
+                                            team: team.slug,
+                                        }),
+                                    )
+                                }
                             >
                                 Upgrade to Team
                             </Button>
@@ -219,7 +225,13 @@ export default function Billing({
                         {team.hasSubscription && canManage && (
                             <Button
                                 variant="outline"
-                                onClick={() => router.post(`${base}/portal`)}
+                                onClick={() =>
+                                    router.post(
+                                        teams.billing.portal.url({
+                                            team: team.slug,
+                                        }),
+                                    )
+                                }
                             >
                                 Payment method &amp; invoices
                             </Button>
@@ -231,7 +243,11 @@ export default function Billing({
                             (team.cancelAtPeriodEnd ? (
                                 <Button
                                     onClick={() =>
-                                        router.post(`${base}/resume`)
+                                        router.post(
+                                            teams.billing.resume.url({
+                                                team: team.slug,
+                                            }),
+                                        )
                                     }
                                 >
                                     Resume subscription
@@ -240,7 +256,11 @@ export default function Billing({
                                 <Button
                                     variant="outline"
                                     onClick={() =>
-                                        router.post(`${base}/cancel`)
+                                        router.post(
+                                            teams.billing.cancel.url({
+                                                team: team.slug,
+                                            }),
+                                        )
                                     }
                                 >
                                     Cancel subscription

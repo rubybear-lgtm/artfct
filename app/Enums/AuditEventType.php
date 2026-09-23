@@ -11,6 +11,7 @@ namespace App\Enums;
 enum AuditEventType: string
 {
     case ArtifactCreated = 'artifact.created';
+    case ArtifactDeployed = 'artifact.deployed';
     case ArtifactViewed = 'artifact.viewed';
     case ArtifactShared = 'artifact.shared';
     case ArtifactRevoked = 'artifact.revoked';

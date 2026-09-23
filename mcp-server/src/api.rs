@@ -1007,6 +1007,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn response_error_summary_redacts_bearer_headers_and_multiple_credentials() {
+        let access_token = "access-secret";
+        let refresh_token = "refresh-secret";
+        let body = format!("Authorization: Bearer {access_token}; refresh_token={refresh_token}");
+
+        let summary = safe_response_body(&body, &[access_token, refresh_token]);
+
+        assert!(!summary.contains(access_token));
+        assert!(!summary.contains(refresh_token));
+        assert_eq!(summary.matches("[REDACTED]").count(), 2);
+    }
+
+    #[test]
     fn serializes_create_artifact_payload() {
         let provenance = build_cli_provenance(Path::new("."), None);
         let request = CreateArtifactRequest {
