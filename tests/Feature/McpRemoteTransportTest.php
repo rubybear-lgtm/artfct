@@ -359,7 +359,13 @@ test('rejects unauthenticated remote MCP requests with discovery guidance', func
         'params' => [],
     ])->assertUnauthorized();
 
-    expect($response->headers->get('WWW-Authenticate'))->toContain('oauth-protected-resource');
+    $response
+        ->assertHeaderContains(
+            'WWW-Authenticate',
+            'resource_metadata="'.url('/.well-known/oauth-protected-resource/mcp').'"',
+        )
+        ->assertHeaderContains('Access-Control-Expose-Headers', 'WWW-Authenticate')
+        ->assertJsonPath('error', 'Missing bearer token');
 });
 
 test('revoking a registered connection stops hosted MCP access immediately', function () {
