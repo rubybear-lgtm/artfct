@@ -1,12 +1,14 @@
 <?php
 
+use App\Contracts\ArtifactContentSource;
 use App\Enums\TeamRole;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
 use App\Models\Team;
-use App\Services\Artifacts\ArtifactViewLink;
+use App\Models\User;
+use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\RealUsage;
@@ -14,6 +16,88 @@ use App\Services\Billing\UsageContract;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+
+/*
+ * Following an artifact `view_url` the way a browser would is the only way to
+ * tell a link that works from one that merely looks right — which is exactly
+ * what a string-prefix assertion could not do for `deploy_to_canvas`.
+ *
+ * Dispatch is by origin, because the origin is what decides which server
+ * actually answers. A URL on the Worker's public origin is a real HTTP fetch
+ * (through the app's HTTP client, so a fake stands in for the Worker), and the
+ * Worker is the only server that can serve a KV artifact. A URL on the app's
+ * own origin is dispatched through the app's router, so the open route's
+ * authorization, tier resolution and token minting all actually run. An
+ * unknown origin is refused rather than guessed at. The fragment is never sent
+ * — no browser sends one — so the follow exercises the server's half of the
+ * link and the test decrypts the rest.
+ *
+ * @return array{url: string, dispatched_to: string, status: int, body: string, location: string|null}
+ */
+function followArtifactViewUrl(string $viewUrl, ?User $as = null): array
+{
+    $host = (string) parse_url($viewUrl, PHP_URL_HOST);
+    $workerHost = parse_url((string) config('services.worker.base_url'), PHP_URL_HOST);
+    $appHost = parse_url(route('console.open', ['team' => 'team', 'artifactId' => 'artifact']), PHP_URL_HOST);
+
+    if (is_string($workerHost) && $host === $workerHost) {
+        $response = Http::get($viewUrl);
+
+        return [
+            'url' => $viewUrl,
+            'dispatched_to' => 'worker',
+            'status' => $response->status(),
+            'body' => (string) $response->body(),
+            'location' => null,
+        ];
+    }
+
+    if ($host !== $appHost) {
+        throw new RuntimeException("Refusing to follow a view_url on an unknown origin ({$host}).");
+    }
+
+    $path = (string) parse_url($viewUrl, PHP_URL_PATH);
+    $query = (string) parse_url($viewUrl, PHP_URL_QUERY);
+    $response = ($as !== null ? test()->actingAs($as) : test())
+        ->get($path.($query === '' ? '' : '?'.$query));
+
+    return [
+        'url' => $viewUrl,
+        'dispatched_to' => 'app',
+        'status' => $response->getStatusCode(),
+        'body' => (string) $response->getContent(),
+        'location' => $response->headers->get('Location'),
+    ];
+}
+
+/** The base64url form the `deploy_to_canvas` tool posts its body in. */
+function base64UrlDecode(string $value): string
+{
+    return (string) base64_decode(strtr($value, '-_', '+/'), true);
+}
+
+/**
+ * Decrypt a posted `deploy_to_canvas` body with the share fragment from the
+ * link the tool returned: the fragment is the artifact's access mechanism, so
+ * the right fragment must yield the payload the tool was given.
+ *
+ * @param  array<string, mixed>  $posted  The create request body the tool sent.
+ */
+function decryptCanvasPayload(array $posted, string $fragment): string|false
+{
+    $sealed = base64UrlDecode((string) $posted['body_ciphertext_b64']);
+    $iv = base64UrlDecode((string) $posted['body_iv_b64']);
+    $tag = substr($sealed, -16);
+
+    return openssl_decrypt(
+        substr($sealed, 0, -16),
+        'aes-256-gcm',
+        hash('sha256', $fragment, true),
+        OPENSSL_RAW_DATA,
+        $iv,
+        $tag,
+    );
+}
 
 test('serves the native Streamable HTTP MCP transport with bearer authentication', function () {
     $team = Team::factory()->create();
@@ -408,54 +492,102 @@ test('remote deployment encrypts the body and returns a shareable result', funct
         ->count())->toBe(1);
 });
 
-test('deploy_to_canvas follows the same view_url rule as the workspace tools', function (string $tier) {
+test('deploy_to_canvas hands back a link that resolves for the artifact it created, at every tier it accepts', function (string $tier) {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-367-canvas']);
     $token = remoteMcpToken($team);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $html = '<title>Canvas preview</title><h1>preview</h1>';
     config([
         'services.worker.base_url' => 'https://worker.test',
         'app.public_base_url' => 'https://artfct.dev',
     ]);
-    Http::fake([
-        'worker.test/v1/artifacts' => Http::response([
-            'id' => 'artifact-canvas',
-            'url' => 'https://staging.artfct.dev/p/artifact-canvas',
-            'tier' => $tier,
-            'expires_at' => now()->addDay()->toIso8601String(),
-            'title' => 'Canvas preview',
-            'description' => 'Encrypted HTML preview on artfct.',
-            'thumbnail' => 'https://artfct.dev/og-image.svg',
-            'preview_blurred' => true,
-        ], 201),
-    ]);
+
+    // The Worker exactly as production serves this tool's artifacts: the create
+    // response addresses an anonymous KV record, `/p/{id}` renders that
+    // record's preview shell, and every D1-backed read — the org content
+    // endpoint the app's open route goes through — finds no row, because this
+    // tool writes none. The real HTTP content source is bound deliberately: an
+    // in-memory source is what let the old string-prefix assertion pass while
+    // the link it blessed resolved to a 404 for real.
+    app()->bind(ArtifactContentSource::class, fn (): HttpArtifactContentSource => HttpArtifactContentSource::default());
+
+    Http::fake(function ($request) use ($tier) {
+        $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+        return match (true) {
+            $path === '/v1/artifacts' => Http::response([
+                'id' => ARTIFACT_LINK_ID,
+                'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+                'tier' => $tier,
+                'expires_at' => now()->addDay()->toIso8601String(),
+                'title' => 'Canvas preview',
+                'description' => 'Encrypted HTML preview on artfct.',
+                'thumbnail' => 'https://artfct.dev/og-image.svg',
+                'preview_blurred' => true,
+            ], 201),
+            // The KV path: the only thing that can serve this artifact.
+            $path === '/p/'.ARTIFACT_LINK_ID => Http::response(
+                '<!doctype html><title>Canvas preview</title><p>Waiting for the decryption key in the URL fragment.</p>',
+                200,
+            ),
+            default => Http::response(['error' => ['code' => 'artifact_not_found']], 404),
+        };
+    });
     app()->bind(UsageContract::class, FakeUsage::class);
 
     $response = $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => '<h1>preview</h1>', 'tier' => $tier]],
+        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => $html, 'tier' => $tier]],
     ])->assertOk();
 
     $viewUrl = (string) $response->json('result.structuredContent.view_url');
+    $followed = followArtifactViewUrl($viewUrl);
 
-    // An artifact the Worker serves without a credential — public, or the
-    // anonymous ephemeral preview this tool publishes — gets the Worker's own
-    // URL; a secure one opens through the app's own route. Either way the
-    // client-side share fragment — the only thing that decrypts the body —
-    // rides along on the link.
-    $expected = ArtifactViewLink::isAnonymous($tier)
-        ? 'https://staging.artfct.dev/p/artifact-canvas#'
-        : route('console.open', ['team' => $team->slug, 'artifactId' => 'artifact-canvas']).'#';
+    // The link resolves, for the artifact the tool created, on the only origin
+    // that has it: following it reaches the KV record's preview shell. This is
+    // the assertion the prefix check only pretended to make.
+    expect($followed['dispatched_to'])->toBe('worker')
+        ->and($followed['url'])->toBe('https://worker.test/p/'.ARTIFACT_LINK_ID.'#'.substr($viewUrl, strpos($viewUrl, '#') + 1))
+        ->and($followed['status'])->toBe(200)
+        ->and($followed['body'])->toContain('Waiting for the decryption key in the URL fragment.');
 
-    expect($viewUrl)->toStartWith($expected)
-        ->and(substr($viewUrl, strlen($expected)))->not->toBe('')
+    // And the app's open route is the dead end it always was for these
+    // artifacts: the same member asking for the same id through the app gets a
+    // 404, because the route reads D1 and there is no row. An app-route link
+    // with a fragment appended to it can therefore never be the right answer.
+    $throughTheApp = followArtifactViewUrl(
+        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
+        $member,
+    );
+
+    expect($throughTheApp['status'])->toBe(404)
+        ->and($throughTheApp['location'])->toBeNull();
+
+    // The fragment is not decoration: it is the key to the body the tool
+    // actually posted, so the whole link — origin, path, fragment — is one
+    // working artifact.
+    $posted = null;
+    foreach (Http::recorded() as [$request]) {
+        if ($request->method() === 'POST' && str_ends_with((string) $request->url(), '/v1/artifacts')) {
+            $posted = $request->data();
+        }
+    }
+
+    $fragment = substr($viewUrl, strpos($viewUrl, '#') + 1);
+
+    expect($posted)->toBeArray()
+        ->and($fragment)->not->toBe('')
+        ->and(decryptCanvasPayload($posted, $fragment))->toBe($html);
+
+    // The canonical form is the resource's identity, not a link a person opens,
+    // and the field is `view_url` — one name for one meaning.
+    expect($response->json('result.structuredContent.canonical_url'))->toBe('https://worker.test/p/'.ARTIFACT_LINK_ID)
         ->and($response->json('result.structuredContent'))->not->toHaveKey('url');
-
-    // The canonical form is the resource's identity, not a link a person opens.
-    expect($response->json('result.structuredContent.canonical_url'))->toBe('https://staging.artfct.dev/p/artifact-canvas');
     // The hosted tool accepts only public and secure, so `ephemeral` — the
-    // local server's third, anonymous tier — is exercised by the shared
-    // contract fixture and the Rust suite instead of here.
+    // local server's third tier — is exercised by the shared contract fixture
+    // and the Rust suite instead of here; all three get the same link shape.
 })->with(['public', 'secure']);
 
 test('remote deployment deduplicates retries with the same request ID', function () {
@@ -860,13 +992,14 @@ test('deploy_artifact hands a secure artifact the apps own open route', function
         // with the local server (`tests/Fixtures/artifact-view-link-contract.json`).
         ->and($response->json('result.structuredContent.url'))->toBeNull();
 
-    // The link goes through the app, and through the app's own route for the
-    // credential's workspace: that route authorizes the viewer at click time and
-    // mints the isolated-origin token then.
-    expect($response->json('result.structuredContent.view_url'))->toBe(
-        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
-    );
-
+    // The link addresses the app's own open route for the credential's
+    // workspace. What that route *does* when a person follows it — authorize
+    // the viewer, resolve the tier, mint a link bound to this artifact, refuse
+    // an outsider and a guest — is proved by behaviour in `a secure view_url
+    // from the workspace tools opens for a member and is refused for everyone
+    // else`, which follows this very URL. The string could not establish any of
+    // it, and a string assertion is exactly what let `deploy_to_canvas`'s dead
+    // link pass review.
     expect($response->json('result.structuredContent.organization'))->toBe($team->slug);
 });
 
@@ -931,12 +1064,106 @@ test('get_artifact hands a secure artifact the apps own open route', function ()
     expect($response->getContent())->not->toContain('worker.test')
         ->and($response->getContent())->not->toContain('token=');
 
-    expect($response->json('result.structuredContent.view_url'))->toBe(
-        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
-    );
-
+    // The URL is the app's own open route — the behaviour of which, including
+    // the artifact-bound token it mints on the click, `a secure view_url from
+    // the workspace tools opens for a member and is refused for everyone else`
+    // proves by following it.
     expect($response->json('result.structuredContent.url'))->toBeNull();
 });
+
+/*
+ * The workspace tools hand back the app's open route, so "the link works" is a
+ * claim about what that route does when a person clicks it: authorize the
+ * viewer, resolve the tier, mint a token bound to that artifact, and refuse
+ * everyone else. The URL string can establish none of that — and it is exactly
+ * the string assertion that let `deploy_to_canvas`'s dead link pass review — so
+ * this follows the link the returned view_url actually names.
+ */
+test('a secure view_url from the workspace tools opens for a member and is refused for everyone else', function (string $tool) {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-367-open']);
+    $otherTeam = Team::factory()->create(['slug' => 'rub-367-elsewhere']);
+    $token = remoteMcpToken($team);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $outsider = memberOfTeam($otherTeam, TeamRole::Member);
+    $html = '<!doctype html><title>Signed report</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    if ($tool === 'deploy_artifact') {
+        Http::fake([
+            'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+            'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+            'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+        ]);
+    } else {
+        Http::fake([
+            'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+                'id' => ARTIFACT_LINK_ID, 'tier' => 'secure', 'entrypoint' => 'index.html',
+                'created_at' => '2026-09-20T00:00:00Z', 'expires_at' => null,
+                'title' => 'Signed report', 'description' => 'A safe summary',
+            ], 200),
+        ]);
+    }
+
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    // A workspace artifact lives in D1, which is what the open route reads.
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, $html, ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null], 'secure');
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => $tool === 'deploy_artifact'
+            ? ['name' => $tool, 'arguments' => ['html' => $html, 'tier' => 'secure']]
+            : ['name' => $tool, 'arguments' => ['id' => ARTIFACT_LINK_ID]],
+    ])->assertOk();
+
+    $viewUrl = (string) $response->json('result.structuredContent.view_url');
+
+    // Shape that is genuinely the contract: the link is the app's route for the
+    // caller's workspace, and it carries no credential — the token is minted
+    // per click, for the viewer, and never handed to the agent.
+    expect($viewUrl)->toBe(route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]))
+        ->and($viewUrl)->not->toContain('token=');
+
+    // No session: refused, and nothing is minted for an anonymous reader.
+    $anonymous = followArtifactViewUrl($viewUrl);
+
+    expect($anonymous['status'])->toBe(302)
+        ->and((string) $anonymous['location'])->not->toContain('token=')
+        ->and((string) $anonymous['location'])->toContain('/login');
+
+    // A member of another workspace: the same 404 as an id that exists
+    // nowhere, and no token minted for them either.
+    $refused = followArtifactViewUrl($viewUrl, $outsider);
+
+    expect($refused['status'])->toBe(404)
+        ->and($refused['location'])->toBeNull();
+
+    // The member who was sent the link: the redirect carries a token bound to
+    // this artifact, which is the thing that makes the link open.
+    $followed = followArtifactViewUrl($viewUrl, $member);
+
+    expect($followed['status'])->toBe(302);
+
+    $location = (string) $followed['location'];
+
+    expect($location)->toStartWith('https://'.$team->slug.'--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'?token=');
+
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
+    $minted = (string) ($query['token'] ?? '');
+    $now = now()->timestamp;
+
+    expect($minted)->not->toBe('')
+        // A credential for this artifact...
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
+        // ...and not for another artifact id, nor under another secret.
+        ->and(artifactTokenVerifies($minted, 'ffffffffffffffffffffffffffffffff', ARTIFACT_LINK_SECRET, $now))->toBeFalse()
+        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
+})->with(['deploy_artifact', 'get_artifact']);
 
 test('get_artifact hands a public artifact the workspaces public url without a token', function () {
     configureArtifactLinks();

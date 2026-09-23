@@ -8,5 +8,15 @@
     "ephemeral": "worker_public_url",
     "secure": "app_open_route",
     "unreadable": "app_open_route"
+  },
+  "_deploy_to_canvas_comment": "deploy_to_canvas publishes an anonymous KV record and no workspace row, so the app's open route — which resolves content from D1 — can only 404 for it, and a server-side redirect cannot carry the decryption fragment the KV preview shell requires. Every tier it accepts therefore gets the Worker's own URL with that fragment: the app route is not a fallback for this tool, it is structurally unable to work. deploy_artifact and get_artifact keep the tier rule above.",
+  "deploy_to_canvas": {
+    "path_template": "/p/{artifact}",
+    "fragment": "required",
+    "tiers": {
+      "public": "worker_public_url",
+      "secure": "worker_public_url",
+      "ephemeral": "worker_public_url"
+    }
   }
 }

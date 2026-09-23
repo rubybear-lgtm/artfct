@@ -124,6 +124,13 @@ that is depends on the artifact's tier:
 - **`public`** — the artifact's public URL. The Worker serves a public artifact
   to anyone, so no token is minted for it and no session is needed.
 
+**`deploy_to_canvas` is the exception to both bullets.** Its artifacts are
+anonymous, expiring records with no workspace row, so the open route could only
+404 for them and no session can authorize one. Its `view_url` is the Worker's own
+`/p/{id}` URL **with the decryption fragment** (`#<shareCode>`) at every tier it
+accepts, and it opens on the Worker origin. The fragment is the decryption key —
+strip it and the page renders only a placeholder.
+
 `view_url` replaces the earlier `url` field, on both the hosted and the local
 stdio server. An agent should present `view_url` rather than reconstructing a
 `/p/{id}` URL from an artifact id: the raw URL carries no credential, so a

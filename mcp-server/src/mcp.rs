@@ -50,6 +50,21 @@ fn is_anonymous_tier(tier: Option<&str>) -> bool {
     matches!(tier, Some(value) if value.eq_ignore_ascii_case("public") || value.eq_ignore_ascii_case("ephemeral"))
 }
 
+/// The URL the Worker itself serves an anonymous artifact at: the artifact's
+/// real address when the create response carried one (`ARTFCT_PUBLIC_BASE_URL`),
+/// a reconstruction from the API base otherwise. It is also the only link that
+/// resolves for a KV artifact — `deploy_to_canvas` calls this directly.
+fn anonymous_artifact_url(
+    worker_base_url: &str,
+    artifact_id: &str,
+    worker_url: Option<&str>,
+) -> String {
+    worker_url
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("{}/p/{artifact_id}", worker_base_url.trim_end_matches('/')))
+}
+
 /// The one place the local server decides which URL a person is handed for an
 /// artifact, mirroring `App\Services\Artifacts\ArtifactViewLink` on the hosted
 /// side: an artifact the Worker serves without a credential — public, or an
@@ -58,6 +73,11 @@ fn is_anonymous_tier(tier: Option<&str>) -> bool {
 /// response did not carry) gets the app's session-authenticated open route,
 /// which authorizes the viewer and mints a short-lived signed link at click
 /// time.
+///
+/// That rule is for artifacts the workspace holds in D1. `deploy_to_canvas`
+/// publishes anonymous KV records instead, at every tier it accepts, and the
+/// app's open route resolves content from D1 — so for those the only link that
+/// resolves is `anonymous_artifact_url()`.
 ///
 /// `worker_url` is the URL the Worker published for the artifact, when the
 /// response carried one (`ARTFCT_PUBLIC_BASE_URL`). It is used for an anonymous
@@ -77,16 +97,11 @@ fn artifact_view_url(
     worker_url: Option<&str>,
 ) -> String {
     if is_anonymous_tier(tier) {
-        return worker_url
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| {
-                format!("{}/p/{artifact_id}", worker_base_url.trim_end_matches('/'))
-            });
+        return anonymous_artifact_url(worker_base_url, artifact_id, worker_url);
     }
 
     let Some(organization) = organization else {
-        return format!("{}/p/{artifact_id}", worker_base_url.trim_end_matches('/'));
+        return anonymous_artifact_url(worker_base_url, artifact_id, worker_url);
     };
 
     format!(
@@ -1005,26 +1020,36 @@ async fn call_deploy_artifact(session: &Session, arguments: Value) -> Result<Val
 }
 
 async fn call_deploy_to_canvas(session: &Session, arguments: Value) -> Result<Value> {
+    let api_base_url = crate::auth::api_base_url(DEFAULT_API_BASE_URL);
+
+    call_deploy_to_canvas_at(session, arguments, &api_base_url).await
+}
+
+/// `call_deploy_to_canvas` against an explicit base URL, so a test can drive the
+/// whole tool — create request, Worker response, link — over a stub socket
+/// without reaching for a process-global environment variable.
+async fn call_deploy_to_canvas_at(
+    session: &Session,
+    arguments: Value,
+    api_base_url: &str,
+) -> Result<Value> {
     let arguments: DeployToolArguments =
         serde_json::from_value(arguments).context("Invalid deploy_to_canvas arguments")?;
 
-    let api_base_url = crate::auth::api_base_url(DEFAULT_API_BASE_URL);
     let prepared = prepare_mcp_tool_request(session, &arguments)?;
     let request = mcp_create_request_payload(&prepared.request)?;
     let artifact =
-        api::deploy_artifact_payload(&reqwest::Client::new(), &api_base_url, &request).await?;
-    // The share fragment is client-side only — the Worker never sees it — so it
-    // rides along on whichever link the tier rule picked.
+        api::deploy_artifact_payload(&reqwest::Client::new(), api_base_url, &request).await?;
+    // This tool publishes an anonymous KV record at every tier it accepts, and
+    // the app's open route resolves content from D1 — so that route 404s for
+    // these artifacts no matter the tier. The Worker's own `/p/{id}` URL is the
+    // only link that resolves, and the share fragment is its access mechanism.
+    // A server-side redirect cannot carry a fragment at all, which is why the
+    // fragment rides on this URL rather than on the app route: the Worker never
+    // sees it, and the preview shell reads it client-side.
     let view_url = format!(
         "{}{}",
-        artifact_view_url(
-            &api_base_url,
-            &app_base_url(),
-            session.connection.organization.as_deref(),
-            &artifact.id,
-            Some(artifact.tier.as_str()),
-            Some(artifact.url.as_str()),
-        ),
+        anonymous_artifact_url(api_base_url, &artifact.id, Some(artifact.url.as_str())),
         prepared.fragment
     );
 
@@ -1398,18 +1423,25 @@ fn json_rpc_success(id: Option<Value>, result: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{ErrorKind, Read, Write};
+    use std::net::{TcpListener, TcpStream};
     use std::process::Command;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread::{self, JoinHandle};
+    use std::time::Duration;
 
     use anyhow::anyhow;
     use serde_json::{json, Value};
 
     use super::{
-        artifact_view_url, call_add_collection_artifact, call_get_artifact, call_tool,
-        format_search_response, format_usage_response, handle_json_rpc, mcp_create_request_payload,
-        negotiate_protocol_version, prepare_mcp_tool_request, resolve_host, search_request_payload,
-        session_identity, ConnectionContext, CredentialSource, DeployToolArguments, HostIdentity,
-        HostSource, McpError, SearchToolArguments, Session, APP_OPEN_PATH_TEMPLATE,
-        MCP_SERVER_VERSION, PROTOCOL_VERSION, SERVER_INSTRUCTIONS,
+        anonymous_artifact_url, artifact_view_url, call_add_collection_artifact, call_get_artifact,
+        call_tool, format_search_response, format_usage_response, handle_json_rpc,
+        mcp_create_request_payload, negotiate_protocol_version, prepare_mcp_tool_request,
+        resolve_host, search_request_payload, session_identity, ConnectionContext,
+        CredentialSource, DeployToolArguments, HostIdentity, HostSource, McpError,
+        SearchToolArguments, Session, APP_OPEN_PATH_TEMPLATE, MCP_SERVER_VERSION, PROTOCOL_VERSION,
+        SERVER_INSTRUCTIONS,
     };
     use crate::api::tests::validate_contract_schema;
     use crate::api::{SearchResponse, SearchResultDto, UsageLimits, UsageResponse};
@@ -2124,6 +2156,274 @@ mod tests {
         }
     }
 
+    /// Stands in for the Artifact Engine as `deploy_to_canvas` meets it: a
+    /// hand-rolled HTTP/1.1 responder on a real loopback socket that serves the
+    /// create call, then serves `/p/{id}` the way the Worker's KV path does —
+    /// and serves nothing else. Anything else 404s, which is what the app's own
+    /// open route would do for a KV artifact anyway: that route resolves D1
+    /// content this artifact does not have.
+    struct StubArtifactEngine {
+        base_url: String,
+        requests: Arc<Mutex<Vec<String>>>,
+        stop: Arc<AtomicBool>,
+        accept_loop: Option<JoinHandle<()>>,
+    }
+
+    impl StubArtifactEngine {
+        fn start(artifact_id: &str, tier: &str) -> Self {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind the stub engine");
+            let port = listener.local_addr().expect("stub engine address").port();
+            listener
+                .set_nonblocking(true)
+                .expect("the stub engine polls for connections");
+
+            let base_url = format!("http://127.0.0.1:{port}");
+            let created = json!({
+                "id": artifact_id,
+                "url": format!("{base_url}/p/{artifact_id}"),
+                "tier": tier,
+                "expires_at": "2026-09-30T00:00:00Z",
+                "title": "Canvas preview",
+                "description": "Encrypted HTML preview on artfct.",
+                "thumbnail": "https://artfct.dev/og-image.svg",
+                "preview_blurred": true
+            })
+            .to_string();
+            let kv_path = format!("/p/{artifact_id}");
+
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let stop = Arc::new(AtomicBool::new(false));
+            let accept_loop = {
+                let requests = Arc::clone(&requests);
+                let stop = Arc::clone(&stop);
+                thread::spawn(move || {
+                    while !stop.load(Ordering::SeqCst) {
+                        match listener.accept() {
+                            Ok((stream, _)) => {
+                                serve_stub_request(stream, &created, &kv_path, &requests)
+                            }
+                            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                                thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                })
+            };
+
+            Self {
+                base_url,
+                requests,
+                stop,
+                accept_loop: Some(accept_loop),
+            }
+        }
+
+        fn base_url(&self) -> &str {
+            &self.base_url
+        }
+
+        fn request_lines(&self) -> Vec<String> {
+            self.requests.lock().expect("stub requests").clone()
+        }
+    }
+
+    impl Drop for StubArtifactEngine {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(accept_loop) = self.accept_loop.take() {
+                let _ = accept_loop.join();
+            }
+        }
+    }
+
+    fn serve_stub_request(
+        mut stream: TcpStream,
+        created: &str,
+        kv_path: &str,
+        requests: &Mutex<Vec<String>>,
+    ) {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("the stub engine bounds its reads");
+        let request = read_stub_request(&mut stream);
+        requests
+            .lock()
+            .expect("stub requests")
+            .push(request.lines().next().unwrap_or_default().to_string());
+
+        let (status, content_type, body) = if request.starts_with("POST /v1/artifacts ") {
+            ("201 Created", "application/json", created.to_string())
+        } else if request.starts_with(&format!("GET {kv_path} ")) {
+            (
+                "200 OK",
+                "text/html",
+                "<!doctype html><title>Canvas preview</title><p>Waiting for the decryption key in the URL fragment.</p>"
+                    .to_string(),
+            )
+        } else {
+            (
+                "404 Not Found",
+                "application/json",
+                "{\"error\":{\"code\":\"artifact_not_found\"}}".to_string(),
+            )
+        };
+
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        );
+        let _ = stream.flush();
+    }
+
+    /// Reads one HTTP request off `stream`: the headers, then the bytes the
+    /// `Content-Length` header announces.
+    fn read_stub_request(stream: &mut TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        let mut header_end = None;
+
+        while header_end.is_none() {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(length) => request.extend_from_slice(&buffer[..length]),
+            }
+            header_end = request
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|index| index + 4);
+        }
+
+        let header_end = header_end.unwrap_or(request.len());
+        let content_length = String::from_utf8_lossy(&request[..header_end])
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if !name.eq_ignore_ascii_case("content-length") {
+                    return None;
+                }
+                value.trim().parse::<usize>().ok()
+            })
+            .unwrap_or(0);
+
+        while request.len() - header_end < content_length {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(length) => request.extend_from_slice(&buffer[..length]),
+            }
+        }
+
+        String::from_utf8_lossy(&request).into_owned()
+    }
+
+    /// Follow a `view_url` the way a browser would: connect to the origin it
+    /// names, send its path — a browser never sends the fragment — and report
+    /// the status and body that came back.
+    fn follow_loopback_url(url: &str) -> (u16, String) {
+        let (authority, rest) = url
+            .split_once("://")
+            .expect("a view_url carries a scheme")
+            .1
+            .split_once('/')
+            .expect("a view_url carries a path");
+        let path = format!("/{}", rest.split('#').next().unwrap_or_default());
+
+        let mut stream = TcpStream::connect(authority).expect("connect to the view_url origin");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("the follow is bounded");
+        stream
+            .write_all(
+                format!("GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .expect("write the follow request");
+
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("read the follow response");
+
+        let status = response
+            .split_whitespace()
+            .nth(1)
+            .and_then(|code| code.parse::<u16>().ok())
+            .unwrap_or_else(|| panic!("no status line in {response}"));
+        let body = response
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_string())
+            .unwrap_or_default();
+
+        (status, body)
+    }
+
+    /// The property the hosted suite proves for `deploy_to_canvas` — the link
+    /// the tool hands back resolves for the artifact the tool actually created —
+    /// proved here for the local server's tool, at every tier its schema
+    /// accepts, by following the link over a real socket. The stub serves the
+    /// create call and the KV path and nothing else, so an app open route (or
+    /// any other URL) answers 404 rather than being blessed by a prefix match.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn deploy_to_canvas_returns_a_link_that_resolves_at_every_tier_it_accepts() {
+        let artifact_id = "abcdefghijklmnop";
+
+        for tier in ["public", "secure", "ephemeral"] {
+            let stub = StubArtifactEngine::start(artifact_id, tier);
+            let session = Session::new_with_resolution(None, None, None);
+
+            let result = super::call_deploy_to_canvas_at(
+                &session,
+                json!({"html": "<title>Canvas</title><h1>preview</h1>", "tier": tier}),
+                stub.base_url(),
+            )
+            .await
+            .unwrap_or_else(|error| {
+                panic!("tier {tier}: the stub engine accepts the deploy: {error}")
+            });
+
+            let view_url = result["structuredContent"]["view_url"]
+                .as_str()
+                .unwrap_or_else(|| panic!("tier {tier}: the tool returns a view_url"))
+                .to_string();
+            let worker_url = format!("{}/p/{artifact_id}", stub.base_url());
+
+            assert_eq!(
+                result["structuredContent"]["canonical_url"], worker_url,
+                "tier {tier}: the canonical URL is the Worker's own"
+            );
+            assert!(
+                view_url.starts_with(&format!("{worker_url}#")),
+                "tier {tier}: the link is the Worker's KV path with its fragment, not another origin: {view_url}"
+            );
+            assert!(
+                !view_url.contains(APP_OPEN_PATH_TEMPLATE),
+                "tier {tier}: the app's open route cannot resolve a KV artifact, so it must never be handed out: {view_url}"
+            );
+
+            let (status, body) = follow_loopback_url(&view_url);
+
+            assert_eq!(
+                status, 200,
+                "tier {tier}: following {view_url} must reach the artifact, not a 404"
+            );
+            assert!(
+                body.contains("Waiting for the decryption key in the URL fragment."),
+                "tier {tier}: the KV preview shell answers, so the link resolves for this artifact: {body}"
+            );
+
+            let lines = stub.request_lines();
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == &format!("GET /p/{artifact_id} HTTP/1.1")),
+                "tier {tier}: the follow must hit the KV path itself: {lines:?}"
+            );
+        }
+    }
+
     /// The shared cross-server contract: which link a tool hands back for a
     /// tier, and what that link is called. The fixture is the same file the
     /// hosted server's PHP suite reads, so a change to the shape fails both
@@ -2142,6 +2442,66 @@ mod tests {
         assert_eq!(contract["tiers"]["ephemeral"], "worker_public_url");
         assert_eq!(contract["tiers"]["secure"], "app_open_route");
         assert_eq!(contract["tiers"]["unreadable"], "app_open_route");
+
+        // `deploy_to_canvas` is the exception the hosted suite proves in
+        // behaviour: its artifacts are anonymous KV records the app's open
+        // route cannot resolve at any tier, so every tier it accepts gets the
+        // Worker's own URL. The fixture states the rule once for both servers.
+        assert_eq!(
+            contract["deploy_to_canvas"]["path_template"],
+            "/p/{artifact}"
+        );
+        assert_eq!(contract["deploy_to_canvas"]["fragment"], "required");
+
+        let deploy_to_canvas = tool_registry::definitions_json();
+        let accepted_tiers: Vec<String> = deploy_to_canvas
+            .as_array()
+            .expect("tool array")
+            .iter()
+            .find(|tool| tool["name"] == "deploy_to_canvas")
+            .expect("the catalog defines deploy_to_canvas")["inputSchema"]["properties"]["tier"]
+            ["enum"]
+            .as_array()
+            .expect("deploy_to_canvas takes a tier enum")
+            .iter()
+            .map(|tier| tier.as_str().expect("tier names are strings").to_string())
+            .collect();
+
+        for tier in &accepted_tiers {
+            assert_eq!(
+                contract["deploy_to_canvas"]["tiers"][tier.as_str()], "worker_public_url",
+                "`{tier}` is a tier deploy_to_canvas accepts, so the fixture must say it gets the Worker's URL"
+            );
+        }
+
+        // The fixture names exactly the tiers the tool accepts: a tier added to
+        // the schema without a contract entry fails here, on both servers.
+        let fixture_tiers: Vec<&str> = contract["deploy_to_canvas"]["tiers"]
+            .as_object()
+            .expect("the fixture lists deploy_to_canvas tiers")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        for tier in &fixture_tiers {
+            assert!(
+                accepted_tiers.iter().any(|accepted| accepted == tier),
+                "the fixture names `{tier}`, which deploy_to_canvas does not accept"
+            );
+        }
+
+        // And the local server's own link builder for those artifacts yields
+        // the Worker's path with no app route in it, at every tier.
+        let anonymous = anonymous_artifact_url("https://artfct.dev", "artifact-1", None);
+        assert_eq!(anonymous, "https://artfct.dev/p/artifact-1");
+        assert!(!anonymous.contains(APP_OPEN_PATH_TEMPLATE));
+        assert_eq!(
+            anonymous_artifact_url(
+                "https://api.artfct.dev",
+                "artifact-1",
+                Some("https://staging.artfct.dev/p/artifact-1"),
+            ),
+            "https://staging.artfct.dev/p/artifact-1"
+        );
 
         let app_open_path = APP_OPEN_PATH_TEMPLATE
             .replace("{team}", "acme")

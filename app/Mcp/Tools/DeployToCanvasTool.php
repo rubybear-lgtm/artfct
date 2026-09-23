@@ -27,7 +27,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Deprecated: use deploy_artifact. Encrypts and publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url follows the same rule as the other tools: a secure artifact opens through the app\'s own open route, a public one through the workspace\'s public artifact URL.')]
+#[Description('Deprecated: use deploy_artifact. Encrypts and publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url is the Worker\'s own /p/{id} URL with the artifact\'s decryption fragment: these artifacts are anonymous KV records with no workspace row, so they always open on the Worker origin, never through the app\'s open route.')]
 #[Name('deploy_to_canvas')]
 #[IsReadOnly(false)]
 #[IsIdempotent(false)]
@@ -188,19 +188,19 @@ final class DeployToCanvasTool extends Tool
         }
 
         $artifactId = (string) $response->json('id');
-        $tier = $response->json('tier');
-        $tierAwareViewUrl = ArtifactViewLink::forArtifact($team->slug, $artifactId, is_string($tier) ? $tier : null, (string) $response->json('url'));
+        $workerUrl = $response->json('url');
 
         $resultPayload = [
             'id' => $artifactId,
-            // The share fragment is client-side only — the Worker never sees it
-            // — so it rides along on whichever link the tier rule picks: the
-            // Worker's own /p/{id} URL for an anonymous artifact (public or
-            // ephemeral), the app's open route for a secure one. `canonical_url`
-            // stays the Worker's canonical form; it is the resource's identity,
-            // not a link a person opens.
-            'view_url' => $tierAwareViewUrl.'#'.$shareCode,
-            'canonical_url' => $response->json('url'),
+            // Unlike the workspace tools, this one never hands back the app's
+            // open route: these artifacts are anonymous KV records with no D1
+            // row for that route to resolve, so it could only 404 — and it
+            // could not carry the fragment anyway, since a server-side redirect
+            // cannot. The Worker's `/p/{id}` URL is the one link the KV path
+            // serves, and the fragment it rides with is that link's access
+            // mechanism, at every tier this tool accepts.
+            'view_url' => ArtifactViewLink::forAnonymousArtifact($artifactId, is_string($workerUrl) ? $workerUrl : null).'#'.$shareCode,
+            'canonical_url' => $workerUrl,
             'tier' => $response->json('tier'),
             'expires_at' => $response->json('expires_at'),
             'title' => $response->json('title') ?: $this->extractTitle($html),

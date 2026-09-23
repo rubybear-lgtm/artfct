@@ -19,6 +19,12 @@ namespace App\Services\Artifacts;
  *
  * The open route is addressed relative to the request the link is minted in,
  * so it works for the hosted MCP endpoint and for the console alike.
+ *
+ * `deploy_to_canvas` is the exception that proves the rule: its artifacts are
+ * anonymous KV records with no D1 row, so the open route can only 404 for
+ * them. That tool asks for `forAnonymousArtifact()` explicitly — the Worker's
+ * own `/p/{id}` URL, which the KV path serves — rather than for the tier rule
+ * above, because no tier of a KV artifact is addressable through the app.
  */
 final class ArtifactViewLink
 {
@@ -71,9 +77,21 @@ final class ArtifactViewLink
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null): string
     {
         if (self::isAnonymous($tier)) {
-            return is_string($workerUrl) && $workerUrl !== '' ? $workerUrl : self::publicUrl($artifactId);
+            return self::forAnonymousArtifact($artifactId, $workerUrl);
         }
 
         return self::appOpenUrl($teamSlug, $artifactId);
+    }
+
+    /**
+     * The link for an artifact only the Worker can serve: the anonymous KV
+     * record with no D1 row, which is what `deploy_to_canvas` publishes at
+     * every tier it accepts. The app's open route resolves content from D1, so
+     * for such an artifact it is a guaranteed 404 — this URL is the whole link,
+     * and no token is ever minted for it.
+     */
+    public static function forAnonymousArtifact(string $artifactId, ?string $workerUrl = null): string
+    {
+        return is_string($workerUrl) && $workerUrl !== '' ? $workerUrl : self::publicUrl($artifactId);
     }
 }

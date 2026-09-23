@@ -153,9 +153,9 @@ Never reference local paths — they will 404 once hosted. For the full HTML tem
 
 ## The Link You Hand Back
 
-`deploy_artifact`, `get_artifact`, `search_artifacts` and `deploy_to_canvas`
-return the openable link as **`view_url`** — never reconstruct a `/p/{id}` URL
-from an artifact id yourself. What it points at depends on the tier:
+`deploy_artifact`, `get_artifact` and `search_artifacts` return the openable
+link as **`view_url`** — never reconstruct a `/p/{id}` URL from an artifact id
+yourself. What it points at depends on the tier:
 
 - **`secure`** — the app's own open route
   (`https://artfct.dev/settings/teams/<org>/console/artifacts/<id>/open`). The
@@ -164,6 +164,13 @@ from an artifact id yourself. What it points at depends on the tier:
   No credential travels in it; there is nothing to strip before sharing.
 - **`public`** — the artifact's public URL. Anyone can open it and no token is
   minted for it.
+
+**`deploy_to_canvas` is the exception.** It publishes anonymous, expiring
+artifacts that have no workspace row, so *no* tier of one is addressable through
+the app — the open route could only 404 for it. Its `view_url` is therefore the
+Worker's own `/p/{id}` URL **with the decryption fragment** (`#<shareCode>`), and
+it always opens on the Worker origin. Keep the fragment intact: it is the
+decryption key, and the link shows only a placeholder without it.
 
 Present `view_url` verbatim. Do not shorten it, rewrite it to a direct artifact
 origin, or hand over a token-bearing URL: a raw `/p/{id}` link cannot be opened

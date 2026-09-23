@@ -112,7 +112,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "deploy_to_canvas",
-            description: "Deprecated: use deploy_artifact. Publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url follows the same rule as the other tools: the app's own open route for a secure artifact, the Worker's public artifact URL for a public or ephemeral one.",
+            description: "Deprecated: use deploy_artifact. Publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url is the Worker's own /p/{id} URL with the artifact's decryption fragment: these artifacts are anonymous KV records with no workspace row, so they always open on the Worker origin, never through the app's open route.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
