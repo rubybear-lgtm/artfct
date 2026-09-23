@@ -2137,6 +2137,29 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn zero_argument_tools_reject_unknown_fields_regression() {
+        let session = Session::new_with_resolution(None, None, None);
+
+        for tool in ["get_connection", "get_usage"] {
+            let error = call_tool(
+                &session,
+                json!({
+                    "name": tool,
+                    "arguments": {"unexpected": "counterexample"}
+                }),
+                |_| {},
+            )
+            .await
+            .expect_err("unknown arguments must be rejected before the tool runs");
+
+            assert_eq!(
+                error.response(Some(json!(1)))["error"]["data"]["errorCode"],
+                "invalid_request"
+            );
+        }
+    }
+
     fn schema_derived_invalid_arguments(schema: &Value, seed: &mut u64) -> Value {
         let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
             return json!({"unexpected": arbitrary_json(seed, 3)});
