@@ -3,13 +3,6 @@ import type { DragEvent, RefObject } from 'react';
 import { WelcomeFileDropzone } from '@/pages/welcome/welcome-file-dropzone';
 import { WelcomeUploadActions } from '@/pages/welcome/welcome-upload-actions';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-
-const S = {
-    base1: 'var(--sol-base1)',
-    blue: 'var(--sol-blue)',
-} as const;
-
 export type WelcomePhase =
     | { t: 'idle' }
     | { t: 'selected'; file: File }
@@ -56,28 +49,14 @@ export function WelcomeUploadControls({
 }: WelcomeUploadControlsProps) {
     return (
         <>
-            <label
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    fontFamily: MONO,
-                    fontSize: '12px',
-                    color: S.base1,
-                    letterSpacing: '0.03em',
-                }}
-            >
+            <label className="welcome-preview-toggle">
                 <input
                     type="checkbox"
                     checked={previewBlurred}
                     onChange={(event) =>
                         onPreviewBlurredChange(event.target.checked)
                     }
-                    style={{
-                        accentColor: S.blue,
-                        width: '14px',
-                        height: '14px',
-                    }}
+                    className="welcome-preview-checkbox"
                 />
                 blur link preview by default
             </label>

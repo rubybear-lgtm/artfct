@@ -475,6 +475,121 @@ html {
     font-size: 11px;
 }
 
+/* Welcome upload controls */
+.welcome-preview-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+
+.welcome-preview-checkbox {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--sol-blue);
+}
+
+.welcome-file-dropzone-wrapper {
+    width: 100%;
+}
+
+.welcome-file-input {
+    display: none;
+}
+
+.welcome-file-dropzone {
+    padding: 2.2rem 2rem;
+    border: 1px solid var(--sol-base1);
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 16px;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+    transition:
+        border-color 0.1s ease,
+        background-color 0.1s ease;
+}
+
+.welcome-file-dropzone.is-dragging {
+    border-style: double;
+    border-color: var(--sol-blue);
+    background-color: color-mix(in srgb, var(--sol-blue) 7%, transparent);
+}
+
+.welcome-file-name {
+    margin-bottom: 0.35rem;
+    color: var(--sol-cyan);
+    letter-spacing: 0.02em;
+}
+
+.welcome-file-type {
+    margin-left: 0.5rem;
+    color: var(--sol-violet);
+    font-size: 13px;
+}
+
+.welcome-file-status {
+    color: var(--sol-base1);
+    font-size: 14px;
+}
+
+.welcome-file-prompt {
+    margin-bottom: 0.35rem;
+}
+
+.welcome-file-extension {
+    color: var(--sol-base00);
+    font-weight: 600;
+}
+
+.welcome-upload-error {
+    margin: -1.25rem 0 0;
+    color: var(--sol-red);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-upload-retry {
+    padding: 0;
+    color: var(--sol-red);
+    font-family: inherit;
+    font-size: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-deploy-button {
+    padding: 0.625rem 2.8rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    cursor: not-allowed;
+    background-color: transparent;
+    border: 1px solid var(--sol-base2);
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.welcome-deploy-button.is-active {
+    color: var(--sol-base3);
+    cursor: pointer;
+    background-color: var(--sol-red);
+    border-color: var(--sol-red);
+}
+
 /* Modal animation */
 .welcome-manage-overlay {
     position: fixed;
