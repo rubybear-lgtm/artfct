@@ -342,6 +342,139 @@ html {
     transform: scale(0.97);
 }
 
+/* Welcome manage modal sections */
+.welcome-manage-summary,
+.welcome-manage-duration,
+.welcome-manage-danger,
+.welcome-manage-action,
+.welcome-manage-duration-input,
+.welcome-manage-duration-select {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.welcome-manage-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 12px;
+}
+
+.welcome-manage-row {
+    display: flex;
+}
+
+.welcome-manage-url-row {
+    overflow: hidden;
+}
+
+.welcome-manage-label {
+    width: 90px;
+    flex-shrink: 0;
+    color: var(--sol-base1);
+}
+
+.welcome-manage-value,
+.welcome-manage-url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-manage-value {
+    color: var(--sol-base00);
+    font-weight: bold;
+}
+
+.welcome-manage-url {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-manage-status {
+    font-weight: bold;
+}
+
+.welcome-manage-status.is-expired {
+    color: var(--sol-red);
+}
+
+.welcome-manage-status.is-active {
+    color: var(--sol-green);
+}
+
+.welcome-manage-duration {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.welcome-manage-duration-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.welcome-manage-duration-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.welcome-manage-duration-input,
+.welcome-manage-duration-select {
+    box-sizing: border-box;
+    padding: 0.5rem;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    color: var(--sol-base0);
+    font-size: 13px;
+    outline: none;
+}
+
+.welcome-manage-duration-input {
+    flex: 1;
+}
+
+.welcome-manage-action {
+    align-self: flex-start;
+    padding: 0.5rem 1rem;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.welcome-manage-action:disabled {
+    cursor: not-allowed;
+}
+
+.welcome-manage-update {
+    background-color: var(--sol-blue);
+    color: var(--sol-base3);
+}
+
+.welcome-manage-delete {
+    background-color: var(--sol-red);
+    color: var(--sol-base3);
+}
+
+.welcome-manage-danger {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-manage-danger-copy {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
 /* Modal animation */
 @keyframes modalScaleIn {
     from {

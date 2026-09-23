@@ -2,111 +2,45 @@ import { Button } from '@/components/ui/button';
 import type { CachedLink } from '@/pages/welcome/welcome-cached-links';
 import { timeUntil } from '@/pages/welcome/welcome-cached-links';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const DEFAULT_TTL_MINUTES = 5 * 24 * 60;
 const MAX_TTL_MINUTES = 365 * 24 * 60;
-
-const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base00: 'var(--sol-base00)',
-    base0: 'var(--sol-base0)',
-    red: 'var(--sol-red)',
-    green: 'var(--sol-green)',
-    blue: 'var(--sol-blue)',
-    cyan: 'var(--sol-cyan)',
-} as const;
 
 export function ManageDeploymentSummary({
     managingLink,
 }: {
     managingLink: CachedLink;
 }) {
+    const expiration = timeUntil(managingLink.expiresAt);
+    const statusClass =
+        expiration === 'expired'
+            ? 'welcome-manage-status is-expired'
+            : 'welcome-manage-status is-active';
+
     return (
-        <div
-            style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
-                fontFamily: MONO,
-                fontSize: '12px',
-            }}
-        >
-            <div style={{ display: 'flex' }}>
-                <span
-                    style={{
-                        color: S.base1,
-                        width: '90px',
-                        flexShrink: 0,
-                    }}
-                >
-                    file:
-                </span>
-                <span
-                    style={{
-                        color: S.base00,
-                        fontWeight: 'bold',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                    }}
-                >
+        <div className="welcome-manage-summary">
+            <div className="welcome-manage-row">
+                <span className="welcome-manage-label">file:</span>
+                <span className="welcome-manage-value">
                     {managingLink.filename}
                 </span>
             </div>
-            <div
-                style={{
-                    display: 'flex',
-                    overflow: 'hidden',
-                }}
-            >
-                <span
-                    style={{
-                        color: S.base1,
-                        width: '90px',
-                        flexShrink: 0,
-                    }}
-                >
-                    url:
-                </span>
+            <div className="welcome-manage-row welcome-manage-url-row">
+                <span className="welcome-manage-label">url:</span>
                 <a
                     href={managingLink.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                        color: S.blue,
-                        textDecoration: 'none',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                    }}
+                    className="welcome-manage-url"
                 >
                     {managingLink.url}
                 </a>
             </div>
-            <div style={{ display: 'flex' }}>
-                <span
-                    style={{
-                        color: S.base1,
-                        width: '90px',
-                        flexShrink: 0,
-                    }}
-                >
-                    status:
-                </span>
-                <span
-                    style={{
-                        color:
-                            timeUntil(managingLink.expiresAt) === 'expired'
-                                ? S.red
-                                : S.green,
-                        fontWeight: 'bold',
-                    }}
-                >
-                    {timeUntil(managingLink.expiresAt) === 'expired'
+            <div className="welcome-manage-row">
+                <span className="welcome-manage-label">status:</span>
+                <span className={statusClass}>
+                    {expiration === 'expired'
                         ? 'expired'
-                        : `expires in ${timeUntil(managingLink.expiresAt)}`}
+                        : `expires in ${expiration}`}
                 </span>
             </div>
         </div>
@@ -129,30 +63,10 @@ export function ManageDeploymentDuration({
     onUpdateTtl,
 }: ManageDeploymentDurationProps) {
     return (
-        <div
-            style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-            }}
-        >
-            <label
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '12px',
-                    color: S.base00,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.5rem',
-                }}
-            >
+        <div className="welcome-manage-duration">
+            <label className="welcome-manage-duration-label">
                 <span>adjust duration (minutes from now)</span>
-                <div
-                    style={{
-                        display: 'flex',
-                        gap: '0.5rem',
-                    }}
-                >
+                <div className="welcome-manage-duration-controls">
                     <input
                         type="number"
                         min={1}
@@ -163,17 +77,7 @@ export function ManageDeploymentDuration({
                                 parseInt(e.target.value) || DEFAULT_TTL_MINUTES,
                             )
                         }
-                        style={{
-                            flex: 1,
-                            padding: '0.5rem',
-                            backgroundColor: S.base2,
-                            border: `1px solid ${S.base1}`,
-                            color: S.base0,
-                            fontFamily: MONO,
-                            fontSize: '13px',
-                            outline: 'none',
-                            boxSizing: 'border-box',
-                        }}
+                        className="welcome-manage-duration-input"
                     />
                     <select
                         value={
@@ -194,16 +98,7 @@ export function ManageDeploymentDuration({
                             e.target.value &&
                             setNewTtlMinutes(parseInt(e.target.value))
                         }
-                        style={{
-                            padding: '0.5rem',
-                            backgroundColor: S.base2,
-                            border: `1px solid ${S.base1}`,
-                            color: S.base0,
-                            fontFamily: MONO,
-                            fontSize: '13px',
-                            outline: 'none',
-                            boxSizing: 'border-box',
-                        }}
+                        className="welcome-manage-duration-select"
                     >
                         <option value="" disabled>
                             presets
@@ -223,20 +118,7 @@ export function ManageDeploymentDuration({
             <Button
                 onClick={onUpdateTtl}
                 disabled={isUpdatingTtl || isDeletingLink}
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '12px',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: S.blue,
-                    color: S.base3,
-                    border: 'none',
-                    cursor:
-                        isUpdatingTtl || isDeletingLink
-                            ? 'not-allowed'
-                            : 'pointer',
-                    transition: 'opacity 0.15s ease',
-                    alignSelf: 'flex-start',
-                }}
+                className="welcome-manage-action welcome-manage-update"
             >
                 {isUpdatingTtl ? 'updating...' : 'update duration'}
             </Button>
@@ -256,41 +138,14 @@ export function ManageDeploymentDanger({
     onDeleteLink,
 }: ManageDeploymentDangerProps) {
     return (
-        <div
-            style={{
-                borderTop: `1px solid ${S.base2}`,
-                paddingTop: '1.2rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
-            }}
-        >
-            <div
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '11px',
-                    color: S.base1,
-                }}
-            >
+        <div className="welcome-manage-danger">
+            <div className="welcome-manage-danger-copy">
                 danger zone: permanently delete deployment from server
             </div>
             <Button
                 onClick={onDeleteLink}
                 disabled={isUpdatingTtl || isDeletingLink}
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '12px',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: S.red,
-                    color: S.base3,
-                    border: 'none',
-                    cursor:
-                        isUpdatingTtl || isDeletingLink
-                            ? 'not-allowed'
-                            : 'pointer',
-                    transition: 'opacity 0.15s ease',
-                    alignSelf: 'flex-start',
-                }}
+                className="welcome-manage-action welcome-manage-delete"
             >
                 {isDeletingLink ? 'deleting...' : 'delete deployment'}
             </Button>
