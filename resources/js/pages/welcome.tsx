@@ -24,11 +24,6 @@ import { login } from '@/routes';
 import consoleRoutes from '@/routes/console';
 
 const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base0: 'var(--sol-base0)',
-    base00: 'var(--sol-base00)',
     yellow: 'var(--sol-yellow)',
     orange: 'var(--sol-orange)',
     red: 'var(--sol-red)',
@@ -61,7 +56,6 @@ const PAIRS: [number, number][] = [
     [1, 4],
 ];
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 const WORKER_URL =
     (import.meta.env.VITE_WORKER_URL as string | undefined) ??
     (import.meta.env.DEV ? 'http://127.0.0.1:8788' : '');
@@ -577,44 +571,12 @@ export default function Welcome() {
                         ? consoleRoutes.index.url({ team: currentTeam.slug })
                         : login.url()
                 }
-                style={{
-                    position: 'fixed',
-                    top: '1rem',
-                    left: '1.25rem',
-                    zIndex: 10,
-                    fontFamily: MONO,
-                    fontSize: '13px',
-                    color: S.base1,
-                    textDecoration: 'none',
-                }}
+                className="welcome-signin"
             >
                 {auth?.user && currentTeam ? 'open console' : 'sign in'}
             </a>
-            <div
-                style={{
-                    minHeight: '100dvh',
-                    backgroundColor: S.base3,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '3rem 1.5rem',
-                    fontFamily:
-                        "'Instrument Sans', ui-sans-serif, system-ui, sans-serif",
-                    color: S.base0,
-                    boxSizing: 'border-box',
-                }}
-            >
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '2.2rem',
-                        width: '100%',
-                        maxWidth: '700px',
-                    }}
-                >
+            <div className="welcome-shell">
+                <div className="welcome-content">
                     <AsciiLogo
                         colorA={gradient[0]}
                         colorB={gradient[1]}
@@ -623,14 +585,7 @@ export default function Welcome() {
 
                     <p
                         aria-label="share encrypted html or markdown. get a link. that's it."
-                        style={{
-                            margin: 0,
-                            fontFamily: MONO,
-                            fontSize: '15px',
-                            color: S.base1,
-                            letterSpacing: '0.04em',
-                            minHeight: '1em',
-                        }}
+                        className="welcome-tagline"
                     >
                         <span aria-hidden="true">
                             {tagline.displayed}

@@ -1,6 +1,50 @@
 /* Oxblood & Bone landing page (see DESIGN.md). Everything is scoped to
    `.landing`, so the free tool and the app keep their own styles. */
 
+.welcome-signin {
+    position: fixed;
+    top: 1rem;
+    left: 1.25rem;
+    z-index: 10;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: var(--sol-base1);
+    text-decoration: none;
+}
+
+.welcome-shell {
+    min-height: 100dvh;
+    background-color: var(--sol-base3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1.5rem;
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    color: var(--sol-base0);
+    box-sizing: border-box;
+}
+
+.welcome-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.2rem;
+    width: 100%;
+    max-width: 700px;
+}
+
+.welcome-tagline {
+    margin: 0;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 15px;
+    color: var(--sol-base1);
+    letter-spacing: 0.04em;
+    min-height: 1em;
+}
+
 @keyframes landing-rise {
     from {
         transform: translateY(18px);
