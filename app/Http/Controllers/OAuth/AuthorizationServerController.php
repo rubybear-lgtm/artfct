@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\OAuth;
 
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpConnection;
@@ -28,9 +29,6 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 final class AuthorizationServerController extends Controller
 {
-    /** @var list<string> */
-    private const SUPPORTED_SCOPES = ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read'];
-
     private const REFRESH_TOKEN_TTL_DAYS = 30;
 
     public function authorizationServerMetadata(): JsonResponse
@@ -44,7 +42,7 @@ final class AuthorizationServerController extends Controller
             'response_types_supported' => ['code'],
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'code_challenge_methods_supported' => ['S256'],
-            'scopes_supported' => self::SUPPORTED_SCOPES,
+            'scopes_supported' => McpScope::values(),
             'token_endpoint_auth_methods_supported' => ['none'],
             'client_id_metadata_document_supported' => false,
         ]);
@@ -101,7 +99,7 @@ final class AuthorizationServerController extends Controller
         return response()->json([
             'resource' => url('/mcp'),
             'authorization_servers' => [$this->issuer()],
-            'scopes_supported' => self::SUPPORTED_SCOPES,
+            'scopes_supported' => McpScope::values(),
             'bearer_methods_supported' => ['header'],
         ]);
     }
@@ -160,6 +158,7 @@ final class AuthorizationServerController extends Controller
             'userName' => $user->name,
             'redirectUri' => $parameters['redirect_uri'],
             'scope' => $parameters['scope'],
+            'requestedScopes' => $this->requestedScopes($parameters['scope']),
             'state' => $parameters['state'],
             'codeChallenge' => $parameters['code_challenge'],
             'codeChallengeMethod' => $parameters['code_challenge_method'],
@@ -564,7 +563,7 @@ final class AuthorizationServerController extends Controller
         }
 
         $scopes = array_values(array_filter(explode(' ', $parameters['scope'])));
-        if ($scopes === [] || array_diff($scopes, self::SUPPORTED_SCOPES) !== []) {
+        if ($scopes === [] || array_diff($scopes, McpScope::values()) !== []) {
             throw ValidationException::withMessages(['scope' => 'The requested scope is not supported.']);
         }
 
@@ -659,12 +658,40 @@ final class AuthorizationServerController extends Controller
         return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
     }
 
+    /**
+     * The consent screen renders the requested scopes from the server's own
+     * scope definitions, so the wording and the risk marking cannot drift
+     * from the scopes this server actually supports.
+     *
+     * @return list<array{value: string, label: string, risk: string}>
+     */
+    private function requestedScopes(string $scope): array
+    {
+        $requested = [];
+
+        foreach (array_filter(explode(' ', $scope)) as $value) {
+            $scopeCase = McpScope::from($value);
+
+            $requested[] = [
+                'value' => $scopeCase->value,
+                'label' => $scopeCase->label(),
+                'risk' => $scopeCase->risk()->value,
+            ];
+        }
+
+        return $requested;
+    }
+
     /** @return list<string> */
     private function scopesForRole(TeamRole $role): array
     {
         return match ($role) {
-            TeamRole::Admin, TeamRole::Member => self::SUPPORTED_SCOPES,
-            TeamRole::Viewer => ['artifacts:read', 'collections:read', 'usage:read'],
+            TeamRole::Admin, TeamRole::Member => McpScope::values(),
+            TeamRole::Viewer => [
+                McpScope::ArtifactsRead->value,
+                McpScope::CollectionsRead->value,
+                McpScope::UsageRead->value,
+            ],
         };
     }
 

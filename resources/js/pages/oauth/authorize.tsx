@@ -1,6 +1,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -18,11 +19,20 @@ interface Team {
     slug: string;
 }
 
+interface RequestedScope {
+    value: string;
+    label: string;
+    risk: ScopeRisk;
+}
+
+type ScopeRisk = 'read' | 'write' | 'destructive';
+
 interface Props {
     clientId: string;
     userName: string;
     redirectUri: string;
     scope: string;
+    requestedScopes: RequestedScope[];
     state: string | null;
     codeChallenge: string;
     codeChallengeMethod: string;
@@ -31,13 +41,9 @@ interface Props {
     teams: Team[];
 }
 
-const scopeLabels: Record<string, string> = {
-    'artifacts:read': 'Read artifacts and search your workspace',
-    'artifacts:deploy': 'Deploy artifacts to your workspace',
-    'artifacts:delete': 'Delete artifacts from your workspace',
-    'collections:read': 'View approved artifact collections',
-    'collections:write': 'Create collections and add artifacts',
-    'usage:read': 'View usage and quota totals',
+const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
+    write: 'Can modify',
+    destructive: 'Destructive',
 };
 
 export default function Authorize({
@@ -45,6 +51,7 @@ export default function Authorize({
     userName,
     redirectUri,
     scope,
+    requestedScopes,
     state,
     codeChallenge,
     codeChallengeMethod,
@@ -64,7 +71,6 @@ export default function Authorize({
         decision: 'approve',
         team: team.slug,
     });
-    const requestedScopes = scope.split(' ').filter(Boolean);
 
     const submit = (decision: 'approve' | 'deny') => {
         form.transform((data) => ({ ...data, decision }));
@@ -109,13 +115,57 @@ export default function Authorize({
 
                     <div className="rounded-md border p-3 text-sm">
                         <div className="font-medium">Requested access</div>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                            {requestedScopes.map((requestedScope) => (
-                                <li key={requestedScope}>
-                                    {scopeLabels[requestedScope] ??
-                                        requestedScope}
-                                </li>
-                            ))}
+                        <ul className="mt-2 space-y-2">
+                            {requestedScopes.map((requestedScope) => {
+                                const isDestructive =
+                                    requestedScope.risk === 'destructive';
+                                const riskLabel =
+                                    requestedScope.risk === 'read'
+                                        ? null
+                                        : riskLabels[requestedScope.risk];
+
+                                return (
+                                    <li
+                                        key={requestedScope.value}
+                                        data-testid={`scope-risk-${requestedScope.risk}`}
+                                        className={
+                                            isDestructive
+                                                ? 'rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2'
+                                                : 'px-1'
+                                        }
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span
+                                                className={
+                                                    isDestructive
+                                                        ? 'font-medium text-destructive'
+                                                        : 'text-muted-foreground'
+                                                }
+                                            >
+                                                {requestedScope.label}
+                                            </span>
+                                            {riskLabel !== null && (
+                                                <Badge
+                                                    className="shrink-0"
+                                                    variant={
+                                                        isDestructive
+                                                            ? 'destructive'
+                                                            : 'warning'
+                                                    }
+                                                >
+                                                    {riskLabel}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        {isDestructive && (
+                                            <p className="mt-1 text-xs text-destructive">
+                                                Can permanently delete
+                                                artifacts.
+                                            </p>
+                                        )}
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
 

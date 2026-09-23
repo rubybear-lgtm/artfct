@@ -45,6 +45,27 @@ test('publishes MCP authorization metadata', function () {
         ]);
 });
 
+test('consent carries the risk level the server defines for each requested scope', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $this->actingAs($user)->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'scope' => 'artifacts:read artifacts:deploy artifacts:delete',
+        'team' => $team->slug,
+    ])))->assertOk()
+        ->assertInertia(fn (AssertableJson $page) => $page
+            ->component('oauth/authorize')
+            ->where('requestedScopes.0.value', 'artifacts:read')
+            ->where('requestedScopes.0.label', 'Read artifacts and search your workspace')
+            ->where('requestedScopes.0.risk', 'read')
+            ->where('requestedScopes.1.value', 'artifacts:deploy')
+            ->where('requestedScopes.1.risk', 'write')
+            ->where('requestedScopes.2.value', 'artifacts:delete')
+            ->where('requestedScopes.2.label', 'Delete artifacts from your workspace')
+            ->where('requestedScopes.2.risk', 'destructive'));
+});
+
 test('OAuth metadata follows the configured JWT issuer contract', function () {
     config(['services.org_jwt.issuer' => 'https://issuer.example.test/']);
 
