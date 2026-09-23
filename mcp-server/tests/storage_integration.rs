@@ -803,6 +803,66 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
+async fn signed_entrypoint_cookie_authorizes_bundle_subresources() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let index = b"<!doctype html><script src=\"assets/app.js\"></script>";
+    let script = b"console.log('bundle');";
+    let id = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", index, "text/html; charset=utf-8"),
+            ("assets/app.js", script, "application/javascript"),
+        ],
+        "index.html",
+    )
+    .await?;
+    let expires_at_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64
+        + 3600;
+    let token = mint_access_token(&context.token_secret, &id, expires_at_unix);
+    let origin = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let entrypoint = client
+        .get(format!("{}/p/{id}?token={token}", context.base))
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(entrypoint.status(), reqwest::StatusCode::OK);
+    let cookie = response_header(&entrypoint, "set-cookie");
+    assert!(cookie.starts_with("artfct_access="));
+    let cookie = cookie
+        .split(';')
+        .next()
+        .ok_or("set-cookie omitted the access cookie")?;
+
+    let asset = client
+        .get(format!("{}/p/{id}/assets/app.js", context.base))
+        .header(reqwest::header::HOST, origin.as_str())
+        .header(reqwest::header::COOKIE, cookie)
+        .send()
+        .await?;
+    assert_eq!(asset.status(), reqwest::StatusCode::OK);
+    assert_eq!(asset.bytes().await?.as_ref(), script);
+
+    let without_cookie = client
+        .get(format!("{}/p/{id}/assets/app.js", context.base))
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        without_cookie.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "subresources must remain forbidden without the host-only access cookie"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
 async fn six_megabyte_permanent_file_succeeds() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());

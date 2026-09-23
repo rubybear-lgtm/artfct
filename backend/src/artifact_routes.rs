@@ -1,4 +1,5 @@
 use super::*;
+use crate::artifact_origin::{access_token_cookie, access_token_from_cookie};
 
 #[derive(Debug, Deserialize)]
 struct ContentRow {
@@ -480,26 +481,28 @@ pub(crate) async fn resolve_permanent_artifact(
     };
     let host = req.headers().get("Host")?;
     let authorization = req.headers().get("Authorization")?;
+    let query_token = req
+        .url()?
+        .query_pairs()
+        .find(|(key, _)| key == "token")
+        .map(|(_, value)| value.into_owned());
+    let cookie_token = access_token_from_cookie(req.headers().get("Cookie")?.as_deref());
     let token = authorization
         .as_deref()
         .and_then(|value| value.strip_prefix("Bearer "))
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .or_else(|| {
-            req.url()
-                .ok()?
-                .query_pairs()
-                .find(|(key, _)| key == "token")
-                .map(|(_, value)| value.into_owned())
-        });
+        .or(query_token.clone())
+        .or(cookie_token);
+    let now = Utc::now();
     let isolated_access = isolated_access_check(
         host.as_deref(),
         token.as_deref(),
         artifact_id,
         &row.org,
         artifact_token_secret(env).as_deref(),
-        Utc::now(),
+        now,
         &artifact_origin_suffix(env),
     );
     let mut viewer_user_id = None;
@@ -548,6 +551,13 @@ pub(crate) async fn resolve_permanent_artifact(
     for (name, value) in permanent_file_response_headers(&row.content_type, &manifest, is_isolated)
     {
         response.headers_mut().set(name, &value)?;
+    }
+    if isolated_access == IsolatedAccess::Authorized && requested_path.is_none() {
+        if let Some(token) = query_token.as_deref() {
+            if let Some(cookie) = access_token_cookie(token, now) {
+                response.headers_mut().set("Set-Cookie", &cookie)?;
+            }
+        }
     }
     if requested_path.is_none() {
         emit_artifact_viewed(ctx, env, &row.org, artifact_id, viewer_user_id.as_deref());

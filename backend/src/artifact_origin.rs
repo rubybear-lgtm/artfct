@@ -90,6 +90,57 @@ pub(crate) fn verify_access_token(
     constant_time_equal(signature.as_bytes(), expected.as_bytes())
 }
 
+const ARTIFACT_ACCESS_COOKIE: &str = "artfct_access";
+
+/// Reads the host-only access cookie used by an isolated artifact's
+/// subresources. Duplicate access cookies are rejected rather than choosing
+/// one based on header order.
+pub(crate) fn access_token_from_cookie(header: Option<&str>) -> Option<String> {
+    let mut token = None;
+
+    for pair in header?.split(';') {
+        let Some((name, value)) = pair.trim().split_once('=') else {
+            continue;
+        };
+        if name != ARTIFACT_ACCESS_COOKIE {
+            continue;
+        }
+
+        if token.is_some()
+            || value.is_empty()
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+        {
+            return None;
+        }
+
+        token = Some(value.to_string());
+    }
+
+    token
+}
+
+/// Returns a short-lived host-only cookie for a token that has already been
+/// verified for the current artifact. No `Domain` attribute is intentional:
+/// the browser must not send this credential to another artifact origin.
+pub(crate) fn access_token_cookie(token: &str, now: chrono::DateTime<Utc>) -> Option<String> {
+    if !token
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    {
+        return None;
+    }
+
+    let expires_at_unix = token.split('.').nth(1)?.parse::<i64>().ok()?;
+    let max_age = expires_at_unix - now.timestamp();
+    (max_age > 0).then(|| {
+        format!(
+            "{ARTIFACT_ACCESS_COOKIE}={token}; Max-Age={max_age}; Path=/; HttpOnly; Secure; SameSite=Strict"
+        )
+    })
+}
+
 /// Derives the per-artifact CSP from the manifest's `external_origins` and
 /// `unsafe_eval` flag (spec 05). An artifact declaring nothing gets
 /// `default-src 'self'`; `unsafe-eval` is only ever granted when the
@@ -112,8 +163,9 @@ pub(crate) fn isolated_content_security_policy(manifest: &PermanentManifest) -> 
 
 /// Response headers for a permanent bundle file: the real header-
 /// construction logic used at the `resolve_permanent_artifact` serving
-/// site. Deliberately has no `Set-Cookie` code path — artifact origins are
-/// cookieless by construction (spec 05), not by omission.
+/// site. Cookie issuance is deliberately separate: only an entrypoint request
+/// that already verified a query token may mint the host-only access cookie.
+/// Asset responses never mint or widen that cookie.
 ///
 /// `is_isolated` must be true only for a request that actually verified on
 /// an isolated `<slug>--<id>.artfct.dev` host — everything else (including
@@ -155,9 +207,10 @@ pub(crate) enum IsolatedAccess {
 }
 
 /// Decides isolated-origin access from the request `Host` header and an
-/// optional bearer/query token, given an explicit "now" and secret so it is
-/// testable without a live Worker. Cookieless by design: nothing here reads
-/// or sets a session cookie, so a stolen artifact origin cannot ride one.
+/// optional bearer/query/cookie token, given an explicit "now" and secret so
+/// it is testable without a live Worker. The cookie is a host-only signed
+/// artifact token, not a session credential, and is never accepted across
+/// artifact origins.
 ///
 /// A verifying token is not sufficient on its own: the host's artifact id and
 /// tenant slug must both name the artifact actually being served, or one

@@ -596,9 +596,10 @@ fn is_artifact_id_conflict(message: &str) -> bool {
 mod tests {
     use super::*;
     use crate::artifact_origin::{
-        isolated_access_check, isolated_artifact_hostname, isolated_content_security_policy,
-        mint_access_token, parse_isolated_hostname, permanent_file_response_headers,
-        verify_access_token, IsolatedAccess,
+        access_token_cookie, access_token_from_cookie, isolated_access_check,
+        isolated_artifact_hostname, isolated_content_security_policy, mint_access_token,
+        parse_isolated_hostname, permanent_file_response_headers, verify_access_token,
+        IsolatedAccess,
     };
     use crate::governance_routes::{
         decode_governance_cursor, encode_governance_cursor, governance_authorized,
@@ -1882,6 +1883,32 @@ mod tests {
             artifact_id,
             now + chrono::Duration::minutes(6)
         ));
+    }
+
+    #[test]
+    fn isolated_access_cookie_is_host_only_and_bounded_by_token_expiry() {
+        let now = Utc::now();
+        let token = mint_access_token("secret", "artifact-a", now + chrono::Duration::minutes(5));
+        let cookie = access_token_cookie(&token, now).expect("valid token gets a cookie");
+
+        assert!(cookie.starts_with("artfct_access="));
+        assert!(cookie.contains("; Max-Age=300; Path=/; HttpOnly; Secure; SameSite=Strict"));
+        assert!(!cookie.contains("Domain="));
+        assert_eq!(access_token_from_cookie(Some(&cookie)), Some(token));
+    }
+
+    #[test]
+    fn isolated_access_cookie_rejects_duplicates_and_malformed_values() {
+        assert_eq!(
+            access_token_from_cookie(Some("other=value; artfct_access=one; artfct_access=two")),
+            None
+        );
+        assert_eq!(access_token_from_cookie(Some("artfct_access=")), None);
+        assert_eq!(
+            access_token_from_cookie(Some("artfct_access=bad%0d%0a")),
+            None
+        );
+        assert_eq!(access_token_cookie("not a cookie value", Utc::now()), None);
     }
 
     #[test]
