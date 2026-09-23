@@ -783,9 +783,9 @@ async fn create_permanent_artifact(
     env: &Env,
     ctx: &worker::Context,
 ) -> Result<Response> {
-    let credential = match resolve_request_credential(authorization, env, Utc::now()).await {
+    let credential = match require_org_credential(authorization, env).await? {
         Ok(credential) => credential,
-        Err(error) => return credential_error_response(error),
+        Err(refusal) => return Ok(refusal),
     };
     if !check_and_increment_rate_limit(env, &credential.token_id).await? {
         return json_error(
@@ -1123,11 +1123,10 @@ struct ArtifactMetadataRow {
 /// SQL where a mutation test could pass vacuously.
 async fn get_artifact_metadata(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential =
-        match resolve_request_credential(authorization.as_deref(), env, Utc::now()).await {
-            Ok(credential) => credential,
-            Err(error) => return credential_error_response(error),
-        };
+    let credential = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
     let artifact_id = path
         .trim_start_matches("/v1/artifacts/")
         .trim_end_matches('/');
@@ -1352,11 +1351,11 @@ async fn resolve_permanent_artifact(
             // A secure artifact is served only to a credential of the org that
             // owns it (the public id says nothing about the org).
             if row.tier == "secure" {
-                match resolve_request_credential(authorization.as_deref(), env, Utc::now()).await {
+                match require_org_credential(authorization.as_deref(), env).await? {
                     Ok(credential) if credential.org_id == row.org => {
                         viewer_user_id = Some(credential.user_id);
                     }
-                    _ => {
+                    Ok(_) | Err(_) => {
                         return json_error(
                             ErrorCode::Unauthorized,
                             "Invalid organization token.",
@@ -2331,10 +2330,10 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
     let Some((org, artifact_id)) = parse_content_path(path) else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    let credential_org = resolve_request_credential(authorization.as_deref(), env, Utc::now())
-        .await
-        .ok()
-        .map(|credential| credential.org_id);
+    let credential_org = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => Some(credential.org_id),
+        Err(_) => None,
+    };
     match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
@@ -2566,10 +2565,10 @@ fn parse_usage_path(path: &str) -> Option<&str> {
 async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let org = parse_usage_path(path).unwrap_or_default();
-    let credential_org = resolve_request_credential(authorization.as_deref(), env, Utc::now())
-        .await
-        .ok()
-        .map(|credential| credential.org_id);
+    let credential_org = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => Some(credential.org_id),
+        Err(_) => None,
+    };
     match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
