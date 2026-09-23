@@ -361,6 +361,46 @@ Known, currently verified compatibility:
   RUB-383 — do not assume a client works hosted until it has been run against
   staging and its result added to this list.
 
+### Repeatable third-party client run
+
+Run this checklist from a clean user profile against the staging issuer. Keep
+tokens in the client's credential store and record only redacted output. The
+run is successful only when the client completes OAuth consent, initializes
+the hosted connection, calls `get_connection`, and reports the negotiated
+protocol version.
+
+```sh
+export MCP_LIVE_BASE_URL=https://staging.artfct.dev
+artfct setup --list
+artfct setup --silent
+artfct login --oauth --organization <staging-organization>
+artfct doctor
+```
+
+Use the client-specific entrypoint below, then call `get_connection` and one
+read-only tool such as `list_collections` from that client:
+
+- **Official MCP Inspector** — open the hosted Streamable HTTP URL
+  `https://staging.artfct.dev/mcp` in Inspector, complete discovery,
+  registration, PKCE consent, and token exchange, then call `get_connection`.
+- **Claude Code** — run `claude`, select the configured `artfct` MCP server,
+  complete browser consent, and ask Claude to call `get_connection`.
+- **Cursor** — open Cursor's MCP panel, enable the `artfct` entry written by
+  `artfct setup`, complete browser consent, and invoke `get_connection` from
+  Agent mode.
+- **Codex CLI** — run `codex`, enable the configured `artfct` MCP server,
+  complete browser consent, and request `get_connection`.
+- **Gemini CLI** — run `gemini`, enable the configured `artfct` MCP server,
+  complete browser consent, and request `get_connection`.
+- **OpenCode** — run `opencode`, enable the configured `artfct` MCP server,
+  complete browser consent, and request `get_connection`.
+
+For each client, record: client name and version, date, transport, negotiated
+protocol version, consent result, `get_connection` result, the read-only tool
+result, and any workaround or failure. Add the redacted record to this
+section only after the run is complete; an installed binary or a generated
+config file is not compatibility evidence.
+
 Record each additional client verified against staging here with the date,
 protocol version it negotiated, and any workaround needed, so this table
 stays a source of truth rather than a claim.
