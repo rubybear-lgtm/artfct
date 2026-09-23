@@ -411,18 +411,19 @@ This is an installation and setup preflight, not a hosted compatibility result:
 no client below completed OAuth consent or called a hosted tool during this
 check. It records what is available for the next release-candidate run.
 
-| Client                 | Installed version | Setup/config preflight                           | Hosted session |
-| ---------------------- | ----------------- | ------------------------------------------------ | -------------- |
-| Claude Code            | 2.1.280           | `artfct setup --list` recognized the JSON target | Not run        |
-| Cursor                 | 2.6.22            | `artfct setup --list` recognized the JSON target | Not run        |
-| Codex CLI              | 0.155.1           | `artfct setup --list` recognized the TOML target | Not run        |
-| Gemini CLI             | 0.42.0            | `artfct setup --list` recognized the JSON target | Not run        |
-| OpenCode               | 1.17.18           | `artfct setup --list` recognized the JSON target | Not run        |
-| Official MCP Inspector | 2.7.0 via `npx`   | Launcher and CLI help probes passed              | Not run        |
+| Client                 | Installed version | Setup/config preflight                                               | Hosted session       |
+| ---------------------- | ----------------- | -------------------------------------------------------------------- | -------------------- |
+| Claude Code            | 2.1.280           | `artfct setup --list` recognized the JSON target                     | Not run              |
+| Cursor                 | 2.6.22            | `artfct setup --list` recognized the JSON target                     | Not run              |
+| Codex CLI              | 0.155.1           | `artfct setup --list` recognized the TOML target                     | Not run              |
+| Gemini CLI             | 0.42.0            | `artfct setup --list` recognized the JSON target                     | Not run              |
+| OpenCode               | 1.17.18           | `artfct setup --list` recognized the JSON target                     | Not run              |
+| Official MCP Inspector | 2.7.0 via `npx`   | Local stdio `tools/list` passed; launcher and CLI help probes passed | Hosted OAuth not run |
 
-The Inspector package was available from npm and its non-interactive help
-commands passed, but its hosted connection and OAuth flow were not run. The
-preflight also observed non-fatal local-environment warnings from Cursor's
+The Inspector package was available from npm; its non-interactive help commands
+and a local stdio `tools/list` probe against `target/debug/artfct mcp serve`
+passed. Its hosted connection and OAuth flow were not run. The preflight also
+observed non-fatal local-environment warnings from Cursor's
 macOS code-sign check, Codex's PATH-alias setup, and Gemini's cleanup attempt.
 None is a compatibility result; record any client-specific behavior only after
 the hosted run above completes.
