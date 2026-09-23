@@ -1,3 +1,15 @@
+pub(crate) fn normalize_metadata_value(value: Option<String>, default: &str) -> String {
+    let normalized = value
+        .map(|value| value.trim().to_string())
+        .unwrap_or_default();
+
+    if normalized.is_empty() {
+        default.to_string()
+    } else {
+        normalized
+    }
+}
+
 pub(crate) fn default_preview_blurred() -> bool {
     true
 }

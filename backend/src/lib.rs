@@ -17,6 +17,7 @@ mod preview;
 
 use preview::{
     default_preview_blurred, error_html_page, escape_attr, escape_json_script, escape_text,
+    normalize_metadata_value,
 };
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
@@ -3329,18 +3330,6 @@ fn build_update_artifact_response(
         },
         200,
     )
-}
-
-fn normalize_metadata_value(value: Option<String>, default: &str) -> String {
-    let normalized = value
-        .map(|value| value.trim().to_string())
-        .unwrap_or_default();
-
-    if normalized.is_empty() {
-        default.to_string()
-    } else {
-        normalized
-    }
 }
 
 fn render_preview_shell(artifact: &StoredArtifact, url: &str) -> String {
