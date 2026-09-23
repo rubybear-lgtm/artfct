@@ -13,6 +13,11 @@ test('the_probe_job_logs_its_marker_when_handled', function () {
 });
 
 test('the_probe_job_reports_the_origin_it_would_link_to', function () {
+    // `configureDefaults()` pins the scheme only when APP_URL is https, and
+    // CI's .env is copied from .env.example (http://localhost). Pin it here
+    // too, or the logged scheme follows the ambient config and this assertion
+    // depends on the developer's .env.
+    URL::forceScheme('https');
     URL::forceRootUrl('https://public.example');
     Log::spy();
 

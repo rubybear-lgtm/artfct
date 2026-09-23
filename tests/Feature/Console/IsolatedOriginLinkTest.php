@@ -17,9 +17,15 @@ use Illuminate\Support\Facades\Http;
  *
  * This drives the real console route for a real team, takes the `Location` it
  * emits, and uses that URL's host and token unchanged against the live Worker.
- * The per-artifact CSP is asserted as well as the bytes, because a public
- * artifact also answers 200 on the shared origin: a broken isolated check
- * would still return the bytes, only under the shared-origin policy.
+ * The per-artifact CSP is asserted as well as the bytes: bytes alone do not
+ * say which branch answered, so the policy is what proves the isolated check
+ * ran rather than the shared-origin one.
+ *
+ * The artifact is created `secure`. The console hands a public artifact the
+ * Worker's direct `/p/{id}` URL with no token (`ArtifactViewLink::isAnonymous`,
+ * RUB-367), so the mint this test follows only happens for a tier the Worker
+ * does not serve anonymously. Creating it public made the console redirect to
+ * the public origin and this assertion fail on the host.
  *
  * Only runs inside `scripts/mcp-e2e-stack.sh link`, which points this process
  * at the stack's Worker and Postgres; skipped everywhere else, like the Rust
@@ -46,7 +52,10 @@ test('the console link opens the artifact on its isolated origin', function () {
 
     $created = Http::withToken($token)->post("{$worker}/v1/artifacts", [
         'mode' => 'permanent',
-        'tier' => 'public',
+        // Secure, not public: `ConsoleController::open` redirects a public
+        // artifact straight to the Worker's public URL, so only a non-anonymous
+        // tier exercises the mint that is under test.
+        'tier' => 'secure',
         'title' => 'RUB-365 console link',
         'description' => 'RUB-365 console link',
         'thumbnail' => 'https://example.com/thumbnail.png',
