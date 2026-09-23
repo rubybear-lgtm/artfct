@@ -5,7 +5,7 @@
         "buildCommand": "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction"
     },
     "deploy": {
-        "startCommand": "php artisan optimize && php artisan queue:work --queue=indexing,default --tries=3 --sleep=3 --max-time=3600",
+        "startCommand": "php artisan optimize && php artisan queue:work --queue=events,indexing,default --tries=3 --sleep=3 --max-time=3600",
         "restartPolicyType": "ALWAYS"
     }
 }

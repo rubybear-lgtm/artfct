@@ -191,7 +191,7 @@ up() {
     # (the queue probe's among them) land in queue.log where they can be
     # attributed to the worker process, instead of mixing into the shared
     # storage/logs file that the web process also writes to.
-    LOG_CHANNEL=stderr php artisan queue:work --queue=indexing,default --tries=1 >"$STATE_DIR/queue.log" 2>&1 &
+    LOG_CHANNEL=stderr php artisan queue:work --queue=events,indexing,default --tries=1 >"$STATE_DIR/queue.log" 2>&1 &
     echo $! > "$STATE_DIR/queue.pid"
     until curl -s -o /dev/null "http://127.0.0.1:${LARAVEL_PORT}/up"; do sleep 0.5; done
 
