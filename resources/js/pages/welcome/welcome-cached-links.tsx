@@ -53,6 +53,105 @@ export function timeUntil(iso: string): string {
     return `${Math.round(months / 12)}y`;
 }
 
+function CachedLinkRow({
+    link,
+    onManage,
+}: {
+    link: CachedLink;
+    onManage: (link: CachedLink) => void;
+}) {
+    const time = timeUntil(link.expiresAt);
+    const isExpired = time === 'expired';
+
+    return (
+        <div
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.6rem 0.8rem',
+                backgroundColor: S.base2,
+                border: `1px solid ${isExpired ? S.red : S.base2}`,
+                fontFamily: MONO,
+                fontSize: '13px',
+                boxSizing: 'border-box',
+            }}
+        >
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.2rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1,
+                    marginRight: '1rem',
+                }}
+            >
+                <span
+                    style={{
+                        color: S.cyan,
+                        fontWeight: 'bold',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    {link.filename}
+                </span>
+                <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                        color: isExpired ? S.base1 : S.blue,
+                        textDecoration: 'none',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    {link.url}
+                </a>
+            </div>
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    flexShrink: 0,
+                }}
+            >
+                <span
+                    style={{
+                        fontSize: '11px',
+                        color: isExpired ? S.red : S.green,
+                    }}
+                >
+                    {isExpired ? 'expired' : `expires in ${time}`}
+                </span>
+                <Button
+                    onClick={() => onManage(link)}
+                    className="manage-btn"
+                    style={{
+                        padding: '0.25rem 0.6rem',
+                        backgroundColor: 'transparent',
+                        color: S.base0,
+                        border: `1px solid ${S.base1}`,
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontFamily: MONO,
+                        letterSpacing: '0.04em',
+                    }}
+                >
+                    manage
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 interface WelcomeCachedLinksProps {
     links: CachedLink[];
     onClear: () => void;
@@ -115,101 +214,13 @@ export function WelcomeCachedLinks({
                     gap: '0.5rem',
                 }}
             >
-                {links.map((link) => {
-                    const time = timeUntil(link.expiresAt);
-                    const isExpired = time === 'expired';
-
-                    return (
-                        <div
-                            key={link.id}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '0.6rem 0.8rem',
-                                backgroundColor: S.base2,
-                                border: `1px solid ${isExpired ? S.red : S.base2}`,
-                                fontFamily: MONO,
-                                fontSize: '13px',
-                                boxSizing: 'border-box',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '0.2rem',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    flex: 1,
-                                    marginRight: '1rem',
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        color: S.cyan,
-                                        fontWeight: 'bold',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    {link.filename}
-                                </span>
-                                <a
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                        color: isExpired ? S.base1 : S.blue,
-                                        textDecoration: 'none',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    {link.url}
-                                </a>
-                            </div>
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.75rem',
-                                    flexShrink: 0,
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        fontSize: '11px',
-                                        color: isExpired ? S.red : S.green,
-                                    }}
-                                >
-                                    {isExpired
-                                        ? 'expired'
-                                        : `expires in ${time}`}
-                                </span>
-                                <Button
-                                    onClick={() => onManage(link)}
-                                    className="manage-btn"
-                                    style={{
-                                        padding: '0.25rem 0.6rem',
-                                        backgroundColor: 'transparent',
-                                        color: S.base0,
-                                        border: `1px solid ${S.base1}`,
-                                        cursor: 'pointer',
-                                        fontSize: '11px',
-                                        fontFamily: MONO,
-                                        letterSpacing: '0.04em',
-                                    }}
-                                >
-                                    manage
-                                </Button>
-                            </div>
-                        </div>
-                    );
-                })}
+                {links.map((link) => (
+                    <CachedLinkRow
+                        key={link.id}
+                        link={link}
+                        onManage={onManage}
+                    />
+                ))}
             </div>
         </div>
     );
