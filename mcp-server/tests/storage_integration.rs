@@ -599,10 +599,10 @@ async fn an_active_lock_reports_contention_without_writing_an_artifact(
         .json(&permanent_payload(&bytes, json!({})))
         .send()
         .await?;
-    assert_eq!(
-        response.status(),
-        reqwest::StatusCode::INTERNAL_SERVER_ERROR
-    );
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let error: Value = response.json().await?;
+    assert_eq!(error["error"]["code"], "internal_error");
+    assert_eq!(error["error"]["details"]["retryable"], true);
     assert_eq!(
         count_value(
             &context,
