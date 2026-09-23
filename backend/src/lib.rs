@@ -378,7 +378,7 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         return response.into_worker_response();
     }
 
-    match (method, path) {
+    let result = match (method, path) {
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
         (method, path) if path.starts_with("/v1/internal/orgs/") => {
@@ -421,7 +421,35 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         }
         (Method::Options, _) => options_response(),
         _ => not_found_response(),
-    }
+    };
+
+    result.or_else(|_| internal_error_response())
+}
+
+fn internal_error_response() -> Result<Response> {
+    build_internal_error_response().into_worker_response()
+}
+
+fn build_internal_error_response() -> JsonResponseDefinition {
+    build_error_response(
+        ErrorCode::InternalError,
+        "The Worker could not complete the request.",
+        500,
+    )
+}
+
+pub(crate) fn retryable_contention_response() -> Result<Response> {
+    build_retryable_contention_response().into_worker_response()
+}
+
+fn build_retryable_contention_response() -> JsonResponseDefinition {
+    let mut definition = build_error_response(
+        ErrorCode::InternalError,
+        "The requested content is busy; retry the operation.",
+        503,
+    );
+    definition.body["error"]["details"] = serde_json::json!({"retryable": true});
+    definition
 }
 
 async fn create_artifact(req: &mut Request, env: &Env, ctx: &worker::Context) -> Result<Response> {
@@ -1103,6 +1131,7 @@ async fn delete_permanent_artifact(
             json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
         }
         HardDeleteOutcome::LegalHold => legal_hold_response(),
+        HardDeleteOutcome::Contention => retryable_contention_response(),
     }
 }
 
@@ -1120,6 +1149,7 @@ enum HardDeleteOutcome {
     Deleted,
     NotFound,
     LegalHold,
+    Contention,
 }
 
 /// The one hard-delete path (public `DELETE` and the governance route):
@@ -1157,10 +1187,11 @@ async fn hard_delete_permanent(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let locks = storage
-        .acquire_content_locks(&lock_hashes)
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let locks = match storage.acquire_content_locks(&lock_hashes).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return Ok(HardDeleteOutcome::Contention),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     let operation: Result<HardDeleteOutcome> = async {
         let row = database
             .prepare(select)
@@ -1580,6 +1611,18 @@ mod tests {
         assert!(!is_artifact_id_conflict("FOREIGN KEY constraint failed"));
         assert!(!is_artifact_id_conflict("D1_ERROR: network unreachable"));
         assert!(!is_artifact_id_conflict(""));
+    }
+
+    #[test]
+    fn internal_failures_use_the_error_envelope_and_contention_is_retryable() {
+        let internal = build_internal_error_response();
+        assert_eq!(internal.status, 500);
+        assert_eq!(internal.body["error"]["code"], "internal_error");
+
+        let contention = build_retryable_contention_response();
+        assert_eq!(contention.status, 503);
+        assert_eq!(contention.body["error"]["code"], "internal_error");
+        assert_eq!(contention.body["error"]["details"]["retryable"], true);
     }
 
     fn openapi_contract() -> serde_json::Value {

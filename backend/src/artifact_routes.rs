@@ -209,10 +209,11 @@ pub(crate) async fn upload_permanent_file(
                 .collect::<Vec<_>>()
         })
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    let locks = storage
-        .acquire_content_locks(&lock_hashes)
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let locks = match storage.acquire_content_locks(&lock_hashes).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
             let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
@@ -891,10 +892,11 @@ pub(crate) async fn create_permanent_artifact(
         return Ok(response);
     }
 
-    let locks = storage
-        .acquire_content_locks(&file_hashes)
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let locks = match storage.acquire_content_locks(&file_hashes).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     let database = &storage.database;
     let row_id = Uuid::new_v4().simple().to_string();
     // Cleared when the insert was refused because a concurrent create won, so a

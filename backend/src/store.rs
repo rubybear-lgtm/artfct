@@ -238,6 +238,7 @@ pub enum StoreError {
     Unsupported(&'static str),
     InvalidSlug(String),
     MissingArtifact,
+    Contention,
     Backend(String),
 }
 
@@ -247,6 +248,7 @@ impl fmt::Display for StoreError {
             Self::Unsupported(operation) => write!(formatter, "{operation} is not supported"),
             Self::InvalidSlug(message) => formatter.write_str(message),
             Self::MissingArtifact => formatter.write_str("artifact not found"),
+            Self::Contention => formatter.write_str("content is busy; retry the operation"),
             Self::Backend(message) => formatter.write_str(message),
         }
     }
@@ -437,9 +439,7 @@ impl D1R2ArtifactStore {
                 Delay::from(Duration::from_millis(25)).await;
             }
         }
-        Err(StoreError::Backend(
-            "content is busy; retry the operation".to_string(),
-        ))
+        Err(StoreError::Contention)
     }
 
     pub async fn release_content_lock(

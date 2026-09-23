@@ -166,6 +166,7 @@ pub(crate) async fn governance_route(
                     json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
                 }
                 HardDeleteOutcome::LegalHold => legal_hold_response(),
+                HardDeleteOutcome::Contention => retryable_contention_response(),
             }
         }
         (
@@ -209,10 +210,14 @@ pub(crate) async fn governance_route(
                 .results::<OrphanRow>()?;
             let mut removed = 0usize;
             for orphan in orphans {
-                let locks = storage
+                let locks = match storage
                     .acquire_content_locks(std::slice::from_ref(&orphan.content_hash))
                     .await
-                    .map_err(|error| worker::Error::RustError(error.to_string()))?;
+                {
+                    Ok(locks) => locks,
+                    Err(store::StoreError::Contention) => return retryable_contention_response(),
+                    Err(error) => return Err(worker::Error::RustError(error.to_string())),
+                };
                 let result = release_blob_if_unreferenced(&storage, &orphan.content_hash).await;
                 let release = storage.release_content_locks(&locks).await;
                 result?;
