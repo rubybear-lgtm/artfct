@@ -793,6 +793,26 @@ its secrets. `php artisan staging:verify-usage` (with `STAGING_VERIFY_USAGE=true
 cycles the synthetic org through the quota and payment states and prints the
 meters.
 
+### The queue worker's start command is a Railway service setting (2026-09-23)
+
+`railway.queue.json` is a mirror, not applied configuration. Railway reads
+`railway.json` / `railway.toml` by default, and `staging-queue`'s start command
+is a service-level setting: the deployment of the commit that changed
+`railway.queue.json` (RUB-396, `e9ad3f2`) came up still consuming
+`indexing,default`, while the file said `events,indexing,default`. Change that
+list with `railway update-service` (or the dashboard), not by editing the file
+alone — and note that the change applies on the next deployment: a
+`railway redeploy` and a container restart both reuse the previous deployment's
+resolved start command, so a push-triggered deploy is what applies it.
+
+Redeploys of `staging-queue` also fail on their own. `railway redeploy` rebuilds
+without the repo's config, so Railpack auto-detects `composer install
+--optimize-autoloader --no-scripts --no-interaction` — with dev dependencies —
+in an image that has no `ext-sockets`, and the build dies on
+`pestphp/pest-plugin-browser`'s platform requirement. Push-triggered deploys
+build with `railway.json`'s `--no-dev` command and succeed. Same failure family
+as RUB-397.
+
 ### Live verification results (2026-09-20)
 
 * **Usage meters (RUB-335):** near-quota 85% (warning), over-quota 100%
