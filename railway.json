@@ -1,8 +1,8 @@
 {
     "$schema": "https://railway.com/railway.schema.json",
     "build": {
-        "builder": "NIXPACKS",
-        "buildCommand": "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm ci && npm run build"
+        "builder": "RAILPACK",
+        "buildCommand": "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm install --no-audit --no-fund && npm run build"
     },
     "deploy": {
         "startCommand": "php artisan optimize && php artisan serve --host=0.0.0.0 --port=${PORT}",
