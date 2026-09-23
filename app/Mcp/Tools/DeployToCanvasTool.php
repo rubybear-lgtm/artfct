@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
@@ -26,7 +27,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Deprecated: use deploy_artifact. Encrypts and publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count.')]
+#[Description('Deprecated: use deploy_artifact. Encrypts and publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url follows the same rule as the other tools: a secure artifact opens through the app\'s own open route, a public one through the workspace\'s public artifact URL.')]
 #[Name('deploy_to_canvas')]
 #[IsReadOnly(false)]
 #[IsIdempotent(false)]
@@ -186,9 +187,19 @@ final class DeployToCanvasTool extends Tool
             return McpErrorResponse::error('The artifact service could not accept this deployment.', 'deployment_rejected');
         }
 
+        $artifactId = (string) $response->json('id');
+        $tier = $response->json('tier');
+        $tierAwareViewUrl = ArtifactViewLink::forArtifact($team->slug, $artifactId, is_string($tier) ? $tier : null, (string) $response->json('url'));
+
         $resultPayload = [
-            'id' => $response->json('id'),
-            'url' => (string) $response->json('url').'#'.$shareCode,
+            'id' => $artifactId,
+            // The share fragment is client-side only — the Worker never sees it
+            // — so it rides along on whichever link the tier rule picks: the
+            // Worker's own /p/{id} URL for an anonymous artifact (public or
+            // ephemeral), the app's open route for a secure one. `canonical_url`
+            // stays the Worker's canonical form; it is the resource's identity,
+            // not a link a person opens.
+            'view_url' => $tierAwareViewUrl.'#'.$shareCode,
             'canonical_url' => $response->json('url'),
             'tier' => $response->json('tier'),
             'expires_at' => $response->json('expires_at'),

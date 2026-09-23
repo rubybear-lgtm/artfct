@@ -10,15 +10,19 @@ use App\Contracts\ArtifactContentSource;
  */
 final class FakeArtifactContentSource implements ArtifactContentSource
 {
-    /** @var array<string, array<string, array{html: string, provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}}>> */
+    /** @var array<string, array<string, array{html: string, tier: ?string, provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}}>> */
     private array $artifacts = [];
 
     /**
      * @param  array{agent: ?string, repo_url: ?string, commit_sha: ?string}  $provenance
+     *
+     * `$tier` defaults to `secure`: a seeded artifact that says nothing about
+     * its tier must behave like the one that needs a mint, not like the one the
+     * Worker serves to anyone.
      */
-    public function seed(string $orgSlug, string $artifactId, string $html, array $provenance = ['agent' => null, 'repo_url' => null, 'commit_sha' => null]): void
+    public function seed(string $orgSlug, string $artifactId, string $html, array $provenance = ['agent' => null, 'repo_url' => null, 'commit_sha' => null], string $tier = 'secure'): void
     {
-        $this->artifacts[$orgSlug][$artifactId] = ['html' => $html, 'provenance' => $provenance];
+        $this->artifacts[$orgSlug][$artifactId] = ['html' => $html, 'tier' => $tier, 'provenance' => $provenance];
     }
 
     public function fetch(string $orgSlug, string $artifactId): ?array

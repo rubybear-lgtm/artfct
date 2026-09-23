@@ -25,7 +25,8 @@ When the user says "show me", "preview this", or "make it shareable" — deploy.
 
 ### Option A — MCP (preferred)
 
-Call `deploy_to_canvas` directly:
+Call `deploy_artifact` when it is available (a signed-in workspace), otherwise
+`deploy_to_canvas`:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -150,9 +151,39 @@ artfct hosts a single file. All resources must be inlined or loaded from public 
 
 Never reference local paths — they will 404 once hosted. For the full HTML template and SRI guidance, see `references/html-authoring.md`.
 
+## The Link You Hand Back
+
+`deploy_artifact`, `get_artifact`, `search_artifacts` and `deploy_to_canvas`
+return the openable link as **`view_url`** — never reconstruct a `/p/{id}` URL
+from an artifact id yourself. What it points at depends on the tier:
+
+- **`secure`** — the app's own open route
+  (`https://artfct.dev/settings/teams/<org>/console/artifacts/<id>/open`). The
+  app authorizes the viewer and mints a short-lived signed link at click time,
+  so this link works when a colleague opens it in a browser while signed in.
+  No credential travels in it; there is nothing to strip before sharing.
+- **`public`** — the artifact's public URL. Anyone can open it and no token is
+  minted for it.
+
+Present `view_url` verbatim. Do not shorten it, rewrite it to a direct artifact
+origin, or hand over a token-bearing URL: a raw `/p/{id}` link cannot be opened
+in a browser for a secure artifact.
+
+If a tool returns the non-retryable `signed_link_unavailable` code, that
+environment has no signing secret configured and no openable link exists —
+report that rather than inventing a URL.
+
 ## Response Format
 
-After a successful deploy, present the URL clearly:
+After a successful deploy, present the `view_url` clearly:
+
+```
+Deployed → https://artfct.dev/settings/teams/acme/console/artifacts/4fA8gX9z/open
+
+Opens for anyone signed in to acme. Valid until <expiry> after each click.
+```
+
+For a public artifact, the link is the artifact's own public URL:
 
 ```
 Deployed → https://artfct.dev/p/4fA8gX9z

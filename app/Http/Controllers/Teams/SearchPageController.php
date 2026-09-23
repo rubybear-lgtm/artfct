@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
 use App\Support\ClientIp;
@@ -46,7 +48,11 @@ class SearchPageController extends Controller
                     'id' => $result->id,
                     'title' => $result->title,
                     'description' => $result->description,
-                    'url' => $result->url,
+                    // The index carries no tier, so every row links through the
+                    // app's open route: it authorizes the viewer and is the one
+                    // link that is right either way. The Worker's raw `/p/{id}`
+                    // URL is never linked from here.
+                    'openUrl' => ArtifactViewLink::forArtifact($team->slug, $result->id, null),
                     'snippet' => $result->snippet,
                     'agent' => $result->agent,
                     'repoUrl' => $result->repoUrl,
@@ -73,6 +79,10 @@ class SearchPageController extends Controller
         return Inertia::render('teams/search', [
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'indexingEnabled' => $indexingEnabled,
+            // Same gate as the console: with no signing secret the open route
+            // can only 503 for a secure artifact, and these rows carry no tier
+            // to single out the public ones that would not need it.
+            'canOpenArtifacts' => ArtifactAccessLink::default()->configured(),
             'filters' => [
                 'q' => $query,
                 'agent' => $filters['agent'] ?? '',

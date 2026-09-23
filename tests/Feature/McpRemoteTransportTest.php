@@ -6,6 +6,7 @@ use App\Models\CollectionArtifact;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\RealUsage;
@@ -407,6 +408,56 @@ test('remote deployment encrypts the body and returns a shareable result', funct
         ->count())->toBe(1);
 });
 
+test('deploy_to_canvas follows the same view_url rule as the workspace tools', function (string $tier) {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-367-canvas']);
+    $token = remoteMcpToken($team);
+    config([
+        'services.worker.base_url' => 'https://worker.test',
+        'app.public_base_url' => 'https://artfct.dev',
+    ]);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => 'artifact-canvas',
+            'url' => 'https://staging.artfct.dev/p/artifact-canvas',
+            'tier' => $tier,
+            'expires_at' => now()->addDay()->toIso8601String(),
+            'title' => 'Canvas preview',
+            'description' => 'Encrypted HTML preview on artfct.',
+            'thumbnail' => 'https://artfct.dev/og-image.svg',
+            'preview_blurred' => true,
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => '<h1>preview</h1>', 'tier' => $tier]],
+    ])->assertOk();
+
+    $viewUrl = (string) $response->json('result.structuredContent.view_url');
+
+    // An artifact the Worker serves without a credential — public, or the
+    // anonymous ephemeral preview this tool publishes — gets the Worker's own
+    // URL; a secure one opens through the app's own route. Either way the
+    // client-side share fragment — the only thing that decrypts the body —
+    // rides along on the link.
+    $expected = ArtifactViewLink::isAnonymous($tier)
+        ? 'https://staging.artfct.dev/p/artifact-canvas#'
+        : route('console.open', ['team' => $team->slug, 'artifactId' => 'artifact-canvas']).'#';
+
+    expect($viewUrl)->toStartWith($expected)
+        ->and(substr($viewUrl, strlen($expected)))->not->toBe('')
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('url');
+
+    // The canonical form is the resource's identity, not a link a person opens.
+    expect($response->json('result.structuredContent.canonical_url'))->toBe('https://staging.artfct.dev/p/artifact-canvas');
+    // The hosted tool accepts only public and secure, so `ephemeral` — the
+    // local server's third, anonymous tier — is exercised by the shared
+    // contract fixture and the Rust suite instead of here.
+})->with(['public', 'secure']);
+
 test('remote deployment deduplicates retries with the same request ID', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
@@ -446,7 +497,19 @@ test('remote deployment deduplicates retries with the same request ID', function
     ])->postJson('/mcp', $payload)->assertOk();
 
     $second->assertJsonPath('result.structuredContent.id', 'artifact-retried')
-        ->assertJsonPath('result.structuredContent.url', $first->json('result.structuredContent.url'));
+        ->assertJsonPath('result.structuredContent.view_url', $first->json('result.structuredContent.view_url'))
+        // The idempotent replay carries the same link, and that link is a real
+        // one — comparing two nulls would pass for the wrong reason.
+        ->assertJsonMissingPath('result.structuredContent.url');
+
+    // The replayed link is a real one, not two nulls comparing equal: a public
+    // artifact gets the workspace's public URL, with the client-side share
+    // fragment that unlocks it.
+    expect((string) $first->json('result.structuredContent.view_url'))
+        ->toStartWith('https://artfct.dev/p/artifact-retried#');
+
+    expect($second->json('result.structuredContent.view_url'))
+        ->toBe($first->json('result.structuredContent.view_url'));
     Http::assertSentCount(1);
     expect(McpActivity::query()
         ->where('team_id', $team->id)
@@ -767,7 +830,7 @@ test('deploy_artifact skips the upload when the Worker already has the content',
     Http::assertNotSent(fn ($request): bool => $request->method() === 'PUT');
 });
 
-test('deploy_artifact returns a signed link on the artifact isolated origin', function () {
+test('deploy_artifact hands a secure artifact the apps own open route', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-367-org']);
@@ -787,34 +850,62 @@ test('deploy_artifact returns a signed link on the artifact isolated origin', fu
     ])->assertOk();
 
     expect($response->json('result.isError'))->toBeFalse()
-        // The Worker's raw `/p/{id}` URL is exactly what a browser cannot
-        // present a credential to, so its host must not appear in the result.
-        // (Matched on the host, not the full URL: the transport escapes the
-        // slashes, so a full-URL `toContain` could never fail.)
-        ->and($response->getContent())->not->toContain('worker.test');
+        // Neither the Worker's raw `/p/{id}` URL — what a browser cannot present
+        // a credential to — nor a minted token is handed to the agent. (Matched
+        // on the host, not the full URL: the transport escapes the slashes, so
+        // a full-URL `toContain` could never fail.)
+        ->and($response->getContent())->not->toContain('worker.test')
+        ->and($response->getContent())->not->toContain('token=')
+        // The field is `view_url`, not `url`: one name for one meaning, shared
+        // with the local server (`tests/Fixtures/artifact-view-link-contract.json`).
+        ->and($response->json('result.structuredContent.url'))->toBeNull();
 
-    $url = parse_url((string) $response->json('result.structuredContent.url'));
-
-    expect($url)->toBeArray()
-        ->and($url['scheme'] ?? null)->toBe('https')
-        // The tenant in the host comes from the credential's workspace, and is
-        // what binds the link to the org the Worker authorizes.
-        ->and($url['host'] ?? null)->toBe('rub-367-org--'.ARTIFACT_LINK_ID.'.artfct.dev')
-        ->and($url['path'] ?? null)->toBe('/p/'.ARTIFACT_LINK_ID);
-
-    parse_str((string) ($url['query'] ?? ''), $query);
-    $minted = (string) ($query['token'] ?? '');
-    $now = now()->timestamp;
-
-    expect($minted)->not->toBe('')
-        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
-        ->and(artifactTokenVerifies($minted, str_repeat('f', 32), ARTIFACT_LINK_SECRET, $now))->toBeFalse()
-        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
+    // The link goes through the app, and through the app's own route for the
+    // credential's workspace: that route authorizes the viewer at click time and
+    // mints the isolated-origin token then.
+    expect($response->json('result.structuredContent.view_url'))->toBe(
+        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
+    );
 
     expect($response->json('result.structuredContent.organization'))->toBe($team->slug);
 });
 
-test('get_artifact returns a signed link on the artifact isolated origin', function () {
+test('deploy_artifact hands a public artifact the workspaces public url without a token', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-367-public']);
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>Public report</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config([
+        'services.worker.base_url' => 'https://worker.test',
+        'app.public_base_url' => 'https://artfct.dev',
+    ]);
+    // The Worker's own public base is deliberately neither the API host nor the
+    // app's configured public base, so this asserts *which* URL the tool
+    // returned rather than a value all three happen to agree on.
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://staging.artfct.dev/p/'.ARTIFACT_LINK_ID, 'tier' => 'public', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html, 'tier' => 'public']],
+    ])->assertOk();
+
+    // A public artifact is served by the Worker to anyone, so the URL the
+    // Worker itself published is the whole link: no token is minted for it, no
+    // app round trip is asked of the reader, and no host is guessed.
+    expect($response->json('result.structuredContent.view_url'))
+        ->toBe('https://staging.artfct.dev/p/'.ARTIFACT_LINK_ID)
+        ->and($response->json('result.structuredContent.view_url'))->not->toContain('worker.test')
+        ->and($response->getContent())->not->toContain('token=')
+        ->and($response->json('result.structuredContent.tier'))->toBe('public');
+});
+
+test('get_artifact hands a secure artifact the apps own open route', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-367-fetch']);
@@ -823,7 +914,7 @@ test('get_artifact returns a signed link on the artifact isolated origin', funct
     Http::fake([
         'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
             'id' => ARTIFACT_LINK_ID,
-            'tier' => 'permanent',
+            'tier' => 'secure',
             'entrypoint' => 'index.html',
             'created_at' => '2026-09-20T00:00:00Z',
             'expires_at' => null,
@@ -837,24 +928,44 @@ test('get_artifact returns a signed link on the artifact isolated origin', funct
         'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
     ])->assertOk();
 
-    expect($response->json('result.isError'))->toBeFalse()
-        ->and($response->getContent())->not->toContain('worker.test');
+    expect($response->getContent())->not->toContain('worker.test')
+        ->and($response->getContent())->not->toContain('token=');
 
-    $url = parse_url((string) $response->json('result.structuredContent.url'));
+    expect($response->json('result.structuredContent.view_url'))->toBe(
+        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
+    );
 
-    expect($url)->toBeArray()
-        ->and($url['scheme'] ?? null)->toBe('https')
-        ->and($url['host'] ?? null)->toBe('rub-367-fetch--'.ARTIFACT_LINK_ID.'.artfct.dev')
-        ->and($url['path'] ?? null)->toBe('/p/'.ARTIFACT_LINK_ID);
+    expect($response->json('result.structuredContent.url'))->toBeNull();
+});
 
-    parse_str((string) ($url['query'] ?? ''), $query);
-    $minted = (string) ($query['token'] ?? '');
-    $now = now()->timestamp;
+test('get_artifact hands a public artifact the workspaces public url without a token', function () {
+    configureArtifactLinks();
 
-    expect($minted)->not->toBe('')
-        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
-        ->and(artifactTokenVerifies($minted, str_repeat('f', 32), ARTIFACT_LINK_SECRET, $now))->toBeFalse()
-        ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
+    $team = Team::factory()->create(['slug' => 'rub-367-fetch-public']);
+    $token = remoteMcpToken($team);
+    config([
+        'services.worker.base_url' => 'https://worker.test',
+        'app.public_base_url' => 'https://artfct.dev',
+    ]);
+    Http::fake([
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'tier' => 'public',
+            'entrypoint' => 'index.html',
+            'created_at' => '2026-09-20T00:00:00Z',
+            'expires_at' => null,
+            'title' => 'A public report',
+            'description' => 'A safe summary',
+        ], 200),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
+    ])->assertOk();
+
+    expect($response->json('result.structuredContent.view_url'))
+        ->toBe('https://artfct.dev/p/'.ARTIFACT_LINK_ID);
 });
 
 test('artifact links fail closed when no signing secret is configured', function () {
@@ -881,7 +992,7 @@ test('artifact links fail closed when no signing secret is configured', function
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
         ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
         ->assertJsonMissingPath('result.content.0._meta.artfct.nextAction')
-        ->assertJsonMissingPath('result.structuredContent.url');
+        ->assertJsonMissingPath('result.structuredContent.view_url');
 
     $retrieval = $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
@@ -892,7 +1003,7 @@ test('artifact links fail closed when no signing secret is configured', function
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
         ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
-        ->assertJsonMissingPath('result.structuredContent.url');
+        ->assertJsonMissingPath('result.structuredContent.view_url');
 
     // No raw URL is offered as a substitute for the missing signed link.
     expect($deploy->getContent())->not->toContain('worker.test')
@@ -919,7 +1030,7 @@ test('an artifact whose id cannot form an isolated hostname is refused rather th
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
-        ->assertJsonMissingPath('result.structuredContent.url');
+        ->assertJsonMissingPath('result.structuredContent.view_url');
 });
 
 test('deploy_artifact refuses over-quota workspaces before contacting the Worker', function () {

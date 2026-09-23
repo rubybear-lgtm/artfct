@@ -13,6 +13,7 @@ use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -76,8 +77,10 @@ class ConsoleController extends Controller
             'nextCursor' => $data['next_cursor'],
             'isAdmin' => $user->isAdminOf($team),
             // The signing secret belongs to the environment, not the member:
-            // without one the page is not given an open control that could
-            // only 503. The token itself never reaches props.
+            // without one the page is not given an open control. A secure row
+            // would only 503, and the list the Worker returns carries no tier,
+            // so the page cannot single out the public rows that would not
+            // need the secret. The token itself never reaches props.
             'canOpenArtifacts' => ArtifactAccessLink::default()->configured(),
             // Spec 12 DoD: "parked in a dead-letter queue with the reason
             // recorded and surfaced in the console." The data is real and
@@ -191,6 +194,12 @@ class ConsoleController extends Controller
      * is minted, and an artifact that is not in this team's org is a 404
      * indistinguishable from a missing one — never an existence oracle for
      * another org's ids.
+     *
+     * A `public` artifact needs none of that: the Worker serves its `/p/{id}`
+     * URL to anyone, so the browser is sent straight there and no token is
+     * minted (and so no mint is audited). Only a secure artifact is minted
+     * for, and that mint is audited with the actor, the artifact and the
+     * expiry — never the token itself.
      */
     public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content)
     {
@@ -201,11 +210,31 @@ class ConsoleController extends Controller
 
         // Org-scoped existence check. A revoked artifact reads as absent here,
         // matching the Worker, which serves no content for it either.
-        abort_if($content->fetch($team->slug, $artifactId) === null, 404);
+        $artifact = $content->fetch($team->slug, $artifactId);
 
-        $url = ArtifactAccessLink::default()->forArtifact($team->slug, $artifactId);
+        abort_if($artifact === null, 404);
+
+        if (ArtifactViewLink::isAnonymous($artifact['tier'] ?? null)) {
+            return redirect()->away(ArtifactViewLink::publicUrl($artifactId));
+        }
+
+        $links = ArtifactAccessLink::default();
+        $expiresAt = now()->addMinutes($links->ttlMinutes());
+        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt);
 
         abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
+
+        // `target` carries the artifact and the expiry and nothing else: the
+        // token is a bearer credential for the artifact, so it belongs in the
+        // redirect and nowhere near an append-only row that is read back on
+        // the audit page and exported to SIEM.
+        $this->auditLogger->recordForRequest(
+            $request,
+            AuditEventType::ArtifactLinkMinted,
+            $team,
+            (string) $user->id,
+            "artifact:{$artifactId} expires:".$expiresAt->toIso8601String(),
+        );
 
         return redirect()->away($url);
     }

@@ -1,10 +1,13 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 
 test('viewer_cannot_revoke', function () {
@@ -322,4 +325,84 @@ test('guest_cannot_open_artifact', function () {
 
     test()->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
         ->assertRedirect(route('login'));
+});
+
+/**
+ * A public artifact is served by the Worker to anyone, so there is no token to
+ * mint for it and no mint to audit: the browser is sent straight to the public
+ * URL. Minting one anyway would put a credential in the browser for an artifact
+ * that never needed one.
+ */
+test('opening_a_public_artifact_goes_straight_to_its_public_url_without_minting', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', tier: 'public');
+
+    $response = test()->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+
+    $response->assertRedirect('https://artfct.dev/p/'.ARTIFACT_LINK_ID);
+
+    expect((string) $response->headers->get('Location'))
+        ->not->toContain('token')
+        ->and(AuditEvent::query()
+            ->where('event_type', AuditEventType::ArtifactLinkMinted)
+            ->exists())->toBeFalse();
+});
+
+/**
+ * The mint audit row: who, which artifact, and when the link they were handed
+ * expires — and never the token. The audited expiry is compared against the
+ * expiry inside the minted token, so the two cannot drift apart, and the whole
+ * row is checked against the token rather than the token being spot-checked.
+ */
+test('opening_a_secure_artifact_audits_the_mint_and_never_the_token', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>');
+
+    $response = test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+
+    $response->assertRedirect();
+
+    parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
+    $token = (string) ($query['token'] ?? '');
+    $expiresAtUnix = (int) explode('.', $token)[1];
+
+    $event = AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->sole();
+
+    expect($event->team_id)->toBe($team->id)
+        ->and($event->actor)->toBe((string) $admin->id)
+        ->and($event->outcome)->toBe('success')
+        ->and($event->target)->toBe(
+            'artifact:'.ARTIFACT_LINK_ID.' expires:'.Carbon::createFromTimestamp($expiresAtUnix)->toIso8601String(),
+        )
+        // The token and the signing secret belong to the redirect and nowhere
+        // else — not this append-only row, and not the page that renders it.
+        ->and($event->target)->not->toContain($token)
+        ->and($event->target)->not->toContain(ARTIFACT_LINK_SECRET)
+        ->and($token)->not->toBe('');
+
+    $auditPage = test()->actingAs($admin)->get("/settings/teams/{$team->slug}/audit");
+
+    $auditPage->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('teams/audit')
+            ->where('events.data.0.type', AuditEventType::ArtifactLinkMinted->value)
+            ->where('events.data.0.target', $event->target));
+
+    expect($auditPage->getContent())
+        ->not->toContain($token)
+        ->not->toContain(ARTIFACT_LINK_SECRET);
 });

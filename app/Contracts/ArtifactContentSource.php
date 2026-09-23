@@ -11,7 +11,7 @@ namespace App\Contracts;
 interface ArtifactContentSource
 {
     /**
-     * @return array{html: string, provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}}|null
+     * @return array{html: string, tier: ?string, provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}}|null
      */
     public function fetch(string $orgSlug, string $artifactId): ?array;
 }

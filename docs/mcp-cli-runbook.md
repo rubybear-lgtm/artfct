@@ -108,6 +108,35 @@ If a client has cached an old connection, remove its MCP server entry, restart
 the client, and complete OAuth again. Never paste a bearer token into an agent
 configuration file, repository, issue, or support ticket.
 
+## Opening an artifact
+
+Tools that publish or describe an artifact return it as `view_url`. Which URL
+that is depends on the artifact's tier:
+
+- **`secure`** — the app's own open route,
+  `/settings/teams/<org>/console/artifacts/<id>/open`. It authorizes the viewer
+  and only then mints a short-lived signed link to the artifact's isolated
+  origin, so the link is safe to hand to a colleague: it works when that
+  colleague opens it in a browser while signed in to the workspace, and it
+  carries no credential itself. The mint is audited (`artifact.link_minted`,
+  with the actor, the artifact and the expiry) and the token appears in the
+  redirect only — never in the tool result.
+- **`public`** — the artifact's public URL. The Worker serves a public artifact
+  to anyone, so no token is minted for it and no session is needed.
+
+`view_url` replaces the earlier `url` field, on both the hosted and the local
+stdio server. An agent should present `view_url` rather than reconstructing a
+`/p/{id}` URL from an artifact id: the raw URL carries no credential, so a
+browser cannot open a secure artifact with it.
+
+If a tool call fails with the non-retryable `signed_link_unavailable` code, the
+environment has no signing secret configured, so no openable link exists —
+retrying cannot help.
+
+The local stdio server builds a secure `view_url` against `ARTFCT_APP_BASE_URL`
+(default `https://artfct.dev`); point it at your control plane when you run a
+local or staging deployment.
+
 ## Safe retries and policy errors
 
 `deploy_to_canvas` is the only tool that deduplicates retries. Send a stable

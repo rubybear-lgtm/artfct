@@ -20,12 +20,15 @@ interface CollectionRow {
     description: string | null;
     canonical: boolean;
     artifactIds: string[];
+    /** Artifact id => the app's open route for it. */
+    openUrls: Record<string, string>;
 }
 
 interface Props {
     team: { slug: string; name: string };
     canEdit: boolean;
     canPin: boolean;
+    canOpenArtifacts: boolean;
     collections: CollectionRow[];
 }
 
@@ -34,11 +37,13 @@ function CollectionCard({
     collection,
     canEdit,
     canPin,
+    canOpenArtifacts,
 }: {
     base: string;
     collection: CollectionRow;
     canEdit: boolean;
     canPin: boolean;
+    canOpenArtifacts: boolean;
 }) {
     const [artifactId, setArtifactId] = useState('');
     const url = `${base}/${collection.id}`;
@@ -74,7 +79,18 @@ function CollectionCard({
                     <ul className="text-sm">
                         {collection.artifactIds.map((id) => (
                             <li key={id} className="flex items-center gap-2">
-                                <span className="tabular-nums">{id}</span>
+                                {canOpenArtifacts && collection.openUrls[id] ? (
+                                    <a
+                                        className="tabular-nums underline"
+                                        href={collection.openUrls[id]}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        {id}
+                                    </a>
+                                ) : (
+                                    <span className="tabular-nums">{id}</span>
+                                )}
                                 {canEdit && (
                                     <button
                                         className="ml-auto underline"
@@ -130,6 +146,7 @@ export default function Collections({
     team,
     canEdit,
     canPin,
+    canOpenArtifacts,
     collections,
 }: Props) {
     const base = `/settings/teams/${team.slug}/collections`;
@@ -182,6 +199,7 @@ export default function Collections({
                         collection={collection}
                         canEdit={canEdit}
                         canPin={canPin}
+                        canOpenArtifacts={canOpenArtifacts}
                     />
                 ))}
             </div>

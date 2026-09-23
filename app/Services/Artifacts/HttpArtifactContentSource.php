@@ -44,6 +44,10 @@ final class HttpArtifactContentSource implements ArtifactContentSource
 
         return [
             'html' => (string) $response->json('content'),
+            // The Worker's `public`/`secure` tier. The open route reads it to
+            // decide whether there is a token to mint at all, so it travels
+            // with the content rather than costing a second round trip.
+            'tier' => $response->json('tier'),
             'provenance' => [
                 'agent' => $response->json('provenance.agent'),
                 'repo_url' => $response->json('provenance.repo_url'),

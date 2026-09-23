@@ -2282,6 +2282,7 @@ async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Resp
 struct ContentRow {
     content_hash: String,
     content_type: String,
+    tier: String,
     agent: Option<String>,
     repo_url: Option<String>,
     commit_sha: Option<String>,
@@ -2344,7 +2345,7 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let row = storage
         .database
-        .prepare("SELECT f.content_hash, f.content_type, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<ContentRow>(None)
         .await?;
@@ -2367,6 +2368,11 @@ async fn get_org_artifact_content(path: &str, req: &Request, env: &Env) -> Resul
         serde_json::json!({
             "id": artifact_id,
             "content_type": row.content_type,
+            // The control plane routes a `public` artifact straight to the
+            // credential-less `/p/{id}` URL and only mints for a secure one, so
+            // it needs the tier alongside the content rather than a second
+            // round trip to the metadata endpoint.
+            "tier": row.tier,
             "provenance": {
                 "agent": row.agent,
                 "repo_url": row.repo_url,

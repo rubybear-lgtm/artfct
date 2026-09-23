@@ -43,6 +43,15 @@ interface ConsoleIndexProps {
     }[];
 }
 
+/** The row's name: its title, or the short id when it has none. */
+function artifactTitle(artifact: Artifact) {
+    return (
+        artifact.title || (
+            <span className="tabular-nums">{artifact.id.slice(0, 8)}</span>
+        )
+    );
+}
+
 export default function ConsoleIndex({
     team,
     artifacts,
@@ -93,6 +102,17 @@ export default function ConsoleIndex({
     const handleExport = () => {
         router.get(`/settings/teams/${team.slug}/console/export`);
     };
+
+    /**
+     * The app's own open route, never a Worker URL and never a token: the
+     * route authorizes the viewer, then either redirects a public artifact to
+     * its public URL or mints a short-lived signed link for a secure one.
+     */
+    const openHref = (artifactId: string) =>
+        `/settings/teams/${team.slug}/console/artifacts/${artifactId}/open`;
+
+    const revokedOpenTooltip =
+        'This artifact is revoked, so it can no longer be opened.';
 
     return (
         <div>
@@ -267,16 +287,30 @@ export default function ConsoleIndex({
                                         className="hover:bg-muted"
                                     >
                                         <td className="px-6 py-4">
-                                            <div className="text-sm font-medium text-foreground">
-                                                {artifact.title || (
-                                                    <span className="tabular-nums">
-                                                        {artifact.id.slice(
-                                                            0,
-                                                            8,
-                                                        )}
-                                                    </span>
-                                                )}
-                                            </div>
+                                            {artifact.revoked_at ? (
+                                                <span
+                                                    className="text-sm font-medium text-muted-foreground"
+                                                    data-testid="open-artifact-title-disabled"
+                                                    title={revokedOpenTooltip}
+                                                    aria-disabled="true"
+                                                >
+                                                    {artifactTitle(artifact)}
+                                                </span>
+                                            ) : canOpenArtifacts ? (
+                                                <a
+                                                    href={openHref(artifact.id)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm font-medium text-foreground underline-offset-2 hover:text-primary hover:underline"
+                                                    data-testid="open-artifact-title"
+                                                >
+                                                    {artifactTitle(artifact)}
+                                                </a>
+                                            ) : (
+                                                <span className="text-sm font-medium text-foreground">
+                                                    {artifactTitle(artifact)}
+                                                </span>
+                                            )}
                                             <div className="text-xs text-muted-foreground">
                                                 {artifact.description}
                                             </div>
@@ -372,9 +406,22 @@ export default function ConsoleIndex({
                                             <td className="px-6 py-4 text-sm">
                                                 <div className="flex items-center gap-3">
                                                     {canOpenArtifacts &&
-                                                        !artifact.revoked_at && (
+                                                        (artifact.revoked_at ? (
+                                                            <span
+                                                                className="cursor-not-allowed font-medium text-muted-foreground"
+                                                                data-testid="open-artifact-disabled"
+                                                                title={
+                                                                    revokedOpenTooltip
+                                                                }
+                                                                aria-disabled="true"
+                                                            >
+                                                                Open
+                                                            </span>
+                                                        ) : (
                                                             <a
-                                                                href={`/settings/teams/${team.slug}/console/artifacts/${artifact.id}/open`}
+                                                                href={openHref(
+                                                                    artifact.id,
+                                                                )}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 className="font-medium text-primary hover:underline"
@@ -382,7 +429,7 @@ export default function ConsoleIndex({
                                                             >
                                                                 Open
                                                             </a>
-                                                        )}
+                                                        ))}
                                                     {isAdmin &&
                                                         !artifact.revoked_at && (
                                                             <button

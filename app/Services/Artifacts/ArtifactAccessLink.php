@@ -52,6 +52,31 @@ final class ArtifactAccessLink
     }
 
     /**
+     * How long a link this minter hands out stays valid. Callers that need to
+     * name the expiry they are about to get — the mint audit event does — read
+     * it here rather than re-deriving the default, so the audited expiry and
+     * the minted expiry are the same value by construction.
+     */
+    public function ttlMinutes(): int
+    {
+        return $this->ttlMinutes;
+    }
+
+    /**
+     * Refuses a pair no isolated origin can be built from. A caller that hands
+     * out a link without minting it itself (the MCP tools hand out the app's
+     * open route) still needs this: an id no isolated hostname can be built
+     * from can only ever 404 or 403 at the artifact origin, so refusing it up
+     * front is the honest answer.
+     *
+     * @throws RuntimeException when no link can be built for this pair.
+     */
+    public function assertLinkable(string $tenantSlug, string $artifactId): void
+    {
+        $this->isolatedHostname($tenantSlug, $artifactId);
+    }
+
+    /**
      * The isolated-origin URL for `$artifactId`, or null when no signing
      * secret is configured. The host mirrors the Worker's
      * `isolated_artifact_hostname` — `<tenant-slug>--<artifact-id><suffix>` —

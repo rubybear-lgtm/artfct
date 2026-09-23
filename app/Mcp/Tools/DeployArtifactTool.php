@@ -26,7 +26,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned url is a short-lived signed link that opens the artifact on its own isolated origin; call get_artifact for a fresh link once it expires.')]
+#[Description('Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
@@ -161,7 +161,7 @@ final class DeployArtifactTool extends Tool
         }
 
         $artifactId = (string) $created->json('id');
-        $link = McpArtifactLink::forArtifact($team->slug, $artifactId);
+        $link = McpArtifactLink::forArtifact($team->slug, $artifactId, $created->json('tier'), $created->json('url'));
 
         if ($link instanceof Response) {
             app(McpTelemetry::class)->record('deploy_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $artifactId);
@@ -173,7 +173,7 @@ final class DeployArtifactTool extends Tool
 
         return Response::structured([
             'id' => $artifactId,
-            'url' => $link,
+            'view_url' => $link,
             'tier' => $created->json('tier'),
             'title' => $title,
             'organization' => $team->slug,

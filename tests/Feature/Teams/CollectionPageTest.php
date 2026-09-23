@@ -80,3 +80,30 @@ test('the_page_lists_collections_with_permissions', function () {
             ->where('canPin', false)
             ->where('collections.0.name', 'c'));
 });
+
+/**
+ * A collection lists artifact ids; each one links the same way the console row
+ * and the search result do — the app's own open route — so a member clicking it
+ * is authorized and, for a secure artifact, gets a link minted for them. The
+ * Worker's raw `/p/{id}` URL is not handed to the page as a link.
+ */
+test('artifact_rows_link_through_the_apps_open_route', function () {
+    configureArtifactLinks();
+
+    [$team, , $member] = collectionTeam();
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
+    $collection->artifacts()->create(['artifact_id' => ARTIFACT_LINK_ID, 'added_at' => now()]);
+
+    $openUrl = route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
+
+    test()->actingAs($member)->get(route('teams.collections.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('canOpenArtifacts', true)
+            ->where('collections.0.artifactIds', [ARTIFACT_LINK_ID])
+            ->where('collections.0.openUrls.'.ARTIFACT_LINK_ID, $openUrl));
+
+    config(['services.artifact_access.token_secret' => null]);
+
+    test()->actingAs($member)->get(route('teams.collections.index', $team))
+        ->assertInertia(fn (Assert $page) => $page->where('canOpenArtifacts', false));
+});

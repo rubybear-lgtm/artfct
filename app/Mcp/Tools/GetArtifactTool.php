@@ -19,7 +19,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle. The returned url is a short-lived signed link that opens the artifact on its own isolated origin.')]
+#[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a fresh short-lived signed link at click time; for a public artifact it is the workspace\'s public artifact URL.')]
 #[Name('get_artifact')]
 #[IsReadOnly]
 #[IsIdempotent]
@@ -83,7 +83,10 @@ final class GetArtifactTool extends Tool
         }
 
         $artifactId = (string) $response->json('id');
-        $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId);
+        $tier = $response->json('tier');
+        // The metadata endpoint returns no URL, so an anonymous artifact's link
+        // is built from this environment's public base.
+        $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null);
 
         if ($link instanceof Response) {
             app(McpTelemetry::class)->record('get_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $validated['id']);
@@ -95,8 +98,8 @@ final class GetArtifactTool extends Tool
 
         return Response::structured([
             'id' => $artifactId,
-            'url' => $link,
-            'tier' => $response->json('tier'),
+            'view_url' => $link,
+            'tier' => $tier,
             'entrypoint' => $response->json('entrypoint'),
             'created_at' => $response->json('created_at'),
             'expires_at' => $response->json('expires_at'),

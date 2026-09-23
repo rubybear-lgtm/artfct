@@ -165,12 +165,12 @@ To configure it manually in your client's settings file (Cursor's `mcp.json` or 
 
 The local server exposes these tools:
 
-- `deploy_artifact` — publish HTML as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage.
+- `deploy_artifact` — publish HTML as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage. Returns a `view_url`: the app's own open route for a secure artifact, the workspace's public artifact URL for a public one.
 - `deploy_to_canvas` — **deprecated**, use `deploy_artifact`. Publishes an anonymous, encrypted, expiring artifact that the workspace cannot search or retrieve.
-- `search_artifacts` — search previously deployed artifacts without returning HTML.
+- `search_artifacts` — search previously deployed artifacts without returning HTML. Each result carries a `view_url` on the app's open route.
 - `get_connection` — inspect the authenticated workspace, scopes, and client context.
 - `get_usage` — inspect customer-safe storage, artifact, render, and quota totals.
-- `get_artifact` — retrieve artifact metadata without exposing bundle contents.
+- `get_artifact` — retrieve artifact metadata without exposing bundle contents, plus a `view_url` under the same rule as `deploy_artifact`.
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
@@ -254,6 +254,9 @@ ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
 ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
 ARTFCT_ORG_TOKEN         Organization token for permanent deploy, delete, export, and search.
 ARTFCT_SEARCH_BASE_URL   search_artifacts endpoint base URL. Defaults to ARTFCT_API_BASE_URL.
+ARTFCT_APP_BASE_URL      Control-plane base URL, used to build a secure artifact's view_url
+                         (the app's open route). Defaults to https://artfct.dev; set it for a
+                         local or staging control plane.
 ```
 
 ## Production
@@ -318,7 +321,11 @@ Setup](#mcp-server-setup). `deploy_artifact` accepts a complete HTML payload
 and publishes it to the workspace — agents should deploy instead of emitting raw
 code blocks whenever they produce visual output. Artifacts are stored readable
 by the workspace (that is what makes them searchable); `secure` limits who can
-open the link, `public` does not.
+open the link, `public` does not. A secure artifact's `view_url` is the app's
+own open route (`/settings/teams/<org>/console/artifacts/<id>/open`), so an
+agent can hand it to a colleague and it works when that colleague is signed in;
+a public artifact's `view_url` is the artifact's public URL, which needs no
+session and gets no token minted for it.
 
 ```json
 {
@@ -334,7 +341,7 @@ open the link, `public` does not.
 The optional `model` value is recorded as agent-attested provenance and is kept
 separate from process-observed identity.
 
-`search_artifacts` searches the org's previously deployed artifacts — call it before building something the user references ("the billing dashboard", "that report from last week") instead of regenerating it from scratch. Results are a short list (title, description, URL, provenance summary, and a text snippet) — never the full HTML.
+`search_artifacts` searches the org's previously deployed artifacts — call it before building something the user references ("the billing dashboard", "that report from last week") instead of regenerating it from scratch. Results are a short list (title, description, `view_url`, provenance summary, and a text snippet) — never the full HTML.
 
 ```json
 {

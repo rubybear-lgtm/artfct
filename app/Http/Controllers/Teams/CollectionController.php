@@ -6,6 +6,8 @@ use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Collection;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Collections\CollectionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +29,9 @@ class CollectionController extends Controller
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'canEdit' => $this->canEdit($request, $team),
             'canPin' => $request->user()->can('pinCanonicalCollection', $team),
+            // Same gate as the console and the search page: with no signing
+            // secret the open route can only 503 for a secure artifact.
+            'canOpenArtifacts' => ArtifactAccessLink::default()->configured(),
             'collections' => Collection::query()
                 ->where('team_id', $team->id)
                 ->with('artifacts')
@@ -38,6 +43,12 @@ class CollectionController extends Controller
                     'description' => $collection->description,
                     'canonical' => $collection->canonical,
                     'artifactIds' => $collection->artifacts->pluck('artifact_id')->values(),
+                    // Rows link the same way the console does: the app's own
+                    // open route, which authorizes the viewer and is the only
+                    // link that works for a secure artifact.
+                    'openUrls' => $collection->artifacts->mapWithKeys(fn ($artifact): array => [
+                        $artifact->artifact_id => ArtifactViewLink::forArtifact($team->slug, $artifact->artifact_id, null),
+                    ])->all(),
                 ]),
         ]);
     }

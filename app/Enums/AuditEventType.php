@@ -14,6 +14,7 @@ enum AuditEventType: string
     case ArtifactViewed = 'artifact.viewed';
     case ArtifactShared = 'artifact.shared';
     case ArtifactRevoked = 'artifact.revoked';
+    case ArtifactLinkMinted = 'artifact.link_minted';
     case ArtifactDeleted = 'artifact.deleted';
     case ShareCreated = 'share.created';
     case ShareRevoked = 'share.revoked';

@@ -19,6 +19,85 @@ const SERVER_INSTRUCTIONS: &str =
     "Publish HTML artifacts to the authenticated workspace, then search, retrieve and organize them. deploy_to_canvas is deprecated: it creates anonymous expiring artifacts the workspace cannot search.";
 const DEFAULT_API_BASE_URL: &str = "https://artfct.dev";
 
+/// Where the control plane (the Laravel app) lives. Its session-authenticated
+/// open route is the link a person can actually follow for a secure artifact;
+/// the local stdio server has no session of its own, so it addresses that route
+/// rather than minting a token the way the hosted server can.
+const DEFAULT_APP_BASE_URL: &str = "https://artfct.dev";
+
+/// The app's open route, mirroring `route('console.open')` on the control
+/// plane. `tests/Fixtures/artifact-view-link-contract.json` holds the one copy
+/// of this shape that both servers are tested against, so the PHP and Rust
+/// servers cannot drift apart about the link they hand back.
+const APP_OPEN_PATH_TEMPLATE: &str = "/settings/teams/{team}/console/artifacts/{artifactId}/open";
+
+/// Where the control plane lives: `ARTFCT_APP_BASE_URL` when set (local dev and
+/// staging point at their own Laravel host), `https://artfct.dev` otherwise —
+/// the same host that serves the hosted MCP endpoint.
+fn app_base_url() -> String {
+    std::env::var("ARTFCT_APP_BASE_URL")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_APP_BASE_URL.to_string())
+}
+
+/// Whether `tier` names an artifact the Worker serves to anyone, with no
+/// credential: a permanent `public` artifact, or the anonymous `ephemeral`
+/// preview `deploy_to_canvas` publishes. Everything else — including a tier
+/// this response did not carry — is treated as secure.
+fn is_anonymous_tier(tier: Option<&str>) -> bool {
+    matches!(tier, Some(value) if value.eq_ignore_ascii_case("public") || value.eq_ignore_ascii_case("ephemeral"))
+}
+
+/// The one place the local server decides which URL a person is handed for an
+/// artifact, mirroring `App\Services\Artifacts\ArtifactViewLink` on the hosted
+/// side: an artifact the Worker serves without a credential — public, or an
+/// anonymous ephemeral preview — is handed out as the Worker's own `/p/{id}`
+/// URL, and no token is involved; every other artifact (secure, or a tier this
+/// response did not carry) gets the app's session-authenticated open route,
+/// which authorizes the viewer and mints a short-lived signed link at click
+/// time.
+///
+/// `worker_url` is the URL the Worker published for the artifact, when the
+/// response carried one (`ARTFCT_PUBLIC_BASE_URL`). It is used for an anonymous
+/// artifact in preference to reconstructing from `worker_base_url`, because it
+/// is the artifact's real address: on a deployment whose Worker public base is
+/// not the API base, reconstructing would hand out a link to the wrong host.
+///
+/// Without a workspace slug there is no app route to address, so the Worker's
+/// own `/p/{id}` URL is the only link left; that is the pre-existing
+/// environment-token edge case, not the ordinary path.
+fn artifact_view_url(
+    worker_base_url: &str,
+    app_base_url: &str,
+    organization: Option<&str>,
+    artifact_id: &str,
+    tier: Option<&str>,
+    worker_url: Option<&str>,
+) -> String {
+    if is_anonymous_tier(tier) {
+        return worker_url
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| {
+                format!("{}/p/{artifact_id}", worker_base_url.trim_end_matches('/'))
+            });
+    }
+
+    let Some(organization) = organization else {
+        return format!("{}/p/{artifact_id}", worker_base_url.trim_end_matches('/'));
+    };
+
+    format!(
+        "{}{}",
+        app_base_url.trim_end_matches('/'),
+        APP_OPEN_PATH_TEMPLATE
+            .replace("{team}", organization)
+            .replace("{artifactId}", artifact_id)
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostSource {
     Config,
@@ -805,12 +884,12 @@ where
         "deploy_to_canvas" => call_deploy_to_canvas(session, params.arguments)
             .await
             .map_err(McpError::from),
-        "search_artifacts" => call_search_artifacts(params.arguments)
+        "search_artifacts" => call_search_artifacts(session, params.arguments)
             .await
             .map_err(McpError::from),
         "get_connection" => Ok(connection_result(session)),
         "get_usage" => call_get_usage(session).await.map_err(McpError::from),
-        "get_artifact" => call_get_artifact(params.arguments)
+        "get_artifact" => call_get_artifact(session, params.arguments)
             .await
             .map_err(McpError::from),
         "list_collections" => call_list_collections(params.arguments)
@@ -901,15 +980,23 @@ async fn call_deploy_artifact(session: &Session, arguments: Value) -> Result<Val
     let created =
         api::deploy_permanent_artifact(&client, &api_base_url, &request, html.as_bytes(), &token)
             .await?;
+    let view_url = artifact_view_url(
+        &api_base_url,
+        &app_base_url(),
+        session.connection.organization.as_deref(),
+        &created.id,
+        Some(created.tier.as_str()),
+        Some(created.url.as_str()),
+    );
 
     Ok(json!({
         "content": [{
             "type": "text",
-            "text": format!("Artifact published: {}", created.url)
+            "text": format!("Artifact published: {view_url}")
         }],
         "structuredContent": {
             "id": created.id,
-            "url": created.url,
+            "view_url": view_url,
             "tier": created.tier,
             "title": request.title,
             "organization": session.connection.organization
@@ -926,18 +1013,31 @@ async fn call_deploy_to_canvas(session: &Session, arguments: Value) -> Result<Va
     let request = mcp_create_request_payload(&prepared.request)?;
     let artifact =
         api::deploy_artifact_payload(&reqwest::Client::new(), &api_base_url, &request).await?;
-    let full_url = format!("{}{}", artifact.url, prepared.fragment);
+    // The share fragment is client-side only — the Worker never sees it — so it
+    // rides along on whichever link the tier rule picked.
+    let view_url = format!(
+        "{}{}",
+        artifact_view_url(
+            &api_base_url,
+            &app_base_url(),
+            session.connection.organization.as_deref(),
+            &artifact.id,
+            Some(artifact.tier.as_str()),
+            Some(artifact.url.as_str()),
+        ),
+        prepared.fragment
+    );
 
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": format!("Artifact deployed: {}", full_url)
+                "text": format!("Artifact deployed: {view_url}")
             }
         ],
         "structuredContent": {
             "id": artifact.id,
-            "url": full_url,
+            "view_url": view_url,
             "canonical_url": artifact.url,
             "tier": artifact.tier,
             "expires_at": artifact.expires_at,
@@ -949,7 +1049,7 @@ async fn call_deploy_to_canvas(session: &Session, arguments: Value) -> Result<Va
     }))
 }
 
-async fn call_search_artifacts(arguments: Value) -> Result<Value> {
+async fn call_search_artifacts(session: &Session, arguments: Value) -> Result<Value> {
     let arguments: SearchToolArguments =
         serde_json::from_value(arguments).context("Invalid search_artifacts arguments")?;
 
@@ -963,7 +1063,7 @@ async fn call_search_artifacts(arguments: Value) -> Result<Value> {
     let request = search_request_payload(&arguments);
     let response = api::search_artifacts(&client, &api_base_url, &token, &request).await?;
 
-    Ok(format_search_response(&response))
+    Ok(format_search_response(session, &api_base_url, &response))
 }
 
 async fn call_get_usage(session: &Session) -> Result<Value> {
@@ -982,7 +1082,7 @@ async fn call_get_usage(session: &Session) -> Result<Value> {
     Ok(format_usage_response(&response))
 }
 
-async fn call_get_artifact(arguments: Value) -> Result<Value> {
+async fn call_get_artifact(session: &Session, arguments: Value) -> Result<Value> {
     let arguments: GetArtifactArguments =
         serde_json::from_value(arguments).context("Invalid get_artifact arguments")?;
     if arguments.id.is_empty()
@@ -1001,6 +1101,16 @@ async fn call_get_artifact(arguments: Value) -> Result<Value> {
         .await?
         .context("get_artifact requires `artfct login` or ARTFCT_ORG_TOKEN")?;
     let response = api::artifact_metadata(&client, &api_base_url, &arguments.id, &token).await?;
+    // The metadata endpoint returns no URL, so an anonymous artifact's link is
+    // built from the Worker base.
+    let view_url = artifact_view_url(
+        &api_base_url,
+        &app_base_url(),
+        session.connection.organization.as_deref(),
+        &response.id,
+        Some(response.tier.as_str()),
+        None,
+    );
 
     Ok(json!({
         "content": [{
@@ -1009,6 +1119,7 @@ async fn call_get_artifact(arguments: Value) -> Result<Value> {
         }],
         "structuredContent": {
             "id": response.id,
+            "view_url": view_url,
             "tier": response.tier,
             "entrypoint": response.entrypoint,
             "created_at": response.created_at,
@@ -1180,12 +1291,17 @@ fn search_request_payload(arguments: &SearchToolArguments) -> Value {
 /// only place that decides what an agent sees, so it's the one place that
 /// can be checked to never include a bundle's full HTML (DoD: "never the
 /// full bundle").
-fn format_search_response(response: &api::SearchResponse) -> Value {
+fn format_search_response(
+    session: &Session,
+    worker_base_url: &str,
+    response: &api::SearchResponse,
+) -> Value {
     let summary = if response.results.is_empty() {
         "No matching artifacts found.".to_string()
     } else {
         format!("Found {} matching artifact(s).", response.results.len())
     };
+    let app_base_url = app_base_url();
 
     json!({
         "content": [
@@ -1199,7 +1315,18 @@ fn format_search_response(response: &api::SearchResponse) -> Value {
                 "id": result.id,
                 "title": result.title,
                 "description": result.description,
-                "url": result.url,
+                // The index carries no tier, so every row links through the
+                // app's open route: it authorizes the viewer and is the one
+                // link that is right either way.
+                "view_url": artifact_view_url(
+                    worker_base_url,
+                    &app_base_url,
+                    session.connection.organization.as_deref(),
+                    &result.id,
+                    None,
+                    // Search results carry no artifact URL.
+                    None,
+                ),
                 "snippet": result.snippet,
                 "provenance": result.provenance,
             })).collect::<Vec<_>>()
@@ -1274,15 +1401,15 @@ mod tests {
     use std::process::Command;
 
     use anyhow::anyhow;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::{
-        call_add_collection_artifact, call_get_artifact, call_tool, format_search_response,
-        format_usage_response, handle_json_rpc, mcp_create_request_payload,
+        artifact_view_url, call_add_collection_artifact, call_get_artifact, call_tool,
+        format_search_response, format_usage_response, handle_json_rpc, mcp_create_request_payload,
         negotiate_protocol_version, prepare_mcp_tool_request, resolve_host, search_request_payload,
         session_identity, ConnectionContext, CredentialSource, DeployToolArguments, HostIdentity,
-        HostSource, McpError, SearchToolArguments, Session, MCP_SERVER_VERSION, PROTOCOL_VERSION,
-        SERVER_INSTRUCTIONS,
+        HostSource, McpError, SearchToolArguments, Session, APP_OPEN_PATH_TEMPLATE,
+        MCP_SERVER_VERSION, PROTOCOL_VERSION, SERVER_INSTRUCTIONS,
     };
     use crate::api::tests::validate_contract_schema;
     use crate::api::{SearchResponse, SearchResultDto, UsageLimits, UsageResponse};
@@ -1760,7 +1887,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_artifact_rejects_path_injection_in_ids() {
-        let error = call_get_artifact(json!({"id": "../secrets"}))
+        let session = Session::new(None);
+        let error = call_get_artifact(&session, json!({"id": "../secrets"}))
             .await
             .expect_err("path-like artifact ID should be rejected");
 
@@ -1961,21 +2089,155 @@ mod tests {
                 provenance: json!({"agent": "cursor", "repo_url": "https://github.com/acme/billing"}),
             }],
         };
+        let mut session = Session::new(None);
+        session.connection.organization = Some("acme".to_string());
 
-        let shaped = format_search_response(&response);
+        let shaped = format_search_response(&session, "https://artfct.dev", &response);
         let result = &shaped["structuredContent"]["results"][0];
-
         assert_eq!(result["snippet"], "Q3 revenue grew 40%…");
-        assert_eq!(result["url"], "https://artfct.dev/p/artifact-1");
+        // The Worker's raw /p/{id} URL is not what a member is handed: the app's
+        // open route is, because it is the one that authorizes the viewer.
+        assert_eq!(
+            result["view_url"],
+            format!("https://artfct.dev{APP_OPEN_PATH_TEMPLATE}")
+                .replace("{team}", "acme")
+                .replace("{artifactId}", "artifact-1")
+        );
+        assert!(result.get("url").is_none());
         // Never the full bundle: no "html" or "content"/"bundle" field on a
         // result, only what the tool description promises.
         assert!(result.get("html").is_none());
         assert!(result.get("bundle").is_none());
-        let allowed_keys = ["id", "title", "description", "url", "snippet", "provenance"];
+        let allowed_keys = [
+            "id",
+            "title",
+            "description",
+            "view_url",
+            "snippet",
+            "provenance",
+        ];
         for key in result.as_object().expect("result object").keys() {
             assert!(
                 allowed_keys.contains(&key.as_str()),
                 "unexpected field `{key}` in a search result — only snippet/provenance summary allowed, never full content"
+            );
+        }
+    }
+
+    /// The shared cross-server contract: which link a tool hands back for a
+    /// tier, and what that link is called. The fixture is the same file the
+    /// hosted server's PHP suite reads, so a change to the shape fails both
+    /// servers rather than letting one drift.
+    #[test]
+    fn view_url_follows_the_shared_cross_server_contract() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../tests/Fixtures/artifact-view-link-contract.json"
+        ))
+        .expect("shared view-url contract fixture parses");
+
+        assert_eq!(contract["field"], "view_url");
+        assert_eq!(contract["public_path_template"], "/p/{artifact}");
+        assert_eq!(contract["app_open_path_template"], APP_OPEN_PATH_TEMPLATE);
+        assert_eq!(contract["tiers"]["public"], "worker_public_url");
+        assert_eq!(contract["tiers"]["ephemeral"], "worker_public_url");
+        assert_eq!(contract["tiers"]["secure"], "app_open_route");
+        assert_eq!(contract["tiers"]["unreadable"], "app_open_route");
+
+        let app_open_path = APP_OPEN_PATH_TEMPLATE
+            .replace("{team}", "acme")
+            .replace("{artifactId}", "artifact-1");
+
+        // An artifact the Worker serves without a credential — a public one, or
+        // the anonymous ephemeral preview deploy_to_canvas publishes — gets the
+        // raw URL: no token, no session.
+        for tier in ["public", "ephemeral"] {
+            assert_eq!(
+                artifact_view_url(
+                    "https://artfct.dev",
+                    "https://app.test",
+                    Some("acme"),
+                    "artifact-1",
+                    Some(tier),
+                    None,
+                ),
+                "https://artfct.dev/p/artifact-1"
+            );
+        }
+
+        // Secure — and any tier the response did not carry — opens through the
+        // app's session-authenticated open route, never the Worker's raw URL.
+        for tier in [Some("secure"), None, Some("permanent")] {
+            let url = artifact_view_url(
+                "https://artfct.dev",
+                "https://app.test",
+                Some("acme"),
+                "artifact-1",
+                tier,
+                None,
+            );
+
+            assert_eq!(url, format!("https://app.test{app_open_path}"));
+            assert!(!url.contains("/p/"));
+        }
+
+        // The Worker's own published URL wins for an anonymous artifact: it is
+        // the artifact's real address, and a staging Worker whose public base
+        // differs from the API base must not be reconstructed from config.
+        assert_eq!(
+            artifact_view_url(
+                "https://api.artfct.dev",
+                "https://app.test",
+                Some("acme"),
+                "artifact-1",
+                Some("public"),
+                Some("https://custom.example/p/artifact-1"),
+            ),
+            "https://custom.example/p/artifact-1"
+        );
+
+        // No workspace slug: there is no app route to address, so the Worker's
+        // own URL is the only link left.
+        assert_eq!(
+            artifact_view_url(
+                "https://artfct.dev",
+                "https://app.test",
+                None,
+                "artifact-1",
+                Some("secure"),
+                None,
+            ),
+            "https://artfct.dev/p/artifact-1"
+        );
+    }
+
+    /// Both servers must name the field `view_url`. The local catalog is what a
+    /// local agent reads, so a description that still promises a `url`
+    /// disagrees with what the tool returns.
+    #[test]
+    fn the_local_tool_catalog_names_view_url() {
+        let definitions = tool_registry::definitions_json();
+        let by_name: std::collections::HashMap<&str, &Value> = definitions
+            .as_array()
+            .expect("tool array")
+            .iter()
+            .map(|tool| (tool["name"].as_str().expect("tool name"), tool))
+            .collect();
+
+        for name in [
+            "deploy_artifact",
+            "deploy_to_canvas",
+            "search_artifacts",
+            "get_artifact",
+        ] {
+            let description = by_name
+                .get(name)
+                .unwrap_or_else(|| panic!("the catalog must define `{name}`"))["description"]
+                .as_str()
+                .expect("description is a string");
+
+            assert!(
+                description.contains("view_url"),
+                "`{name}` must tell a local agent the field is `view_url`"
             );
         }
     }

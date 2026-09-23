@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
 use App\Support\ClientIp;
@@ -20,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Search the authenticated workspace by meaning, provenance, repository, agent, or date. Returns summaries and snippets, never full artifact contents.')]
+#[Description('Search the authenticated workspace by meaning, provenance, repository, agent, or date. Returns summaries, snippets and a view_url per result, never full artifact contents. Each view_url is the app\'s own open route, so it works when a member clicks it while signed in and mints a signed link only for a secure artifact.')]
 #[Name('search_artifacts')]
 #[IsReadOnly]
 #[IsIdempotent]
@@ -88,7 +89,13 @@ final class SearchArtifactsTool extends Tool
                 'id' => $result->id,
                 'title' => $result->title,
                 'description' => $result->description,
-                'url' => $result->url,
+                // Search results are workspace artifacts; the index carries no
+                // tier, so every one of them links through the app's open
+                // route. That route is the link that is correct either way: it
+                // authorizes the viewer, then either redirects a public
+                // artifact to its credential-less `/p/{id}` URL without
+                // minting, or mints a signed link for a secure one.
+                'view_url' => ArtifactViewLink::forArtifact($team->slug, $result->id, null),
                 'snippet' => $result->snippet,
                 'provenance' => [
                     'agent' => $result->agent,

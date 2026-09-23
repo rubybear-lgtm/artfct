@@ -73,7 +73,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "deploy_artifact",
-            description: "Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact.",
+            description: "Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens it: the app's own open route for a secure artifact, which mints a short-lived signed link bound to the viewer at click time, and the workspace's public artifact URL for a public one.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -112,7 +112,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "deploy_to_canvas",
-            description: "Deprecated: use deploy_artifact. Publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count.",
+            description: "Deprecated: use deploy_artifact. Publishes an anonymous, expiring HTML artifact that the workspace cannot search, retrieve, collect or count. The returned view_url follows the same rule as the other tools: the app's own open route for a secure artifact, the Worker's public artifact URL for a public or ephemeral one.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -147,7 +147,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "search_artifacts",
-            description: "Search this org's previously deployed artifacts before building something new. Call this BEFORE generating a dashboard, page, or report the user references (\"the billing dashboard\", \"that report from last week\") — an existing artifact answering the request should be returned as a link, not regenerated from scratch. Returns a short list of title, description, URL, provenance summary and a text snippet for each match — never the full HTML. Scoped strictly to the caller's org.",
+            description: "Search this org's previously deployed artifacts before building something new. Call this BEFORE generating a dashboard, page, or report the user references (\"the billing dashboard\", \"that report from last week\") — an existing artifact answering the request should be returned as a link, not regenerated from scratch. Returns a short list of title, description, view_url, provenance summary and a text snippet for each match — never the full HTML. Each view_url is the app's own open route, so it opens for a signed-in member. Scoped strictly to the caller's org.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -225,7 +225,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "get_artifact",
-            description: "Retrieve safe metadata for one artifact in the authenticated organization. Returns title, description, tier, entrypoint, and lifecycle timestamps, never the HTML bundle.",
+            description: "Retrieve safe metadata for one artifact in the authenticated organization. Returns title, description, tier, entrypoint, lifecycle timestamps and a view_url: the app's own open route for a secure artifact, the workspace's public artifact URL for a public one. Never the HTML bundle.",
             input_schema: json!({
                 "type": "object",
                 "properties": {

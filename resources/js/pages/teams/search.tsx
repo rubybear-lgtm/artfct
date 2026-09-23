@@ -13,7 +13,12 @@ interface Result {
     id: string;
     title: string;
     description: string | null;
-    url: string;
+    /**
+     * The app's own open route for this artifact: the Worker's raw `/p/{id}`
+     * URL is not linked from here, because a signed-in member opening a secure
+     * artifact that way can only 403.
+     */
+    openUrl: string;
     snippet: string;
     agent: string | null;
     repoUrl: string | null;
@@ -23,6 +28,7 @@ interface Result {
 interface Props {
     team: { slug: string; name: string };
     indexingEnabled: boolean;
+    canOpenArtifacts: boolean;
     filters: {
         q: string;
         agent: string;
@@ -39,6 +45,7 @@ interface Props {
 export default function Search({
     team,
     indexingEnabled,
+    canOpenArtifacts,
     filters,
     collections,
     results,
@@ -149,14 +156,20 @@ export default function Search({
                 {results.map((result) => (
                     <Card key={result.id}>
                         <CardContent className="flex flex-col gap-1 pt-4">
-                            <a
-                                className="font-medium underline"
-                                href={result.url}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                {result.title || result.id.slice(0, 8)}
-                            </a>
+                            {canOpenArtifacts ? (
+                                <a
+                                    className="font-medium underline"
+                                    href={result.openUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    {result.title || result.id.slice(0, 8)}
+                                </a>
+                            ) : (
+                                <span className="font-medium">
+                                    {result.title || result.id.slice(0, 8)}
+                                </span>
+                            )}
                             {result.description && (
                                 <p className="text-sm text-muted-foreground">
                                     {result.description}
