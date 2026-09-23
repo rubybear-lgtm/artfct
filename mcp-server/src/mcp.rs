@@ -2137,6 +2137,55 @@ mod tests {
         }
     }
 
+    fn schema_derived_invalid_arguments(schema: &Value, seed: &mut u64) -> Value {
+        let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+            return json!({"unexpected": arbitrary_json(seed, 3)});
+        };
+        let Some(required) = schema.get("required").and_then(Value::as_array) else {
+            return json!({"unexpected": arbitrary_json(seed, 3)});
+        };
+        let Some(field) = required.first().and_then(Value::as_str) else {
+            return json!({"unexpected": arbitrary_json(seed, 3)});
+        };
+        let expected_type = properties
+            .get(field)
+            .and_then(|property| property.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let wrong_value = match expected_type {
+            "string" => json!({"fuzz": arbitrary_json(seed, 3)}),
+            "integer" | "number" => json!("not-a-number"),
+            "boolean" => json!("not-a-boolean"),
+            "array" => json!("not-an-array"),
+            "object" => json!("not-an-object"),
+            _ => Value::Null,
+        };
+
+        json!({field: wrong_value})
+    }
+
+    #[tokio::test]
+    async fn schema_derived_invalid_arguments_are_rejected_before_network_calls() {
+        let mut seed = 0x1357_9BDF_u64;
+
+        for definition in tool_registry::definitions() {
+            for _ in 0..64 {
+                let arguments =
+                    schema_derived_invalid_arguments(&definition.input_schema, &mut seed);
+                let session = Session::new_with_resolution(None, None, None);
+                let error = call_tool(
+                    &session,
+                    json!({"name": definition.name, "arguments": arguments}),
+                    |_| {},
+                )
+                .await
+                .expect_err("schema-derived invalid arguments must be rejected");
+
+                assert!(error.to_string().len() <= 512);
+            }
+        }
+    }
+
     #[test]
     fn upstream_errors_are_classified_without_echoing_response_bodies() {
         let error = McpError::from(anyhow!(
