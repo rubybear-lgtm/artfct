@@ -405,6 +405,26 @@ Record each additional client verified against staging here with the date,
 protocol version it negotiated, and any workaround needed, so this table
 stays a source of truth rather than a claim.
 
+### Client preflight inventory (2026-09-23)
+
+This is an installation and setup preflight, not a hosted compatibility result:
+no client below completed OAuth consent or called a hosted tool during this
+check. It records what is available for the next release-candidate run.
+
+| Client                 | Installed version                | Setup/config preflight                           | Hosted session |
+| ---------------------- | -------------------------------- | ------------------------------------------------ | -------------- |
+| Claude Code            | 2.1.280                          | `artfct setup --list` recognized the JSON target | Not run        |
+| Cursor                 | 2.6.22                           | `artfct setup --list` recognized the JSON target | Not run        |
+| Codex CLI              | 0.155.1                          | `artfct setup --list` recognized the TOML target | Not run        |
+| Gemini CLI             | 0.42.0                           | `artfct setup --list` recognized the JSON target | Not run        |
+| OpenCode               | 1.17.18                          | `artfct setup --list` recognized the JSON target | Not run        |
+| Official MCP Inspector | Not installed as a usable binary | No preflight                                     | Not run        |
+
+The preflight also observed non-fatal local-environment warnings from Cursor's
+macOS code-sign check, Codex's PATH-alias setup, and Gemini's cleanup attempt.
+None is a compatibility result; record any client-specific behavior only after
+the hosted run above completes.
+
 ## Incident checklist
 
 1. Run `artfct doctor` and capture only its redacted output.
