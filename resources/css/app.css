@@ -947,6 +947,121 @@ html {
     background-color: var(--sol-green);
 }
 
+/* Welcome information, FAQ, and footer */
+.welcome-information,
+.welcome-faq,
+.welcome-footer {
+    width: 100%;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-information,
+.welcome-faq {
+    display: flex;
+    flex-direction: column;
+}
+
+.welcome-information {
+    gap: 1.2rem;
+    padding-top: 2rem;
+}
+
+.welcome-information-copy {
+    color: var(--sol-base0);
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.welcome-section-heading {
+    margin: 0 0 1rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.welcome-information-copy p {
+    margin: 0 0 0.8rem;
+}
+
+.welcome-information-copy p:last-child {
+    margin-bottom: 0;
+}
+
+.welcome-information-emphasis,
+.welcome-accent-text {
+    color: var(--sol-cyan);
+}
+
+.welcome-information-emphasis {
+    color: var(--sol-base00);
+}
+
+.welcome-faq {
+    gap: 0.75rem;
+    padding-top: 2rem;
+}
+
+.welcome-faq > .welcome-section-heading {
+    margin-bottom: 0.5rem;
+}
+
+.welcome-faq-question {
+    margin-bottom: 0.35rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+
+.welcome-faq-answer {
+    padding-left: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-left: 2px solid var(--sol-base2);
+}
+
+.welcome-inline-code {
+    padding: 0.1em 0.3em;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    background-color: var(--sol-base2);
+}
+
+.welcome-information-link,
+.welcome-footer a {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1.25rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-footer-links {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.welcome-footer a {
+    color: var(--sol-base1);
+}
+
 /* Modal animation */
 .welcome-manage-overlay {
     position: fixed;
