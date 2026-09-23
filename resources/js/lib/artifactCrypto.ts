@@ -1,6 +1,16 @@
 const DEFAULT_THUMBNAIL = 'https://artfct.dev/og-image.svg';
 const AES_IV_BYTES = 12;
 const SHARE_CODE_LENGTH = 10;
+
+/// Version tag carried in the share fragment. A fragment without it predates
+/// the salted KDF and is opened with the legacy SHA-256 derivation.
+const KDF_VERSION = 2;
+const KDF_SALT_BYTES = 16;
+
+/// Must match `KDF_ITERATIONS` in `mcp-server/src/artifact_crypto.rs` and in the
+/// viewer the Worker serves. All three derive the same key or nothing opens;
+/// `tests/Feature/ArtifactKeyDerivationTest.php` pins the shared vector.
+const KDF_ITERATIONS = 210_000;
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
 const textEncoder = new TextEncoder();
@@ -22,10 +32,12 @@ export async function encryptArtifactBody(
 ): Promise<ArtifactEncryptionResult> {
     const shareCode = randomShareCode(SHARE_CODE_LENGTH);
     const ivBytes = new Uint8Array(AES_IV_BYTES);
+    const saltBytes = new Uint8Array(KDF_SALT_BYTES);
 
     crypto.getRandomValues(ivBytes);
+    crypto.getRandomValues(saltBytes);
 
-    const cryptoKey = await deriveAesKey(shareCode);
+    const cryptoKey = await deriveAesKey(shareCode, saltBytes);
     const ciphertext = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv: ivBytes },
         cryptoKey,
@@ -35,7 +47,7 @@ export async function encryptArtifactBody(
     return {
         bodyCiphertextB64: toBase64Url(new Uint8Array(ciphertext)),
         bodyIvB64: toBase64Url(ivBytes),
-        keyFragment: `#${shareCode}`,
+        keyFragment: `#p=${shareCode}&s=${toBase64Url(saltBytes)}&v=${KDF_VERSION}`,
     };
 }
 
@@ -111,13 +123,42 @@ function toBase64Url(bytes: Uint8Array): string {
         .replace(/=+$/u, '');
 }
 
-async function deriveAesKey(shareCode: string): Promise<CryptoKey> {
-    const digest = await crypto.subtle.digest(
-        'SHA-256',
+/// Derives the raw key bytes with PBKDF2-HMAC-SHA256 over a per-artifact salt.
+///
+/// The previous derivation was a single unsalted SHA-256 of the share code, so
+/// the same code produced the same key for every artifact and a guess cost one
+/// hash. Exported so the shared test vector can be asserted against it.
+export async function deriveAesKeyBytes(
+    shareCode: string,
+    salt: Uint8Array<ArrayBuffer>,
+): Promise<ArrayBuffer> {
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
         textEncoder.encode(shareCode),
+        'PBKDF2',
+        false,
+        ['deriveBits'],
     );
 
-    return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, [
+    return crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt,
+            iterations: KDF_ITERATIONS,
+            hash: 'SHA-256',
+        },
+        keyMaterial,
+        256,
+    );
+}
+
+async function deriveAesKey(
+    shareCode: string,
+    salt: Uint8Array<ArrayBuffer>,
+): Promise<CryptoKey> {
+    const bits = await deriveAesKeyBytes(shareCode, salt);
+
+    return crypto.subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, [
         'encrypt',
     ]);
 }

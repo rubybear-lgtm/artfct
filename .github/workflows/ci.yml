@@ -16,6 +16,51 @@ permissions:
   contents: read
 
 jobs:
+  openapi_lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: openapi_lint
+        run: npx --yes @redocly/cli@2.15.2 lint openapi/artfct.yaml
+
+  contract_drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-contract-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: contract_drift
+        run: |
+          cargo test -p artfct-backend --locked
+          cargo test -p artfct --locked
+
   application:
     runs-on: ubuntu-latest
 
@@ -70,17 +115,39 @@ jobs:
       - name: Check frontend formatting
         run: npm run format:check
 
+      # Wayfinder generates resources/js/actions|routes|wayfinder (gitignored,
+      # build-only) from the currently-registered routes. Lint and type-check
+      # import from there, so on a fresh checkout they must run after a
+      # build, not before — a stale local checkout with old generated files
+      # lying around masks this, which is how it went unnoticed.
+      - name: Build frontend
+        run: npm run build
+
       - name: Check frontend lint
         run: npm run lint:check
 
       - name: Check frontend types
         run: npm run types:check
 
-      - name: Build frontend
-        run: npm run build
+      - name: Check frontend route references
+        run: npm run routes:check
 
       - name: Run Pest
-        run: php artisan test --compact
+        run: php -d memory_limit=512M vendor/bin/pest --compact
+
+  release_readiness:
+    name: 'Release readiness: authentication, tenancy and quota'
+    needs:
+      - application
+      - contract_drift
+      - cli
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm release-critical suites are required
+        run: |
+          set -euo pipefail
+          echo 'Authentication, tenancy, quota, contract, and CLI checks are required by this gate.'
 
   secrets:
     runs-on: ubuntu-latest
@@ -145,6 +212,7 @@ jobs:
         run: cargo test --workspace --locked
 
   cli:
+    name: CLI
     runs-on: ubuntu-latest
 
     steps:
@@ -176,6 +244,178 @@ jobs:
       - name: Smoke test CLI commands
         run: |
           cargo run -p artfct --locked -- --help
+          cargo run -p artfct --locked -- login --help
           cargo run -p artfct --locked -- deploy --help
           cargo run -p artfct --locked -- mcp --help
           cargo run -p artfct --locked -- doctor
+
+  mcp_quality:
+    name: MCP contract and quality gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-mcp-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Check MCP formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check MCP lint
+        run: cargo clippy -p artfct --all-targets --locked -- -D warnings
+
+      - name: Run MCP contract tests
+        run: cargo test -p artfct --locked
+
+  mcp_application:
+    name: Hosted MCP application contract gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          touch database/database.sqlite
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run hosted MCP contract tests
+        run: >-
+          php -d memory_limit=512M vendor/bin/pest --compact
+          tests/Feature/McpContractTest.php
+          tests/Feature/McpOAuthTest.php
+          tests/Feature/McpRemoteTransportTest.php
+          tests/Feature/McpConnectionApiTest.php
+          tests/Feature/McpConnectionsPageTest.php
+          tests/Feature/McpActivityTest.php
+
+  mcp_e2e:
+    name: MCP local end-to-end (Postgres + Worker + hosted OAuth)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17.2
+        env:
+          POSTGRES_USER: artfct
+          POSTGRES_PASSWORD: artfct
+          POSTGRES_DB: artfct_e2e
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U artfct -d artfct_e2e"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-mcp-e2e-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Prepare Laravel for the frontend build
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run the local MCP stack end to end
+        env:
+          MCP_E2E_EXTERNAL_POSTGRES: 'true'
+          MCP_E2E_DB_HOST: 127.0.0.1
+          MCP_E2E_DB_PORT: '55432'
+          MCP_E2E_DB_DATABASE: artfct_e2e
+          MCP_E2E_DB_USERNAME: artfct
+          MCP_E2E_DB_PASSWORD: artfct
+        run: scripts/mcp-e2e-stack.sh run

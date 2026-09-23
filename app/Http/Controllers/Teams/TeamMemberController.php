@@ -1,0 +1,84 @@
+<?php
+
+namespace App\Http\Controllers\Teams;
+
+use App\Enums\AuditEventType;
+use App\Enums\TeamRole;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Teams\UpdateTeamMemberRequest;
+use App\Models\OAuthRefreshToken;
+use App\Models\Team;
+use App\Models\User;
+use App\Services\Governance\AuditLogger;
+use App\Services\Teams\LastAdminGuard;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Inertia\Inertia;
+
+class TeamMemberController extends Controller
+{
+    /**
+     * Update the specified team member's role.
+     */
+    public function update(UpdateTeamMemberRequest $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
+    {
+        Gate::authorize('updateMember', $team);
+
+        $newRole = TeamRole::from($request->validated('role'));
+
+        if ($newRole !== TeamRole::Admin) {
+            app(LastAdminGuard::class)->ensureNotOwner($team, $user);
+        }
+        app(LastAdminGuard::class)->ensureAdminRemains($team, $user, $newRole);
+
+        $team->memberships()
+            ->where('user_id', $user->id)
+            ->firstOrFail()
+            ->update(['role' => $newRole]);
+
+        $auditLogger->recordForRequest($request, AuditEventType::RoleChanged, $team, (string) $request->user()->id, "user:{$user->id} -> {$newRole->value}");
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Member role updated.')]);
+
+        return to_route('teams.edit', ['team' => $team->slug]);
+    }
+
+    /**
+     * Remove the specified team member.
+     */
+    public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
+    {
+        Gate::authorize('removeMember', $team);
+
+        app(LastAdminGuard::class)->ensureNotOwner($team, $user);
+
+        $memberCount = $team->memberships()->count();
+        $memberRole = $team->memberships()->where('user_id', $user->id)->value('role');
+
+        abort_if(
+            $memberCount === 1 || ($memberRole === TeamRole::Admin->value && $team->memberships()->where('role', TeamRole::Admin->value)->count() === 1),
+            403,
+            __('The last admin cannot be removed from the team.'),
+        );
+
+        $team->memberships()
+            ->where('user_id', $user->id)
+            ->delete();
+        OAuthRefreshToken::query()
+            ->where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => now()]);
+
+        $auditLogger->recordForRequest($request, AuditEventType::MemberRemoved, $team, (string) $request->user()->id, "user:{$user->id}");
+
+        if ($user->isCurrentTeam($team)) {
+            $user->switchTeam($user->personalTeam());
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Member removed.')]);
+
+        return to_route('teams.edit', ['team' => $team->slug]);
+    }
+}

@@ -1,6 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
-import { S, MONO, SANS, GITHUB, getPostBySlug } from '@/lib/posts';
-import { ThemeToggle } from '@/lib/theme';
+
+import { SitePage } from '@/components/site-chrome';
+import { getPostBySlug } from '@/lib/posts';
+import { blog } from '@/routes';
 
 interface BlogShowProps {
     post: {
@@ -24,244 +26,88 @@ export default function BlogShow({ post }: BlogShowProps) {
     const postUrl = `${BASE_URL}/blog/${post.slug}`;
 
     return (
-        <>
-            <Head title={`${post.title} — artfct`}>
+        <SitePage active="blog">
+            <Head title={`${post.title} — Artfct`}>
                 <meta name="description" content={post.description} />
-                <meta property="og:title" content={`${post.title} — artfct`} />
+                <meta property="og:title" content={`${post.title} — Artfct`} />
                 <meta property="og:description" content={post.description} />
                 <meta property="og:url" content={postUrl} />
                 <meta property="og:type" content="article" />
-                <meta name="twitter:title" content={`${post.title} — artfct`} />
+                <meta name="twitter:title" content={`${post.title} — Artfct`} />
                 <meta name="twitter:description" content={post.description} />
                 <link rel="canonical" href={postUrl} />
             </Head>
 
-            <ThemeToggle />
-
-            <div
-                id="top"
-                style={{
-                    minHeight: '100dvh',
-                    backgroundColor: S.base3,
-                    fontFamily: SANS,
-                    color: S.base0,
-                }}
-            >
-                {/* ── top nav ── */}
-                <nav
-                    style={{
-                        borderBottom: `1px solid ${S.base2}`,
-                        padding: '0.85rem 1.5rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                    }}
+            <main className="mx-auto max-w-[680px] px-5 py-14">
+                <Link
+                    href={blog.url()}
+                    className="group inline-flex gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
                 >
-                    <Link
-                        href="/"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '13px',
-                            color: S.base00,
-                            textDecoration: 'none',
-                            letterSpacing: '0.04em',
-                        }}
+                    <span
+                        aria-hidden="true"
+                        className="transition-transform group-hover:-translate-x-1"
                     >
-                        artfct
-                    </Link>
-                    <Link
-                        href="/"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base1,
-                            textDecoration: 'none',
-                        }}
-                    >
-                        ← deploy
-                    </Link>
-                </nav>
+                        ←
+                    </span>
+                    All posts
+                </Link>
 
-                {/* ── content ── */}
-                <div
-                    style={{
-                        maxWidth: '680px',
-                        margin: '0 auto',
-                        padding: '2.5rem 1.5rem 4rem',
-                    }}
-                >
-                    {/* back link */}
-                    <div
-                        style={{
-                            marginBottom: '1.5rem',
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                        }}
-                    >
-                        <Link
-                            href="/blog"
-                            style={{
-                                color: S.base1,
-                                textDecoration: 'none',
-                            }}
-                        >
-                            ← all posts
-                        </Link>
-                    </div>
-
-                    {/* post article */}
-                    <article style={{ marginBottom: '4rem' }}>
-                        {/* post header */}
-                        <div
-                            style={{
-                                display: 'flex',
-                                alignItems: 'baseline',
-                                gap: '0.75rem',
-                                marginBottom: '1.25rem',
-                                paddingBottom: '1rem',
-                                borderBottom: `1px solid ${S.base2}`,
-                            }}
-                        >
+                <article className="mt-10">
+                    <header className="border-b border-border pb-10">
+                        <p className="mb-4 flex items-center gap-3 text-xs">
                             <time
                                 dateTime={post.date}
-                                style={{
-                                    fontFamily: MONO,
-                                    fontSize: '11px',
-                                    color: S.base1,
-                                    letterSpacing: '0.04em',
-                                    flexShrink: 0,
-                                }}
+                                className="font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase"
                             >
                                 {post.date}
                             </time>
-                            <span
-                                style={{
-                                    fontFamily: MONO,
-                                    fontSize: '10px',
-                                    color: S.cyan,
-                                    backgroundColor: S.base2,
-                                    padding: '0.15rem 0.45rem',
-                                    letterSpacing: '0.05em',
-                                    flexShrink: 0,
-                                }}
-                            >
+                            <span className="rounded-[5px] bg-primary/10 px-2 py-0.5 font-semibold text-primary">
                                 {post.tag}
                             </span>
-                            <h1
-                                style={{
-                                    fontFamily: SANS,
-                                    fontSize: '16px',
-                                    fontWeight: 600,
-                                    color: S.base00,
-                                    margin: 0,
-                                    lineHeight: 1.3,
-                                }}
-                            >
-                                {post.title}
-                            </h1>
-                        </div>
+                        </p>
+                        <h1>{post.title}</h1>
+                        <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
+                            {post.description}
+                        </p>
+                        {fullPost.image && (
+                            <picture>
+                                {/* Written alongside each PNG by `npm run images:webp`. */}
+                                <source
+                                    srcSet={fullPost.image.replace(
+                                        /\.png$/,
+                                        '.webp',
+                                    )}
+                                    type="image/webp"
+                                />
+                                <img
+                                    src={fullPost.image}
+                                    alt=""
+                                    width={1024}
+                                    height={576}
+                                    className="mt-9 w-full rounded-[6px]"
+                                />
+                            </picture>
+                        )}
+                    </header>
 
-                        {/* post body */}
-                        <div>{fullPost.body}</div>
-                    </article>
+                    <div className="pt-10">{fullPost.body}</div>
+                </article>
 
-                    {/* back to blog */}
-                    <div
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                        }}
+                <div className="mt-16 border-t border-border pt-8">
+                    <Link
+                        href={blog.url()}
+                        className="group inline-flex gap-2 text-sm font-semibold text-primary"
                     >
-                        <Link
-                            href="/blog"
-                            style={{
-                                color: S.base1,
-                                textDecoration: 'none',
-                            }}
+                        <span
+                            aria-hidden="true"
+                            className="transition-transform group-hover:-translate-x-1"
                         >
-                            ← all posts
-                        </Link>
-                    </div>
+                            ←
+                        </span>
+                        All posts
+                    </Link>
                 </div>
-
-                {/* ── footer ── */}
-                <footer
-                    style={{
-                        borderTop: `1px solid ${S.base2}`,
-                        padding: '1rem 1.5rem',
-                        maxWidth: '680px',
-                        margin: '0 auto',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontFamily: MONO,
-                        fontSize: '11px',
-                    }}
-                >
-                    <div style={{ display: 'flex', gap: '1.25rem' }}>
-                        <Link
-                            href="/"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            home
-                        </Link>
-                        <Link
-                            href="/docs"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            docs
-                        </Link>
-                        <Link
-                            href="/blog"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            blog
-                        </Link>
-                        <a
-                            href={GITHUB}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            github
-                        </a>
-                    </div>
-                    <a
-                        href="#top"
-                        style={{ color: S.base1, textDecoration: 'none' }}
-                    >
-                        ↑ top
-                    </a>
-                </footer>
-            </div>
-
-            {/* ── Article JSON-LD schema ── */}
-            <script
-                type="application/ld+json"
-                dangerouslySetInnerHTML={{
-                    __html: JSON.stringify({
-                        '@context': 'https://schema.org',
-                        '@type': 'Article',
-                        headline: post.title,
-                        description: post.description,
-                        datePublished: post.date,
-                        author: {
-                            '@type': 'Person',
-                            name: 'artfct',
-                        },
-                        publisher: {
-                            '@type': 'Organization',
-                            name: 'artfct',
-                            url: BASE_URL,
-                        },
-                        mainEntityOfPage: {
-                            '@type': 'WebPage',
-                            '@id': postUrl,
-                        },
-                        url: postUrl,
-                    }),
-                }}
-            />
-        </>
+            </main>
+        </SitePage>
     );
 }

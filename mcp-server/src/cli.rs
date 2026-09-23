@@ -11,7 +11,7 @@ use clap::{Args, Parser, Subcommand};
     after_help = "Examples:
   artfct deploy ./dashboard.html
   cat dashboard.html | artfct deploy --stdin --ttl-minutes 30
-  artfct mcp serve
+  artfct mcp serve --host cursor
   artfct doctor
 
 Environment:
@@ -32,6 +32,21 @@ pub enum Command {
   printf '<h1>Hello</h1>' | artfct deploy --stdin"
     )]
     Deploy(DeployArgs),
+    #[command(
+        about = "Authenticate the CLI and local MCP server",
+        after_help = "Examples:
+  artfct login --oauth
+  artfct login
+  artfct login --token $ARTFCT_ORG_TOKEN"
+    )]
+    Login(LoginArgs),
+    #[command(about = "Remove the saved local organization token")]
+    Logout,
+    #[command(
+        name = "organizations",
+        about = "List organizations available to the signed-in account"
+    )]
+    Organizations,
     #[command(about = "Manage the artfct MCP server entrypoint")]
     Mcp {
         #[command(subcommand)]
@@ -62,6 +77,8 @@ pub enum Command {
     Uninstall(UninstallArgs),
     #[command(about = "Print local CLI and MCP diagnostics")]
     Doctor,
+    #[command(about = "Export permanent artifacts for an organization")]
+    Export(ExportArgs),
 }
 
 #[derive(Debug, Args)]
@@ -81,7 +98,7 @@ pub struct DeployArgs {
         long,
         default_value = "ephemeral",
         value_name = "TIER",
-        help = "Artifact tier: public, secure, or ephemeral"
+        help = "Artifact tier: public, secure, ephemeral, or permanent"
     )]
     pub tier: String,
 
@@ -91,6 +108,45 @@ pub struct DeployArgs {
         help = "Minutes until the artifact expires. Defaults to the backend policy"
     )]
     pub ttl_minutes: Option<u64>,
+
+    #[arg(
+        long,
+        value_name = "TOKEN",
+        help = "Organization token for permanent artifacts"
+    )]
+    pub org_token: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Entrypoint path for a permanent directory bundle"
+    )]
+    pub entrypoint: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct LoginArgs {
+    #[arg(
+        long,
+        conflicts_with = "token",
+        help = "Open the browser and sign in with OAuth 2.1 + PKCE"
+    )]
+    pub oauth: bool,
+
+    #[arg(
+        long,
+        value_name = "ORG",
+        requires = "oauth",
+        help = "Select the organization/workspace for OAuth consent"
+    )]
+    pub organization: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "TOKEN",
+        help = "Organization token; omit to enter it securely"
+    )]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -113,9 +169,19 @@ pub enum McpCommand {
     #[command(
         about = "Run the MCP server over stdio for Claude Code, Codex, Gemini, and other agents",
         after_help = "Use this command as the MCP server command in an agent config:
-  artfct mcp serve"
+  artfct mcp serve --host cursor"
     )]
-    Serve,
+    Serve(McpServeArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpServeArgs {
+    #[arg(
+        long,
+        value_name = "HOST",
+        help = "Configured agent host (for example: cursor or claude-code)"
+    )]
+    pub host: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -140,7 +206,13 @@ impl DeleteArgs {
             return Some(candidate.trim_end_matches('/'));
         }
 
-        if self.id_or_url.len() == 10 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if (self.id_or_url.len() == 10 && self.id_or_url.chars().all(|c| c.is_ascii_alphanumeric()))
+            || (self.id_or_url.len() == 32
+                && self
+                    .id_or_url
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+        {
             return Some(&self.id_or_url);
         }
 
@@ -161,6 +233,18 @@ pub struct SetupArgs {
 pub struct UninstallArgs {
     #[arg(long, help = "Skip all prompts and uninstall automatically")]
     pub silent: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    #[arg(value_name = "ORG", help = "Organization slug")]
+    pub org: String,
+
+    #[arg(value_name = "DIRECTORY", help = "Local export directory")]
+    pub directory: PathBuf,
+
+    #[arg(long, value_name = "TOKEN", help = "Organization token")]
+    pub org_token: Option<String>,
 }
 
 #[cfg(test)]
@@ -208,9 +292,23 @@ mod tests {
         assert!(matches!(
             cli.command,
             Command::Mcp {
-                command: McpCommand::Serve,
+                command: McpCommand::Serve(_),
             }
         ));
+    }
+
+    #[test]
+    fn parses_mcp_serve_host() {
+        let cli = Cli::parse_from(["artfct", "mcp", "serve", "--host", "cursor"]);
+
+        let Command::Mcp {
+            command: McpCommand::Serve(args),
+        } = cli.command
+        else {
+            panic!("expected mcp serve command");
+        };
+
+        assert_eq!(args.host.as_deref(), Some("cursor"));
     }
 
     #[test]
@@ -218,6 +316,39 @@ mod tests {
         let cli = Cli::parse_from(["artfct", "doctor"]);
 
         assert!(matches!(cli.command, Command::Doctor));
+    }
+
+    #[test]
+    fn parses_login_and_logout() {
+        let cli = Cli::parse_from(["artfct", "login", "--token", "token"]);
+
+        let Command::Login(args) = cli.command else {
+            panic!("expected login command");
+        };
+
+        assert_eq!(args.token.as_deref(), Some("token"));
+        assert!(matches!(
+            Cli::parse_from(["artfct", "logout"]).command,
+            Command::Logout
+        ));
+
+        let Command::Login(args) = Cli::parse_from(["artfct", "login", "--oauth"]).command else {
+            panic!("expected OAuth login command");
+        };
+        assert!(args.oauth);
+
+        let Command::Login(args) =
+            Cli::parse_from(["artfct", "login", "--oauth", "--organization", "acme"]).command
+        else {
+            panic!("expected OAuth login command with organization");
+        };
+        assert_eq!(args.organization.as_deref(), Some("acme"));
+        assert!(Cli::try_parse_from(["artfct", "login", "--organization", "acme"]).is_err());
+
+        assert!(matches!(
+            Cli::parse_from(["artfct", "organizations"]).command,
+            Command::Organizations
+        ));
     }
 
     #[test]
@@ -265,6 +396,14 @@ mod tests {
             id_or_url: "abc123def45".to_string(),
         };
         assert_eq!(args.artifact_id(), None);
+    }
+
+    #[test]
+    fn extracts_bare_permanent_id() {
+        let args = DeleteArgs {
+            id_or_url: "0123456789abcdef0123456789abcdef".to_string(),
+        };
+        assert_eq!(args.artifact_id(), Some("0123456789abcdef0123456789abcdef"));
     }
 
     #[test]

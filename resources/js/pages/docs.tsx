@@ -1,108 +1,8 @@
-import { Head, Link } from '@inertiajs/react';
-import { useCallback, useState } from 'react';
-import { ThemeToggle } from '@/lib/theme';
+import { Head } from '@inertiajs/react';
+import { useCallback, useEffect, useState } from 'react';
 
-// ── Solarized (CSS custom properties — light/dark via prefers-color-scheme) ──
-const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base0: 'var(--sol-base0)',
-    base00: 'var(--sol-base00)',
-    yellow: 'var(--sol-yellow)',
-    orange: 'var(--sol-orange)',
-    red: 'var(--sol-red)',
-    magenta: 'var(--sol-magenta)',
-    violet: 'var(--sol-violet)',
-    blue: 'var(--sol-blue)',
-    cyan: 'var(--sol-cyan)',
-    green: 'var(--sol-green)',
-} as const;
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-const SANS = "'Instrument Sans', ui-sans-serif, system-ui, sans-serif";
-
-// ── content ──────────────────────────────────────────────────────────────────
-const POST_REQUEST_FIELDS = [
-    {
-        name: 'body_ciphertext_b64',
-        type: 'string',
-        req: true,
-        note: 'Base64url ciphertext for the encrypted HTML body. Max 1 MB.',
-    },
-    {
-        name: 'body_iv_b64',
-        type: 'string',
-        req: true,
-        note: 'Base64url AES-GCM nonce for the encrypted body.',
-    },
-    {
-        name: 'tier',
-        type: 'enum',
-        req: true,
-        note: 'public · secure · ephemeral',
-    },
-    {
-        name: 'title',
-        type: 'string',
-        req: false,
-        note: 'Public metadata shown in previews and link unfurls.',
-    },
-    {
-        name: 'description',
-        type: 'string',
-        req: false,
-        note: 'Public metadata shown in previews and link unfurls.',
-    },
-    {
-        name: 'thumbnail',
-        type: 'string',
-        req: false,
-        note: 'Public image URL for previews and link unfurls.',
-    },
-    {
-        name: 'preview_blurred',
-        type: 'boolean',
-        req: false,
-        note: 'Whether the link preview starts blurred. Default: true.',
-    },
-    {
-        name: 'ttl_minutes',
-        type: 'integer',
-        req: false,
-        note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
-    },
-] as const;
-
-const POST_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '10-character token.' },
-    {
-        name: 'url',
-        type: 'string',
-        note: 'Canonical share link without the fragment passcode.',
-    },
-    { name: 'tier', type: 'string', note: 'The tier used.' },
-    { name: 'expires_at', type: 'string', note: 'ISO 8601 expiry timestamp.' },
-    { name: 'title', type: 'string', note: 'Public metadata.' },
-    { name: 'description', type: 'string', note: 'Public metadata.' },
-    { name: 'thumbnail', type: 'string', note: 'Public metadata.' },
-    {
-        name: 'preview_blurred',
-        type: 'boolean',
-        note: 'True when the link preview is blurred by default.',
-    },
-] as const;
-
-const ERROR_CODES = [
-    { code: '400', meaning: 'Malformed JSON body.' },
-    { code: '413', meaning: 'Payload exceeds 1 MB.' },
-    { code: '422', meaning: 'Missing or invalid field.' },
-    { code: '429', meaning: 'Rate limit exceeded.' },
-    { code: '404', meaning: 'Artifact not found or expired.' },
-] as const;
-
-const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
-const EXAMPLE_ID = 'bdf7cd9dd9';
+import { GITHUB, SitePage } from '@/components/site-chrome';
+import { Button } from '@/components/ui/button';
 
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
@@ -134,6 +34,37 @@ artfct doctor`;
 
 const CLI_MCP = `artfct mcp serve`;
 
+const CLI_AUTH = `# browser sign-in with PKCE
+artfct login --oauth
+
+# sign in and pin a workspace
+artfct login --oauth --organization acme
+
+# inspect available workspaces
+artfct organizations
+
+# check credentials, workspace context, and MCP health
+artfct doctor
+
+# revoke the remote session and remove local credentials
+artfct logout`;
+
+const HOSTED_MCP = `MCP endpoint:
+https://artfct.dev/mcp
+
+OAuth protected-resource metadata:
+https://artfct.dev/.well-known/oauth-protected-resource
+
+OAuth authorization-server metadata:
+https://artfct.dev/.well-known/oauth-authorization-server`;
+
+const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
+artifacts:deploy     deploy artifacts to the workspace
+artifacts:delete     delete artifacts when policy permits
+collections:read     list workspace collections
+collections:write    create collections and add artifacts
+usage:read           read customer-safe usage and quota totals`;
+
 const CLI_DEPLOY_FLAGS = [
     {
         name: 'FILE',
@@ -161,87 +92,189 @@ const CLI_DEPLOY_FLAGS = [
     },
 ] as const;
 
-const CODE_POST_REQUEST = `curl -X POST https://artfct.dev/v1/artifacts \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "body_ciphertext_b64": "<ciphertext>",
-    "body_iv_b64": "<iv>",
-    "tier": "ephemeral",
-    "title": "Hello world",
-    "description": "Encrypted preview",
-    "thumbnail": "https://example.com/thumb.png",
-    "preview_blurred": true
-  }'`;
+type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
-const CODE_POST_RESPONSE = `{
-  "id": "${EXAMPLE_ID}",
-  "url": "https://artfct.dev/p/${EXAMPLE_ID}",
-  "tier": "ephemeral",
-  "expires_at": "2026-06-03T15:30:00Z",
-  "title": "Hello world",
-  "description": "Encrypted preview",
-  "thumbnail": "https://example.com/thumb.png",
-  "preview_blurred": true
-}`;
+type OpenApiSchema = {
+    $ref?: string;
+    type?: string | string[];
+    format?: string;
+    description?: string;
+    enum?: Array<string | number | boolean>;
+    properties?: Record<string, OpenApiSchema>;
+    required?: string[];
+    oneOf?: OpenApiSchema[];
+    items?: OpenApiSchema;
+};
 
-const CODE_DELETE_REQUEST = `curl -X DELETE https://artfct.dev/v1/artifacts/${EXAMPLE_ID}`;
+type OpenApiMediaType = {
+    schema?: OpenApiSchema;
+    example?: unknown;
+};
 
-const PATCH_REQUEST_FIELDS = [
-    {
-        name: 'ttl_minutes',
-        type: 'integer',
-        req: true,
-        note: 'New TTL from now. Must be between 1 and 525600 (365 days).',
-    },
-] as const;
+type OpenApiOperation = {
+    operationId?: string;
+    summary?: string;
+    description?: string;
+    security?: Array<Record<string, string[]>>;
+    requestBody?: {
+        content?: Record<string, OpenApiMediaType>;
+    };
+    responses?: Record<
+        string,
+        {
+            description?: string;
+            content?: Record<string, OpenApiMediaType>;
+        }
+    >;
+    'x-status'?: string;
+};
 
-const PATCH_RESPONSE_FIELDS = [
-    { name: 'id', type: 'string', note: '10-character artifact token.' },
-    {
-        name: 'expires_at',
-        type: 'string',
-        note: 'Updated ISO 8601 expiry timestamp.',
-    },
-] as const;
+type OpenApiPath = Partial<Record<HttpMethod, OpenApiOperation>> & {
+    'x-status'?: string;
+};
 
-const CODE_PATCH_REQUEST = `curl -X PATCH https://artfct.dev/v1/artifacts/${EXAMPLE_ID} \\
-  -H "Content-Type: application/json" \\
-  -d '{"ttl_minutes": 10080}'`;
+type OpenApiDocument = {
+    openapi: string;
+    info: {
+        title: string;
+        version: string;
+        description?: string;
+    };
+    servers?: Array<{ url: string }>;
+    paths: Record<string, OpenApiPath>;
+    components?: {
+        schemas?: Record<string, OpenApiSchema>;
+    };
+};
 
-const CODE_PATCH_RESPONSE = `{
-  "id": "${EXAMPLE_ID}",
-  "expires_at": "2026-06-10T15:30:00Z"
-}`;
+type DocsProps = {
+    contract: OpenApiDocument;
+};
 
-const CODE_ERROR_RESPONSE = `{
-  "error": "The body_ciphertext_b64 field is required."
-}`;
+const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'patch', 'delete', 'put'];
 
-// ── subcomponents ─────────────────────────────────────────────────────────────
-function SectionDivider({ id, label }: { id: string; label: string }) {
+function schemaName(reference: string): string {
+    return reference.split('/').at(-1) ?? reference;
+}
+
+function resolveSchema(
+    schema: OpenApiSchema,
+    contract: OpenApiDocument,
+): OpenApiSchema {
+    if (!schema.$ref) {
+        return schema;
+    }
+
+    return contract.components?.schemas?.[schemaName(schema.$ref)] ?? schema;
+}
+
+function describeSchema(schema: OpenApiSchema): string {
+    if (schema.$ref) {
+        return schemaName(schema.$ref);
+    }
+
+    if (schema.oneOf) {
+        return schema.oneOf.map(describeSchema).join(' | ');
+    }
+
+    const type = Array.isArray(schema.type)
+        ? schema.type.join(' | ')
+        : (schema.type ?? 'object');
+    const format = schema.format ? `:${schema.format}` : '';
+    const values = schema.enum ? ` (${schema.enum.join(' · ')})` : '';
+
+    return `${type}${format}${values}`;
+}
+
+function schemaFields(
+    schema: OpenApiSchema | undefined,
+    contract: OpenApiDocument,
+) {
+    if (!schema) {
+        return [];
+    }
+
+    const resolved = resolveSchema(schema, contract);
+    const required = new Set(resolved.required ?? []);
+
+    return Object.entries(resolved.properties ?? {}).map(
+        ([name, property]) => ({
+            name,
+            type: describeSchema(property),
+            req: required.has(name),
+            note: property.description ?? '',
+        }),
+    );
+}
+
+// ── building blocks ──────────────────────────────────────────────────────────
+function Eyebrow({ children }: { children: React.ReactNode }) {
     return (
-        <div
-            id={id}
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.6rem',
-                paddingTop: '2.5rem',
-                marginBottom: '1.5rem',
-            }}
-        >
-            <span
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '11px',
-                    color: S.base1,
-                    whiteSpace: 'nowrap',
-                }}
-            >
-                ── {label}
-            </span>
-            <div style={{ flex: 1, height: '1px', backgroundColor: S.base2 }} />
-        </div>
+        <p className="mb-3 text-xs font-bold tracking-[0.08em] text-primary uppercase">
+            {children}
+        </p>
+    );
+}
+
+function Section({
+    id,
+    eyebrow,
+    title,
+    children,
+}: {
+    id: string;
+    eyebrow: string;
+    title: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section id={id} className="scroll-mt-8 border-t border-border py-12">
+            <Eyebrow>{eyebrow}</Eyebrow>
+            <h2 className="mb-6 max-w-[22ch] font-serif text-[clamp(1.75rem,3vw,2.25rem)] leading-[1.1] tracking-tight text-balance">
+                {title}
+            </h2>
+            <div className="flex flex-col gap-4">{children}</div>
+        </section>
+    );
+}
+
+function SubHeading({ children }: { children: React.ReactNode }) {
+    return (
+        <h3 className="mt-4 font-serif text-xl font-medium tracking-tight">
+            {children}
+        </h3>
+    );
+}
+
+function Prose({ children }: { children: React.ReactNode }) {
+    return (
+        <p className="max-w-[65ch] leading-relaxed text-muted-foreground">
+            {children}
+        </p>
+    );
+}
+
+function Code({ children }: { children: React.ReactNode }) {
+    return (
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
+            {children}
+        </code>
+    );
+}
+
+function Tag({ children }: { children: React.ReactNode }) {
+    return (
+        <span className="rounded-[5px] bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {children}
+        </span>
+    );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+    return (
+        <p className="text-[11px] font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase">
+            {children}
+        </p>
     );
 }
 
@@ -255,41 +288,17 @@ function CodeBlock({ code }: { code: string }) {
     }, [code]);
 
     return (
-        <div style={{ position: 'relative', marginBottom: '1.25rem' }}>
-            <pre
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '12px',
-                    lineHeight: 1.65,
-                    color: S.base00,
-                    backgroundColor: S.base2,
-                    padding: '1rem 1rem 1rem 1.1rem',
-                    margin: 0,
-                    overflowX: 'auto',
-                    whiteSpace: 'pre',
-                }}
-            >
+        <div className="relative">
+            <pre className="overflow-x-auto rounded-[10px] border border-border bg-paper p-4 pr-20 font-mono text-[13px] leading-relaxed text-foreground">
                 {code}
             </pre>
-            <button
+            <Button
+                type="button"
                 onClick={copy}
-                style={{
-                    position: 'absolute',
-                    top: '0.5rem',
-                    right: '0.5rem',
-                    fontFamily: MONO,
-                    fontSize: '10px',
-                    padding: '0.2rem 0.45rem',
-                    backgroundColor: copied ? S.green : S.base3,
-                    color: copied ? S.base3 : S.base1,
-                    border: `1px solid ${copied ? S.green : S.base1}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    letterSpacing: '0.03em',
-                }}
+                className="mt-2 ml-auto block rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary sm:absolute sm:top-2.5 sm:right-2.5 sm:mt-0 sm:ml-0"
             >
-                {copied ? '✓' : '⎘ copy'}
-            </button>
+                {copied ? 'Copied' : 'Copy'}
+            </Button>
         </div>
     );
 }
@@ -305,687 +314,520 @@ function FieldTable({
     }>;
 }) {
     return (
-        <div style={{ marginBottom: '1.25rem' }}>
-            {fields.map((f, i) => (
-                <div
-                    key={f.name}
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: '9rem 5.5rem 1fr',
-                        gap: '0.5rem',
-                        padding: '0.45rem 0',
-                        borderTop: i === 0 ? `1px solid ${S.base2}` : undefined,
-                        borderBottom: `1px solid ${S.base2}`,
-                        alignItems: 'baseline',
-                    }}
-                >
-                    <span
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '12px',
-                            color: S.base00,
-                        }}
+        <div className="overflow-hidden rounded-[10px] border border-border bg-paper">
+            <div className="hidden grid-cols-[11rem_9rem_1fr] gap-4 border-b border-border px-4 py-2.5 text-[11px] font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase sm:grid">
+                <span>Name</span>
+                <span>Type</span>
+                <span>Description</span>
+            </div>
+            <ul className="divide-y divide-border">
+                {fields.map((field) => (
+                    <li
+                        key={field.name}
+                        className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[11rem_9rem_1fr]"
                     >
-                        {f.name}
-                    </span>
-                    <span
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base1,
-                        }}
-                    >
-                        {f.type}
-                        {'req' in f && (
-                            <span
-                                style={{
-                                    marginLeft: '0.4rem',
-                                    color: f.req ? S.orange : S.base1,
-                                    fontSize: '10px',
-                                }}
-                            >
-                                {f.req ? 'required' : 'optional'}
-                            </span>
-                        )}
-                    </span>
-                    <span
-                        style={{
-                            fontFamily: SANS,
-                            fontSize: '13px',
-                            color: S.base0,
-                        }}
-                    >
-                        {f.note}
-                    </span>
-                </div>
-            ))}
+                        <span
+                            className={`font-semibold break-words ${
+                                field.name.startsWith('-')
+                                    ? 'font-mono text-[13px]'
+                                    : ''
+                            }`}
+                        >
+                            {field.name}
+                            {'req' in field && field.req && (
+                                <span className="ml-2 text-[11px] font-semibold text-primary">
+                                    Required
+                                </span>
+                            )}
+                        </span>
+                        <span className="break-words text-muted-foreground">
+                            {field.type}
+                        </span>
+                        <span className="text-muted-foreground">
+                            {field.note}
+                        </span>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
-    return (
-        <h3
-            style={{
-                fontFamily: MONO,
-                fontSize: '13px',
-                fontWeight: 400,
-                color: S.base00,
-                margin: '0 0 0.6rem',
-                letterSpacing: '0.02em',
-            }}
-        >
-            {children}
-        </h3>
+// ── OpenAPI contract → reference ─────────────────────────────────────────────
+function SchemaTable({
+    schema,
+    contract,
+}: {
+    schema: OpenApiSchema;
+    contract: OpenApiDocument;
+}) {
+    if (schema.oneOf) {
+        return (
+            <>
+                {schema.oneOf.map((variant) => (
+                    <div
+                        key={describeSchema(variant)}
+                        className="flex flex-col gap-2"
+                    >
+                        <p className="text-sm font-semibold">
+                            {describeSchema(variant)}
+                        </p>
+                        <SchemaTable schema={variant} contract={contract} />
+                    </div>
+                ))}
+            </>
+        );
+    }
+
+    const fields = schemaFields(schema, contract);
+
+    if (fields.length === 0) {
+        return <Tag>{describeSchema(schema)}</Tag>;
+    }
+
+    return <FieldTable fields={fields} />;
+}
+
+function operationsOf(contract: OpenApiDocument) {
+    return Object.entries(contract.paths).flatMap(([path, item]) =>
+        HTTP_METHODS.flatMap((method) => {
+            const operation = item[method];
+
+            return operation
+                ? [
+                      {
+                          method,
+                          path,
+                          item,
+                          operation,
+                          id: operation.operationId ?? `${method}-${path}`,
+                      },
+                  ]
+                : [];
+        }),
     );
 }
 
-function Prose({ children }: { children: React.ReactNode }) {
+function MethodTag({ method }: { method: string }) {
     return (
-        <p
-            style={{
-                fontFamily: SANS,
-                fontSize: '14px',
-                lineHeight: 1.65,
-                color: S.base0,
-                margin: '0 0 1.1rem',
-            }}
-        >
-            {children}
-        </p>
-    );
-}
-
-function Chip({ children }: { children: React.ReactNode }) {
-    return (
-        <span
-            style={{
-                fontFamily: MONO,
-                fontSize: '11px',
-                color: S.base0,
-                backgroundColor: S.base2,
-                padding: '0.2rem 0.5rem',
-                whiteSpace: 'nowrap',
-            }}
-        >
-            {children}
+        <span className="rounded-[5px] bg-primary/10 px-2 py-0.5 text-[11px] font-bold tracking-wide text-primary uppercase">
+            {method}
         </span>
     );
 }
 
+function OpenApiReference({ contract }: { contract: OpenApiDocument }) {
+    return (
+        <Section id="rest-api" eyebrow="API reference" title="The REST API">
+            <div className="flex flex-wrap gap-2">
+                <Tag>
+                    Base URL{' '}
+                    {contract.servers?.[0]?.url ?? 'https://artfct.dev'}
+                </Tag>
+                <Tag>OpenAPI {contract.openapi}</Tag>
+                <Tag>Version {contract.info.version}</Tag>
+            </div>
+
+            {contract.info.description && (
+                <Prose>{contract.info.description}</Prose>
+            )}
+
+            <div className="mt-4 flex flex-col">
+                {operationsOf(contract).map(
+                    ({ method, path, item, operation, id }) => {
+                        const request =
+                            operation.requestBody?.content?.[
+                                'application/json'
+                            ];
+                        const status =
+                            operation['x-status'] ?? item['x-status'];
+                        const security = (operation.security ?? [])
+                            .flatMap((requirement) => Object.keys(requirement))
+                            .join(' · ');
+
+                        return (
+                            <article
+                                key={id}
+                                id={id}
+                                className="flex scroll-mt-8 flex-col gap-4 border-t border-border py-10 first:border-t-0 first:pt-2"
+                            >
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <MethodTag method={method} />
+                                    <h3 className="text-base font-semibold break-all">
+                                        {path}
+                                    </h3>
+                                    <span className="ml-auto flex gap-2">
+                                        <Tag>{status ?? 'Implemented'}</Tag>
+                                        <Tag>
+                                            {security || 'No sign-in needed'}
+                                        </Tag>
+                                    </span>
+                                </div>
+
+                                {operation.summary && (
+                                    <p className="font-serif text-xl tracking-tight">
+                                        {operation.summary}
+                                    </p>
+                                )}
+                                {operation.description && (
+                                    <Prose>{operation.description}</Prose>
+                                )}
+
+                                {request?.schema && (
+                                    <>
+                                        <Label>Request body</Label>
+                                        <SchemaTable
+                                            schema={request.schema}
+                                            contract={contract}
+                                        />
+                                        {request.example !== undefined && (
+                                            <CodeBlock
+                                                code={JSON.stringify(
+                                                    request.example,
+                                                    null,
+                                                    2,
+                                                )}
+                                            />
+                                        )}
+                                    </>
+                                )}
+
+                                <Label>Responses</Label>
+                                <FieldTable
+                                    fields={Object.entries(
+                                        operation.responses ?? {},
+                                    ).map(([code, response]) => {
+                                        const responseMedia =
+                                            response.content?.[
+                                                'application/json'
+                                            ] ??
+                                            response.content?.['text/html'];
+
+                                        return {
+                                            name: code,
+                                            type: responseMedia?.schema
+                                                ? describeSchema(
+                                                      responseMedia.schema,
+                                                  )
+                                                : 'Empty',
+                                            note: response.description ?? '',
+                                        };
+                                    })}
+                                />
+                            </article>
+                        );
+                    },
+                )}
+            </div>
+        </Section>
+    );
+}
+
+// ── navigation ───────────────────────────────────────────────────────────────
+/** Highlights the sidebar entry for the section currently in view. */
+function useActiveSection(ids: string[]): string {
+    const [active, setActive] = useState(ids[0] ?? '');
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visible = entries.find((entry) => entry.isIntersecting);
+
+                if (visible) {
+                    setActive(visible.target.id);
+                }
+            },
+            { rootMargin: '-10% 0px -75% 0px' },
+        );
+
+        ids.forEach((id) => {
+            const element = document.getElementById(id);
+
+            if (element) {
+                observer.observe(element);
+            }
+        });
+
+        return () => observer.disconnect();
+    }, [ids]);
+
+    return active;
+}
+
+type SidebarGroup = {
+    title: string;
+    items: Array<{ id: string; label: string; method?: string }>;
+};
+
+function Sidebar({
+    groups,
+    active,
+}: {
+    groups: SidebarGroup[];
+    active: string;
+}) {
+    return (
+        <nav aria-label="On this page" className="flex flex-col gap-8 text-sm">
+            {groups.map((group) => (
+                <div key={group.title}>
+                    <p className="mb-3 text-[11px] font-bold tracking-[0.08em] text-[var(--sol-base1)] uppercase">
+                        {group.title}
+                    </p>
+                    <ul className="flex flex-col border-l border-border">
+                        {group.items.map((item) => (
+                            <li key={item.id}>
+                                <a
+                                    href={`#${item.id}`}
+                                    className={`-ml-px flex items-baseline gap-2 border-l-2 py-1.5 pl-4 transition-colors hover:text-foreground ${
+                                        active === item.id
+                                            ? 'border-primary font-semibold text-foreground'
+                                            : 'border-transparent text-muted-foreground'
+                                    }`}
+                                >
+                                    {item.method && (
+                                        <span className="w-9 shrink-0 text-[10px] font-bold tracking-wide text-primary uppercase">
+                                            {item.method}
+                                        </span>
+                                    )}
+                                    <span>{item.label}</span>
+                                </a>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ))}
+        </nav>
+    );
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
-export default function Docs() {
-    const NAV_LINKS = [
-        { href: '#cli', label: 'cli' },
-        { href: '#skills', label: 'skills' },
-        { href: '#overview', label: 'rest api' },
-        { href: '#create', label: 'create' },
-        { href: '#delete', label: 'delete' },
-        { href: '#update', label: 'update' },
-        { href: '#errors', label: 'errors' },
-        { href: '#limits', label: 'rate limits' },
+export default function Docs({ contract }: DocsProps) {
+    const groups: SidebarGroup[] = [
+        {
+            title: 'Get started',
+            items: [
+                { id: 'cli', label: 'Command line' },
+                { id: 'mcp', label: 'MCP server' },
+                { id: 'skills', label: 'Skills' },
+            ],
+        },
+        {
+            title: 'API reference',
+            items: [
+                { id: 'rest-api', label: 'Overview' },
+                ...operationsOf(contract).map((operation) => ({
+                    id: operation.id,
+                    label: operation.operation.summary ?? operation.path,
+                    method: operation.method,
+                })),
+            ],
+        },
     ];
+    const active = useActiveSection(
+        groups.flatMap((group) => group.items.map((item) => item.id)),
+    );
 
     return (
-        <>
-            <Head title="api reference — artfct">
+        <SitePage active="docs">
+            <Head title="Documentation">
                 <meta
                     name="description"
-                    content="REST API reference for creating and managing HTML artifacts on artfct.dev."
+                    content="Connect your AI tools to Artfct and build on it: the command line, MCP server, skills and REST API."
                 />
             </Head>
-            <ThemeToggle />
-            <div
-                style={{
-                    minHeight: '100dvh',
-                    backgroundColor: S.base3,
-                    fontFamily: SANS,
-                    color: S.base0,
-                    boxSizing: 'border-box',
-                }}
-            >
-                {/* ── top nav ──────────────────────────────────────────────── */}
-                <nav
-                    style={{
-                        borderBottom: `1px solid ${S.base2}`,
-                        padding: '0.85rem 1.5rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                    }}
-                >
-                    <Link
-                        href="/"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '13px',
-                            color: S.base00,
-                            textDecoration: 'none',
-                            letterSpacing: '0.04em',
-                        }}
-                    >
-                        artfct
-                    </Link>
-                    <Link
-                        href="/"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base1,
-                            textDecoration: 'none',
-                        }}
-                    >
-                        ← deploy
-                    </Link>
-                </nav>
 
-                {/* ── main content ─────────────────────────────────────────── */}
-                <div
-                    style={{
-                        maxWidth: '680px',
-                        margin: '0 auto',
-                        padding: '2.5rem 1.5rem 4rem',
-                    }}
-                >
-                    {/* page title */}
-                    <h1
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '14px',
-                            fontWeight: 400,
-                            color: S.base00,
-                            letterSpacing: '0.04em',
-                            margin: '0 0 0.5rem',
-                        }}
-                    >
-                        api reference
-                    </h1>
-                    <p
-                        style={{
-                            fontFamily: SANS,
-                            fontSize: '13px',
-                            color: S.base1,
-                            margin: '0 0 2rem',
-                        }}
-                    >
-                        REST API for creating and managing HTML artifacts.
-                    </p>
-
-                    {/* in-page nav */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.1rem 0',
-                            marginBottom: '0.5rem',
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                        }}
-                    >
-                        {NAV_LINKS.map((link, i) => (
-                            <span key={link.href}>
-                                <a
-                                    href={link.href}
-                                    style={{
-                                        color: S.blue,
-                                        textDecoration: 'none',
-                                    }}
-                                >
-                                    {link.label}
-                                </a>
-                                {i < NAV_LINKS.length - 1 && (
-                                    <span
-                                        style={{
-                                            color: S.base2,
-                                            margin: '0 0.5rem',
-                                        }}
-                                    >
-                                        ·
-                                    </span>
-                                )}
-                            </span>
-                        ))}
+            <div className="mx-auto grid max-w-[1120px] gap-14 px-5 py-14 lg:grid-cols-[240px_minmax(0,1fr)]">
+                <aside className="hidden lg:block">
+                    <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pr-2">
+                        <Sidebar groups={groups} active={active} />
                     </div>
+                </aside>
 
-                    {/* ── cli ─────────────────────────────────────────────── */}
-                    <SectionDivider id="cli" label="cli" />
+                <main className="min-w-0">
+                    <header className="pb-12">
+                        <Eyebrow>Documentation</Eyebrow>
+                        <h1 className="max-w-[16ch]">
+                            Build with <em className="text-primary">Artfct</em>
+                        </h1>
+                        <p className="mt-5 max-w-[52ch] text-lg text-muted-foreground">
+                            Connect your AI tools, and share and read artifacts
+                            from your own code: the command line, the MCP
+                            server, skills and the REST API.
+                        </p>
+                        <details className="mt-8 rounded-[10px] border border-border bg-paper px-4 py-3 text-sm lg:hidden">
+                            <summary className="cursor-pointer font-semibold">
+                                On this page
+                            </summary>
+                            <div className="pt-4">
+                                <Sidebar groups={groups} active={active} />
+                            </div>
+                        </details>
+                    </header>
 
-                    <Prose>
-                        The{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            artfct
-                        </code>{' '}
-                        CLI deploys HTML files directly from your terminal and
-                        pipes. Pre-built binaries are available for macOS and
-                        Linux — no runtime required.
-                    </Prose>
+                    <Section
+                        id="cli"
+                        eyebrow="Get started"
+                        title="The Artfct command line"
+                    >
+                        <Prose>
+                            The <Code>artfct</Code> command deploys HTML files
+                            from your terminal and from pipes. Pre-built
+                            binaries are available for macOS and Linux, with no
+                            runtime required.
+                        </Prose>
 
-                    <Label>install</Label>
+                        <SubHeading>Install</SubHeading>
+                        <Prose>
+                            Works on macOS (Apple Silicon and Intel) and Linux
+                            (x86_64 and ARM64). Installs to{' '}
+                            <Code>~/.local/bin</Code> by default.
+                        </Prose>
+                        <CodeBlock code={CLI_INSTALL} />
+                        <CodeBlock code={CLI_INSTALL_OPTS} />
 
-                    <Prose>
-                        Works on macOS (Apple Silicon and Intel) and Linux
-                        (x86\_64 and ARM64). Installs to{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            ~/.local/bin
-                        </code>{' '}
-                        by default.
-                    </Prose>
+                        <SubHeading>Usage</SubHeading>
+                        <CodeBlock code={CLI_USAGE} />
 
-                    <CodeBlock code={CLI_INSTALL} />
+                        <SubHeading>Deploy options</SubHeading>
+                        <FieldTable fields={CLI_DEPLOY_FLAGS} />
+                    </Section>
 
-                    <CodeBlock code={CLI_INSTALL_OPTS} />
+                    <Section
+                        id="mcp"
+                        eyebrow="Get started"
+                        title="Use Artfct from your AI tool"
+                    >
+                        <Prose>
+                            Start Artfct as a local MCP server over stdio. It
+                            publishes to your workspace with the{' '}
+                            <Code>deploy_artifact</Code> tool, so Claude
+                            Desktop, Claude Code, Cursor and other
+                            MCP-compatible tools can publish HTML without
+                            leaving the session.
+                            <Code>deploy_to_canvas</Code> is deprecated.
+                        </Prose>
+                        <CodeBlock code={CLI_MCP} />
 
-                    <Label>usage</Label>
-                    <CodeBlock code={CLI_USAGE} />
+                        <SubHeading>Set it up automatically</SubHeading>
+                        <Prose>
+                            To configure the MCP server for every detected tool
+                            (Cursor, Claude Desktop, Gemini, Codex and more),
+                            run:
+                        </Prose>
+                        <CodeBlock code="artfct setup" />
+                        <Prose>
+                            Pass <Code>--silent</Code> to skip the prompts, or{' '}
+                            <Code>--list</Code> to preview which configuration
+                            files will change.
+                        </Prose>
 
-                    <Label>deploy flags</Label>
-                    <FieldTable fields={CLI_DEPLOY_FLAGS} />
-
-                    <Label>mcp server</Label>
-                    <Prose>
-                        Start artfct as a local MCP server over stdio. Supports
-                        the{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            deploy_to_canvas
-                        </code>{' '}
-                        tool — Claude Desktop, Claude Code, Cursor, and other
-                        MCP-compatible agents can call it to publish HTML
-                        directly without leaving the session.
-                    </Prose>
-                    <CodeBlock code={CLI_MCP} />
-
-                    <Prose>
-                        To configure the MCP server automatically for all
-                        detected agents (Cursor, Claude Desktop, Gemini, Codex,
-                        etc.), run:
-                    </Prose>
-                    <CodeBlock code="artfct setup" />
-                    <Prose>
-                        Pass <code>--silent</code> to execute without prompts,
-                        or <code>--list</code> to preview which configuration
-                        files will be modified.
-                    </Prose>
-
-                    <Prose>
-                        Alternatively, for manual setup, add this configuration
-                        block directly to your client's settings file:
-                    </Prose>
-                    <CodeBlock
-                        code={`{
+                        <SubHeading>Set it up by hand</SubHeading>
+                        <Prose>
+                            Add this block to your client&apos;s settings file:
+                        </Prose>
+                        <CodeBlock
+                            code={`{
   "mcpServers": {
     "artfct": {
       "command": "artfct",
       "args": ["mcp", "serve"]
   }
 }`}
-                    />
-                    <Prose>
-                        To uninstall the CLI binary and remove MCP
-                        configurations from all supported client configuration
-                        files, run:
-                    </Prose>
-                    <CodeBlock code="artfct uninstall" />
-                    <Prose>
-                        Pass <code>--silent</code> to run the uninstallation
-                        without interactive prompts.
-                    </Prose>
+                        />
 
-                    {/* ── skills ───────────────────────────────────────────── */}
-                    <SectionDivider id="skills" label="skills" />
+                        <SubHeading>Sign in from the command line</SubHeading>
+                        <Prose>
+                            Local stdio and hosted Streamable HTTP use the same
+                            organization-scoped tool catalog. Authenticate in a
+                            browser with OAuth and PKCE. Tokens are stored in
+                            the platform credential store when available; the
+                            CLI never writes them to agent config.
+                        </Prose>
+                        <CodeBlock code={CLI_AUTH} />
+                        <Prose>
+                            <Code>doctor</Code> reports the selected
+                            organization, available organizations and hosted MCP
+                            initialize and tool health without printing
+                            credentials.
+                        </Prose>
 
-                    <Prose>
-                        Install the artfct skill to give any compatible AI agent
-                        (such as Claude Code, Codex, or OpenCode) built-in
-                        guidance on when and how to deploy artifacts — tier
-                        selection, self-contained HTML authoring, SRI pinning,
-                        and error handling.
-                    </Prose>
+                        <SubHeading>Use the hosted server</SubHeading>
+                        <Prose>
+                            For clients that support OAuth discovery, add the
+                            endpoint below. The client opens browser consent and
+                            requests only the scopes it needs; no bearer token
+                            needs to be copied into configuration.
+                        </Prose>
+                        <CodeBlock code={HOSTED_MCP} />
 
-                    <Label>install</Label>
-                    <CodeBlock code={SKILLS_INSTALL} />
+                        <SubHeading>Scopes</SubHeading>
+                        <CodeBlock code={MCP_SCOPES} />
+                        <Prose>
+                            If a connection expires or is revoked, sign in again
+                            for the intended workspace, then run{' '}
+                            <Code>artfct doctor</Code> to verify recovery.
+                            Workspace administrators can revoke hosted
+                            connections from the team MCP connections page.
+                        </Prose>
 
-                    <Prose>
-                        Once installed, agents automatically call{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            deploy_to_canvas
-                        </code>{' '}
-                        whenever they produce visual HTML output — dashboards,
-                        reports, charts, interactive demos — instead of emitting
-                        raw code blocks.
-                    </Prose>
+                        <SubHeading>Remove it</SubHeading>
+                        <Prose>
+                            To uninstall the binary and remove the MCP
+                            configuration from every supported client, run:
+                        </Prose>
+                        <CodeBlock code="artfct uninstall" />
+                        <Prose>
+                            Pass <Code>--silent</Code> to skip the prompts.
+                        </Prose>
+                    </Section>
 
-                    <Prose>
-                        Skills follow the{' '}
-                        <a
-                            href="https://skills.sh"
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: S.blue, textDecoration: 'none' }}
-                        >
-                            skills.sh
-                        </a>{' '}
-                        format and are resolved from the{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            skills/artfct/
-                        </code>{' '}
-                        directory in the{' '}
-                        <a
-                            href={GITHUB}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: S.blue, textDecoration: 'none' }}
-                        >
-                            artfct repo
-                        </a>
-                        .
-                    </Prose>
-
-                    {/* ── overview ─────────────────────────────────────────── */}
-                    <SectionDivider id="overview" label="rest api" />
-
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.5rem',
-                            marginBottom: '1.5rem',
-                        }}
+                    <Section
+                        id="skills"
+                        eyebrow="Get started"
+                        title="Skills for your AI tools"
                     >
-                        <Chip>base url: https://artfct.dev</Chip>
-                        <Chip>content-type: application/json</Chip>
-                        <Chip>max payload: 1 mb</Chip>
-                    </div>
-
-                    <Prose>
-                        No authentication required. Requests are rate-limited
-                        per IP at the Cloudflare edge — see{' '}
-                        <a
-                            href="#limits"
-                            style={{ color: S.blue, textDecoration: 'none' }}
-                        >
-                            rate limits
-                        </a>
-                        .
-                    </Prose>
-
-                    <Prose>
-                        Artifacts are served at{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            /p/:id#&lt;key&gt;
-                        </code>
-                        . When the fragment key is present the artifact is
-                        decrypted client-side and rendered fullscreen. Without
-                        the key, a metadata preview page is shown instead — used
-                        by link unfurlers and OG scrapers. That endpoint is
-                        browser-facing and not part of this API.
-                    </Prose>
-
-                    {/* ── create ───────────────────────────────────────────── */}
-                    <SectionDivider id="create" label="POST /v1/artifacts" />
-
-                    <Prose>
-                        Creates a new encrypted artifact and returns the
-                        canonical share URL. The client appends the fragment
-                        passcode before sharing.
-                    </Prose>
-
-                    <Label>request body</Label>
-                    <FieldTable fields={POST_REQUEST_FIELDS} />
-
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <div
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '11px',
-                                color: S.base1,
-                                marginBottom: '0.75rem',
-                            }}
-                        >
-                            <strong style={{ color: S.base00 }}>
-                                tier values
-                            </strong>
-                            <span
-                                style={{ margin: '0 0.4rem', color: S.base2 }}
+                        <Prose>
+                            Install the Artfct skill to give any compatible AI
+                            tool (such as Claude Code, Codex or OpenCode)
+                            built-in guidance on when and how to deploy
+                            artifacts: choosing a tier, writing self-contained
+                            HTML, pinning scripts and handling errors.
+                        </Prose>
+                        <CodeBlock code={SKILLS_INSTALL} />
+                        <Prose>
+                            Once installed, your AI tool calls{' '}
+                            <Code>deploy_artifact</Code> whenever it produces
+                            visual HTML such as a dashboard, report, chart or
+                            interactive demo, instead of printing raw code.
+                        </Prose>
+                        <Prose>
+                            Skills follow the{' '}
+                            <a
+                                href="https://skills.sh"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-primary underline-offset-4 hover:underline"
                             >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>public</span> open
-                            link
-                            <span
-                                style={{ margin: '0 0.5rem', color: S.base2 }}
+                                skills.sh
+                            </a>{' '}
+                            format and are resolved from the{' '}
+                            <Code>skills/artfct/</Code> directory in the{' '}
+                            <a
+                                href={GITHUB}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-primary underline-offset-4 hover:underline"
                             >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>secure</span>{' '}
-                            high-entropy URL
-                            <span
-                                style={{ margin: '0 0.5rem', color: S.base2 }}
-                            >
-                                ·
-                            </span>
-                            <span style={{ color: S.cyan }}>ephemeral</span>{' '}
-                            auto-expires after TTL
-                        </div>
-                    </div>
+                                Artfct repository
+                            </a>
+                            .
+                        </Prose>
+                    </Section>
 
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_POST_REQUEST} />
-
-                    <Label>response — 201 created</Label>
-                    <FieldTable fields={POST_RESPONSE_FIELDS} />
-                    <CodeBlock code={CODE_POST_RESPONSE} />
-
-                    {/* ── delete ───────────────────────────────────────────── */}
-                    <SectionDivider
-                        id="delete"
-                        label="DELETE /v1/artifacts/:id"
-                    />
-
-                    <Prose>
-                        Immediately evicts an artifact from the store. Returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            204 No Content
-                        </code>{' '}
-                        on success. Use the{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            id
-                        </code>{' '}
-                        from the create response.
-                    </Prose>
-
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_DELETE_REQUEST} />
-
-                    {/* ── update ───────────────────────────────────────────── */}
-                    <SectionDivider
-                        id="update"
-                        label="PATCH /v1/artifacts/:id"
-                    />
-
-                    <Prose>
-                        Extends the TTL of an existing artifact from now.
-                        Returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            404
-                        </code>{' '}
-                        if the artifact has already expired.
-                    </Prose>
-
-                    <Label>request body</Label>
-                    <FieldTable fields={PATCH_REQUEST_FIELDS} />
-
-                    <Label>example request</Label>
-                    <CodeBlock code={CODE_PATCH_REQUEST} />
-
-                    <Label>response — 200 ok</Label>
-                    <FieldTable fields={PATCH_RESPONSE_FIELDS} />
-                    <CodeBlock code={CODE_PATCH_RESPONSE} />
-
-                    {/* ── errors ───────────────────────────────────────────── */}
-                    <SectionDivider id="errors" label="errors" />
-
-                    <Prose>
-                        All errors return a JSON body with a single{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            error
-                        </code>{' '}
-                        field.
-                    </Prose>
-
-                    <CodeBlock code={CODE_ERROR_RESPONSE} />
-
-                    <FieldTable
-                        fields={ERROR_CODES.map((e) => ({
-                            name: e.code,
-                            type: '',
-                            note: e.meaning,
-                        }))}
-                    />
-
-                    {/* ── rate limits ──────────────────────────────────────── */}
-                    <SectionDivider id="limits" label="rate limits" />
-
-                    <Prose>
-                        Rate limits are enforced at the Cloudflare WAF before
-                        requests reach the worker. Exceeding a limit returns{' '}
-                        <code
-                            style={{
-                                fontFamily: MONO,
-                                fontSize: '12px',
-                                color: S.base00,
-                            }}
-                        >
-                            429
-                        </code>
-                        .
-                    </Prose>
-
-                    <FieldTable
-                        fields={[
-                            {
-                                name: 'POST /v1/artifacts',
-                                type: '',
-                                note: '60 requests / minute per IP',
-                            },
-                            {
-                                name: 'GET /p/:id',
-                                type: '',
-                                note: '200 requests / minute per IP',
-                            },
-                        ]}
-                    />
-                </div>
-
-                {/* ── footer ───────────────────────────────────────────────── */}
-                <footer
-                    style={{
-                        borderTop: `1px solid ${S.base2}`,
-                        padding: '1rem 1.5rem',
-                        maxWidth: '680px',
-                        margin: '0 auto',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontFamily: MONO,
-                        fontSize: '11px',
-                    }}
-                >
-                    <div style={{ display: 'flex', gap: '1.25rem' }}>
-                        <Link
-                            href="/"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            home
-                        </Link>
-                        <Link
-                            href="/blog"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            blog
-                        </Link>
-                        <a
-                            href={GITHUB}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: S.base1, textDecoration: 'none' }}
-                        >
-                            github
-                        </a>
-                    </div>
-                    <span style={{ color: S.base2 }}>
-                        public · secure · ephemeral
-                    </span>
-                    <a
-                        href="#"
-                        style={{
-                            color: S.base1,
-                            textDecoration: 'none',
-                        }}
-                    >
-                        ↑ top
-                    </a>
-                </footer>
+                    {/* Generated directly from openapi/artfct.yaml. */}
+                    <OpenApiReference contract={contract} />
+                </main>
             </div>
-        </>
+        </SitePage>
     );
 }

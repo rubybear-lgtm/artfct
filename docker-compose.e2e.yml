@@ -1,0 +1,29 @@
+## Local/CI-only Postgres for the MCP end-to-end stack (RUB-363).
+##
+## Laravel's tests normally run on in-memory SQLite (fast, but it never
+## catches Postgres-specific behavior, and staging/production run Postgres —
+## see RUB-324). This gives `scripts/mcp-e2e-stack.sh` a real Postgres to
+## migrate Laravel against instead, alongside a local `wrangler dev` Worker,
+## so the full OAuth -> hosted MCP -> Worker path can be proven locally.
+##
+## Not a production topology and not meant to mirror Railway's eventual
+## instance 1:1 (see RUB-324 for that) — just a disposable, pinned Postgres
+## for this test stack. `docker compose -f docker-compose.e2e.yml down -v`
+## to reset.
+
+services:
+  postgres:
+    image: postgres:17.2
+    environment:
+      POSTGRES_USER: artfct
+      POSTGRES_PASSWORD: artfct
+      POSTGRES_DB: artfct_e2e
+    ports:
+      - '55432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U artfct -d artfct_e2e']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data

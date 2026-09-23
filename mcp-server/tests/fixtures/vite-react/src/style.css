@@ -1,0 +1,3 @@
+:root { font-family: 'Instrument Sans', system-ui, sans-serif; color: #172033; background: #eef2ff; }
+@font-face { font-family: 'Instrument Sans'; src: url('./assets/instrument-sans.woff2') format('woff2'); font-weight: 400; }
+main { max-width: 42rem; margin: 10rem auto; padding: 2rem; background: white; border-radius: 1rem; }

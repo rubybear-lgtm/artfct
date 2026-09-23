@@ -10,10 +10,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "firebase/php-jwt": "^7.0",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.7",
+        "laravel/mcp": "^0.7.0",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "laravel/workos": "^0.6.0",
         "league/commonmark": "^2.8"
     },
     "require-dev": {
@@ -71,7 +74,7 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
-            "@php artisan test"
+            "@php -d memory_limit=512M vendor/bin/pest"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
