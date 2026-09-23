@@ -14,6 +14,7 @@ const baseUrl = requiredEnv('MCP_LIVE_BASE_URL').replace(/\/$/, '');
 // tokens, so nothing downstream would notice: clients would simply resolve
 // every endpoint on the wrong host.
 await assertDiscoveryMatchesBaseUrl();
+await assertProtectedResourceChallenge();
 const expectedOrgA = requiredEnv('MCP_LIVE_EXPECTED_ORG_A');
 const expectedOrgB = requiredEnv('MCP_LIVE_EXPECTED_ORG_B');
 const usingEnvTokens = Boolean(
@@ -668,6 +669,57 @@ async function assertDiscoveryMatchesBaseUrl() {
     assert(
         protectedResource.authorization_servers?.includes(baseUrl),
         `Protected resource does not list ${baseUrl} as an authorization server`,
+    );
+}
+
+/**
+ * An unauthenticated MCP request must point a client at the same protected
+ * resource document that discovery just validated. Without this assertion a
+ * deployment can advertise correct discovery JSON but send clients to a stale
+ * or temporary host during the actual authentication challenge.
+ */
+async function assertProtectedResourceChallenge() {
+    const response = await fetch(`${baseUrl}/mcp`, {
+        method: 'POST',
+        headers: {
+            Accept: 'application/json, text/event-stream',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+                protocolVersion: '2025-06-18',
+                capabilities: {},
+                clientInfo: {
+                    name: 'artfct-live-smoke',
+                    version: '1.0.0',
+                },
+            },
+        }),
+    });
+    const payload = await response.json();
+    const authenticate = response.headers.get('www-authenticate') ?? '';
+    const exposed = response.headers.get('access-control-expose-headers') ?? '';
+
+    assert(
+        response.status === 401,
+        `Hosted MCP challenge returned ${response.status}, not 401`,
+    );
+    assert(
+        payload.error === 'Missing bearer token',
+        'Hosted MCP challenge omitted its stable error',
+    );
+    assert(
+        authenticate.includes(
+            `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp"`,
+        ),
+        'Hosted MCP challenge pointed at the wrong protected-resource metadata URL',
+    );
+    assert(
+        exposed.toLowerCase().includes('www-authenticate'),
+        'Hosted MCP challenge did not expose WWW-Authenticate to browser clients',
     );
 }
 
