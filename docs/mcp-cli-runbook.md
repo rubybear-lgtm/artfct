@@ -281,12 +281,13 @@ Known, currently verified compatibility:
   suite exercises the hosted Worker over HTTP, not stdio. This is the
   transport for clients that only speak stdio MCP.
 - **Hosted Streamable HTTP with OAuth discovery** (PKCE, dynamic
-  registration): verified against the official MCP Inspector on staging
-  (see RUB-355). Verification against other specific hosted clients (Claude
-  Desktop/Code, Cursor, Codex CLI, Gemini CLI, OpenCode) is tracked as
-  ongoing work on RUB-383 and not yet recorded here — do not assume a client
-  works hosted until it has been run against staging and its result added to
-  this list.
+  registration): the protocol and OAuth flow are covered by the automated
+  contract, feature, and live two-organization suites. A live official MCP
+  Inspector run on staging is not yet recorded here. Verification against
+  specific hosted clients (official MCP Inspector, Claude Desktop/Code,
+  Cursor, Codex CLI, Gemini CLI, OpenCode) is tracked as ongoing work on
+  RUB-383 — do not assume a client works hosted until it has been run against
+  staging and its result added to this list.
 
 Record each additional client verified against staging here with the date,
 protocol version it negotiated, and any workaround needed, so this table
