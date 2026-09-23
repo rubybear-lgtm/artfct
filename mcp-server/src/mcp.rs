@@ -290,6 +290,22 @@ struct ToolCallParams {
     arguments: Value,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoToolArguments {}
+
+fn validate_no_tool_arguments(arguments: Value, tool_name: &str) -> Result<()> {
+    let arguments = if arguments.is_null() {
+        json!({})
+    } else {
+        arguments
+    };
+
+    serde_json::from_value::<NoToolArguments>(arguments)
+        .with_context(|| format!("Invalid {tool_name} arguments"))
+        .map(|_| ())
+}
+
 #[derive(Debug)]
 struct McpError {
     rpc_code: i32,
@@ -910,8 +926,14 @@ where
         "search_artifacts" => call_search_artifacts(session, params.arguments)
             .await
             .map_err(McpError::from),
-        "get_connection" => Ok(connection_result(session)),
-        "get_usage" => call_get_usage(session).await.map_err(McpError::from),
+        "get_connection" => {
+            validate_no_tool_arguments(params.arguments, "get_connection")?;
+            Ok(connection_result(session))
+        }
+        "get_usage" => {
+            validate_no_tool_arguments(params.arguments, "get_usage")?;
+            call_get_usage(session).await.map_err(McpError::from)
+        }
         "get_artifact" => call_get_artifact(session, params.arguments)
             .await
             .map_err(McpError::from),
@@ -1991,6 +2013,127 @@ mod tests {
                     .len()
                     <= 300
             );
+        }
+    }
+
+    fn next_fuzz_value(seed: &mut u64) -> u64 {
+        *seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        *seed
+    }
+
+    fn arbitrary_json(seed: &mut u64, depth: u8) -> Value {
+        if depth == 0 {
+            return match next_fuzz_value(seed) % 5 {
+                0 => Value::Null,
+                1 => json!(next_fuzz_value(seed) as i64),
+                2 => json!(next_fuzz_value(seed).is_multiple_of(2)),
+                3 => json!(format!("fuzz-{:x}", next_fuzz_value(seed))),
+                _ => json!([]),
+            };
+        }
+
+        match next_fuzz_value(seed) % 6 {
+            0 => Value::Null,
+            1 => json!(next_fuzz_value(seed) as i64),
+            2 => json!(format!("fuzz-{:x}", next_fuzz_value(seed))),
+            3 => Value::Array(
+                (0..(next_fuzz_value(seed) % 4))
+                    .map(|_| arbitrary_json(seed, depth - 1))
+                    .collect(),
+            ),
+            4 => {
+                let mut object = serde_json::Map::new();
+                for _ in 0..(next_fuzz_value(seed) % 4) {
+                    object.insert(
+                        format!("key-{:x}", next_fuzz_value(seed)),
+                        arbitrary_json(seed, depth - 1),
+                    );
+                }
+                Value::Object(object)
+            }
+            _ => json!(next_fuzz_value(seed).is_multiple_of(2)),
+        }
+    }
+
+    #[tokio::test]
+    async fn generated_json_rpc_envelopes_never_panic_or_emit_malformed_responses() {
+        let mut seed = 0x000A_7FC7_u64;
+
+        for _ in 0..512 {
+            let method = if next_fuzz_value(&mut seed).is_multiple_of(2) {
+                "tools/list"
+            } else {
+                "unknown/fuzz-method"
+            };
+            let id = match arbitrary_json(&mut seed, 2) {
+                Value::Null => json!(0),
+                value => value,
+            };
+            let request = json!({
+                "jsonrpc": arbitrary_json(&mut seed, 2),
+                "id": id,
+                "method": method,
+                "params": arbitrary_json(&mut seed, 3),
+            });
+            let mut session = Session::new_with_resolution(None, None, None);
+            let response = handle_json_rpc(&mut session, request)
+                .await
+                .expect("requests with ids must receive a response");
+
+            assert_eq!(response["jsonrpc"], "2.0");
+            assert!(response.get("result").is_some() || response.get("error").is_some());
+            let encoded = serde_json::to_string(&response).expect("response must be JSON");
+            assert!(encoded.len() <= 4_096, "response grew without a bound");
+        }
+    }
+
+    #[tokio::test]
+    async fn generated_out_of_schema_tool_arguments_return_errors_before_network_calls() {
+        let mut seed = 0xfeed_face_cafe_beef_u64;
+        let tool_arguments = [
+            ("deploy_artifact", "html"),
+            ("deploy_to_canvas", "html"),
+            ("search_artifacts", "query"),
+            ("get_artifact", "id"),
+            ("list_collections", "limit"),
+            ("create_collection", "name"),
+            ("add_collection_artifact", "collection_id"),
+        ];
+
+        for _ in 0..128 {
+            for (tool, required_field) in tool_arguments {
+                let arguments = json!({
+                    required_field: {"fuzz": arbitrary_json(&mut seed, 3)}
+                });
+                let session = Session::new_with_resolution(None, None, None);
+                let error = call_tool(
+                    &session,
+                    json!({"name": tool, "arguments": arguments}),
+                    |_| {},
+                )
+                .await
+                .expect_err("out-of-schema arguments must not reach the network");
+
+                assert!(error.to_string().len() <= 512);
+            }
+
+            for tool in ["get_connection", "get_usage"] {
+                let session = Session::new_with_resolution(None, None, None);
+                let error = call_tool(
+                    &session,
+                    json!({
+                        "name": tool,
+                        "arguments": {"unexpected": arbitrary_json(&mut seed, 3)}
+                    }),
+                    |_| {},
+                )
+                .await
+                .expect_err("zero-argument tools must reject unknown fields");
+
+                assert!(error.to_string().len() <= 512);
+            }
         }
     }
 
