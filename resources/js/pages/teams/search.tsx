@@ -162,6 +162,7 @@ export default function Search({
                             {canOpenArtifacts ? (
                                 <a
                                     className="font-medium underline"
+                                    data-testid="search-result-link"
                                     href={result.openUrl}
                                     target="_blank"
                                     rel="noreferrer"

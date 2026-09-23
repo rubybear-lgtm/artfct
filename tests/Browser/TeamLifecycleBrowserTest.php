@@ -1,8 +1,12 @@
 <?php
 
 use App\Actions\Teams\CreateTeam;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Models\User;
+use App\Services\Indexing\EmbeddingsContract;
+use App\Services\Indexing\VectorChunk;
+use App\Services\Indexing\VectorIndexContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 
@@ -126,6 +130,70 @@ test('search_and_collections_pages_render_without_errors', function () {
         ->assertSee('Collections')
         ->assertSee('No collections yet.')
         ->assertNoJavaScriptErrors();
+});
+
+test('search_and_open_result', function () {
+    config([
+        'indexing.enabled' => true,
+        'services.artifact_access.token_secret' => 'browser-artifact-secret',
+    ]);
+
+    $owner = User::factory()->create(['email' => 'search-result@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Search Results Co');
+    $artifactId = 'search-result-artifact';
+    $query = 'billing dashboard revenue';
+
+    /** @var ArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => $artifactId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Billing dashboard',
+        'description' => 'The quarterly billing dashboard.',
+        'content_hash' => md5($artifactId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => [
+            'agent' => 'cursor',
+            'repo_url' => 'https://github.com/acme/billing',
+            'commit_sha' => 'deadbeef',
+        ],
+    ]);
+
+    /** @var EmbeddingsContract $embeddings */
+    $embeddings = app(EmbeddingsContract::class);
+    /** @var VectorIndexContract $vectorIndex */
+    $vectorIndex = app(VectorIndexContract::class);
+    $vectorIndex->upsertChunks($team->slug, $artifactId, [
+        new VectorChunk(
+            text: $query,
+            vector: $embeddings->embed([$query])[0],
+            artifactId: $artifactId,
+            orgId: $team->slug,
+            createdAt: now()->subDay()->toIso8601String(),
+            agent: 'cursor',
+            repoUrl: 'https://github.com/acme/billing',
+            commitSha: 'deadbeef',
+        ),
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.search', $team))
+        ->assertNoJavaScriptErrors()
+        ->fill('input[aria-label="Search query"]', $query)
+        ->click('button[type="submit"]')
+        ->wait(1)
+        ->assertSee('Billing dashboard')
+        ->assertSee('billing dashboard revenue')
+        ->assertSee('cursor')
+        ->assertNoJavaScriptErrors();
+
+    $page
+        ->assertAttributeContains('@search-result-link', 'href', '/open')
+        ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')
+        ->assertAttribute('@search-result-link', 'target', '_blank');
 });
 
 test('terms_and_privacy_pages_are_public_and_render', function () {
