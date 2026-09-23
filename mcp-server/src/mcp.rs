@@ -2251,6 +2251,13 @@ mod tests {
         kv_path: &str,
         requests: &Mutex<Vec<String>>,
     ) {
+        // The listener is nonblocking so its accept loop can stop promptly;
+        // accepted sockets must be blocking while the client finishes writing
+        // the HTTP request, otherwise an early WouldBlock is misreported as a
+        // malformed request on macOS under parallel test load.
+        stream
+            .set_nonblocking(false)
+            .expect("the stub request socket is blocking");
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .expect("the stub engine bounds its reads");
