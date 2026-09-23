@@ -590,6 +590,201 @@ html {
     border-color: var(--sol-red);
 }
 
+/* Welcome result and cached deployments */
+.welcome-result,
+.welcome-cached-links,
+.welcome-cached-link-row,
+.welcome-cached-links-heading,
+.welcome-cached-link-actions,
+.welcome-result-link-row,
+.welcome-result-meta {
+    display: flex;
+}
+
+.welcome-result {
+    flex-direction: column;
+    gap: 0.6rem;
+    width: 100%;
+}
+
+.welcome-result-link-row {
+    align-items: stretch;
+    border: 1px solid var(--sol-green);
+}
+
+.welcome-result-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.75rem 0.9rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background-color: color-mix(in srgb, var(--sol-green) 8%, transparent);
+}
+
+.welcome-result-action {
+    flex-shrink: 0;
+    min-width: 7rem;
+    padding: 0 1.25rem;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: none;
+    border-left: 1px solid var(--sol-green);
+}
+
+.welcome-result-action.copied {
+    color: var(--sol-base3);
+    background-color: var(--sol-green);
+}
+
+.welcome-result-open {
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.welcome-result-meta {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.welcome-result-expiration,
+.welcome-result-reset {
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-result-reset {
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-cached-links {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 1rem;
+    animation: fadeSlideUp 0.25s ease-out both;
+}
+
+.welcome-cached-links-heading {
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.5rem;
+    margin: 0;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    border-bottom: 1px solid var(--sol-base2);
+}
+
+.welcome-cached-links-clear {
+    color: var(--sol-base1);
+    font-family: inherit;
+    font-size: 11px;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-cached-links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.welcome-cached-link-row {
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    padding: 0.6rem 0.8rem;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base2);
+}
+
+.welcome-cached-link-row.is-expired {
+    border-color: var(--sol-red);
+}
+
+.welcome-cached-link-details {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    margin-right: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-cached-link-filename,
+.welcome-cached-link-url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-cached-link-filename {
+    color: var(--sol-cyan);
+    font-weight: bold;
+}
+
+.welcome-cached-link-url {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-cached-link-row.is-expired .welcome-cached-link-url {
+    color: var(--sol-base1);
+}
+
+.welcome-cached-link-actions {
+    align-items: center;
+    flex-shrink: 0;
+    gap: 0.75rem;
+}
+
+.welcome-cached-link-status {
+    color: var(--sol-green);
+    font-size: 11px;
+}
+
+.welcome-cached-link-row.is-expired .welcome-cached-link-status {
+    color: var(--sol-red);
+}
+
+.welcome-cached-link-manage {
+    padding: 0.25rem 0.6rem;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: transparent;
+    border: 1px solid var(--sol-base1);
+}
+
 /* Modal animation */
 .welcome-manage-overlay {
     position: fixed;

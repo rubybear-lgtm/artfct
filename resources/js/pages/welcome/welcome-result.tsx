@@ -2,17 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { timeUntil } from '@/pages/welcome/welcome-cached-links';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-
-const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base00: 'var(--sol-base00)',
-    base0: 'var(--sol-base0)',
-    green: 'var(--sol-green)',
-} as const;
-
 function useTypewriter(text: string, speed: number) {
     const [index, setIndex] = useState(0);
     const [prevText, setPrevText] = useState(text);
@@ -56,56 +45,15 @@ export function WelcomeResult({
     }, [url]);
 
     return (
-        <div
-            className="fade-in"
-            style={{
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
-            }}
-        >
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'stretch',
-                    border: `1px solid ${S.green}`,
-                }}
-            >
-                <div
-                    style={{
-                        flex: 1,
-                        padding: '0.75rem 0.9rem',
-                        fontFamily: MONO,
-                        fontSize: '15px',
-                        color: S.base00,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        backgroundColor:
-                            'color-mix(in srgb, var(--sol-green) 8%, transparent)',
-                        minWidth: 0,
-                    }}
-                >
+        <div className="fade-in welcome-result">
+            <div className="welcome-result-link-row">
+                <div className="welcome-result-url">
                     {displayed}
                     {!done && <span className="cursor-blink" />}
                 </div>
                 <Button
                     onClick={copy}
-                    className={`result-action-btn ${copied ? 'copied' : ''}`}
-                    style={{
-                        padding: '0 1.25rem',
-                        fontFamily: MONO,
-                        fontSize: '14px',
-                        backgroundColor: copied ? S.green : S.base2,
-                        color: copied ? S.base3 : S.base0,
-                        border: 'none',
-                        borderLeft: `1px solid ${S.green}`,
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                        letterSpacing: '0.04em',
-                        minWidth: '7rem',
-                    }}
+                    className={`result-action-btn welcome-result-action ${copied ? 'copied' : ''}`}
                 >
                     {copied ? 'copied' : 'copy'}
                 </Button>
@@ -113,57 +61,16 @@ export function WelcomeResult({
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="result-action-btn"
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '0 1.25rem',
-                        fontFamily: MONO,
-                        fontSize: '14px',
-                        backgroundColor: S.base2,
-                        color: S.base0,
-                        border: 'none',
-                        borderLeft: `1px solid ${S.green}`,
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                        letterSpacing: '0.04em',
-                        textDecoration: 'none',
-                        minWidth: '7rem',
-                    }}
+                    className="result-action-btn welcome-result-action welcome-result-open"
                 >
                     open
                 </a>
             </div>
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: MONO,
-                        fontSize: '14px',
-                        color: S.base1,
-                    }}
-                >
+            <div className="welcome-result-meta">
+                <span className="welcome-result-expiration">
                     expires in {timeUntil(expiresAt)}
                 </span>
-                <Button
-                    onClick={onReset}
-                    style={{
-                        fontFamily: MONO,
-                        fontSize: '14px',
-                        background: 'none',
-                        border: 'none',
-                        color: S.base1,
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        padding: 0,
-                    }}
-                >
+                <Button onClick={onReset} className="welcome-result-reset">
                     deploy another
                 </Button>
             </div>
