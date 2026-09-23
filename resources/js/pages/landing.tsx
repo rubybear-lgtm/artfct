@@ -736,7 +736,7 @@ export default function Landing() {
                                 <li>Find things by describing them</li>
                                 <li>Your own web address</li>
                             </ul>
-                            <p className="fine" style={{ margin: 0 }}>
+                            <p className="fine no-margin">
                                 Try Team free: everything except finding by
                                 description and your own web address. Your
                                 assistants can still open any shared document in
@@ -767,7 +767,7 @@ export default function Landing() {
                         Sign up, add Artfct to your AI tool, and share what’s
                         worth keeping.
                     </p>
-                    <div className="cta" style={{ marginTop: 0 }}>
+                    <div className="cta no-top-margin">
                         <Button asChild className="btn btn-primary">
                             <Link href={login.url()}>
                                 Try Team free <span className="arrow">→</span>

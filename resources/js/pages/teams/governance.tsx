@@ -169,7 +169,10 @@ export default function Governance({
                                         <span className="tabular-nums">
                                             {id}
                                         </span>
-                                        <button
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            size="sm"
                                             className="ml-auto underline"
                                             onClick={() =>
                                                 router.delete(
@@ -183,7 +186,7 @@ export default function Governance({
                                             }
                                         >
                                             Release
-                                        </button>
+                                        </Button>
                                     </li>
                                 ))}
                             </ul>

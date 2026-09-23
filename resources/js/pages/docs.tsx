@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { GITHUB, SitePage } from '@/components/site-chrome';
+import { Button } from '@/components/ui/button';
 
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
@@ -291,13 +292,13 @@ function CodeBlock({ code }: { code: string }) {
             <pre className="overflow-x-auto rounded-[10px] border border-border bg-paper p-4 pr-20 font-mono text-[13px] leading-relaxed text-foreground">
                 {code}
             </pre>
-            <button
+            <Button
                 type="button"
                 onClick={copy}
                 className="mt-2 ml-auto block rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary sm:absolute sm:top-2.5 sm:right-2.5 sm:mt-0 sm:ml-0"
             >
                 {copied ? 'Copied' : 'Copy'}
-            </button>
+            </Button>
         </div>
     );
 }

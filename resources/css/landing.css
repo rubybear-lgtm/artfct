@@ -281,6 +281,14 @@
         flex-wrap: wrap;
     }
 
+    & .fine.no-margin {
+        margin: 0;
+    }
+
+    & .cta.no-top-margin {
+        margin-top: 0;
+    }
+
     & .demo {
         margin-top: 52px;
         background: var(--paper);

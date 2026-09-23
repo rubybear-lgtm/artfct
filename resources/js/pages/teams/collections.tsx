@@ -94,7 +94,10 @@ function CollectionCard({
                                     <span className="tabular-nums">{id}</span>
                                 )}
                                 {canEdit && (
-                                    <button
+                                    <Button
+                                        type="button"
+                                        variant="link"
+                                        size="sm"
                                         className="ml-auto underline"
                                         onClick={() =>
                                             router.delete(
@@ -110,7 +113,7 @@ function CollectionCard({
                                         }
                                     >
                                         Remove
-                                    </button>
+                                    </Button>
                                 )}
                             </li>
                         ))}
