@@ -13,6 +13,13 @@ struct ArtifactMetadataRow {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct RevocationWriteRequest {
+    jti: String,
+    expires_at_unix: i64,
+}
+
+#[derive(Debug, Deserialize)]
 struct PermanentArtifactRow {
     org: String,
     content_hash: String,
@@ -78,6 +85,35 @@ pub(crate) async fn get_artifact_metadata(
             .into_worker_response()
         }
     }
+}
+
+/// `POST /v1/internal/revocations` — Laravel writes here on revoke; the
+/// Worker checks this denylist at the edge (spec 07). This endpoint is
+/// itself an authorization boundary distinct from `orgToken`/`sessionJwt`
+/// (its own shared secret, `ARTFCT_REVOCATION_WRITE_SECRET`) — an
+/// unauthenticated or wrongly-credentialed write is rejected before the KV
+/// write happens.
+pub(crate) async fn write_revocation(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    if !authorized_for_revocation_write(authorization.as_deref(), env) {
+        return json_error(
+            ErrorCode::Unauthorized,
+            "Invalid revocation credential.",
+            401,
+        );
+    }
+    let payload = match req.json::<RevocationWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    let ttl_seconds = (payload.expires_at_unix - Utc::now().timestamp())
+        .max(MIN_EXPIRATION_TTL_SECONDS as i64) as u64;
+    let kv = env.kv(KV_BINDING)?;
+    kv.put(&denylist_kv_key(&payload.jti), "1")?
+        .expiration_ttl(ttl_seconds)
+        .execute()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"revoked": true}), 200).into_worker_response()
 }
 
 pub(crate) async fn resolve_permanent_artifact(
