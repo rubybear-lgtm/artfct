@@ -1,6 +1,113 @@
 use super::*;
 
 #[derive(Debug, Deserialize)]
+struct ContentRow {
+    content_hash: String,
+    content_type: String,
+    tier: String,
+    agent: Option<String>,
+    repo_url: Option<String>,
+    commit_sha: Option<String>,
+}
+
+/// Splits `/v1/orgs/{org}/artifacts/{id}/content` into `(org, id)`.
+pub(crate) fn parse_content_path(path: &str) -> Option<(&str, &str)> {
+    let rest = path.strip_prefix("/v1/orgs/")?.strip_suffix("/content")?;
+    let (org, artifact_id) = rest.split_once("/artifacts/")?;
+    if org.is_empty() || artifact_id.is_empty() || artifact_id.contains('/') {
+        return None;
+    }
+    Some((org, artifact_id))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OrgReadDecision {
+    Unauthorized,
+    NotFound,
+    Allowed,
+}
+
+/// The single gate for the content read. A bad or missing org credential is
+/// 401; an org other than the token's is indistinguishable from a missing
+/// artifact (404, not 403) so the read never confirms another org's ids.
+pub(crate) fn decide_org_read(credential_org: Option<&str>, path_org: &str) -> OrgReadDecision {
+    match credential_org {
+        None => OrgReadDecision::Unauthorized,
+        Some(org) if org != path_org => OrgReadDecision::NotFound,
+        Some(_) => OrgReadDecision::Allowed,
+    }
+}
+
+/// `GET /v1/orgs/{org}/artifacts/{id}/content` — org-credentialed read of
+/// an artifact's entrypoint plus its provenance, for server-side indexing
+/// (spec 12). Revoked artifacts and other orgs' artifacts are 404.
+pub(crate) async fn get_org_artifact_content(
+    path: &str,
+    req: &Request,
+    env: &Env,
+) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let Some((org, artifact_id)) = parse_content_path(path) else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let credential_org = match require_org_credential(authorization.as_deref(), env).await? {
+        Ok(credential) => Some(credential.org_id),
+        Err(_) => None,
+    };
+    match decide_org_read(credential_org.as_deref(), org) {
+        OrgReadDecision::Unauthorized => {
+            return json_error(
+                ErrorCode::Unauthorized,
+                "An organization token is required.",
+                401,
+            );
+        }
+        OrgReadDecision::NotFound => {
+            return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+        }
+        OrgReadDecision::Allowed => {}
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let row = storage
+        .database
+        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .first::<ContentRow>(None)
+        .await?;
+    let Some(row) = row else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let Some(object) = storage
+        .bucket
+        .get(format!("blobs/{}", row.content_hash))
+        .execute()
+        .await?
+    else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let Some(body) = object.body() else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let bytes = body.bytes().await?;
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "id": artifact_id,
+            "content_type": row.content_type,
+            "tier": row.tier,
+            "provenance": {
+                "agent": row.agent,
+                "repo_url": row.repo_url,
+                "commit_sha": row.commit_sha,
+            },
+            "content": String::from_utf8_lossy(&bytes),
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
 struct ArtifactMetadataRow {
     pub(crate) id: String,
     pub(crate) org_id: String,
