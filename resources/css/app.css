@@ -785,6 +785,168 @@ html {
     border: 1px solid var(--sol-base1);
 }
 
+/* Welcome CLI, MCP, and skills callout */
+.welcome-cli-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-cli-heading,
+.welcome-cli-description,
+.welcome-cli-docs-link,
+.welcome-agent-toggle,
+.welcome-agent-copied,
+.welcome-agent-description,
+.welcome-agent-command,
+.welcome-install-code,
+.welcome-install-copy,
+.welcome-install-description {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.welcome-cli-heading {
+    color: var(--sol-base00);
+    font-size: 12px;
+}
+
+.welcome-cli-description {
+    color: var(--sol-base1);
+    font-size: 12px;
+}
+
+.welcome-cli-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.25rem;
+}
+
+.welcome-cli-docs-link {
+    margin-top: 0.25rem;
+    color: var(--sol-blue);
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.welcome-agent-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.welcome-agent-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    border-radius: 3px;
+}
+
+.welcome-agent-toggle.is-expanded {
+    color: var(--sol-base3);
+    background-color: var(--sol-base1);
+}
+
+.welcome-agent-toggle-icon {
+    font-size: 9px;
+    opacity: 0.8;
+}
+
+.welcome-agent-copied {
+    color: var(--sol-green);
+    font-size: 11px;
+}
+
+.welcome-agent-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.9rem 1rem;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    border-radius: 3px;
+}
+
+.welcome-agent-description {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
+.welcome-agent-command {
+    padding: 0.75rem;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--sol-base0);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    background-color: var(--sol-base3);
+    border: 1px solid var(--sol-base2);
+    border-radius: 2px;
+}
+
+.welcome-install-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.welcome-install-description {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
+.welcome-install-command {
+    display: flex;
+    background-color: var(--sol-base3);
+    border: 1px solid var(--sol-base1);
+    border-radius: 2px;
+}
+
+.welcome-install-code {
+    flex-grow: 1;
+    padding: 0.6rem 0.8rem;
+    margin: 0;
+    overflow-x: auto;
+    color: var(--sol-base0);
+    font-size: 11px;
+}
+
+.welcome-install-prompt {
+    color: var(--sol-base1);
+}
+
+.welcome-install-copy {
+    padding: 0 0.8rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: none;
+    border-left: 1px solid var(--sol-base1);
+}
+
+.welcome-install-copy.is-copied {
+    color: var(--sol-base3);
+    background-color: var(--sol-green);
+}
+
 /* Modal animation */
 .welcome-manage-overlay {
     position: fixed;

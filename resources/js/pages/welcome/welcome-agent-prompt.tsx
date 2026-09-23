@@ -1,17 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-
-const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base00: 'var(--sol-base00)',
-    base0: 'var(--sol-base0)',
-    green: 'var(--sol-green)',
-} as const;
-
 export function WelcomeAgentPrompt() {
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -33,90 +22,32 @@ export function WelcomeAgentPrompt() {
 
     return (
         <>
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                }}
-            >
+            <div className="welcome-agent-toggle-row">
                 <Button
                     onClick={toggle}
-                    className="result-action-btn"
-                    style={{
-                        padding: '0.4rem 0.8rem',
-                        fontFamily: MONO,
-                        fontSize: '11px',
-                        backgroundColor: expanded ? S.base1 : S.base2,
-                        color: expanded ? S.base3 : S.base00,
-                        border: `1px solid ${S.base1}`,
-                        borderRadius: '3px',
-                        cursor: 'pointer',
-                        letterSpacing: '0.04em',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                    }}
+                    className={`result-action-btn welcome-agent-toggle ${expanded ? 'is-expanded' : ''}`}
                 >
                     <span>ask an ai agent</span>
-                    <span style={{ fontSize: '9px', opacity: 0.8 }}>
+                    <span className="welcome-agent-toggle-icon">
                         {expanded ? '▲' : '▼'}
                     </span>
                 </Button>
                 {copied && (
-                    <span
-                        className="fade-in"
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.green,
-                        }}
-                    >
+                    <span className="fade-in welcome-agent-copied">
                         copied prompt to clipboard!
                     </span>
                 )}
             </div>
 
             {expanded && (
-                <div
-                    className="fade-in"
-                    style={{
-                        padding: '0.9rem 1rem',
-                        backgroundColor: S.base2,
-                        border: `1px solid ${S.base1}`,
-                        borderRadius: '3px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.4rem',
-                    }}
-                >
-                    <span
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base1,
-                        }}
-                    >
+                <div className="fade-in welcome-agent-details">
+                    <span className="welcome-agent-description">
                         install the artfct skill to give your agent built-in
                         guidance. MCP is not a requirement to the skills (they
                         fall back to API deploys), but it is highly encouraged
                         for a native tool call:
                     </span>
-                    <pre
-                        style={{
-                            fontFamily: MONO,
-                            fontSize: '11px',
-                            color: S.base0,
-                            backgroundColor: S.base3,
-                            padding: '0.75rem',
-                            margin: 0,
-                            borderRadius: '2px',
-                            border: `1px solid ${S.base2}`,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            lineHeight: 1.5,
-                        }}
-                    >
+                    <pre className="welcome-agent-command">
                         {`# 1. install the skill (MCP optional but encouraged):
 ${skillInstall}
 

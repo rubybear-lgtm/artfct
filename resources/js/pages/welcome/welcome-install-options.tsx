@@ -1,17 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-
-const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base00: 'var(--sol-base00)',
-    base0: 'var(--sol-base0)',
-    green: 'var(--sol-green)',
-} as const;
-
 function InstallCommand({ command }: { command: string }) {
     const [copied, setCopied] = useState(false);
 
@@ -22,40 +11,14 @@ function InstallCommand({ command }: { command: string }) {
     };
 
     return (
-        <div
-            style={{
-                display: 'flex',
-                border: `1px solid ${S.base1}`,
-                borderRadius: '2px',
-                backgroundColor: S.base3,
-            }}
-        >
-            <pre
-                style={{
-                    fontFamily: MONO,
-                    fontSize: '11px',
-                    color: S.base0,
-                    padding: '0.6rem 0.8rem',
-                    margin: 0,
-                    flexGrow: 1,
-                    overflowX: 'auto',
-                }}
-            >
-                <span style={{ color: S.base1 }}>$ </span>
+        <div className="welcome-install-command">
+            <pre className="welcome-install-code">
+                <span className="welcome-install-prompt">$ </span>
                 {command}
             </pre>
             <Button
                 onClick={copy}
-                style={{
-                    padding: '0 0.8rem',
-                    fontFamily: MONO,
-                    fontSize: '11px',
-                    backgroundColor: copied ? S.green : S.base2,
-                    color: copied ? S.base3 : S.base00,
-                    border: 'none',
-                    borderLeft: `1px solid ${S.base1}`,
-                    cursor: 'pointer',
-                }}
+                className={`welcome-install-copy ${copied ? 'is-copied' : ''}`}
             >
                 {copied ? 'copied' : 'copy'}
             </Button>
@@ -63,47 +26,32 @@ function InstallCommand({ command }: { command: string }) {
     );
 }
 
+function InstallOption({
+    description,
+    command,
+}: {
+    description: string;
+    command: string;
+}) {
+    return (
+        <div className="welcome-install-option">
+            <span className="welcome-install-description">{description}</span>
+            <InstallCommand command={command} />
+        </div>
+    );
+}
+
 export function WelcomeInstallOptions() {
     return (
         <>
-            <div
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.4rem',
-                    marginTop: '0.5rem',
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: MONO,
-                        fontSize: '11px',
-                        color: S.base1,
-                    }}
-                >
-                    or run the command to install it yourself:
-                </span>
-                <InstallCommand command="curl -fsSL https://artfct.dev/install.sh | sh" />
-            </div>
-            <div
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.4rem',
-                    marginTop: '0.5rem',
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: MONO,
-                        fontSize: '11px',
-                        color: S.base1,
-                    }}
-                >
-                    or install only the agent skills:
-                </span>
-                <InstallCommand command="npx skills add rubybear-lgtm/artfct@artfct" />
-            </div>
+            <InstallOption
+                description="or run the command to install it yourself:"
+                command="curl -fsSL https://artfct.dev/install.sh | sh"
+            />
+            <InstallOption
+                description="or install only the agent skills:"
+                command="npx skills add rubybear-lgtm/artfct@artfct"
+            />
         </>
     );
 }
