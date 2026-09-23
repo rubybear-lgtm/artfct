@@ -186,12 +186,15 @@ available to the signed-in account and the currently selected context; run
 `artfct login --oauth --organization <slug>` to switch. `ARTFCT_ORG_TOKEN` takes
 precedence and is useful for CI.
 
-For hosted MCP, use `https://artfct.dev/mcp` as the server URL. A client that
-supports OAuth should discover authorization through
-`https://artfct.dev/.well-known/oauth-protected-resource` and request only the
-scopes it needs. The dashboard's **MCP connections** page shows the same setup
-instructions and lets workspace administrators inspect, monitor, and revoke
-connections. Hosted connections use Streamable HTTP; local setup uses stdio.
+For hosted MCP staging verification, use `https://staging.artfct.dev/mcp` as
+the server URL. A client that supports OAuth should discover authorization
+through `https://staging.artfct.dev/.well-known/oauth-protected-resource` and
+request only the scopes it needs. The production `/mcp` route is not currently
+deployed; do not use `https://artfct.dev/mcp` until the production route is
+deliberately deployed and verified. The dashboard's **MCP connections** page
+shows the same setup instructions and lets workspace administrators inspect,
+monitor, and revoke connections. Hosted connections use Streamable HTTP; local
+setup uses stdio.
 `deploy_artifact` is naturally idempotent: publishing identical content to the
 same workspace returns the same artifact. For safe retries of the deprecated
 `deploy_to_canvas`, send a stable `MCP-Request-Id` (or `Idempotency-Key`)

@@ -7,9 +7,14 @@ the connection, and recover from common authentication or policy failures.
 
 - **Local stdio**: install the `artfct` CLI and run `artfct mcp serve`. The
   agent starts a local process; credentials stay in the user's local config.
-- **Hosted Streamable HTTP**: configure `https://artfct.dev/mcp` in an MCP
-  client that supports OAuth discovery. The client authenticates in a browser
-  and sends bearer access tokens to the hosted endpoint.
+- **Hosted Streamable HTTP**: for staging verification, configure
+  `https://staging.artfct.dev/mcp` in an MCP client that supports OAuth
+  discovery. The client authenticates in a browser and sends bearer access
+  tokens to the hosted endpoint.
+
+The production URL `https://artfct.dev/mcp` is not currently routed to the
+hosted MCP handler; a read-only probe returns 404. Do not use it for the live
+client matrix until the production route is deliberately deployed and verified.
 
 Both transports expose the same versioned tool catalog and organization-scoped
 behavior. Hosted sessions are registered in the workspace's MCP connections
