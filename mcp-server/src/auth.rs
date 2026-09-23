@@ -817,7 +817,7 @@ pub(crate) mod tests {
         path::Path,
         sync::{
             atomic::{AtomicBool, Ordering},
-            mpsc, Arc, Mutex,
+            mpsc, Arc, Mutex, OnceLock,
         },
         thread,
         time::Duration,
@@ -826,12 +826,22 @@ pub(crate) mod tests {
     use anyhow::Result;
     use chrono::Utc;
     use tempfile::tempdir;
+    use tokio::sync::Mutex as AsyncMutex;
 
     use super::{
         build_authorization_url, credential_base_url, load_credential_at, logout_with,
         oauth_login_with, parse_callback, percent_decode, percent_encode, receive_callback,
         save_credential, verify_callback_state, AuthSeams, StoredCredential,
     };
+
+    static STUB_SERVER_TEST_LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+
+    async fn stub_server_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
+        STUB_SERVER_TEST_LOCK
+            .get_or_init(|| AsyncMutex::new(()))
+            .lock()
+            .await
+    }
 
     #[cfg(target_os = "macos")]
     #[cfg(target_os = "macos")]
@@ -1268,6 +1278,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn oauth_login_completes_through_a_real_loopback_callback_and_persists_the_tokens() {
+        let _guard = stub_server_test_guard().await;
         let stub = StubAuthorizationServer::start(
             r#"{"access_token":"stub-access-token","refresh_token":"stub-refresh-token","expires_in":3600,"organization":"zz-mcp-a"}"#,
         );
@@ -1330,6 +1341,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn oauth_login_persists_the_requested_organization_and_asks_authorize_for_it() {
+        let _guard = stub_server_test_guard().await;
         let stub = StubAuthorizationServer::start(
             r#"{"access_token":"stub-access-token","refresh_token":"stub-refresh-token","expires_in":3600}"#,
         );
@@ -1358,6 +1370,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn oauth_login_refuses_a_denied_or_forged_callback_and_writes_no_credential() {
+        let _guard = stub_server_test_guard().await;
         let stub = StubAuthorizationServer::start(
             r#"{"access_token":"must-not-be-saved","refresh_token":"must-not-be-saved","expires_in":3600}"#,
         );
@@ -1402,6 +1415,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn logout_revokes_the_saved_refresh_token_and_removes_the_credential() {
+        let _guard = stub_server_test_guard().await;
         let stub = StubAuthorizationServer::start("{}");
         let directory = tempdir().expect("temporary directory");
         let credential_path = directory.path().join("credentials.json");
