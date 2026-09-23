@@ -325,7 +325,7 @@ impl McpError {
                 "code": self.rpc_code,
                 "message": self.message,
                 "data": {
-                    "code": self.code,
+                    "errorCode": self.code,
                     "retryable": self.retryable
                 }
             }
@@ -1963,7 +1963,7 @@ mod tests {
         .expect("response");
 
         assert_eq!(response["error"]["code"], -32601);
-        assert_eq!(response["error"]["data"]["code"], "method_not_found");
+        assert_eq!(response["error"]["data"]["errorCode"], "method_not_found");
     }
 
     #[tokio::test]
@@ -2001,7 +2001,8 @@ mod tests {
         ));
         let response = error.response(Some(json!(1)));
 
-        assert_eq!(response["error"]["data"]["code"], "rate_limited");
+        assert_eq!(response["error"]["data"]["errorCode"], "rate_limited");
+        assert!(response["error"]["data"].get("code").is_none());
         assert_eq!(response["error"]["data"]["retryable"], true);
         assert_eq!(
             response["error"]["message"],
@@ -2014,13 +2015,13 @@ mod tests {
     fn quota_and_authentication_failures_have_stable_remediation_codes() {
         let quota = McpError::from(anyhow!("Artifact Engine returned 403: quota_exceeded"));
         assert_eq!(
-            quota.response(None)["error"]["data"]["code"],
+            quota.response(None)["error"]["data"]["errorCode"],
             "quota_exceeded"
         );
 
         let auth = McpError::from(anyhow!("Artifact Engine returned 401: invalid_token"));
         assert_eq!(
-            auth.response(None)["error"]["data"]["code"],
+            auth.response(None)["error"]["data"]["errorCode"],
             "authentication_error"
         );
     }
@@ -2054,7 +2055,8 @@ mod tests {
         .expect("response");
 
         assert_eq!(response["error"]["code"], -32003);
-        assert_eq!(response["error"]["data"]["code"], "insufficient_scope");
+        assert_eq!(response["error"]["data"]["errorCode"], "insufficient_scope");
+        assert!(response["error"]["data"].get("code").is_none());
         assert!(response["error"]["message"]
             .as_str()
             .expect("error message")
