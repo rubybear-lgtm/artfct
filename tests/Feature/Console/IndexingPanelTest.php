@@ -81,6 +81,34 @@ test('retry_dispatches_when_extraction_was_saved_but_indexing_failed', function 
     expect(ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', 'art0000001')->exists())->toBeTrue();
 });
 
+test('a_failed_retry_releases_its_deduplication_key_for_another_attempt', function () {
+    [$team, $admin] = indexingTeam();
+    ArtifactIndexingFailure::create(['team_id' => $team->id, 'artifact_id' => 'art0000001', 'attempts' => 3, 'reason' => 'provider failed', 'failed_at' => now()]);
+
+    test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertRedirect();
+    expect(Cache::has("reindex:{$team->id}:art0000001"))->toBeTrue();
+
+    (new IndexArtifactJob($team->id, 'art0000001', '<h1>Hi</h1>', []))->failed(new RuntimeException('Provider failed again.'));
+    expect(Cache::has("reindex:{$team->id}:art0000001"))->toBeFalse();
+
+    test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertRedirect();
+    Bus::assertDispatchedTimes(IndexArtifactJob::class, 2);
+});
+
+test('a_missing_artifact_does_not_hold_the_retry_key', function () {
+    [$team, $admin] = indexingTeam();
+    $artifactId = 'art0000002';
+
+    test()->actingAs($admin)->post(route('console.reindex', [$team, $artifactId]))->assertNotFound();
+    expect(Cache::has("reindex:{$team->id}:{$artifactId}"))->toBeFalse();
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, $artifactId, '<h1>Now available</h1>');
+    test()->actingAs($admin)->post(route('console.reindex', [$team, $artifactId]))->assertRedirect();
+    Bus::assertDispatchedTimes(IndexArtifactJob::class, 1);
+});
+
 test('members_cannot_retry', function () {
     [$team] = indexingTeam();
     $member = memberOfTeam($team, TeamRole::Member);

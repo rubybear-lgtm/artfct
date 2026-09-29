@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
+use Throwable;
 
 /**
  * Admin console for managing artifacts in an organization.
@@ -109,11 +110,18 @@ class ConsoleController extends Controller
         $alreadyIndexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists();
         $hasFailure = ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists();
 
-        if ((! $alreadyIndexed || $hasFailure) && Cache::add("reindex:{$team->id}:{$artifactId}", true, now()->addMinutes(10))) {
-            $artifact = $content->fetch($team->slug, $artifactId);
-            abort_if($artifact === null, 404);
+        $reindexCacheKey = IndexArtifactJob::reindexCacheKey($team->id, $artifactId);
+        if ((! $alreadyIndexed || $hasFailure) && Cache::add($reindexCacheKey, true, now()->addMinutes(10))) {
+            try {
+                $artifact = $content->fetch($team->slug, $artifactId);
+                abort_if($artifact === null, 404);
 
-            IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'])->onQueue('indexing');
+                IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'])->onQueue('indexing');
+            } catch (Throwable $exception) {
+                Cache::forget($reindexCacheKey);
+
+                throw $exception;
+            }
         }
 
         return redirect()->route('console.index', ['team' => $team])->with('message', 'Indexing queued.');

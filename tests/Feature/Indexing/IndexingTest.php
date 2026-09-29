@@ -16,6 +16,7 @@ use App\Services\Indexing\RendererContract;
 use App\Services\Indexing\RenderResult;
 use App\Services\Indexing\RenderTimeoutException;
 use App\Services\Indexing\VectorIndexContract;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 
 test('js_heavy_artifact_indexes_post_hydration_text', function () {
@@ -98,11 +99,13 @@ test('successful_retry_clears_its_dead_letter', function () {
         'reason' => 'embedding failed',
         'failed_at' => now(),
     ]);
+    Cache::put("reindex:{$team->id}:{$artifactId}", true, now()->addMinutes(10));
 
     $html = '<html><body><p>'.str_repeat('Indexing can succeed after a transient provider failure. ', 3).'</p></body></html>';
     (new IndexArtifactJob($team->id, $artifactId, $html, []))->handle(app(IndexingService::class));
 
     expect(ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists())->toBeFalse();
+    expect(Cache::has("reindex:{$team->id}:{$artifactId}"))->toBeFalse();
 });
 
 test('dead_lettered_artifact_still_serves', function () {

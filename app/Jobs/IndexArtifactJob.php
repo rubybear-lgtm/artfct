@@ -9,6 +9,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -46,11 +47,17 @@ class IndexArtifactJob implements ShouldQueue
         return [10, 30, 60];
     }
 
+    public static function reindexCacheKey(int $teamId, string $artifactId): string
+    {
+        return "reindex:{$teamId}:{$artifactId}";
+    }
+
     public function handle(IndexingService $indexer): void
     {
         $team = Team::query()->findOrFail($this->teamId);
         $indexer->indexArtifact($team, $this->artifactId, $this->html, $this->provenance);
         ArtifactIndexingFailure::query()->where('team_id', $this->teamId)->where('artifact_id', $this->artifactId)->delete();
+        Cache::forget(self::reindexCacheKey($this->teamId, $this->artifactId));
     }
 
     /**
@@ -68,5 +75,6 @@ class IndexArtifactJob implements ShouldQueue
             'reason' => $exception->getMessage(),
             'failed_at' => now(),
         ]);
+        Cache::forget(self::reindexCacheKey($this->teamId, $this->artifactId));
     }
 }
