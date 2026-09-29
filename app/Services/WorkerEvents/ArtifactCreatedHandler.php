@@ -43,10 +43,8 @@ final class ArtifactCreatedHandler
 
         try {
             $artifact = $this->content->fetch($team->slug, $artifactId);
-        } catch (Throwable $exception) {
-            Log::warning('artifact.created content read failed.', ['artifact_id' => $artifactId, 'error' => $exception->getMessage()]);
-
-            return;
+        } catch (Throwable) {
+            throw new \RuntimeException('Artifact content read failed; event will retry.');
         }
 
         if ($artifact === null) {

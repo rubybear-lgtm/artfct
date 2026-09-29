@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\EmbeddingsContract;
+use App\Services\Indexing\RerankerContract;
 use App\Services\Indexing\VectorIndexContract;
 use App\Services\Indexing\VectorMatch;
 use Carbon\Carbon;
@@ -29,6 +30,7 @@ final class SearchService
         private readonly VectorIndexContract $vectorIndex,
         private readonly ArtifactDirectory $artifacts,
         private readonly AuditLogger $auditLogger,
+        private readonly RerankerContract $reranker,
     ) {}
 
     /**
@@ -44,12 +46,16 @@ final class SearchService
         string $ip = 'internal',
         string $userAgent = 'search',
     ): array {
-        [$queryVector] = $this->embeddings->embed([$query]);
+        $queryVector = $this->embeddings->embedQuery($query);
 
         // Overfetch: revoked/inaccessible artifacts and repo/agent/since
         // filters all reduce the candidate set after the vector query, so
         // asking the index for exactly $limit would silently under-return.
-        $candidates = $this->vectorIndex->query($team->slug, $queryVector, max($limit * 5, 50));
+        $candidateLimit = max($limit * 5, 50);
+        $candidates = ReciprocalRankFusion::combine(
+            $this->vectorIndex->query($team->slug, $queryVector, $candidateLimit),
+            $this->vectorIndex->queryText($team->slug, $query, $candidateLimit),
+        );
 
         $directory = $this->artifactsBySlug($team);
 
@@ -64,7 +70,10 @@ final class SearchService
 
         $filtered = array_values(array_filter(
             $candidates,
-            function (VectorMatch $match) use ($directory, $filters, $collectionArtifactIds): bool {
+            function (VectorMatch $match) use ($team, $directory, $filters, $collectionArtifactIds): bool {
+                if ($match->chunk->orgId !== $team->slug) {
+                    return false;
+                }
                 $artifact = $directory[$match->chunk->artifactId] ?? null;
 
                 // Not in the directory (deleted/never existed) or revoked:
@@ -97,6 +106,8 @@ final class SearchService
                 return true;
             },
         ));
+
+        $filtered = $this->reranker->rerank($query, array_slice($filtered, 0, max(20, $limit)));
 
         $usageScores = $this->usageScoresFor($team, $filtered);
         $canonicalArtifactIds = $this->canonicalArtifactIdsFor($team);
@@ -196,11 +207,15 @@ final class SearchService
      */
     private function artifactsBySlug(Team $team): array
     {
-        $page = $this->artifacts->listArtifacts($team->slug, [], null, 1000);
+        $cursor = null;
         $byId = [];
-        foreach ($page['artifacts'] as $artifact) {
-            $byId[$artifact['id']] = $artifact;
-        }
+        do {
+            $page = $this->artifacts->listArtifacts($team->slug, [], $cursor, 200);
+            foreach ($page['artifacts'] as $artifact) {
+                $byId[$artifact['id']] = $artifact;
+            }
+            $cursor = $page['next_cursor'];
+        } while ($cursor !== null);
 
         return $byId;
     }

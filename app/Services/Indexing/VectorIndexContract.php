@@ -33,6 +33,9 @@ interface VectorIndexContract
      */
     public function query(string $orgId, array $queryVector, int $limit): array;
 
+    /** @return array<int, VectorMatch> */
+    public function queryText(string $orgId, string $query, int $limit): array;
+
     /**
      * Every vector currently stored for one org — direct inspection, for
      * the isolation test (`tenant_index_contains_no_foreign_vectors`) and

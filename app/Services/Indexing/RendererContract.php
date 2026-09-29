@@ -15,5 +15,5 @@ interface RendererContract
      * @throws RenderTimeoutException on a render timeout — the caller
      *                                retries with backoff, then dead-letters.
      */
-    public function render(string $html): RenderResult;
+    public function render(string $orgId, string $artifactId, string $html): RenderResult;
 }

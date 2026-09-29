@@ -29,11 +29,14 @@ use App\Services\Identity\RealDnsResolver;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\FakeEmbeddings;
 use App\Services\Indexing\FakeRenderer;
+use App\Services\Indexing\FakeReranker;
 use App\Services\Indexing\FakeVectorIndex;
+use App\Services\Indexing\PgVectorIndex;
 use App\Services\Indexing\RealEmbeddings;
 use App\Services\Indexing\RealRenderer;
-use App\Services\Indexing\RealVectorIndex;
+use App\Services\Indexing\RealReranker;
 use App\Services\Indexing\RendererContract;
+use App\Services\Indexing\RerankerContract;
 use App\Services\Indexing\VectorIndexContract;
 use App\Services\Polis\FakePolisClient;
 use App\Services\Polis\PolisClientContract;
@@ -125,7 +128,11 @@ class AppServiceProvider extends ServiceProvider
         );
         $this->app->singleton(
             VectorIndexContract::class,
-            app()->environment('testing') ? FakeVectorIndex::class : RealVectorIndex::class,
+            app()->environment('testing') ? FakeVectorIndex::class : PgVectorIndex::class,
+        );
+        $this->app->singleton(
+            RerankerContract::class,
+            app()->environment('testing') ? FakeReranker::class : RealReranker::class,
         );
         $this->app->singleton(
             UsageContract::class,

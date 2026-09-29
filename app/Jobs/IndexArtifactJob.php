@@ -25,6 +25,9 @@ class IndexArtifactJob implements ShouldQueue
     /** @var int */
     public $tries = 3;
 
+    /** @var int */
+    public $timeout = 180;
+
     /**
      * @param  array{agent: ?string, repo_url: ?string, commit_sha: ?string}  $provenance
      */

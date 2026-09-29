@@ -38,6 +38,23 @@ final class FakeVectorIndex implements VectorIndexContract
         return array_slice($matches, 0, $limit);
     }
 
+    public function queryText(string $orgId, string $query, int $limit): array
+    {
+        $terms = preg_split('/\s+/', mb_strtolower(trim($query)), flags: PREG_SPLIT_NO_EMPTY);
+        if ($terms === []) {
+            return [];
+        }
+        $matches = [];
+        foreach ($this->allVectorsForOrg($orgId) as $chunk) {
+            $text = mb_strtolower(implode(' ', [$chunk->text, $chunk->agent, $chunk->repoUrl, $chunk->commitSha]));
+            if (array_all($terms, fn (string $term): bool => str_contains($text, $term))) {
+                $matches[] = new VectorMatch($chunk, 1.0);
+            }
+        }
+
+        return array_slice($matches, 0, $limit);
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         return array_merge(...array_values($this->byOrg[$orgId] ?? [[]]));

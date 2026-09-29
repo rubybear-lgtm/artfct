@@ -28,7 +28,7 @@ final class FakeRenderer implements RendererContract
         $this->timeoutOn[$this->key($html)] = true;
     }
 
-    public function render(string $html): RenderResult
+    public function render(string $orgId, string $artifactId, string $html): RenderResult
     {
         $this->callCount++;
         $key = $this->key($html);

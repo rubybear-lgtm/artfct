@@ -41,6 +41,18 @@ return [
         'api_token' => env('CLOUDFLARE_EMAIL_API_TOKEN'),
     ],
 
+    /*
+    | Workers AI (embeddings, reranking) and Browser Rendering (spec 12,
+    | RUB-316). One account-scoped token; see RUB-406 for the permissions
+    | it needs (Workers AI Read/Run, Browser Rendering Edit).
+    */
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'api_token' => env('CLOUDFLARE_API_TOKEN'),
+        'embeddings_model' => env('CLOUDFLARE_EMBEDDINGS_MODEL', '@cf/qwen/qwen3-embedding-0.6b'),
+        'reranker_model' => env('CLOUDFLARE_RERANKER_MODEL', '@cf/baai/bge-reranker-base'),
+    ],
+
     'oauth' => [
         // The authorization server's own issuer URL (RFC 8414). It must match
         // the host clients fetch the metadata from, so it is separate from the

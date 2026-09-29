@@ -14,6 +14,11 @@ final class FakeEmbeddings implements EmbeddingsContract
 
     public int $callCount = 0;
 
+    public function embedQuery(string $query): array
+    {
+        return $this->embed([$query])[0];
+    }
+
     public function embed(array $texts): array
     {
         $this->callCount++;

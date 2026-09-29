@@ -159,3 +159,20 @@ test('already_indexed_artifact_is_not_redispatched', function () {
 
     Queue::assertNotPushed(IndexArtifactJob::class);
 });
+
+test('transient_content_read_failure_retries_the_event_instead_of_losing_the_artifact', function () {
+    Team::factory()->create(['slug' => 'acme']);
+    $source = Mockery::mock(ArtifactContentSource::class);
+    $source->shouldReceive('fetch')->once()->with('acme', 'art-retry')->andThrow(new RuntimeException('Temporary Worker outage'));
+    app()->instance(ArtifactContentSource::class, $source);
+    $event = [
+        'id' => (string) Str::uuid(), 'type' => 'artifact.created', 'org_id' => 'acme',
+        'occurred_at' => now()->toIso8601String(), 'data' => ['artifact_id' => 'art-retry'],
+    ];
+    $job = new ProcessWorkerEvent($event);
+    expect(fn () => $job->handle(app(WorkerEventHandlers::class)))
+        ->toThrow(RuntimeException::class, 'Artifact content read failed; event will retry.');
+    expect($job->backoff())->toBe([5, 30, 120]);
+    expect($job->tries)->toBe(3);
+    expect(ArtifactIndexEntry::query()->count())->toBe(0);
+});

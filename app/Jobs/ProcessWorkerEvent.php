@@ -36,7 +36,7 @@ class ProcessWorkerEvent implements ShouldQueue
         Log::error('Worker event processing failed.', [
             'event_id' => $this->event['id'] ?? null,
             'type' => $this->event['type'] ?? null,
-            'error' => $exception->getMessage(),
+            'error' => 'Worker event handler failed after retries.',
         ]);
     }
 }

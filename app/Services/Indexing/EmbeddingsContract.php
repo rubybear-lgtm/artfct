@@ -12,4 +12,7 @@ interface EmbeddingsContract
      * @return array<int, array<int, float>> one vector per input text, same order
      */
     public function embed(array $texts): array;
+
+    /** @return array<int, float> */
+    public function embedQuery(string $query): array;
 }

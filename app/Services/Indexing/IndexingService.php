@@ -32,7 +32,7 @@ final class IndexingService
         $rendered = ExtractionHeuristics::needsRender($html);
 
         if ($rendered) {
-            $result = $this->renderer->render($html);
+            $result = $this->renderer->render($team->slug, $artifactId, $html);
             $text = $result->text;
             $title = $result->title;
             $headings = $result->headings;
