@@ -41,11 +41,11 @@ Chunk with overlap. Every chunk carries `artifact_id`, `org_id`, `created_at`, `
 
 ### Embeddings and index
 
-Workers AI for embeddings. **One Vectorize index per tenant** — the isolation boundary is the same as everywhere else, and a shared index with metadata filtering is one bug away from cross-tenant leakage.
+Workers AI's `@cf/qwen/qwen3-embedding-0.6b` produces 1024-dimensional embeddings. `PgVectorIndex` stores them in Railway Postgres with a `team_id` on every chunk and scopes every read and write to the resolved team. Exact cosine search is the default at the 10k-vectors-per-org design size. PostgreSQL full-text search supplies the lexical signal for hybrid retrieval in spec 13; Workers AI's `@cf/baai/bge-reranker-base` reranks visible candidates.
 
-### The cost caveat that must be resolved before committing
+### Vector-store decision and remaining cost check
 
-Vectorize bills on "queried vector dimensions", documented as `(vectors in index + query vectors) × dimensions` per query. Applied naively to a multi-million-vector corpus that produces absurd totals, yet Cloudflare's own worked example lands at $1.94/month. **The two readings do not reconcile.** Model it against a realistic corpus before this ships; it is the only line item in the whole plan with order-of-magnitude uncertainty, and it sits underneath the feature that is supposed to be the product. If it does not reconcile, an alternative vector store is the fallback and the pipeline above is unchanged.
+The 2026-09-29 decision on RUB-316 chose pgvector on Railway Postgres instead of Cloudflare Vectorize. The proposed Vectorize 1k/10k/100k probe, seven-day billing observation, and probe-index deletion do not apply to the chosen store. Browser Rendering and Workers AI remain metered dependencies: run a representative staging batch, inspect their actual usage, and compare it with the cost model before rollout. Measure hybrid search latency against the real providers as well as the database.
 
 ## Definition of done
 
@@ -56,9 +56,9 @@ Vectorize bills on "queried vector dimensions", documented as `(vectors in index
 - [ ] A dead-lettered artifact still serves normally.
 - [ ] Extracted text is stored, and re-embedding runs without re-rendering.
 - [ ] Every chunk carries `org_id`, `agent`, `repo_url`, `commit_sha` from provenance.
-- [ ] Tenant A's index contains no vector belonging to tenant B — asserted by direct inspection.
+- [ ] Tenant A's pgvector rows contain no chunk belonging to tenant B, and an org A query cannot return org B's chunks — asserted by direct inspection with two real orgs.
 - [ ] Deleting an artifact removes its vectors within one processing cycle.
-- [ ] A cost model for Vectorize against a 1M-vector corpus is written down and reconciles with observed billing over a week.
+- [ ] A representative staging batch shows Browser Rendering and Workers AI usage within a factor of two of the provider cost model; real-provider search latency is recorded.
 
 ## Tests
 

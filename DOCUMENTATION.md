@@ -424,52 +424,33 @@ writes an `ArtifactIndexingFailure` row with the reason — its own table,
 never touching `artifacts` or the serving path, so a dead-lettered
 artifact keeps serving normally.
 
-**Not wired in this environment**: the Worker has no live webhook calling
-`IndexArtifactJob::dispatch()` on `artifact.created` — the same
-cross-boundary gap spec 11 left for Worker-originated audit events.
-`php artisan indexing:index {org} {artifact} {html-file}` is the manual
-entry point in the meantime, and exercises the identical queued job a
-webhook would dispatch. `RealRenderer`/`RealEmbeddings`/`RealVectorIndex`
-all fail closed (`RealTenantProvisioner`'s pattern) — no live Cloudflare
-Browser Rendering, Workers AI, or Vectorize account here.
+The Worker emits `artifact.created` to Laravel, where the event handler
+can enqueue `IndexArtifactJob`. The gate is `INDEXING_ENABLED`: it remains
+off in staging until the Cloudflare credential and end-to-end provider
+checks pass. `php artisan indexing:index {org} {artifact} {html-file}` is
+also available as a manual entry point. `RealRenderer` calls Browser
+Rendering on a signed artifact URL so relative bundle assets load;
+`RealEmbeddings` calls Workers AI, and `PgVectorIndex` stores 1024-dimensional
+vectors in Railway Postgres. The staging Worker and Laravel services carry
+this code, and the pgvector migration has run. A public multi-file artifact
+and its Worker-to-Laravel event have been verified; a normal event-to-search
+run with indexing enabled is still pending.
 
 **Console surfacing.** `ConsoleController::index()` passes a real,
 queried `indexingFailures` prop (team-scoped, latest 20) to the Inertia
-page. The React panel that displays it was not built this session — the
-data is real and tested, the UI for it is a follow-up.
+page, where the indexing status and failures panel displays it.
 
 **Tenant isolation.** `VectorIndexContract` is `$orgId`-scoped at every
-method; `FakeVectorIndex` keys its storage by org at the top level.
-Mutation-checked: merging all orgs' vectors together in
-`allVectorsForOrg()` makes `tenant_index_contains_no_foreign_vectors` fail
-immediately (see `scratchpad/runs/12/mutation.md`).
+method. `PgVectorIndex` resolves the org to a `Team` and constrains all
+chunk reads and writes by `team_id`; the live two-org test directly
+inspects rows and query results. `FakeVectorIndex` keys test storage by org.
 
-**The Vectorize cost caveat (spec 12 DoD item 10).** The spec itself
-flags this as unresolved before shipping: Cloudflare bills Vectorize on
-"queried vector dimensions" = `(vectors in index + query vectors) ×
-dimensions` per query. Modeled against a **1M-vector corpus** (roughly
-artfct's estimate for ~50k artifacts × ~20 chunks each), 768 dimensions
-(a common Workers AI embedding size), at 10 queries/day:
-
-- Per query: `(1,000,000 + 1) × 768 ≈ 768M` "queried dimensions."
-- Per month (300 queries): `768M × 300 ≈ 230B` queried dimensions.
-- At Cloudflare's published $0.01 / 1M queried dimensions (their
-  worked-example rate), that's **≈ $2,300/month** — not the ≈$2/month
-  Cloudflare's own worked example implies for what reads like a similar
-  scenario. The spec is right that these two readings do not reconcile;
-  the likely resolution is that Cloudflare's cheap worked example uses a
-  much smaller index or query volume than "1M vectors, 10 queries/day"
-  implies, but the public pricing page does not fully disambiguate which.
-
-**This is written down, not resolved.** "Reconciles with observed
-billing over a week" (the second half of the DoD item) cannot be produced
-without a live Vectorize account and a week of real traffic — neither
-exists in this environment. Before this ships: run the actual corpus
-against a real Vectorize index for a representative week and compare the
-invoice against this model. If the pessimistic ($2,300/mo) reading holds
-at real scale, the spec's own fallback applies — swap `VectorIndexContract`
-for an alternative vector store; the pipeline above is unchanged, since
-nothing outside `RealVectorIndex` knows Vectorize specifically.
+**Vector-store decision.** The 2026-09-29 RUB-316 decision superseded the
+Vectorize cost probe and chose pgvector on Railway Postgres, which the
+project already operates. Exact cosine search avoids an ANN index at the
+10k-vectors-per-org design size. Browser Rendering and Workers AI usage
+still need a representative live staging batch and comparison against the
+cost model; real-provider retrieval latency must also be measured.
 
 ## Retrieval (spec 13)
 
