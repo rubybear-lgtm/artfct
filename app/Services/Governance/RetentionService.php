@@ -3,6 +3,8 @@
 namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
+use App\Models\ArtifactUsageEvent;
+use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Indexing\IndexingService;
 use Carbon\CarbonImmutable;
@@ -50,6 +52,10 @@ final class RetentionService
                 // Spec 12 DoD: "Deleting an artifact removes its vectors
                 // within one processing cycle."
                 $this->indexer?->removeFromIndex($team, $artifactId);
+                // RUB-314: usage-signal rows (views, search-served
+                // records) are per-artifact data too — they must not
+                // outlive the artifact they describe.
+                $this->deleteUsageSignals($team, $artifactId);
             }
         }
 
@@ -71,5 +77,11 @@ final class RetentionService
     public static function defaultRetentionDays(): int
     {
         return (int) config('governance.default_retention_days', 90);
+    }
+
+    private function deleteUsageSignals(Team $team, string $artifactId): void
+    {
+        ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
+        SearchResultServed::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
     }
 }

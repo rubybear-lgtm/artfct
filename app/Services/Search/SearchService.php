@@ -6,6 +6,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
+use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
@@ -118,7 +119,33 @@ final class SearchService
             sprintf('%d result(s)', count($results)),
         );
 
+        $this->recordResultsServed($team, $results);
+
         return $results;
+    }
+
+    /**
+     * One `search_results_served` row per returned artifact (RUB-314) — the
+     * raw material `ArtifactViewedHandler` matches a later view against, by
+     * team + artifact + time, to record a "retrieved, then opened" usage
+     * event without needing to know who searched or who later opened it.
+     *
+     * @param  array<int, SearchResult>  $results
+     */
+    private function recordResultsServed(Team $team, array $results): void
+    {
+        if ($results === []) {
+            return;
+        }
+
+        $servedAt = Carbon::now();
+        $rows = array_map(fn (SearchResult $result): array => [
+            'team_id' => $team->id,
+            'artifact_id' => $result->id,
+            'served_at' => $servedAt,
+        ], $results);
+
+        SearchResultServed::query()->insert($rows);
     }
 
     /**

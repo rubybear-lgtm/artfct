@@ -3,7 +3,9 @@
 use App\Enums\AuditEventType;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
+use App\Models\ArtifactUsageEvent;
 use App\Models\AuditEvent;
+use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Governance\ArtifactGovernanceContract;
 use App\Services\Governance\ErasureService;
@@ -155,6 +157,107 @@ test('erasure_conflicting_with_hold_is_refused', function () {
     // Never silently partial: the clean artifact must survive too.
     expect($governance->stillExists('erase-org', 'clean-artifact'))->toBeTrue();
     expect($governance->stillExists('erase-org', 'held-artifact'))->toBeTrue();
+});
+
+// RUB-314: usage-signal rows (views, search-served records) are
+// per-artifact data too — retention, erasure and a direct hard delete must
+// all sweep them, the same as they already sweep the Worker-side artifact.
+test('retention_deletes_usage_signals_for_the_expired_artifact_but_not_the_retained_one', function () {
+    $team = Team::factory()->create(['slug' => 'usage-retain-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-retain-org', ['id' => 'old-artifact', 'created_at' => now()->subDays(31)->toIso8601String()]);
+    $governance->seedArtifact('usage-retain-org', ['id' => 'fresh-artifact', 'created_at' => now()->subDays(5)->toIso8601String()]);
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'old-artifact']);
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'fresh-artifact']);
+    SearchResultServed::factory()->create(['team_id' => $team->id, 'artifact_id' => 'old-artifact']);
+    SearchResultServed::factory()->create(['team_id' => $team->id, 'artifact_id' => 'fresh-artifact']);
+
+    app(RetentionService::class)->apply($team, retentionDays: 30, dryRun: false, actor: 'cli');
+
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'old-artifact')->exists())->toBeFalse();
+    expect(SearchResultServed::query()->where('team_id', $team->id)->where('artifact_id', 'old-artifact')->exists())->toBeFalse();
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'fresh-artifact')->exists())->toBeTrue();
+    expect(SearchResultServed::query()->where('team_id', $team->id)->where('artifact_id', 'fresh-artifact')->exists())->toBeTrue();
+});
+
+test('a_retention_dry_run_deletes_no_usage_signals', function () {
+    $team = Team::factory()->create(['slug' => 'usage-dryrun-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-dryrun-org', ['id' => 'old-artifact', 'created_at' => now()->subDays(31)->toIso8601String()]);
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'old-artifact']);
+
+    app(RetentionService::class)->apply($team, retentionDays: 30, dryRun: true, actor: 'cli');
+
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'old-artifact')->exists())->toBeTrue();
+});
+
+test('erasure_deletes_usage_signals_for_every_erased_artifact', function () {
+    $team = Team::factory()->create(['slug' => 'usage-erase-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-erase-org', ['id' => 'erased-artifact', 'created_at' => now()->toIso8601String()]);
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'erased-artifact']);
+    SearchResultServed::factory()->create(['team_id' => $team->id, 'artifact_id' => 'erased-artifact']);
+
+    app(ErasureService::class)->erase($team, dryRun: false, actor: 'cli');
+
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'erased-artifact')->exists())->toBeFalse();
+    expect(SearchResultServed::query()->where('team_id', $team->id)->where('artifact_id', 'erased-artifact')->exists())->toBeFalse();
+});
+
+test('an_erasure_refused_for_a_legal_hold_leaves_usage_signals_intact', function () {
+    $team = Team::factory()->create(['slug' => 'usage-erase-hold-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-erase-hold-org', ['id' => 'held-artifact', 'created_at' => now()->toIso8601String()]);
+    $governance->placeLegalHold('usage-erase-hold-org', 'held-artifact');
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'held-artifact']);
+
+    app(ErasureService::class)->erase($team, dryRun: false, actor: 'cli');
+
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'held-artifact')->exists())->toBeTrue();
+});
+
+test('a_direct_hard_delete_also_sweeps_usage_signals', function () {
+    $team = Team::factory()->create(['slug' => 'usage-hard-delete-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-hard-delete-org', ['id' => 'deleted-artifact', 'created_at' => now()->toIso8601String()]);
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'deleted-artifact']);
+
+    $succeeded = app(LegalHoldService::class)->attemptHardDelete($team, 'deleted-artifact', actor: 'admin@example.com');
+
+    expect($succeeded)->toBeTrue();
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'deleted-artifact')->exists())->toBeFalse();
+});
+
+test('a_refused_hard_delete_under_legal_hold_keeps_usage_signals', function () {
+    $team = Team::factory()->create(['slug' => 'usage-hard-delete-hold-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-hard-delete-hold-org', ['id' => 'held-artifact', 'created_at' => now()->toIso8601String()]);
+    $governance->placeLegalHold('usage-hard-delete-hold-org', 'held-artifact');
+    ArtifactUsageEvent::factory()->create(['team_id' => $team->id, 'artifact_id' => 'held-artifact']);
+
+    $succeeded = app(LegalHoldService::class)->attemptHardDelete($team, 'held-artifact', actor: 'admin@example.com');
+
+    expect($succeeded)->toBeFalse();
+    expect(ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', 'held-artifact')->exists())->toBeTrue();
+});
+
+test('erasure_never_touches_usage_signals_belonging_to_another_team', function () {
+    $team = Team::factory()->create(['slug' => 'usage-erase-cross-org']);
+    $otherTeam = Team::factory()->create(['slug' => 'usage-erase-other-org']);
+    /** @var FakeArtifactGovernance $governance */
+    $governance = app(ArtifactGovernanceContract::class);
+    $governance->seedArtifact('usage-erase-cross-org', ['id' => 'shared-id', 'created_at' => now()->toIso8601String()]);
+    ArtifactUsageEvent::factory()->create(['team_id' => $otherTeam->id, 'artifact_id' => 'shared-id']);
+
+    app(ErasureService::class)->erase($team, dryRun: false, actor: 'cli');
+
+    expect(ArtifactUsageEvent::query()->where('team_id', $otherTeam->id)->where('artifact_id', 'shared-id')->exists())->toBeTrue();
 });
 
 test('region_is_immutable_after_provisioning', function () {

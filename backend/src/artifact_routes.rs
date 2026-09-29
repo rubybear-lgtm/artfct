@@ -454,6 +454,41 @@ pub(crate) async fn write_revocation(req: &mut Request, env: &Env) -> Result<Res
     JsonResponseDefinition::json(serde_json::json!({"revoked": true}), 200).into_worker_response()
 }
 
+/// Derives a daily-salted pseudonymous key for distinct-viewer counting on
+/// anonymous `/p/{id}` views — runs whenever no verified `viewer_user_id`
+/// was resolved, which covers Slack opens and shared links, not only
+/// console-minted tokens. HMAC-SHA256 (the same primitive `events::sign`
+/// and access-token signing already use in this crate, via
+/// `store::hmac_sha256`) over `(date, ip, user_agent, org)`, keyed by a
+/// secret that never leaves the Worker. Folding in the UTC date means the
+/// same visitor gets an unrelated key every day — enough to say "the same
+/// visitor within one day," never enough to recover the IP or a stable
+/// cross-day identity. `secret` is `None` when `VISITOR_KEY_SECRET_ENV` is
+/// unset, in which case this returns `None` rather than deriving a key from
+/// a guessable constant.
+pub(crate) fn derive_visitor_key(
+    secret: Option<&str>,
+    org: &str,
+    ip: &str,
+    user_agent: &str,
+    now: chrono::DateTime<Utc>,
+) -> Option<String> {
+    let secret = secret?;
+    let message = format!("{}|{ip}|{user_agent}|{org}", now.format("%Y-%m-%d"));
+    Some(
+        store::hmac_sha256(secret.as_bytes(), message.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    )
+}
+
+fn visitor_key_secret(env: &Env) -> Option<String> {
+    env.var(VISITOR_KEY_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string())
+}
+
 pub(crate) async fn resolve_permanent_artifact(
     artifact_id: &str,
     requested_path: Option<&str>,
@@ -526,6 +561,31 @@ pub(crate) async fn resolve_permanent_artifact(
             }
         }
     }
+    // No verified viewer id (anonymous/Slack/shared-link view, or an
+    // isolated-origin view authorized by access token rather than org
+    // credential): derive a pseudonymous visitor key so distinct-viewer
+    // scoring (spec 16) still has something to count. A `secure`-tier view
+    // that resolved a credential above always has `viewer_user_id`, so this
+    // and that are mutually exclusive per view.
+    let mut viewer_key = None;
+    if viewer_user_id.is_none() {
+        let ip = req
+            .headers()
+            .get("CF-Connecting-IP")?
+            .unwrap_or_else(|| "unknown".to_string());
+        let user_agent = req
+            .headers()
+            .get("User-Agent")?
+            .unwrap_or_else(|| "unknown".to_string());
+        viewer_key = derive_visitor_key(
+            visitor_key_secret(env).as_deref(),
+            &row.org,
+            &ip,
+            &user_agent,
+            now,
+        );
+    }
+
     let bucket = env.bucket("ARTIFACTS_BUCKET")?;
     let Some(object) = bucket
         .get(format!("blobs/{}", row.content_hash))
@@ -560,7 +620,14 @@ pub(crate) async fn resolve_permanent_artifact(
         }
     }
     if requested_path.is_none() {
-        emit_artifact_viewed(ctx, env, &row.org, artifact_id, viewer_user_id.as_deref());
+        emit_artifact_viewed(
+            ctx,
+            env,
+            &row.org,
+            artifact_id,
+            viewer_user_id.as_deref(),
+            viewer_key.as_deref(),
+        );
     }
     let _ = row.expires_at;
     Ok(response)

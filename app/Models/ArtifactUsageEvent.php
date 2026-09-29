@@ -15,10 +15,14 @@ use Illuminate\Support\Carbon;
  * @property string $artifact_id
  * @property UsageEventType $event_type
  * @property int|null $actor_user_id
+ * @property string|null $viewer_key daily-salted pseudonymous visitor key
+ *                                   (RUB-314) — set only when actor_user_id
+ *                                   is null, i.e. an anonymous view with no
+ *                                   verified user id
  * @property string|null $related_artifact_id
  * @property Carbon $occurred_at
  */
-#[Fillable(['team_id', 'artifact_id', 'event_type', 'actor_user_id', 'related_artifact_id', 'occurred_at'])]
+#[Fillable(['team_id', 'artifact_id', 'event_type', 'actor_user_id', 'viewer_key', 'related_artifact_id', 'occurred_at'])]
 class ArtifactUsageEvent extends Model
 {
     /** @use HasFactory<ArtifactUsageEventFactory> */

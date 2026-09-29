@@ -38,7 +38,8 @@ use artifact_routes::{
 };
 #[cfg(test)]
 use artifact_routes::{
-    decide_artifact_visibility, revocation_write_authorized, ArtifactLookupDecision, ArtifactOrgRow,
+    decide_artifact_visibility, derive_visitor_key, revocation_write_authorized,
+    ArtifactLookupDecision, ArtifactOrgRow,
 };
 use auth::{
     authorization_matches, check_and_increment_rate_limit, denylist_kv_key, require_org_credential,
@@ -110,6 +111,14 @@ const ARTIFACT_TOKEN_SECRET_ENV: &str = "ARTFCT_ARTIFACT_TOKEN_SECRET";
 /// separate from `orgToken`/`sessionJwt` and from `ARTFCT_ORG_TOKEN` — same
 /// fail-closed pattern: a missing binding never authorizes a write.
 const REVOCATION_WRITE_SECRET_ENV: &str = "ARTFCT_REVOCATION_WRITE_SECRET";
+/// Env var carrying the HMAC secret used to derive daily-salted pseudonymous
+/// `viewer_key`s for anonymous `/p/{id}` views (RUB-314) — distinct-viewer
+/// counting for spec 16's usage ranking when no verified `viewer_user_id` is
+/// available (Slack opens, shared links, any view that isn't a `secure`-tier
+/// org-credentialed one). Same fail-closed pattern as the other secrets
+/// here: unset means no key is derived, not a key derived from a guessable
+/// default.
+const VISITOR_KEY_SECRET_ENV: &str = "ARTFCT_VISITOR_KEY_SECRET";
 /// KV key under which the published JWKS (fetched and cached out of band —
 /// this Worker never fetches it itself, see `cached_jwks`) is stored.
 const JWKS_KV_KEY: &str = "auth:jwks";
@@ -2924,5 +2933,45 @@ mod tests {
         // after the response has already been returned to the caller.
         deferred_audit();
         assert!(audit_called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn visitor_key_is_deterministic_within_a_day() {
+        let now = Utc::now();
+        let a = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", now);
+        let b = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", now);
+        assert_eq!(a, b);
+        assert!(a.is_some());
+    }
+
+    #[test]
+    fn visitor_key_differs_across_days() {
+        let today = Utc::now();
+        let tomorrow = today + chrono::Duration::days(1);
+        let a = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", today);
+        let b = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", tomorrow);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn visitor_key_differs_across_visitors_and_orgs() {
+        let now = Utc::now();
+        let base = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", now);
+        let other_ip = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.2", "curl/8.0", now);
+        let other_ua = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.1", now);
+        let other_org =
+            derive_visitor_key(Some("s3cr3t"), "other-org", "203.0.113.1", "curl/8.0", now);
+        assert_ne!(base, other_ip);
+        assert_ne!(base, other_ua);
+        assert_ne!(base, other_org);
+    }
+
+    #[test]
+    fn visitor_key_is_none_without_a_configured_secret() {
+        let now = Utc::now();
+        assert_eq!(
+            derive_visitor_key(None, "acme", "203.0.113.1", "curl/8.0", now),
+            None
+        );
     }
 }

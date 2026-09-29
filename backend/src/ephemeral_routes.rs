@@ -181,14 +181,29 @@ pub(crate) fn emit_artifact_created(
 }
 
 /// Queues `artifact.viewed` after a permanent artifact is served. The event
-/// carries only the owning org, artifact id, and optional verified viewer id;
-/// it never includes content, bearer tokens, or query-string access tokens.
+/// carries only the owning org, artifact id, an optional verified viewer id,
+/// and — only when no verified viewer id was resolved — a daily-salted
+/// pseudonymous `viewer_key` (see `artifact_routes::derive_visitor_key`) so
+/// Laravel can still count distinct anonymous viewers (Slack opens, shared
+/// links) for spec 16's usage ranking (RUB-314). It never includes content,
+/// bearer tokens, or query-string access tokens.
+///
+/// This function never dedups: every successful view queues an event, even
+/// a reload by the same visitor a second later. "One event per visitor per
+/// artifact per day" is enforced Laravel-side instead, on a unique index
+/// over `(team_id, artifact_id, viewer_key, event_type)` — `viewer_key`
+/// already changes once per UTC day, so that uniqueness constraint alone
+/// gives the per-day dedup, and (unlike a Worker-side skip keyed on
+/// in-memory or KV state) it is naturally idempotent against redelivery of
+/// this same event, which the Worker->Laravel channel already has to
+/// tolerate elsewhere (see `worker_events_received`'s replay handling).
 pub(crate) fn emit_artifact_viewed(
     ctx: &worker::Context,
     env: &Env,
     org: &str,
     artifact_id: &str,
     viewer_user_id: Option<&str>,
+    viewer_key: Option<&str>,
 ) {
     let (Ok(secret), Ok(url)) = (
         env.var(events::EVENT_SECRET_ENV),
@@ -206,6 +221,7 @@ pub(crate) fn emit_artifact_viewed(
         serde_json::json!({
             "artifact_id": artifact_id,
             "viewer_user_id": viewer_user_id,
+            "viewer_key": viewer_key,
             "source": "worker_preview",
         }),
     );

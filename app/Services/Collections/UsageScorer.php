@@ -40,18 +40,28 @@ final class UsageScorer
         $score = 0.0;
 
         // Distinct viewers, not raw view count — five distinct viewers
-        // must outrank one viewer who reloaded five times.
-        $latestViewByUser = [];
+        // must outrank one viewer who reloaded five times. "Distinct
+        // viewer" means a distinct identity, and an identified user
+        // (actor_user_id) and an anonymous visitor (viewer_key) are
+        // different kinds of identity — never conflated, but each counted
+        // toward the same distinct-viewer total (RUB-314: most `/p/{id}`
+        // traffic has no verified user id at all, so scoring only
+        // actor_user_id would miss almost every view).
+        $latestViewByIdentity = [];
         foreach ($events as $event) {
-            if ($event->event_type !== UsageEventType::Viewed || $event->actor_user_id === null) {
+            if ($event->event_type !== UsageEventType::Viewed) {
                 continue;
             }
-            $existing = $latestViewByUser[$event->actor_user_id] ?? null;
+            $identity = self::identityKey($event);
+            if ($identity === null) {
+                continue;
+            }
+            $existing = $latestViewByIdentity[$identity] ?? null;
             if ($existing === null || $event->occurred_at->gt($existing->occurred_at)) {
-                $latestViewByUser[$event->actor_user_id] = $event;
+                $latestViewByIdentity[$identity] = $event;
             }
         }
-        foreach ($latestViewByUser as $event) {
+        foreach ($latestViewByIdentity as $event) {
             $score += self::VIEW_WEIGHT_PER_DISTINCT_USER * self::decay($event->occurred_at, $now);
         }
 
@@ -78,6 +88,24 @@ final class UsageScorer
         }
 
         return false;
+    }
+
+    /**
+     * A distinct-viewer identity: an identified user's id (prefixed so it
+     * can never collide with a viewer_key string), else their anonymous
+     * viewer_key, else null (no identity signal on the event at all).
+     */
+    private static function identityKey(ArtifactUsageEvent $event): ?string
+    {
+        if ($event->actor_user_id !== null) {
+            return 'user:'.$event->actor_user_id;
+        }
+
+        if ($event->viewer_key !== null) {
+            return 'visitor:'.$event->viewer_key;
+        }
+
+        return null;
     }
 
     private static function decay(CarbonInterface $occurredAt, CarbonInterface $now): float

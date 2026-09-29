@@ -3,6 +3,8 @@
 namespace App\Services\Governance;
 
 use App\Enums\AuditEventType;
+use App\Models\ArtifactUsageEvent;
+use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Billing\PlanGate;
 use App\Services\Indexing\IndexingService;
@@ -68,6 +70,10 @@ final class LegalHoldService
         }
 
         $this->indexer?->removeFromIndex($team, $artifactId);
+        // RUB-314: same per-artifact usage-signal cleanup as retention and
+        // erasure — a direct hard delete must not leave them behind either.
+        ArtifactUsageEvent::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
+        SearchResultServed::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
 
         $this->auditLogger->record(
             AuditEventType::ArtifactDeleted,

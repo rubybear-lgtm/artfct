@@ -3,6 +3,7 @@
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Models\AuditEvent;
+use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Indexing\EmbeddingsContract;
@@ -241,6 +242,40 @@ test('search_writes_audit_event', function () {
     $event = AuditEvent::query()->where('event_type', AuditEventType::SearchPerformed)->firstOrFail();
     expect($event->actor)->toBe('tester@example.com');
     expect($event->target)->toBe('auditable query text');
+});
+
+test('search_records_a_search_results_served_row_per_returned_artifact', function () {
+    $team = Team::factory()->create(['slug' => 'served-org']);
+    seedSearchArtifact($team, 'served-artifact');
+    seedSearchChunk($team, 'served-artifact', 'servable content query');
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'servable content query',
+        filters: [],
+        limit: 10,
+        actor: 'tester',
+    );
+
+    expect($results)->not->toBeEmpty();
+    expect(SearchResultServed::query()
+        ->where('team_id', $team->id)
+        ->where('artifact_id', 'served-artifact')
+        ->exists())->toBeTrue();
+});
+
+test('a_search_that_returns_nothing_records_no_served_rows', function () {
+    $team = Team::factory()->create(['slug' => 'no-results-org']);
+
+    app(SearchService::class)->search(
+        $team,
+        query: 'nothing matches this at all',
+        filters: [],
+        limit: 10,
+        actor: 'tester',
+    );
+
+    expect(SearchResultServed::query()->where('team_id', $team->id)->exists())->toBeFalse();
 });
 
 test('search_under_500ms_at_1k_artifacts', function () {
