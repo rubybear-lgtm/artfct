@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Jobs\ProcessWorkerEvent;
@@ -8,10 +9,12 @@ use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Indexing\FakeRenderer;
 use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\RendererContract;
+use App\Services\Indexing\RenderResult;
 use App\Services\Indexing\RenderTimeoutException;
 use App\Services\Indexing\VectorIndexContract;
 use App\Services\WorkerEvents\WorkerEventHandlers;
@@ -140,6 +143,46 @@ test('event_driven_chunks_carry_provenance', function () {
             ->and($chunk->repoUrl)->toBe('github.com/acme/billing')
             ->and($chunk->commitSha)->toBe('abc123');
     }
+});
+
+test('hydrated_artifact_becomes_searchable_after_its_event_and_indexing_job', function () {
+    $team = Team::factory()->create(['slug' => 'hydrated-org']);
+    $artifactId = 'hydrated-dashboard';
+    $html = '<html><body><div id="root"></div><script src="app.js"></script></body></html>';
+    $hydratedText = 'Hydrated React revenue dashboard';
+    seedContent($team->slug, $artifactId, $html);
+
+    /** @var FakeRenderer $renderer */
+    $renderer = app(RendererContract::class);
+    $renderer->seedRender($html, new RenderResult($hydratedText, 'Revenue Dashboard', ['Revenue']));
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => $artifactId,
+        'org_id' => $team->slug,
+        'user_id' => 1,
+        'title' => 'Revenue Dashboard',
+        'description' => 'A hydrated dashboard.',
+        'content_hash' => md5($artifactId),
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    Queue::fake();
+    artifactCreatedEvent($team->slug, $artifactId)->assertStatus(202);
+    Queue::assertPushedOn('indexing', IndexArtifactJob::class);
+    Queue::pushed(IndexArtifactJob::class)->first()->handle(app(IndexingService::class));
+
+    expect($renderer->callCount)->toBe(1)
+        ->and(ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->value('extracted_text'))->toBe($hydratedText);
+
+    $this->withToken(remoteMcpToken($team))
+        ->postJson('/api/search', ['query' => $hydratedText])
+        ->assertOk()
+        ->assertJsonPath('results.0.id', $artifactId)
+        ->assertJsonPath('results.0.title', 'Revenue Dashboard');
 });
 
 test('already_indexed_artifact_is_not_redispatched', function () {
