@@ -236,9 +236,10 @@ pub(crate) async fn resolve_artifact(
     ctx: &worker::Context,
 ) -> Result<Response> {
     let suffix = path.trim_start_matches("/p/");
-    let (artifact_id, requested_path) = suffix
-        .split_once('/')
-        .map_or((suffix, None), |(id, file)| (id, Some(file)));
+    let (artifact_id, requested_path) =
+        suffix.split_once('/').map_or((suffix, None), |(id, file)| {
+            (id, (!file.is_empty()).then_some(file))
+        });
     if artifact_id.len() == store::PUBLIC_ID_LENGTH
         && artifact_id
             .bytes()

@@ -217,7 +217,7 @@ test('member_opens_artifact_at_its_isolated_origin_with_a_token_bound_to_it', fu
     $location = (string) $response->headers->get('Location');
 
     expect($location)->toStartWith(
-        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'?token=',
+        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=',
     );
 
     parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
@@ -252,7 +252,7 @@ test('minted_link_pins_the_workers_token_wire_format', function () {
         ->forArtifact('test-org', ARTIFACT_LINK_ID, now()->setTimestamp(1_700_000_000));
 
     expect($link)->toBe(
-        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'?token='.ARTIFACT_LINK_ID.'.1700000000.'
+        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token='.ARTIFACT_LINK_ID.'.1700000000.'
         .'e22334c0bc1f712b85eff0011dcb6979239521c4d2fa6ff7e9d598d55130911d'
     );
 

@@ -100,7 +100,7 @@ test('the console link opens the artifact on its isolated origin', function () {
 
     expect($url['scheme'] ?? null)->toBe('https')
         ->and($url['host'] ?? null)->toBe("{$org}--{$artifactId}".config('services.artifact_access.origin_suffix'))
-        ->and($url['path'] ?? null)->toBe("/p/{$artifactId}")
+        ->and($url['path'] ?? null)->toBe("/p/{$artifactId}/")
         ->and($url['query'] ?? '')->toStartWith('token=');
 
     // The isolated hostname resolves nowhere and terminates no TLS from this

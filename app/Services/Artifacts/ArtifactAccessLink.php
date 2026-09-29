@@ -92,7 +92,7 @@ final class ArtifactAccessLink
         $hostname = $this->isolatedHostname($tenantSlug, $artifactId);
         $expiresAtUnix = ($expiresAt ?? now()->addMinutes($this->ttlMinutes))->getTimestamp();
 
-        return "https://{$hostname}/p/{$artifactId}?token={$this->mintToken($artifactId, $expiresAtUnix)}";
+        return "https://{$hostname}/p/{$artifactId}/?token={$this->mintToken($artifactId, $expiresAtUnix)}";
     }
 
     /**

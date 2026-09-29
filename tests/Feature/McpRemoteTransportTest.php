@@ -1318,7 +1318,7 @@ test('a secure view_url from the workspace tools opens for a member and is refus
 
     $location = (string) $followed['location'];
 
-    expect($location)->toStartWith('https://'.$team->slug.'--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'?token=');
+    expect($location)->toStartWith('https://'.$team->slug.'--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=');
 
     parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
     $minted = (string) ($query['token'] ?? '');
