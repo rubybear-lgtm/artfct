@@ -81,6 +81,22 @@ test('semantic_query_finds_relevant_artifact', function () {
     expect($results[0]->id)->toBe('billing-dash');
 });
 
+test('search_results_use_the_worker_public_host_for_permanent_artifacts', function () {
+    config([
+        'app.public_base_url' => null,
+        'services.worker.base_url' => 'https://staging-worker.example.test',
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'search-org']);
+    $artifactId = str_repeat('a', 32);
+    seedSearchArtifact($team, $artifactId);
+    seedSearchChunk($team, $artifactId, 'staging worker host');
+
+    $results = app(SearchService::class)->search($team, 'staging worker host', [], 5, 'tester');
+
+    expect($results[0]->url)->toBe("https://staging-worker.example.test/p/{$artifactId}/");
+});
+
 test('api_search_explains_when_indexing_is_disabled', function () {
     config(['indexing.enabled' => false]);
 

@@ -8,6 +8,7 @@ use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\SearchResultServed;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\EmbeddingsContract;
@@ -229,7 +230,7 @@ final class SearchService
             id: $match->chunk->artifactId,
             title: $artifact['title'] ?? $match->chunk->artifactId,
             description: $artifact['description'] ?? null,
-            url: rtrim((string) config('app.public_base_url', 'https://artfct.dev'), '/')."/p/{$match->chunk->artifactId}",
+            url: ArtifactViewLink::publicPermanentUrl($match->chunk->artifactId),
             snippet: $this->snippet($match->chunk->text),
             agent: $match->chunk->agent,
             repoUrl: $match->chunk->repoUrl,

@@ -42,7 +42,12 @@ final class ArtifactViewLink
      */
     public static function publicUrl(string $artifactId): string
     {
-        return rtrim((string) config('app.public_base_url', 'https://artfct.dev'), '/')."/p/{$artifactId}";
+        $baseUrl = config('services.worker.public_base_url')
+            ?: config('app.public_base_url')
+            ?: config('services.worker.base_url')
+            ?: 'https://artfct.dev';
+
+        return rtrim((string) $baseUrl, '/')."/p/{$artifactId}";
     }
 
     public static function publicPermanentUrl(string $artifactId): string

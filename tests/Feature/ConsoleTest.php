@@ -355,6 +355,24 @@ test('opening_a_public_artifact_goes_straight_to_its_public_url_without_minting'
             ->exists())->toBeFalse();
 });
 
+test('opening_a_public_artifact_uses_the_staging_worker_host_without_an_app_public_base', function () {
+    config([
+        'app.public_base_url' => null,
+        'services.worker.base_url' => 'https://staging-worker.example.test',
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', tier: 'public');
+
+    $this->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertRedirect('https://staging-worker.example.test/p/'.ARTIFACT_LINK_ID.'/');
+});
+
 /**
  * The mint audit row: who, which artifact, and when the link they were handed
  * expires — and never the token. The audited expiry is compared against the
