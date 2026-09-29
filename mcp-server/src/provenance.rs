@@ -190,12 +190,35 @@ fn discover_git_provenance(cwd: &Path) -> GitProvenance {
     }
 }
 
+/// Environment variables Git sets for hook processes (`GIT_DIR`,
+/// `GIT_WORK_TREE`, `GIT_INDEX_FILE`) or that a caller's shell may already
+/// export (`GIT_CEILING_DIRECTORIES`). Any of these override `current_dir`-
+/// based repository discovery, so a `git` subprocess launched while one is
+/// set silently resolves to the wrong repository. `artfct deploy` can run
+/// from inside another tool's git hook (this crate's own pre-commit hook
+/// runs `cargo test`, which exercises this exact code path against a
+/// throwaway tempdir "repo" — without this, the tempdir's `git` calls
+/// resolve to the invoking repository instead and collide with its held
+/// `index.lock`), so every git subprocess this module starts explicitly
+/// clears them rather than trusting the ambient environment.
+const GIT_ENV_VARS_TO_CLEAR: [&str; 4] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_CEILING_DIRECTORIES",
+];
+
+fn git_command(cwd: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(cwd);
+    for var in GIT_ENV_VARS_TO_CLEAR {
+        command.env_remove(var);
+    }
+    command
+}
+
 fn git_output(cwd: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .ok()?;
+    let output = git_command(cwd).args(args).output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -206,9 +229,8 @@ fn git_output(cwd: &Path, args: &[&str]) -> Option<String> {
 }
 
 fn git_status(cwd: &Path) -> Option<bool> {
-    let output = Command::new("git")
+    let output = git_command(cwd)
         .args(["status", "--porcelain"])
-        .current_dir(cwd)
         .output()
         .ok()?;
 
@@ -256,11 +278,17 @@ mod tests {
     };
 
     fn git(repo: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            .args(args)
-            .current_dir(repo)
-            .status()
-            .expect("git should be installed");
+        // Same ambient-env hazard `git_command` (in the parent module) guards
+        // against: without clearing GIT_DIR et al., this fixture's own `git
+        // init`/`add`/`commit` calls resolve to whichever repository is
+        // ambient (e.g. this crate's own pre-commit hook, which runs this
+        // test suite with GIT_DIR set) instead of the fresh `repo` tempdir.
+        let mut command = Command::new("git");
+        command.args(args).current_dir(repo);
+        for var in super::GIT_ENV_VARS_TO_CLEAR {
+            command.env_remove(var);
+        }
+        let status = command.status().expect("git should be installed");
         assert!(status.success(), "git command failed: git {args:?}");
     }
 

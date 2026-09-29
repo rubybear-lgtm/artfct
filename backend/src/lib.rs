@@ -2737,6 +2737,13 @@ mod tests {
         .expect("put succeeds")
     }
 
+    /// Proves the pure refcount decision logic (decrement-not-delete while
+    /// a sibling reference survives) against `MemoryArtifactStore`, spec
+    /// 11's in-memory double — not the D1 SQL that runs in production. The
+    /// equivalent guarantee against real D1 (`ref_count` read back from a
+    /// live database after a delete) is
+    /// `delete_once_keeps_shared_blob_and_delete_last_removes_it` in
+    /// `mcp-server/tests/storage_integration.rs`.
     #[test]
     fn shared_blob_survives_single_artifact_delete() {
         let store = store::MemoryArtifactStore::new();
@@ -2754,6 +2761,12 @@ mod tests {
         assert_eq!(store.blob_ref_count(&first.content_hash), 1);
     }
 
+    /// Same caveat as `shared_blob_survives_single_artifact_delete`: this is
+    /// the in-memory double's decision logic, not the D1 SQL. The real-D1
+    /// equivalent (`ref_count` reaching zero and the row/R2 object actually
+    /// being removed) is proven by `create_delete_create_delete_returns_
+    /// refcount_to_zero` and `delete_once_keeps_shared_blob_and_delete_last_
+    /// removes_it` in `mcp-server/tests/storage_integration.rs`.
     #[test]
     fn blob_removed_at_refcount_zero() {
         let store = store::MemoryArtifactStore::new();
@@ -2770,10 +2783,15 @@ mod tests {
 
     /// `gdpr_erasure_removes_bytes_from_r2` needs a live R2 bucket to prove
     /// a direct read 404s after erasure — not constructible in a native
-    /// `cargo test` (see `block_on`'s doc comment above). The refcount
-    /// arithmetic it depends on is proven by `blob_removed_at_refcount_zero`
-    /// and `governance::plan_erasure`'s unit tests; this stub names what
-    /// the live check would additionally verify.
+    /// `cargo test` (see `block_on`'s doc comment above). The pure
+    /// refcount-reaches-zero decision logic it depends on is proven against
+    /// `MemoryArtifactStore` by `blob_removed_at_refcount_zero` and by
+    /// `governance::plan_erasure`'s unit tests; the same guarantee against
+    /// the real D1 SQL is proven separately by
+    /// `create_delete_create_delete_returns_refcount_to_zero` in
+    /// `mcp-server/tests/storage_integration.rs`. Neither covers the R2
+    /// object actually disappearing on erasure specifically — that is what
+    /// this stub still names and nothing currently verifies.
     #[test]
     #[ignore = "requires a live R2 bucket; run against a local Wrangler dev instance"]
     fn gdpr_erasure_removes_bytes_from_r2() {
