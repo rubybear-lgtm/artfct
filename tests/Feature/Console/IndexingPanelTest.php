@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
@@ -8,6 +9,7 @@ use App\Models\ArtifactIndexingFailure;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -52,6 +54,31 @@ test('retry_is_a_noop_for_an_already_indexed_artifact', function () {
     test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertRedirect();
 
     Bus::assertNothingDispatched();
+});
+
+test('retry_dispatches_when_extraction_was_saved_but_indexing_failed', function () {
+    [$team, $admin] = indexingTeam();
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => 'art0000001',
+        'org_id' => $team->slug,
+        'user_id' => 1,
+        'title' => 'Failed artifact',
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+    ]);
+    ArtifactIndexEntry::create(['team_id' => $team->id, 'artifact_id' => 'art0000001', 'rendered' => true, 'extracted_text' => 'Hi', 'extracted_at' => now()]);
+    ArtifactIndexingFailure::create(['team_id' => $team->id, 'artifact_id' => 'art0000001', 'attempts' => 3, 'reason' => 'embedding failed', 'failed_at' => now()]);
+
+    test()->actingAs($admin)->get(route('console.index', $team))
+        ->assertInertia(fn (Assert $page) => $page->where('indexing.art0000001', 'failed'));
+
+    test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertRedirect();
+    test()->actingAs($admin)->post(route('console.reindex', [$team, 'art0000001']))->assertRedirect();
+
+    Bus::assertDispatchedTimes(IndexArtifactJob::class, 1);
+    expect(ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', 'art0000001')->exists())->toBeTrue();
 });
 
 test('members_cannot_retry', function () {

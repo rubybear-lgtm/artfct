@@ -31,6 +31,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - RUB-316/RUB-411: permanent artifact entrypoints use `/p/{id}/`, so relative JavaScript and CSS resolve within their bundle on signed isolated and public links. Anonymous KV `deploy_to_canvas` links keep their existing URL behavior.
 - Public permanent links from the console and search now use the configured Worker public host, including staging, instead of falling back to the production artifact host.
+- Indexing failures that occurred after text extraction can now be retried from the console; the failure stays visible until a successful job clears it. Console revocation removes the artifact's indexed chunks.
 - The local MCP end-to-end Docker stack now uses pgvector Postgres, allowing the new `artifact_chunks` migration and full Worker/MCP integration suite to run.
 
 ## 0.0.1 - 2026-06-03

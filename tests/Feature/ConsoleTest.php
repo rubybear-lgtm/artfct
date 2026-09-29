@@ -7,6 +7,9 @@ use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Indexing\FakeVectorIndex;
+use App\Services\Indexing\IndexingService;
+use App\Services\Indexing\VectorIndexContract;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 
@@ -35,6 +38,24 @@ test('viewer_cannot_revoke', function () {
     $response->assertForbidden();
     // Verify the API was never called (the guard fired, preventing the call)
     Http::assertNothingSent();
+});
+
+test('revoking_an_artifact_removes_its_index_chunks', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $artifactId = '1234567890';
+    $html = '<html><body><p>'.str_repeat('A revoked artifact must leave the search index. ', 3).'</p></body></html>';
+    app(IndexingService::class)->indexArtifact($team, $artifactId, $html, []);
+
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeTrue();
+
+    test()->actingAs($admin)
+        ->patch("/settings/teams/{$team->slug}/console/artifacts/{$artifactId}/revoke")
+        ->assertRedirect();
+
+    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeFalse();
 });
 
 test('member_cannot_read_other_org_list', function () {

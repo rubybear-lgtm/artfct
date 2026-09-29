@@ -50,6 +50,7 @@ class IndexArtifactJob implements ShouldQueue
     {
         $team = Team::query()->findOrFail($this->teamId);
         $indexer->indexArtifact($team, $this->artifactId, $this->html, $this->provenance);
+        ArtifactIndexingFailure::query()->where('team_id', $this->teamId)->where('artifact_id', $this->artifactId)->delete();
     }
 
     /**

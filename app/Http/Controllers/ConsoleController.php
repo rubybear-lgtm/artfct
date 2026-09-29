@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
+use App\Services\Indexing\IndexingService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +35,7 @@ class ConsoleController extends Controller
     public function __construct(
         private readonly ArtifactDirectory $artifacts,
         private readonly AuditLogger $auditLogger,
+        private readonly IndexingService $indexer,
     ) {}
 
     /**
@@ -69,7 +71,7 @@ class ConsoleController extends Controller
             'canCollect' => $user->teamRole($team) !== TeamRole::Viewer,
             'indexingEnabled' => $indexingEnabled,
             'indexing' => collect($artifactIds)->mapWithKeys(fn (string $id): array => [
-                $id => ! $indexingEnabled ? 'off' : (in_array($id, $indexed, true) ? 'indexed' : (in_array($id, $failed, true) ? 'failed' : 'pending')),
+                $id => ! $indexingEnabled ? 'off' : (in_array($id, $failed, true) ? 'failed' : (in_array($id, $indexed, true) ? 'indexed' : 'pending')),
             ])->all(),
             'team' => $team,
             'artifacts' => $data['artifacts'],
@@ -82,11 +84,7 @@ class ConsoleController extends Controller
             // so the page cannot single out the public rows that would not
             // need the secret. The token itself never reaches props.
             'canOpenArtifacts' => ArtifactAccessLink::default()->configured(),
-            // Spec 12 DoD: "parked in a dead-letter queue with the reason
-            // recorded and surfaced in the console." The data is real and
-            // tested; the page's own display of this list is a follow-up
-            // (see DOCUMENTATION.md) — this session did not build the
-            // React panel for it.
+            // Spec 12 DoD: dead-letter reasons are visible in the console.
             'indexingFailures' => ArtifactIndexingFailure::query()
                 ->where('team_id', $team->id)
                 ->latest('failed_at')
@@ -109,12 +107,12 @@ class ConsoleController extends Controller
         abort_unless(config('indexing.enabled'), 409, 'Indexing is turned off.');
 
         $alreadyIndexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists();
+        $hasFailure = ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists();
 
-        if (! $alreadyIndexed && Cache::add("reindex:{$team->id}:{$artifactId}", true, now()->addMinutes(10))) {
+        if ((! $alreadyIndexed || $hasFailure) && Cache::add("reindex:{$team->id}:{$artifactId}", true, now()->addMinutes(10))) {
             $artifact = $content->fetch($team->slug, $artifactId);
             abort_if($artifact === null, 404);
 
-            ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
             IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'])->onQueue('indexing');
         }
 
@@ -134,6 +132,7 @@ class ConsoleController extends Controller
 
         try {
             $artifact = $this->artifacts->revokeArtifact($team->slug, $artifactId);
+            $this->indexer->removeFromIndex($team, $artifactId);
 
             $this->auditLogger->recordForRequest($request, AuditEventType::ArtifactRevoked, $team, (string) $user->id, "artifact:{$artifactId}");
 

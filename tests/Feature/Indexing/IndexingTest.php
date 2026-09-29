@@ -88,6 +88,23 @@ test('render_timeout_retries_then_dead_letters', function () {
     expect($job->tries)->toBe(3);
 });
 
+test('successful_retry_clears_its_dead_letter', function () {
+    $team = Team::factory()->create();
+    $artifactId = 'artifact-retried';
+    ArtifactIndexingFailure::query()->create([
+        'team_id' => $team->id,
+        'artifact_id' => $artifactId,
+        'attempts' => 3,
+        'reason' => 'embedding failed',
+        'failed_at' => now(),
+    ]);
+
+    $html = '<html><body><p>'.str_repeat('Indexing can succeed after a transient provider failure. ', 3).'</p></body></html>';
+    (new IndexArtifactJob($team->id, $artifactId, $html, []))->handle(app(IndexingService::class));
+
+    expect(ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists())->toBeFalse();
+});
+
 test('dead_lettered_artifact_still_serves', function () {
     ArtifactIndexingFailure::query()->create([
         'team_id' => Team::factory()->create()->id,
