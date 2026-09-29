@@ -16,7 +16,9 @@ use App\Services\Indexing\RendererContract;
 use App\Services\Indexing\RenderResult;
 use App\Services\Indexing\RenderTimeoutException;
 use App\Services\Indexing\VectorIndexContract;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 test('js_heavy_artifact_indexes_post_hydration_text', function () {
@@ -87,6 +89,41 @@ test('render_timeout_retries_then_dead_letters', function () {
     expect($failure->reason)->toContain('Render timed out');
     expect($job->backoff())->toBe([10, 30, 60]);
     expect($job->tries)->toBe(3);
+});
+
+test('database_queue_applies_backoff_and_dead_letters_after_three_render_timeouts', function () {
+    $team = Team::factory()->create();
+    $artifactId = 'artifact-queue-timeout';
+    $html = '<div id="root"></div>';
+    $renderer = Mockery::mock(RendererContract::class);
+    $renderer->shouldReceive('render')->times(3)->andThrow(new RenderTimeoutException('Browser Rendering timed out.'));
+    app()->instance(RendererContract::class, $renderer);
+
+    $reindexCacheKey = IndexArtifactJob::reindexCacheKey($team->id, $artifactId);
+    Cache::put($reindexCacheKey, true, now()->addMinutes(10));
+    IndexArtifactJob::dispatch($team->id, $artifactId, $html, [])->onConnection('database')->onQueue('indexing');
+
+    foreach ([10, 30] as $expectedBackoff) {
+        Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'indexing', '--once' => true, '--tries' => 3, '--sleep' => 0, '--no-interaction' => true]);
+
+        $queued = DB::table('jobs')->where('queue', 'indexing')->sole();
+        expect($queued->attempts)->toBe($expectedBackoff === 10 ? 1 : 2)
+            ->and($queued->available_at - now()->timestamp)->toBeGreaterThanOrEqual($expectedBackoff - 1)
+            ->toBeLessThanOrEqual($expectedBackoff)
+            ->and(Cache::has($reindexCacheKey))->toBeTrue()
+            ->and(ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists())->toBeFalse();
+
+        DB::table('jobs')->where('id', $queued->id)->update(['available_at' => now()->subSecond()->timestamp]);
+    }
+
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'indexing', '--once' => true, '--tries' => 3, '--sleep' => 0, '--no-interaction' => true]);
+
+    $failure = ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->sole();
+    expect($failure->attempts)->toBe(3)
+        ->and($failure->reason)->toContain('Browser Rendering timed out')
+        ->and(DB::table('jobs')->where('queue', 'indexing')->count())->toBe(0)
+        ->and(DB::table('failed_jobs')->count())->toBe(1)
+        ->and(Cache::has($reindexCacheKey))->toBeFalse();
 });
 
 test('successful_retry_clears_its_dead_letter', function () {
