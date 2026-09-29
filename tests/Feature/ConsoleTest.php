@@ -346,7 +346,7 @@ test('opening_a_public_artifact_goes_straight_to_its_public_url_without_minting'
     $response = test()->actingAs($viewer)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
 
-    $response->assertRedirect('https://artfct.dev/p/'.ARTIFACT_LINK_ID);
+    $response->assertRedirect('https://artfct.dev/p/'.ARTIFACT_LINK_ID.'/');
 
     expect((string) $response->headers->get('Location'))
         ->not->toContain('token')

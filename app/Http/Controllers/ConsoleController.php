@@ -215,7 +215,7 @@ class ConsoleController extends Controller
         abort_if($artifact === null, 404);
 
         if (ArtifactViewLink::isAnonymous($artifact['tier'] ?? null)) {
-            return redirect()->away(ArtifactViewLink::publicUrl($artifactId));
+            return redirect()->away(ArtifactViewLink::publicPermanentUrl($artifactId));
         }
 
         $links = ArtifactAccessLink::default();

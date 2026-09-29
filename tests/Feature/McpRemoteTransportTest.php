@@ -1199,7 +1199,7 @@ test('deploy_artifact hands a public artifact the workspaces public url without 
     // Worker itself published is the whole link: no token is minted for it, no
     // app round trip is asked of the reader, and no host is guessed.
     expect($response->json('result.structuredContent.view_url'))
-        ->toBe('https://staging.artfct.dev/p/'.ARTIFACT_LINK_ID)
+        ->toBe('https://staging.artfct.dev/p/'.ARTIFACT_LINK_ID.'/')
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('worker.test')
         ->and($response->getContent())->not->toContain('token=')
         ->and($response->json('result.structuredContent.tier'))->toBe('public');
@@ -1359,7 +1359,7 @@ test('get_artifact hands a public artifact the workspaces public url without a t
     ])->assertOk();
 
     expect($response->json('result.structuredContent.view_url'))
-        ->toBe('https://artfct.dev/p/'.ARTIFACT_LINK_ID);
+        ->toBe('https://artfct.dev/p/'.ARTIFACT_LINK_ID.'/');
 });
 
 test('artifact links fail closed when no signing secret is configured', function () {

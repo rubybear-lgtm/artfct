@@ -833,7 +833,7 @@ pub(crate) async fn existing_permanent_response(
         JsonResponseDefinition::json(
             PermanentCreateArtifactResponse {
                 id: artifact_id.to_string(),
-                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
+                url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
                 tier,
                 missing_files: missing_manifest_files(&existing_manifest, &present),
             },
@@ -1085,7 +1085,7 @@ pub(crate) async fn create_permanent_artifact(
         JsonResponseDefinition::json(
             PermanentCreateArtifactResponse {
                 id: artifact_id.clone(),
-                url: format!("{}/p/{artifact_id}", base_url.trim_end_matches('/')),
+                url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
                 tier,
                 missing_files,
             },

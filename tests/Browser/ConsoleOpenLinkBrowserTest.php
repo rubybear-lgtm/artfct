@@ -150,7 +150,7 @@ test('following_the_console_open_link_reaches_the_public_artifact_url_without_a_
 
     $page->navigate($href)
         ->assertNoJavaScriptErrors()
-        ->assertPathIs('/p/'.ARTIFACT_LINK_ID)
+        ->assertPathIs('/p/'.ARTIFACT_LINK_ID.'/')
         ->assertQueryStringMissing('token')
         ->assertSee('RUB367 artifact body')
         ->assertSee(ARTIFACT_LINK_ID);

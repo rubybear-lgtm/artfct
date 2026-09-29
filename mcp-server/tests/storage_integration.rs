@@ -396,6 +396,13 @@ async fn create_and_upload_bundle(
         .as_str()
         .ok_or("create response omitted id")?
         .to_string();
+    let published_url =
+        reqwest::Url::parse(body["url"].as_str().ok_or("create response omitted url")?)?;
+    assert_eq!(published_url.path(), format!("/p/{id}/"));
+    assert_eq!(
+        published_url.join("app.js")?.path(),
+        format!("/p/{id}/app.js")
+    );
     for hash in body["missing_files"]
         .as_array()
         .ok_or("missing_files omitted")?

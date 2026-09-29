@@ -45,6 +45,11 @@ final class ArtifactViewLink
         return rtrim((string) config('app.public_base_url', 'https://artfct.dev'), '/')."/p/{$artifactId}";
     }
 
+    public static function publicPermanentUrl(string $artifactId): string
+    {
+        return self::withPermanentEntrypointSlash($artifactId, self::publicUrl($artifactId));
+    }
+
     /**
      * The app's open route for one artifact in `$teamSlug`. Session
      * authentication lives here, never in the URL.
@@ -76,6 +81,10 @@ final class ArtifactViewLink
      */
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null): string
     {
+        if (is_string($tier) && strtolower($tier) === 'public') {
+            return self::withPermanentEntrypointSlash($artifactId, $workerUrl ?: self::publicUrl($artifactId));
+        }
+
         if (self::isAnonymous($tier)) {
             return self::forAnonymousArtifact($artifactId, $workerUrl);
         }
@@ -93,5 +102,14 @@ final class ArtifactViewLink
     public static function forAnonymousArtifact(string $artifactId, ?string $workerUrl = null): string
     {
         return is_string($workerUrl) && $workerUrl !== '' ? $workerUrl : self::publicUrl($artifactId);
+    }
+
+    private static function withPermanentEntrypointSlash(string $artifactId, string $url): string
+    {
+        if (preg_match('/\A[0-9a-f]{32}\z/', $artifactId) !== 1 || ! str_ends_with($url, "/p/{$artifactId}")) {
+            return $url;
+        }
+
+        return $url.'/';
     }
 }

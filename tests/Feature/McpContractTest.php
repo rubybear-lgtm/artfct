@@ -179,3 +179,13 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
     // per click, and only for a secure artifact.
     expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->not->toContain('token');
 });
+
+test('public permanent links keep relative bundle assets under the artifact path', function () {
+    $id = str_repeat('a', 32);
+    $published = ArtifactViewLink::forArtifact('acme', $id, 'public', "https://worker.test/p/{$id}");
+    $fallback = ArtifactViewLink::forArtifact('acme', $id, 'public');
+
+    expect($published)->toBe("https://worker.test/p/{$id}/")
+        ->and($fallback)->toBe("https://artfct.dev/p/{$id}/")
+        ->and(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}");
+});
