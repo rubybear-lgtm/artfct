@@ -80,6 +80,20 @@ test('golden_queries_fail_and_name_the_missing_key_when_an_expected_artifact_is_
         ->assertFailed();
 });
 
+test('golden_queries_apply_the_fixtures_agent_filter', function () {
+    config(['indexing.enabled' => true]);
+    $team = Team::factory()->create(['slug' => 'zz-golden']);
+    memberOfTeam($team, TeamRole::Admin);
+    $fixture = goldenQueriesFixture($team, [
+        ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash'], 'agent' => 'cursor'],
+        ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash'], 'agent' => 'someone-else'],
+    ]);
+
+    test()->artisan('synthetic:golden-queries', ['org' => 'zz-golden', '--fixture' => $fixture])
+        ->expectsOutputToContain('1 of 2 golden queries')
+        ->assertFailed();
+});
+
 test('golden_queries_refuse_a_non_synthetic_org', function () {
     Team::factory()->create(['slug' => 'acme']);
 

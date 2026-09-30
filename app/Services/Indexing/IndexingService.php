@@ -80,11 +80,32 @@ final class IndexingService
     }
 
     /**
+     * The text that gets chunked and embedded. Spec 12 extracts the title and
+     * headings along with the visible text, so a rendered page whose body is
+     * empty is still findable by its title and headings, and a title the body
+     * does not repeat is embedded ahead of it. The stored extraction itself is
+     * left as the renderer returned it.
+     */
+    private function embeddableText(ArtifactIndexEntry $entry): string
+    {
+        $text = trim((string) $entry->extracted_text);
+        $title = trim((string) $entry->title);
+
+        if ($text === '') {
+            $headings = implode(' ', array_filter(array_map('trim', (array) $entry->headings)));
+
+            return trim(implode("\n", array_filter([$title, $headings])));
+        }
+
+        return $title !== '' && ! str_contains($text, $title) ? $title."\n".$text : $text;
+    }
+
+    /**
      * @param  array{agent: ?string, repo_url: ?string, commit_sha: ?string}  $provenance
      */
     private function embedAndUpsert(Team $team, ArtifactIndexEntry $entry, array $provenance): void
     {
-        $texts = Chunker::chunk($entry->extracted_text);
+        $texts = Chunker::chunk($this->embeddableText($entry));
         if ($texts === []) {
             $this->vectorIndex->deleteArtifactVectors($team->slug, $entry->artifact_id);
 

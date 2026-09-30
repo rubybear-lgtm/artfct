@@ -130,20 +130,20 @@ final class SyntheticCorpus
     {
         $files = match ($kind) {
             'react' => [
-                self::file('index.html', 'text/html', '<!doctype html><html><head><title>'.$title.'</title></head><body><div id="root"></div><script src="app.js"></script></body></html>'),
+                self::file('index.html', 'text/html', '<!doctype html><html><head><meta charset="utf-8"><title>'.$title.'</title></head><body><div id="root"></div><script src="app.js"></script></body></html>'),
                 self::generated('app.js', 'application/javascript', 2048, $key.$seed),
             ],
             'vue' => [
-                self::file('index.html', 'text/html', '<!doctype html><html><head><title>'.$title.'</title></head><body><div id="app"></div><script src="main.js"></script></body></html>'),
+                self::file('index.html', 'text/html', '<!doctype html><html><head><meta charset="utf-8"><title>'.$title.'</title></head><body><div id="app"></div><script src="main.js"></script></body></html>'),
                 self::generated('main.js', 'application/javascript', 2048, $key.$seed),
             ],
             'bundle' => [
-                self::file('index.html', 'text/html', '<!doctype html><html><head><title>'.$title.'</title><link rel="stylesheet" href="assets/site.css"></head><body><h1>'.$title.'</h1><p>'.self::paragraph($key.$seed).'</p></body></html>'),
+                self::file('index.html', 'text/html', '<!doctype html><html><head><meta charset="utf-8"><title>'.$title.'</title><link rel="stylesheet" href="assets/site.css"></head><body><h1>'.$title.'</h1><p>'.self::paragraph($key.$seed).'</p></body></html>'),
                 self::generated('assets/site.css', 'text/css', 1024, $key.$seed),
                 self::generated('data/nested/series.json', 'application/json', 1024, $key.$seed),
             ],
             default => [
-                self::file('index.html', 'text/html', '<!doctype html><html><head><title>'.$title.'</title></head><body><h1>'.$title.'</h1><p>'.self::paragraph($key.$seed).'</p><p>'.self::paragraph($key.'2'.$seed).'</p></body></html>'),
+                self::file('index.html', 'text/html', '<!doctype html><html><head><meta charset="utf-8"><title>'.$title.'</title></head><body><h1>'.$title.'</h1><p>'.self::paragraph($key.$seed).'</p><p>'.self::paragraph($key.'2'.$seed).'</p></body></html>'),
             ],
         };
 

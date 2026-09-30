@@ -40,6 +40,44 @@ test('js_heavy_artifact_indexes_post_hydration_text', function () {
     expect($renderer->callCount)->toBe(1);
 });
 
+test('a_rendered_artifact_with_no_body_text_is_still_found_by_its_title', function () {
+    $team = Team::factory()->create();
+    $html = '<div id="root"></div><script src="/app.js"></script>';
+
+    /** @var FakeRenderer $renderer */
+    $renderer = app(RendererContract::class);
+    $renderer->seedRender($html, new RenderResult(text: '', title: 'Billing dashboard July 2026', headings: ['Revenue']));
+
+    app(IndexingService::class)->indexArtifact($team, 'artifact-title-only', $html, []);
+
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    $embeddings = app(EmbeddingsContract::class);
+    $hits = $index->query($team->slug, $embeddings->embedQuery('Billing dashboard July 2026'), 10);
+
+    expect(array_map(fn ($hit) => $hit->chunk->artifactId, $hits))->toContain('artifact-title-only');
+});
+
+test('a_rendered_artifacts_title_is_searchable_even_when_body_text_omits_it', function () {
+    $team = Team::factory()->create();
+    $html = '<div id="root"></div><script src="/app.js"></script>';
+
+    /** @var FakeRenderer $renderer */
+    $renderer = app(RendererContract::class);
+    $renderer->seedRender($html, new RenderResult(text: 'Q3 revenue grew 40% year over year.', title: 'Customer health scorecard', headings: []));
+
+    $entry = app(IndexingService::class)->indexArtifact($team, 'artifact-title-prefix', $html, []);
+
+    // The stored extraction stays the rendered text; only the embedded text gains the title.
+    expect($entry->extracted_text)->toBe('Q3 revenue grew 40% year over year.');
+
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    $hits = $index->queryText($team->slug, 'Customer health scorecard', 10);
+
+    expect(array_map(fn ($hit) => $hit->chunk->artifactId, $hits))->toContain('artifact-title-prefix');
+});
+
 test('static_artifact_indexes_without_render', function () {
     $team = Team::factory()->create();
     $html = '<html><body><h1>Quarterly Report</h1><p>'.str_repeat('Revenue was strong across every region this quarter. ', 3).'</p></body></html>';

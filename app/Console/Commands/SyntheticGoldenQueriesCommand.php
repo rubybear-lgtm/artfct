@@ -49,7 +49,7 @@ class SyntheticGoldenQueriesCommand extends Command
 
         /** @var array<string, string> $idsByKey */
         $idsByKey = json_decode(File::get($mapPath), true) ?: [];
-        /** @var list<array{query: string, expected_keys: list<string>}> $queries */
+        /** @var list<array{query: string, expected_keys: list<string>, agent?: ?string, repo_url?: ?string, collection?: ?string}> $queries */
         $queries = json_decode(File::get($fixturePath), true)['queries'] ?? [];
 
         $rows = [];
@@ -57,7 +57,11 @@ class SyntheticGoldenQueriesCommand extends Command
         foreach ($queries as $entry) {
             $resultIds = array_map(
                 fn (SearchResult $result): string => $result->id,
-                $search->search($team, $entry['query'], [], $top, actor: 'golden-queries'),
+                $search->search($team, $entry['query'], array_filter([
+                    'agent' => $entry['agent'] ?? null,
+                    'repo' => $entry['repo_url'] ?? null,
+                    'collection' => $entry['collection'] ?? null,
+                ], fn (?string $value): bool => $value !== null), $top, actor: 'golden-queries'),
             );
             $missing = array_values(array_filter(
                 $entry['expected_keys'],
