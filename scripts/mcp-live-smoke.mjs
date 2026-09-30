@@ -257,7 +257,9 @@ async function assertTenantIsolation(
     // reason, so this is what makes "refused" mean "refused on ownership".
     const ownerCollection = await rpc(ownerToken, ownerSession, 'tools/call', {
         name: 'create_collection',
-        arguments: { name: 'own-artifact-probe' },
+        arguments: {
+            name: `own-artifact-probe-${randomBytes(4).toString('hex')}`,
+        },
     });
     const ownerCollectionId = ownerCollection.result?.structuredContent?.id;
     assert(
