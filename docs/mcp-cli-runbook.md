@@ -432,12 +432,13 @@ Known, currently verified compatibility:
   client reconnects and presents an expired or mismatched session.
 - **Hosted Streamable HTTP with OAuth discovery** (PKCE, dynamic
   registration): the protocol and OAuth flow are covered by the automated
-  contract, feature, and live two-organization suites. A live official MCP
-  Inspector run on staging is not yet recorded here. Verification against
-  specific hosted clients (official MCP Inspector, Claude Desktop/Code,
-  Cursor, Codex CLI, Gemini CLI, OpenCode) is tracked as ongoing work on
-  RUB-383 — do not assume a client works hosted until it has been run against
-  staging and its result added to this list.
+  contract, feature, and live two-organization suites. Official MCP Inspector
+  completed OAuth against staging on 2026-09-21, including discovery, dynamic
+  registration, PKCE consent, token exchange, tool listing, and a
+  `get_connection` call. The negotiated protocol version was not recorded.
+  Claude Code and Cursor still need hosted OAuth runs; the remaining client
+  matrix is tracked on RUB-383. Do not infer compatibility for a client until
+  its staging result is recorded below.
 
 ### Repeatable third-party client run
 
@@ -496,16 +497,29 @@ check. It records what is available for the next release-candidate run.
 | Codex CLI              | 0.155.1           | `artfct setup --list` recognized the TOML target                     | Not run              |
 | Gemini CLI             | 0.42.0            | `artfct setup --list` recognized the JSON target                     | Not run              |
 | OpenCode               | 1.17.18           | `artfct setup --list` recognized the JSON target                     | Not run              |
-| Official MCP Inspector | 2.7.0 via `npx`   | Local stdio `tools/list` passed; launcher and CLI help probes passed | Hosted OAuth not run |
+| Official MCP Inspector | 2.7.0 via `npx`   | Local stdio `tools/list` passed; launcher and CLI help probes passed | OAuth run recorded separately below |
 
 The Inspector package was available from npm; its non-interactive help commands
 and a local stdio `tools/list` probe against `target/debug/artfct mcp serve`
-passed. Its hosted connection and OAuth flow were not run. The preflight also
-observed non-fatal local-environment warnings from Cursor's
+passed. This 2026-09-23 preflight did not repeat the hosted OAuth run recorded
+below. It also observed non-fatal local-environment warnings from Cursor's
 macOS code-sign check, Codex's PATH-alias setup, and Gemini's cleanup attempt.
 The Inspector's non-secret stored-auth probe reported no hosted server URLs,
-so there is no existing OAuth session to reuse. None is a compatibility result;
-record any client-specific behavior only after the hosted run above completes.
+so there was no existing OAuth session to reuse. The local preflight itself is
+not a hosted compatibility result.
+
+### Hosted OAuth run (2026-09-21)
+
+| Client                 | Transport        | Result |
+| ---------------------- | ---------------- | ------ |
+| Official MCP Inspector | Streamable HTTP  | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded. |
+
+This run exposed three staging defects, all fixed and deployed: the
+path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
+discovery, registration, token, and MCP endpoints lacked CORS (including the
+RFC 8414 path-inserted metadata URL); and the consent redirect to the local
+client callback was blocked because it used XHR. The Inspector completed the
+flow after those fixes. This record does not cover Claude Code or Cursor OAuth.
 
 ### Headless bearer-auth runs (2026-09-30)
 
