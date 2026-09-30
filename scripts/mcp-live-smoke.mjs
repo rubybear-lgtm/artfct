@@ -152,7 +152,12 @@ await assertTenantIsolation(
 
 await assertConcurrentSessionsKeepTheirTenant(concurrency);
 
-const indexed = await assertDeployIsIndexedAndCounted(tokenA, sessionA);
+const indexed = await assertDeployIsIndexedAndCounted(
+    tokenA,
+    sessionA,
+    tokenB,
+    sessionB,
+);
 
 const rateLimitCheck = optionalBoolean('MCP_LIVE_RATE_LIMIT_CHECK', true);
 const rateLimitResult = rateLimitCheck
@@ -166,6 +171,7 @@ console.log(
         tools: [...toolNames].sort(),
         tenantIsolation: 'passed',
         searchVisibility: indexed.searchVisibility,
+        searchTenantIsolation: indexed.searchTenantIsolation,
         usageMovedOnDeploy: indexed.usageMoved,
         concurrentSessions: concurrency * 2,
         rateLimit: rateLimitResult,
@@ -413,7 +419,12 @@ async function assertRateLimiting(token, session) {
 // `indexing.enabled` is deliberately off until the real embeddings and vector
 // index exist (config/indexing.php). So search is asserted only when indexing is
 // on, and skipped loudly otherwise rather than silently passing.
-async function assertDeployIsIndexedAndCounted(token, session) {
+async function assertDeployIsIndexedAndCounted(
+    token,
+    session,
+    otherOrganizationToken,
+    otherOrganizationSession,
+) {
     const indexingEnabled = process.env.MCP_LIVE_INDEXING_ENABLED === '1';
     const nonce = `zq${Date.now()}`;
     const phrase = `mcp live indexed fixture ${nonce}`;
@@ -437,6 +448,7 @@ async function assertDeployIsIndexedAndCounted(token, session) {
     );
     let usedAfter = usedBefore;
     let foundInSearch = false;
+    let hiddenFromOtherOrganization = false;
 
     for (let attempt = 0; attempt < 30; attempt++) {
         usedAfter = await usageArtifactsUsed(token, session);
@@ -451,7 +463,25 @@ async function assertDeployIsIndexedAndCounted(token, session) {
             ).some((result) => result.id === id);
         }
 
-        if (usedAfter > usedBefore && (!indexingEnabled || foundInSearch)) {
+        if (indexingEnabled && !hiddenFromOtherOrganization) {
+            const otherOrganizationResults = await rpc(
+                otherOrganizationToken,
+                otherOrganizationSession,
+                'tools/call',
+                {
+                    name: 'search_artifacts',
+                    arguments: { query: phrase, limit: 20 },
+                },
+            );
+            hiddenFromOtherOrganization = !(
+                otherOrganizationResults.result?.structuredContent?.results ?? []
+            ).some((result) => result.id === id);
+        }
+
+        if (
+            usedAfter > usedBefore &&
+            (!indexingEnabled || (foundInSearch && hiddenFromOtherOrganization))
+        ) {
             break;
         }
 
@@ -475,6 +505,7 @@ async function assertDeployIsIndexedAndCounted(token, session) {
         return {
             id,
             searchVisibility: 'skipped',
+            searchTenantIsolation: 'skipped',
             usageMoved: usedAfter > usedBefore,
         };
     }
@@ -484,10 +515,16 @@ async function assertDeployIsIndexedAndCounted(token, session) {
         'A deploy through deploy_artifact never appeared in search_artifacts results: ' +
             id,
     );
+    assert(
+        hiddenFromOtherOrganization,
+        'A deploy through deploy_artifact appeared in another organization search results: ' +
+            id,
+    );
 
     return {
         id,
         searchVisibility: 'asserted',
+        searchTenantIsolation: 'asserted',
         usageMoved: usedAfter > usedBefore,
     };
 }

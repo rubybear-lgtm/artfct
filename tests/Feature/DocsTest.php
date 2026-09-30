@@ -72,3 +72,23 @@ test('the doctor output shown on the docs page matches what the CLI prints', fun
         expect($page)->toContain($shown);
     }
 });
+
+test('the MCP docs explain workspace terminology and first-time access', function () {
+    $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
+
+    expect($page)
+        ->toContain('an organization is called a team')
+        ->toContain('the CLI and OAuth protocol also call it a workspace')
+        ->toContain('Artfct asks you to create')
+        ->toContain('ask its administrator to invite')
+        ->toContain('Hosted MCP uses browser sign-in')
+        ->toContain('ARTFCT_ORG_TOKEN')
+        ->toContain('For staging, replace')
+        ->toContain('staging.artfct.dev')
+        ->toContain('login.url()')
+        ->toContain('terms.url()')
+        ->toContain('privacy.url()')
+        ->toContain('claude mcp get artfct')
+        ->toContain('cursor-agent mcp login artfct')
+        ->toContain('Hosted-client sign-in is separate from the local CLI session');
+});

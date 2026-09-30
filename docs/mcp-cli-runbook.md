@@ -317,14 +317,24 @@ the same shape: the app on `staging.artfct.dev`, artifact origins on
 200 with a minted link, 403 when a token is presented on another tenant's host,
 valid TLS, no cookies).
 
-**Hazard to resolve first.** The production Worker config routes `*.artfct.dev/*`
-for artifact origins (`<tenant>--<id>.artfct.dev`). That pattern matches every
-single-label subhost of the zone, including `staging.artfct.dev`, so deploying it
-as-is would route staging's app traffic into the Worker. Before deploying, give
-staging (and any other subhost that is not an artifact origin, such as docs or
-www) a more specific route with no Worker attached, or move production to a
-marker-suffix scheme like staging's. Verify with `curl -I` against each existing
-subhost after the change.
+**Hazard and proposed resolution.** The production Worker config routes
+`*.artfct.dev/*` for artifact origins (`<tenant>--<id>.artfct.dev`). That
+pattern matches every single-label subhost of the zone, including
+`staging.artfct.dev`, so deploying it as-is would route staging's app traffic
+into the Worker. Use a production marker suffix that keeps artifact hosts one
+label deep and gives the Worker a narrow route:
+
+- Artifact host: `<tenant>--<id>--prod.artfct.dev`.
+- Worker route: `*--prod.artfct.dev/*`.
+- Set `ARTFCT_ARTIFACT_ORIGIN_SUFFIX=--prod.artfct.dev` on both Laravel and the
+  Worker so minted links and host validation use the same suffix.
+
+This follows the staging shape (`--stg.artfct.dev`), stays under the existing
+`*.artfct.dev` certificate, and leaves `staging.artfct.dev`, `www.artfct.dev`,
+and the apex app host outside the Worker route. This is the proposed plan for
+review only; do not apply it until approved. After review, verify with `curl -I`
+against each existing subhost and confirm a production artifact host reaches
+the Worker.
 
 **Steps, in order:**
 
@@ -338,8 +348,8 @@ subhost after the change.
    `APP_URL`, `OAUTH_ISSUER` and `WORKOS_REDIRECT_URL` to it, then re-register
    the WorkOS redirect URIs and allowed-callback lists.
 4. Point `ARTFCT_WORKER_BASE_URL` (Laravel) and `ARTFCT_PUBLIC_BASE_URL` (Worker)
-   at the production addresses. Leave `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` unset in
-   production so the default `.artfct.dev` suffix applies.
+   at the production addresses. Set `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` to
+   `--prod.artfct.dev` on both services.
 5. Deploy the Worker routes, then run the same checks as staging: an artifact
    host returns 403 without a token, 200 with a minted link, and 403 on another
    tenant's host; `/.well-known/oauth-authorization-server` advertises the

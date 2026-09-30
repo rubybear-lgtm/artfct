@@ -1,8 +1,9 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { GITHUB, SitePage } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
+import { login, privacy, terms } from '@/routes';
 
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
@@ -751,6 +752,22 @@ export default function Docs({ contract }: DocsProps) {
                             the platform credential store when available; the
                             CLI never writes them to agent config.
                         </Prose>
+                        <Prose>
+                            In the web app, an organization is called a team;
+                            the CLI and OAuth protocol also call it a workspace.
+                            They mean the same boundary for members, artifacts,
+                            collections, and access. Sign in at{' '}
+                            <Link href={login.url()}>sign-in page</Link>. If you
+                            have not joined a team, Artfct asks you to create
+                            your first one. To join an existing team, ask its
+                            administrator to invite the email address you use to
+                            sign in. Hosted MCP uses browser sign-in, so you do
+                            not need to create an API token. For automation, an
+                            administrator can create one in team settings under{' '}
+                            <Code>API tokens</Code>; pass it as{' '}
+                            <Code>ARTFCT_ORG_TOKEN</Code> through your secret
+                            manager.
+                        </Prose>
                         <CodeBlock code={CLI_AUTH} />
                         <Prose>
                             <Code>doctor</Code> reports the selected
@@ -784,7 +801,14 @@ Hosted MCP health
                             For clients that support OAuth discovery, add the
                             endpoint below. The client opens browser consent and
                             requests only the scopes it needs; no bearer token
-                            needs to be copied into configuration.
+                            needs to be copied into configuration. These are
+                            production addresses. For staging, replace
+                            <Code>artfct.dev</Code> with{' '}
+                            <Code>staging.artfct.dev</Code>. See the runbook for
+                            the staging-only verification steps. The public{' '}
+                            <Link href={terms.url()}>terms</Link> and{' '}
+                            <Link href={privacy.url()}>privacy policy</Link>{' '}
+                            explain the service and its data handling.
                         </Prose>
                         <CodeBlock code={HOSTED_MCP} />
                         <Prose>
@@ -821,6 +845,36 @@ Hosted MCP health
                             your saved sign-in and then removes your local
                             credentials; if the server cannot be reached it
                             warns you and still removes them.
+                        </Prose>
+                        <Prose>
+                            Hosted-client sign-in is separate from the local CLI
+                            session. In Claude Code, open <Code>/mcp</Code>,
+                            choose <Code>artfct</Code>, and select{' '}
+                            <Code>Reconnect</Code> to repeat browser sign-in;
+                            check the result with{' '}
+                            <Code>claude mcp get artfct</Code>. In Cursor, use
+                            its MCP panel to reconnect, or run{' '}
+                            <Code>cursor-agent mcp login artfct</Code> and{' '}
+                            <Code>cursor-agent mcp list</Code> in Cursor CLI.
+                            These client steps repair hosted OAuth;{' '}
+                            <Code>artfct login</Code> signs in the local CLI.
+                            See the{' '}
+                            <a
+                                href="https://code.claude.com/docs/en/mcp"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Claude Code MCP guide
+                            </a>{' '}
+                            and{' '}
+                            <a
+                                href="https://docs.cursor.com/en/cli/reference/parameters"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Cursor CLI reference
+                            </a>{' '}
+                            for client details.
                         </Prose>
 
                         <SubHeading>Limits and data kept</SubHeading>
