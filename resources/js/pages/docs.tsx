@@ -723,14 +723,18 @@ export default function Docs({ contract }: DocsProps) {
 
                         <SubHeading>Set it up by hand</SubHeading>
                         <Prose>
-                            Add this block to your client&apos;s settings file:
+                            Add this block to your client&apos;s settings file.
+                            Use <Code>cursor</Code> or <Code>claude-code</Code>{' '}
+                            (or your tool&apos;s name) after <Code>--host</Code>{' '}
+                            so Artfct knows which tool is calling:
                         </Prose>
                         <CodeBlock
                             code={`{
   "mcpServers": {
     "artfct": {
       "command": "artfct",
-      "args": ["mcp", "serve"]
+      "args": ["mcp", "serve", "--host", "cursor"]
+    }
   }
 }`}
                         />
@@ -767,7 +771,24 @@ export default function Docs({ contract }: DocsProps) {
                             for the intended workspace, then run{' '}
                             <Code>artfct doctor</Code> to verify recovery.
                             Workspace administrators can revoke hosted
-                            connections from the team MCP connections page.
+                            connections from the team MCP connections page.{' '}
+                            <Code>artfct logout</Code> asks the server to end
+                            your saved sign-in and then removes your local
+                            credentials; if the server cannot be reached it
+                            warns you and still removes them.
+                        </Prose>
+
+                        <SubHeading>Limits and data kept</SubHeading>
+                        <Prose>
+                            Hosted requests are limited to 120 per minute for
+                            each workspace and, separately, 120 per minute for
+                            each connection. A limited request returns status{' '}
+                            <Code>429</Code> with a <Code>Retry-After</Code>{' '}
+                            header; wait that long before trying again. Records
+                            of MCP activity are kept for 90 days by default and
+                            then removed automatically. Workspace administrators
+                            can remove a connection at any time from the team
+                            MCP connections page.
                         </Prose>
 
                         <SubHeading>Remove it</SubHeading>

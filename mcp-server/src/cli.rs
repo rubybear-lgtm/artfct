@@ -40,7 +40,9 @@ pub enum Command {
   artfct login --token $ARTFCT_ORG_TOKEN"
     )]
     Login(LoginArgs),
-    #[command(about = "Remove the saved local organization token")]
+    #[command(
+        about = "Sign out: ask the server to end the saved sign-in, then remove the local credentials"
+    )]
     Logout,
     #[command(
         name = "organizations",
