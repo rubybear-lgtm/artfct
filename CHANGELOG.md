@@ -29,6 +29,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Fixed
 
+- Permanent artifact deletion now emits a signed Worker event that removes its org-scoped search vectors and index entry, including deletes through governance routes.
 - RUB-316/RUB-411: permanent artifact entrypoints use `/p/{id}/`, so relative JavaScript and CSS resolve within their bundle on signed isolated and public links. Anonymous KV `deploy_to_canvas` links keep their existing URL behavior.
 - Public permanent links from the console and search now use the configured Worker public host, including staging, instead of falling back to the production artifact host.
 - Indexing failures that occurred after text extraction can now be retried from the console; the failure stays visible until a successful job clears it. Retry deduplication releases after success, final failure, or an unsuccessful dispatch. Console revocation removes the artifact's indexed chunks.

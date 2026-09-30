@@ -180,6 +180,32 @@ pub(crate) fn emit_artifact_created(
     ctx.wait_until(async move { events::send(&url, event).await });
 }
 
+/// Notifies Laravel after a permanent artifact has been hard-deleted so its
+/// derived search index can be removed without delaying the delete response.
+pub(crate) fn emit_artifact_deleted(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_artifact_deleted_event(
+        &secret.to_string(),
+        org,
+        artifact_id,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
 /// Queues `artifact.viewed` after a permanent artifact is served. The event
 /// carries only the owning org, artifact id, an optional verified viewer id,
 /// and — only when no verified viewer id was resolved — a daily-salted

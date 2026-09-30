@@ -392,6 +392,7 @@ pub(crate) async fn delete_permanent_artifact(
     artifact_id: &str,
     req: &Request,
     env: &Env,
+    ctx: &worker::Context,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let credential = match require_org_credential(authorization.as_deref(), env).await? {
@@ -402,7 +403,10 @@ pub(crate) async fn delete_permanent_artifact(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
     match hard_delete_permanent(&storage, &org, artifact_id).await? {
-        HardDeleteOutcome::Deleted => build_delete_response().into_worker_response(),
+        HardDeleteOutcome::Deleted => {
+            emit_artifact_deleted(ctx, env, &org, artifact_id);
+            build_delete_response().into_worker_response()
+        }
         HardDeleteOutcome::NotFound => {
             json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
         }

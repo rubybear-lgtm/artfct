@@ -51,6 +51,7 @@ use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
 use App\Services\WorkerEvents\ArtifactCreatedHandler;
+use App\Services\WorkerEvents\ArtifactDeletedHandler;
 use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use App\Support\ClientIp;
@@ -186,6 +187,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(WorkerEventHandlers::class)->register(
             'artifact.created',
             fn (array $event) => $this->app->make(ArtifactCreatedHandler::class)->handle($event),
+        );
+        $this->app->make(WorkerEventHandlers::class)->register(
+            'artifact.deleted',
+            fn (array $event) => $this->app->make(ArtifactDeletedHandler::class)->handle($event),
         );
         $this->app->make(WorkerEventHandlers::class)->register(
             'artifact.viewed',

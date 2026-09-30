@@ -48,6 +48,23 @@ pub fn build_event(
     }
 }
 
+pub fn build_artifact_deleted_event(
+    secret: &str,
+    org_id: &str,
+    artifact_id: &str,
+    occurred_at: &str,
+    timestamp: i64,
+) -> SignedEvent {
+    build_event(
+        secret,
+        "artifact.deleted",
+        org_id,
+        occurred_at,
+        timestamp,
+        json!({"artifact_id": artifact_id}),
+    )
+}
+
 /// Sends the event; any failure is logged and dropped.
 pub async fn send(url: &str, event: SignedEvent) {
     let result: worker::Result<()> = async {
@@ -87,5 +104,24 @@ mod tests {
         let event = build_event("s", "artifact.created", "credential-org", "t", 1, json!({}));
         let parsed: Value = serde_json::from_str(&event.body).unwrap();
         assert_eq!(parsed["org_id"], "credential-org");
+    }
+
+    #[test]
+    fn deleted_event_carries_the_deleted_artifact_and_authenticated_org() {
+        let event = build_artifact_deleted_event(
+            "secret",
+            "tenant-a",
+            "deleted-artifact",
+            "2026-09-30T00:00:00Z",
+            1_780_272_000,
+        );
+        let parsed: Value = serde_json::from_str(&event.body).unwrap();
+        assert_eq!(parsed["type"], "artifact.deleted");
+        assert_eq!(parsed["org_id"], "tenant-a");
+        assert_eq!(parsed["data"], json!({"artifact_id": "deleted-artifact"}));
+        assert_eq!(
+            event.signature,
+            sign("secret", event.timestamp, &event.body)
+        );
     }
 }

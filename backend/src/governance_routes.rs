@@ -82,6 +82,7 @@ pub(crate) async fn governance_route(
     path: &str,
     req: &mut Request,
     env: &Env,
+    ctx: &worker::Context,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let secret = env
@@ -162,7 +163,10 @@ pub(crate) async fn governance_route(
         }
         (GovernanceRoute::DeleteArtifact { artifact_id, .. }, Method::Delete) => {
             match hard_delete_permanent(&storage, org, artifact_id).await? {
-                HardDeleteOutcome::Deleted => build_delete_response().into_worker_response(),
+                HardDeleteOutcome::Deleted => {
+                    emit_artifact_deleted(ctx, env, org, artifact_id);
+                    build_delete_response().into_worker_response()
+                }
                 HardDeleteOutcome::NotFound => {
                     json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
                 }

@@ -54,8 +54,8 @@ use auth::{
 #[cfg(test)]
 use ephemeral_routes::{build_create_artifact_response, build_update_artifact_response};
 use ephemeral_routes::{
-    create_artifact, emit_artifact_created, emit_artifact_viewed, resolve_artifact,
-    update_artifact, PermanentHashRow, PresenceRow,
+    create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_viewed,
+    resolve_artifact, update_artifact, PermanentHashRow, PresenceRow,
 };
 use governance_routes::governance_route;
 use org_admin::{
@@ -408,7 +408,7 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
         (method, path) if path.starts_with("/v1/internal/orgs/") => {
-            governance_route(method, path, &mut req, &env).await
+            governance_route(method, path, &mut req, &env, &ctx).await
         }
         (Method::Post, "/v1/internal/jwks") => write_jwks(&mut req, &env).await,
         (Method::Post, "/v1/internal/org-limits") => write_org_limits(&mut req, &env).await,
@@ -419,7 +419,7 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
             get_artifact_metadata(path, &req, &env).await
         }
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
-            delete_artifact(path, &req, &env).await
+            delete_artifact(path, &req, &env, &ctx).await
         }
         (Method::Patch, path) if path.starts_with("/v1/artifacts/") => {
             update_artifact(path, &mut req, &env).await

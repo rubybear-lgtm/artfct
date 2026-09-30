@@ -16,6 +16,7 @@ use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\RendererContract;
 use App\Services\Indexing\RenderResult;
 use App\Services\Indexing\RenderTimeoutException;
+use App\Services\Indexing\VectorChunk;
 use App\Services\Indexing\VectorIndexContract;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use Illuminate\Support\Facades\DB;
@@ -74,6 +75,45 @@ test('duplicate_event_dispatches_once', function () {
     artifactCreatedEvent('acme', 'art-1', $eventId)->assertOk();
 
     Queue::assertPushed(IndexArtifactJob::class, 1);
+});
+
+test('artifact_deleted_event_removes_only_its_org_index_and_is_idempotent', function () {
+    Queue::fake();
+    $teamA = Team::factory()->create(['slug' => 'deleted-a']);
+    $teamB = Team::factory()->create(['slug' => 'deleted-b']);
+    $artifactId = 'shared-artifact';
+    $index = app(VectorIndexContract::class);
+
+    foreach ([$teamA, $teamB] as $team) {
+        ArtifactIndexEntry::query()->create([
+            'team_id' => $team->id,
+            'artifact_id' => $artifactId,
+            'rendered' => false,
+            'extracted_text' => 'Shared searchable text',
+            'headings' => [],
+            'extracted_at' => now(),
+        ]);
+        $index->upsertChunks($team->slug, $artifactId, [
+            new VectorChunk('Shared searchable text', [1.0], $artifactId, $team->slug, now()->toIso8601String(), null, null, null),
+        ]);
+    }
+
+    $eventId = (string) Str::uuid();
+    $event = [
+        'id' => $eventId,
+        'type' => 'artifact.deleted',
+        'org_id' => $teamA->slug,
+        'data' => ['artifact_id' => $artifactId],
+    ];
+    postWorkerEvent($event)->assertStatus(202);
+    postWorkerEvent($event)->assertOk();
+    Queue::assertPushed(ProcessWorkerEvent::class, 1);
+    Queue::pushed(ProcessWorkerEvent::class)->first()->handle(app(WorkerEventHandlers::class));
+
+    expect(ArtifactIndexEntry::query()->where('team_id', $teamA->id)->where('artifact_id', $artifactId)->exists())->toBeFalse()
+        ->and(ArtifactIndexEntry::query()->where('team_id', $teamB->id)->where('artifact_id', $artifactId)->exists())->toBeTrue()
+        ->and($index->allVectorsForOrg($teamA->slug))->toBeEmpty()
+        ->and($index->allVectorsForOrg($teamB->slug))->toHaveCount(1);
 });
 
 test('event_for_foreign_org_artifact_dispatches_nothing', function () {

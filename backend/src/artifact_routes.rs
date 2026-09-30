@@ -695,10 +695,15 @@ pub(crate) fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
     difference == 0
 }
 
-pub(crate) async fn delete_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
+pub(crate) async fn delete_artifact(
+    path: &str,
+    req: &Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
     if artifact_id.len() == store::PUBLIC_ID_LENGTH {
-        return delete_permanent_artifact(artifact_id, req, env).await;
+        return delete_permanent_artifact(artifact_id, req, env, ctx).await;
     }
     if !is_valid_artifact_id(artifact_id) {
         return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
