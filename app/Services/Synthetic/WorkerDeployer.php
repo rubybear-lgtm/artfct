@@ -144,6 +144,14 @@ final class WorkerDeployer
             );
         }
 
+        // A deployed app has no dev dependencies, so no wrangler binary; the
+        // remote database is reachable through Cloudflare's D1 HTTP API instead.
+        if ($this->target->remote && ! is_file(base_path('node_modules/.bin/wrangler'))) {
+            $this->backdateThroughD1Api($statements);
+
+            return;
+        }
+
         $command = [base_path('node_modules/.bin/wrangler'), 'd1', 'execute', 'ARTIFACTS_DB', $this->target->remote ? '--remote' : '--local', '--command', implode('; ', $statements)];
         if ($this->target->wranglerConfig) {
             $command[] = '--config';
@@ -166,6 +174,35 @@ final class WorkerDeployer
 
         if ($result->failed()) {
             throw new RuntimeException('wrangler d1 execute failed: '.$result->errorOutput());
+        }
+    }
+
+    /**
+     * Runs the seed-only statements as one D1 batch over the HTTP API, against
+     * the database named in this target's wrangler config.
+     *
+     * @param  list<string>  $statements
+     */
+    private function backdateThroughD1Api(array $statements): void
+    {
+        $configPath = base_path('backend/'.$this->target->wranglerConfig);
+        $databaseId = is_file($configPath) && preg_match('/"database_id"\s*:\s*"([0-9a-f-]{36})"/', (string) file_get_contents($configPath), $matches) === 1
+            ? $matches[1]
+            : null;
+        $accountId = config('services.cloudflare.account_id');
+        $token = config('synthetic.cloudflare_api_token') ?: config('services.cloudflare.api_token');
+
+        if (! $databaseId || ! $accountId || ! $token) {
+            throw new RuntimeException('Backdating without wrangler needs the wrangler config, CLOUDFLARE_ACCOUNT_ID and a Cloudflare API token.');
+        }
+
+        $response = Http::withToken((string) $token)->acceptJson()->timeout(120)->post(
+            "https://api.cloudflare.com/client/v4/accounts/{$accountId}/d1/database/{$databaseId}/query",
+            ['batch' => array_map(fn (string $sql): array => ['sql' => $sql], $statements)],
+        );
+
+        if ($response->failed() || $response->json('success') !== true) {
+            throw new RuntimeException('D1 API backdating failed: HTTP '.$response->status());
         }
     }
 
