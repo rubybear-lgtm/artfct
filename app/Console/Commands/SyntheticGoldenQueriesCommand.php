@@ -30,6 +30,16 @@ class SyntheticGoldenQueriesCommand extends Command
             return self::FAILURE;
         }
 
+        // Search reaches the Worker through the directory, which mints its
+        // credential for the signed-in user, so act as the team's first admin.
+        $admin = $team->firstAdmin();
+        if ($admin === null) {
+            $this->components->error("Team \"{$slug}\" has no admin to act as.");
+
+            return self::FAILURE;
+        }
+        auth()->setUser($admin);
+
         $mapPath = SyntheticSeeder::mapPath($slug);
         if (! File::exists($mapPath) || ! File::exists($fixturePath)) {
             $this->components->error('Missing the seed map or the fixture; run synthetic:seed first.');

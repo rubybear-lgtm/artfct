@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Indexing\EmbeddingsContract;
@@ -55,6 +56,7 @@ afterEach(function () {
 test('golden_queries_pass_when_every_expected_artifact_is_in_the_top_results', function () {
     config(['indexing.enabled' => true]);
     $team = Team::factory()->create(['slug' => 'zz-golden']);
+    memberOfTeam($team, TeamRole::Admin);
     $fixture = goldenQueriesFixture($team, [
         ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash']],
         ['query' => 'on call handoff runbook steps', 'expected_keys' => ['runbook-a']],
@@ -68,6 +70,7 @@ test('golden_queries_pass_when_every_expected_artifact_is_in_the_top_results', f
 test('golden_queries_fail_and_name_the_missing_key_when_an_expected_artifact_is_absent', function () {
     config(['indexing.enabled' => true]);
     $team = Team::factory()->create(['slug' => 'zz-golden']);
+    memberOfTeam($team, TeamRole::Admin);
     $fixture = goldenQueriesFixture($team, [
         ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash', 'never-seeded']],
     ]);
