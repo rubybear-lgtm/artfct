@@ -34,6 +34,16 @@ class IndexBackfillCommand extends Command
             return self::FAILURE;
         }
 
+        // The directory mints its Worker credential for the signed-in user, so
+        // act as the team's first admin, as the console reindex action does.
+        $admin = $team->firstAdmin();
+        if ($admin === null) {
+            $this->components->error("Team \"{$slug}\" has no admin to act as.");
+
+            return self::FAILURE;
+        }
+        auth()->setUser($admin);
+
         $indexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->pluck('artifact_id')->all();
         $failed = ArtifactIndexingFailure::query()->where('team_id', $team->id)->pluck('artifact_id')->all();
         $queued = 0;

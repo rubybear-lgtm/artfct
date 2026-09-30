@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
 use App\Models\Team;
@@ -29,6 +30,7 @@ test('backfill_queues_only_live_artifacts_that_are_not_indexed_yet', function ()
     Bus::fake();
     config(['indexing.enabled' => true]);
     $team = Team::factory()->create(['slug' => 'backfill-org']);
+    memberOfTeam($team, TeamRole::Admin);
 
     backfillArtifact($team, 'needs-index');
     backfillArtifact($team, 'already-indexed');
@@ -51,6 +53,22 @@ test('backfill_refuses_to_run_while_indexing_is_off', function () {
     test()->artisan('indexing:backfill', ['org' => 'backfill-off'])->assertFailed();
 
     Bus::assertNothingDispatched();
+});
+
+test('backfill_acts_as_the_teams_first_admin_and_needs_one', function () {
+    Bus::fake();
+    config(['indexing.enabled' => true]);
+    $team = Team::factory()->create(['slug' => 'backfill-admin']);
+    backfillArtifact($team, 'needs-index');
+
+    test()->artisan('indexing:backfill', ['org' => 'backfill-admin'])->assertFailed();
+    Bus::assertNothingDispatched();
+
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    test()->artisan('indexing:backfill', ['org' => 'backfill-admin'])->assertSuccessful();
+
+    expect(auth()->id())->toBe($admin->id);
+    Bus::assertDispatchedTimes(IndexArtifactJob::class, 1);
 });
 
 test('backfill_rejects_an_unknown_org', function () {
