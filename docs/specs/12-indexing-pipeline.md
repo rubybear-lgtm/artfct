@@ -45,7 +45,9 @@ Workers AI's `@cf/qwen/qwen3-embedding-0.6b` produces 1024-dimensional embedding
 
 ### Vector-store decision and remaining cost check
 
-The 2026-09-29 decision on RUB-316 chose pgvector on Railway Postgres instead of Cloudflare Vectorize. The proposed Vectorize 1k/10k/100k probe, seven-day billing observation, and probe-index deletion do not apply to the chosen store. Browser Rendering and Workers AI remain metered dependencies: run a representative staging batch, inspect their actual usage, and compare it with the cost model before rollout. Measure hybrid search latency against the real providers as well as the database.
+The 2026-09-29 decision on RUB-316 chose pgvector on Railway Postgres instead of Cloudflare Vectorize. The proposed Vectorize 1k/10k/100k probe, seven-day billing observation, and probe-index deletion do not apply to the chosen store.
+
+For the current [Browser Run pricing](https://developers.cloudflare.com/browser-run/pricing/), the `/scrape` Quick Action consumes browser hours only: Workers Paid includes 10 hours per month, then charges $0.09 per hour. Record `X-Browser-Ms-Used` or the dashboard's browser duration for successful staging renders, including retries that incurred usage. For [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/), Qwen3 embedding uses 1,075 neurons per million input tokens and BGE reranking uses 283; the account receives 10,000 free neurons per day, then pays $0.011 per thousand. Estimate gross neurons from the batch's document, query, and rerank input tokens, then compare them with observed model usage. Compare resource units before free allowances, because a zero-dollar bill does not validate the model. The representative batch should be within a factor of two for both browser duration and Workers AI neurons. Measure hybrid search latency against the real providers and database as well.
 
 ## Definition of done
 
