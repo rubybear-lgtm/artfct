@@ -19,6 +19,10 @@ test('docs page renders the generated OpenAPI contract', function () {
         flags: JSON_THROW_ON_ERROR,
     );
 
+    $source['servers'] = [[
+        'url' => config('app.url'),
+    ]];
+
     expect($contract)
         ->toBe($source)
         ->and($contract['paths'])
@@ -30,14 +34,14 @@ test('docs page renders the generated OpenAPI contract', function () {
         ]);
 });
 
-test('hosted MCP docs use the URL configured for the current environment', function (string $baseUrl) {
+test('hosted MCP docs and API reference use the URL configured for the current environment', function (string $baseUrl) {
     config(['app.url' => $baseUrl]);
 
     $this->get(route('docs'))
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->component('docs')
-            ->where('hostedMcpBaseUrl', $baseUrl));
+            ->where('contract.servers.0.url', $baseUrl));
 })->with([
     'staging' => 'https://staging.artfct.dev',
     'production' => 'https://artfct.dev',
@@ -54,6 +58,7 @@ test('every MCP client config block on the docs page is valid JSON', function ()
     expect($byKind['local']['mcpServers']['artfct']['command'])->toBe('artfct')
         ->and($byKind['local']['mcpServers']['artfct']['args'])->toContain('mcp', 'serve', '--host')
         ->and($page)
+        ->toContain('const hostedMcpBaseUrl = contract.servers[0].url;')
         ->toContain('const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;')
         ->toContain('url: hostedMcpUrl')
         ->toContain('claude mcp add --transport http artfct ${hostedMcpUrl}');

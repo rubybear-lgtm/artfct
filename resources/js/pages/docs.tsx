@@ -132,7 +132,7 @@ type OpenApiDocument = {
         version: string;
         description?: string;
     };
-    servers?: Array<{ url: string }>;
+    servers: Array<{ url: string }>;
     paths: Record<string, OpenApiPath>;
     components?: {
         schemas?: Record<string, OpenApiSchema>;
@@ -141,7 +141,6 @@ type OpenApiDocument = {
 
 type DocsProps = {
     contract: OpenApiDocument;
-    hostedMcpBaseUrl: string;
 };
 
 const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'patch', 'delete', 'put'];
@@ -594,7 +593,8 @@ function Sidebar({
 }
 
 // ── page ─────────────────────────────────────────────────────────────────────
-export default function Docs({ contract, hostedMcpBaseUrl }: DocsProps) {
+export default function Docs({ contract }: DocsProps) {
+    const hostedMcpBaseUrl = contract.servers[0].url;
     const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
     const hostedMcpConfiguration = `MCP endpoint:
 ${hostedMcpUrl}

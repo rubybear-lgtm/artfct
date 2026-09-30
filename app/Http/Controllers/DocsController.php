@@ -16,16 +16,23 @@ class DocsController extends Controller
     public function __invoke(): Response
     {
         return Inertia::render('docs', [
-            'hostedMcpBaseUrl' => rtrim((string) config('app.url'), '/'),
             'meta' => [
                 'title' => 'Documentation — Artfct',
                 'description' => 'REST API reference and CLI documentation for artfct. Create, serve, and manage HTML artifacts programmatically.',
             ],
-            'contract' => fn (): array => json_decode(
-                File::get(base_path('openapi/artfct.yaml')),
-                true,
-                flags: JSON_THROW_ON_ERROR,
-            ),
+            'contract' => function (): array {
+                $contract = json_decode(
+                    File::get(base_path('openapi/artfct.yaml')),
+                    true,
+                    flags: JSON_THROW_ON_ERROR,
+                );
+
+                $contract['servers'] = [[
+                    'url' => rtrim((string) config('app.url'), '/'),
+                ]];
+
+                return $contract;
+            },
         ]);
     }
 }
