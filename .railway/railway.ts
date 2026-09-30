@@ -12,9 +12,12 @@ export default defineRailway(() => {
   const stagingWeb = service("staging-web", {
     source: artfct,
     build: "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm install --no-audit --no-fund && npm run build",
+    start: "php artisan optimize && php artisan serve --host=0.0.0.0 --port=${PORT}",
+    healthcheck: "/up",
+    healthcheckTimeout: 300,
     preDeploy: "sh -c 'php artisan migrate --force && php artisan auth:publish-jwks'",
     replicas: { "us-west2": 1 },
-    deploy: { sleepApplication: true },
+    deploy: { sleepApplication: true, restartPolicyMaxRetries: 3 },
     domains: ["staging.artfct.dev"],
     env: { APP_DEBUG: preserve(), APP_ENV: preserve(), APP_KEY: preserve(), APP_NAME: preserve(), APP_URL: preserve(), ARTFCT_ARTIFACT_ORIGIN_SUFFIX: preserve(), ARTFCT_ARTIFACT_TOKEN_SECRET: preserve(), ARTFCT_GOVERNANCE_SECRET: preserve(), ARTFCT_JWKS_WRITE_SECRET: preserve(), ARTFCT_LIMITS_WRITE_SECRET: preserve(), ARTFCT_ORG_TOKEN: preserve(), ARTFCT_ORIGIN_REFERENCE_PROBE: preserve(), ARTFCT_REVOCATION_WRITE_SECRET: preserve(), ARTFCT_WORKER_BASE_URL: preserve(), ARTFCT_WORKER_EVENT_SECRET: preserve(), AUTHKIT_DEV_LOGIN_DOMAINS: preserve(), CACHE_STORE: preserve(), CLOUDFLARE_ACCOUNT_ID: preserve(), CLOUDFLARE_API_TOKEN: preserve(), CLOUDFLARE_EMAIL_API_TOKEN: preserve(), COMPOSER_NO_DEV: preserve(), DB_CONNECTION: preserve(), DB_URL: preserve(), INDEXING_ENABLED: preserve(), LEGAL_CONSENT_REQUIRED: preserve(), LOG_CHANNEL: preserve(), LOG_LEVEL: preserve(), MAIL_FROM_ADDRESS: preserve(), MAIL_FROM_NAME: preserve(), MAIL_MAILER: preserve(), NIXPACKS_NODE_VERSION: preserve(), OAUTH_ISSUER: preserve(), ORG_JWT_KID: preserve(), ORG_JWT_PRIVATE_KEY_B64: preserve(), POLIS_API_KEY: preserve(), POLIS_BASE_URL: preserve(), POLIS_CLIENT_SECRET_VERIFIER: preserve(), POLIS_WEBHOOK_SECRET: preserve(), QUEUE_CONNECTION: preserve(), RAILPACK_NODE_VERSION: preserve(), SESSION_DRIVER: preserve(), SESSION_SECURE_COOKIE: preserve(), STAGING_VERIFY_USAGE: preserve(), STRIPE_SECRET_KEY: preserve(), STRIPE_TEAM_PRICE_ID: preserve(), STRIPE_WEBHOOK_SECRET: preserve(), VITE_APP_NAME: preserve(), WORKOS_API_KEY: preserve(), WORKOS_CLIENT_ID: preserve(), WORKOS_REDIRECT_URL: preserve() },
   });

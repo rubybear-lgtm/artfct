@@ -777,8 +777,10 @@ meters.
 
 ### The queue worker's start command is a Railway service setting (2026-09-23)
 
-Railway reads `railway.json` / `railway.toml` by default, and `staging-queue`'s
-start command is a service-level setting. There is intentionally no
+Service settings are defined in `.railway/railway.ts` (Railway Infrastructure as
+Code; `railway.json` was removed for RUB-402 ahead of Railway's 2026-12-01
+Config as Code cutoff), and `staging-queue`'s start command is a service-level
+setting. There is intentionally no
 `railway.queue.json`: it was an unapplied mirror, and keeping it in the repo
 made a queue change look deployed when it was not. Change the list with
 `railway update-service` (or the dashboard), then apply it with a push-triggered
@@ -790,7 +792,7 @@ without the repo's config, so Railpack auto-detects `composer install
 --optimize-autoloader --no-scripts --no-interaction` — with dev dependencies —
 in an image that has no `ext-sockets`, and the build dies on
 `pestphp/pest-plugin-browser`'s platform requirement. Push-triggered deploys
-build with `railway.json`'s `--no-dev` command and succeed. Same failure family
+build with the `--no-dev` build command from `.railway/railway.ts` and succeed. Same failure family
 as RUB-397.
 
 ### Live verification results (2026-09-20)

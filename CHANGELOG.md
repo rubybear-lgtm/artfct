@@ -27,6 +27,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - Added Spec 16 collections and usage ranking: `UsageScorer` combines distinct views, Slack shares, and retrieved-then-opened events with a 30-day half-life; superseded artifacts score zero. `search_artifacts` can scope to a named collection, and canonical membership adds a ranking boost. Members can manage collections, while canonical pinning is Admin-gated. The Worker now emits `artifact.viewed`; Laravel records view usage and correlates a later open with a recently served search result. Anonymous distinct-view scoring uses a daily-salted pseudonymous visitor key when its secret is configured.
 
+### Changed
+
+- RUB-402: Railway service settings now live in `.railway/railway.ts` (Infrastructure as Code) and the deprecated `railway.json` is removed ahead of Railway's 2026-12-01 Config as Code cutoff. `staging-web` carries its start command, `/up` healthcheck, timeout and restart retries in the IaC; staging is applied and plans clean. Production is unchanged.
+
 ### Fixed
 
 - Permanent artifact deletion now emits a signed Worker event that removes its org-scoped search vectors and index entry, including deletes through governance routes.
