@@ -31,9 +31,10 @@ return [
     // ── Transports ────────────────────────────────────────────────────────
     'transport.stdio' => [
         'surface' => 'transport',
-        'gap' => [
-            'issue' => 'RUB-384',
-            'reason' => 'deferred, not impossible: it needs an integration harness that spawns the built binary through CARGO_BIN_EXE, which the Rust suite has no precedent for; the dispatch itself is covered in process, only the transport loop is not.',
+        'evidence' => [
+            'kind' => 'rust',
+            'file' => 'mcp-server/tests/stdio_integration.rs',
+            'name' => 'stdio_server_round_trips_initialize_and_tools_list_as_json_lines',
         ],
     ],
     'transport.streamable_http' => [
@@ -80,10 +81,12 @@ return [
     ],
     'protocol.reconnection' => [
         'surface' => 'protocol',
-        'gap' => [
-            'issue' => 'RUB-380',
-            'reason' => 'deferred, not impossible: it needs a harness that induces a transport drop mid-request, which the e2e stack cannot do today -- client and server share the script process, so nothing can sever the connection at the moment the assertion needs.',
+        'evidence' => [
+            'kind' => 'php',
+            'file' => 'tests/Feature/McpRemoteTransportTest.php',
+            'name' => 'remote MCP refuses an expired session with stable reinitialization guidance',
         ],
+        'residual' => 'The current automated suite covers expired or mismatched session recovery and retry idempotency across newly initialized sessions; it does not sever a live transport mid-request.',
     ],
 
     // ── OAuth ─────────────────────────────────────────────────────────────

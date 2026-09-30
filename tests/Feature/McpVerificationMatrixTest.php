@@ -181,6 +181,31 @@ test('every gap names a filed issue and a reason why it is not automated', funct
     expect($problems)->toBe([]);
 });
 
+test('completed stdio and reconnection coverage are not reported as open gaps', function () {
+    $matrix = mcpVerificationMatrix();
+
+    expect($matrix['transport.stdio']['evidence'])->toBe([
+        'kind' => 'rust',
+        'file' => 'mcp-server/tests/stdio_integration.rs',
+        'name' => 'stdio_server_round_trips_initialize_and_tools_list_as_json_lines',
+    ])
+        ->and(isset($matrix['transport.stdio']['gap']))->toBeFalse()
+        ->and($matrix['protocol.reconnection']['evidence']['name'])
+        ->toBe('remote MCP refuses an expired session with stable reinitialization guidance')
+        ->and(isset($matrix['protocol.reconnection']['gap']))->toBeFalse()
+        ->and($matrix['protocol.reconnection']['residual'])
+        ->toContain('does not sever a live transport mid-request');
+
+    $runbook = (string) preg_replace(
+        '/\s+/',
+        ' ',
+        (string) file_get_contents(base_path('docs/mcp-cli-runbook.md')),
+    );
+
+    expect($runbook)->toContain('does not sever a live transport mid-request')
+        ->and($runbook)->toContain('The `stdio_integration.rs` child-process test');
+});
+
 test('the matrix itself carries no credential-shaped strings', function () {
     // The DoD clause requiring no credential in fixtures. This file is the one
     // artefact RUB-363 adds, so it is checked like any other.

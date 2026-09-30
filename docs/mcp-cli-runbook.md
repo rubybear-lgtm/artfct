@@ -420,9 +420,16 @@ Known, currently verified compatibility:
 
 - **Local stdio** (the `artfct` CLI binary): fully supported and covered by
   the crate's unit tests in `mcp-server/src/mcp.rs` (protocol negotiation,
-  tool listing, session/host capture); the `mcp-server/tests/` integration
-  suite exercises the hosted Worker over HTTP, not stdio. This is the
+  tool listing, session/host capture). The `stdio_integration.rs`
+  child-process test pipes JSON-RPC initialize and tools/list through the built
+  binary and verifies stdout contains only parseable JSON lines. This is the
   transport for clients that only speak stdio MCP.
+- **Streamable HTTP reconnection:** expired or credential-mismatched session
+  IDs are rejected with reinitialization guidance, and a stable request ID
+  deduplicates retries across newly initialized sessions. Feature tests cover
+  those application-level recovery paths. The automated suite does not sever a
+  live transport mid-request; it verifies the server's behavior after the
+  client reconnects and presents an expired or mismatched session.
 - **Hosted Streamable HTTP with OAuth discovery** (PKCE, dynamic
   registration): the protocol and OAuth flow are covered by the automated
   contract, feature, and live two-organization suites. A live official MCP
