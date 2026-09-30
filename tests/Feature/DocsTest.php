@@ -52,3 +52,23 @@ test('the docs page states the hosted rate limit and activity retention the app 
         ->and($page)->toContain('120 per minute')
         ->and($page)->toContain('90 days by default');
 });
+
+test('the doctor output shown on the docs page matches what the CLI prints', function () {
+    $page = file_get_contents(resource_path('js/pages/docs.tsx'));
+    $doctor = file_get_contents(base_path('mcp-server/src/doctor.rs'));
+
+    foreach ([
+        'configured (value hidden)',
+        'Selected: ',
+        'Available organizations: ',
+        'Connected: ',
+        'MCP health check failed',
+        'Run `artfct login --oauth` to refresh access',
+    ] as $fragment) {
+        expect($doctor)->toContain($fragment);
+    }
+
+    foreach (['configured (value hidden)', 'Selected: acme', 'Available organizations: acme', 'Connected: artfct', 'MCP health check failed'] as $shown) {
+        expect($page)->toContain($shown);
+    }
+});

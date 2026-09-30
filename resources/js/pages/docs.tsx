@@ -756,7 +756,27 @@ export default function Docs({ contract }: DocsProps) {
                             <Code>doctor</Code> reports the selected
                             organization, available organizations and hosted MCP
                             initialize and tool health without printing
-                            credentials.
+                            credentials. Example of a healthy result (your
+                            organization and numbers will differ):
+                        </Prose>
+                        <CodeBlock
+                            code={`Diagnostics
+  Saved credential    configured (value hidden)
+
+Organization context
+  Selected: acme · admin
+  Available organizations: acme
+
+Hosted MCP health
+  Connected: artfct · protocol 2025-11-25 · 10 tools`}
+                        />
+                        <Prose>
+                            A saved sign-in that is missing or invalid shows as{' '}
+                            <Code>not configured</Code> or <Code>invalid</Code>{' '}
+                            with <Code>run `artfct login`</Code> next to it. An
+                            expired or revoked sign-in shows{' '}
+                            <Code>MCP health check failed</Code> and tells you
+                            to run <Code>artfct login --oauth</Code>.
                         </Prose>
 
                         <SubHeading>Use the hosted server</SubHeading>
