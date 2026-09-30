@@ -249,6 +249,21 @@ after the indicated delay, reduce the request rate, or ask a workspace admin
 to review the plan and connection scopes. Do not retry invalid scope,
 revoked-credential, or malformed-request errors.
 
+## Rate limits and data retention
+
+Hosted MCP requests are limited per minute on two keys at once: the workspace
+and the individual connection token. Both default to 120 requests per minute
+(`MCP_THROTTLE_PER_MINUTE`), so one busy connection cannot exhaust the
+workspace allowance on its own, and all connections together stay under the
+workspace cap. A limited request returns `429` with `Retry-After`; wait that
+long before retrying.
+
+MCP activity records are kept for 90 days by default (`MCP_ACTIVITY_RETENTION_DAYS`)
+and pruned daily by `mcp:prune-activity`. The window can be set between 1 and
+3650 days. Artifact retention is a separate, per-workspace policy: `governance:retention
+<workspace>` reports what it would delete by default and only removes artifacts
+with `--apply`, always skipping artifacts under a legal hold.
+
 ## Local end-to-end verification
 
 `scripts/mcp-e2e-stack.sh run` boots a full local stack — Postgres (not
