@@ -219,7 +219,11 @@ async function assertTenantIsolation(
         'tools/call',
         {
             name: 'create_collection',
-            arguments: { name: 'cross-tenant-probe' },
+            // Collection names are unique per organization, so a fixed name
+            // would make every re-run against the same org fail.
+            arguments: {
+                name: `cross-tenant-probe-${randomBytes(4).toString('hex')}`,
+            },
         },
     );
     const foreignCollectionId = foreignCollection.result?.structuredContent?.id;
