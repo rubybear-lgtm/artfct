@@ -490,6 +490,38 @@ The Inspector's non-secret stored-auth probe reported no hosted server URLs,
 so there is no existing OAuth session to reuse. None is a compatibility result;
 record any client-specific behavior only after the hosted run above completes.
 
+### Headless bearer-auth runs (2026-09-30)
+
+These runs authenticated with a short-lived organization token instead of OAuth
+consent, so they are **not** the repeatable run above and do not close it: they
+show that each client can open a Streamable HTTP session to
+`https://staging.artfct.dev/mcp` and, where a model login was available, call a
+tool. Each used a temporary config outside the user's real client config, and a
+15-minute token that was never printed. The negotiated protocol version was not
+recorded per client (the server default is `2025-11-25`).
+
+| Client      | Version | How it was run                                                                                   | Result                                                         |
+| ----------- | ------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| Claude Code | 2.1.286 | `claude -p --mcp-config <temp.json> --strict-mcp-config` with an `Authorization` header from env | Session opened, `get_connection` returned the organization     |
+| Codex CLI   | 0.159.2 | `codex exec -c mcp_servers.<name>.url=… -c mcp_servers.<name>.bearer_token_env_var=…`            | Session opened, `get_connection` returned the organization     |
+| Gemini CLI  | 0.42.0  | project `.gemini/settings.json` with `httpUrl` and headers; `gemini mcp list`                    | `Connected`; tool call not run (no model login on the machine) |
+| OpenCode    | 1.17.18 | `OPENCODE_CONFIG=<temp.json>` with a remote MCP entry and headers; `opencode mcp list`           | `connected`; tool call failed on OpenCode's own provider login |
+| Cursor      | not run | `cursor-agent` lists the user's global servers and needs `--approve-mcps` for a project entry    | Not run; Cursor's GUI is human-only                            |
+
+Client-specific notes from these runs:
+
+- **Codex:** a URL override under the name `artfct` collides with the stdio
+  entry that `artfct setup` writes, and Codex refuses it (`url is not supported
+for stdio`). Use a different server name for the hosted entry.
+- **Gemini:** project-level MCP settings are ignored in an untrusted folder, so
+  `gemini mcp list` reports no servers until the folder is trusted (for a single
+  session, set `GEMINI_CLI_TRUST_WORKSPACE=true`).
+- **Claude Code and Codex** can both run headlessly with a temporary config, so
+  they are candidates for an automated check (they need a model login in CI).
+
+The OAuth-consent run for every client above, and Cursor's GUI, remain the
+human steps tracked on RUB-383.
+
 ## Incident checklist
 
 1. Run `artfct doctor` and capture only its redacted output.
