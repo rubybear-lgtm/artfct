@@ -82,7 +82,7 @@ const CLI_DEPLOY_FLAGS = [
         name: '--tier',
         type: 'string',
         req: false,
-        note: 'public · secure · ephemeral  (default: ephemeral)',
+        note: 'public · secure · ephemeral · permanent  (default: ephemeral; permanent needs an organization token)',
     },
     {
         name: '--ttl-minutes',
@@ -680,7 +680,10 @@ export default function Docs({ contract }: DocsProps) {
                         <Prose>
                             Works on macOS (Apple Silicon and Intel) and Linux
                             (x86_64 and ARM64). Installs to{' '}
-                            <Code>~/.local/bin</Code> by default.
+                            <Code>~/.local/bin</Code> by default. If your shell
+                            cannot find <Code>artfct</Code> afterwards, add that
+                            folder to your <Code>PATH</Code> and open a new
+                            terminal.
                         </Prose>
                         <CodeBlock code={CLI_INSTALL} />
                         <CodeBlock code={CLI_INSTALL_OPTS} />
@@ -704,7 +707,8 @@ export default function Docs({ contract }: DocsProps) {
                             Desktop, Claude Code, Cursor and other
                             MCP-compatible tools can publish HTML without
                             leaving the session.
-                            <Code>deploy_to_canvas</Code> is deprecated.
+                            <Code>deploy_to_canvas</Code> is deprecated; use{' '}
+                            <Code>deploy_artifact</Code> instead.
                         </Prose>
                         <CodeBlock code={CLI_MCP} />
 
@@ -763,6 +767,26 @@ export default function Docs({ contract }: DocsProps) {
                             needs to be copied into configuration.
                         </Prose>
                         <CodeBlock code={HOSTED_MCP} />
+                        <Prose>
+                            In Claude Code, add it with the command below, then
+                            run <Code>/mcp</Code> inside Claude Code to sign in.
+                            In Cursor, add the same address to{' '}
+                            <Code>~/.cursor/mcp.json</Code> (or{' '}
+                            <Code>.cursor/mcp.json</Code> in a project) and
+                            approve the browser consent when it opens.
+                        </Prose>
+                        <CodeBlock
+                            code={`claude mcp add --transport http artfct https://artfct.dev/mcp`}
+                        />
+                        <CodeBlock
+                            code={`{
+  "mcpServers": {
+    "artfct": {
+      "url": "https://artfct.dev/mcp"
+    }
+  }
+}`}
+                        />
 
                         <SubHeading>Scopes</SubHeading>
                         <CodeBlock code={MCP_SCOPES} />
@@ -771,7 +795,8 @@ export default function Docs({ contract }: DocsProps) {
                             for the intended workspace, then run{' '}
                             <Code>artfct doctor</Code> to verify recovery.
                             Workspace administrators can revoke hosted
-                            connections from the team MCP connections page.{' '}
+                            connections in your workspace settings under{' '}
+                            <Code>MCP connections</Code>.{' '}
                             <Code>artfct logout</Code> asks the server to end
                             your saved sign-in and then removes your local
                             credentials; if the server cannot be reached it
@@ -787,8 +812,8 @@ export default function Docs({ contract }: DocsProps) {
                             header; wait that long before trying again. Records
                             of MCP activity are kept for 90 days by default and
                             then removed automatically. Workspace administrators
-                            can remove a connection at any time from the team
-                            MCP connections page.
+                            can remove a connection at any time in workspace
+                            settings under <Code>MCP connections</Code>.
                         </Prose>
 
                         <SubHeading>Remove it</SubHeading>

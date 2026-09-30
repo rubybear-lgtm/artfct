@@ -30,15 +30,18 @@ test('docs page renders the generated OpenAPI contract', function () {
         ]);
 });
 
-test('the hand-written MCP client config on the docs page is valid JSON that starts the server', function () {
+test('every MCP client config block on the docs page is valid JSON', function () {
     $page = file_get_contents(resource_path('js/pages/docs.tsx'));
 
-    expect(preg_match('/code=\{`(\{\s*"mcpServers".*?\})`\}/s', $page, $matches))->toBe(1);
+    expect(preg_match_all('/code=\{`(\{\s*"mcpServers".*?\})`\}/s', $page, $matches))->toBe(2);
 
-    $config = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+    $configs = array_map(fn (string $block): array => json_decode($block, true, flags: JSON_THROW_ON_ERROR), $matches[1]);
+    $byKind = collect($configs)->keyBy(fn (array $config): string => isset($config['mcpServers']['artfct']['url']) ? 'hosted' : 'local');
 
-    expect($config['mcpServers']['artfct']['command'])->toBe('artfct')
-        ->and($config['mcpServers']['artfct']['args'])->toContain('mcp', 'serve', '--host');
+    expect($byKind['local']['mcpServers']['artfct']['command'])->toBe('artfct')
+        ->and($byKind['local']['mcpServers']['artfct']['args'])->toContain('mcp', 'serve', '--host')
+        ->and($byKind['hosted']['mcpServers']['artfct']['url'])->toEndWith('/mcp')
+        ->and($page)->toContain('claude mcp add --transport http artfct https://artfct.dev/mcp');
 });
 
 test('the docs page states the hosted rate limit and activity retention the app enforces', function () {
