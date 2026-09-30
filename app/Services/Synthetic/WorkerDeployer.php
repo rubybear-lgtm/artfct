@@ -116,7 +116,15 @@ final class WorkerDeployer
 
     public function hardDelete(string $artifactId): void
     {
-        $this->governance()->delete($this->governanceUrl("artifacts/{$artifactId}"))->throw();
+        $response = $this->governance()->delete($this->governanceUrl("artifacts/{$artifactId}"));
+
+        // Already gone (for example deleted along with a shared blob): the purge
+        // wants it absent, so a 404 is success rather than a reason to stop.
+        if ($response->status() === 404) {
+            return;
+        }
+
+        $response->throw();
     }
 
     /**
