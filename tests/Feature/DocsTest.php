@@ -30,18 +30,33 @@ test('docs page renders the generated OpenAPI contract', function () {
         ]);
 });
 
+test('hosted MCP docs use the URL configured for the current environment', function (string $baseUrl) {
+    config(['app.url' => $baseUrl]);
+
+    $this->get(route('docs'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->component('docs')
+            ->where('hostedMcpBaseUrl', $baseUrl));
+})->with([
+    'staging' => 'https://staging.artfct.dev',
+    'production' => 'https://artfct.dev',
+]);
+
 test('every MCP client config block on the docs page is valid JSON', function () {
     $page = file_get_contents(resource_path('js/pages/docs.tsx'));
 
-    expect(preg_match_all('/code=\{`(\{\s*"mcpServers".*?\})`\}/s', $page, $matches))->toBe(2);
+    expect(preg_match_all('/code=\{`(\{\s*"mcpServers".*?\})`\}/s', $page, $matches))->toBe(1);
 
     $configs = array_map(fn (string $block): array => json_decode($block, true, flags: JSON_THROW_ON_ERROR), $matches[1]);
     $byKind = collect($configs)->keyBy(fn (array $config): string => isset($config['mcpServers']['artfct']['url']) ? 'hosted' : 'local');
 
     expect($byKind['local']['mcpServers']['artfct']['command'])->toBe('artfct')
         ->and($byKind['local']['mcpServers']['artfct']['args'])->toContain('mcp', 'serve', '--host')
-        ->and($byKind['hosted']['mcpServers']['artfct']['url'])->toEndWith('/mcp')
-        ->and($page)->toContain('claude mcp add --transport http artfct https://artfct.dev/mcp');
+        ->and($page)
+        ->toContain('const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;')
+        ->toContain('url: hostedMcpUrl')
+        ->toContain('claude mcp add --transport http artfct ${hostedMcpUrl}');
 });
 
 test('the docs page states the hosted rate limit and activity retention the app enforces', function () {
@@ -83,8 +98,7 @@ test('the MCP docs explain workspace terminology and first-time access', functio
         ->toContain('ask its administrator to invite')
         ->toContain('Hosted MCP uses browser sign-in')
         ->toContain('ARTFCT_ORG_TOKEN')
-        ->toContain('For staging, replace')
-        ->toContain('staging.artfct.dev')
+        ->toContain('These URLs point to the environment serving this page')
         ->toContain('login.url()')
         ->toContain('terms.url()')
         ->toContain('privacy.url()')

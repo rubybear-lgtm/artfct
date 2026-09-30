@@ -16,6 +16,7 @@ class DocsController extends Controller
     public function __invoke(): Response
     {
         return Inertia::render('docs', [
+            'hostedMcpBaseUrl' => rtrim((string) config('app.url'), '/'),
             'meta' => [
                 'title' => 'Documentation — Artfct',
                 'description' => 'REST API reference and CLI documentation for artfct. Create, serve, and manage HTML artifacts programmatically.',

@@ -50,15 +50,6 @@ artfct doctor
 # revoke the remote session and remove local credentials
 artfct logout`;
 
-const HOSTED_MCP = `MCP endpoint:
-https://artfct.dev/mcp
-
-OAuth protected-resource metadata:
-https://artfct.dev/.well-known/oauth-protected-resource
-
-OAuth authorization-server metadata:
-https://artfct.dev/.well-known/oauth-authorization-server`;
-
 const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
 artifacts:deploy     deploy artifacts to the workspace
 artifacts:delete     delete artifacts when policy permits
@@ -150,6 +141,7 @@ type OpenApiDocument = {
 
 type DocsProps = {
     contract: OpenApiDocument;
+    hostedMcpBaseUrl: string;
 };
 
 const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'patch', 'delete', 'put'];
@@ -602,7 +594,21 @@ function Sidebar({
 }
 
 // ── page ─────────────────────────────────────────────────────────────────────
-export default function Docs({ contract }: DocsProps) {
+export default function Docs({ contract, hostedMcpBaseUrl }: DocsProps) {
+    const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
+    const hostedMcpConfiguration = `MCP endpoint:
+${hostedMcpUrl}
+
+OAuth protected-resource metadata:
+${hostedMcpBaseUrl}/.well-known/oauth-protected-resource
+
+OAuth authorization-server metadata:
+${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
+    const hostedMcpJsonConfig = JSON.stringify(
+        { mcpServers: { artfct: { url: hostedMcpUrl } } },
+        null,
+        2,
+    );
     const groups: SidebarGroup[] = [
         {
             title: 'Get started',
@@ -801,16 +807,15 @@ Hosted MCP health
                             For clients that support OAuth discovery, add the
                             endpoint below. The client opens browser consent and
                             requests only the scopes it needs; no bearer token
-                            needs to be copied into configuration. These are
-                            production addresses. For staging, replace
-                            <Code>artfct.dev</Code> with{' '}
-                            <Code>staging.artfct.dev</Code>. See the runbook for
-                            the staging-only verification steps. The public{' '}
+                            needs to be copied into configuration. These URLs
+                            point to the environment serving this page; keep
+                            each client on the same environment. See the runbook
+                            for staging verification steps. The public{' '}
                             <Link href={terms.url()}>terms</Link> and{' '}
                             <Link href={privacy.url()}>privacy policy</Link>{' '}
                             explain the service and its data handling.
                         </Prose>
-                        <CodeBlock code={HOSTED_MCP} />
+                        <CodeBlock code={hostedMcpConfiguration} />
                         <Prose>
                             In Claude Code, add it with the command below, then
                             run <Code>/mcp</Code> inside Claude Code to sign in.
@@ -820,17 +825,9 @@ Hosted MCP health
                             approve the browser consent when it opens.
                         </Prose>
                         <CodeBlock
-                            code={`claude mcp add --transport http artfct https://artfct.dev/mcp`}
+                            code={`claude mcp add --transport http artfct ${hostedMcpUrl}`}
                         />
-                        <CodeBlock
-                            code={`{
-  "mcpServers": {
-    "artfct": {
-      "url": "https://artfct.dev/mcp"
-    }
-  }
-}`}
-                        />
+                        <CodeBlock code={hostedMcpJsonConfig} />
 
                         <SubHeading>Scopes</SubHeading>
                         <CodeBlock code={MCP_SCOPES} />
