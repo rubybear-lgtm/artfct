@@ -332,8 +332,8 @@ mod tests {
     use crate::provenance::build_cli_provenance;
 
     use super::{
-        derive_aes_key_bytes, prepare_artifact_request, ArtifactPreparationOptions, KDF_SALT_BYTES,
-        KDF_VERSION,
+        derive_aes_key_bytes, prepare_artifact_request, ArtifactPreparationOptions, KDF_ITERATIONS,
+        KDF_SALT_BYTES, KDF_VERSION,
     };
 
     fn hex(bytes: &[u8]) -> String {
@@ -387,17 +387,32 @@ mod tests {
 
     #[test]
     fn salted_derivation_matches_the_shared_test_vector() {
-        // The vector was computed independently with Node's crypto.pbkdf2Sync
-        // and is asserted again in the browser encryptor's test. The risk this
-        // exists for is not a wrong KDF but Rust and JavaScript disagreeing on a
-        // byte, which would make every new secure artifact unopenable and which
-        // no end-to-end test here would catch.
-        let key = derive_aes_key_bytes("0123456789", &[0u8; KDF_SALT_BYTES]);
+        // Every language consumes this same fixture so drift cannot hide in
+        // duplicated expected values.
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/Fixtures/artifact-kdf-vector.json"
+        ))
+        .expect("shared artifact KDF fixture is valid JSON");
+        let code = vector["code"].as_str().expect("fixture code is a string");
+        let salt_hex = vector["salt_hex"]
+            .as_str()
+            .expect("fixture salt is a string");
+        let expected_key = vector["key_hex"].as_str().expect("fixture key is a string");
+        let version = vector["version"]
+            .as_u64()
+            .expect("fixture version is an integer");
+        let iterations = vector["iterations"]
+            .as_u64()
+            .expect("fixture iterations are an integer");
+        let salt = (0..salt_hex.len())
+            .step_by(2)
+            .map(|index| u8::from_str_radix(&salt_hex[index..index + 2], 16).expect("valid hex"))
+            .collect::<Vec<_>>();
 
-        assert_eq!(
-            hex(&key),
-            "0b51d5dc36329bb22150ebeda005e4d2129a3f9d10a8408f34d8ab00cd61bb21"
-        );
+        assert_eq!(version, u64::from(KDF_VERSION));
+        assert_eq!(iterations, u64::from(KDF_ITERATIONS));
+        assert_eq!(salt.len(), KDF_SALT_BYTES);
+        assert_eq!(hex(&derive_aes_key_bytes(code, &salt)), expected_key);
     }
 
     #[test]

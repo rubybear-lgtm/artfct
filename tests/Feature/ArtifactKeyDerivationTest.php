@@ -21,26 +21,23 @@
  *    salt length, so the shipped code cannot drift from the parameters the
  *    vector was computed with.
  */
-
-/** The shared vector: PBKDF2-HMAC-SHA256, 210_000 iterations, 32-byte key. */
-const ARTIFACT_KDF_VECTOR = [
-    'code' => '0123456789',
-    'salt_hex' => '00000000000000000000000000000000',
-    'iterations' => 210000,
-    'key_hex' => '0b51d5dc36329bb22150ebeda005e4d2129a3f9d10a8408f34d8ab00cd61bb21',
-];
-
 test('webcrypto derives the same key as ring for the shared vector', function () {
-    $vector = ARTIFACT_KDF_VECTOR;
+    $vector = json_decode(
+        (string) file_get_contents(base_path('tests/Fixtures/artifact-kdf-vector.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
 
     $script = <<<'JS'
     const { webcrypto } = require('crypto');
+    const fs = require('fs');
 
     (async () => {
+        const vector = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
         const encoder = new TextEncoder();
         const material = await webcrypto.subtle.importKey(
             'raw',
-            encoder.encode(process.argv[1]),
+            encoder.encode(vector.code),
             'PBKDF2',
             false,
             ['deriveBits'],
@@ -48,8 +45,8 @@ test('webcrypto derives the same key as ring for the shared vector', function ()
         const bits = await webcrypto.subtle.deriveBits(
             {
                 name: 'PBKDF2',
-                salt: Buffer.from(process.argv[2], 'hex'),
-                iterations: Number(process.argv[3]),
+                salt: Buffer.from(vector.salt_hex, 'hex'),
+                iterations: Number(vector.iterations),
                 hash: 'SHA-256',
             },
             material,
@@ -61,11 +58,9 @@ test('webcrypto derives the same key as ring for the shared vector', function ()
     JS;
 
     $command = sprintf(
-        'node -e %s -- %s %s %s 2>&1',
+        'node -e %s -- %s 2>&1',
         escapeshellarg($script),
-        escapeshellarg($vector['code']),
-        escapeshellarg($vector['salt_hex']),
-        escapeshellarg((string) $vector['iterations']),
+        escapeshellarg(base_path('tests/Fixtures/artifact-kdf-vector.json')),
     );
 
     $output = trim((string) shell_exec($command));
@@ -78,7 +73,11 @@ test('webcrypto derives the same key as ring for the shared vector', function ()
 });
 
 test('every derivation site uses the same parameters', function () {
-    $vector = ARTIFACT_KDF_VECTOR;
+    $vector = json_decode(
+        (string) file_get_contents(base_path('tests/Fixtures/artifact-kdf-vector.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
 
     $sites = [
         'CLI encryptor' => 'mcp-server/src/artifact_crypto.rs',
@@ -93,7 +92,9 @@ test('every derivation site uses the same parameters', function () {
 
         // The iteration count is written differently in each language; assert
         // the digits, which is the part that has to agree.
-        if (! preg_match('/210[_]?000/', $source)) {
+        $normalizedSource = str_replace('_', '', $source);
+
+        if (! preg_match('/'.preg_quote((string) $vector['iterations'], '/').'/', $normalizedSource)) {
             $problems[] = $label.' ('.$relative.') does not carry the vector iteration count';
         }
     }
@@ -110,17 +111,18 @@ test('every derivation site uses the same parameters', function () {
         $problems[] = 'the browser encryptor does not derive with PBKDF2';
     }
 
-    if (! preg_match('/KDF_SALT_BYTES: usize = 16/', $rust) || ! preg_match('/KDF_SALT_BYTES = 16/', $typescript)) {
-        $problems[] = 'the salt length is not 16 bytes in both encryptors';
+    $saltBytes = intdiv(strlen((string) $vector['salt_hex']), 2);
+    if (! preg_match('/KDF_SALT_BYTES: usize = '.$saltBytes.'/', $rust) || ! preg_match('/KDF_SALT_BYTES = '.$saltBytes.'/', $typescript)) {
+        $problems[] = 'the encryptor salt lengths do not match the shared fixture';
     }
 
     // The version tag is what selects the derivation; if the writers and the
     // reader disagree on it, new links fall back to the legacy path and fail.
-    if (! preg_match('/KDF_VERSION: u32 = 2/', $rust) || ! preg_match('/KDF_VERSION = 2/', $typescript)) {
-        $problems[] = 'the KDF version tag is not 2 in both encryptors';
+    if (! preg_match('/KDF_VERSION: u32 = '.$vector['version'].'/', $rust) || ! preg_match('/KDF_VERSION = '.$vector['version'].'/', $typescript)) {
+        $problems[] = 'the KDF version tag does not match the shared fixture';
     }
 
-    if (! str_contains($worker, 'version === 2')) {
+    if (! str_contains($worker, 'version === '.$vector['version'])) {
         $problems[] = 'the viewer decryptor does not dispatch on the version tag';
     }
 
