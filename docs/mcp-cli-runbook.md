@@ -308,6 +308,47 @@ this with a native GitHub Actions service container instead of
 This is what the `mcp_e2e` CI job runs on every push/PR — the same script,
 not a separate reimplementation, so a local failure reproduces the CI one.
 
+## Production domain plan (draft, not applied)
+
+This is the RUB-366 production plan, written for review. Nothing here has been
+applied; production stays untouched until it is approved. Staging already runs
+the same shape: the app on `staging.artfct.dev`, artifact origins on
+`<tenant>--<id>--stg.artfct.dev`, verified on 2026-09-30 (403 without a token,
+200 with a minted link, 403 when a token is presented on another tenant's host,
+valid TLS, no cookies).
+
+**Hazard to resolve first.** The production Worker config routes `*.artfct.dev/*`
+for artifact origins (`<tenant>--<id>.artfct.dev`). That pattern matches every
+single-label subhost of the zone, including `staging.artfct.dev`, so deploying it
+as-is would route staging's app traffic into the Worker. Before deploying, give
+staging (and any other subhost that is not an artifact origin, such as docs or
+www) a more specific route with no Worker attached, or move production to a
+marker-suffix scheme like staging's. Verify with `curl -I` against each existing
+subhost after the change.
+
+**Steps, in order:**
+
+1. Confirm the zone's wildcard DNS record is proxied and Universal SSL covers one
+   label deep. Staging already proves this for the zone.
+2. Provision the production Worker's secrets (the same names as staging:
+   artifact token secret, governance, limits, JWKS and revocation write secrets,
+   org token, event secret) through a one-time handoff, and set the matching
+   values on the Laravel production service. Never paste them into an issue or log.
+3. Add the custom domain to the Railway production web service with TLS. Set
+   `APP_URL`, `OAUTH_ISSUER` and `WORKOS_REDIRECT_URL` to it, then re-register
+   the WorkOS redirect URIs and allowed-callback lists.
+4. Point `ARTFCT_WORKER_BASE_URL` (Laravel) and `ARTFCT_PUBLIC_BASE_URL` (Worker)
+   at the production addresses. Leave `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` unset in
+   production so the default `.artfct.dev` suffix applies.
+5. Deploy the Worker routes, then run the same checks as staging: an artifact
+   host returns 403 without a token, 200 with a minted link, and 403 on another
+   tenant's host; `/.well-known/oauth-authorization-server` advertises the
+   production issuer; the MCP Inspector and Claude Code connect through it.
+
+**Rollback.** DNS, route and domain changes are reversible: remove the new
+routes, revert the domain and environment variables, and keep the existing
+Railway and `workers.dev` addresses working until cutover is verified.
+
 ## Staging verification
 
 The live smoke suite must use two isolated staging organizations, and the
