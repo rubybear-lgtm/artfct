@@ -5,6 +5,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
+use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -43,6 +44,30 @@ test('backfill_queues_only_live_artifacts_that_are_not_indexed_yet', function ()
 
     Bus::assertDispatchedTimes(IndexArtifactJob::class, 1);
     Bus::assertDispatched(IndexArtifactJob::class, fn (IndexArtifactJob $job): bool => $job->artifactId === 'needs-index');
+});
+
+test('backfill_requeues_an_indexed_artifact_with_a_dead_letter', function () {
+    Bus::fake();
+    config(['indexing.enabled' => true]);
+    $team = Team::factory()->create(['slug' => 'backfill-failed-org']);
+    memberOfTeam($team, TeamRole::Admin);
+
+    backfillArtifact($team, 'failed-but-indexed');
+    ArtifactIndexEntry::factory()->create(['team_id' => $team->id, 'artifact_id' => 'failed-but-indexed']);
+    ArtifactIndexingFailure::query()->create([
+        'team_id' => $team->id,
+        'artifact_id' => 'failed-but-indexed',
+        'attempts' => 3,
+        'reason' => 'Temporary provider outage.',
+        'failed_at' => now(),
+    ]);
+
+    test()->artisan('indexing:backfill', ['org' => 'backfill-failed-org'])
+        ->expectsOutputToContain('1 artifact(s) queued')
+        ->assertSuccessful();
+
+    Bus::assertDispatchedTimes(IndexArtifactJob::class, 1);
+    Bus::assertDispatched(IndexArtifactJob::class, fn (IndexArtifactJob $job): bool => $job->artifactId === 'failed-but-indexed');
 });
 
 test('backfill_refuses_to_run_while_indexing_is_off', function () {
