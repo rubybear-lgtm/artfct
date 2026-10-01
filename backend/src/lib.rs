@@ -42,14 +42,14 @@ use artifact_routes::{
     ArtifactLookupDecision, ArtifactOrgRow,
 };
 use auth::{
-    authorization_matches, check_and_increment_rate_limit, denylist_kv_key, require_org_credential,
+    authorization_matches, check_and_increment_rate_limit, denylist_kv_key, require_org_scope,
     resolve_tenant_org, Jwks,
 };
 #[cfg(test)]
 use auth::{
-    bearer_token, decode_org_jwt, extract_bearer_token, parse_jwks, rate_limit_allows,
-    rate_limit_kv_key_for_ip, rate_limit_kv_key_for_token, resolve_org_credential, CredentialError,
-    JwkKey, OrgCredential, OrgJwtClaims,
+    bearer_token, credential_has_scope, decode_org_jwt, extract_bearer_token, parse_jwks,
+    rate_limit_allows, rate_limit_kv_key_for_ip, rate_limit_kv_key_for_token,
+    resolve_org_credential, CredentialError, JwkKey, OrgCredential, OrgJwtClaims,
 };
 #[cfg(test)]
 use ephemeral_routes::{build_create_artifact_response, build_update_artifact_response};
@@ -2197,6 +2197,7 @@ mod tests {
             org_id: org_id.to_string(),
             user_id: "user-1".to_string(),
             role: "admin".to_string(),
+            scope: None,
             exp,
             jti: "jti-1".to_string(),
         }
@@ -2233,6 +2234,87 @@ mod tests {
         assert_eq!(credential.user_id, "user-1");
         assert_eq!(credential.role, "admin");
         assert_eq!(credential.token_id, "jti-1");
+    }
+
+    #[test]
+    fn worker_scope_policy_respects_role_and_explicit_scope_claims() {
+        let mut claims = test_claims(
+            "org-a",
+            (Utc::now() + chrono::Duration::minutes(5)).timestamp(),
+        );
+        claims.role = "viewer".to_string();
+        claims.scope = Some("artifacts:read usage:read".to_string());
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+        let decoded = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            Utc::now(),
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("signed read-only token decodes");
+        let credential = resolve_org_credential(decoded, |_| false).expect("credential resolves");
+
+        assert!(credential_has_scope(&credential, "artifacts:read"));
+        assert!(credential_has_scope(&credential, "usage:read"));
+        assert!(!credential_has_scope(&credential, "artifacts:deploy"));
+        assert!(!credential_has_scope(&credential, "artifacts:delete"));
+
+        claims.role = "member".to_string();
+        claims.scope = Some("artifacts:read".to_string());
+        let decoded = decode_org_jwt(
+            &sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims),
+            &test_jwks(),
+            Utc::now(),
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("signed restricted member token decodes");
+        let credential = resolve_org_credential(decoded, |_| false).expect("credential resolves");
+        assert!(!credential_has_scope(&credential, "artifacts:deploy"));
+    }
+
+    #[test]
+    fn no_scope_tokens_keep_role_based_compatibility_and_unknown_roles_fail_closed() {
+        let mut claims = test_claims(
+            "org-a",
+            (Utc::now() + chrono::Duration::minutes(5)).timestamp(),
+        );
+        claims.role = "viewer".to_string();
+        claims.scope = None;
+        let token = sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims);
+        let decoded = decode_org_jwt(
+            &token,
+            &test_jwks(),
+            Utc::now(),
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("legacy role token decodes");
+        let credential = resolve_org_credential(decoded, |_| false).expect("credential resolves");
+        assert!(credential_has_scope(&credential, "artifacts:read"));
+        assert!(!credential_has_scope(&credential, "artifacts:deploy"));
+
+        let legacy_static = OrgCredential {
+            org_id: "org-a".to_string(),
+            user_id: "legacy".to_string(),
+            role: "admin".to_string(),
+            scope: None,
+            token_id: "legacy".to_string(),
+        };
+        assert!(credential_has_scope(&legacy_static, "artifacts:deploy"));
+
+        claims.role = "unknown".to_string();
+        let decoded = decode_org_jwt(
+            &sign_test_jwt(TEST_KEY_A_DER_B64, "test-key-a", &claims),
+            &test_jwks(),
+            Utc::now(),
+            "https://artfct.dev",
+            "artfct-engine",
+        )
+        .expect("unknown-role token signature is valid");
+        let credential = resolve_org_credential(decoded, |_| false).expect("credential resolves");
+        assert!(!credential_has_scope(&credential, "artifacts:read"));
     }
 
     #[test]
@@ -2382,6 +2464,7 @@ mod tests {
             org_id: "org-a".to_string(),
             user_id: "user-1".to_string(),
             role: "admin".to_string(),
+            scope: None,
             token_id: "jti-1".to_string(),
         };
         let raw = serde_json::json!({ "org_id": "org-b", "tier": "public" });

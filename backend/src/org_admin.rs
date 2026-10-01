@@ -181,10 +181,11 @@ pub(crate) fn parse_usage_path(path: &str) -> Option<&str> {
 pub(crate) async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let org = parse_usage_path(path).unwrap_or_default();
-    let credential_org = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => Some(credential.org_id),
-        Err(_) => None,
+    let credential = match require_org_scope(authorization.as_deref(), env, "usage:read").await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
     };
+    let credential_org = Some(credential.org_id);
     match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
@@ -274,10 +275,11 @@ pub(crate) async fn write_jwks(req: &mut Request, env: &Env) -> Result<Response>
 /// whether a hard-deleted artifact's blob goes, unaffected by this path).
 pub(crate) async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:delete").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let rest = path.trim_start_matches("/v1/orgs/");
     let Some((org, tail)) = rest.split_once("/artifacts/") else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
@@ -330,10 +332,11 @@ pub(crate) struct ExportRow {
 
 pub(crate) async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let org = path
         .trim_start_matches("/v1/orgs/")
         .trim_end_matches("/export")
@@ -395,10 +398,11 @@ pub(crate) async fn delete_permanent_artifact(
     ctx: &worker::Context,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:delete").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
@@ -613,10 +617,11 @@ pub(crate) fn governance_audit_statement(
 
 pub(crate) async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let hash = path.trim_start_matches("/v1/blobs/");
     if hash.len() != 64
         || !hash

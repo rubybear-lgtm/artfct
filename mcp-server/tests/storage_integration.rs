@@ -1747,6 +1747,82 @@ async fn permanent_mode_requires_auth() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and scoped JWT fixtures"]
+async fn direct_worker_artifact_writes_enforce_role_and_oauth_scopes() -> Result<(), Box<dyn Error>>
+{
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let read_token = env::var("ARTFCT_INTEGRATION_READ_TOKEN")?;
+    let deploy_token = env::var("ARTFCT_INTEGRATION_DEPLOY_TOKEN")?;
+    let client = RetryingClient::new();
+    let bytes = unique_html("scope-enforcement");
+    let payload = permanent_payload(&bytes, json!({"agent": "scope-integration"}));
+
+    let denied_create = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&read_token)
+        .json(&payload)
+        .send()
+        .await?;
+    assert_eq!(denied_create.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let created = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&deploy_token)
+        .json(&payload)
+        .send()
+        .await?;
+    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
+    let created: Value = created.json().await?;
+    let artifact_id = created["id"].as_str().ok_or("create response omitted id")?;
+    let missing_files = created["missing_files"]
+        .as_array()
+        .ok_or("create response omitted missing_files")?;
+    let hash = sha256(&bytes);
+    assert!(missing_files.iter().any(|missing| missing == &hash));
+
+    let denied_upload = client
+        .put(format!(
+            "{}/v1/artifacts/{artifact_id}/files/{hash}",
+            context.base
+        ))
+        .bearer_auth(&read_token)
+        .header(reqwest::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(bytes.clone())
+        .send()
+        .await?;
+    assert_eq!(denied_upload.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let uploaded = client
+        .put(format!(
+            "{}/v1/artifacts/{artifact_id}/files/{hash}",
+            context.base
+        ))
+        .bearer_auth(&deploy_token)
+        .header(reqwest::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(bytes)
+        .send()
+        .await?;
+    assert_eq!(uploaded.status(), reqwest::StatusCode::NO_CONTENT);
+
+    let denied_delete = client
+        .delete(format!("{}/v1/artifacts/{artifact_id}", context.base))
+        .bearer_auth(&read_token)
+        .send()
+        .await?;
+    assert_eq!(denied_delete.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let cleanup = client
+        .delete(format!("{}/v1/artifacts/{artifact_id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(cleanup.status(), reqwest::StatusCode::NO_CONTENT);
+    Ok(())
+}
+
+#[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {

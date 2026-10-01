@@ -57,6 +57,12 @@ request_governance() {
     expect_status "$label" "$expected" -H 'Authorization: Bearer gov' "$@"
 }
 
+assert_governance_auth_rejects() {
+    local label="$1" method="$2" url="$3"
+    expect_status "$label missing secret" 401 -X "$method" "$url"
+    expect_status "$label wrong secret" 401 -X "$method" -H 'Authorization: Bearer wrong' "$url"
+}
+
 expect_local_r2_object() {
     local hash="$1" expected_present="$2" object_path="artfct-blobs/blobs/$1" actual_hash
     rm -f "$R2_OBJECT_FILE"
@@ -85,6 +91,13 @@ Y='only-in-b'
 SX=$(printf '%s' "$X" | shasum -a 256 | cut -d' ' -f1)
 SY=$(printf '%s' "$Y" | shasum -a 256 | cut -d' ' -f1)
 base='"mode":"permanent","tier":"secure","title":"t","description":"d","thumbnail":"x","preview_blurred":false,"provenance":{"agent":"claude-code"}'
+
+assert_governance_auth_rejects 'artifact listing' GET "$B/v1/internal/orgs/acme/governance/artifacts"
+assert_governance_auth_rejects 'hard delete' DELETE "$B/v1/internal/orgs/acme/governance/artifacts/auth-probe"
+assert_governance_auth_rejects 'place legal hold' PUT "$B/v1/internal/orgs/acme/governance/artifacts/auth-probe/legal-hold"
+assert_governance_auth_rejects 'release legal hold' DELETE "$B/v1/internal/orgs/acme/governance/artifacts/auth-probe/legal-hold"
+assert_governance_auth_rejects 'orphan sweep' POST "$B/v1/internal/orgs/acme/governance/sweep-orphans"
+
 A=$(create "{$base,\"manifest\":{\"entrypoint\":\"index.html\",\"external_origins\":[],\"files\":[{\"path\":\"index.html\",\"sha256\":\"$SX\",\"size_bytes\":${#X},\"content_type\":\"text/html\"}]}}")
 Bid=$(create "{$base,\"manifest\":{\"entrypoint\":\"index.html\",\"external_origins\":[],\"files\":[{\"path\":\"index.html\",\"sha256\":\"$SX\",\"size_bytes\":${#X},\"content_type\":\"text/html\"},{\"path\":\"y.txt\",\"sha256\":\"$SY\",\"size_bytes\":${#Y},\"content_type\":\"text/plain\"}]}}")
 [[ "$A" != "$Bid" ]]

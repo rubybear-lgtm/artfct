@@ -51,10 +51,12 @@ pub(crate) async fn get_org_artifact_content(
     let Some((org, artifact_id)) = parse_content_path(path) else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    let credential_org = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => Some(credential.org_id),
-        Err(_) => None,
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let credential_org = Some(credential.org_id);
     match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
@@ -134,10 +136,11 @@ pub(crate) async fn upload_permanent_file(
     env: &Env,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:deploy").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let suffix = path.trim_start_matches("/v1/artifacts/");
     let Some((artifact_id, content_hash)) = suffix.split_once("/files/") else {
         return json_error(
@@ -366,10 +369,11 @@ pub(crate) async fn get_artifact_metadata(
     env: &Env,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let artifact_id = path
         .trim_start_matches("/v1/artifacts/")
         .trim_end_matches('/');
@@ -534,17 +538,18 @@ pub(crate) async fn resolve_permanent_artifact(
         IsolatedAccess::Authorized => {}
         IsolatedAccess::NotIsolated => {
             if row.tier == "secure" {
-                match require_org_credential(authorization.as_deref(), env).await? {
+                match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
                     Ok(credential) if credential.org_id == row.org => {
                         viewer_user_id = Some(credential.user_id);
                     }
-                    Ok(_) | Err(_) => {
+                    Ok(_) => {
                         return json_error(
                             ErrorCode::Unauthorized,
                             "Invalid organization token.",
                             401,
                         )
                     }
+                    Err(refusal) => return Ok(refusal),
                 }
             }
         }
@@ -713,10 +718,11 @@ pub(crate) async fn delete_artifact(
 /// way `export_organization` already does.
 pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
-    let credential = match require_org_credential(authorization.as_deref(), env).await? {
-        Ok(credential) => credential,
-        Err(refusal) => return Ok(refusal),
-    };
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
     let org = path
         .trim_start_matches("/v1/orgs/")
         .trim_end_matches("/artifacts")
@@ -844,7 +850,7 @@ pub(crate) async fn create_permanent_artifact(
     env: &Env,
     ctx: &worker::Context,
 ) -> Result<Response> {
-    let credential = match require_org_credential(authorization, env).await? {
+    let credential = match require_org_scope(authorization, env, "artifacts:deploy").await? {
         Ok(credential) => credential,
         Err(refusal) => return Ok(refusal),
     };

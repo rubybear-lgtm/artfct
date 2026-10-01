@@ -33,6 +33,11 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Fixed
 
+- RUB-430: Browser Run indexing now sends a raw-regex allowlist for only the signed artifact's exact HTTPS origin; external hosts are denied by default.
+- RUB-317: Local governance integration now verifies missing and incorrect secrets return 401 across listing, deletion, legal-hold, and orphan-sweep routes.
+- RUB-429: Direct Worker organization endpoints now enforce each operation's OAuth scope and role. Older role-only tokens keep their existing role defaults, while explicit scopes remain least-privilege.
+- RUB-427: REST search and collection reads now enforce the OAuth scopes they require, returning 403 before reaching the handlers when a token lacks `artifacts:read` or `collections:read`.
+- RUB-426: Team role changes, member removal, and self-leave now fail closed if the Worker cannot revoke the member's credentials. Failed Worker revocations are persisted and retried, so org tokens and MCP/OAuth credentials cannot remain usable after membership changes or provider deprovisioning.
 - Permanent artifact deletion now emits a signed Worker event that removes its org-scoped search vectors and index entry, including deletes through governance routes.
 - RUB-316/RUB-411: permanent artifact entrypoints use `/p/{id}/`, so relative JavaScript and CSS resolve within their bundle on signed isolated and public links. Anonymous KV `deploy_to_canvas` links keep their existing URL behavior.
 - Public permanent links from the console and search now use the configured Worker public host, including staging, instead of falling back to the production artifact host.

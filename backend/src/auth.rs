@@ -10,6 +10,25 @@ pub(crate) async fn require_org_credential(
     }
 }
 
+pub(crate) async fn require_org_scope(
+    authorization: Option<&str>,
+    env: &Env,
+    required_scope: &str,
+) -> Result<std::result::Result<OrgCredential, Response>> {
+    let credential = match require_org_credential(authorization, env).await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(Err(refusal)),
+    };
+    if !credential_has_scope(&credential, required_scope) {
+        return Ok(Err(json_error(
+            ErrorCode::Forbidden,
+            "This organization credential lacks the required scope.",
+            403,
+        )?));
+    }
+    Ok(Ok(credential))
+}
+
 pub(crate) fn authorization_matches(expected: Option<&str>, authorization: Option<&str>) -> bool {
     let Some(expected) = expected.filter(|token| !token.is_empty()) else {
         return false;
@@ -50,6 +69,8 @@ pub(crate) struct OrgJwtClaims {
     pub(crate) org_id: String,
     pub(crate) user_id: String,
     pub(crate) role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) scope: Option<String>,
     pub(crate) exp: i64,
     pub(crate) jti: String,
 }
@@ -62,9 +83,30 @@ pub(crate) struct OrgCredential {
     pub(crate) org_id: String,
     #[allow(dead_code, reason = "carried for future audit logging")]
     pub(crate) user_id: String,
-    #[allow(dead_code, reason = "carried for future role-gated routes")]
     pub(crate) role: String,
+    pub(crate) scope: Option<String>,
     pub(crate) token_id: String,
+}
+
+pub(crate) fn credential_has_scope(credential: &OrgCredential, required_scope: &str) -> bool {
+    let role_scopes = match credential.role.as_str() {
+        "admin" | "member" => &[
+            "artifacts:read",
+            "artifacts:deploy",
+            "artifacts:delete",
+            "collections:read",
+            "collections:write",
+            "usage:read",
+        ][..],
+        "viewer" => &["artifacts:read", "collections:read", "usage:read"][..],
+        _ => &[][..],
+    };
+    role_scopes.contains(&required_scope)
+        && credential.scope.as_deref().is_none_or(|scopes| {
+            scopes
+                .split_ascii_whitespace()
+                .any(|scope| scope == required_scope)
+        })
 }
 
 /// Every way a credential can fail to resolve. Callers map each variant to a
@@ -162,6 +204,7 @@ pub(crate) fn resolve_org_credential(
         org_id: claims.org_id,
         user_id: claims.user_id,
         role: claims.role,
+        scope: claims.scope,
         token_id: claims.jti,
     })
 }
@@ -222,6 +265,7 @@ pub(crate) async fn resolve_request_credential(
                 org_id: env_string(env, "ARTFCT_ORG_SLUG", "default"),
                 user_id: LEGACY_ORG_TOKEN_ID.to_string(),
                 role: "admin".to_string(),
+                scope: None,
                 token_id: LEGACY_ORG_TOKEN_ID.to_string(),
             });
         }

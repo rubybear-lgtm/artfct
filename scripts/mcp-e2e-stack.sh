@@ -176,6 +176,18 @@ up() {
         echo App\Services\Auth\OrgJwtService::default()->mint(\$team, \$admin, App\Enums\TeamRole::Admin, 3600)['token'];
     " 2>/dev/null | tail -1)
     echo "ARTFCT_INTEGRATION_TOKEN=$INTEGRATION_TOKEN" >> "$STATE_DIR/env"
+    INTEGRATION_READ_TOKEN=$(php artisan tinker --execute "
+        \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
+        \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
+        echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Viewer, 3600, ['artifacts:read'])['token'];
+    " 2>/dev/null | tail -1)
+    INTEGRATION_DEPLOY_TOKEN=$(php artisan tinker --execute "
+        \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
+        \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
+        echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Member, 3600, ['artifacts:deploy'])['token'];
+    " 2>/dev/null | tail -1)
+    echo "ARTFCT_INTEGRATION_READ_TOKEN=$INTEGRATION_READ_TOKEN" >> "$STATE_DIR/env"
+    echo "ARTFCT_INTEGRATION_DEPLOY_TOKEN=$INTEGRATION_DEPLOY_TOKEN" >> "$STATE_DIR/env"
     echo "ARTFCT_GOVERNANCE_SECRET=$ARTFCT_GOVERNANCE_SECRET" >> "$STATE_DIR/env"
     {
         echo "ARTFCT_INTEGRATION_BASE_URL=http://127.0.0.1:${WORKER_PORT}"
