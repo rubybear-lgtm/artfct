@@ -489,36 +489,42 @@ Record each additional client verified against staging here with the date,
 protocol version it negotiated, and any workaround needed, so this table
 stays a source of truth rather than a claim.
 
-### Client preflight inventory (2026-09-23)
+### Client preflight inventory (2026-10-01)
 
 This is an installation and setup preflight, not a hosted compatibility result:
 no client below completed OAuth consent or called a hosted tool during this
-check. It records what is available for the next release-candidate run.
+check. Installed versions and `artfct setup --list` targets were checked on
+2026-10-01 for the installed clients. The Inspector row retains its
+2026-09-23 preflight result. This records what is available for the next
+release-candidate run.
 
-| Client                 | Installed version | Setup/config preflight                                               | Hosted session       |
-| ---------------------- | ----------------- | -------------------------------------------------------------------- | -------------------- |
-| Claude Code            | 2.1.280           | `artfct setup --list` recognized the JSON target                     | Not run              |
-| Cursor                 | 2.6.22            | `artfct setup --list` recognized the JSON target                     | Not run              |
-| Codex CLI              | 0.155.1           | `artfct setup --list` recognized the TOML target                     | Not run              |
-| Gemini CLI             | 0.42.0            | `artfct setup --list` recognized the JSON target                     | Not run              |
-| OpenCode               | 1.17.18           | `artfct setup --list` recognized the JSON target                     | Not run              |
-| Official MCP Inspector | 2.7.0 via `npx`   | Local stdio `tools/list` passed; launcher and CLI help probes passed | OAuth run recorded separately below |
+| Client                 | Installed version                      | Setup/config preflight                                                                                   | Hosted session                      |
+| ---------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Claude Code            | 2.1.286                                | `artfct setup --list` recognized the JSON target                                                         | OAuth run recorded separately below |
+| Cursor                 | 2.6.22; Agent CLI `2026.03.25-933d5a6` | `artfct setup --list` recognized the JSON target; `cursor-agent mcp list` reported no configured servers | Not run                             |
+| Codex CLI              | 0.159.2                                | `artfct setup --list` recognized the TOML target                                                         | Not run                             |
+| Gemini CLI             | 0.42.0                                 | `artfct setup --list` recognized the JSON target                                                         | Not run                             |
+| OpenCode               | 1.17.18                                | `artfct setup --list` recognized the JSON target                                                         | Not run                             |
+| Official MCP Inspector | 2.7.0 via `npx`                        | Local stdio `tools/list` passed; launcher and CLI help probes passed                                     | OAuth run recorded separately below |
 
 The Inspector package was available from npm; its non-interactive help commands
 and a local stdio `tools/list` probe against `target/debug/artfct mcp serve`
 passed. This 2026-09-23 preflight did not repeat the hosted OAuth run recorded
 below. It also observed non-fatal local-environment warnings from Cursor's
 macOS code-sign check, Codex's PATH-alias setup, and Gemini's cleanup attempt.
+The Cursor Agent CLI reports no configured MCP servers in the current shell,
+even though the setup preflight detects a Cursor JSON target; this remains a
+local setup discrepancy, not hosted compatibility evidence.
 The Inspector's non-secret stored-auth probe reported no hosted server URLs,
 so there was no existing OAuth session to reuse. The local preflight itself is
 not a hosted compatibility result.
 
 ### Hosted OAuth runs
 
-| Date       | Client                 | Transport        | Result |
-| ---------- | ---------------------- | ---------------- | ------ |
-| 2026-09-21 | Official MCP Inspector | Streamable HTTP  | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded. |
-| 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP  | Consent succeeded for `artfct-dev` with all six advertised scopes. The first tool-list attempt returned HTTP 400 `session_expired` after token refresh. After deploying the session fix to staging, `list_collections` and `get_connection` succeeded; the latter confirmed `artfct-dev` and all six scopes. No mutating tool was called. The client and connection page did not expose the negotiated protocol version. |
+| Date       | Client                 | Transport       | Result                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-21 | Official MCP Inspector | Streamable HTTP | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded.                                                                                                                                                                                                                                        |
+| 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP | Consent succeeded for `artfct-dev` with all six advertised scopes. The first tool-list attempt returned HTTP 400 `session_expired` after token refresh. After deploying the session fix to staging, `list_collections` and `get_connection` succeeded; the latter confirmed `artfct-dev` and all six scopes. No mutating tool was called. The client and connection page did not expose the negotiated protocol version. |
 
 This run exposed three staging defects, all fixed and deployed: the
 path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
