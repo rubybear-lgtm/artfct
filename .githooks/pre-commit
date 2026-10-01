@@ -6,7 +6,7 @@ echo "🔍 Scanning staged files for secrets..."
 declare -a STAGED_FILES=()
 while IFS= read -r -d '' FILE; do
     STAGED_FILES+=("$FILE")
-done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
+done < <(git diff --cached --name-only --diff-filter=ACMRT -z 2>/dev/null)
 
 if command -v gitleaks &>/dev/null; then
     if ! gitleaks protect --staged --no-banner --exit-code 1; then

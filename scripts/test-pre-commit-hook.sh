@@ -56,4 +56,17 @@ if run_hook "$TEST_DIRECTORY/space"; then
     exit 1
 fi
 
-echo "Pre-commit fallback passed clean-file, missing-gitleaks, and whitespace-path checks."
+initialize_repository "$TEST_DIRECTORY/rename"
+printf 'ordinary line\n%.0s' {1..200} > "$TEST_DIRECTORY/rename/source.txt"
+git -C "$TEST_DIRECTORY/rename" add source.txt
+git -C "$TEST_DIRECTORY/rename" -c core.hooksPath=/dev/null commit -qm baseline
+git -C "$TEST_DIRECTORY/rename" mv source.txt "renamed file.txt"
+printf 'value=%s\n' "$SYNTHETIC_TOKEN" >> "$TEST_DIRECTORY/rename/renamed file.txt"
+git -C "$TEST_DIRECTORY/rename" add "renamed file.txt"
+
+if run_hook "$TEST_DIRECTORY/rename"; then
+    echo "The pre-commit hook missed a synthetic secret in a renamed file." >&2
+    exit 1
+fi
+
+echo "Pre-commit fallback passed clean-file, missing-gitleaks, whitespace-path, and rename checks."
