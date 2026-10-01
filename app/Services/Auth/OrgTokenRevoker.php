@@ -13,7 +13,7 @@ use Throwable;
 
 class OrgTokenRevoker
 {
-    public function revokeForMember(Team $team, User $user): void
+    public function revokeForMember(Team $team, User $user): bool
     {
         $tokens = OrgToken::query()
             ->where('team_id', $team->id)
@@ -21,6 +21,32 @@ class OrgTokenRevoker
             ->active()
             ->get();
         $revokedAt = now();
+
+        $revocationFailed = false;
+
+        foreach ($tokens as $token) {
+            try {
+                if (! RevocationWriter::default()->revoke($token->jti, $token->expires_at)) {
+                    $revocationFailed = true;
+
+                    Log::warning('Worker token revocation was not confirmed.', [
+                        'team_id' => $team->id,
+                        'token_id' => $token->id,
+                    ]);
+                }
+            } catch (Throwable) {
+                $revocationFailed = true;
+
+                Log::warning('Worker token revocation request failed.', [
+                    'team_id' => $team->id,
+                    'token_id' => $token->id,
+                ]);
+            }
+        }
+
+        if ($revocationFailed) {
+            return false;
+        }
 
         DB::transaction(function () use ($team, $user, $tokens, $revokedAt): void {
             foreach ($tokens as $token) {
@@ -40,20 +66,6 @@ class OrgTokenRevoker
                 ->update(['revoked_at' => $revokedAt]);
         });
 
-        foreach ($tokens as $token) {
-            try {
-                if (! RevocationWriter::default()->revoke($token->jti, $token->expires_at)) {
-                    Log::warning('Worker token revocation was not confirmed.', [
-                        'team_id' => $team->id,
-                        'token_id' => $token->id,
-                    ]);
-                }
-            } catch (Throwable) {
-                Log::warning('Worker token revocation request failed.', [
-                    'team_id' => $team->id,
-                    'token_id' => $token->id,
-                ]);
-            }
-        }
+        return true;
     }
 }

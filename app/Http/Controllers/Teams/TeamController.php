@@ -172,10 +172,11 @@ class TeamController extends Controller
             ? $user->fallbackTeam($team)
             : null;
 
-        $team->memberships()
-            ->where('user_id', $user->id)
-            ->delete();
-        $tokenRevoker->revokeForMember($team, $user);
+        if (! $tokenRevoker->revokeForMember($team, $user)) {
+            abort(503, __('Unable to revoke your active credentials. You are still a team member. Please retry shortly.'));
+        }
+
+        $team->memberships()->where('user_id', $user->id)->delete();
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberLeft, $team, (string) $user->id, "user:{$user->id}");
 

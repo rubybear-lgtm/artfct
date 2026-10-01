@@ -116,6 +116,44 @@ test('removal_and_self_leave_revoke_the_members_org_and_oauth_tokens', function 
         && $request->hasHeader('Authorization', 'Bearer test-revocation-secret'));
 })->with(['removal', 'self-leave']);
 
+test('membership_changes_fail_closed_when_the_worker_denylist_write_fails', function (string $change) {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
+    ]);
+
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $member = memberOfTeam($team, TeamRole::Member);
+    [$rawToken, $token, $connection, $refreshToken] = memberManagementOrgToken($team, $member, TeamRole::Member);
+
+    $this->withToken($rawToken)->getJson('/api/collections')->assertOk();
+
+    if ($change === 'role-change') {
+        $response = $this->actingAs($owner)
+            ->patch(route('teams.members.update', [$team, $member]), ['role' => 'viewer']);
+    } elseif ($change === 'removal') {
+        $response = $this->actingAs($owner)
+            ->delete(route('teams.members.destroy', [$team, $member]));
+    } else {
+        $response = $this->actingAs($member)
+            ->delete(route('teams.leave', $team));
+    }
+
+    $response->assertStatus(503);
+
+    expect($team->memberships()->where('user_id', $member->id)->value('role'))->toBe(TeamRole::Member)
+        ->and($token->fresh()->revoked_at)->toBeNull()
+        ->and($connection->fresh()->revoked_at)->toBeNull()
+        ->and($refreshToken->fresh()->revoked_at)->toBeNull();
+
+    $this->withToken($rawToken)->getJson('/api/collections')->assertOk();
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://worker.test/v1/internal/revocations'
+        && $request['jti'] === $token->jti
+        && $request->hasHeader('Authorization', 'Bearer test-revocation-secret'));
+})->with(['role-change', 'removal', 'self-leave']);
+
 test('members_cannot_change_roles', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);

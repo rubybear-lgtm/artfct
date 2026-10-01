@@ -34,11 +34,12 @@ class TeamMemberController extends Controller
 
         $membership = $team->memberships()->where('user_id', $user->id)->firstOrFail();
         $roleChanged = $membership->role !== $newRole;
-        $membership->update(['role' => $newRole]);
 
-        if ($roleChanged) {
-            $tokenRevoker->revokeForMember($team, $user);
+        if ($roleChanged && ! $tokenRevoker->revokeForMember($team, $user)) {
+            abort(503, __('Unable to revoke this member’s active credentials. No role change was applied. Please retry shortly.'));
         }
+
+        $membership->update(['role' => $newRole]);
 
         $auditLogger->recordForRequest($request, AuditEventType::RoleChanged, $team, (string) $request->user()->id, "user:{$user->id} -> {$newRole->value}");
 
@@ -65,10 +66,11 @@ class TeamMemberController extends Controller
             __('The last admin cannot be removed from the team.'),
         );
 
-        $team->memberships()
-            ->where('user_id', $user->id)
-            ->delete();
-        $tokenRevoker->revokeForMember($team, $user);
+        if (! $tokenRevoker->revokeForMember($team, $user)) {
+            abort(503, __('Unable to revoke this member’s active credentials. No membership change was applied. Please retry shortly.'));
+        }
+
+        $team->memberships()->where('user_id', $user->id)->delete();
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberRemoved, $team, (string) $request->user()->id, "user:{$user->id}");
 
