@@ -3,7 +3,7 @@
 //! These tests are ignored by default. They require all of
 //! `ARTFCT_INTEGRATION_BASE_URL`, `ARTFCT_INTEGRATION_TOKEN`,
 //! `ARTFCT_INTEGRATION_PERSIST_TO`, `ARTFCT_WRANGLER_BIN`, and
-//! `ARTFCT_ARTIFACT_TOKEN_SECRET`, then run with:
+//! `ARTFCT_ARTIFACT_TOKEN_SECRET`, and `ARTFCT_GOVERNANCE_SECRET`, then run with:
 //! `cargo test -p artfct --test storage_integration -- --ignored`.
 //!
 //! The token secret is required rather than optional on purpose: it is what
@@ -29,6 +29,8 @@ struct Context {
     /// The Worker's `ARTFCT_ARTIFACT_ORIGIN_SUFFIX`, defaulting to the
     /// production `.artfct.dev` exactly as `artifact_origin_suffix` does.
     origin_suffix: String,
+    /// `ARTFCT_GOVERNANCE_SECRET` configured on the isolated local Worker.
+    governance_secret: String,
 }
 
 fn context() -> Option<Context> {
@@ -38,6 +40,7 @@ fn context() -> Option<Context> {
         "ARTFCT_INTEGRATION_PERSIST_TO",
         "ARTFCT_WRANGLER_BIN",
         "ARTFCT_ARTIFACT_TOKEN_SECRET",
+        "ARTFCT_GOVERNANCE_SECRET",
     ];
     let present = names
         .iter()
@@ -49,7 +52,7 @@ fn context() -> Option<Context> {
     assert_eq!(
         present,
         names.len(),
-        "storage integration requires all five environment variables"
+        "storage integration requires all six environment variables"
     );
     let base = env::var(names[0]).expect("base URL is configured");
     assert!(
@@ -63,6 +66,7 @@ fn context() -> Option<Context> {
         persist_to: env::var(names[2]).expect("persistence path is configured"),
         wrangler: env::var(names[3]).expect("Wrangler binary is configured"),
         token_secret: env::var(names[4]).expect("artifact token secret is configured"),
+        governance_secret: env::var(names[5]).expect("governance secret is configured"),
         origin_suffix: env::var("ARTFCT_ARTIFACT_ORIGIN_SUFFIX")
             .ok()
             .filter(|value| !value.is_empty())
@@ -535,6 +539,32 @@ fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
         )
         .into())
     }
+}
+
+/// Reads an R2 object through Wrangler's local backend, bypassing the Worker's
+/// D1 metadata and HTTP routes. This is the direct storage proof required by
+/// RUB-317.
+fn r2_object_get(
+    context: &Context,
+    content_hash: &str,
+) -> Result<std::process::Output, Box<dyn Error>> {
+    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
+    let object_path = format!("artfct-blobs/blobs/{content_hash}");
+    let output = Command::new(&context.wrangler)
+        .current_dir(&working_directory)
+        .args([
+            "r2",
+            "object",
+            "get",
+            &object_path,
+            "--local",
+            "--persist-to",
+            &context.persist_to,
+            "--pipe",
+        ])
+        .output()
+        .map_err(|error| format!("failed to launch Wrangler R2 read: {error}"))?;
+    Ok(output)
 }
 
 fn count_value(context: &Context, sql: &str, key: &str) -> Result<i64, Box<dyn Error>> {
@@ -1311,6 +1341,126 @@ async fn delete_once_keeps_shared_blob_and_delete_last_removes_it() -> Result<()
             .status(),
         reqwest::StatusCode::NOT_FOUND
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
+async fn gdpr_erasure_removes_bytes_from_r2() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let shared = unique_html("erasure-shared");
+    let first_only = unique_html("erasure-first-only");
+    let second_only = unique_html("erasure-second-only");
+    let shared_hash = sha256(&shared);
+    let first_only_hash = sha256(&first_only);
+    let second_only_hash = sha256(&second_only);
+
+    // The artifacts have distinct manifests but share one content-addressed
+    // blob. Each also owns a unique object so the first deletion proves that
+    // R2 removes only unreferenced bytes.
+    let first = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", shared.as_slice(), "text/html; charset=utf-8"),
+            (
+                "first.txt",
+                first_only.as_slice(),
+                "text/plain; charset=utf-8",
+            ),
+        ],
+        "index.html",
+    )
+    .await?;
+    let second = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", shared.as_slice(), "text/html; charset=utf-8"),
+            (
+                "second.txt",
+                second_only.as_slice(),
+                "text/plain; charset=utf-8",
+            ),
+        ],
+        "index.html",
+    )
+    .await?;
+    assert_ne!(first, second);
+
+    for hash in [&shared_hash, &first_only_hash, &second_only_hash] {
+        let object = r2_object_get(&context, hash)?;
+        assert!(
+            object.status.success(),
+            "R2 object blobs/{hash} should exist before erasure: {}",
+            String::from_utf8_lossy(&object.stderr)
+        );
+    }
+
+    let first_delete = client
+        .delete(format!(
+            "{}/v1/internal/orgs/{}/governance/artifacts/{first}",
+            context.base, context.org
+        ))
+        .header(
+            reqwest::header::AUTHORIZATION,
+            &format!("Bearer {}", context.governance_secret),
+        )
+        .send()
+        .await?;
+    assert_eq!(first_delete.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        client
+            .get(format!("{}/v1/blobs/{shared_hash}", context.base))
+            .bearer_auth(&context.token)
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::OK,
+        "shared HTTP content must remain after erasing one artifact"
+    );
+    assert!(
+        r2_object_get(&context, &shared_hash)?.status.success(),
+        "direct R2 read of a shared object must still succeed"
+    );
+    assert!(
+        !r2_object_get(&context, &first_only_hash)?.status.success(),
+        "direct R2 read of the first artifact's unique object must fail after erasure"
+    );
+
+    let second_delete = client
+        .delete(format!(
+            "{}/v1/internal/orgs/{}/governance/artifacts/{second}",
+            context.base, context.org
+        ))
+        .header(
+            reqwest::header::AUTHORIZATION,
+            &format!("Bearer {}", context.governance_secret),
+        )
+        .send()
+        .await?;
+    assert_eq!(second_delete.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        client
+            .get(format!("{}/v1/blobs/{shared_hash}", context.base))
+            .bearer_auth(&context.token)
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "the final erasure must remove the shared blob from the HTTP path"
+    );
+    for hash in [&shared_hash, &second_only_hash] {
+        let object = r2_object_get(&context, hash)?;
+        assert!(
+            !object.status.success(),
+            "direct R2 read of erased object blobs/{hash} must fail"
+        );
+    }
+
     Ok(())
 }
 

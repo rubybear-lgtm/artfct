@@ -2790,26 +2790,6 @@ mod tests {
         assert_eq!(store.blob_ref_count(&only.content_hash), 0);
     }
 
-    /// `gdpr_erasure_removes_bytes_from_r2` needs a live R2 bucket to prove
-    /// a direct read 404s after erasure — not constructible in a native
-    /// `cargo test` (see `block_on`'s doc comment above). The pure
-    /// refcount-reaches-zero decision logic it depends on is proven against
-    /// `MemoryArtifactStore` by `blob_removed_at_refcount_zero` and by
-    /// `governance::plan_erasure`'s unit tests; the same guarantee against
-    /// the real D1 SQL is proven separately by
-    /// `create_delete_create_delete_returns_refcount_to_zero` in
-    /// `mcp-server/tests/storage_integration.rs`. Neither covers the R2
-    /// object actually disappearing on erasure specifically — that is what
-    /// this stub still names and nothing currently verifies.
-    #[test]
-    #[ignore = "requires a live R2 bucket; run against a local Wrangler dev instance"]
-    fn gdpr_erasure_removes_bytes_from_r2() {
-        unimplemented!(
-            "erase every artifact referencing the subject's data in an org via \
-             D1R2ArtifactStore, then GET the blob's R2 key directly and assert 404"
-        );
-    }
-
     #[test]
     fn legal_hold_blocks_hard_delete_and_is_refused_by_name() {
         let store = store::MemoryArtifactStore::new();

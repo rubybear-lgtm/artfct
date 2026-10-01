@@ -170,6 +170,7 @@ up() {
         echo App\Services\Auth\OrgJwtService::default()->mint(\$team, \$admin, App\Enums\TeamRole::Admin, 3600)['token'];
     " 2>/dev/null | tail -1)
     echo "ARTFCT_INTEGRATION_TOKEN=$INTEGRATION_TOKEN" >> "$STATE_DIR/env"
+    echo "ARTFCT_GOVERNANCE_SECRET=$ARTFCT_GOVERNANCE_SECRET" >> "$STATE_DIR/env"
     {
         echo "ARTFCT_INTEGRATION_BASE_URL=http://127.0.0.1:${WORKER_PORT}"
         echo "ARTFCT_INTEGRATION_ORG=${ORG_A_SLUG}"
