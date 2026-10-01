@@ -9,11 +9,9 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * Spec 12: queues one artifact for indexing. The Worker has no live
- * webhook wired to call this automatically on `artifact.created` in this
- * environment (see DOCUMENTATION.md) — this command is the manual/ops
- * entry point in the meantime, and exercises the exact same queued job a
- * webhook would dispatch.
+ * Spec 12 ops entry point for queuing one artifact for indexing. The live
+ * `artifact.created` Worker event is handled by ArtifactCreatedHandler; this
+ * command dispatches the same job for manual or operational runs.
  */
 #[Signature('indexing:index {org : The team slug} {artifact : The artifact id} {html-file : Path to the artifact\'s HTML} {--agent=} {--repo-url=} {--commit-sha=}')]
 #[Description('Queues one artifact for headless-render indexing')]

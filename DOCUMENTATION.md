@@ -432,9 +432,9 @@ also available as a manual entry point. `RealRenderer` calls Browser
 Rendering on a signed artifact URL so relative bundle assets load;
 `RealEmbeddings` calls Workers AI, and `PgVectorIndex` stores 1024-dimensional
 vectors in Railway Postgres. The staging Worker and Laravel services carry
-this code, and the pgvector migration has run. A public multi-file artifact
-and its Worker-to-Laravel event have been verified; a normal event-to-search
-run with indexing enabled is still pending.
+this code, and the pgvector migration has run. A public multi-file artifact,
+its Worker-to-Laravel event, and a normal event-driven indexing run with
+indexing enabled have been verified in staging.
 
 **Console surfacing.** `ConsoleController::index()` passes a real,
 queried `indexingFailures` prop (team-scoped, latest 20) to the Inertia
