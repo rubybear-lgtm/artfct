@@ -95,11 +95,28 @@ test('scim_deprovision_revokes_sessions', function () {
 
     $token = OrgToken::factory()->for($team)->for($user)->create(['revoked_at' => null]);
 
-    $service->deprovision('scim-ext-2');
+    expect($service->deprovision('scim-ext-2'))->toBeTrue();
 
     expect($user->fresh()->deactivated_at)->not->toBeNull();
     expect($token->fresh()->revoked_at)->not->toBeNull();
     Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/internal/revocations'));
+});
+
+test('scim_deprovision_preserves_access_when_worker_revocation_fails', function () {
+    Http::fake(['*' => Http::response([], 503)]);
+    config([
+        'services.org_jwt.worker_base_url' => 'https://worker.test',
+        'services.org_jwt.revocation_write_secret' => 'test-secret',
+    ]);
+
+    $team = verifiedDomainTeam();
+    $service = app(ScimProvisioningService::class);
+    $user = $service->provision($team, 'scim-ext-fail', 'held@acme.com');
+    $token = OrgToken::factory()->for($team)->for($user)->create(['revoked_at' => null]);
+
+    expect($service->deprovision('scim-ext-fail'))->toBeFalse()
+        ->and($user->fresh()->deactivated_at)->toBeNull()
+        ->and($token->fresh()->revoked_at)->toBeNull();
 });
 
 test('authkit_email_match_links_by_verified_email', function () {

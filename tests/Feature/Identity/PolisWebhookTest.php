@@ -20,7 +20,11 @@ function polisEvent(array $payload, ?string $secret = 'whsec', ?int $timestampMs
 }
 
 beforeEach(function () {
-    config(['services.polis.webhook_secret' => 'whsec']);
+    config([
+        'services.polis.webhook_secret' => 'whsec',
+        'services.org_jwt.worker_base_url' => 'https://worker.test',
+        'services.org_jwt.revocation_write_secret' => 'test-revocation-secret',
+    ]);
     Http::fake();
 });
 
@@ -54,6 +58,20 @@ test('a_deactivation_keeps_the_row_and_revokes_org_tokens', function () {
 
     expect($user->fresh()->deactivated_at)->not->toBeNull()
         ->and($token->fresh()->revoked_at)->not->toBeNull();
+});
+
+test('a_deactivation_is_retried_when_worker_revocation_is_unavailable', function () {
+    $team = Team::factory()->create(['slug' => 'acme']);
+    polisEvent(['event' => 'user.created', 'tenant' => 'acme', 'data' => ['id' => 'scim-1', 'email' => 'a@acme.com', 'active' => true]])->assertOk();
+    $user = User::query()->where('email', 'a@acme.com')->firstOrFail();
+    $token = OrgToken::factory()->create(['team_id' => $team->id, 'user_id' => $user->id]);
+    config(['services.org_jwt.revocation_write_secret' => null]);
+
+    polisEvent(['event' => 'user.updated', 'tenant' => 'acme', 'data' => ['id' => 'scim-1', 'email' => 'a@acme.com', 'active' => false]])
+        ->assertStatus(503);
+
+    expect($user->fresh()->deactivated_at)->toBeNull()
+        ->and($token->fresh()->revoked_at)->toBeNull();
 });
 
 test('a_deleted_event_also_deprovisions_and_a_batch_is_processed', function () {

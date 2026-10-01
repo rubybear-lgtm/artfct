@@ -4,9 +4,10 @@ namespace App\Services\Identity;
 
 use App\Enums\TeamRole;
 use App\Models\ExternalIdentity;
+use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Auth\RevocationWriter;
+use App\Services\Auth\OrgTokenRevoker;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,12 +23,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ScimProvisioningService
 {
-    private readonly RevocationWriter $revocationWriter;
-
-    public function __construct(?RevocationWriter $revocationWriter = null)
-    {
-        $this->revocationWriter = $revocationWriter ?? RevocationWriter::default();
-    }
+    public function __construct(private readonly OrgTokenRevoker $tokenRevoker) {}
 
     public function provision(Team $team, string $scimExternalId, string $email, ?string $name = null): User
     {
@@ -74,7 +70,7 @@ final class ScimProvisioningService
      * Deactivates the user identified by `$scimExternalId` and revokes
      * every one of their unrevoked org tokens.
      */
-    public function deprovision(string $scimExternalId): void
+    public function deprovision(string $scimExternalId): bool
     {
         $identity = ExternalIdentity::query()
             ->where('provider', 'scim')
@@ -82,19 +78,22 @@ final class ScimProvisioningService
             ->first();
 
         if (! $identity) {
-            return;
+            return true;
         }
 
         $user = $identity->user;
-        $user->forceFill(['deactivated_at' => now()])->save();
+        $tokens = $user->orgTokens()->where('expires_at', '>', now())->get();
+        if (! $this->tokenRevoker->denylistTokens($tokens)) {
+            return false;
+        }
 
-        $user->orgTokens()
-            ->whereNull('revoked_at')
-            ->get()
-            ->each(function ($token): void {
-                $token->revoked_at = now();
-                $token->save();
-                $this->revocationWriter->revoke($token->jti, $token->expires_at);
-            });
+        DB::transaction(function () use ($user): void {
+            $user->forceFill(['deactivated_at' => now()])->save();
+            $user->orgTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
+            $user->mcpConnections()->whereNull('revoked_at')->update(['revoked_at' => now()]);
+            OAuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->update(['revoked_at' => now()]);
+        });
+
+        return true;
     }
 }

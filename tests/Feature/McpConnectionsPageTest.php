@@ -229,6 +229,32 @@ test('forcing reauthorization does not revoke local credentials when worker prop
         ->and(AuditEvent::query()->where('event_type', AuditEventType::McpConnectionReauthorized)->exists())->toBeFalse();
 });
 
+test('revoking a connection fails closed when worker propagation fails', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response([], 503)]);
+
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $connection = McpConnection::factory()->create(['team_id' => $team->id, 'user_id' => $owner->id]);
+    $orgToken = OrgToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+    $refreshToken = OAuthRefreshToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+
+    test()->actingAs($owner)->delete(route('teams.mcp-connections.destroy', [$team, $connection->public_id]))
+        ->assertStatus(503);
+
+    expect($connection->fresh()->revoked_at)->toBeNull()
+        ->and($orgToken->fresh()->revoked_at)->toBeNull()
+        ->and($refreshToken->fresh()->revoked_at)->toBeNull();
+});
+
 test('example', function () {
     $response = $this->get('/');
 

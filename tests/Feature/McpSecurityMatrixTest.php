@@ -9,6 +9,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -56,6 +57,8 @@ test('a refresh token rotates and replaying the old one revokes the connection',
     $team = Team::factory()->create();
     $user = mcpAdminOf($team);
     $tokens = mcpOAuthTokens($team, $user);
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake();
 
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
@@ -74,6 +77,83 @@ test('a refresh token rotates and replaying the old one revokes the connection',
 
     expect(McpConnection::query()->where('team_id', $team->id)->whereNull('revoked_at')->count())->toBe(0);
     mcpInitialize($refreshed->json('access_token'))->assertUnauthorized();
+});
+
+test('refresh token replay persists and retries a failed worker denylist write', function () {
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake([
+        'worker.test/v1/internal/revocations' => Http::sequence()
+            ->push([], 503)
+            ->push([], 503)
+            ->push([], 503)
+            ->push([], 503)
+            ->push([], 200)
+            ->push([], 200),
+    ]);
+
+    $refreshed = $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $tokens['refresh_token'],
+        'client_id' => 'artfct-cli',
+    ])->assertOk();
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $tokens['refresh_token'],
+        'client_id' => 'artfct-cli',
+    ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+
+    $retry = DB::table('org_token_revocation_retries')->first();
+    expect($retry)->not->toBeNull()
+        ->and($retry->completed_at)->toBeNull()
+        ->and($retry->attempts)->toBe(0)
+        ->and(McpConnection::query()->where('team_id', $team->id)->whereNull('revoked_at')->exists())->toBeFalse()
+        ->and(OrgToken::query()->where('team_id', $team->id)->whereNull('revoked_at')->exists())->toBeFalse();
+
+    $this->artisan('app:retry-org-token-revocations')->assertSuccessful();
+
+    expect(DB::table('org_token_revocation_retries')->whereNull('completed_at')->count())->toBe(2);
+
+    $this->travel(61)->seconds();
+    $this->artisan('app:retry-org-token-revocations')->assertSuccessful();
+
+    expect(DB::table('org_token_revocation_retries')->whereNotNull('completed_at')->count())->toBe(2);
+    Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer test-revocation-secret'));
+});
+
+test('a legacy refresh-token replay with no connection link queues every matching access token for retry', function () {
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    $legacyRefreshToken = OAuthRefreshToken::query()
+        ->where('token_hash', hash('sha256', $tokens['refresh_token']))
+        ->firstOrFail();
+    $legacyRefreshToken->forceFill(['mcp_connection_id' => null])->save();
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake([
+        'worker.test/v1/internal/revocations' => Http::sequence()
+            ->push([], 503)
+            ->push([], 503)
+            ->push([], 200)
+            ->push([], 200),
+    ]);
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $tokens['refresh_token'],
+        'client_id' => 'artfct-cli',
+    ])->assertOk();
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $tokens['refresh_token'],
+        'client_id' => 'artfct-cli',
+    ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+
+    expect(DB::table('org_token_revocation_retries')->count())->toBe(2)
+        ->and(McpConnection::query()->where('team_id', $team->id)->whereNull('revoked_at')->exists())->toBeFalse()
+        ->and(OrgToken::query()->where('team_id', $team->id)->whereNull('revoked_at')->exists())->toBeFalse();
 });
 
 test('a refresh token issued to one client cannot be redeemed by another', function () {
@@ -111,6 +191,7 @@ test('revoking an unknown token answers the same as a known one', function () {
 test('oauth revocation does not report success or mutate local state when the worker denylist fails', function () {
     $team = Team::factory()->create();
     $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
     Http::fake(['worker.test/v1/internal/revocations' => Http::response([], 503)]);
 
     $this->postJson('/oauth/revoke', ['token' => $tokens['refresh_token']])->assertStatus(503)
@@ -118,6 +199,19 @@ test('oauth revocation does not report success or mutate local state when the wo
 
     expect(OAuthRefreshToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse()
         ->and(McpConnection::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse()
+        ->and(OrgToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse();
+});
+
+test('oauth access-token revocation fails closed when the worker denylist fails', function () {
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake(['worker.test/v1/internal/revocations' => Http::response([], 503)]);
+
+    $this->postJson('/oauth/revoke', ['token' => $tokens['access_token']])->assertStatus(503)
+        ->assertJsonPath('error', 'server_error');
+
+    expect(McpConnection::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse()
         ->and(OrgToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse();
 });
 

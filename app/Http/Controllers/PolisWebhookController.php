@@ -33,7 +33,9 @@ class PolisWebhookController extends Controller
 
         foreach ($events as $event) {
             if (is_array($event)) {
-                $this->handle($event, $scim);
+                if (! $this->handle($event, $scim)) {
+                    return response()->json(['error' => 'revocation_unavailable'], 503);
+                }
             }
         }
 
@@ -43,22 +45,21 @@ class PolisWebhookController extends Controller
     /**
      * @param  array<string, mixed>  $event
      */
-    private function handle(array $event, ScimProvisioningService $scim): void
+    private function handle(array $event, ScimProvisioningService $scim): bool
     {
         $data = is_array($event['data'] ?? null) ? $event['data'] : [];
         $scimId = $data['id'] ?? null;
         $type = $event['event'] ?? null;
 
         if (! is_string($scimId) || $scimId === '') {
-            return;
+            return true;
         }
 
         $active = (bool) ($data['active'] ?? true);
 
         if ($type === 'user.deleted' || (in_array($type, ['user.created', 'user.updated'], true) && ! $active)) {
-            $scim->deprovision($scimId);
+            return $scim->deprovision($scimId);
 
-            return;
         }
 
         if (in_array($type, ['user.created', 'user.updated'], true)) {
@@ -68,12 +69,14 @@ class PolisWebhookController extends Controller
             if ($team === null || ! is_string($email) || $email === '') {
                 Log::warning('Polis directory event for an unknown org or without an email.', ['tenant' => $event['tenant'] ?? null]);
 
-                return;
+                return true;
             }
 
             $name = trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? ''));
             $scim->provision($team, $scimId, strtolower($email), $name !== '' ? $name : null);
         }
+
+        return true;
     }
 
     private function signatureIsValid(?string $header, string $payload): bool

@@ -13,9 +13,10 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Auth\OrgTokenRevocationRetry;
 use App\Services\Auth\OrgTokenRevoker;
-use App\Services\Auth\RevocationWriter;
 use App\Services\Governance\AuditLogger;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -220,7 +221,7 @@ final class AuthorizationServerController extends Controller
         ]);
     }
 
-    public function token(Request $request, AuditLogger $auditLogger): JsonResponse
+    public function token(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker, OrgTokenRevocationRetry $revocationRetry): JsonResponse
     {
         $rules = [
             'grant_type' => ['required', 'string', 'in:authorization_code,refresh_token'],
@@ -241,7 +242,7 @@ final class AuthorizationServerController extends Controller
         $validated = $validator->validated();
 
         if ($validated['grant_type'] === 'refresh_token') {
-            return $this->refresh($validated, $request, $auditLogger);
+            return $this->refresh($validated, $request, $auditLogger, $tokenRevoker, $revocationRetry);
         }
 
         $authorization = Cache::pull($this->codeKey($validated['code']));
@@ -335,9 +336,14 @@ final class AuthorizationServerController extends Controller
                         return $this->revocationUnavailable();
                     }
 
-                    $this->revokeConnection($connection, workerTokensAlreadyDenied: true);
+                    $this->revokeConnection($connection);
                 } else {
-                    $refreshToken->forceFill(['revoked_at' => now()])->save();
+                    $tokens = $this->legacyOAuthTokens($refreshToken);
+                    if (! $tokenRevoker->denylistTokens($tokens)) {
+                        return $this->revocationUnavailable();
+                    }
+
+                    $this->revokeLegacyOAuthCredentials($refreshToken, $tokens);
                 }
                 $auditLogger->recordForRequest(
                     $request,
@@ -368,7 +374,7 @@ final class AuthorizationServerController extends Controller
                     return $this->revocationUnavailable();
                 }
 
-                $this->revokeConnection($connection, workerTokensAlreadyDenied: true);
+                $this->revokeConnection($connection);
             } else {
                 if (! $tokenRevoker->denylistTokens([$orgToken])) {
                     return $this->revocationUnavailable();
@@ -403,14 +409,16 @@ final class AuthorizationServerController extends Controller
     }
 
     /** @param array{grant_type: string, refresh_token?: string, client_id: string} $validated */
-    private function refresh(array $validated, Request $request, AuditLogger $auditLogger): JsonResponse
+    private function refresh(array $validated, Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker, OrgTokenRevocationRetry $revocationRetry): JsonResponse
     {
         $rawRefreshToken = $validated['refresh_token'] ?? '';
         if ($rawRefreshToken === '') {
             return $this->tokenError('invalid_request', 'A refresh token is required.');
         }
 
-        $refreshToken = DB::transaction(function () use ($rawRefreshToken, $validated): ?OAuthRefreshToken {
+        $replayedConnection = null;
+        $replayedLegacyRefreshToken = null;
+        $refreshToken = DB::transaction(function () use ($rawRefreshToken, $validated, &$replayedConnection, &$replayedLegacyRefreshToken): ?OAuthRefreshToken {
             $stored = OAuthRefreshToken::query()
                 ->where('token_hash', hash('sha256', $rawRefreshToken))
                 ->lockForUpdate()
@@ -423,7 +431,9 @@ final class AuthorizationServerController extends Controller
             if ($stored->revoked_at !== null) {
                 $connection = $stored->mcpConnection()->lockForUpdate()->first();
                 if ($connection instanceof McpConnection) {
-                    $this->revokeConnection($connection);
+                    $replayedConnection = $connection;
+                } else {
+                    $replayedLegacyRefreshToken = $stored;
                 }
 
                 return null;
@@ -442,6 +452,25 @@ final class AuthorizationServerController extends Controller
 
             return $stored;
         });
+
+        if ($replayedConnection instanceof McpConnection) {
+            $tokens = $replayedConnection->orgTokens()->where('expires_at', '>', now())->get();
+            $workerTokensDenied = $tokenRevoker->denylistTokens($tokens);
+
+            DB::transaction(function () use ($replayedConnection, $tokens, $workerTokensDenied, $revocationRetry): void {
+                if (! $workerTokensDenied) {
+                    $revocationRetry->persist($tokens);
+                }
+
+                $this->revokeConnection($replayedConnection);
+            });
+        }
+
+        if ($replayedLegacyRefreshToken instanceof OAuthRefreshToken) {
+            $tokens = $this->legacyOAuthTokens($replayedLegacyRefreshToken);
+            $workerTokensDenied = $tokenRevoker->denylistTokens($tokens);
+            $this->revokeLegacyOAuthCredentials($replayedLegacyRefreshToken, $tokens, retryWorkerWrite: ! $workerTokensDenied ? $revocationRetry : null);
+        }
 
         if (! $refreshToken instanceof OAuthRefreshToken) {
             return $this->tokenError('invalid_grant', 'The refresh token is invalid, expired, revoked, or issued to another client.');
@@ -545,16 +574,65 @@ final class AuthorizationServerController extends Controller
         return $connection;
     }
 
-    private function revokeConnection(McpConnection $connection, bool $workerTokensAlreadyDenied = false): void
+    private function revokeConnection(McpConnection $connection): void
     {
         $connection->forceFill(['revoked_at' => $connection->revoked_at ?? now()])->saveQuietly();
         $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
-        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken) use ($workerTokensAlreadyDenied): void {
+        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken): void {
             $orgToken->forceFill(['revoked_at' => now()])->saveQuietly();
-            if (! $workerTokensAlreadyDenied) {
-                RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
+        });
+    }
+
+    /** @return Collection<int, OrgToken> */
+    private function legacyOAuthTokens(OAuthRefreshToken $refreshToken): Collection
+    {
+        return OrgToken::query()
+            ->where('team_id', $refreshToken->team_id)
+            ->where('user_id', $refreshToken->user_id)
+            ->where('name', 'MCP OAuth ('.$refreshToken->client_id.')')
+            ->where('expires_at', '>', now())
+            ->get();
+    }
+
+    /**
+     * Revoke credentials for pre-connection OAuth rows that have no connection
+     * foreign key. The optional retry writer is used only for refresh replay.
+     *
+     * @param  Collection<int, OrgToken>  $tokens
+     */
+    private function revokeLegacyOAuthCredentials(OAuthRefreshToken $refreshToken, Collection $tokens, ?OrgTokenRevocationRetry $retryWorkerWrite = null): void
+    {
+        DB::transaction(function () use ($refreshToken, $tokens, $retryWorkerWrite): void {
+            if ($retryWorkerWrite instanceof OrgTokenRevocationRetry) {
+                $retryWorkerWrite->persist($tokens);
             }
+
+            $revokedAt = now();
+            $refreshToken->forceFill(['revoked_at' => $refreshToken->revoked_at ?? $revokedAt])->saveQuietly();
+
+            if ($tokens->isNotEmpty()) {
+                $jtiValues = $tokens->pluck('jti')->all();
+
+                OrgToken::query()
+                    ->whereIn('id', $tokens->modelKeys())
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => $revokedAt]);
+
+                McpConnection::query()
+                    ->where('team_id', $refreshToken->team_id)
+                    ->where('user_id', $refreshToken->user_id)
+                    ->whereIn('credential_jti', $jtiValues)
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => $revokedAt]);
+            }
+
+            OAuthRefreshToken::query()
+                ->where('team_id', $refreshToken->team_id)
+                ->where('user_id', $refreshToken->user_id)
+                ->where('client_id', $refreshToken->client_id)
+                ->whereNull('revoked_at')
+                ->update(['revoked_at' => $revokedAt]);
         });
     }
 

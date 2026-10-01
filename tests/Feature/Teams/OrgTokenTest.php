@@ -81,6 +81,22 @@ test('token_revocation_does_not_claim_success_when_worker_denylist_fails', funct
         ->and($connection->fresh()->revoked_at)->toBeNull();
 });
 
+test('token_revocation_fails_closed_when_worker_connection_throws', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::failedConnection(),
+    ]);
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgToken::factory()->for($team)->for($admin)->create();
+
+    test()->actingAs($admin)->deleteJson("/settings/teams/{$team->slug}/tokens/{$token->id}")
+        ->assertStatus(503);
+
+    expect($token->fresh()->revoked_at)->toBeNull();
+});
+
 test('member_cannot_revoke_another_users_token', function () {
     configureOrgJwt();
     Http::fake([

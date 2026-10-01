@@ -16,3 +16,6 @@ Schedule::command('billing:sync-seats')->daily();
 
 // Keeps customer-facing MCP activity bounded without affecting live calls.
 Schedule::command('mcp:prune-activity')->dailyAt('02:15')->withoutOverlapping();
+
+// Retries edge denylist writes persisted during OAuth refresh-token replay.
+Schedule::command('app:retry-org-token-revocations')->everyMinute()->withoutOverlapping();
