@@ -193,6 +193,9 @@ jobs:
       - name: Test pre-commit fallback scanner
         run: bash scripts/test-pre-commit-hook.sh
 
+      - name: Test Wayfinder hook ordering
+        run: bash scripts/test-wayfinder-hook-order.sh
+
   rust:
     runs-on: ubuntu-latest
 

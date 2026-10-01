@@ -128,6 +128,13 @@ if [ "$HAS_FRONTEND" = true ]; then
     fi
 
     echo "🎨 Running frontend pre-commit checks..."
+
+    if [ ! -f artisan ]; then
+        echo "❌ Laravel's artisan entrypoint is missing; cannot generate current Wayfinder routes."
+        exit 1
+    fi
+
+    php artisan wayfinder:generate --no-interaction
     npm run format:check
     npm run lint:check
     npm run types:check

@@ -28,6 +28,7 @@ if ! command -v npx &>/dev/null; then
     echo "❌ npx is not available; ensure Node.js is installed."
     exit 1
 fi
+php artisan wayfinder:generate --no-interaction
 npm run format:check
 npm run lint:check
 npm run types:check
