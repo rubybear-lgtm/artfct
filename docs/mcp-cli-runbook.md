@@ -32,6 +32,14 @@ server-side event stream or session store.
 ```sh
 curl -fsSL https://artfct.dev/install.sh | sh
 artfct setup
+```
+
+For a staging-only session, point CLI authentication and API calls at staging
+before signing in. Without this override, the CLI defaults to the production
+API base URL:
+
+```sh
+export ARTFCT_API_BASE_URL=https://staging.artfct.dev
 artfct login --oauth --organization <organization-slug>
 artfct doctor
 ```
@@ -53,11 +61,12 @@ state without printing its value.
 
 ## OAuth and organization context
 
-Hosted clients should discover the authorization server through:
+Hosted clients in the current staging environment should discover the
+authorization server through:
 
 ```text
-https://artfct.dev/.well-known/oauth-protected-resource
-https://artfct.dev/.well-known/oauth-authorization-server
+https://staging.artfct.dev/.well-known/oauth-protected-resource
+https://staging.artfct.dev/.well-known/oauth-authorization-server
 ```
 
 The flow is authorization-code OAuth with S256 PKCE. Consent displays the

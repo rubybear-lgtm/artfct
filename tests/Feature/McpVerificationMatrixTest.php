@@ -206,6 +206,17 @@ test('completed stdio and reconnection coverage are not reported as open gaps', 
         ->and($runbook)->toContain('The `stdio_integration.rs` child-process test');
 });
 
+test('the runbook keeps hosted discovery and CLI OAuth on staging', function () {
+    $runbook = (string) file_get_contents(base_path('docs/mcp-cli-runbook.md'));
+
+    expect($runbook)
+        ->toContain('export ARTFCT_API_BASE_URL=https://staging.artfct.dev')
+        ->toContain('https://staging.artfct.dev/.well-known/oauth-protected-resource')
+        ->toContain('https://staging.artfct.dev/.well-known/oauth-authorization-server')
+        ->not->toContain('https://artfct.dev/.well-known/oauth-protected-resource')
+        ->not->toContain('https://artfct.dev/.well-known/oauth-authorization-server');
+});
+
 test('the matrix itself carries no credential-shaped strings', function () {
     // The DoD clause requiring no credential in fixtures. This file is the one
     // artefact RUB-363 adds, so it is checked like any other.
