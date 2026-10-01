@@ -154,6 +154,32 @@ test('membership_changes_fail_closed_when_the_worker_denylist_write_fails', func
         && $request->hasHeader('Authorization', 'Bearer test-revocation-secret'));
 })->with(['role-change', 'removal', 'self-leave']);
 
+test('membership_changes_retry_worker_revocation_for_locally_revoked_unexpired_tokens', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $token = OrgToken::factory()->for($team)->for($member)->create([
+        'jti' => 'previously-revoked-jti',
+        'revoked_at' => now()->subMinute(),
+        'expires_at' => now()->addHour(),
+    ]);
+
+    $this->actingAs($owner)
+        ->patch(route('teams.members.update', [$team, $member]), ['role' => 'viewer'])
+        ->assertRedirect();
+
+    expect($team->memberships()->where('user_id', $member->id)->value('role'))->toBe(TeamRole::Viewer);
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://worker.test/v1/internal/revocations'
+        && $request['jti'] === $token->jti
+        && $request->hasHeader('Authorization', 'Bearer test-revocation-secret'));
+});
+
 test('members_cannot_change_roles', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);

@@ -18,7 +18,7 @@ class OrgTokenRevoker
         $tokens = OrgToken::query()
             ->where('team_id', $team->id)
             ->where('user_id', $user->id)
-            ->active()
+            ->where('expires_at', '>', now())
             ->get();
         $revokedAt = now();
 
