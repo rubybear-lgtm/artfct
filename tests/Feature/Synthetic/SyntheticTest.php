@@ -121,6 +121,17 @@ test('seed_creates_org_users_roles_and_tokens', function () {
         ->and(User::query()->where('email', 'not like', '%@northwind.example')->count())->toBe(0);
 });
 
+test('laravel_only_seed_can_keep_fresh_bearer_tokens_out_of_output', function () {
+    fakeSyntheticWorkers();
+
+    test()->artisan('synthetic:seed', ['--laravel-only' => true, '--quiet-token' => true])
+        ->doesntExpectOutputToContain('Admin org token')
+        ->doesntExpectOutputToContain('eyJ')
+        ->assertSuccessful();
+
+    expect(OrgToken::query()->where('name', 'synthetic-admin')->exists())->toBeTrue();
+});
+
 test('seed_is_idempotent', function () {
     $workers = fakeSyntheticWorkers();
 

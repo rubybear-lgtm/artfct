@@ -145,7 +145,7 @@ up() {
     php artisan auth:publish-jwks
 
     echo "==> Seeding synthetic orgs ($ORG_A_SLUG, $ORG_B_SLUG)" >&2
-    php artisan synthetic:seed --slug="$ORG_A_SLUG" --laravel-only --target=local --no-interaction
+    php artisan synthetic:seed --slug="$ORG_A_SLUG" --laravel-only --target=local --quiet-token --no-interaction
 
     # synthetic:seed's second org is isolation-testing content, not a second
     # admin membership: the OAuth consent flow needs one signed-in user who

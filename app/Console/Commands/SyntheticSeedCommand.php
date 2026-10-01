@@ -15,7 +15,7 @@ use Illuminate\Console\Command;
  * overlapping content for isolation tests. Deterministic for a given seed;
  * refuses in production; `--purge` removes only `zz-` orgs.
  */
-#[Signature('synthetic:seed {--slug=zz-northwind} {--artifacts=60} {--target=local : local|staging} {--seed=1} {--purge} {--laravel-only : Seed users, teams and tokens only; skip the Worker corpus}')]
+#[Signature('synthetic:seed {--slug=zz-northwind} {--artifacts=60} {--target=local : local|staging} {--seed=1} {--purge} {--laravel-only : Seed users, teams and tokens only; skip the Worker corpus} {--quiet-token : Do not print the freshly minted admin org token}')]
 #[Description('Seeds (or purges) the synthetic test org and its artifact corpus')]
 class SyntheticSeedCommand extends Command
 {
@@ -60,7 +60,7 @@ class SyntheticSeedCommand extends Command
             $this->components->twoColumnDetail($key, "refused: {$code}");
         }
 
-        if ($seeder->adminToken !== null) {
+        if ($seeder->adminToken !== null && ! $this->option('quiet-token')) {
             $this->components->warn('Admin org token (shown once, not stored):');
             $this->line($seeder->adminToken);
         }
