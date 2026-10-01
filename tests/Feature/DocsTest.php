@@ -58,10 +58,23 @@ test('every MCP client config block on the docs page is valid JSON', function ()
     expect($byKind['local']['mcpServers']['artfct']['command'])->toBe('artfct')
         ->and($byKind['local']['mcpServers']['artfct']['args'])->toContain('mcp', 'serve', '--host')
         ->and($page)
-        ->toContain('const hostedMcpBaseUrl = contract.servers[0].url;')
+        ->toContain('contract.servers[0].url.replace')
         ->toContain('const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;')
         ->toContain('url: hostedMcpUrl')
         ->toContain('claude mcp add --transport http artfct ${hostedMcpUrl}');
+});
+
+test('CLI docs keep install, sign-in, and artifact actions on the current environment', function () {
+    $page = file_get_contents(resource_path('js/pages/docs.tsx'));
+
+    expect($page)
+        ->toContain('const installerUrl = `${hostedMcpBaseUrl}/install.sh`;')
+        ->toContain('export ARTFCT_API_BASE_URL=${apiBaseUrl}')
+        ->toContain('ARTFCT_API_BASE_URL=${hostedMcpBaseUrl} artfct mcp serve')
+        ->toContain('curl -fsSL ${installerUrl} | ARTFCT_INSTALL_VERSION=v0.1.0 sh')
+        ->toContain('There is no native Windows build; use WSL.');
+
+    expect($page)->not->toContain('https://artfct.dev/install.sh');
 });
 
 test('the docs page states the hosted rate limit and activity retention the app enforces', function () {

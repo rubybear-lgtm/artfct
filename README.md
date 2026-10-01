@@ -47,12 +47,12 @@ Install the latest release:
 curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
-The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent` to configure the MCP server for all detected AI agents (Cursor, Claude Desktop, Gemini, and Codex) without prompts.
+The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent` to configure the MCP server for all detected AI agents (Cursor, Claude Desktop, Gemini, and Codex) without prompts. There is no native Windows build; use WSL.
 
 If you want to skip automatic MCP configuration during installation, set `ARTFCT_INSTALL_SETUP=0`:
 
 ```sh
-ARTFCT_INSTALL_SETUP=0 curl -fsSL https://artfct.dev/install.sh | sh
+curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_SETUP=0 sh
 ```
 
 If `~/.local/bin` is not on your `PATH`, add it:
@@ -64,8 +64,8 @@ export PATH="$HOME/.local/bin:$PATH"
 Install a specific version or to a custom directory:
 
 ```sh
-ARTFCT_INSTALL_VERSION=v0.0.4 curl -fsSL https://artfct.dev/install.sh | sh
-ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh
+curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_VERSION=v0.0.4 sh
+curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_DIR="$HOME/bin" sh
 ```
 
 ### Deploy

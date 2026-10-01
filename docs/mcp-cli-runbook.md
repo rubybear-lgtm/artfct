@@ -30,7 +30,8 @@ server-side event stream or session store.
 ## Local setup
 
 ```sh
-curl -fsSL https://artfct.dev/install.sh | sh
+curl -fsSL https://staging.artfct.dev/install.sh | sh
+export ARTFCT_API_BASE_URL=https://staging.artfct.dev
 artfct setup
 ```
 
@@ -464,6 +465,7 @@ protocol version.
 
 ```sh
 export MCP_LIVE_BASE_URL=https://staging.artfct.dev
+export ARTFCT_API_BASE_URL=https://staging.artfct.dev
 artfct setup --list
 artfct setup --silent
 artfct login --oauth --organization <staging-organization>

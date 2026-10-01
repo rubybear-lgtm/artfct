@@ -9,15 +9,19 @@ import { login, privacy, terms } from '@/routes';
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
 
 // ── CLI content ───────────────────────────────────────────────────────────────
-const CLI_INSTALL = `curl -fsSL https://artfct.dev/install.sh | sh`;
-
-const CLI_INSTALL_OPTS = `# install a specific version
-ARTFCT_INSTALL_VERSION=v0.1.0 curl -fsSL https://artfct.dev/install.sh | sh
+function cliInstallOptions(installerUrl: string): string {
+    return `# install a specific version
+curl -fsSL ${installerUrl} | ARTFCT_INSTALL_VERSION=v0.1.0 sh
 
 # install to a custom directory
-ARTFCT_INSTALL_DIR=/usr/local/bin curl -fsSL https://artfct.dev/install.sh | sh`;
+curl -fsSL ${installerUrl} | ARTFCT_INSTALL_DIR="$HOME/bin" sh`;
+}
 
-const CLI_USAGE = `# deploy a file — prints the URL
+function cliUsage(apiBaseUrl: string): string {
+    return `# Keep CLI requests in the same environment as this docs page
+export ARTFCT_API_BASE_URL=${apiBaseUrl}
+
+# deploy a file — prints the URL
 artfct deploy page.html
 
 # deploy from stdin
@@ -28,14 +32,17 @@ echo '<h1>hello</h1>' | artfct deploy --stdin
 artfct delete bdf7cd9dd9
 
 # delete an artifact by preview URL
-artfct delete https://artfct.dev/p/bdf7cd9dd9
+artfct delete ${apiBaseUrl}/p/bdf7cd9dd9
 
 # check connectivity
 artfct doctor`;
+}
 
-const CLI_MCP = `artfct mcp serve`;
+function cliAuth(apiBaseUrl: string): string {
+    return `# Keep sign-in on the environment serving this page
+export ARTFCT_API_BASE_URL=${apiBaseUrl}
 
-const CLI_AUTH = `# browser sign-in with PKCE
+# browser sign-in with PKCE
 artfct login --oauth
 
 # sign in and pin a workspace
@@ -49,6 +56,7 @@ artfct doctor
 
 # revoke the remote session and remove local credentials
 artfct logout`;
+}
 
 const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
 artifacts:deploy     deploy artifacts to the workspace
@@ -594,8 +602,9 @@ function Sidebar({
 
 // ── page ─────────────────────────────────────────────────────────────────────
 export default function Docs({ contract }: DocsProps) {
-    const hostedMcpBaseUrl = contract.servers[0].url;
+    const hostedMcpBaseUrl = contract.servers[0].url.replace(/\/$/, '');
     const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
+    const installerUrl = `${hostedMcpBaseUrl}/install.sh`;
     const hostedMcpConfiguration = `MCP endpoint:
 ${hostedMcpUrl}
 
@@ -690,13 +699,19 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                             <Code>~/.local/bin</Code> by default. If your shell
                             cannot find <Code>artfct</Code> afterwards, add that
                             folder to your <Code>PATH</Code> and open a new
-                            terminal.
+                            terminal. There is no native Windows build; use WSL.
                         </Prose>
-                        <CodeBlock code={CLI_INSTALL} />
-                        <CodeBlock code={CLI_INSTALL_OPTS} />
+                        <Prose>
+                            This installer and the CLI examples below use the
+                            environment serving this page. Staging docs
+                            therefore keep sign-in and artifact actions on
+                            staging.
+                        </Prose>
+                        <CodeBlock code={`curl -fsSL ${installerUrl} | sh`} />
+                        <CodeBlock code={cliInstallOptions(installerUrl)} />
 
                         <SubHeading>Usage</SubHeading>
-                        <CodeBlock code={CLI_USAGE} />
+                        <CodeBlock code={cliUsage(hostedMcpBaseUrl)} />
 
                         <SubHeading>Deploy options</SubHeading>
                         <FieldTable fields={CLI_DEPLOY_FLAGS} />
@@ -717,7 +732,9 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                             <Code>deploy_to_canvas</Code> is deprecated; use{' '}
                             <Code>deploy_artifact</Code> instead.
                         </Prose>
-                        <CodeBlock code={CLI_MCP} />
+                        <CodeBlock
+                            code={`ARTFCT_API_BASE_URL=${hostedMcpBaseUrl} artfct mcp serve`}
+                        />
 
                         <SubHeading>Set it up automatically</SubHeading>
                         <Prose>
@@ -774,7 +791,7 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                             <Code>ARTFCT_ORG_TOKEN</Code> through your secret
                             manager.
                         </Prose>
-                        <CodeBlock code={CLI_AUTH} />
+                        <CodeBlock code={cliAuth(hostedMcpBaseUrl)} />
                         <Prose>
                             <Code>doctor</Code> reports the selected
                             organization, available organizations and hosted MCP
