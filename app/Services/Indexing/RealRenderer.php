@@ -16,8 +16,11 @@ final class RealRenderer implements RendererContract
             throw new RuntimeException('Artifact access signing must be configured to render artifacts.');
         }
 
+        $requestOriginPattern = $this->requestOriginPattern($url);
+
         $result = $this->client->post('browser-run/scrape', [
             'url' => $url,
+            'allowRequestPattern' => [$requestOriginPattern],
             'gotoOptions' => ['waitUntil' => 'networkidle0', 'timeout' => 15000],
             'elements' => array_map(fn (string $selector): array => ['selector' => $selector], [
                 'body', 'title', 'h1, h2, h3, h4, h5, h6, th', '[aria-label]',
@@ -56,5 +59,19 @@ final class RealRenderer implements RendererContract
         }
 
         return new RenderResult(trim($text), $bySelector['title'][0]['text'] ?? null, $headings);
+    }
+
+    private function requestOriginPattern(string $url): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false || strtolower($parts['scheme'] ?? '') !== 'https' || ! is_string($parts['host'] ?? null)
+            || isset($parts['user']) || isset($parts['pass'])) {
+            throw new RuntimeException('Artifact access URL must use an HTTPS origin without credentials.');
+        }
+
+        $port = isset($parts['port']) ? ':'.preg_quote((string) $parts['port'], '~') : '';
+        $hostPattern = str_replace('\\-', '-', preg_quote(strtolower($parts['host']), '~'));
+
+        return '^https://'.$hostPattern.$port.'(?:[/?#]|$)';
     }
 }

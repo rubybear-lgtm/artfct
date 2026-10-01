@@ -65,10 +65,28 @@ test('real_renderer_opens_signed_origin_and_extracts_visible_text', function () 
 
         return parse_url($url, PHP_URL_HOST) === 'acme--'.ARTIFACT_LINK_ID.'.artfct.dev'
             && artifactTokenVerifies($params['token'], ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, now()->timestamp)
+            && $request['allowRequestPattern'] === ['^https://acme--'.ARTIFACT_LINK_ID.'\.artfct\.dev(?:[/?#]|$)']
             && ! isset($request['cookies'])
             && ! isset($request['html'])
             && $request['gotoOptions']['timeout'] === 15000;
     });
+
+    $requestPattern = Http::recorded()->first()[0]['allowRequestPattern'][0];
+    expect(preg_match('~'.$requestPattern.'~', 'https://acme--'.ARTIFACT_LINK_ID.'.artfct.dev/page?token=opaque'))->toBe(1);
+    foreach ([
+        'http://acme--'.ARTIFACT_LINK_ID.'.artfct.dev/page',
+        'https://acme--'.ARTIFACT_LINK_ID.'.artfct.dev.evil.test/',
+        'https://127.0.0.1/',
+        'https://2130706433/',
+        'https://[::1]/',
+        'https://[fd00::1]/',
+        'https://169.254.169.254/',
+        'https://10.0.0.1/',
+        'https://192.168.1.1/',
+        'https://localhost/',
+    ] as $disallowedUrl) {
+        expect(preg_match('~'.$requestPattern.'~', $disallowedUrl))->toBe(0);
+    }
 });
 
 test('real_renderer_timeout_raises_for_retry', function (string $failure) {
