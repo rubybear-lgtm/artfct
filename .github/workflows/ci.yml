@@ -190,6 +190,9 @@ jobs:
       - name: Scan for secrets
         run: gitleaks detect --no-banner --exit-code 1
 
+      - name: Test pre-commit fallback scanner
+        run: bash scripts/test-pre-commit-hook.sh
+
   rust:
     runs-on: ubuntu-latest
 
