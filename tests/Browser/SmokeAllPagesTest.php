@@ -84,10 +84,13 @@ test('public_pages_have_no_javascript_errors', function () {
 });
 
 test('public docs expose the MCP onboarding path', function () {
+    $baseUrl = rtrim((string) config('app.url'), '/');
+
     visit(route('docs'))
         ->assertSee('Sign in from the command line')
         ->assertSee('artfct login --oauth')
-        ->assertSee('https://artfct.dev/mcp')
+        ->assertSee($baseUrl.'/mcp')
+        ->assertSee('Base URL '.$baseUrl)
         ->assertSee('artifacts:read')
         ->assertNoJavaScriptErrors();
 });
