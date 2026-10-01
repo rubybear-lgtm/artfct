@@ -6,6 +6,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Listeners\CreatePersonalTeam;
 use App\Mail\CloudflareEmailTransport;
+use App\Models\McpConnection;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\HttpArtifactContentSource;
@@ -168,15 +169,18 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(Registered::class, CreatePersonalTeam::class);
         Event::listen(SessionInitialized::class, function (SessionInitialized $event): void {
             $claims = request()->attributes->get('org_jwt_claims');
+            $connection = request()->attributes->get('mcp_connection');
 
-            if (! is_array($claims) || ! is_string($claims['jti'] ?? null) || ! is_string($claims['org_id'] ?? null)) {
+            if (! is_array($claims)
+                || ! is_string($claims['org_id'] ?? null)
+                || ! $connection instanceof McpConnection) {
                 return;
             }
 
             Cache::put(
                 'mcp-session:'.$event->sessionId,
                 [
-                    'jti' => $claims['jti'],
+                    'connection_public_id' => $connection->public_id,
                     'org_id' => $claims['org_id'],
                     'protocol_version' => $event->protocolVersion,
                 ],

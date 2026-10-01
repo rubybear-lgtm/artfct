@@ -408,13 +408,15 @@ supported list in `error.data.supported`). It only implements the stateless
 Streamable HTTP shape described above: `POST /mcp` for JSON-RPC, and `405` on
 `GET`/`DELETE` because there is no server-side event stream to resume. The
 server keeps a short-lived correlation record for each issued
-`MCP-Session-Id`, bound to the bearer credential and protocol version; it is
-not an authentication token or a resumable event stream. If a connection drops
-and the ID is stale, expired, or presented with another credential, the server
-returns JSON-RPC `-32001` with `error.data.artfct.errorCode=session_expired` and
-`nextAction=initialize`. Re-authenticate and send `initialize` to obtain a new
-session before retrying the interrupted request. A stable `MCP-Request-Id`
-continues to deduplicate supported tool retries across that new session.
+`MCP-Session-Id`, bound to the authenticated MCP connection and organization;
+it is not an authentication token or a resumable event stream. OAuth access
+token refresh may rotate the token JTI without changing that connection, so
+the active session remains usable after refresh. A different connection or a
+stale/expired session ID returns JSON-RPC `-32001` with
+`error.data.artfct.errorCode=session_expired` and `nextAction=initialize`.
+Re-authenticate and send `initialize` to obtain a new session before retrying
+the interrupted request. A stable `MCP-Request-Id` continues to deduplicate
+supported tool retries across that new session.
 
 Known, currently verified compatibility:
 
@@ -508,11 +510,12 @@ The Inspector's non-secret stored-auth probe reported no hosted server URLs,
 so there was no existing OAuth session to reuse. The local preflight itself is
 not a hosted compatibility result.
 
-### Hosted OAuth run (2026-09-21)
+### Hosted OAuth runs
 
-| Client                 | Transport        | Result |
-| ---------------------- | ---------------- | ------ |
-| Official MCP Inspector | Streamable HTTP  | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded. |
+| Date       | Client                 | Transport        | Result |
+| ---------- | ---------------------- | ---------------- | ------ |
+| 2026-09-21 | Official MCP Inspector | Streamable HTTP  | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded. |
+| 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP  | Consent succeeded for staging workspace `artfct-dev` with all six advertised scopes. The first tool-list attempt failed with HTTP 400 `session_expired` after token refresh; no mutating tool was called. Regression identified and fixed in `SessionInitialized` storage below. Live retry pending staging deployment. |
 
 This run exposed three staging defects, all fixed and deployed: the
 path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
@@ -550,8 +553,8 @@ for stdio`). Use a different server name for the hosted entry.
 - **Claude Code and Codex** can both run headlessly with a temporary config, so
   they are candidates for an automated check (they need a model login in CI).
 
-The OAuth-consent run for every client above, and Cursor's GUI, remain the
-human steps tracked on RUB-383.
+The corrected Claude Code run and OAuth-consent runs for other clients remain
+the human steps tracked on RUB-383.
 
 ## Incident checklist
 

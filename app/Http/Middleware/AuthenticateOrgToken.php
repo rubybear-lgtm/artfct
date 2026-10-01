@@ -92,8 +92,8 @@ class AuthenticateOrgToken
 
     /**
      * Session IDs correlate requests but never authenticate them. A session
-     * presented with a different credential, or after its registry entry has
-     * expired, must be re-initialized instead of being silently accepted.
+     * presented through a different MCP connection, or after its registry
+     * entry has expired, must be re-initialized instead of being accepted.
      *
      * @param  array{jti: string, org_id: string}  $claims
      */
@@ -106,11 +106,13 @@ class AuthenticateOrgToken
         }
 
         $session = Cache::get('mcp-session:'.$sessionId);
-        $matchesCredential = is_array($session)
-            && ($session['jti'] ?? null) === $claims['jti']
+        $connection = $request->attributes->get('mcp_connection');
+        $matchesConnection = is_array($session)
+            && $connection instanceof McpConnection
+            && ($session['connection_public_id'] ?? null) === $connection->public_id
             && ($session['org_id'] ?? null) === $claims['org_id'];
 
-        if ($matchesCredential) {
+        if ($matchesConnection) {
             return null;
         }
 

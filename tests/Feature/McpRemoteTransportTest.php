@@ -246,6 +246,32 @@ test('hosted MCP refuses a session presented with a different bearer credential'
         ->assertJsonPath('result.structuredContent.organization', $secondTeam->slug);
 });
 
+test('hosted MCP refuses a session from another connection in the same organization', function () {
+    $team = Team::factory()->create();
+    configureSigning(testSigningKey());
+    $firstToken = OrgJwtService::default()->mint($team, memberOfTeam($team, TeamRole::Admin), TeamRole::Admin)['token'];
+    $secondToken = OrgJwtService::default()->mint($team, memberOfTeam($team, TeamRole::Admin), TeamRole::Admin)['token'];
+
+    $initialize = $this->withToken($firstToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['clientInfo' => ['name' => 'first-connection-test']],
+    ])->assertOk();
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$secondToken,
+        'MCP-Session-Id' => $initialize->headers->get('MCP-Session-Id'),
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'tools/list',
+        'params' => [],
+    ])->assertStatus(400)
+        ->assertJsonPath('error.code', -32001)
+        ->assertJsonPath('error.data.artfct.errorCode', 'session_expired');
+});
+
 test('remote MCP refuses an expired session with stable reinitialization guidance', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);

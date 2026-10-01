@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\McpConnection;
 use App\Models\OAuthClient;
 use App\Models\OAuthRefreshToken;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\Fluent\AssertableJson;
@@ -466,6 +468,67 @@ test('approves a PKCE request and redeems its code once', function () {
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+});
+
+test('keeps an MCP session active when OAuth refresh rotates its access token', function () {
+    $verifier = str_repeat('v', 64);
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($team);
+    configureSigning(testSigningKey());
+
+    $parameters = oauthParameters(oauthChallenge($verifier));
+    $authorization = $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]);
+    parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+
+    $issued = $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ])->assertOk();
+    $initialToken = $issued->json('access_token');
+    $initialClaims = OrgJwtService::default()->verify($initialToken);
+    $initialize = $this->withToken($initialToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => [
+            'protocolVersion' => '2025-11-25',
+            'clientInfo' => ['name' => 'refresh-session-test', 'version' => '1.0.0'],
+        ],
+    ])->assertOk();
+    $sessionId = (string) $initialize->headers->get('MCP-Session-Id');
+    $connectionId = McpConnection::query()
+        ->where('credential_jti', $initialClaims['jti'])
+        ->value('public_id');
+
+    $refreshed = $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $issued->json('refresh_token'),
+        'client_id' => 'artfct-cli',
+    ])->assertOk();
+    $refreshedClaims = OrgJwtService::default()->verify($refreshed->json('access_token'));
+
+    expect($refreshedClaims['jti'])->not->toBe($initialClaims['jti'])
+        ->and(McpConnection::query()->where('credential_jti', $refreshedClaims['jti'])->value('public_id'))
+        ->toBe($connectionId);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$refreshed->json('access_token'),
+        'MCP-Session-Id' => $sessionId,
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'tools/list',
+        'params' => [],
+    ])->assertOk()->assertJsonPath('result.tools.0.name', 'deploy_artifact');
 });
 
 test('does not mint a token with an invalid verifier', function () {
