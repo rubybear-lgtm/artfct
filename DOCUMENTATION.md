@@ -378,8 +378,8 @@ first held artifact it finds.
 
 **The seam to storage.** `ArtifactGovernanceContract` is the same shape as
 spec 09's `TenantProvisionerContract`: `FakeArtifactGovernance` (an
-in-memory double) is bound in `testing`; `RealArtifactGovernance` fails
-closed everywhere else. The Worker now exposes authenticated internal HTTP
+in-memory double) is bound in `testing`; `HttpArtifactGovernance` calls the
+authenticated Worker routes elsewhere. The Worker exposes internal HTTP
 routes for listing artifacts, hard-deleting one, placing/releasing a legal
 hold, and sweeping orphaned blobs (`backend/src/lib.rs`, governance routes).
 The D1 schema for `legal_hold`/`retention_class` (spec 3's migration), pure
@@ -387,11 +387,15 @@ decision logic in `backend/src/governance.rs`
 (`plan_retention`/`plan_erasure`), and dedupe accounting
 (`MemoryArtifactStore::hard_delete`, `blob_ref_count`) remain separately
 covered. Laravel's destructive governance commands still default to dry-run,
-and live Wrangler/D1/R2 verification remains an environment gate rather than
-an implicit claim of local tests.
-`gdpr_erasure_removes_bytes_from_r2` is an `#[ignore]`d Rust test stub for
-the same reason: proving a direct R2 read 404s after erasure needs a live
-bucket.
+and live staging verification remains an environment gate rather than an
+implicit claim of local tests. `gdpr_erasure_removes_bytes_from_r2` is an
+implemented, `#[ignore]`d Rust integration test in
+`mcp-server/tests/storage_integration.rs`. It runs against an isolated local
+Wrangler Worker with persisted local D1/R2, creates two artifacts sharing one
+blob plus unique blobs, erases each artifact, and checks both the HTTP blob
+route and direct R2 reads. It passed in the local E2E stack on 2026-10-01
+(28 storage integration tests passed); a repeat against the real staging
+bucket and the staging retention/hold flows remain outstanding.
 
 **Sharing controls.** `governance::check_share_access` (passcode match,
 expiry, revocation, domain restriction — all collapsing to a 404, never a
