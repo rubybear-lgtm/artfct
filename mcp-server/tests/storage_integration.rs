@@ -1465,6 +1465,76 @@ async fn gdpr_erasure_removes_bytes_from_r2() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
+async fn orphan_sweep_retries_zero_ref_blob_after_r2_recovers() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("orphan-sweep-retry");
+    let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+
+    // Reproduce the persisted state left by a failed R2 delete: the artifact
+    // and file reference are gone, while the zero-ref metadata row and object
+    // remain available for sweep-orphans.
+    d1_execute(
+        &context,
+        &format!("DELETE FROM files WHERE content_hash = '{hash}'"),
+    )?;
+    d1_execute(
+        &context,
+        &format!("DELETE FROM artifacts WHERE id = '{id}'"),
+    )?;
+    d1_execute(
+        &context,
+        &format!("UPDATE blobs SET ref_count = 0 WHERE content_hash = '{hash}'"),
+    )?;
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT ref_count AS count FROM blobs WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        0,
+        "the retry key must remain in D1 at ref_count zero"
+    );
+    assert!(
+        r2_object_get(&context, &hash)?.status.success(),
+        "the simulated failed delete leaves the R2 object for a later sweep"
+    );
+
+    let sweep = client
+        .post(format!(
+            "{}/v1/internal/orgs/{}/governance/sweep-orphans",
+            context.base, context.org
+        ))
+        .header(
+            reqwest::header::AUTHORIZATION,
+            &format!("Bearer {}", context.governance_secret),
+        )
+        .send()
+        .await?;
+    assert_eq!(sweep.status(), reqwest::StatusCode::OK);
+    let body: Value = sweep.json().await?;
+    assert!(body["removed"].as_u64().unwrap_or_default() >= 1);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM blobs WHERE content_hash = '{hash}'"),
+            "count"
+        )?,
+        0,
+        "a successful retry removes the D1 metadata after R2"
+    );
+    assert!(
+        !r2_object_get(&context, &hash)?.status.success(),
+        "a successful retry removes the orphaned R2 object"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn provenance_columns_and_complete_json_survive() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
