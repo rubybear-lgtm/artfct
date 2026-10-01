@@ -325,8 +325,10 @@ changes remain on hold pending approval. This runbook does not assert the
 current production runtime state. The staging shape was verified on
 2026-09-30: app on `staging.artfct.dev`, artifact origins on
 `<tenant>--<id>--stg.artfct.dev`, with 403 without a token, 200 with a minted
-link, 403 when a token is presented on another tenant's host, valid TLS, and
-no cookies at that check.
+link, 403 when a token is presented on another tenant's host, and valid TLS.
+The unauthenticated/invalid-token responses had no cookies; the valid root
+document response sets only a host-only `artfct_access` cookie (`Secure`,
+`HttpOnly`, `SameSite=Strict`, `Path=/`, with no `Domain`).
 
 **Worker build boundary (verified 2026-10-01).** Cloudflare Workers Builds binds
 each trigger to a Worker script tag; passing a staging Wrangler config to a
@@ -388,10 +390,12 @@ reuse staging resource IDs.
 6. Deploy the Worker routes, then run the same checks as staging: an artifact
    host returns 403 without a token, 200 with a minted link, and 403 on another
    tenant's host. Verify Spec 05 origin isolation on the artifact responses:
-   no `Set-Cookie`, the expected isolation and CSP headers, no console-cookie
-   authentication, and a browser `fetch()` from artifact A to artifact B is
-   blocked by CORS. Confirm the console origin has no CORS allowance or
-   `postMessage` bridge to artifact origins. Then confirm
+   no `Set-Cookie` on unauthenticated/invalid-token responses; a valid root
+   response may set only the host-only `artfct_access` cookie with the expected
+   flags and no `Domain`. Verify the expected isolation and CSP headers, no
+   console-cookie authentication, and that a browser `fetch()` from artifact A
+   to artifact B is blocked by CORS. Confirm the console origin has no CORS
+   allowance or `postMessage` bridge to artifact origins. Then confirm
    `/.well-known/oauth-authorization-server` advertises the production issuer
    and MCP Inspector and Claude Code connect through it.
 
@@ -564,6 +568,7 @@ not a hosted compatibility result.
 | ---------- | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 2026-09-21 | Official MCP Inspector | Streamable HTTP | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded.                                                                                                                                                                                                                                        |
 | 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP | Consent succeeded for `artfct-dev` with all six advertised scopes. The first tool-list attempt returned HTTP 400 `session_expired` after token refresh. After deploying the session fix to staging, `list_collections` and `get_connection` succeeded; the latter confirmed `artfct-dev` and all six scopes. No mutating tool was called. The client and connection page did not expose the negotiated protocol version. |
+| 2026-10-01 | Codex CLI 0.159.2      | Streamable HTTP | OAuth login was attempted against staging with a temporary `artfct-staging` entry. The local callback timed out before consent completed; no grant or token was received. This is an incomplete environment attempt, not a compatibility result. |
 
 This run exposed three staging defects, all fixed and deployed: the
 path-suffixed protected-resource metadata advertised the wrong issuer; OAuth

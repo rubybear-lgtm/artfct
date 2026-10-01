@@ -6,9 +6,9 @@ use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\UpdateTeamMemberRequest;
-use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +21,7 @@ class TeamMemberController extends Controller
     /**
      * Update the specified team member's role.
      */
-    public function update(UpdateTeamMemberRequest $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
+    public function update(UpdateTeamMemberRequest $request, Team $team, User $user, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         Gate::authorize('updateMember', $team);
 
@@ -32,10 +32,13 @@ class TeamMemberController extends Controller
         }
         app(LastAdminGuard::class)->ensureAdminRemains($team, $user, $newRole);
 
-        $team->memberships()
-            ->where('user_id', $user->id)
-            ->firstOrFail()
-            ->update(['role' => $newRole]);
+        $membership = $team->memberships()->where('user_id', $user->id)->firstOrFail();
+        $roleChanged = $membership->role !== $newRole;
+        $membership->update(['role' => $newRole]);
+
+        if ($roleChanged) {
+            $tokenRevoker->revokeForMember($team, $user);
+        }
 
         $auditLogger->recordForRequest($request, AuditEventType::RoleChanged, $team, (string) $request->user()->id, "user:{$user->id} -> {$newRole->value}");
 
@@ -47,7 +50,7 @@ class TeamMemberController extends Controller
     /**
      * Remove the specified team member.
      */
-    public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         Gate::authorize('removeMember', $team);
 
@@ -65,11 +68,7 @@ class TeamMemberController extends Controller
         $team->memberships()
             ->where('user_id', $user->id)
             ->delete();
-        OAuthRefreshToken::query()
-            ->where('team_id', $team->id)
-            ->where('user_id', $user->id)
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
+        $tokenRevoker->revokeForMember($team, $user);
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberRemoved, $team, (string) $request->user()->id, "user:{$user->id}");
 

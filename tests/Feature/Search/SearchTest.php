@@ -2,10 +2,12 @@
 
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Auth\OrgJwtService;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\VectorChunk;
@@ -111,6 +113,26 @@ test('api_search_explains_when_indexing_is_disabled', function () {
             'retryable' => false,
             'nextAction' => 'enable_indexing',
         ]);
+});
+
+test('api_search_requires_artifact_read_scope', function () {
+    config(['indexing.enabled' => false]);
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create(['slug' => 'api-search-scoped-org']);
+    $user = memberOfTeam($team, TeamRole::Viewer);
+
+    $withoutReadScope = OrgJwtService::default()->mint($team, $user, TeamRole::Viewer, scopes: ['usage:read']);
+    $withReadScope = OrgJwtService::default()->mint($team, $user, TeamRole::Viewer, scopes: ['artifacts:read']);
+
+    $this->withToken($withoutReadScope['token'])
+        ->postJson('/api/search', ['query' => 'billing dashboard'])
+        ->assertForbidden();
+
+    $this->withToken($withReadScope['token'])
+        ->postJson('/api/search', ['query' => 'billing dashboard'])
+        ->assertStatus(503)
+        ->assertJsonPath('errorCode', 'search_not_configured');
 });
 
 test('repo_filter_narrows_results', function () {

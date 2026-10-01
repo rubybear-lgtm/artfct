@@ -18,10 +18,10 @@ Route::middleware([
     AuthenticateOrgToken::class,
     McpRateLimit::class,
 ])->group(function () {
-    Route::post('search', [SearchController::class, 'search'])->name('api.search');
-    Route::get('collections', [CollectionController::class, 'index'])->name('api.collections.index');
-    Route::post('collections', [CollectionController::class, 'store'])->name('api.collections.store');
-    Route::post('collections/{collection}/artifacts', [CollectionController::class, 'addArtifact'])->name('api.collections.artifacts.add');
+    Route::post('search', [SearchController::class, 'search'])->middleware('org.scope:artifacts:read')->name('api.search');
+    Route::get('collections', [CollectionController::class, 'index'])->middleware('org.scope:collections:read')->name('api.collections.index');
+    Route::post('collections', [CollectionController::class, 'store'])->middleware('org.scope:collections:write')->name('api.collections.store');
+    Route::post('collections/{collection}/artifacts', [CollectionController::class, 'addArtifact'])->middleware('org.scope:collections:write')->name('api.collections.artifacts.add');
     Route::post('mcp/connections', [McpConnectionController::class, 'register'])->name('api.mcp.connections.register');
     Route::post('mcp/connections/heartbeat', [McpConnectionController::class, 'heartbeat'])->name('api.mcp.connections.heartbeat');
 });

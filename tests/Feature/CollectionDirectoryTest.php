@@ -7,12 +7,13 @@ use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Http;
 
-function collectionDirectoryToken(Team $team): string
+/** @param list<string> $scopes */
+function collectionDirectoryToken(Team $team, array $scopes = ['collections:read']): string
 {
     configureSigning(testSigningKey());
     $user = memberOfTeam($team, TeamRole::Viewer);
 
-    return OrgJwtService::default()->mint($team, $user, TeamRole::Viewer)['token'];
+    return OrgJwtService::default()->mint($team, $user, TeamRole::Viewer, scopes: $scopes)['token'];
 }
 
 test('lists only the authenticated teams collections with bounded metadata and cursors', function () {
@@ -68,6 +69,18 @@ test('rejects malformed collection cursors', function () {
     $this->withToken(collectionDirectoryToken($team))
         ->getJson('/api/collections?cursor=not-a-cursor')
         ->assertUnprocessable();
+});
+
+test('collection_directory_requires_its_read_scope', function () {
+    $team = Team::factory()->create();
+
+    $this->withToken(collectionDirectoryToken($team, ['usage:read']))
+        ->getJson('/api/collections')
+        ->assertForbidden();
+
+    $this->withToken(collectionDirectoryToken($team, ['collections:read']))
+        ->getJson('/api/collections')
+        ->assertOk();
 });
 test('example', function () {
     $response = $this->get('/');

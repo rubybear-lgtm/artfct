@@ -29,7 +29,7 @@ Two levels (`<id>.artifacts.<tenant>.artfct.dev`) would need Advanced Certificat
 
 ### Serving
 
-- Artifact origins are **cookieless**. No session cookie is ever scoped to them, so a stolen artifact origin cannot ride a session.
+- Artifact origins never receive the console session cookie. A valid signed token in the root document URL is exchanged for a short-lived, host-only `artfct_access` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`) so same-artifact subresources can load; that cookie is not scoped to sibling artifacts or the console.
 - Access is granted by a **short-lived signed token** in the URL or an `Authorization` header, minted by the control plane, scoped to one artifact.
 - The console origin and artifact origins share nothing: no cookie domain, no `postMessage` handler, no CORS allowance.
 
@@ -42,7 +42,7 @@ Derived per artifact from `external_origins` in its manifest. An artifact declar
 - [ ] Artifact A and artifact B in the same org serve from different hostnames.
 - [ ] A script in artifact A performing `fetch()` against artifact B's URL is blocked by CORS — demonstrated, not assumed.
 - [ ] A script in artifact A opening artifact B in an iframe cannot read its DOM.
-- [ ] No `Set-Cookie` appears on any artifact-origin response.
+- [ ] Unauthenticated and invalid-token artifact-origin responses have no `Set-Cookie`; a valid root-document token may set only the host-only `artfct_access` cookie with the expected flags.
 - [ ] An access token expires and subsequent requests return 403.
 - [ ] A token minted for artifact A returns 403 on artifact B.
 - [ ] An artifact declaring no external origins gets `default-src 'self'`, verified in the response header.
@@ -56,7 +56,8 @@ Derived per artifact from `external_origins` in its manifest. An artifact declar
 **`backend`**
 - `cross_artifact_read_is_blocked` — the adversarial one; the spec is not done without it
 - `cross_artifact_iframe_dom_read_is_blocked` *(negative)*
-- `artifact_origin_sets_no_cookie`
+- `artifact_origin_sets_no_cookie` (permanent response-header helper only; it does not cover the full authorized handler)
+- `isolated_access_cookie_is_host_only_and_bounded_by_token_expiry`
 - `expired_access_token_rejected` *(negative)*
 - `token_for_other_artifact_rejected` *(negative)*
 - `csp_defaults_to_self_when_nothing_declared`

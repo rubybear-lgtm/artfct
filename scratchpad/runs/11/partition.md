@@ -39,20 +39,26 @@ directly rather than fan out.
   runs), matching the `ctx.waitUntil()` shape the real handler would use.
   No real request latency was measured under a backed-up queue.
 
-## Not closable here — named, not silently skipped
+## Current follow-up evidence (2026-10-01)
 
-- Real D1/R2 wiring for governance HTTP routes on the Worker
-  (`RealArtifactGovernance` fails closed, same pattern as spec 09's
-  `RealTenantProvisioner`) — building and verifying live hard-delete/
-  legal-hold/list-older-than routes needs a Wrangler dev environment this
-  session doesn't have, plus threading `worker::Context` through the
-  existing handler call chain for genuine `ctx.waitUntil()` audit writes on
-  `create_permanent_artifact`/`resolve_permanent_artifact`. The pure
-  decision logic and in-memory proof exist; the live wiring is a follow-up.
-- `gdpr_erasure_removes_bytes_from_r2`: `#[ignore]`d stub — needs a live R2
-  bucket to prove a direct read 404s.
-- Full share-link HTTP surface (creating/serving links through the Worker's
-  request dispatch): only the pure validation logic
-  (`check_share_access`) is built and tested; wiring it into
-  `resolve_permanent_artifact`'s serving path is a follow-up alongside the
-  D1R2 governance routes above.
+- Worker D1/R2 governance routes and Laravel's `HttpArtifactGovernance` are
+  implemented; the earlier statement that `RealArtifactGovernance` still
+  fails closed is stale.
+- `scripts/governance-local-e2e.sh` is the executable local D1/R2 proof. It
+  applies local migrations, checks missing-secret refusal, listing and
+  pagination, cross-org delete refusal with the foreign artifact still
+  listable from its owning org, legal-hold refusal on both delete paths,
+  continued serving while held, shared-blob refcounts, direct
+  `wrangler r2 object get --local` reads before and after deletion, and the
+  corresponding D1 audit events. It passed from a fresh Wrangler local state
+  on 2026-10-01. The former named Rust
+  `gdpr_erasure_removes_bytes_from_r2` test is not present in the current tree;
+  the direct-storage proof lives in this integration script instead.
+- Live staging acceptance remains open: exercise Laravel retention dry-run and
+  apply against synthetic fixtures, whole-run refusal when a fixture is held,
+  erasure after hold release, wrong-secret and cross-org denial, and the
+  unreachable-Worker/no-partial-delete case. These need the staging governance
+  credentials and must not use production data.
+- Full share-link HTTP surface (creating and serving links through Worker
+  request dispatch) is still deferred; only pure validation logic
+  (`check_share_access`) is built and tested.

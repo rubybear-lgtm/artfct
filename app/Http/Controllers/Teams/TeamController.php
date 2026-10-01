@@ -10,9 +10,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
 use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
-use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Auth\RevocationWriter;
 use App\Services\Governance\AuditLogger;
 use App\Services\Teams\LastAdminGuard;
@@ -159,7 +159,7 @@ class TeamController extends Controller
     /**
      * Leave the specified team.
      */
-    public function leave(Request $request, Team $team, AuditLogger $auditLogger): RedirectResponse
+    public function leave(Request $request, Team $team, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         Gate::authorize('leave', $team);
 
@@ -175,11 +175,7 @@ class TeamController extends Controller
         $team->memberships()
             ->where('user_id', $user->id)
             ->delete();
-        OAuthRefreshToken::query()
-            ->where('team_id', $team->id)
-            ->where('user_id', $user->id)
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
+        $tokenRevoker->revokeForMember($team, $user);
 
         $auditLogger->recordForRequest($request, AuditEventType::MemberLeft, $team, (string) $user->id, "user:{$user->id}");
 
