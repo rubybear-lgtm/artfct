@@ -509,6 +509,35 @@ fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
         .ok_or_else(|| format!("Wrangler D1 query returned no row: {value}").into())
 }
 
+fn anonymous_viewer_keys(artifact_id: &str) -> Result<Vec<Option<String>>, Box<dyn Error>> {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("mcp-server directory has no repository parent")?;
+    let expression = format!(
+        "echo json_encode(App\\Models\\ArtifactUsageEvent::query()->where('artifact_id', '{artifact_id}')->orderBy('id')->pluck('viewer_key')->all());"
+    );
+    let output = Command::new("php")
+        .current_dir(repository_root)
+        .args(["artisan", "tinker", "--execute", &expression])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "could not read local anonymous view events: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let json_line = stdout
+        .lines()
+        .find(|line| line.trim_start().starts_with('['))
+        .ok_or("Tinker did not return the anonymous view keys as JSON")?;
+
+    Ok(serde_json::from_str(json_line)?)
+}
+
 fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
     let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
     let output = Command::new(&context.wrangler)
@@ -688,6 +717,90 @@ async fn permanent_roundtrip_stores_d1_and_r2() -> Result<(), Box<dyn Error>> {
         )?,
         1
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and Laravel event receiver"]
+async fn caller_written_request_headers_change_real_anonymous_view_keys(
+) -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    for name in [
+        "ARTFCT_VISITOR_KEY_SECRET",
+        "ARTFCT_WORKER_EVENT_SECRET",
+        "ARTFCT_WORKER_EVENT_URL",
+    ] {
+        assert!(env::var_os(name).is_some(), "{name} must be configured");
+    }
+    let client = RetryingClient::new();
+    let bytes = unique_html("anonymous-view-ranking");
+    let (artifact_id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+
+    let views: Result<Vec<Option<String>>, Box<dyn Error>> = async {
+        let requests = [
+            ("198.51.100.10", "RUB-423-test/1"),
+            ("198.51.100.11", "RUB-423-test/1"),
+            ("198.51.100.10", "RUB-423-test/2"),
+        ];
+
+        for (ip, user_agent) in requests {
+            let response = client
+                .get(format!("{}/p/{artifact_id}", context.base))
+                .header(
+                    reqwest::header::HeaderName::from_static("cf-connecting-ip"),
+                    ip,
+                )
+                .header(reqwest::header::USER_AGENT, user_agent)
+                .send()
+                .await?;
+            if response.status() != reqwest::StatusCode::OK {
+                return Err(
+                    format!("anonymous artifact view returned {}", response.status()).into(),
+                );
+            }
+            if response.bytes().await?.as_ref() != bytes.as_slice() {
+                return Err("anonymous artifact view returned unexpected bytes".into());
+            }
+        }
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let keys = anonymous_viewer_keys(&artifact_id)?;
+            if keys.len() == requests.len() {
+                break Ok(keys);
+            }
+            if std::time::Instant::now() >= deadline {
+                break Err(format!(
+                    "timed out waiting for {} anonymous view events; received {}",
+                    requests.len(),
+                    keys.len()
+                )
+                .into());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+    .await;
+
+    let cleanup = client
+        .delete(format!("{}/v1/artifacts/{artifact_id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(cleanup.status(), reqwest::StatusCode::NO_CONTENT);
+
+    let keys = views?;
+    assert!(keys.iter().all(Option::is_some));
+    let distinct_keys: std::collections::HashSet<&str> =
+        keys.iter().filter_map(Option::as_deref).collect();
+    assert_eq!(
+        distinct_keys.len(),
+        3,
+        "changing CF-Connecting-IP or User-Agent on real /p requests must vary anonymous ranking keys"
+    );
+
     Ok(())
 }
 

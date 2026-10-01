@@ -51,6 +51,9 @@ up() {
     export ARTFCT_REVOCATION_WRITE_SECRET="mcp-e2e-revocation-$(openssl rand -hex 8)"
     export ARTFCT_LIMITS_WRITE_SECRET="mcp-e2e-limits-$(openssl rand -hex 8)"
     export ARTFCT_GOVERNANCE_SECRET="mcp-e2e-governance-$(openssl rand -hex 8)"
+    export ARTFCT_WORKER_EVENT_SECRET="mcp-e2e-event-$(openssl rand -hex 16)"
+    export ARTFCT_WORKER_EVENT_URL="http://127.0.0.1:${LARAVEL_PORT}/internal/worker-events"
+    export ARTFCT_VISITOR_KEY_SECRET="mcp-e2e-visitor-$(openssl rand -hex 16)"
     # The HMAC secret the Worker verifies isolated-origin artifact links with
     # (ARTFCT_ARTIFACT_TOKEN_SECRET in backend/src/lib.rs, mirrored by
     # App\Services\Artifacts\ArtifactAccessLink). Nothing used to set it, so
@@ -135,6 +138,9 @@ up() {
             --var "ARTFCT_REVOCATION_WRITE_SECRET:$ARTFCT_REVOCATION_WRITE_SECRET" \
             --var "ARTFCT_LIMITS_WRITE_SECRET:$ARTFCT_LIMITS_WRITE_SECRET" \
             --var "ARTFCT_GOVERNANCE_SECRET:$ARTFCT_GOVERNANCE_SECRET" \
+            --var "ARTFCT_WORKER_EVENT_SECRET:$ARTFCT_WORKER_EVENT_SECRET" \
+            --var "ARTFCT_WORKER_EVENT_URL:$ARTFCT_WORKER_EVENT_URL" \
+            --var "ARTFCT_VISITOR_KEY_SECRET:$ARTFCT_VISITOR_KEY_SECRET" \
             --var "ARTFCT_PUBLIC_BASE_URL:http://127.0.0.1:$WORKER_PORT" \
             >"$STATE_DIR/wrangler.log" 2>&1 &
         echo $! > "$STATE_DIR/wrangler.pid"
