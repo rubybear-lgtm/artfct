@@ -8,6 +8,7 @@ use App\Models\AuditEvent;
 use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Governance\ArtifactGovernanceContract;
+use App\Services\Governance\ArtifactUnderLegalHoldException;
 use App\Services\Governance\ErasureService;
 use App\Services\Governance\FakeArtifactGovernance;
 use App\Services\Governance\LegalHoldService;
@@ -112,18 +113,19 @@ test('retention_hard_deletes_expired_artifact', function () {
     expect(AuditEvent::query()->where('event_type', AuditEventType::RetentionApplied)->exists())->toBeTrue();
 });
 
-test('legal_hold_survives_retention_job', function () {
+test('retention_apply_refuses_wholly_when_any_candidate_is_under_legal_hold', function () {
     $team = Team::factory()->create(['slug' => 'hold-org']);
     /** @var FakeArtifactGovernance $governance */
     $governance = app(ArtifactGovernanceContract::class);
     $governance->seedArtifact('hold-org', ['id' => 'held-artifact', 'created_at' => now()->subDays(31)->toIso8601String()]);
     $governance->placeLegalHold('hold-org', 'held-artifact');
+    $governance->seedArtifact('hold-org', ['id' => 'free-artifact', 'created_at' => now()->subDays(32)->toIso8601String()]);
 
-    $plan = app(RetentionService::class)->apply($team, retentionDays: 30, dryRun: false, actor: 'cli');
+    expect(fn () => app(RetentionService::class)->apply($team, retentionDays: 30, dryRun: false, actor: 'cli'))
+        ->toThrow(ArtifactUnderLegalHoldException::class, 'held-artifact');
 
-    expect($plan->toDelete)->toBe([]);
-    expect($plan->heldSurvivors)->toBe(['held-artifact']);
     expect($governance->stillExists('hold-org', 'held-artifact'))->toBeTrue();
+    expect($governance->stillExists('hold-org', 'free-artifact'))->toBeTrue();
 });
 
 test('legal_hold_blocks_admin_hard_delete', function () {

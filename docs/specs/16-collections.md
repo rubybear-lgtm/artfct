@@ -26,7 +26,7 @@ Every wiki dies of stale pages. **If this requires someone to maintain collectio
 
 | Signal | What it indicates |
 |---|---|
-| Repeat views by distinct users | worth looking at more than once |
+| Repeat views by distinct viewers | worth looking at more than once; anonymous distinctness is a weak heuristic |
 | Shared into Slack | someone vouched for it to colleagues |
 | Retrieved by an agent, then the artifact opened | retrieval was useful, not just a hit |
 | Re-deployed as a variant (same repo, similar content hash lineage) | being used as a template |
@@ -43,6 +43,8 @@ No approval workflow, no review state, no owner assignment. Every one of those i
 ### Ranking
 
 Spec 13's ranking gains two inputs: usage score and collection membership, with **canonical-collection membership as a strong boost**. An artifact a team explicitly marked canonical should beat a semantically closer artifact nobody has opened since it was made.
+
+Anonymous shared-link views use a daily-salted pseudonymous key derived from request headers to estimate distinct viewers. Those headers are caller-written, so the resulting count is heuristic and can be inflated; it is suitable only as a weak ranking signal, never as authenticated identity, authorization, billing, or abuse-resistant telemetry. Authenticated views use the verified viewer identity instead.
 
 ### Retrieval scoping
 

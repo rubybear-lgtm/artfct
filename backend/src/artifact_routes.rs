@@ -449,7 +449,9 @@ pub(crate) async fn write_revocation(req: &mut Request, env: &Env) -> Result<Res
 /// secret that never leaves the Worker. Folding in the UTC date means the
 /// same visitor gets an unrelated key every day — enough to say "the same
 /// visitor within one day," never enough to recover the IP or a stable
-/// cross-day identity. `secret` is `None` when `VISITOR_KEY_SECRET_ENV` is
+/// cross-day identity. The input headers are caller-written, so this key is
+/// only a heuristic ranking signal, never an authenticated viewer identity.
+/// `secret` is `None` when `VISITOR_KEY_SECRET_ENV` is
 /// unset, in which case this returns `None` rather than deriving a key from
 /// a guessable constant.
 pub(crate) fn derive_visitor_key(
@@ -550,9 +552,11 @@ pub(crate) async fn resolve_permanent_artifact(
     // No verified viewer id (anonymous/Slack/shared-link view, or an
     // isolated-origin view authorized by access token rather than org
     // credential): derive a pseudonymous visitor key so distinct-viewer
-    // scoring (spec 16) still has something to count. A `secure`-tier view
-    // that resolved a credential above always has `viewer_user_id`, so this
-    // and that are mutually exclusive per view.
+    // scoring (spec 16) still has something to count. This is a ranking
+    // heuristic: callers can vary request headers to vary their key. It is
+    // never an authenticated or abuse-resistant viewer identity. A
+    // `secure`-tier view that resolved a credential above always has
+    // `viewer_user_id`, so this and that are mutually exclusive per view.
     let mut viewer_key = None;
     if viewer_user_id.is_none() {
         let ip = req

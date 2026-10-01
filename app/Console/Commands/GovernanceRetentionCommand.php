@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * the safer, primary path; pass `--apply` to actually hard-delete.
  */
 #[Signature('governance:retention {org : The team slug} {--days= : Override the org retention policy} {--apply : Actually hard-delete; without this the run is a dry run}')]
-#[Description('Reports (or applies) the retention job for one org, skipping legally held artifacts')]
+#[Description('Reports (or applies) retention for one org; apply aborts if an artifact is under legal hold')]
 class GovernanceRetentionCommand extends Command
 {
     public function handle(RetentionService $service): int

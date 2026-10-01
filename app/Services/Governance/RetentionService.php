@@ -16,9 +16,8 @@ use Carbon\CarbonImmutable;
  * "every destructive path is dry-runnable first, and the dry run is itself
  * part of the DoD for operating it." `dryRun: false` executes it.
  *
- * Held artifacts always survive (DoD: "An artifact under legal hold
- * survives the retention job") — they are reported separately from
- * `toDelete`, never attempted.
+ * A dry run reports held artifacts separately from `toDelete`. An apply
+ * aborts before deleting anything if any candidate is under legal hold.
  */
 final class RetentionService
 {
@@ -44,6 +43,10 @@ final class RetentionService
                 continue;
             }
             $toDelete[] = $candidate['id'];
+        }
+
+        if (! $dryRun && $heldSurvivors !== []) {
+            throw new ArtifactUnderLegalHoldException($heldSurvivors[0]);
         }
 
         if (! $dryRun) {

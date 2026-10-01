@@ -2984,7 +2984,7 @@ mod tests {
     }
 
     #[test]
-    fn visitor_key_differs_across_visitors_and_orgs() {
+    fn caller_written_headers_can_change_the_anonymous_ranking_key() {
         let now = Utc::now();
         let base = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.1", "curl/8.0", now);
         let other_ip = derive_visitor_key(Some("s3cr3t"), "acme", "203.0.113.2", "curl/8.0", now);
