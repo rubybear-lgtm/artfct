@@ -438,9 +438,12 @@ Known, currently verified compatibility:
   completed OAuth against staging on 2026-09-21, including discovery, dynamic
   registration, PKCE consent, token exchange, tool listing, and a
   `get_connection` call. The negotiated protocol version was not recorded.
-  Claude Code and Cursor still need hosted OAuth runs; the remaining client
-  matrix is tracked on RUB-383. Do not infer compatibility for a client until
-  its staging result is recorded below.
+  Claude Code 2.1.286 now completes consent and read-only tool calls against
+  staging after a refresh/session continuity fix. Its negotiated protocol
+  version was not surfaced by the client or connection page, so its run remains
+  incomplete against the recording checklist. Cursor still needs a hosted OAuth
+  run; the remaining client matrix is tracked on RUB-383. Do not infer
+  compatibility for a client until its staging result is recorded below.
 
 ### Repeatable third-party client run
 
@@ -515,7 +518,7 @@ not a hosted compatibility result.
 | Date       | Client                 | Transport        | Result |
 | ---------- | ---------------------- | ---------------- | ------ |
 | 2026-09-21 | Official MCP Inspector | Streamable HTTP  | Staging OAuth completed: discovery, dynamic registration, PKCE consent for `zz-mcp-a`, token exchange, tool list, and `get_connection`; negotiated protocol version not recorded. |
-| 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP  | Consent succeeded for staging workspace `artfct-dev` with all six advertised scopes. The first tool-list attempt failed with HTTP 400 `session_expired` after token refresh; no mutating tool was called. Regression identified and fixed in `SessionInitialized` storage below. Live retry pending staging deployment. |
+| 2026-10-01 | Claude Code 2.1.286    | Streamable HTTP  | Consent succeeded for `artfct-dev` with all six advertised scopes. The first tool-list attempt returned HTTP 400 `session_expired` after token refresh. After deploying the session fix to staging, `list_collections` and `get_connection` succeeded; the latter confirmed `artfct-dev` and all six scopes. No mutating tool was called. The client and connection page did not expose the negotiated protocol version. |
 
 This run exposed three staging defects, all fixed and deployed: the
 path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
@@ -553,8 +556,8 @@ for stdio`). Use a different server name for the hosted entry.
 - **Claude Code and Codex** can both run headlessly with a temporary config, so
   they are candidates for an automated check (they need a model login in CI).
 
-The corrected Claude Code run and OAuth-consent runs for other clients remain
-the human steps tracked on RUB-383.
+The Claude Code protocol-version record and OAuth-consent runs for other
+clients remain the human steps tracked on RUB-383.
 
 ## Incident checklist
 
