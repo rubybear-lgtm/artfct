@@ -10,6 +10,7 @@ use App\Models\OAuthRefreshToken;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('team members can view connection metadata without credentials', function () {
@@ -165,6 +166,9 @@ test('viewers cannot grant scopes beyond their team role when creating a connect
 });
 
 test('forcing reauthorization revokes live credentials without revoking the connection', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200)]);
+
     $team = Team::factory()->create();
     $creator = memberOfTeam($team, TeamRole::Member);
     $connection = McpConnection::factory()->create([
@@ -193,6 +197,36 @@ test('forcing reauthorization revokes live credentials without revoking the conn
             ->where('target', "mcp_connection:{$connection->public_id}")
             ->where('actor', (string) $creator->id)
             ->exists())->toBeTrue();
+});
+
+test('forcing reauthorization does not revoke local credentials when worker propagation fails', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503)]);
+
+    $team = Team::factory()->create();
+    $creator = memberOfTeam($team, TeamRole::Member);
+    $connection = McpConnection::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $creator->id,
+    ]);
+    $orgToken = OrgToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $creator->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+    $refreshToken = OAuthRefreshToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $creator->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+
+    test()->actingAs($creator)->post(route('teams.mcp-connections.reauthorize', [$team, $connection->public_id]))
+        ->assertStatus(503);
+
+    expect($orgToken->fresh()->revoked_at)->toBeNull()
+        ->and($refreshToken->fresh()->revoked_at)->toBeNull()
+        ->and($connection->fresh()->revoked_at)->toBeNull()
+        ->and(AuditEvent::query()->where('event_type', AuditEventType::McpConnectionReauthorized)->exists())->toBeFalse();
 });
 
 test('example', function () {

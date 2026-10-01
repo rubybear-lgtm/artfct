@@ -22,29 +22,7 @@ class OrgTokenRevoker
             ->get();
         $revokedAt = now();
 
-        $revocationFailed = false;
-
-        foreach ($tokens as $token) {
-            try {
-                if (! RevocationWriter::default()->revoke($token->jti, $token->expires_at)) {
-                    $revocationFailed = true;
-
-                    Log::warning('Worker token revocation was not confirmed.', [
-                        'team_id' => $team->id,
-                        'token_id' => $token->id,
-                    ]);
-                }
-            } catch (Throwable) {
-                $revocationFailed = true;
-
-                Log::warning('Worker token revocation request failed.', [
-                    'team_id' => $team->id,
-                    'token_id' => $token->id,
-                ]);
-            }
-        }
-
-        if ($revocationFailed) {
+        if (! $this->denylistTokens($tokens)) {
             return false;
         }
 
@@ -65,6 +43,38 @@ class OrgTokenRevoker
                 ->whereNull('revoked_at')
                 ->update(['revoked_at' => $revokedAt]);
         });
+
+        return true;
+    }
+
+    /** @param iterable<OrgToken> $tokens */
+    public function denylistTokens(iterable $tokens): bool
+    {
+        $revocationFailed = false;
+
+        foreach ($tokens as $token) {
+            try {
+                if (! RevocationWriter::default()->revoke($token->jti, $token->expires_at)) {
+                    $revocationFailed = true;
+
+                    Log::warning('Worker token revocation was not confirmed.', [
+                        'team_id' => $token->team_id,
+                        'token_id' => $token->id,
+                    ]);
+                }
+            } catch (Throwable) {
+                $revocationFailed = true;
+
+                Log::warning('Worker token revocation request failed.', [
+                    'team_id' => $token->team_id,
+                    'token_id' => $token->id,
+                ]);
+            }
+        }
+
+        if ($revocationFailed) {
+            return false;
+        }
 
         return true;
     }

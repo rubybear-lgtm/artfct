@@ -7,7 +7,7 @@ use App\Models\Membership;
 use App\Models\OAuthRefreshToken;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Auth\RevocationWriter;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,7 +56,7 @@ class AccountController extends Controller
      * audit history stays intact). Blocked while they own a team that still
      * has other members: ownership must be transferred first.
      */
-    public function destroy(Request $request, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         $request->validate(['confirmation' => ['required', 'in:DELETE']]);
 
@@ -68,6 +68,11 @@ class AccountController extends Controller
             return back();
         }
 
+        $tokens = $user->orgTokens()->where('expires_at', '>', now())->get();
+        if (! $tokenRevoker->denylistTokens($tokens)) {
+            abort(503, __('Unable to revoke your active credentials. Your account was not deleted. Please retry shortly.'));
+        }
+
         $ownedTeamIds = Team::query()->where('owner_user_id', $user->id)->pluck('id');
         Team::query()
             ->whereIn('id', Membership::query()->where('user_id', $user->id)->pluck('team_id'))
@@ -76,11 +81,7 @@ class AccountController extends Controller
             ->each(fn (Team $team) => $auditLogger->recordForRequest($request, AuditEventType::AccountDeleted, $team, (string) $user->id, "user:{$user->id}"));
         $auditLogger->recordForRequest($request, AuditEventType::AccountDeleted, null, (string) $user->id, "user:{$user->id}");
 
-        $user->orgTokens()->whereNull('revoked_at')->get()->each(function ($token): void {
-            $token->revoked_at = now();
-            $token->save();
-            RevocationWriter::default()->revoke($token->jti, $token->expires_at);
-        });
+        $user->orgTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
         OAuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
         DB::transaction(function () use ($user): void {

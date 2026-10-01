@@ -5,6 +5,7 @@ use App\Enums\TeamRole;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
 use App\Models\OAuthRefreshToken;
+use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
@@ -89,6 +90,8 @@ test('a refresh token issued to one client cannot be redeemed by another', funct
 test('revoking the refresh token stops the access token and the refresh path', function () {
     $team = Team::factory()->create();
     $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake();
     mcpInitialize($tokens['access_token'])->assertOk();
 
     $this->postJson('/oauth/revoke', ['token' => $tokens['refresh_token']])->assertOk();
@@ -103,6 +106,19 @@ test('revoking the refresh token stops the access token and the refresh path', f
 
 test('revoking an unknown token answers the same as a known one', function () {
     $this->postJson('/oauth/revoke', ['token' => 'not-a-real-token'])->assertOk();
+});
+
+test('oauth revocation does not report success or mutate local state when the worker denylist fails', function () {
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    Http::fake(['worker.test/v1/internal/revocations' => Http::response([], 503)]);
+
+    $this->postJson('/oauth/revoke', ['token' => $tokens['refresh_token']])->assertStatus(503)
+        ->assertJsonPath('error', 'server_error');
+
+    expect(OAuthRefreshToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse()
+        ->and(McpConnection::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse()
+        ->and(OrgToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->exists())->toBeFalse();
 });
 
 test('an expired access token is rejected', function () {
@@ -221,6 +237,8 @@ test('OAuth and MCP entry points never write bearer credentials to application l
 
     $team = Team::factory()->create();
     $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
+    Http::fake();
     mcpInitialize($tokens['access_token'])->assertOk();
 
     $refreshed = $this->postJson('/oauth/token', [

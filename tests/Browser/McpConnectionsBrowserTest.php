@@ -7,6 +7,7 @@ use App\Models\OAuthRefreshToken;
 use App\Models\OrgToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -83,6 +84,12 @@ test('team members can start a new connection through the page', function () {
 });
 
 test('an active connection can be forced through reauthorization', function () {
+    config([
+        'services.org_jwt.worker_base_url' => 'https://worker.test',
+        'services.org_jwt.revocation_write_secret' => 'test-revocation-secret',
+    ]);
+    Http::fake();
+
     $owner = User::factory()->create();
     $team = app(CreateTeam::class)->handle($owner, 'MCP Reauth Co');
     $connection = McpConnection::factory()->create([

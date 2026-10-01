@@ -13,7 +13,6 @@ use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgTokenRevoker;
-use App\Services\Auth\RevocationWriter;
 use App\Services\Governance\AuditLogger;
 use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
@@ -192,19 +191,19 @@ class TeamController extends Controller
     /**
      * Delete the specified team.
      */
-    public function destroy(DeleteTeamRequest $request, Team $team, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(DeleteTeamRequest $request, Team $team, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         $user = $request->user();
         $fallbackTeam = $user->isCurrentTeam($team)
             ? $user->fallbackTeam($team)
             : null;
 
-        // A deleted team's tokens must stop working at the edge, not just here.
-        $team->orgTokens()->whereNull('revoked_at')->get()->each(function ($token): void {
-            $token->revoked_at = now();
-            $token->save();
-            RevocationWriter::default()->revoke($token->jti, $token->expires_at);
-        });
+        $tokens = $team->orgTokens()->where('expires_at', '>', now())->get();
+        if (! $tokenRevoker->denylistTokens($tokens)) {
+            abort(503, __('Unable to revoke this team’s active credentials. The team was not deleted. Please retry shortly.'));
+        }
+
+        $team->orgTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
         $auditLogger->recordForRequest($request, AuditEventType::TeamDeleted, $team, (string) $user->id, $team->slug);
 

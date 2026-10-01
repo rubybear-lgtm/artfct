@@ -10,7 +10,7 @@ use App\Models\McpConnection;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Services\Auth\OrgJwtService;
-use App\Services\Auth\RevocationWriter;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -86,11 +86,15 @@ class OrgTokenController extends Controller
      * Worker's KV denylist so the next request using it is rejected at the
      * edge within the documented propagation window.
      */
-    public function destroy(Request $request, Team $team, OrgToken $token, AuditLogger $auditLogger): JsonResponse
+    public function destroy(Request $request, Team $team, OrgToken $token, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): JsonResponse
     {
         abort_unless($token->team_id === $team->id, 404);
 
         Gate::authorize('revoke', $token);
+
+        if (! $tokenRevoker->denylistTokens([$token])) {
+            abort(503, __('Unable to revoke this token at the Worker. The token remains active; please retry shortly.'));
+        }
 
         $token->revoked_at = now();
         $token->save();
@@ -98,8 +102,6 @@ class OrgTokenController extends Controller
             ->where('credential_jti', $token->jti)
             ->whereNull('revoked_at')
             ->update(['revoked_at' => $token->revoked_at]);
-
-        RevocationWriter::default()->revoke($token->jti, $token->expires_at);
 
         $auditLogger->recordForRequest($request, AuditEventType::TokenRevoked, $team, (string) $request->user()->id, "token:{$token->id}");
 

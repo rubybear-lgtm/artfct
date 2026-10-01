@@ -8,12 +8,12 @@ use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
-use App\Models\OrgToken;
 use App\Models\Team;
-use App\Services\Auth\RevocationWriter;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -161,7 +161,7 @@ class McpConnectionController extends Controller
      * it has to run the OAuth flow again, without retiring the connection
      * record. Shares the credential-revocation mechanism with `destroy()`.
      */
-    public function reauthorize(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger): RedirectResponse
+    public function reauthorize(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
         abort_unless($connection->team_id === $team->id, 404);
@@ -169,7 +169,10 @@ class McpConnectionController extends Controller
         Gate::authorize('revoke', $connection);
 
         if ($connection->revoked_at === null) {
-            $this->revokeLiveCredentials($connection);
+            if (! $this->revokeLiveCredentials($connection, $tokenRevoker)) {
+                abort(503, __('Unable to revoke this connection’s active credentials. Please retry shortly.'));
+            }
+
             $auditLogger->recordForRequest(
                 $request,
                 AuditEventType::McpConnectionReauthorized,
@@ -184,7 +187,7 @@ class McpConnectionController extends Controller
         return back();
     }
 
-    public function destroy(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(Request $request, Team $team, McpConnection $connection, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
         abort_unless($connection->team_id === $team->id, 404);
@@ -192,8 +195,11 @@ class McpConnectionController extends Controller
         Gate::authorize('revoke', $connection);
 
         if ($connection->revoked_at === null) {
+            if (! $this->revokeLiveCredentials($connection, $tokenRevoker)) {
+                abort(503, __('Unable to revoke this connection’s active credentials. Please retry shortly.'));
+            }
+
             $connection->forceFill(['revoked_at' => now()])->save();
-            $this->revokeLiveCredentials($connection);
             $auditLogger->recordForRequest(
                 $request,
                 AuditEventType::McpConnectionRevoked,
@@ -211,13 +217,19 @@ class McpConnectionController extends Controller
      * org-scoped access tokens, including the Worker denylist entries. The
      * connection row itself is untouched.
      */
-    private function revokeLiveCredentials(McpConnection $connection): void
+    private function revokeLiveCredentials(McpConnection $connection, OrgTokenRevoker $tokenRevoker): bool
     {
-        $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
-        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken): void {
-            $orgToken->forceFill(['revoked_at' => now()])->saveQuietly();
-            RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
+        $tokens = $connection->orgTokens()->where('expires_at', '>', now())->get();
+        if (! $tokenRevoker->denylistTokens($tokens)) {
+            return false;
+        }
+
+        DB::transaction(function () use ($connection): void {
+            $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
+            $connection->orgTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
         });
+
+        return true;
     }
 
     /**

@@ -4,8 +4,10 @@ use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Membership;
+use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('account_page_lists_teams_that_block_deletion', function () {
@@ -54,6 +56,23 @@ test('deletion_closes_the_account_and_removes_solely_owned_teams', function () {
     expect(Membership::query()->where('user_id', $owner->id)->count())->toBe(0);
     expect(Team::query()->find($team->id))->toBeNull();
     test()->assertGuest();
+});
+
+test('account_deletion_does_not_commit_when_worker_revocation_fails', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503)]);
+
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $team->forceFill(['owner_user_id' => $owner->id])->save();
+    $token = OrgToken::factory()->for($team)->for($owner)->create();
+
+    test()->actingAs($owner)->delete(route('account.destroy'), ['confirmation' => 'DELETE'])
+        ->assertStatus(503);
+
+    expect($owner->fresh()->deactivated_at)->toBeNull()
+        ->and($token->fresh()->revoked_at)->toBeNull()
+        ->and(Team::query()->find($team->id))->not->toBeNull();
 });
 
 test('account_deletion_is_audited', function () {

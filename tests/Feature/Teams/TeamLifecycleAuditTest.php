@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 
 function hasAudit(Team $team, AuditEventType $type): bool
 {
@@ -13,6 +14,9 @@ function hasAudit(Team $team, AuditEventType $type): bool
 }
 
 test('deleting_a_team_requires_the_typed_name_revokes_tokens_and_is_audited', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200)]);
+
     $team = Team::factory()->create(['name' => 'Doomed Co']);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $team->forceFill(['owner_user_id' => $owner->id])->save();
@@ -27,6 +31,23 @@ test('deleting_a_team_requires_the_typed_name_revokes_tokens_and_is_audited', fu
         ->and($token->fresh()->revoked_at)->not->toBeNull()
         ->and(hasAudit($team, AuditEventType::TeamDeleted))->toBeTrue();
     test()->actingAs($owner)->get(route('teams.edit', $team))->assertNotFound();
+});
+
+test('team_deletion_does_not_commit_when_worker_revocation_fails', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503)]);
+
+    $team = Team::factory()->create(['name' => 'Doomed Co']);
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $team->forceFill(['owner_user_id' => $owner->id])->save();
+    $token = OrgToken::factory()->create(['team_id' => $team->id, 'user_id' => $owner->id]);
+
+    test()->actingAs($owner)->delete(route('teams.destroy', $team), ['name' => 'Doomed Co'])
+        ->assertStatus(503);
+
+    expect(Team::withTrashed()->find($team->id)->trashed())->toBeFalse()
+        ->and($token->fresh()->revoked_at)->toBeNull()
+        ->and(hasAudit($team, AuditEventType::TeamDeleted))->toBeFalse();
 });
 
 test('leaving_a_team_is_audited', function () {

@@ -13,6 +13,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Auth\RevocationWriter;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\JsonResponse;
@@ -312,7 +313,7 @@ final class AuthorizationServerController extends Controller
      * supplied credential was known. This is intentionally idempotent per
      * RFC 7009 so clients can safely use it during logout and recovery.
      */
-    public function revoke(Request $request, AuditLogger $auditLogger): JsonResponse
+    public function revoke(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): JsonResponse
     {
         $validated = $request->validate([
             'token' => ['required', 'string', 'max:4096'],
@@ -328,9 +329,15 @@ final class AuthorizationServerController extends Controller
         if ($refreshToken instanceof OAuthRefreshToken) {
             $connection = $refreshToken->mcpConnection;
             if ($refreshToken->revoked_at === null) {
-                $refreshToken->forceFill(['revoked_at' => now()])->save();
                 if ($connection instanceof McpConnection) {
-                    $this->revokeConnection($connection);
+                    $tokens = $connection->orgTokens()->where('expires_at', '>', now())->get();
+                    if (! $tokenRevoker->denylistTokens($tokens)) {
+                        return $this->revocationUnavailable();
+                    }
+
+                    $this->revokeConnection($connection, workerTokensAlreadyDenied: true);
+                } else {
+                    $refreshToken->forceFill(['revoked_at' => now()])->save();
                 }
                 $auditLogger->recordForRequest(
                     $request,
@@ -345,35 +352,54 @@ final class AuthorizationServerController extends Controller
             return response()->json([], 200)->header('Cache-Control', 'no-store');
         }
 
+        $orgToken = null;
         try {
             $claims = OrgJwtService::default()->verify($rawToken);
             $orgToken = OrgToken::query()->where('jti', $claims['jti'])->first();
-
-            if ($orgToken instanceof OrgToken && $orgToken->revoked_at === null) {
-                $orgToken->forceFill(['revoked_at' => now()])->save();
-                RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
-                if ($orgToken->mcpConnection instanceof McpConnection) {
-                    $this->revokeConnection($orgToken->mcpConnection);
-                } else {
-                    $orgToken->team->mcpConnections()
-                        ->where('credential_jti', $orgToken->jti)
-                        ->whereNull('revoked_at')
-                        ->update(['revoked_at' => now()]);
-                }
-                $auditLogger->recordForRequest(
-                    $request,
-                    AuditEventType::TokenRevoked,
-                    $orgToken->team,
-                    (string) $orgToken->user_id,
-                    "token:{$orgToken->id}",
-                    'oauth.revoke',
-                );
-            }
         } catch (\Throwable) {
             // RFC 7009 intentionally avoids credential enumeration.
         }
 
+        if ($orgToken instanceof OrgToken && $orgToken->revoked_at === null) {
+            $connection = $orgToken->mcpConnection;
+            if ($connection instanceof McpConnection) {
+                $tokens = $connection->orgTokens()->where('expires_at', '>', now())->get();
+                if (! $tokenRevoker->denylistTokens($tokens)) {
+                    return $this->revocationUnavailable();
+                }
+
+                $this->revokeConnection($connection, workerTokensAlreadyDenied: true);
+            } else {
+                if (! $tokenRevoker->denylistTokens([$orgToken])) {
+                    return $this->revocationUnavailable();
+                }
+
+                $orgToken->forceFill(['revoked_at' => now()])->save();
+                $orgToken->team->mcpConnections()
+                    ->where('credential_jti', $orgToken->jti)
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => now()]);
+            }
+
+            $auditLogger->recordForRequest(
+                $request,
+                AuditEventType::TokenRevoked,
+                $orgToken->team,
+                (string) $orgToken->user_id,
+                "token:{$orgToken->id}",
+                'oauth.revoke',
+            );
+        }
+
         return response()->json([], 200)->header('Cache-Control', 'no-store');
+    }
+
+    private function revocationUnavailable(): JsonResponse
+    {
+        return response()->json([
+            'error' => 'server_error',
+            'error_description' => 'Revocation could not be confirmed. Retry this request.',
+        ], 503)->header('Cache-Control', 'no-store');
     }
 
     /** @param array{grant_type: string, refresh_token?: string, client_id: string} $validated */
@@ -519,14 +545,16 @@ final class AuthorizationServerController extends Controller
         return $connection;
     }
 
-    private function revokeConnection(McpConnection $connection): void
+    private function revokeConnection(McpConnection $connection, bool $workerTokensAlreadyDenied = false): void
     {
         $connection->forceFill(['revoked_at' => $connection->revoked_at ?? now()])->saveQuietly();
         $connection->oauthRefreshTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
-        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken): void {
+        $connection->orgTokens()->whereNull('revoked_at')->get()->each(function (OrgToken $orgToken) use ($workerTokensAlreadyDenied): void {
             $orgToken->forceFill(['revoked_at' => now()])->saveQuietly();
-            RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
+            if (! $workerTokensAlreadyDenied) {
+                RevocationWriter::default()->revoke($orgToken->jti, $orgToken->expires_at);
+            }
         });
     }
 

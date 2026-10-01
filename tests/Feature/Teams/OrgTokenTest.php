@@ -61,6 +61,26 @@ test('token_revocation_writes_denylist', function () {
     });
 });
 
+test('token_revocation_does_not_claim_success_when_worker_denylist_fails', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
+    ]);
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgToken::factory()->for($team)->for($admin)->create(['jti' => 'jti-worker-unavailable']);
+    $connection = McpConnection::factory()->for($team)->for($admin)->create([
+        'credential_jti' => $token->jti,
+    ]);
+
+    $response = test()->actingAs($admin)->deleteJson("/settings/teams/{$team->slug}/tokens/{$token->id}");
+
+    $response->assertStatus(503);
+    expect($token->fresh()->revoked_at)->toBeNull()
+        ->and($connection->fresh()->revoked_at)->toBeNull();
+});
+
 test('member_cannot_revoke_another_users_token', function () {
     configureOrgJwt();
     Http::fake([
