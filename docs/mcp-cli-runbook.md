@@ -291,7 +291,7 @@ scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
 ```
 
 `run` also drives `mcp-server/tests/storage_integration.rs` and
-`provenance_integration.rs` — 22 tests (21 and 1 respectively) that assert
+`provenance_integration.rs` — 26 tests (25 and 1 respectively) that assert
 real production-path behavior (blob refcounting, concurrent creates/deletes,
 export round-trips, bundle redeploys) against a live Worker, and that were
 previously `#[ignore]`d with nothing in CI ever running them. They share one
@@ -471,12 +471,13 @@ Known, currently verified compatibility:
   completed OAuth against staging on 2026-09-21, including discovery, dynamic
   registration, PKCE consent, token exchange, tool listing, and a
   `get_connection` call. The negotiated protocol version was not recorded.
-  Claude Code 2.1.286 now completes consent and read-only tool calls against
+  Claude Code 2.1.286 completed consent and read-only tool calls against
   staging after a refresh/session continuity fix. Its negotiated protocol
   version was not surfaced by the client or connection page, so its run remains
-  incomplete against the recording checklist. Cursor still needs a hosted OAuth
-  run; the remaining client matrix is tracked on RUB-383. Do not infer
-  compatibility for a client until its staging result is recorded below.
+  incomplete against the recording checklist. Cursor is excluded from this
+  validation per user direction. The remaining client matrix is tracked on
+  RUB-383. Do not infer compatibility for a client until its staging result is
+  recorded below.
 
 ### Repeatable third-party client run
 
@@ -503,9 +504,6 @@ read-only tool such as `list_collections` from that client:
   registration, PKCE consent, and token exchange, then call `get_connection`.
 - **Claude Code** — run `claude`, select the configured `artfct` MCP server,
   complete browser consent, and ask Claude to call `get_connection`.
-- **Cursor** — open Cursor's MCP panel, enable the `artfct` entry written by
-  `artfct setup`, complete browser consent, and invoke `get_connection` from
-  Agent mode.
 - **Codex CLI** — run `codex`, enable the configured `artfct` MCP server,
   complete browser consent, and request `get_connection`.
 - **Gemini CLI** — run `gemini`, enable the configured `artfct` MCP server,
@@ -532,14 +530,14 @@ check. Installed versions and `artfct setup --list` targets were checked on
 2026-09-23 preflight result. This records what is available for the next
 release-candidate run.
 
-| Client                 | Installed version                      | Setup/config preflight                                                                                   | Hosted session                      |
-| ---------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Claude Code            | 2.1.286                                | `artfct setup --list` recognized the JSON target                                                         | OAuth run recorded separately below |
-| Cursor                 | 2.6.22; Agent CLI `2026.03.25-933d5a6` | `artfct setup --list` recognized the JSON target; `cursor-agent mcp list` reported no configured servers | Not run                             |
-| Codex CLI              | 0.159.2                                | `artfct setup --list` recognized the TOML target                                                         | Not run                             |
-| Gemini CLI             | 0.42.0                                 | `artfct setup --list` recognized the JSON target                                                         | Not run                             |
-| OpenCode               | 1.17.18                                | `artfct setup --list` recognized the JSON target                                                         | Not run                             |
-| Official MCP Inspector | 2.7.0 via `npx`                        | Local stdio `tools/list` passed; launcher and CLI help probes passed                                     | OAuth run recorded separately below |
+| Client                 | Installed version           | Setup/config preflight                                               | Hosted session                      |
+| ---------------------- | --------------------------- | -------------------------------------------------------------------- | ----------------------------------- |
+| Claude Code            | 2.1.286                     | `artfct setup --list` recognized the JSON target                     | OAuth run recorded separately below |
+| Cursor                 | Excluded per user direction | Not in this validation scope                                         | Not run                             |
+| Codex CLI              | 0.159.2                     | `artfct setup --list` recognized the TOML target                     | Not run                             |
+| Gemini CLI             | 0.42.0                      | `artfct setup --list` recognized the JSON target                     | Not run                             |
+| OpenCode               | 1.17.18                     | `artfct setup --list` recognized the JSON target                     | Not run                             |
+| Official MCP Inspector | 2.7.0 via `npx`             | Local stdio `tools/list` passed; launcher and CLI help probes passed | OAuth run recorded separately below |
 
 The Inspector package was available from npm; its non-interactive help commands
 and a local stdio `tools/list` probe against `target/debug/artfct mcp serve`
@@ -565,7 +563,8 @@ path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
 discovery, registration, token, and MCP endpoints lacked CORS (including the
 RFC 8414 path-inserted metadata URL); and the consent redirect to the local
 client callback was blocked because it used XHR. The Inspector completed the
-flow after those fixes. This record does not cover Claude Code or Cursor OAuth.
+flow after those fixes. Claude Code's OAuth run is recorded above. Cursor
+remains outside this validation scope per user direction.
 
 ### Headless bearer-auth runs (2026-09-30)
 
@@ -577,13 +576,13 @@ tool. Each used a temporary config outside the user's real client config, and a
 15-minute token that was never printed. The negotiated protocol version was not
 recorded per client (the server default is `2025-11-25`).
 
-| Client      | Version | How it was run                                                                                   | Result                                                         |
-| ----------- | ------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| Claude Code | 2.1.286 | `claude -p --mcp-config <temp.json> --strict-mcp-config` with an `Authorization` header from env | Session opened, `get_connection` returned the organization     |
-| Codex CLI   | 0.159.2 | `codex exec -c mcp_servers.<name>.url=… -c mcp_servers.<name>.bearer_token_env_var=…`            | Session opened, `get_connection` returned the organization     |
-| Gemini CLI  | 0.42.0  | project `.gemini/settings.json` with `httpUrl` and headers; `gemini mcp list`                    | `Connected`; tool call not run (no model login on the machine) |
-| OpenCode    | 1.17.18 | `OPENCODE_CONFIG=<temp.json>` with a remote MCP entry and headers; `opencode mcp list`           | `connected`; tool call failed on OpenCode's own provider login |
-| Cursor      | not run | `cursor-agent` lists the user's global servers and needs `--approve-mcps` for a project entry    | Not run; Cursor's GUI is human-only                            |
+| Client      | Version             | How it was run                                                                                   | Result                                                         |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| Claude Code | 2.1.286             | `claude -p --mcp-config <temp.json> --strict-mcp-config` with an `Authorization` header from env | Session opened, `get_connection` returned the organization     |
+| Codex CLI   | 0.159.2             | `codex exec -c mcp_servers.<name>.url=… -c mcp_servers.<name>.bearer_token_env_var=…`            | Session opened, `get_connection` returned the organization     |
+| Gemini CLI  | 0.42.0              | project `.gemini/settings.json` with `httpUrl` and headers; `gemini mcp list`                    | `Connected`; tool call not run (no model login on the machine) |
+| OpenCode    | 1.17.18             | `OPENCODE_CONFIG=<temp.json>` with a remote MCP entry and headers; `opencode mcp list`           | `connected`; tool call failed on OpenCode's own provider login |
+| Cursor      | excluded from scope | Not run                                                                                          | Not run                                                        |
 
 Client-specific notes from these runs:
 
