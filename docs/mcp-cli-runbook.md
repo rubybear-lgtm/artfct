@@ -346,6 +346,15 @@ review only; do not apply it until approved. After review, verify with `curl -I`
 against each existing subhost and confirm a production artifact host reaches
 the Worker.
 
+**Required config replacement after approval.** In `backend/wrangler.jsonc`,
+replace the existing `*.artfct.dev/*` route with `*--prod.artfct.dev/*`; do not
+add the narrow route alongside the broad one. The broad route would continue to
+match `staging.artfct.dev` even if the new production route is present. Before
+uploading a production Worker version, also replace the all-zero placeholder
+for `ARTIFACTS_DB` with the actual production D1 database ID and verify that
+the KV namespace and R2 bucket bindings point to production resources. Never
+reuse staging resource IDs.
+
 **Steps, in order:**
 
 1. Confirm the zone's wildcard DNS record is proxied and Universal SSL covers one
@@ -360,7 +369,10 @@ the Worker.
 4. Point `ARTFCT_WORKER_BASE_URL` (Laravel) and `ARTFCT_PUBLIC_BASE_URL` (Worker)
    at the production addresses. Set `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` to
    `--prod.artfct.dev` on both services.
-5. Deploy the Worker routes, then run the same checks as staging: an artifact
+5. Replace the broad production Worker route with the marker-suffix route and
+   verify the D1, KV, and R2 bindings target production resources. Review the
+   resolved config to confirm there is no remaining `*.artfct.dev/*` route.
+6. Deploy the Worker routes, then run the same checks as staging: an artifact
    host returns 403 without a token, 200 with a minted link, and 403 on another
    tenant's host; `/.well-known/oauth-authorization-server` advertises the
    production issuer; the MCP Inspector and Claude Code connect through it.
