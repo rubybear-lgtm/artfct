@@ -320,12 +320,23 @@ not a separate reimplementation, so a local failure reproduces the CI one.
 
 ## Production domain plan (draft, not applied)
 
-This is the RUB-366 production plan, written for review. Nothing here has been
-applied; production stays untouched until it is approved. Staging already runs
-the same shape: the app on `staging.artfct.dev`, artifact origins on
-`<tenant>--<id>--stg.artfct.dev`, verified on 2026-09-30 (403 without a token,
-200 with a minted link, 403 when a token is presented on another tenant's host,
-valid TLS, no cookies).
+This is the RUB-366 production plan, written for review. The domain and route
+plan has not been applied, and production traffic remains on its previous
+deployment. Staging already runs the same shape: the app on
+`staging.artfct.dev`, artifact origins on `<tenant>--<id>--stg.artfct.dev`,
+verified on 2026-09-30 (403 without a token, 200 with a minted link, 403 when a
+token is presented on another tenant's host, valid TLS, no cookies).
+
+**Worker build boundary (verified 2026-10-01).** Cloudflare Workers Builds binds
+each trigger to a Worker script tag; passing a staging Wrangler config to a
+trigger attached to the production Worker does not retarget the build. The old
+non-production trigger was therefore changed to fail closed, and its production
+candidate version `41` remains undeployed. The staging Worker now has its own
+build configuration, bound to the staging script tag and `develop` branch,
+with previews disabled. A `develop` build succeeded and deployed staging
+version `1ba2fe66-b842-4ac3-92c3-419697d20a4d` at 100%. Keep the production
+trigger separate and do not enable production builds until the promotion gate
+is approved.
 
 **Hazard and proposed resolution.** The production Worker config routes
 `*.artfct.dev/*` for artifact origins (`<tenant>--<id>.artfct.dev`). That
