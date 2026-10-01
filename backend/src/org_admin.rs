@@ -437,7 +437,7 @@ pub(crate) enum HardDeleteOutcome {
 /// row (cascading files, provenance, versions, shares), decrements each
 /// referenced blob and writes the audit row; then, under the content locks,
 /// removes blobs whose refcount reached zero. A failed R2 delete leaves an
-/// orphan, never a dangling reference.
+/// object and its zero-ref D1 row for `sweep-orphans` to retry.
 pub(crate) async fn hard_delete_permanent(
     storage: &store::D1R2ArtifactStore,
     org: &str,
@@ -555,17 +555,42 @@ pub(crate) async fn release_blob_if_unreferenced(
         .map(|value| value.count)
         .unwrap_or(0);
     if count == 0 {
-        storage
-            .database
-            .prepare("DELETE FROM blobs WHERE content_hash = ?")
-            .bind(&[JsValue::from_str(content_hash)])?
-            .run()
-            .await?;
-        storage
-            .bucket
-            .delete(format!("blobs/{content_hash}"))
-            .await?;
+        delete_object_then_metadata(
+            || storage.bucket.delete(format!("blobs/{content_hash}")),
+            || async {
+                storage
+                    .database
+                    .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(content_hash)])?
+                    .run()
+                    .await?;
+                Ok(())
+            },
+        )
+        .await?;
     }
+    Ok(())
+}
+
+/// Keeps D1's retry key until the object store confirms deletion. Both
+/// callbacks run under the caller's content lock.
+pub(crate) async fn delete_object_then_metadata<
+    DeleteObject,
+    DeleteObjectFuture,
+    DeleteMetadata,
+    DeleteMetadataFuture,
+>(
+    delete_object: DeleteObject,
+    delete_metadata: DeleteMetadata,
+) -> Result<()>
+where
+    DeleteObject: FnOnce() -> DeleteObjectFuture,
+    DeleteObjectFuture: std::future::Future<Output = Result<()>>,
+    DeleteMetadata: FnOnce() -> DeleteMetadataFuture,
+    DeleteMetadataFuture: std::future::Future<Output = Result<()>>,
+{
+    delete_object().await?;
+    delete_metadata().await?;
     Ok(())
 }
 

@@ -238,21 +238,7 @@ pub(crate) async fn upload_permanent_file(
                     .await?;
             }
             for hash in hashes.into_iter().collect::<std::collections::HashSet<_>>() {
-                let refs = database
-                    .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
-                    .bind(&[JsValue::from_str(hash)])?
-                    .first::<BlobReferenceRow>(None)
-                    .await?
-                    .map(|value| value.count)
-                    .unwrap_or(0);
-                if refs == 0 {
-                    database
-                        .prepare("DELETE FROM blobs WHERE content_hash = ?")
-                        .bind(&[JsValue::from_str(hash)])?
-                        .run()
-                        .await?;
-                    storage.bucket.delete(format!("blobs/{hash}")).await?;
-                }
+                release_blob_if_unreferenced(&storage, hash).await?;
             }
             json_error(ErrorCode::ArtifactNotFound, "Artifact upload expired.", 404)
         }

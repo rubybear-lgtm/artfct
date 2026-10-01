@@ -61,7 +61,7 @@ use governance_routes::governance_route;
 use org_admin::{
     delete_permanent_artifact, download_export_blob, export_organization, get_org_usage,
     hard_delete_permanent, parse_usage_path, quota_refusal, release_blob_if_unreferenced,
-    revoke_org_artifact, write_jwks, write_org_limits, BlobReferenceRow, HardDeleteOutcome,
+    revoke_org_artifact, write_jwks, write_org_limits, HardDeleteOutcome,
 };
 #[cfg(test)]
 use org_admin::{
@@ -2472,6 +2472,56 @@ mod tests {
                 return output;
             }
         }
+    }
+
+    #[test]
+    fn r2_delete_failure_preserves_zero_ref_metadata_for_retry() {
+        use std::{cell::RefCell, rc::Rc};
+
+        let operations = Rc::new(RefCell::new(Vec::new()));
+        let failed = block_on(org_admin::delete_object_then_metadata(
+            {
+                let operations = Rc::clone(&operations);
+                move || async move {
+                    operations.borrow_mut().push("r2");
+                    Err(worker::Error::RustError("injected R2 failure".to_string()))
+                }
+            },
+            {
+                let operations = Rc::clone(&operations);
+                move || async move {
+                    operations.borrow_mut().push("d1");
+                    Ok(())
+                }
+            },
+        ));
+
+        assert!(failed.is_err());
+        assert_eq!(
+            operations.borrow().as_slice(),
+            &["r2"],
+            "a failed R2 delete must leave the zero-ref D1 row for sweep-orphans"
+        );
+
+        let retry_operations = Rc::new(RefCell::new(Vec::new()));
+        block_on(org_admin::delete_object_then_metadata(
+            {
+                let operations = Rc::clone(&retry_operations);
+                move || async move {
+                    operations.borrow_mut().push("r2");
+                    Ok(())
+                }
+            },
+            {
+                let operations = Rc::clone(&retry_operations);
+                move || async move {
+                    operations.borrow_mut().push("d1");
+                    Ok(())
+                }
+            },
+        ))
+        .expect("retry deletes the object before removing its metadata");
+        assert_eq!(retry_operations.borrow().as_slice(), &["r2", "d1"]);
     }
 
     fn list_item(
