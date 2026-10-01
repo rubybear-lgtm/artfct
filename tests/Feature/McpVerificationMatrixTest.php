@@ -217,6 +217,22 @@ test('the runbook keeps hosted discovery and CLI OAuth on staging', function () 
         ->not->toContain('https://artfct.dev/.well-known/oauth-authorization-server');
 });
 
+test('the production domain plan preserves artifact origin isolation checks', function () {
+    $runbook = (string) preg_replace(
+        '/\s+/',
+        ' ',
+        (string) file_get_contents(base_path('docs/mcp-cli-runbook.md')),
+    );
+
+    expect($runbook)
+        ->toContain('Production changes remain on hold pending approval')
+        ->toContain('This runbook does not assert the current production runtime state')
+        ->toContain('no `Set-Cookie`')
+        ->toContain('blocked by CORS')
+        ->toContain('no CORS allowance or')
+        ->toContain('`postMessage` bridge to artifact origins');
+});
+
 test('the matrix itself carries no credential-shaped strings', function () {
     // The DoD clause requiring no credential in fixtures. This file is the one
     // artefact RUB-363 adds, so it is checked like any other.

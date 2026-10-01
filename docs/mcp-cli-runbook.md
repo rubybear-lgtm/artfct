@@ -320,12 +320,13 @@ not a separate reimplementation, so a local failure reproduces the CI one.
 
 ## Production domain plan (draft, not applied)
 
-This is the RUB-366 production plan, written for review. The domain and route
-plan has not been applied, and production traffic remains on its previous
-deployment. Staging already runs the same shape: the app on
-`staging.artfct.dev`, artifact origins on `<tenant>--<id>--stg.artfct.dev`,
-verified on 2026-09-30 (403 without a token, 200 with a minted link, 403 when a
-token is presented on another tenant's host, valid TLS, no cookies).
+This is the proposed RUB-366 production plan for human review. Production
+changes remain on hold pending approval. This runbook does not assert the
+current production runtime state. The staging shape was verified on
+2026-09-30: app on `staging.artfct.dev`, artifact origins on
+`<tenant>--<id>--stg.artfct.dev`, with 403 without a token, 200 with a minted
+link, 403 when a token is presented on another tenant's host, valid TLS, and
+no cookies at that check.
 
 **Worker build boundary (verified 2026-10-01).** Cloudflare Workers Builds binds
 each trigger to a Worker script tag; passing a staging Wrangler config to a
@@ -336,7 +337,8 @@ build configuration, bound to the staging script tag and `develop` branch,
 with previews disabled. A `develop` build succeeded and deployed staging
 version `1ba2fe66-b842-4ac3-92c3-419697d20a4d` at 100%. Keep the production
 trigger separate and do not enable production builds until the promotion gate
-is approved.
+is approved. The staging trigger and successful deployment were verified on
+2026-10-01; production candidate version `41` was undeployed at that check.
 
 **Hazard and proposed resolution.** The production Worker config routes
 `*.artfct.dev/*` for artifact origins (`<tenant>--<id>.artfct.dev`). That
@@ -385,8 +387,13 @@ reuse staging resource IDs.
    resolved config to confirm there is no remaining `*.artfct.dev/*` route.
 6. Deploy the Worker routes, then run the same checks as staging: an artifact
    host returns 403 without a token, 200 with a minted link, and 403 on another
-   tenant's host; `/.well-known/oauth-authorization-server` advertises the
-   production issuer; the MCP Inspector and Claude Code connect through it.
+   tenant's host. Verify Spec 05 origin isolation on the artifact responses:
+   no `Set-Cookie`, the expected isolation and CSP headers, no console-cookie
+   authentication, and a browser `fetch()` from artifact A to artifact B is
+   blocked by CORS. Confirm the console origin has no CORS allowance or
+   `postMessage` bridge to artifact origins. Then confirm
+   `/.well-known/oauth-authorization-server` advertises the production issuer
+   and MCP Inspector and Claude Code connect through it.
 
 **Rollback.** DNS, route and domain changes are reversible: remove the new
 routes, revert the domain and environment variables, and keep the existing
