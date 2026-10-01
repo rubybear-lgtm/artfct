@@ -307,16 +307,20 @@ final class SyntheticSeeder
     }
 
     /**
-     * Removes every synthetic org (prefix `zz-`) and only those: Laravel
-     * rows, and each org's artifacts on its Worker.
+     * Removes synthetic Laravel data and Worker artifacts. When `$onlySlug`
+     * is supplied, only that org and its paired `-b` org are removed.
      *
      * @param  array<string, WorkerTarget>  $workers  keyed by org slug
      * @return array{teams: int, artifacts: int}
      */
-    public function purge(array $workers): array
+    public function purge(array $workers, ?string $onlySlug = null): array
     {
         $prefix = (string) config('synthetic.prefix', 'zz-');
         $artifacts = 0;
+
+        if ($onlySlug !== null) {
+            self::assertSafe($onlySlug);
+        }
 
         foreach ($workers as $slug => $worker) {
             self::assertSafe($slug);
@@ -334,7 +338,13 @@ final class SyntheticSeeder
             File::delete(self::mapPath($slug));
         }
 
-        $teams = Team::query()->where('slug', 'like', $prefix.'%')->get();
+        $teams = Team::query()
+            ->when(
+                $onlySlug !== null,
+                fn ($query) => $query->whereIn('slug', [$onlySlug, $onlySlug.'-b']),
+                fn ($query) => $query->where('slug', 'like', $prefix.'%'),
+            )
+            ->get();
         foreach ($teams as $team) {
             // Audit rows are append-only in the app; this synthetic-only purge
             // bypasses the model guard on the query builder, prefix-scoped above.
@@ -348,7 +358,10 @@ final class SyntheticSeeder
             $team->memberships()->delete();
             $team->forceDelete();
         }
-        User::query()->where('email', 'like', '%@'.config('synthetic.email_domain'))->delete();
+        User::query()
+            ->where('email', 'like', '%@'.config('synthetic.email_domain'))
+            ->whereDoesntHave('teamMemberships')
+            ->delete();
 
         return ['teams' => $teams->count(), 'artifacts' => $artifacts];
     }

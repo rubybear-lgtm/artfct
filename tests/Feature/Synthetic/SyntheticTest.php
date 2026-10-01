@@ -184,6 +184,29 @@ test('purge_removes_only_synthetic_orgs', function () {
         ->and(File::exists(SyntheticSeeder::mapPath('zz-northwind')))->toBeFalse();
 });
 
+test('purge_slug_removes_only_the_selected_synthetic_org_pair', function () {
+    fakeSyntheticWorkers();
+
+    test()->artisan('synthetic:seed', ['--slug' => 'zz-northwind', '--laravel-only' => true])->assertSuccessful();
+    test()->artisan('synthetic:seed', ['--slug' => 'zz-southwind', '--laravel-only' => true])->assertSuccessful();
+
+    $southwind = Team::query()->where('slug', 'zz-southwind')->firstOrFail();
+    $sharedAdmin = User::query()->where('email', 'admin@northwind.example')->firstOrFail();
+
+    test()->artisan('synthetic:seed', [
+        '--slug' => 'zz-northwind',
+        '--purge-slug' => true,
+    ])
+        ->expectsOutputToContain('Purged 2 synthetic org(s) and 0 artifact(s).')
+        ->assertSuccessful();
+
+    expect(Team::query()->pluck('slug')->sort()->values()->all())
+        ->toBe(['zz-southwind', 'zz-southwind-b'])
+        ->and($southwind->members()->whereKey($sharedAdmin->id)->exists())->toBeTrue()
+        ->and($sharedAdmin->fresh()->belongsToTeam($southwind))->toBeTrue()
+        ->and(OrgToken::query()->where('team_id', $southwind->id)->exists())->toBeTrue();
+});
+
 test('seeded_audit_events_come_from_real_actions', function () {
     fakeSyntheticWorkers();
     test()->artisan('synthetic:seed')->assertSuccessful();
