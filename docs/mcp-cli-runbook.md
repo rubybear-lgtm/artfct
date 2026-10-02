@@ -574,6 +574,22 @@ not a hosted compatibility result.
 | 2026-10-02 | OpenCode 1.17.18       | Streamable HTTP | **OAuth connection works; tool call not run.** `opencode mcp auth` performs dynamic registration, consent for all six scopes is approved, and `opencode mcp list` then reports `connected`; `opencode mcp debug` reports `Connection successful (already authenticated)`. A tool call could not be made because OpenCode has no model-provider login on this machine (its own limitation, as in the headless run below). Earlier attempts the same day failed with `OAuth completion failed: The authorization code is invalid or expired` because the same authorization request was approved more than once (the code is single-use and the server rejects the second exchange); a single approval completes cleanly. Credentials removed with `opencode mcp logout`. The token endpoint now logs `oauth.token_rejected` with a non-secret reason to make such cases diagnosable. |
 | 2026-10-02 | Gemini CLI 0.42.0      | Streamable HTTP | **Not run.** With `oauth.enabled` in a trusted project `.gemini/settings.json` the server is detected and reported as `requires authentication using /mcp auth`, but the OAuth step is interactive (`/mcp auth`) and the CLI refuses headless use without a model credential (`GEMINI_API_KEY`, Vertex or Google sign-in), which this machine does not have. The headless bearer run below still shows the connection works. |
 
+None of the clients above displays the protocol version it negotiated, so it is
+read from the server: the `initialize` handshake is stored on the connection
+(`mcp_connections.client_name` and `protocol_version`). Values recorded on staging
+for the 2026-09-30 to 2026-10-02 runs:
+
+| Client                 | Recorded client name | Negotiated protocol |
+| ---------------------- | -------------------- | ------------------- |
+| Official MCP Inspector | `mcp-inspector`      | `2025-11-25`        |
+| Claude Code 2.1.286    | `claude-code`        | `2025-11-25`        |
+| Codex CLI 0.159.3      | `codex-mcp-client`   | `2025-06-18`        |
+| OpenCode 1.17.18       | `opencode-debug`     | `2025-11-25`        |
+| Gemini CLI 0.42.0      | not recorded         | not run (no model credential) |
+
+Codex negotiates the older `2025-06-18` revision, which the server still
+supports; the session worked, so there is no known incompatibility for it.
+
 This run exposed three staging defects, all fixed and deployed: the
 path-suffixed protected-resource metadata advertised the wrong issuer; OAuth
 discovery, registration, token, and MCP endpoints lacked CORS (including the
