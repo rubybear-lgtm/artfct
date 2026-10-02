@@ -2209,6 +2209,96 @@ mod tests {
         }
     }
 
+    fn arbitrary_json_strategy() -> impl proptest::strategy::Strategy<Value = Value> {
+        use proptest::prelude::{any, prop_oneof, Just, Strategy};
+
+        let leaf = prop_oneof![
+            Just(Value::Null),
+            any::<bool>().prop_map(Value::Bool),
+            any::<i64>().prop_map(|number| json!(number)),
+            ".{0,64}".prop_map(Value::String),
+        ];
+        leaf.prop_recursive(3, 24, 4, |inner| {
+            prop_oneof![
+                proptest::collection::vec(inner.clone(), 0..4).prop_map(Value::Array),
+                proptest::collection::hash_map("[a-z]{0,6}", inner, 0..4)
+                    .prop_map(|entries| Value::Object(entries.into_iter().collect())),
+            ]
+        })
+    }
+
+    fn property_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("property tests need a runtime")
+    }
+
+    use proptest::strategy::Strategy as _;
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        /// Property: no JSON-RPC envelope, however malformed, produces a panic
+        /// or a response that is not a bounded JSON-RPC result or error.
+        #[test]
+        fn property_arbitrary_envelopes_get_a_well_formed_bounded_response(
+            jsonrpc in arbitrary_json_strategy(),
+            id in arbitrary_json_strategy().prop_filter("a request needs a non-null id", |value| !value.is_null()),
+            method in proptest::prelude::prop_oneof!["tools/list", "initialize", "unknown/fuzz-method", ".{0,24}"],
+            params in arbitrary_json_strategy(),
+        ) {
+            let request = json!({"jsonrpc": jsonrpc, "id": id, "method": method, "params": params});
+            let response = property_runtime().block_on(async {
+                let mut session = Session::new_with_resolution(None, None, None);
+                handle_json_rpc(&mut session, request).await
+            });
+            let response = response.expect("requests with ids must receive a response");
+
+            proptest::prop_assert_eq!(&response["jsonrpc"], "2.0");
+            proptest::prop_assert!(response.get("result").is_some() || response.get("error").is_some());
+            let encoded = serde_json::to_string(&response).expect("response must be JSON");
+            proptest::prop_assert!(encoded.len() <= 16_384, "response grew without a bound");
+        }
+
+        /// Property: for every tool, an argument that violates the declared
+        /// type of its first required field is rejected without a network call.
+        #[test]
+        fn property_out_of_schema_arguments_are_rejected_for_every_tool(
+            junk in arbitrary_json_strategy(),
+            tool_index in 0usize..64,
+        ) {
+            let definitions = tool_registry::definitions();
+            let definition = &definitions[tool_index % definitions.len()];
+            let schema = &definition.input_schema;
+            let required = schema.get("required").and_then(Value::as_array).and_then(|fields| fields.first()).and_then(Value::as_str);
+            let arguments = match required {
+                Some(field) => {
+                    let expected = schema["properties"][field]["type"].as_str().unwrap_or("string");
+                    let matches_type = match expected {
+                        "string" => junk.is_string(),
+                        "integer" => junk.is_i64() || junk.is_u64(),
+                        "number" => junk.is_number(),
+                        "boolean" => junk.is_boolean(),
+                        "array" => junk.is_array(),
+                        "object" => junk.is_object(),
+                        _ => true,
+                    };
+                    proptest::prop_assume!(!matches_type);
+                    json!({field: junk})
+                }
+                None => json!({"unexpected": junk}),
+            };
+            let outcome = property_runtime().block_on(async {
+                let session = Session::new_with_resolution(None, None, None);
+                call_tool(&session, json!({"name": definition.name, "arguments": arguments}), |_| {}).await
+            });
+
+            let error = outcome.expect_err("out-of-schema arguments must be rejected before any tool runs");
+            proptest::prop_assert!(error.to_string().len() <= 512);
+        }
+    }
+
     #[test]
     fn upstream_errors_are_classified_without_echoing_response_bodies() {
         let error = McpError::from(anyhow!(

@@ -33,6 +33,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Fixed
 
+- RUB-382/RUB-403: added `proptest` as a locked dev-dependency of the CLI crate with two property tests: arbitrary JSON-RPC envelopes always get a well-formed, bounded response, and out-of-schema arguments are rejected for every tool before any network call. Failing inputs shrink to a minimal case.
 - RUB-383: the OAuth token endpoint now logs a non-secret `oauth.token_rejected` warning (reason, client id and, for a mismatch, the issued versus presented redirect URI) so rejected exchanges from third-party MCP clients can be diagnosed; codes and verifiers are never logged.
 - RUB-430: Browser Run indexing now sends a raw-regex allowlist for only the signed artifact's exact HTTPS origin; external hosts are denied by default.
 - RUB-317: Local governance integration now verifies missing and incorrect secrets return 401 across listing, deletion, legal-hold, and orphan-sweep routes.
