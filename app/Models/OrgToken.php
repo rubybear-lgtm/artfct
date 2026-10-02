@@ -3,13 +3,13 @@
 namespace App\Models;
 
 use App\Enums\TeamRole;
+use Carbon\CarbonInterface;
 use Database\Factories\OrgTokenFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Carbon;
 
 /**
  * An org-scoped API credential for the CLI, MCP server, or CI (spec 07's
@@ -26,8 +26,8 @@ use Illuminate\Support\Carbon;
  * @property string $jti
  * @property TeamRole $role
  * @property string $last_four
- * @property Carbon $expires_at
- * @property Carbon|null $revoked_at
+ * @property CarbonInterface $expires_at
+ * @property CarbonInterface|null $revoked_at
  * @property array<int, string>|null $slack_channels
  * @property-read Team $team
  * @property-read User $user

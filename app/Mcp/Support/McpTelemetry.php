@@ -23,8 +23,8 @@ final class McpTelemetry
 
             McpActivity::create([
                 'team_id' => $team->id,
-                'credential_jti' => $claims['jti'] ?? null,
-                'actor' => $claims['user_id'] ?? 'unknown',
+                'credential_jti' => $claims['jti'],
+                'actor' => $claims['user_id'],
                 'tool' => $tool,
                 'artifact_id' => $artifactId,
                 'transport' => 'streamable_http',

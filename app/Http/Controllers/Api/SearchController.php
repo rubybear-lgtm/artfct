@@ -55,7 +55,10 @@ class SearchController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            if (! config('indexing.enabled')
+            /** @var bool $indexingEnabled */
+            $indexingEnabled = config('indexing.enabled');
+
+            if (! $indexingEnabled
                 || str_contains($exception->getMessage(), 'must be configured')
                 || str_contains($exception->getMessage(), 'not implemented')) {
                 return response()->json([

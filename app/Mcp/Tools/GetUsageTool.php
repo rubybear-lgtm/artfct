@@ -83,7 +83,7 @@ final class GetUsageTool extends Tool
                     'exceeded' => $quota->artifactsExceeded,
                 ],
                 'render_minutes' => [
-                    'used' => (int) ($currentUsage['render_minutes_this_period'] ?? 0),
+                    'used' => $currentUsage['render_minutes_this_period'],
                 ],
                 'can_create' => ! $quota->anyExceeded(),
             ]);

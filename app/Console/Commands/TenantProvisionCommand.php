@@ -32,7 +32,7 @@ class TenantProvisionCommand extends Command
         try {
             $service->provision($team, (string) $this->option('release'), (string) $this->option('region'));
         } catch (Throwable $exception) {
-            $step = $team->fresh()?->provisioning_failed_step ?? 'unknown';
+            $step = Team::query()->whereKey($team->getKey())->value('provisioning_failed_step') ?? 'unknown';
             $this->components->error("Provisioning failed at step \"{$step}\": {$exception->getMessage()}");
 
             return self::FAILURE;

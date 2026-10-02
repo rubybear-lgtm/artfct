@@ -7,6 +7,7 @@ use App\Enums\AuthMode;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
+use Carbon\CarbonInterface;
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -24,7 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string $slug
  * @property bool $is_personal
  * @property AuthMode $auth_mode
- * @property Carbon|null $provisioned_at
+ * @property CarbonInterface|null $provisioned_at
  * @property string|null $provisioning_failed_step
  * @property string|null $release_version
  * @property int $schema_version
@@ -118,7 +119,7 @@ class Team extends Model
     /**
      * Get the first admin of this team (the creator, in the common case).
      */
-    public function firstAdmin(): ?Model
+    public function firstAdmin(): ?User
     {
         return $this->members()
             ->wherePivot('role', TeamRole::Admin->value)

@@ -15,6 +15,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - laravel/mcp (MCP) - v0
 - laravel/prompts (PROMPTS) - v0
 - laravel/wayfinder (WAYFINDER) - v0
+- larastan/larastan (LARASTAN) - v3
 - laravel/boost (BOOST) - v2
 - laravel/pail (PAIL) - v1
 - laravel/pint (PINT) - v1
@@ -235,7 +236,6 @@ Check these before touching storage, request routing, identity, cryptography, or
 **Registries, matrices and runbooks are claim sets** and drift like prose — `tests/Fixtures/mcp-verification-matrix.php` and `docs/mcp-cli-runbook.md` have each carried claims the code contradicted.
 
 **Stage coverage is not flow coverage**, and an entry point with no test is invisible to every other check.
-
 
 ## Design Context
 

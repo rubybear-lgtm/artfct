@@ -7,6 +7,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -111,7 +112,7 @@ final class GetArtifactTool extends Tool
     /**
      * Get the tool's input schema.
      *
-     * @return array<string, JsonSchema>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

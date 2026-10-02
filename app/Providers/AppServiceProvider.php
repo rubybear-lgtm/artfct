@@ -274,7 +274,7 @@ class AppServiceProvider extends ServiceProvider
             $team = $request->attributes->get('org_jwt_team');
 
             return [
-                Limit::perMinute($limit)->by('mcp-org:'.($team?->slug ?? ClientIp::for($request))),
+                Limit::perMinute($limit)->by('mcp-org:'.($team->slug ?? ClientIp::for($request))),
                 Limit::perMinute($limit)->by('mcp:'.($claims['jti'] ?? ClientIp::for($request))),
             ];
         });

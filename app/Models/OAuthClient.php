@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property array<int, string> $redirect_uris
+ * @property array<int, string>|null $grant_types
+ * @property array<int, string>|null $response_types
+ */
 #[Fillable([
     'client_id',
     'client_name',

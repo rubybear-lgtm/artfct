@@ -7,6 +7,7 @@ use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Collections\CollectionDirectory;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -75,7 +76,7 @@ final class ListCollectionsTool extends Tool
     /**
      * Get the tool's input schema.
      *
-     * @return array<string, JsonSchema>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

@@ -80,7 +80,7 @@ final class FakeArtifactDirectory implements ArtifactDirectory
         $paginated = array_slice($items, 0, $limit);
 
         return [
-            'artifacts' => array_values($paginated),
+            'artifacts' => $paginated,
             'next_cursor' => $hasMore ? (string) (($cursor ?: 0) + $limit) : null,
         ];
     }

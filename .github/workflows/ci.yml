@@ -127,6 +127,9 @@ jobs:
       - name: Check PHP style
         run: vendor/bin/pint --test --format agent
 
+      - name: Analyse PHP (Larastan level 5)
+        run: composer analyse
+
       - name: Check frontend formatting
         run: npm run format:check
 

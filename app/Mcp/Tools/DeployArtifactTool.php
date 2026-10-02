@@ -14,6 +14,7 @@ use App\Services\Governance\AuditLogger;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Laravel\Mcp\Request;
@@ -194,7 +195,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Get the tool's input schema.
      *
-     * @return array<string, JsonSchema>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

@@ -3,12 +3,14 @@
 namespace App\Mail;
 
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport\AbstractTransport;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Message;
 use Symfony\Component\Mime\MessageConverter;
 
 /**
@@ -27,7 +29,11 @@ class CloudflareEmailTransport extends AbstractTransport
 
     protected function doSend(SentMessage $message): void
     {
-        $email = MessageConverter::toEmail($message->getOriginalMessage());
+        $original = $message->getOriginalMessage();
+        if (! $original instanceof Message) {
+            throw new RuntimeException('Cloudflare email transport can only send a full mail message.');
+        }
+        $email = MessageConverter::toEmail($original);
 
         $response = Http::withToken($this->apiToken)
             ->acceptJson()

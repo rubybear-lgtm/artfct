@@ -59,3 +59,5 @@ yarn-error.log
 
 # Coordinator run diffs are reproducible from git history
 /scratchpad/runs/*/*.diff
+
+/storage/framework/phpstan/

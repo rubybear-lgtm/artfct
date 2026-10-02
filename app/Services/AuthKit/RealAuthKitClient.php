@@ -27,14 +27,17 @@ final class RealAuthKitClient implements AuthKitClientContract
 
         $result = (new UserManagement)->authenticateWithCode($clientId, $code);
 
+        /** @var object{id: string, email: string, emailVerified: bool|null, firstName: string|null, lastName: string|null, profilePictureUrl: string|null} $user */
+        $user = $result->user;
+
         return new AuthKitProfile(
-            externalId: $result->user->id,
+            externalId: $user->id,
             provider: $result->authenticationMethod ?? 'unknown',
-            email: $result->user->email,
-            emailVerified: (bool) $result->user->emailVerified,
-            firstName: $result->user->firstName,
-            lastName: $result->user->lastName,
-            avatar: $result->user->profilePictureUrl,
+            email: $user->email,
+            emailVerified: (bool) $user->emailVerified,
+            firstName: $user->firstName,
+            lastName: $user->lastName,
+            avatar: $user->profilePictureUrl,
             sessionId: self::sessionIdFrom($result->accessToken),
         );
     }

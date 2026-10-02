@@ -4,7 +4,6 @@ namespace App\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Translation\PotentiallyTranslatedString;
 
 /**
  * Mirrors `validate_slug` in backend/src/store.rs — the slug becomes a DNS
@@ -19,7 +18,7 @@ class TeamSlug implements ValidationRule
     /**
      * Run the validation rule.
      *
-     * @param  Closure(string, ?string=): PotentiallyTranslatedString  $fail
+     * @param  Closure(string, string|null=): mixed  $fail
      */
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {

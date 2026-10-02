@@ -9,6 +9,7 @@ use App\Models\Collection;
 use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -86,7 +87,7 @@ final class AddCollectionArtifactTool extends Tool
         ]);
     }
 
-    /** @return array<string, JsonSchema> */
+    /** @return array<string, Type> */
     public function schema(JsonSchema $schema): array
     {
         return [

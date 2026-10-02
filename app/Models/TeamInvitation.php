@@ -23,7 +23,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Team $team
- * @property-read User $inviter
+ * @property-read User|null $inviter
  */
 #[Fillable(['team_id', 'email', 'role', 'invited_by', 'expires_at', 'accepted_at'])]
 class TeamInvitation extends Model

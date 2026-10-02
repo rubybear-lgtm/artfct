@@ -51,7 +51,7 @@ final class EnterpriseIdentityResolver
                 'provider' => $profile->provider,
                 'external_id' => $profile->externalId,
                 'email' => $profile->email,
-                'verified_at' => $profile->emailVerified ? now() : null,
+                'verified_at' => now(),
             ]);
 
             return EnterpriseLoginResult::matched($member);

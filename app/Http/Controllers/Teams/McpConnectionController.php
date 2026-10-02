@@ -52,10 +52,10 @@ class McpConnectionController extends Controller
             ->get()
             ->map(fn (McpActivity $activity): array => [
                 'tool' => $activity->tool,
-                'calls' => (int) $activity->calls,
-                'successfulCalls' => (int) $activity->successful_calls,
-                'failedCalls' => (int) $activity->failed_calls,
-                'averageLatencyMs' => (int) round((float) $activity->average_latency_ms),
+                'calls' => (int) $activity->getAttribute('calls'),
+                'successfulCalls' => (int) $activity->getAttribute('successful_calls'),
+                'failedCalls' => (int) $activity->getAttribute('failed_calls'),
+                'averageLatencyMs' => (int) round((float) $activity->getAttribute('average_latency_ms')),
             ])
             ->values()
             ->all();
@@ -105,7 +105,7 @@ class McpConnectionController extends Controller
                     'clientName' => $activity->client_name,
                     'outcome' => $activity->outcome,
                     'latencyMs' => $activity->latency_ms,
-                    'createdAt' => $activity->created_at?->toIso8601String(),
+                    'createdAt' => $activity->created_at->toIso8601String(),
                     'requestId' => $activity->request_id,
                 ]),
         ]);
