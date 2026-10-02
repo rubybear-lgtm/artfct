@@ -1,0 +1,39 @@
+name: mcp-live
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Hosted MCP base URL, for example https://staging.artfct.dev
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  hosted_mcp_smoke:
+    name: Hosted MCP staging smoke and isolation
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Run hosted MCP smoke suite
+        env:
+          MCP_LIVE_BASE_URL: ${{ inputs.base_url }}
+          MCP_LIVE_TOKEN_A: ${{ secrets.MCP_LIVE_TOKEN_A }}
+          MCP_LIVE_TOKEN_B: ${{ secrets.MCP_LIVE_TOKEN_B }}
+          MCP_LIVE_EXPECTED_ORG_A: ${{ vars.MCP_LIVE_EXPECTED_ORG_A }}
+          MCP_LIVE_EXPECTED_ORG_B: ${{ vars.MCP_LIVE_EXPECTED_ORG_B }}
+          MCP_LIVE_PRIVATE_ARTIFACT_A: ${{ vars.MCP_LIVE_PRIVATE_ARTIFACT_A }}
+        run: node scripts/mcp-live-smoke.mjs

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>artfct — Share HTML. Get a link. That's it.</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #fdf6e3;
+    --bg2: #eee8d5;
+    --text: #657b83;
+    --text-em: #586e75;
+    --heading: #073642;
+    --cyan: #2aa198;
+    --blue: #268bd2;
+    --green: #859900;
+    --orange: #cb4b16;
+    --violet: #6c71c4;
+    --yellow: #b58900;
+    --red: #dc322f;
+    --base1: #93a1a1;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #002b36;
+      --bg2: #073642;
+      --text: #839496;
+      --text-em: #93a1a1;
+      --heading: #eee8d5;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    transition: background 0.3s;
+  }
+
+  .slides { position: relative; width: 100%; height: 100vh; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 2rem;
+    opacity: 0; visibility: hidden;
+    transition: opacity 0.4s ease, visibility 0.4s;
+    overflow-y: auto;
+  }
+  .slide.active { opacity: 1; visibility: visible; }
+
+  .slide-inner {
+    max-width: 750px;
+    width: 100%;
+    margin: auto;
+    text-align: center;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 700;
+    color: var(--heading);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: clamp(1.6rem, 3.5vw, 2.5rem);
+    font-weight: 700;
+    color: var(--heading);
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-size: clamp(1.1rem, 2vw, 1.35rem);
+    font-weight: 600;
+    color: var(--cyan);
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  .big-icon { font-size: 2.5rem; display: block; margin-bottom: 0.75rem; }
+  .med-icon { font-size: 1.8rem; display: block; margin-bottom: 0.4rem; }
+
+  .accent-line {
+    width: 48px; height: 3px;
+    background: var(--cyan);
+    border-radius: 2px;
+    margin: 0.75rem auto;
+  }
+
+  .subtitle {
+    font-size: clamp(1rem, 1.8vw, 1.15rem);
+    color: var(--text-em);
+    margin-top: 0.25rem;
+  }
+
+  .grid-2, .grid-3 {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.25rem;
+    text-align: left;
+  }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+  .card {
+    background: var(--bg2);
+    border-radius: 10px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); }
+
+  .card p, .card li {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .card ul { list-style: none; padding: 0; text-align: left; }
+  .card li { padding: 0.25rem 0; }
+  .card li::before { content: '\2713\00a0'; color: var(--green); font-weight: 700; }
+
+  .card h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--heading);
+    margin-bottom: 0.6rem;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 1.25rem 0;
+  }
+
+  .flow-item {
+    background: var(--bg2);
+    border-radius: 8px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--heading);
+  }
+
+  .flow-arr {
+    font-size: 1.3rem;
+    color: var(--cyan);
+    font-weight: 300;
+  }
+
+  .benefit-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    text-align: left;
+  }
+  .benefit-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .benefit-text p { font-size: 0.9rem; }
+  .benefit-text strong { color: var(--heading); }
+
+  .highlight-box {
+    background: var(--bg2);
+    border-left: 4px solid var(--yellow);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-top: 1.25rem;
+    text-align: left;
+  }
+  .highlight-box p { font-size: 0.95rem; color: var(--text-em); }
+  .highlight-box strong { color: var(--heading); }
+
+  .stat-row {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    margin: 1.25rem 0;
+  }
+  .stat { text-align: center; }
+  .stat-num {
+    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    font-weight: 700;
+    color: var(--cyan);
+  }
+  .stat-label {
+    font-size: 0.8rem;
+    color: var(--text-em);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .mt-1 { margin-top: 0.5rem; }
+  .mt-2 { margin-top: 1rem; }
+  .mt-3 { margin-top: 1.5rem; }
+  .mb-1 { margin-bottom: 0.5rem; }
+
+  .nav-dots {
+    position: fixed; right: 1.25rem; top: 50%;
+    transform: translateY(-50%);
+    display: flex; flex-direction: column;
+    gap: 0.4rem; z-index: 100;
+  }
+  .nav-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: none; cursor: pointer;
+    background: var(--base1);
+    opacity: 0.35;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .nav-dot.active { opacity: 1; background: var(--cyan); transform: scale(1.3); }
+  .nav-dot:hover { opacity: 0.7; }
+
+  .slide-num {
+    position: fixed;
+    bottom: 1.25rem; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--base1);
+    letter-spacing: 0.05em;
+    z-index: 100;
+  }
+
+  .nav-hint {
+    position: fixed;
+    bottom: 1.25rem; right: 1.25rem;
+    font-size: 0.7rem;
+    color: var(--base1);
+    z-index: 100;
+    opacity: 0.4;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+  .blink { animation: blink 1s step-end infinite; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active .slide-inner { animation: fadeUp 0.4s ease-out; }
+
+  @media (max-width: 600px) {
+    .slide { padding: 1.5rem; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .nav-dots { right: 0.65rem; }
+    .stat-row { gap: 1rem; }
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--bg2);
+    color: var(--text-em);
+    margin: 0.1rem;
+  }
+  .tag-green { background: rgba(133,153,0,0.15); color: var(--green); }
+  .tag-blue { background: rgba(38,139,210,0.15); color: var(--blue); }
+  .tag-orange { background: rgba(203,75,22,0.15); color: var(--orange); }
+  .tag-violet { background: rgba(108,113,196,0.15); color: var(--violet); }
+  .tag-cyan { background: rgba(42,161,152,0.15); color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="slides" id="slides">
+
+  <!-- 0: TITLE -->
+  <div class="slide active" data-index="0">
+    <div class="slide-inner">
+      <div class="big-icon">&#x2728;</div>
+      <h1>Share anything you build.<br>Instantly. No sign-up.</h1>
+      <div class="accent-line"></div>
+      <p class="subtitle" style="margin-bottom:1.5rem">artfct turns HTML files into shareable links in seconds &mdash; from your browser, your terminal, or even your AI assistant.</p>
+      <div class="flow-row">
+        <span class="flow-item">&#x1F4C4; Drop your file</span>
+        <span class="flow-arr">&rarr;</span>
+        <span class="flow-item">&#x1F517; Get a link</span>
+        <span class="flow-arr">&rarr;</span>
+        <span class="flow-item">&#x1F30D; Share it anywhere</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1: THE OLD WAY -->
+  <div class="slide" data-index="1">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F4A1;</div>
+      <h2>Why is sharing simple things so complicated?</h2>
+      <div class="accent-line"></div>
+      <p style="margin-bottom:1.5rem">You create something visual &mdash; a dashboard, a report, a prototype, a slide deck. Now you need to share it. Suddenly you're facing:</p>
+      <div class="grid-2" style="text-align:left">
+        <div class="card">
+          <div class="med-icon">&#x1F512;</div>
+          <h4>&ldquo;Create an account&rdquo;</h4>
+          <p>Every service wants your email, a password, and a confirmation click before you can do anything.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F4E5;</div>
+          <h4>Attachments that break</h4>
+          <p>Email and chat apps strip styling, block scripts, or refuse HTML outright. You end up sending a ZIP or a screenshot.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F504;</div>
+          <h4>Tedious round-trips</h4>
+          <p>Save file &rarr; open browser &rarr; log in &rarr; upload &rarr; copy link. It's 2026. This should take two seconds.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F4AC;</div>
+          <h4>Lost context</h4>
+          <p>Pasting raw code into chat loses all formatting. The person on the other end has to save and open it themselves.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2: THE SIMPLE SOLUTION -->
+  <div class="slide" data-index="2">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F389;</div>
+      <h2>Here's the fix</h2>
+      <div class="accent-line"></div>
+      <p class="subtitle">artfct does one thing and does it well:</p>
+      <div class="flow-row" style="gap:0.5rem">
+        <div style="background:var(--cyan); color:var(--bg); border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem">1</div>
+        <span style="font-size:1.1rem; font-weight:500; color:var(--heading)">Drop HTML</span>
+        <span class="flow-arr" style="font-size:1.8rem">&rarr;</span>
+        <div style="background:var(--cyan); color:var(--bg); border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem">2</div>
+        <span style="font-size:1.1rem; font-weight:500; color:var(--heading)">Get URL</span>
+        <span class="flow-arr" style="font-size:1.8rem">&rarr;</span>
+        <div style="background:var(--cyan); color:var(--bg); border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem">3</div>
+        <span style="font-size:1.1rem; font-weight:500; color:var(--heading)">Share it</span>
+      </div>
+      <p style="margin-top:1.25rem">That's it. No account. No onboarding. No searching for where the link went.</p>
+      <div class="highlight-box">
+        <p><strong>One click from the browser.</strong> One command from the terminal. One sentence to your AI assistant. Every path leads to the same result: a URL you can paste into email, Slack, Teams, a PR, or a tweet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3: HOW PEOPLE USE IT -->
+  <div class="slide" data-index="3">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F3E0;</div>
+      <h2>Real things people do with artfct</h2>
+      <div class="accent-line"></div>
+      <div class="grid-2" style="text-align:left; margin-top:1rem">
+        <div class="card" style="text-align:left">
+          <div class="med-icon" style="font-size:1.3rem; text-align:center">&#x1F4CA;</div>
+          <h4 style="text-align:center">Dashboards</h4>
+          <ul>
+            <li>Export a sales dashboard as HTML</li>
+            <li>Deploy in one command from a script</li>
+            <li>Share the link in the team standup</li>
+            <li>Updated daily &mdash; same flow, fresh data</li>
+          </ul>
+        </div>
+        <div class="card" style="text-align:left">
+          <div class="med-icon" style="font-size:1.3rem; text-align:center">&#x1F5D3;&#xFE0F;</div>
+          <h4 style="text-align:center">Presentations</h4>
+          <ul>
+            <li>Tell an AI &ldquo;make a slide deck about Q3 results&rdquo;</li>
+            <li>It generates a complete HTML presentation</li>
+            <li>Deploys it to a link before you finish typing</li>
+            <li>Open it, present it, share it</li>
+          </ul>
+        </div>
+        <div class="card" style="text-align:left">
+          <div class="med-icon" style="font-size:1.3rem; text-align:center">&#x1F3A8;</div>
+          <h4 style="text-align:center">Design mockups</h4>
+          <ul>
+            <li>Build a responsive page in HTML/CSS</li>
+            <li>Drop it on the site &mdash; zero config</li>
+            <li>Send the link to a client for feedback</li>
+            <li>No hosting, no deployment pipeline</li>
+          </ul>
+        </div>
+        <div class="card" style="text-align:left">
+          <div class="med-icon" style="font-size:1.3rem; text-align:center">&#x1F4DD;</div>
+          <h4 style="text-align:center">Reports &amp; documents</h4>
+          <ul>
+            <li>Write a styled report in Markdown</li>
+            <li>artfct converts it to HTML automatically</li>
+            <li>Share as a live page, not a PDF attachment</li>
+            <li>Recipient sees it formatted, on any device</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4: THREE WAYS TO USE IT -->
+  <div class="slide" data-index="4">
+    <div class="slide-inner">
+      <h2>Three ways to get a link</h2>
+      <div class="accent-line"></div>
+      <p class="subtitle">Pick the one that fits your workflow</p>
+      <div class="grid-3">
+        <div class="card">
+          <div class="big-icon" style="font-size:2rem">&#x1F5BC;&#xFE0F;</div>
+          <h4>Drop it on the website</h4>
+          <p>Open artfct.dev, drag your HTML or Markdown file onto the page, click deploy. Copy the link. Done.</p>
+          <div style="margin-top:0.5rem">
+            <span class="tag tag-green">No install</span>
+            <span class="tag tag-cyan">Any device</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="big-icon" style="font-size:2rem">&#x1F4E4;</div>
+          <h4>Send it from the terminal</h4>
+          <p>If you live in a command line &mdash; pipe a file or paste a URL. The CLI installs in one line.</p>
+          <div style="margin-top:0.5rem">
+            <span class="tag tag-blue">Repeatable</span>
+            <span class="tag tag-cyan">Scriptable</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="big-icon" style="font-size:2rem">&#x1F916;</div>
+          <h4>Let your AI do it</h4>
+          <p>Ask your AI assistant to build something and deploy it. It hands you a live link &mdash; not a code block.</p>
+          <div style="margin-top:0.5rem">
+            <span class="tag tag-violet">Zero effort</span>
+            <span class="tag tag-orange">Instant results</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5: WHY PEOPLE LIKE IT -->
+  <div class="slide" data-index="5">
+    <div class="slide-inner">
+      <div class="big-icon">&#x2764;&#xFE0F;</div>
+      <h2>What makes it different</h2>
+      <div class="accent-line"></div>
+      <div class="grid-2" style="text-align:left; margin-top:0.75rem">
+        <div class="benefit-row">
+          <div class="benefit-icon">&#x26A7;</div>
+          <div class="benefit-text">
+            <strong>No sign-up, period.</strong>
+            <p>No email, no password, no &ldquo;check your inbox to confirm.&rdquo; The site works the moment you open it.</p>
+          </div>
+        </div>
+        <div class="benefit-row">
+          <div class="benefit-icon">&#x23F1;&#xFE0F;</div>
+          <div class="benefit-text">
+            <strong>Links self-destruct.</strong>
+            <p>Every link expires after 60 minutes by default. Nothing lives forever unless you choose to keep it. Perfect for drafts and previews.</p>
+          </div>
+        </div>
+        <div class="benefit-row">
+          <div class="benefit-icon">&#x1F512;</div>
+          <div class="benefit-text">
+            <strong>Private by design.</strong>
+            <p>URLs use random, unguessable strings. Nobody can browse or discover your content. Only people you give the link to can see it.</p>
+          </div>
+        </div>
+        <div class="benefit-row">
+          <div class="benefit-icon">&#x26A1;</div>
+          <div class="benefit-text">
+            <strong>Fast everywhere.</strong>
+            <p>Content is served from the global edge &mdash; it loads quickly whether you're in San Francisco, London, or Tokyo.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6: QUICK STATS -->
+  <div class="slide" data-index="6">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F4CA;</div>
+      <h2>By the numbers</h2>
+      <div class="accent-line"></div>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-num">&lt; 3s</div>
+          <div class="stat-label">Time to first link</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">1 MB</div>
+          <div class="stat-label">Per artifact</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">24 h</div>
+          <div class="stat-label">Max lifetime</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">0</div>
+          <div class="stat-label">Accounts needed</div>
+        </div>
+      </div>
+      <div class="highlight-box" style="text-align:center; border-left-color:var(--cyan)">
+        <p><strong>&ldquo;Share HTML. Get a link. That's it.&rdquo;</strong></p>
+        <p style="font-size:0.85rem; margin-top:0.3rem">Not a platform. Not a CMS. Not trying to be everything. Just the fastest way to turn a file into a URL.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7: WHO IT'S FOR -->
+  <div class="slide" data-index="7">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F91D;</div>
+      <h2>Who is this for?</h2>
+      <div class="accent-line"></div>
+      <div class="grid-3" style="text-align:left">
+        <div class="card">
+          <div class="med-icon">&#x1F469;&#x200D;&#x1F4BB;</div>
+          <h4>Designers</h4>
+          <p>Share interactive mockups and prototypes without spinning up a staging server or paying for a hosting plan.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F4BC;</div>
+          <h4>Product managers</h4>
+          <p>Distribute specs, roadmaps, and reports as live pages that stakeholders can open on any device &mdash; no downloads, no attachments.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F3E2;</div>
+          <h4>Teams &amp; agencies</h4>
+          <p>Share drafts with clients, collect feedback, iterate. Each version gets its own link. Nothing sits around forever.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F469;&#x200D;&#x1F3EB;</div>
+          <h4>Educators &amp; students</h4>
+          <p>Publish lesson materials, assignments, or presentations as live pages. No LMS upload, no file format issues.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F4E1;&#xFE0F;</div>
+          <h4>Content creators</h4>
+          <p>Embed interactive content in newsletters, blog posts, or social media &mdash; just paste the link.</p>
+        </div>
+        <div class="card">
+          <div class="med-icon">&#x1F4A1;</div>
+          <h4>Anyone curious</h4>
+          <p>Found a cool HTML thing on the internet? Downloaded a Codepen? Drag it onto artfct and share it in two clicks.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8: CLOSING -->
+  <div class="slide" data-index="8">
+    <div class="slide-inner">
+      <div class="big-icon">&#x1F680;</div>
+      <h1>Try it. It takes ten seconds.</h1>
+      <div class="accent-line"></div>
+      <p class="subtitle" style="margin-bottom:1.5rem">No sign-up. No catch. Just the fastest way to turn a file into something you can share.</p>
+      <div style="display:inline-block; background:var(--bg2); border-radius:10px; padding:0.75rem 1.5rem; margin:0.25rem">
+        <span style="font-size:clamp(1.1rem, 2.5vw, 1.5rem); font-weight:600; color:var(--cyan)">artfct.dev</span>
+      </div>
+      <div style="margin-top:1.5rem">
+        <p style="font-size:0.9rem; color:var(--text-em)">or install in one line &rarr;</p>
+        <div style="display:inline-block; background:var(--bg2); border-radius:6px; padding:0.5rem 1rem; margin-top:0.25rem">
+          <code style="font-size:0.85rem; color:var(--yellow)">curl -fsSL https://artfct.dev/install.sh | sh</code>
+        </div>
+      </div>
+      <div style="margin-top:2rem; font-size:0.8rem; color:var(--base1)">
+        Drop a file. Get a link. Share it. That&#8217;s the whole idea.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="nav-dots" id="navDots"></div>
+<div class="slide-num" id="slideNum"></div>
+<div class="nav-hint"><span style="background:var(--bg2);padding:0.1rem 0.3rem;border-radius:3px">&#8592; &#8594;</span></div>
+
+<script>
+  (function() {
+    const slides = document.querySelectorAll('.slide');
+    const total = slides.length;
+    let current = 0;
+    let touchStartX = 0;
+
+    const dots = document.getElementById('navDots');
+    const num = document.getElementById('slideNum');
+
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('button');
+      dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+      dot.setAttribute('aria-label', 'Slide ' + (i + 1));
+      dot.dataset.index = i;
+      dot.addEventListener('click', function() { go(parseInt(this.dataset.index)); });
+      dots.appendChild(dot);
+    }
+    num.textContent = '01 / ' + String(total).padStart(2, '0');
+
+    function go(i) {
+      if (i < 0) i = 0; if (i >= total) i = total - 1; if (i === current) return;
+      slides[current].classList.remove('active');
+      dots.children[current].classList.remove('active');
+      current = i;
+      slides[current].classList.add('active');
+      dots.children[current].classList.add('active');
+      num.textContent = String(current + 1).padStart(2, '0') + ' / ' + String(total).padStart(2, '0');
+    }
+
+    function next() { go(current + 1); }
+    function prev() { go(current - 1); }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); next(); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); prev(); }
+      if (e.key === 'Home') { e.preventDefault(); go(0); }
+      if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+    });
+
+    document.addEventListener('touchstart', function(e) { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+    document.addEventListener('touchend', function(e) {
+      const d = touchStartX - e.changedTouches[0].screenX;
+      if (Math.abs(d) > 50) { d > 0 ? next() : prev(); }
+    }, { passive: true });
+
+    document.addEventListener('click', function(e) {
+      const slide = e.target.closest('.slide');
+      if (!slide || e.target.closest('.nav-dot, .nav-hint, .slide-num')) return;
+      const rect = slide.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      if (x > 0.6) next();
+      else if (x < 0.4) prev();
+    });
+
+    let wheelTimer;
+    document.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(function() { e.deltaY > 0 ? next() : prev(); }, 80);
+    }, { passive: false });
+  })();
+</script>
+</body>
+</html>

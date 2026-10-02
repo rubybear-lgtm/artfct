@@ -21,11 +21,11 @@
 
         {{-- OG / social meta --}}
         <meta property="og:site_name" content="artfct" />
-        <meta property="og:image" content="{{ asset('og-image.svg') }}" />
+        <meta property="og:image" content="{{ asset('og-image.png') }}" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content="{{ asset('og-image.svg') }}" />
+        <meta name="twitter:image" content="{{ asset('og-image.png') }}" />
 
         {{-- canonical --}}
         <link rel="canonical" href="{{ url()->current() }}" />
@@ -81,6 +81,13 @@
             @endphp
 
             @switch($page['component'] ?? '')
+                @case('landing')
+                    <h1>Your AI makes things. Artfct remembers them.</h1>
+                    <p>{{ $pageDescription }}</p>
+                    <p>Share the reports, tables, documents and mockups your AI makes. Everything shared is stored and indexed for your team, and every AI tool on the team can read it and cite its sources. You choose what to share. Your artifacts are never used to train AI, and you can export everything any time.</p>
+                    <p>Set up once: sign up, invite your team and add Artfct to your AI tool. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools. Start with Free, try Team free, or talk about Enterprise.</p>
+                    @break
+
                 @case('welcome')
                     <h1>{{ $fallbackTitle }}</h1>
                     <p>{{ $pageDescription }}</p>

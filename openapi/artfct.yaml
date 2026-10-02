@@ -1,0 +1,1775 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "artfct API",
+    "version": "1.0.0",
+    "description": "The data-plane API for encrypted ephemeral artifacts and permanent artifact bundles.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://artfct.dev"
+    }
+  ],
+  "tags": [
+    { "name": "Artifacts", "description": "Create, update, delete, and upload artifacts." },
+    { "name": "Previews", "description": "Resolve public artifact preview URLs." },
+    { "name": "Administration", "description": "Organization governance and export operations." },
+    { "name": "Retrieval", "description": "Search an organization's accessible artifacts." },
+    { "name": "MCP", "description": "MCP client registration and connection lifecycle." }
+  ],
+  "paths": {
+    "/internal/worker-events": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Receive a Worker event",
+        "description": "Internal. Fire-and-forget Worker to Laravel event channel. Authenticated by X-Artfct-Timestamp and X-Artfct-Signature (hex HMAC-SHA256 of timestamp + \".\" + raw body, 300 s tolerance). A replayed event id returns 200 and does nothing; an unknown type is accepted and ignored.",
+        "operationId": "receiveWorkerEvent",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id", "type", "org_id", "occurred_at", "data"],
+                "properties": {
+                  "id": { "type": "string", "format": "uuid" },
+                  "type": { "type": "string", "examples": ["artifact.created", "artifact.viewed"] },
+                  "org_id": { "type": "string" },
+                  "occurred_at": { "type": "string", "format": "date-time" },
+                  "data": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Duplicate event id; nothing done." },
+          "202": { "description": "Event accepted." },
+          "401": { "description": "Bad signature or stale timestamp." },
+          "422": { "description": "Malformed envelope." }
+        }
+      }
+    },
+    "/v1/artifacts": {
+      "get": {
+        "tags": ["Administration"],
+        "summary": "List artifacts",
+        "description": "Reserved admin listing endpoint.",
+        "operationId": "listArtifacts",
+        "x-status": "unimplemented",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "responses": {
+          "501": { "$ref": "#/components/responses/NotImplemented" }
+        }
+      },
+      "post": {
+        "tags": ["Artifacts"],
+        "summary": "Create an artifact",
+        "description": "Creates an anonymous encrypted artifact or starts an authenticated permanent bundle upload. Anonymous access is allowed only when mode is ephemeral.",
+        "operationId": "createArtifact",
+        "security": [
+          {},
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateArtifactRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Artifact created or permanent upload initialized.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateArtifactResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "options": {
+        "tags": ["Artifacts"],
+        "summary": "Preflight artifact collection requests",
+        "operationId": "optionsArtifacts",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/artifacts/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Artifacts"],
+        "summary": "Read one artifact's credential-scoped metadata",
+        "description": "Returns safe artifact metadata for the organization resolved from the bearer credential. It never returns the artifact HTML or bundle contents.",
+        "operationId": "getArtifactMetadata",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Artifact metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactMetadata" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["Artifacts"],
+        "summary": "Update an artifact expiration",
+        "operationId": "updateArtifact",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateArtifactRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Artifact expiration updated.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UpdateArtifactResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "tags": ["Artifacts"],
+        "summary": "Delete an artifact",
+        "operationId": "deleteArtifact",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "responses": {
+          "204": {
+            "description": "Artifact deleted. The response has no body."
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "The artifact is under legal hold and was not deleted. The error details carry reason legal_hold." },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "options": {
+        "tags": ["Artifacts"],
+        "summary": "Preflight artifact item requests",
+        "operationId": "optionsArtifact",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/p/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Previews"],
+        "summary": "Render an artifact preview",
+        "operationId": "renderArtifact",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "HTML preview shell or permanent artifact entrypoint.",
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": { "type": "string" }
+              },
+              "X-Content-Type-Options": {
+                "schema": { "type": "string", "const": "nosniff" }
+              }
+            },
+            "content": {
+              "text/html": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact is missing, expired, incomplete, or inaccessible.",
+            "content": {
+              "text/html": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "options": {
+        "tags": ["Previews"],
+        "summary": "Preflight artifact preview requests",
+        "operationId": "optionsArtifactPreview",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/p/{id}/{path}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "$ref": "#/components/parameters/RelativePath" }
+      ],
+      "get": {
+        "tags": ["Previews"],
+        "summary": "Serve a file from a permanent artifact bundle",
+        "operationId": "renderArtifactFile",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Bundle file bytes.",
+            "headers": {
+              "X-Content-Type-Options": {
+                "schema": { "type": "string", "const": "nosniff" }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/artifacts/{id}/files/{sha256}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "$ref": "#/components/parameters/Sha256" }
+      ],
+      "put": {
+        "tags": ["Artifacts"],
+        "summary": "Upload a missing permanent artifact file",
+        "operationId": "uploadArtifactFile",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": { "type": "string", "format": "binary" }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Permanent artifact file uploaded. The response has no body."
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      },
+      "options": {
+        "tags": ["Artifacts"],
+        "summary": "Preflight artifact file upload requests",
+        "operationId": "optionsArtifactFile",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/blobs/{sha256}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Sha256" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Download one exported raw blob",
+        "operationId": "downloadExportBlob",
+        "security": [ { "orgToken": [] } ],
+        "responses": {
+          "200": {
+            "description": "Raw blob bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/artifacts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "List an organization's artifacts",
+        "operationId": "listOrganizationArtifacts",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "parameters": [
+          { "name": "repo_url", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "agent", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "created_after", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "created_before", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of artifacts, cursor-paginated on (created_at, id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "next_cursor"],
+                  "properties": {
+                    "artifacts": { "type": "array", "items": { "type": "object" } },
+                    "next_cursor": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      },
+      "options": {
+        "tags": ["Administration"],
+        "summary": "Preflight organization artifact list requests",
+        "operationId": "optionsOrganizationArtifacts",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/artifacts/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "patch": {
+        "tags": ["Administration"],
+        "summary": "Revoke an organization artifact",
+        "operationId": "revokeOrganizationArtifact",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "The artifact, soft-deleted: revoked_at set, row and blob retained.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "org_id", "revoked_at"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "org_id": { "type": "string" },
+                    "revoked_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      },
+      "options": {
+        "tags": ["Administration"],
+        "summary": "Preflight organization artifact item requests",
+        "operationId": "optionsOrganizationArtifact",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/artifacts/{id}/content": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Read an artifact's entrypoint and provenance",
+        "description": "Org-credentialed read used by server-side indexing. Revoked artifacts and artifacts of other organizations return 404.",
+        "operationId": "readOrganizationArtifactContent",
+        "security": [
+          { "orgToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entrypoint text and provenance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "content_type", "provenance", "content"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "content_type": { "type": "string" },
+                    "provenance": {
+                      "type": "object",
+                      "properties": {
+                        "agent": { "type": ["string", "null"] },
+                        "repo_url": { "type": ["string", "null"] },
+                        "commit_sha": { "type": ["string", "null"] }
+                      }
+                    },
+                    "content": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/jwks": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Publish the org-token public keys",
+        "description": "Internal. Laravel publishes the JWKS the Worker verifies org tokens against. Authenticated with its own shared secret, not an org token. The body must contain at least one complete key (kid, n, e).",
+        "operationId": "writeJwks",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["keys"],
+                "properties": {
+                  "keys": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["kid", "n", "e"],
+                      "properties": {
+                        "kty": { "type": "string" },
+                        "use": { "type": "string" },
+                        "alg": { "type": "string" },
+                        "kid": { "type": "string" },
+                        "n": { "type": "string" },
+                        "e": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Keys stored." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/internal/org-limits": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Push an organization's limits",
+        "description": "Internal. Laravel pushes an org's quota limits and read-only (past due) state. Authenticated with the limits shared secret, not an org token. Rows are upserted; with no row the Worker uses default limits.",
+        "operationId": "writeOrganizationLimits",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["org", "storage_bytes", "artifacts_per_month", "bundle_ceiling_bytes", "read_only"],
+                "properties": {
+                  "org": { "type": "string" },
+                  "storage_bytes": { "type": "integer", "minimum": 0 },
+                  "artifacts_per_month": { "type": "integer", "minimum": 0 },
+                  "bundle_ceiling_bytes": { "type": "integer", "minimum": 0 },
+                  "read_only": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Limits stored." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/usage": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Read an organization's usage",
+        "description": "The figures the create gate enforces: storage counts each distinct blob once; artifacts_this_period counts artifacts created in the current UTC month.",
+        "operationId": "readOrganizationUsage",
+        "security": [
+          { "orgToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current usage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["storage_bytes", "artifacts_this_period"],
+                  "properties": {
+                    "storage_bytes": { "type": "integer", "minimum": 0 },
+                    "artifacts_this_period": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "List artifacts for governance jobs",
+        "description": "Internal. Cursor-paginated (limit max 500), includes revoked artifacts. older_than filters by created_at. Authenticated with the governance shared secret, not an org token.",
+        "operationId": "listGovernanceArtifacts",
+        "x-internal": true,
+        "security": [],
+        "parameters": [
+          { "name": "older_than", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of artifacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "next_cursor"],
+                  "properties": {
+                    "artifacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "created_at", "legal_hold"],
+                        "properties": {
+                          "id": { "type": "string" },
+                          "created_at": { "type": "string" },
+                          "legal_hold": { "type": "boolean" }
+                        }
+                      }
+                    },
+                    "next_cursor": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "delete": {
+        "tags": ["Administration"],
+        "summary": "Hard-delete an artifact",
+        "description": "Internal. Irreversibly deletes the artifact, decrements blob references and removes unreferenced blobs from storage. Refused with 409 while the artifact is under legal hold. Writes an artifact.hard_deleted audit event.",
+        "operationId": "hardDeleteGovernanceArtifact",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Artifact deleted." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "The artifact is under legal hold." }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/artifacts/{id}/legal-hold": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "put": {
+        "tags": ["Administration"],
+        "summary": "Place a legal hold",
+        "description": "Internal. Audited as legal_hold.placed.",
+        "operationId": "placeGovernanceLegalHold",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Hold placed." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Administration"],
+        "summary": "Release a legal hold",
+        "description": "Internal. Audited as legal_hold.released.",
+        "operationId": "releaseGovernanceLegalHold",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "204": { "description": "Hold released." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/governance/sweep-orphans": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Sweep zero-reference blobs",
+        "description": "Internal. Removes blobs no artifact references, left behind by a failed storage delete.",
+        "operationId": "sweepGovernanceOrphans",
+        "x-internal": true,
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Number of blobs removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["removed"],
+                  "properties": { "removed": { "type": "integer", "minimum": 0 } }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/orgs/{org}/export": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "get": {
+        "tags": ["Administration"],
+        "summary": "Export an organization's artifacts",
+        "operationId": "exportOrganizationArtifacts",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization artifact metadata and bounded download URLs for raw blobs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["artifacts", "blobs"],
+                  "properties": {
+                    "artifacts": { "type": "array", "items": { "type": "object" } },
+                    "blobs": { "type": "object", "additionalProperties": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "options": {
+        "tags": ["Administration"],
+        "summary": "Preflight organization export requests",
+        "operationId": "optionsOrganizationExport",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/v1/search": {
+      "x-status": "unimplemented",
+      "post": {
+        "tags": ["Retrieval"],
+        "summary": "Search accessible artifacts",
+        "operationId": "searchArtifacts",
+        "x-status": "unimplemented",
+        "security": [
+          { "orgToken": [] },
+          { "sessionJwt": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+            }
+          }
+        },
+        "responses": {
+          "501": { "$ref": "#/components/responses/NotImplemented" }
+        }
+      },
+      "options": {
+        "tags": ["Retrieval"],
+        "summary": "Preflight artifact search requests",
+        "operationId": "optionsSearchArtifacts",
+        "security": [],
+        "responses": {
+          "204": { "$ref": "#/components/responses/Preflight" }
+        }
+      }
+    },
+    "/api/mcp/connections": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Register an MCP client connection",
+        "description": "Registers an MCP client using the authenticated organization token. The credential itself is never returned or persisted; only its non-secret token identifier is retained for revocation and usage tracking.",
+        "operationId": "registerMcpConnection",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterMcpConnectionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "MCP connection registered.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "200": {
+            "description": "Existing MCP connection refreshed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/collections": {
+      "get": {
+        "tags": ["Retrieval"],
+        "summary": "List organization artifact collections",
+        "description": "Returns bounded, organization-scoped collection metadata. Results are cursor-paginated and never include collection artifact IDs.",
+        "operationId": "listCollections",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 512 } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of organization collections.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionListResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      },
+      "post": {
+        "tags": ["Retrieval"],
+        "summary": "Create an organization artifact collection",
+        "description": "Creates a collection only for credentials with the explicit collections:write scope. Admin and member roles may receive this scope; viewers may not.",
+        "operationId": "createCollection",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCollectionRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Collection created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionMetadata" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/collections/{collection}/artifacts": {
+      "post": {
+        "tags": ["Retrieval"],
+        "summary": "Add an artifact to a collection",
+        "description": "Adds an artifact to a collection in the credential's organization. Requires collections:write and is idempotent.",
+        "operationId": "addCollectionArtifact",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          { "name": "collection", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCollectionArtifactRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Artifact membership is present.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCollectionArtifactResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/mcp/connections/heartbeat": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Refresh an MCP connection heartbeat",
+        "description": "Updates last-used time for the current token-bound MCP connection and rejects revoked or expired connections.",
+        "operationId": "heartbeatMcpConnection",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "MCP connection is active.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/McpConnectionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "Discover the MCP authorization server",
+        "operationId": "oauthAuthorizationServerMetadata",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OAuth authorization server metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthAuthorizationServerMetadata" } } }
+          },
+          "404": { "description": "Metadata endpoint not found." }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Process a Streamable HTTP MCP request",
+        "description": "Authenticated JSON-RPC MCP transport. Clients discover bearer authorization through the protected-resource metadata endpoint and send the resulting access token in the Authorization header.",
+        "operationId": "mcpStreamableHttp",
+        "security": [{ "orgToken": [] }],
+        "parameters": [
+          {
+            "name": "MCP-Session-Id",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "MCP-Request-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional stable request identity used to safely replay a mutating tool call.",
+            "schema": { "type": "string", "maxLength": 128 }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Alias for MCP-Request-Id for clients with generic retry middleware.",
+            "schema": { "type": "string", "maxLength": 128 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/JsonRpcRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonRpcResponse" } } }
+          },
+          "202": { "description": "JSON-RPC notification accepted." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "405": { "description": "Method not allowed." }
+        }
+      }
+    },
+    "/.well-known/oauth-protected-resource": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "Discover the protected MCP resource",
+        "operationId": "oauthProtectedResourceMetadata",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OAuth protected resource metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthProtectedResourceMetadata" } } }
+          },
+          "404": { "description": "Metadata endpoint not found." }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Exchange an MCP authorization code or refresh token",
+        "operationId": "oauthToken",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/OAuthTokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bearer access token.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthTokenResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Revoke an MCP OAuth access or refresh token",
+        "operationId": "oauthRevokeToken",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/OAuthRevocationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Token revocation accepted." },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/oauth/organizations": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "List organizations available to the authenticated OAuth user",
+        "operationId": "oauthOrganizations",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Organizations available to the OAuth user.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthOrganizationsResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "Register a public MCP OAuth client",
+        "operationId": "oauthRegisterClient",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OAuthClientRegistrationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered public OAuth client.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthClientRegistrationResponse" } } }
+          },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "orgToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "organization API token",
+        "description": "Organization-scoped API token."
+      },
+      "sessionJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Short-TTL session JWT minted by the Laravel control plane."
+      }
+    },
+    "parameters": {
+      "ArtifactId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Artifact identifier.",
+        "schema": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9]{10}|[a-f0-9]{32})$"
+        }
+      },
+      "OrganizationId": {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "description": "Organization identifier or slug.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "Sha256": {
+        "name": "sha256",
+        "in": "path",
+        "required": true,
+        "description": "Lowercase hexadecimal SHA-256 digest declared in the manifest.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "RelativePath": {
+        "name": "path",
+        "in": "path",
+        "required": true,
+        "description": "Relative path within the permanent artifact bundle.",
+        "schema": { "$ref": "#/components/schemas/RelativeArtifactPath" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request could not be parsed.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Authentication is required or invalid.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated principal cannot access this organization or artifact.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The artifact does not exist or is not accessible.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The request exceeds a configured size limit.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "The request is syntactically valid but violates the artifact contract.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected data-plane error.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "NotImplemented": {
+        "description": "This reserved operation is not implemented.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": {
+              "error": {
+                "code": "not_implemented",
+                "message": "This operation is not implemented.",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Preflight": {
+        "description": "CORS preflight accepted. The response has no body.",
+        "headers": {
+          "Access-Control-Allow-Origin": {
+            "schema": { "type": "string" }
+          },
+          "Access-Control-Allow-Methods": {
+            "schema": { "type": "string" }
+          },
+          "Access-Control-Allow-Headers": {
+            "schema": { "type": "string" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "RegisterMcpConnectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_name", "transport"],
+        "properties": {
+          "client_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "client_version": { "type": ["string", "null"], "maxLength": 50 },
+          "host": { "type": ["string", "null"], "maxLength": 100 },
+          "transport": { "type": "string", "enum": ["stdio", "sse", "streamable-http"] }
+        }
+      },
+      "McpConnectionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["connection_id", "organization", "user_id", "scopes", "last_used_at"],
+        "properties": {
+          "connection_id": { "type": "string", "format": "uuid" },
+          "organization": { "type": "string" },
+          "user_id": { "type": "string" },
+          "scopes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "last_used_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "OAuthAuthorizationServerMetadata": {
+        "type": "object",
+        "required": ["issuer", "authorization_endpoint", "token_endpoint", "revocation_endpoint", "registration_endpoint", "response_types_supported", "grant_types_supported", "code_challenge_methods_supported"],
+        "properties": {
+          "issuer": { "type": "string", "format": "uri" },
+          "authorization_endpoint": { "type": "string", "format": "uri" },
+          "token_endpoint": { "type": "string", "format": "uri" },
+          "revocation_endpoint": { "type": "string", "format": "uri" },
+          "registration_endpoint": { "type": "string", "format": "uri" },
+          "response_types_supported": { "type": "array", "items": { "type": "string" } },
+          "grant_types_supported": { "type": "array", "items": { "type": "string" } },
+          "code_challenge_methods_supported": { "type": "array", "items": { "type": "string" } },
+          "scopes_supported": { "type": "array", "items": { "type": "string" } },
+          "token_endpoint_auth_methods_supported": { "type": "array", "items": { "type": "string" } },
+          "client_id_metadata_document_supported": { "type": "boolean" }
+        }
+      },
+      "JsonRpcRequest": {
+        "type": "object",
+        "required": ["jsonrpc", "method"],
+        "properties": {
+          "jsonrpc": { "type": "string", "const": "2.0" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
+          "method": { "type": "string" },
+          "params": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": { "type": "string", "const": "2.0" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
+          "result": { "type": "object", "additionalProperties": true },
+          "error": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "OAuthProtectedResourceMetadata": {
+        "type": "object",
+        "required": ["resource", "authorization_servers"],
+        "properties": {
+          "resource": { "type": "string", "format": "uri" },
+          "authorization_servers": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "scopes_supported": { "type": "array", "items": { "type": "string" } },
+          "bearer_methods_supported": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "OAuthTokenRequest": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/OAuthAuthorizationCodeTokenRequest" },
+          { "$ref": "#/components/schemas/OAuthRefreshTokenRequest" }
+        ]
+      },
+      "OAuthRevocationRequest": {
+        "type": "object",
+        "required": ["token"],
+        "properties": {
+          "token": { "type": "string", "minLength": 1 },
+          "token_type_hint": { "type": "string", "enum": ["access_token", "refresh_token"] },
+          "client_id": { "type": "string" }
+        }
+      },
+      "OAuthOrganizationsResponse": {
+        "type": "object",
+        "required": ["organizations"],
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "slug", "role", "selected"],
+              "properties": {
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "role": { "type": ["string", "null"] },
+                "selected": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "OAuthAuthorizationCodeTokenRequest": {
+        "type": "object",
+        "required": ["grant_type", "code", "client_id", "redirect_uri", "code_verifier"],
+        "properties": {
+          "grant_type": { "type": "string", "const": "authorization_code" },
+          "code": { "type": "string" },
+          "client_id": { "type": "string" },
+          "redirect_uri": { "type": "string", "format": "uri" },
+          "code_verifier": { "type": "string", "minLength": 43, "maxLength": 128 }
+        }
+      },
+      "OAuthRefreshTokenRequest": {
+        "type": "object",
+        "required": ["grant_type", "refresh_token", "client_id"],
+        "properties": {
+          "grant_type": { "type": "string", "const": "refresh_token" },
+          "refresh_token": { "type": "string", "minLength": 1 },
+          "client_id": { "type": "string" }
+        }
+      },
+      "OAuthTokenResponse": {
+        "type": "object",
+        "required": ["access_token", "token_type", "expires_in", "scope", "organization", "refresh_token"],
+        "properties": {
+          "access_token": { "type": "string" },
+          "token_type": { "type": "string", "enum": ["Bearer"] },
+          "expires_in": { "type": "integer", "minimum": 1 },
+          "scope": { "type": "string" },
+          "organization": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "refresh_token_expires_in": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "OAuthClientRegistrationRequest": {
+        "type": "object",
+        "required": ["client_name", "redirect_uris"],
+        "properties": {
+          "client_name": { "type": "string", "maxLength": 255 },
+          "redirect_uris": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "format": "uri" } },
+          "grant_types": { "type": "array", "items": { "type": "string", "enum": ["authorization_code", "refresh_token"] } },
+          "response_types": { "type": "array", "items": { "type": "string", "const": "code" } },
+          "token_endpoint_auth_method": { "type": "string", "enum": ["none"] }
+        }
+      },
+      "OAuthClientRegistrationResponse": {
+        "type": "object",
+        "required": ["client_id", "client_id_issued_at", "client_name", "redirect_uris", "grant_types", "response_types", "token_endpoint_auth_method"],
+        "properties": {
+          "client_id": { "type": "string" },
+          "client_id_issued_at": { "type": "integer" },
+          "client_name": { "type": "string" },
+          "redirect_uris": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "grant_types": { "type": "array", "items": { "type": "string" } },
+          "response_types": { "type": "array", "items": { "type": "string" } },
+          "token_endpoint_auth_method": { "type": "string", "enum": ["none"] }
+        }
+      },
+    "ArtifactMetadata": {
+        "type": "object",
+        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "tier": { "type": "string", "enum": ["public", "secure", "ephemeral"] },
+          "entrypoint": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": ["string", "null"], "format": "date-time" },
+          "title": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] }
+      }
+    },
+    "CollectionListResponse": {
+      "type": "object",
+      "required": ["collections", "next_cursor"],
+      "properties": {
+        "collections": {
+          "type": "array",
+          "items": { "$ref": "#/components/schemas/CollectionMetadata" }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    },
+    "CollectionMetadata": {
+      "type": "object",
+      "required": ["id", "name", "description", "canonical", "artifact_count", "created_at", "updated_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "canonical": { "type": "boolean" },
+        "artifact_count": { "type": "integer", "minimum": 0 },
+        "created_at": { "type": ["string", "null"], "format": "date-time" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "CreateCollectionRequest": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
+    "AddCollectionArtifactRequest": {
+      "type": "object",
+      "required": ["artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9]+$" }
+      }
+    },
+    "AddCollectionArtifactResponse": {
+      "type": "object",
+      "required": ["collection_id", "artifact_id"],
+      "properties": {
+        "collection_id": { "type": "integer", "minimum": 1 },
+        "artifact_id": { "type": "string" }
+      }
+    },
+      "CreateArtifactRequest": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/EphemeralArtifactRequest" },
+          { "$ref": "#/components/schemas/PermanentArtifactRequest" }
+        ],
+        "discriminator": {
+          "propertyName": "mode",
+          "mapping": {
+            "ephemeral": "#/components/schemas/EphemeralArtifactRequest",
+            "permanent": "#/components/schemas/PermanentArtifactRequest"
+          }
+        }
+      },
+      "EphemeralArtifactRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "body_ciphertext_b64",
+          "body_iv_b64",
+          "tier",
+          "title",
+          "description",
+          "thumbnail",
+          "preview_blurred",
+          "provenance"
+        ],
+        "properties": {
+          "mode": { "type": "string", "const": "ephemeral" },
+          "body_ciphertext_b64": {
+            "type": "string",
+            "minLength": 1,
+            "description": "AES-GCM ciphertext encoded as unpadded base64url."
+          },
+          "body_iv_b64": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A 12-byte AES-GCM nonce encoded as unpadded base64url."
+          },
+          "tier": { "$ref": "#/components/schemas/ArtifactTier" },
+          "ttl_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 525600
+          },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "thumbnail": { "type": "string", "format": "uri" },
+          "preview_blurred": { "type": "boolean" },
+          "provenance": { "$ref": "#/components/schemas/Provenance" }
+        }
+      },
+      "PermanentArtifactRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "tier",
+          "title",
+          "description",
+          "thumbnail",
+          "preview_blurred",
+          "manifest",
+          "provenance"
+        ],
+        "properties": {
+          "mode": { "type": "string", "const": "permanent" },
+          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "thumbnail": { "type": "string", "format": "uri" },
+          "preview_blurred": { "type": "boolean" },
+          "manifest": { "$ref": "#/components/schemas/Manifest" },
+          "provenance": { "$ref": "#/components/schemas/Provenance" }
+        }
+      },
+      "ArtifactTier": {
+        "type": "string",
+        "enum": ["public", "secure", "ephemeral"]
+      },
+      "PermanentArtifactTier": {
+        "type": "string",
+        "enum": ["public", "secure"]
+      },
+      "Provenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent",
+          "agent_raw",
+          "agent_version",
+          "model",
+          "session_id",
+          "tool",
+          "repo_url",
+          "branch",
+          "commit_sha",
+          "dirty",
+          "source_path",
+          "client",
+          "client_version",
+          "sources"
+        ],
+        "properties": {
+          "agent": { "type": ["string", "null"] },
+          "agent_raw": { "type": ["string", "null"] },
+          "agent_version": { "type": ["string", "null"] },
+          "model": { "type": ["string", "null"] },
+          "session_id": { "type": ["string", "null"] },
+          "tool": { "type": ["string", "null"] },
+          "repo_url": { "type": ["string", "null"] },
+          "branch": { "type": ["string", "null"] },
+          "commit_sha": { "type": ["string", "null"] },
+          "dirty": { "type": ["boolean", "null"] },
+          "source_path": { "type": ["string", "null"] },
+          "client": { "type": "string", "minLength": 1 },
+          "client_version": { "type": "string", "minLength": 1 },
+          "sources": { "$ref": "#/components/schemas/ProvenanceSources" }
+        }
+      },
+      "ProvenanceSources": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent",
+          "agent_raw",
+          "agent_version",
+          "model",
+          "session_id",
+          "tool",
+          "repo_url",
+          "branch",
+          "commit_sha",
+          "dirty",
+          "source_path"
+        ],
+        "properties": {
+          "agent": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "agent_raw": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "agent_version": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "model": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "session_id": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "tool": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "repo_url": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "branch": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "commit_sha": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "dirty": { "$ref": "#/components/schemas/ProvenanceSource" },
+          "source_path": { "$ref": "#/components/schemas/ProvenanceSource" }
+        }
+      },
+      "ProvenanceSource": {
+        "type": "string",
+        "enum": [
+          "config",
+          "client_info",
+          "process",
+          "env",
+          "self_reported",
+          "absent"
+        ]
+      },
+      "Manifest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entrypoint", "files", "external_origins"],
+        "properties": {
+          "entrypoint": {
+            "$ref": "#/components/schemas/RelativeArtifactPath",
+            "description": "Relative path that must exactly match one files[].path value."
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "items": { "$ref": "#/components/schemas/ManifestFile" }
+          },
+          "external_origins": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            }
+          },
+          "unsafe_eval": {
+            "type": "boolean",
+            "default": false,
+            "description": "Grants 'unsafe-eval' in the isolated-origin CSP script-src. Defaults to false; must be explicitly declared."
+          }
+        }
+      },
+      "ManifestFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "content_type", "size_bytes", "sha256"],
+        "properties": {
+          "path": { "$ref": "#/components/schemas/RelativeArtifactPath" },
+          "content_type": { "type": "string", "minLength": 1 },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 26214400
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "RelativeArtifactPath": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
+        "description": "A relative path with no leading slash, drive prefix, or parent traversal segment."
+      },
+      "CreateArtifactResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/EphemeralArtifactResponse" },
+          { "$ref": "#/components/schemas/PermanentArtifactResponse" }
+        ]
+      },
+      "EphemeralArtifactResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "url",
+          "tier",
+          "expires_at",
+          "title",
+          "description",
+          "thumbnail",
+          "preview_blurred"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "tier": { "$ref": "#/components/schemas/ArtifactTier" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "thumbnail": { "type": "string", "format": "uri" },
+          "preview_blurred": { "type": "boolean" }
+        }
+      },
+      "PermanentArtifactResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "url", "tier", "missing_files"],
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "missing_files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      },
+      "UpdateArtifactRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ttl_minutes"],
+        "properties": {
+          "ttl_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 525600
+          }
+        }
+      },
+      "UpdateArtifactResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "expires_at"],
+        "properties": {
+          "id": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string", "minLength": 1 },
+          "repo": { "type": "string" },
+          "agent": { "type": "string" },
+          "since": { "type": "string", "format": "date" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 5 }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message", "details"],
+            "properties": {
+              "code": { "$ref": "#/components/schemas/ErrorCode" },
+              "message": { "type": "string", "minLength": 1 },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "invalid_json",
+          "validation_failed",
+          "invalid_artifact_id",
+          "artifact_not_found",
+          "body_too_large",
+          "bundle_too_large",
+          "entrypoint_missing",
+          "invalid_path",
+          "duplicate_path",
+          "hash_mismatch",
+          "file_count_exceeded",
+          "unauthorized",
+          "forbidden",
+          "not_implemented",
+          "internal_error",
+          "authentication_required",
+          "rate_limited",
+          "quota_exceeded"
+        ]
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './landing.css';
 
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
@@ -8,6 +9,24 @@
         'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+}
+
+/* Semantic tokens for the starter-kit components, mapped onto Solarized. */
+@theme inline {
+    --color-background: var(--sol-base3);
+    --color-foreground: var(--sol-base00);
+    --color-muted: var(--sol-base2);
+    --color-muted-foreground: var(--sol-base0);
+    --color-border: color-mix(in srgb, var(--sol-base1) 40%, transparent);
+    --color-primary: var(--sol-blue);
+    --color-primary-foreground: var(--sol-base3);
+    --color-destructive: var(--sol-red);
+    --color-success: var(--sol-green);
+    --color-warning: var(--sol-yellow);
+    --color-ring: var(--sol-blue);
+    --color-paper: var(--sol-paper, var(--sol-base3));
+    --color-primary-deep: var(--sol-blue-deep, var(--sol-blue));
+    --color-tint: var(--sol-tint, var(--sol-base2));
 }
 
 /* ── Solarized palette ──────────────────────────────────────────────────── */
@@ -45,6 +64,55 @@
     --sol-base1: #586e75;
     --sol-base0: #839496;
     --sol-base00: #93a1a1;
+}
+
+/* ── Oxblood & Bone: the signed-in app (see DESIGN.md) ─────────────────────
+   Scoped by a class that AppLayout puts on <html>, so the free tool and the
+   marketing pages keep their current look until they are redesigned. Remaps
+   the semantic tokens above; always light, whatever the system theme. */
+:root:root.app-theme {
+    --sol-base3: #f7f5f2;
+    --sol-base2: #efece6;
+    --sol-base1: #8c8a83;
+    --sol-base0: #66655f;
+    --sol-base00: #262624;
+    --sol-blue: #701a24;
+    --sol-blue-deep: #58141c;
+    --sol-paper: #fbfaf8;
+    --sol-tint: #f1e4e5;
+    --sol-green: #2f6b4f;
+    --sol-red: #a12a2a;
+    --sol-cyan: #701a24;
+    --sol-orange: #a12a2a;
+    --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Newsreader', ui-serif, Georgia, serif;
+    color-scheme: light;
+}
+
+.app-theme main h1,
+.app-theme h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+.app-theme input:focus-visible,
+.app-theme textarea:focus-visible,
+.app-theme select:focus-visible {
+    outline: none;
+    border-color: var(--sol-blue);
+    box-shadow: 0 0 0 3px var(--sol-tint);
+}
+
+.app-theme .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sol-base1);
 }
 
 html {
@@ -274,7 +342,794 @@ html {
     transform: scale(0.97);
 }
 
+/* Welcome manage modal sections */
+.welcome-manage-summary,
+.welcome-manage-duration,
+.welcome-manage-danger,
+.welcome-manage-action,
+.welcome-manage-duration-input,
+.welcome-manage-duration-select {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.welcome-manage-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 12px;
+}
+
+.welcome-manage-row {
+    display: flex;
+}
+
+.welcome-manage-url-row {
+    overflow: hidden;
+}
+
+.welcome-manage-label {
+    width: 90px;
+    flex-shrink: 0;
+    color: var(--sol-base1);
+}
+
+.welcome-manage-value,
+.welcome-manage-url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-manage-value {
+    color: var(--sol-base00);
+    font-weight: bold;
+}
+
+.welcome-manage-url {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-manage-status {
+    font-weight: bold;
+}
+
+.welcome-manage-status.is-expired {
+    color: var(--sol-red);
+}
+
+.welcome-manage-status.is-active {
+    color: var(--sol-green);
+}
+
+.welcome-manage-duration {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.welcome-manage-duration-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.welcome-manage-duration-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.welcome-manage-duration-input,
+.welcome-manage-duration-select {
+    box-sizing: border-box;
+    padding: 0.5rem;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    color: var(--sol-base0);
+    font-size: 13px;
+    outline: none;
+}
+
+.welcome-manage-duration-input {
+    flex: 1;
+}
+
+.welcome-manage-action {
+    align-self: flex-start;
+    padding: 0.5rem 1rem;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.welcome-manage-action:disabled {
+    cursor: not-allowed;
+}
+
+.welcome-manage-update {
+    background-color: var(--sol-blue);
+    color: var(--sol-base3);
+}
+
+.welcome-manage-delete {
+    background-color: var(--sol-red);
+    color: var(--sol-base3);
+}
+
+.welcome-manage-danger {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-manage-danger-copy {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
+/* Welcome upload controls */
+.welcome-preview-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+
+.welcome-preview-checkbox {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--sol-blue);
+}
+
+.welcome-file-dropzone-wrapper {
+    width: 100%;
+}
+
+.welcome-file-input {
+    display: none;
+}
+
+.welcome-file-dropzone {
+    padding: 2.2rem 2rem;
+    border: 1px solid var(--sol-base1);
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 16px;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+    transition:
+        border-color 0.1s ease,
+        background-color 0.1s ease;
+}
+
+.welcome-file-dropzone.is-dragging {
+    border-style: double;
+    border-color: var(--sol-blue);
+    background-color: color-mix(in srgb, var(--sol-blue) 7%, transparent);
+}
+
+.welcome-file-name {
+    margin-bottom: 0.35rem;
+    color: var(--sol-cyan);
+    letter-spacing: 0.02em;
+}
+
+.welcome-file-type {
+    margin-left: 0.5rem;
+    color: var(--sol-violet);
+    font-size: 13px;
+}
+
+.welcome-file-status {
+    color: var(--sol-base1);
+    font-size: 14px;
+}
+
+.welcome-file-prompt {
+    margin-bottom: 0.35rem;
+}
+
+.welcome-file-extension {
+    color: var(--sol-base00);
+    font-weight: 600;
+}
+
+.welcome-upload-error {
+    margin: -1.25rem 0 0;
+    color: var(--sol-red);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-upload-retry {
+    padding: 0;
+    color: var(--sol-red);
+    font-family: inherit;
+    font-size: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-deploy-button {
+    padding: 0.625rem 2.8rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    cursor: not-allowed;
+    background-color: transparent;
+    border: 1px solid var(--sol-base2);
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.welcome-deploy-button.is-active {
+    color: var(--sol-base3);
+    cursor: pointer;
+    background-color: var(--sol-red);
+    border-color: var(--sol-red);
+}
+
+/* Welcome result and cached deployments */
+.welcome-result,
+.welcome-cached-links,
+.welcome-cached-link-row,
+.welcome-cached-links-heading,
+.welcome-cached-link-actions,
+.welcome-result-link-row,
+.welcome-result-meta {
+    display: flex;
+}
+
+.welcome-result {
+    flex-direction: column;
+    gap: 0.6rem;
+    width: 100%;
+}
+
+.welcome-result-link-row {
+    align-items: stretch;
+    border: 1px solid var(--sol-green);
+}
+
+.welcome-result-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.75rem 0.9rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background-color: color-mix(in srgb, var(--sol-green) 8%, transparent);
+}
+
+.welcome-result-action {
+    flex-shrink: 0;
+    min-width: 7rem;
+    padding: 0 1.25rem;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: none;
+    border-left: 1px solid var(--sol-green);
+}
+
+.welcome-result-action.copied {
+    color: var(--sol-base3);
+    background-color: var(--sol-green);
+}
+
+.welcome-result-open {
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.welcome-result-meta {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.welcome-result-expiration,
+.welcome-result-reset {
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-result-reset {
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-cached-links {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 1rem;
+    animation: fadeSlideUp 0.25s ease-out both;
+}
+
+.welcome-cached-links-heading {
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.5rem;
+    margin: 0;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    border-bottom: 1px solid var(--sol-base2);
+}
+
+.welcome-cached-links-clear {
+    color: var(--sol-base1);
+    font-family: inherit;
+    font-size: 11px;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-cached-links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.welcome-cached-link-row {
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    padding: 0.6rem 0.8rem;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base2);
+}
+
+.welcome-cached-link-row.is-expired {
+    border-color: var(--sol-red);
+}
+
+.welcome-cached-link-details {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    margin-right: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-cached-link-filename,
+.welcome-cached-link-url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.welcome-cached-link-filename {
+    color: var(--sol-cyan);
+    font-weight: bold;
+}
+
+.welcome-cached-link-url {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-cached-link-row.is-expired .welcome-cached-link-url {
+    color: var(--sol-base1);
+}
+
+.welcome-cached-link-actions {
+    align-items: center;
+    flex-shrink: 0;
+    gap: 0.75rem;
+}
+
+.welcome-cached-link-status {
+    color: var(--sol-green);
+    font-size: 11px;
+}
+
+.welcome-cached-link-row.is-expired .welcome-cached-link-status {
+    color: var(--sol-red);
+}
+
+.welcome-cached-link-manage {
+    padding: 0.25rem 0.6rem;
+    color: var(--sol-base0);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: transparent;
+    border: 1px solid var(--sol-base1);
+}
+
+/* Welcome CLI, MCP, and skills callout */
+.welcome-cli-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-cli-heading,
+.welcome-cli-description,
+.welcome-cli-docs-link,
+.welcome-agent-toggle,
+.welcome-agent-copied,
+.welcome-agent-description,
+.welcome-agent-command,
+.welcome-install-code,
+.welcome-install-copy,
+.welcome-install-description {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.welcome-cli-heading {
+    color: var(--sol-base00);
+    font-size: 12px;
+}
+
+.welcome-cli-description {
+    color: var(--sol-base1);
+    font-size: 12px;
+}
+
+.welcome-cli-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.25rem;
+}
+
+.welcome-cli-docs-link {
+    margin-top: 0.25rem;
+    color: var(--sol-blue);
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.welcome-agent-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.welcome-agent-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    border-radius: 3px;
+}
+
+.welcome-agent-toggle.is-expanded {
+    color: var(--sol-base3);
+    background-color: var(--sol-base1);
+}
+
+.welcome-agent-toggle-icon {
+    font-size: 9px;
+    opacity: 0.8;
+}
+
+.welcome-agent-copied {
+    color: var(--sol-green);
+    font-size: 11px;
+}
+
+.welcome-agent-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.9rem 1rem;
+    background-color: var(--sol-base2);
+    border: 1px solid var(--sol-base1);
+    border-radius: 3px;
+}
+
+.welcome-agent-description {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
+.welcome-agent-command {
+    padding: 0.75rem;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--sol-base0);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    background-color: var(--sol-base3);
+    border: 1px solid var(--sol-base2);
+    border-radius: 2px;
+}
+
+.welcome-install-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.welcome-install-description {
+    color: var(--sol-base1);
+    font-size: 11px;
+}
+
+.welcome-install-command {
+    display: flex;
+    background-color: var(--sol-base3);
+    border: 1px solid var(--sol-base1);
+    border-radius: 2px;
+}
+
+.welcome-install-code {
+    flex-grow: 1;
+    padding: 0.6rem 0.8rem;
+    margin: 0;
+    overflow-x: auto;
+    color: var(--sol-base0);
+    font-size: 11px;
+}
+
+.welcome-install-prompt {
+    color: var(--sol-base1);
+}
+
+.welcome-install-copy {
+    padding: 0 0.8rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    cursor: pointer;
+    background-color: var(--sol-base2);
+    border: none;
+    border-left: 1px solid var(--sol-base1);
+}
+
+.welcome-install-copy.is-copied {
+    color: var(--sol-base3);
+    background-color: var(--sol-green);
+}
+
+/* Welcome information, FAQ, and footer */
+.welcome-information,
+.welcome-faq,
+.welcome-footer {
+    width: 100%;
+    border-top: 1px solid var(--sol-base2);
+}
+
+.welcome-information,
+.welcome-faq {
+    display: flex;
+    flex-direction: column;
+}
+
+.welcome-information {
+    gap: 1.2rem;
+    padding-top: 2rem;
+}
+
+.welcome-information-copy {
+    color: var(--sol-base0);
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.welcome-section-heading {
+    margin: 0 0 1rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.welcome-information-copy p {
+    margin: 0 0 0.8rem;
+}
+
+.welcome-information-copy p:last-child {
+    margin-bottom: 0;
+}
+
+.welcome-information-emphasis,
+.welcome-accent-text {
+    color: var(--sol-cyan);
+}
+
+.welcome-information-emphasis {
+    color: var(--sol-base00);
+}
+
+.welcome-faq {
+    gap: 0.75rem;
+    padding-top: 2rem;
+}
+
+.welcome-faq > .welcome-section-heading {
+    margin-bottom: 0.5rem;
+}
+
+.welcome-faq-question {
+    margin-bottom: 0.35rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+
+.welcome-faq-answer {
+    padding-left: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-left: 2px solid var(--sol-base2);
+}
+
+.welcome-inline-code {
+    padding: 0.1em 0.3em;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    background-color: var(--sol-base2);
+}
+
+.welcome-information-link,
+.welcome-footer a {
+    color: var(--sol-blue);
+    text-decoration: none;
+}
+
+.welcome-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1.25rem;
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+}
+
+.welcome-footer-links {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.welcome-footer a {
+    color: var(--sol-base1);
+}
+
 /* Modal animation */
+.welcome-manage-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 1.5rem;
+    background-color: rgb(0 0 0 / 65%);
+    backdrop-filter: blur(4px);
+}
+
+.welcome-manage-dialog {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 460px;
+    padding: 1.8rem;
+    background-color: var(--sol-base3);
+    border: 1px solid var(--sol-base1);
+}
+
+.welcome-manage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--sol-base2);
+}
+
+.welcome-manage-title {
+    margin: 0;
+    color: var(--sol-cyan);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.welcome-manage-close {
+    color: var(--sol-base1);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 18px;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.welcome-manage-message {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.welcome-manage-message.is-error {
+    color: var(--sol-red);
+}
+
+.welcome-manage-message.is-success {
+    color: var(--sol-green);
+}
+
 @keyframes modalScaleIn {
     from {
         opacity: 0;

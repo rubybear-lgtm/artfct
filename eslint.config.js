@@ -119,6 +119,7 @@ export default [
             'backend/.wrangler/**',
             'target',
             'bootstrap/ssr',
+            '.claude/worktrees/**',
             'tailwind.config.js',
             'vite.config.ts',
             'resources/js/actions/**',

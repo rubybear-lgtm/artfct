@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>artfct — Share HTML. Get a link. That's it.</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet">
+<style>
+  :root {
+    --sol-base03: #002b36;
+    --sol-base02: #073642;
+    --sol-base01: #586e75;
+    --sol-base00: #657b83;
+    --sol-base0: #839496;
+    --sol-base1: #93a1a1;
+    --sol-base2: #eee8d5;
+    --sol-base3: #fdf6e3;
+    --sol-yellow: #b58900;
+    --sol-orange: #cb4b16;
+    --sol-red: #dc322f;
+    --sol-magenta: #d33682;
+    --sol-violet: #6c71c4;
+    --sol-blue: #268bd2;
+    --sol-cyan: #2aa198;
+    --sol-green: #859900;
+    --bg: var(--sol-base3);
+    --bg2: var(--sol-base2);
+    --text: var(--sol-base00);
+    --text-em: var(--sol-base01);
+    --heading: var(--sol-base03);
+    --accent: var(--sol-cyan);
+    --accent2: var(--sol-blue);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--sol-base03);
+      --bg2: var(--sol-base02);
+      --text: var(--sol-base0);
+      --text-em: var(--sol-base1);
+      --heading: var(--sol-base3);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .slides { position: relative; width: 100%; height: 100vh; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 3rem;
+    opacity: 0; visibility: hidden;
+    transition: opacity 0.4s ease, visibility 0.4s;
+    text-align: center;
+    overflow-y: auto;
+  }
+  .slide.active { opacity: 1; visibility: visible; }
+
+  .slide-content {
+    max-width: 800px;
+    width: 100%;
+    margin: auto;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 600;
+    color: var(--heading);
+    line-height: 1.2;
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+    font-weight: 600;
+    color: var(--heading);
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    font-size: clamp(1.1rem, 2vw, 1.5rem);
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+
+  p, li {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  .subtitle {
+    font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+    color: var(--text-em);
+    margin-top: -0.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .tagline {
+    font-size: clamp(1.2rem, 2.5vw, 1.5rem);
+    font-weight: 500;
+    color: var(--sol-cyan);
+    margin-bottom: 0.25rem;
+  }
+
+  .hero-ascii {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: min(14px, calc((100vw - 4rem) / 42));
+    line-height: 1.15;
+    white-space: pre;
+    color: var(--heading);
+    margin-bottom: 1rem;
+    text-align: center;
+    letter-spacing: 0;
+  }
+
+  .grid-2, .grid-3 {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    text-align: left;
+  }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+  .card {
+    background: var(--bg2);
+    border-radius: 8px;
+    padding: 1.25rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+  .card h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--heading);
+    margin-bottom: 0.35rem;
+  }
+
+  .card p, .card li {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .card ul { list-style: none; padding: 0; }
+  .card li::before { content: '\2192\00a0'; color: var(--accent); }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 500;
+    background: var(--bg2);
+    color: var(--text-em);
+  }
+
+  .badge-green { background: rgba(133,153,0,0.15); color: var(--sol-green); }
+  .badge-blue { background: rgba(38,139,210,0.15); color: var(--sol-blue); }
+  .badge-orange { background: rgba(203,75,22,0.15); color: var(--sol-orange); }
+  .badge-violet { background: rgba(108,113,196,0.15); color: var(--sol-violet); }
+
+  .code-block {
+    background: var(--bg2);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: clamp(0.75rem, 1.2vw, 0.85rem);
+    text-align: left;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    color: var(--text-em);
+  }
+
+  .code-block .hl { color: var(--sol-yellow); }
+  .code-block .cm { color: var(--sol-base1); }
+  .code-block .kw { color: var(--sol-cyan); }
+  .code-block .str { color: var(--sol-green); }
+  .code-block .fn { color: var(--sol-blue); }
+
+  .nav-dots {
+    position: fixed;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 100;
+  }
+
+  .nav-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--sol-base1);
+    border: none;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .nav-dot.active { opacity: 1; background: var(--accent); transform: scale(1.3); }
+  .nav-dot:hover { opacity: 0.8; }
+
+  .slide-counter {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--sol-base1);
+    letter-spacing: 0.05em;
+    z-index: 100;
+  }
+
+  .nav-hint {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--sol-base1);
+    z-index: 100;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    opacity: 0.6;
+  }
+
+  .arrow-keys {
+    display: inline-block;
+    background: var(--bg2);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.2s, transform 0.15s;
+    margin: 0.25rem;
+  }
+  .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+  .btn-primary { background: var(--sol-cyan); color: var(--sol-base03); }
+  .btn-secondary { background: var(--bg2); color: var(--text); }
+
+  .mt-1 { margin-top: 0.5rem; }
+  .mt-2 { margin-top: 1rem; }
+  .mt-3 { margin-top: 1.5rem; }
+  .mb-1 { margin-bottom: 0.5rem; }
+  .mb-2 { margin-bottom: 1rem; }
+
+  .accent-bar {
+    width: 60px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    margin: 1rem auto;
+  }
+
+  .fly-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+
+  .flow-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+    margin: 1rem 0;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+  .flow-step .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--sol-base03);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    flex-shrink: 0;
+  }
+  .flow-arrow { color: var(--sol-base1); font-size: 1.2rem; }
+
+  .logo-line {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--sol-base1);
+    margin-top: 2rem;
+    letter-spacing: 0.1em;
+  }
+
+  .emoji-big { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; }
+
+  @media (max-width: 600px) {
+    .slide { padding: 1.5rem; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .nav-dots { right: 0.75rem; }
+    .hero-ascii { font-size: min(10px, calc((100vw - 2rem) / 50)); }
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+  .cursor { animation: blink 1s step-end infinite; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active .slide-content { animation: fadeUp 0.4s ease-out; }
+</style>
+</head>
+<body>
+
+<div class="slides" id="slides">
+
+  <!-- SLIDE 0: TITLE -->
+  <div class="slide active" data-index="0">
+    <div class="slide-content">
+      <div class="hero-ascii"> _   _ _____ _____ _____ _____ _____
+| | | |  ___|_   _|_   _|  ___|  _  \
+| |_| | |__   | |   | | | |__ | | | |
+|  _  |  __|  | |   | | |  __|| | | |
+| | | | |___  | |  _| |_| |___| |/ /
+|_| |_|____|  |_|  \___/\____/|___/
+      </div>
+      <div class="tagline">Share HTML. Get a link. That's it.</div>
+      <p class="subtitle">Zero-signup ephemeral HTML hosting &mdash; from browser, CLI, API, or AI agent</p>
+      <div class="accent-bar"></div>
+      <div class="flow-list">
+        <span class="flow-step"><span class="step-num">1</span> Drop HTML</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step"><span class="step-num">2</span> Get URL</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step"><span class="step-num">3</span> Share it</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 1: THE PROBLEM -->
+  <div class="slide" data-index="1">
+    <div class="slide-content">
+      <div class="emoji-big">&#x1F4A1;</div>
+      <h2>The Problem</h2>
+      <div class="accent-bar"></div>
+      <p style="margin-bottom:1.5rem">Sharing styled HTML output is unnecessarily hard:</p>
+      <div class="grid-2">
+        <div class="card">
+          <h4>&#x1F6AB; Sign-up fatigue</h4>
+          <p>Every hosting service requires accounts, passwords, email verification. Kills spontaneity.</p>
+        </div>
+        <div class="card">
+          <h4>&#x1F4E4; File-sharing overhead</h4>
+          <p>Attaching HTML files to emails or Slack breaks rendering. ZIP archives, Dropbox links &mdash; friction.</p>
+        </div>
+        <div class="card">
+          <h4>&#x1F9EA; Context switching</h4>
+          <p>Leaving your terminal or AI agent to open a browser, upload, copy a link &mdash; expensive interruption.</p>
+        </div>
+        <div class="card">
+          <h4>&#x1F50D; Discoverability</h4>
+          <p>Raw HTML code blocks in chat lose visual context. Recipients must copy, save, open locally.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: THE SOLUTION -->
+  <div class="slide" data-index="2">
+    <div class="slide-content">
+      <div class="emoji-big">&#x2728;</div>
+      <h2>The Solution</h2>
+      <div class="accent-bar"></div>
+      <p style="margin-bottom:1.5rem"><strong style="color:var(--heading)">artfct</strong> eliminates every layer of friction between having HTML and sharing it.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="fly-icon">&#x1F30D;</span>
+          <h4>Zero sign-up</h4>
+          <p>Drop a file or hit an API &mdash; no account, no config, no onboarding.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F4E6;</span>
+          <h4>Multi-modal</h4>
+          <p>Browser drag-and-drop, CLI pipe, REST API, or AI agent MCP tool.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x23F1;&#xFE0F;</span>
+          <h4>Ephemeral by default</h4>
+          <p>60-minute TTL. Nothing persists forever unless you choose. Unguessable URLs.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F916;</span>
+          <h4>AI-first</h4>
+          <p>Built-in MCP server lets AI agents deploy HTML directly &mdash; no browser needed.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x26A1;</span>
+          <h4>Fast by design</h4>
+          <p>Rust + WASM on Cloudflare Workers. Brotli compression. Global edge network.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F512;</span>
+          <h4>Secure delivery</h4>
+          <p>iframe sandboxing, CSP headers, unguessable base62 IDs. Tiered access control.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3: HOW IT WORKS -->
+  <div class="slide" data-index="3">
+    <div class="slide-content">
+      <h2>How It Works</h2>
+      <div class="accent-bar"></div>
+      <p class="subtitle">Four ways to deploy. One URL to share.</p>
+      <div class="grid-2" style="text-align:left">
+        <div class="card">
+          <h4>&#x1F5BC;&#xFE0F; Browser</h4>
+          <p>Drag a <code>.html</code> or <code>.md</code> file onto the drop zone. Click deploy. Copy the link.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+            <span class="cm">// Visit artfct.dev, drop file, done</span>
+          </div>
+        </div>
+        <div class="card">
+          <h4>&#x1F4BB; CLI</h4>
+          <p>Pipe from stdout or pass a file path.</p>
+          <div class="code-block mt-1">
+            curl https://example.com/report.html | artfct deploy
+          </div>
+          <div class="code-block">
+            artfct deploy ./dashboard.html
+          </div>
+        </div>
+        <div class="card">
+          <h4>&#x1F310; REST API</h4>
+          <p>POST JSON. Get a URL back. Integrate anywhere.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+curl -X POST https://artfct.dev/v1/artifacts \<br>
+  -H <span class="str">"Content-Type: application/json"</span> \<br>
+  -d <span class="str">'{"html":"&lt;h1&gt;Hi&lt;/h1&gt;","tier":"public"}'</span>
+          </div>
+        </div>
+        <div class="card">
+          <h4>&#x1F916; AI Agent (MCP)</h4>
+          <p>Agents call <code>deploy_to_canvas</code> and return a live URL.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+<span class="kw">await</span> mcp.callTool(<span class="str">"deploy_to_canvas"</span>, {<br>
+&nbsp;&nbsp;html: <span class="str">"&lt;h1&gt;Hello&lt;/h1&gt;"</span>,<br>
+&nbsp;&nbsp;tier: <span class="str">"public"</span><br>
+})
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: USE CASES -->
+  <div class="slide" data-index="4">
+    <div class="slide-content">
+      <div class="emoji-big">&#x1F3AF;</div>
+      <h2>Use Cases</h2>
+      <div class="accent-bar"></div>
+      <div class="grid-2" style="text-align:left">
+        <div class="card">
+          <span class="fly-icon">&#x1F4CA;</span>
+          <h4>Dashboards &amp; Reports</h4>
+          <p>Generate a styled analytics dashboard, deploy it, and share the link in a PR or Slack. Viewable instantly, no PDF attachments.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F5D3;&#xFE0F;</span>
+          <h4>Slide Decks</h4>
+          <p>AI generates an HTML presentation with keyboard navigation. One deploy call = a shareable, responsive slide deck.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F3A8;</span>
+          <h4>Prototypes &amp; Mockups</h4>
+          <p>Design a UI concept in HTML/CSS, deploy it, and hand off a live URL &mdash; no hosting setup, no review app.</p>
+        </div>
+        <div class="card">
+          <span class="fly-icon">&#x1F30A;</span>
+          <h4>Developer Tools</h4>
+          <p>Standalone HTML tools (JSON table viewer, API diff, env diff, regex tester) deployed from agent skills, shareable instantly.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: DEPLOYMENT TIERS -->
+  <div class="slide" data-index="5">
+    <div class="slide-content">
+      <h2>Deployment Tiers</h2>
+      <div class="accent-bar"></div>
+      <p class="subtitle">Choose the right level of persistence and access</p>
+      <div class="grid-3" style="text-align:left">
+        <div class="card" style="border-left:3px solid var(--sol-green)">
+          <span class="badge badge-green mt-1 mb-1">public</span>
+          <h4 style="color:var(--sol-green)">Public</h4>
+          <p>Permanent. Anyone with the URL can view. Best for shareable dashboards, reports, demos.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--sol-violet)">
+          <span class="badge badge-violet mt-1 mb-1">secure</span>
+          <h4 style="color:var(--sol-violet)">Secure</h4>
+          <p>Permanent. Authenticated users only. Best for sensitive or private content.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--sol-orange)">
+          <span class="badge badge-orange mt-1 mb-1">ephemeral</span>
+          <h4 style="color:var(--sol-orange)">Ephemeral</h4>
+          <p>Configurable TTL (default 60min, max 1440min). Auto-deletes. Best for quick previews.</p>
+        </div>
+      </div>
+      <div class="code-block mt-2" style="text-align:center">
+        <span class="cm">// API payload</span><br>
+        { <span class="kw">html</span>: <span class="str">"..."</span>, <span class="kw">tier</span>: <span class="str">"ephemeral"</span>, <span class="kw">ttl_minutes</span>: <span class="hl">30</span> }
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6: AI AGENT INTEGRATION -->
+  <div class="slide" data-index="6">
+    <div class="slide-content">
+      <div class="emoji-big">&#x1F916;</div>
+      <h2>AI Agent Integration</h2>
+      <div class="accent-bar"></div>
+      <p class="subtitle">Designed for the agentic era &mdash; from first principles</p>
+      <div class="grid-2" style="text-align:left">
+        <div class="card">
+          <h4>&#x1F9E0; MCP Server</h4>
+          <p>Standard JSON-RPC over stdio. Exposes <code>deploy_to_canvas</code> with params: html, tier, ttl_minutes. Auto-discovers Cursor, Claude Desktop, Gemini, Codex.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+artfct setup    <span class="cm"># configures all clients</span>
+artfct mcp serve <span class="cm"># runs MCP server</span>
+          </div>
+        </div>
+        <div class="card">
+          <h4>&#x1F4D6; Agent Skills (skills.sh)</h4>
+          <p>Pre-built skills teach agents when to deploy, how to self-contain HTML, and tier strategies. One-command install.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+npx skills add rubybear-lgtm/artfct@artfct
+          </div>
+          <div class="mt-1">
+            <span class="badge badge-green">artfct</span>
+            <span class="badge badge-blue">developer-tools</span>
+            <span class="badge badge-orange">presentation</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:1rem; padding:0.75rem; background:var(--bg2); border-radius:6px; font-size:0.85rem; text-align:left; border-left:3px solid var(--sol-yellow)">
+        <strong style="color:var(--sol-yellow)">Agent workflow:</strong>
+        Agent generates HTML &rarr; calls <code>deploy_to_canvas</code> &rarr; returns live URL to user. No leaving the conversation.
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7: ARCHITECTURE -->
+  <div class="slide" data-index="7">
+    <div class="slide-content">
+      <h2>Architecture</h2>
+      <div class="accent-bar"></div>
+      <p class="subtitle">Simple, fast, composable</p>
+      <div class="grid-2" style="text-align:left">
+        <div class="card">
+          <h4>&#x2699;&#xFE0F; Hosting Engine</h4>
+          <ul>
+            <li>Rust on Cloudflare Workers (WASM)</li>
+            <li>Brotli compression before KV storage</li>
+            <li>Base62 URL IDs (22 chars, unguessable)</li>
+            <li>iframe sandbox + CSP headers</li>
+            <li>Rate limiting: 60 creates/min/IP</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>&#x1F4E6; CLI &amp; MCP</h4>
+          <ul>
+            <li>Single Rust binary (artfct)</li>
+            <li>Commands: deploy, delete, mcp, setup, doctor</li>
+            <li>Cross-platform (macOS, Linux)</li>
+            <li>One-liner install script</li>
+            <li>Auto-configures agent MCP clients</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>&#x1F310; Frontend</h4>
+          <ul>
+            <li>Laravel 13 + Inertia.js v3 + React 19</li>
+            <li>Tailwind CSS v4 + Solarized palette</li>
+            <li>SSR enabled via Inertia</li>
+            <li>Markdown-to-HTML (client + server)</li>
+            <li>Three pages: upload, docs, blog</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>&#x1F30D; Edge Delivery</h4>
+          <ul>
+            <li>Cloudflare Workers global network</li>
+            <li>KV storage for artifacts</li>
+            <li>Brotli &rarr; fast reads worldwide</li>
+            <li>CORS enabled on all endpoints</li>
+            <li>1MB max payload, 24h max TTL</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8: DEMO -->
+  <div class="slide" data-index="8">
+    <div class="slide-content">
+      <div class="emoji-big">&#x1F3AC;</div>
+      <h2>See It in Action</h2>
+      <div class="accent-bar"></div>
+      <div style="text-align:left; max-width:500px; margin:0 auto">
+        <div class="card" style="margin-bottom:0.75rem">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">
+            <span style="font-weight:600;color:var(--heading)">1. Drop file</span>
+            <span class="badge badge-green">&#x2714; detected</span>
+          </div>
+          <div class="code-block" style="font-size:0.8rem; text-align:center">
+            report.html &bull; 4.2 KB
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:0.75rem">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">
+            <span style="font-weight:600;color:var(--heading)">2. Hit deploy</span>
+            <span class="badge badge-blue">deploying<span class="cursor">_</span></span>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">
+            <span style="font-weight:600;color:var(--heading)">3. Share link</span>
+            <span class="badge badge-green">&#x2714; deployed</span>
+          </div>
+          <div class="code-block" style="font-size:0.8rem; word-break:break-all; border:1px solid var(--sol-green)">
+            https://artfct.dev/p/3fK9mX2vQpL8wR5nA1bC
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:1.5rem; color:var(--text-em); font-size:0.9rem">
+        Total time: <strong style="color:var(--heading)">~2 seconds</strong> &bull; Zero clicks outside your flow
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9: GET STARTED -->
+  <div class="slide" data-index="9">
+    <div class="slide-content">
+      <h2>Get Started</h2>
+      <div class="accent-bar"></div>
+      <p class="subtitle">No account. No config. No friction.</p>
+      <div style="margin:1.5rem 0">
+        <div style="display:inline-block; background:var(--bg2); border-radius:8px; padding:0.75rem 1.5rem; margin:0.25rem">
+          <code style="font-size:clamp(0.8rem,1.5vw,1rem); color:var(--sol-yellow)">curl -fsSL https://artfct.dev/install.sh | sh</code>
+        </div>
+      </div>
+      <p style="color:var(--text-em); margin-bottom:1.5rem">Or use it right now &mdash; no install needed:</p>
+      <div class="grid-3" style="text-align:left">
+        <div class="card" style="text-align:center">
+          <div class="emoji-big" style="font-size:1.5rem">&#x1F5BC;&#xFE0F;</div>
+          <h4>artfct.dev</h4>
+          <p style="font-size:0.85rem">Drag-and-drop in your browser</p>
+        </div>
+        <div class="card" style="text-align:center">
+          <div class="emoji-big" style="font-size:1.5rem">&#x1F4E4;</div>
+          <h4>curl + pipe</h4>
+          <div class="code-block" style="font-size:0.7rem; text-align:center">
+curl -X POST https://artfct.dev/v1/artifacts \<br>
+  -d <span class="str">'{"html":"...","tier":"public"}'</span>
+          </div>
+        </div>
+        <div class="card" style="text-align:center">
+          <div class="emoji-big" style="font-size:1.5rem">&#x1F916;</div>
+          <h4>Ask your AI agent</h4>
+          <p style="font-size:0.85rem">"Deploy this to artfct"</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="nav-dots" id="navDots"></div>
+<div class="slide-counter" id="slideCounter"></div>
+<div class="nav-hint"><span class="arrow-keys">&larr; &rarr;</span> or <span class="arrow-keys">j k</span></div>
+
+<script>
+  (function() {
+    const slides = document.querySelectorAll('.slide');
+    const total = slides.length;
+    let current = 0;
+    let touchStartX = 0;
+
+    const dotsContainer = document.getElementById('navDots');
+    const counter = document.getElementById('slideCounter');
+
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('button');
+      dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+      dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+      dot.dataset.index = i;
+      dot.addEventListener('click', function() { goTo(parseInt(this.dataset.index)); });
+      dotsContainer.appendChild(dot);
+    }
+
+    function goTo(index) {
+      if (index < 0) index = 0;
+      if (index >= total) index = total - 1;
+      if (index === current) return;
+      slides[current].classList.remove('active');
+      dotsContainer.children[current].classList.remove('active');
+      current = index;
+      slides[current].classList.add('active');
+      dotsContainer.children[current].classList.add('active');
+      counter.textContent = String(current + 1).padStart(2, '0') + ' / ' + String(total).padStart(2, '0');
+    }
+
+    function next() { goTo(current + 1); }
+    function prev() { goTo(current - 1); }
+
+    counter.textContent = '01 / ' + String(total).padStart(2, '0');
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); next(); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); prev(); }
+      if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+      if (e.key === 'End') { e.preventDefault(); goTo(total - 1); }
+    });
+
+    document.addEventListener('touchstart', function(e) { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+    document.addEventListener('touchend', function(e) {
+      const diff = touchStartX - e.changedTouches[0].screenX;
+      if (Math.abs(diff) > 50) { diff > 0 ? next() : prev(); }
+    }, { passive: true });
+
+    let clickStartX, clickStartY, clickTimer;
+    document.addEventListener('mousedown', function(e) {
+      clickStartX = e.clientX; clickStartY = e.clientY;
+      clickTimer = Date.now();
+    });
+    document.addEventListener('mouseup', function(e) {
+      if (Date.now() - clickTimer > 300) return;
+      const dx = e.clientX - clickStartX, dy = e.clientY - clickStartY;
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+        const rect = e.target.closest('.slide')?.getBoundingClientRect();
+        if (rect && e.clientX > rect.left + rect.width * 0.6) next();
+        else if (rect && e.clientX < rect.left + rect.width * 0.4) prev();
+      }
+    });
+
+    let wheelTimer;
+    document.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(function() {
+        if (e.deltaY > 0) next();
+        else prev();
+      }, 100);
+    }, { passive: false });
+  })();
+</script>
+</body>
+</html>

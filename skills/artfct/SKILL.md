@@ -1,11 +1,11 @@
 ---
 name: artfct
-description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_to_canvas MCP tool, tier selection, and best practices for self-contained HTML.
+description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_artifact and deploy_to_canvas MCP tools, tier selection, and best practices for self-contained HTML.
 ---
 
 # artfct — Artifact Deployment Skill
 
-artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. When `deploy_to_canvas` is available, deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence.
+artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. When `deploy_artifact` is available (a signed-in workspace), use it: the artifact is stored in the workspace, searchable and reusable by the team. Otherwise, when `deploy_to_canvas` is available, use it for an anonymous, expiring link. Either way, deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence. `deploy_to_canvas` is deprecated for signed-in workspaces.
 
 ## When to Deploy
 
@@ -25,7 +25,8 @@ When the user says "show me", "preview this", or "make it shareable" — deploy.
 
 ### Option A — MCP (preferred)
 
-Call `deploy_to_canvas` directly:
+Call `deploy_artifact` when it is available (a signed-in workspace), otherwise
+`deploy_to_canvas`:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -150,9 +151,46 @@ artfct hosts a single file. All resources must be inlined or loaded from public 
 
 Never reference local paths — they will 404 once hosted. For the full HTML template and SRI guidance, see `references/html-authoring.md`.
 
+## The Link You Hand Back
+
+`deploy_artifact`, `get_artifact` and `search_artifacts` return the openable
+link as **`view_url`** — never reconstruct a `/p/{id}` URL from an artifact id
+yourself. What it points at depends on the tier:
+
+- **`secure`** — the app's own open route
+  (`https://artfct.dev/settings/teams/<org>/console/artifacts/<id>/open`). The
+  app authorizes the viewer and mints a short-lived signed link at click time,
+  so this link works when a colleague opens it in a browser while signed in.
+  No credential travels in it; there is nothing to strip before sharing.
+- **`public`** — the artifact's public URL. Anyone can open it and no token is
+  minted for it.
+
+**`deploy_to_canvas` is the exception.** It publishes anonymous, expiring
+artifacts that have no workspace row, so *no* tier of one is addressable through
+the app — the open route could only 404 for it. Its `view_url` is therefore the
+Worker's own `/p/{id}` URL **with the decryption fragment** (`#<shareCode>`), and
+it always opens on the Worker origin. Keep the fragment intact: it is the
+decryption key, and the link shows only a placeholder without it.
+
+Present `view_url` verbatim. Do not shorten it, rewrite it to a direct artifact
+origin, or hand over a token-bearing URL: a raw `/p/{id}` link cannot be opened
+in a browser for a secure artifact.
+
+If a tool returns the non-retryable `signed_link_unavailable` code, that
+environment has no signing secret configured and no openable link exists —
+report that rather than inventing a URL.
+
 ## Response Format
 
-After a successful deploy, present the URL clearly:
+After a successful deploy, present the `view_url` clearly:
+
+```
+Deployed → https://artfct.dev/settings/teams/acme/console/artifacts/4fA8gX9z/open
+
+Opens for anyone signed in to acme. Valid until <expiry> after each click.
+```
+
+For a public artifact, the link is the artifact's own public URL:
 
 ```
 Deployed → https://artfct.dev/p/4fA8gX9z

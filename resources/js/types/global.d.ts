@@ -9,6 +9,12 @@ declare module 'react' {
 
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
+        flashDataType: {
+            toast?: {
+                type: 'success' | 'error' | 'info';
+                message: string;
+            };
+        };
         sharedPageProps: {
             name: string;
             auth: Auth;

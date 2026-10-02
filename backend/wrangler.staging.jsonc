@@ -1,0 +1,61 @@
+// Staging Worker (RUB-325/RUB-324/RUB-366): own D1, KV and R2, workers.dev
+// for its own path-based serving, plus a wildcard route for isolated
+// artifact origins on the shared artfct.dev zone.
+// Secrets are set with `wrangler secret put`, never in this file.
+{
+    "$schema": "../node_modules/wrangler/config-schema.json",
+    "name": "artfct-engine-staging",
+    "account_id": "c630a56af756f229176fc46b6bd2326f",
+    "main": "build/worker/shim.mjs",
+    "compatibility_date": "2026-06-03",
+    "build": {
+        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+    },
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+    },
+    // Keep the workers.dev address alive until the RUB-366 cutover is
+    // verified — adding "routes" without this explicitly disables it.
+    "workers_dev": true,
+    // RUB-366: isolated artifact origins, <tenant>--<id>--stg.artfct.dev.
+    // Reuses the zone's existing *.artfct.dev Universal SSL wildcard (one
+    // label deep) instead of a separate *.staging.artfct.dev, which would
+    // need a paid Advanced Certificate for its own second wildcard level.
+    // See ARTIFACT_ORIGIN_SUFFIX_ENV in backend/src/lib.rs.
+    "routes": [
+        {
+            "pattern": "*--stg.artfct.dev/*",
+            "zone_name": "artfct.dev",
+        },
+    ],
+    "kv_namespaces": [
+        {
+            "binding": "ARTIFACTS_KV",
+            "id": "39bd88b40514450a8af293c5341f0d56",
+        },
+    ],
+    "d1_databases": [
+        {
+            "binding": "ARTIFACTS_DB",
+            "database_name": "artfct-staging",
+            "database_id": "9d483c7e-1709-4bfb-918d-e9570064c813",
+            "migrations_dir": "migrations",
+        },
+    ],
+    "r2_buckets": [
+        {
+            "binding": "ARTIFACTS_BUCKET",
+            "bucket_name": "artfct-staging-blobs",
+        },
+    ],
+    "vars": {
+        "ARTFCT_PUBLIC_BASE_URL": "https://artfct-engine-staging.rubentortolero.workers.dev",
+        "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--stg.artfct.dev",
+        "ARTFCT_ORG_SLUG": "zz-northwind",
+        "ARTFCT_WORKER_EVENT_URL": "https://staging.artfct.dev/internal/worker-events",
+        "ARTFCT_MAX_HTML_BYTES": "1048576",
+        "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
+        "ARTFCT_MAX_TTL_MINUTES": "525600",
+    },
+}
