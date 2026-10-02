@@ -34,6 +34,9 @@ class Collection extends Model
         'canonical' => 'boolean',
     ];
 
+    /**
+     * @return BelongsTo<Team, $this>
+     */
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
@@ -47,6 +50,9 @@ class Collection extends Model
         return $this->hasMany(CollectionArtifact::class);
     }
 
+    /**
+     * @return array<int, string>
+     */
     public function artifactIds(): array
     {
         return $this->artifacts()->pluck('artifact_id')->all();

@@ -820,6 +820,9 @@ final class AuthorizationServerController extends Controller
      * through Inertia's XHR, and an XHR cannot follow a redirect to another
      * origin (CORS), so Inertia requests get a 409 location visit instead.
      */
+    /**
+     * @param  array<string, string|null>  $parameters
+     */
     private function redirectWith(string $redirectUri, array $parameters): SymfonyResponse
     {
         $separator = str_contains($redirectUri, '?') ? '&' : '?';

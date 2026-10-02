@@ -22,6 +22,9 @@ class CollectionArtifact extends Model
         'added_at' => 'datetime',
     ];
 
+    /**
+     * @return BelongsTo<Collection, $this>
+     */
     public function collection(): BelongsTo
     {
         return $this->belongsTo(Collection::class);

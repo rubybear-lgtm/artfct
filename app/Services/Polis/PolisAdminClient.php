@@ -23,7 +23,10 @@ class PolisAdminClient
     {
         $response = $this->http()->get($this->baseUrl().'/api/v1/sso', ['tenant' => $tenant, 'product' => self::PRODUCT])->throw();
 
-        return collect($response->json() ?? [])
+        /** @var array<int|string, mixed> $connections */
+        $connections = $response->json() ?? [];
+
+        return collect($connections)
             ->filter(fn ($connection): bool => is_array($connection))
             ->map(fn (array $connection): array => [
                 'type' => isset($connection['oidcProvider']) || isset($connection['oidcDiscoveryUrl']) ? 'OIDC' : 'SAML',

@@ -17,10 +17,13 @@ use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\IndexingService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use Throwable;
 
 /**
@@ -43,7 +46,7 @@ class ConsoleController extends Controller
      * Show the artifact listing console.
      * Accessible to all team members (viewers see no revoke/export buttons).
      */
-    public function index(Request $request, string $teamSlug)
+    public function index(Request $request, string $teamSlug): InertiaResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -99,7 +102,7 @@ class ConsoleController extends Controller
      * second click while the first is still queued is a no-op, and an
      * artifact that is already indexed is skipped.
      */
-    public function reindex(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content)
+    public function reindex(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): RedirectResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -131,7 +134,7 @@ class ConsoleController extends Controller
      * Revoke an artifact (soft delete).
      * Admin only.
      */
-    public function revoke(Request $request, string $teamSlug, string $artifactId)
+    public function revoke(Request $request, string $teamSlug, string $artifactId): RedirectResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -158,7 +161,7 @@ class ConsoleController extends Controller
      * Export all artifacts for the organization.
      * Admin only, rate-limited.
      */
-    public function export(Request $request, string $teamSlug)
+    public function export(Request $request, string $teamSlug): JsonResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -208,7 +211,7 @@ class ConsoleController extends Controller
      * for, and that mint is audited with the actor, the artifact and the
      * expiry — never the token itself.
      */
-    public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content)
+    public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): RedirectResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);

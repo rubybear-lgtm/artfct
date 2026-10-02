@@ -90,6 +90,9 @@ class AuditEvent extends Model
         throw new \LogicException('AuditEvent rows are append-only and cannot be deleted.');
     }
 
+    /**
+     * @return BelongsTo<Team, $this>
+     */
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

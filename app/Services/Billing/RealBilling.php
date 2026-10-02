@@ -63,7 +63,10 @@ final class RealBilling implements BillingContract
             return [];
         }
 
-        return collect($this->http()->get(self::BASE.'/invoices', ['customer' => $team->stripe_customer_id, 'limit' => 12])->throw()->json('data', []))
+        /** @var array<int, array<string, mixed>> $invoices */
+        $invoices = $this->http()->get(self::BASE.'/invoices', ['customer' => $team->stripe_customer_id, 'limit' => 12])->throw()->json('data', []);
+
+        return collect($invoices)
             ->map(fn (array $invoice): array => [
                 'number' => $invoice['number'] ?? null,
                 'amount' => (int) ($invoice['amount_paid'] ?? $invoice['total'] ?? 0),

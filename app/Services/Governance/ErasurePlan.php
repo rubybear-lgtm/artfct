@@ -9,6 +9,9 @@ namespace App\Services\Governance;
  */
 final readonly class ErasurePlan
 {
+    /**
+     * @param  array<int, string>  $artifactIds
+     */
     private function __construct(
         public bool $refused,
         public array $artifactIds,
@@ -16,6 +19,9 @@ final readonly class ErasurePlan
         public bool $dryRun,
     ) {}
 
+    /**
+     * @param  array<int, string>  $artifactIds
+     */
     public static function proceed(array $artifactIds, bool $dryRun): self
     {
         return new self(false, $artifactIds, null, $dryRun);
