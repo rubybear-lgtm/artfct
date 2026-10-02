@@ -45,7 +45,7 @@
         "prettier-plugin-tailwindcss": "^0.6.11",
         "railway": "^3.12.0",
         "typescript-eslint": "^8.23.0",
-        "wrangler": "^4.101.0"
+        "wrangler": "^4.116.0"
     },
     "dependencies": {
         "@inertiajs/react": "^3.0.0",
