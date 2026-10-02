@@ -22,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -247,14 +248,26 @@ final class AuthorizationServerController extends Controller
 
         $authorization = Cache::pull($this->codeKey($validated['code']));
         if (! is_array($authorization)) {
+            Log::warning('oauth.token_rejected', ['reason' => 'code_unknown_or_used', 'client_id' => $validated['client_id']]);
+
             return $this->tokenError('invalid_grant', 'The authorization code is invalid or expired.');
         }
 
         if ($authorization['client_id'] !== $validated['client_id'] || $authorization['redirect_uri'] !== $validated['redirect_uri']) {
+            Log::warning('oauth.token_rejected', [
+                'reason' => 'client_or_redirect_mismatch',
+                'client_id' => $validated['client_id'],
+                'client_matches' => $authorization['client_id'] === $validated['client_id'],
+                'issued_redirect_uri' => $authorization['redirect_uri'],
+                'presented_redirect_uri' => $validated['redirect_uri'],
+            ]);
+
             return $this->tokenError('invalid_grant', 'The authorization code is not valid for this client.');
         }
 
         if (! hash_equals($authorization['code_challenge'], $this->pkceChallenge($validated['code_verifier']))) {
+            Log::warning('oauth.token_rejected', ['reason' => 'pkce_verifier_mismatch', 'client_id' => $validated['client_id']]);
+
             return $this->tokenError('invalid_grant', 'The code verifier is invalid.');
         }
 

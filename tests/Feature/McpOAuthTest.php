@@ -9,6 +9,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Illuminate\Validation\ValidationException;
@@ -555,6 +556,48 @@ test('does not mint a token with an invalid verifier', function () {
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     expect(Cache::has('oauth:authorization-code:'.hash('sha256', $query['code'])))->toBeFalse();
+});
+
+test('logs why a token request was rejected without exposing the code or verifier', function () {
+    $verifier = str_repeat('v', 64);
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Viewer]);
+    configureSigning(testSigningKey());
+
+    $parameters = oauthParameters(oauthChallenge($verifier), ['scope' => 'artifacts:read']);
+    $authorization = $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]);
+    parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+
+    Log::spy();
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => 'http://localhost:9/other',
+        'code_verifier' => $verifier,
+    ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'client_id' => 'artfct-cli',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ])->assertStatus(400);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'oauth.token_rejected'
+        && $context['reason'] === 'client_or_redirect_mismatch'
+        && $context['presented_redirect_uri'] === 'http://localhost:9/other'
+        && ! in_array($query['code'], $context, true)
+        && ! in_array($verifier, $context, true))->once();
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'oauth.token_rejected'
+        && $context['reason'] === 'code_unknown_or_used')->once();
 });
 
 test('does not mint mutation scopes for a viewer', function () {
