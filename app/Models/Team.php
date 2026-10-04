@@ -96,8 +96,17 @@ class Team extends Model
         });
 
         static::updating(function (Team $team) {
-            if ($team->isDirty('name') && ! $team->isDirty('slug')) {
-                $team->slug = static::generateUniqueTeamSlug($team->name, $team->id);
+            // The slug is the tenant key: the Worker stores every artifact under
+            // it and org tokens carry it as `org_id`. Letting a rename change it
+            // would free the old slug while the old artifacts and tokens still
+            // point at it, so another team could claim the slug and inherit
+            // both. A rename therefore changes the display name only, and no
+            // call path (`forceFill` and direct assignment included) may change
+            // an already-set slug.
+            if ($team->isDirty('slug') && ! empty($team->getOriginal('slug'))) {
+                throw new \RuntimeException(
+                    "Cannot change team [{$team->getOriginal('slug')}]'s slug to [{$team->slug}] — the slug is the tenant key and is immutable after creation."
+                );
             }
 
             // Spec 11: "`region` is set at provisioning and is immutable
