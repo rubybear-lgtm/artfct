@@ -77,6 +77,27 @@ test('CLI docs keep install, sign-in, and artifact actions on the current enviro
     expect($page)->not->toContain('https://artfct.dev/install.sh');
 });
 
+test('connection guidance leads with the hosted server and keeps the local install optional', function () {
+    $docs = file_get_contents(resource_path('js/pages/docs.tsx'));
+    $welcome = file_get_contents(resource_path('js/pages/welcome/welcome-agent-prompt.tsx'));
+    $connections = file_get_contents(resource_path('js/pages/teams/mcp-connections.tsx'));
+
+    expect(strpos($docs, 'Use the hosted server'))
+        ->toBeLessThan(strpos($docs, 'Run it locally instead (optional)'))
+        ->and(strpos($docs, 'Run it locally instead (optional)'))
+        ->toBeLessThan(strpos($docs, 'Set it up automatically'))
+        ->and($welcome)->not->toContain('artfct setup')
+        ->and($welcome)->not->toContain('install.sh')
+        ->and($connections)->toContain('Local CLI (optional)')
+        ->and($connections)->not->toContain('order-1 ')
+        ->and(strpos($connections, 'Hosted MCP</p>'))
+        ->toBeLessThan(strpos($connections, 'Local CLI (optional)</p>'))
+        ->and(strpos($docs, 'id="mcp"'))
+        ->toBeLessThan(strpos($docs, 'id="cli"'))
+        ->and($welcome)->not->toContain('https://artfct.dev/mcp')
+        ->and($welcome)->toContain('mcpEndpoint');
+});
+
 test('the docs page states the hosted rate limit and activity retention the app enforces', function () {
     $page = file_get_contents(resource_path('js/pages/docs.tsx'));
 
@@ -123,4 +144,12 @@ test('the MCP docs explain workspace terminology and first-time access', functio
         ->toContain('claude mcp get artfct')
         ->toContain('cursor-agent mcp login artfct')
         ->toContain('Hosted-client sign-in is separate from the local CLI session');
+});
+
+test('the free tool page gives the prompt the endpoint of the environment serving it', function () {
+    $this->get(route('free'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('welcome')
+            ->where('mcpEndpoint', url('/mcp')));
 });

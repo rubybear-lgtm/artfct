@@ -5,12 +5,15 @@ the connection, and recover from common authentication or policy failures.
 
 ## Choose a transport
 
-- **Local stdio**: install the `artfct` CLI and run `artfct mcp serve`. The
-  agent starts a local process; credentials stay in the user's local config.
-- **Hosted Streamable HTTP**: for staging verification, configure
+- **Hosted Streamable HTTP (primary)**: for staging verification, configure
   `https://staging.artfct.dev/mcp` in an MCP client that supports OAuth
   discovery. The client authenticates in a browser and sends bearer access
-  tokens to the hosted endpoint.
+  tokens to the hosted endpoint. Nothing is installed. This is the path the
+  product leads with (decision 2026-10-04, RUB-431) and the one the client
+  matrix below verifies.
+- **Local stdio (optional fallback)**: install the `artfct` CLI and run
+  `artfct mcp serve`. The agent starts a local process; credentials stay in the
+  user's local config. It stays supported but is no longer promoted.
 
 The production URL `https://artfct.dev/mcp` is not currently routed to the
 hosted MCP handler; a read-only probe returns 404. Do not use it for the live
@@ -517,8 +520,9 @@ read-only tool such as `list_collections` from that client:
   complete browser consent, and ask Claude to call `get_connection`.
 - **Codex CLI** — run `codex`, enable the configured `artfct` MCP server,
   complete browser consent, and request `get_connection`.
-- **Gemini CLI** — run `gemini`, enable the configured `artfct` MCP server,
-  complete browser consent, and request `get_connection`.
+- **Antigravity CLI (`agy`, formerly the Gemini CLI)** — run `agy mcp add staging-artfct <url>`,
+  add `"oauth": {}` to the entry in `~/.gemini/config/mcp_config.json`, open `/mcp`,
+  authenticate, complete browser consent, and request `get_connection`.
 - **OpenCode** — run `opencode`, enable the configured `artfct` MCP server,
   complete browser consent, and request `get_connection`.
 
@@ -573,6 +577,7 @@ not a hosted compatibility result.
 | 2026-10-02 | Codex CLI 0.159.3      | Streamable HTTP | Hosted OAuth completed against staging (`codex mcp login` with a command-line URL override, so the user's real config was untouched). Consent was approved for all six advertised scopes in the browser. `codex exec` then opened a session and `get_connection` and `list_collections` both succeeded (organization `artfct-dev`, 6 scopes, 0 collections). The first transport attempt reported `AuthRequired` once before the stored token was applied; the retry succeeded. The negotiated protocol version was not surfaced by the client. Credentials removed afterwards with `codex mcp logout`. |
 | 2026-10-02 | OpenCode 1.17.18       | Streamable HTTP | **OAuth connection works; tool call not run.** `opencode mcp auth` performs dynamic registration, consent for all six scopes is approved, and `opencode mcp list` then reports `connected`; `opencode mcp debug` reports `Connection successful (already authenticated)`. A tool call could not be made because OpenCode has no model-provider login on this machine (its own limitation, as in the headless run below). Earlier attempts the same day failed with `OAuth completion failed: The authorization code is invalid or expired` because the same authorization request was approved more than once (the code is single-use and the server rejects the second exchange); a single approval completes cleanly. Credentials removed with `opencode mcp logout`. The token endpoint now logs `oauth.token_rejected` with a non-secret reason to make such cases diagnosable. |
 | 2026-10-02 | Gemini CLI 0.42.0      | Streamable HTTP | **Not run.** With `oauth.enabled` in a trusted project `.gemini/settings.json` the server is detected and reported as `requires authentication using /mcp auth`, but the OAuth step is interactive (`/mcp auth`) and the CLI refuses headless use without a model credential (`GEMINI_API_KEY`, Vertex or Google sign-in), which this machine does not have. The headless bearer run below still shows the connection works. |
+| 2026-10-04 | Antigravity CLI `agy` 1.2.14 | Streamable HTTP | OAuth completed against staging: `agy` discovered the protected-resource metadata, registered a client dynamically, and consent was approved for all six advertised scopes. A headless `agy -p` run then called `get_connection` and received `artfct-dev` with all six scopes and `credential_source: bearer`. A first attempt failed with `Unauthorized` because every dynamic registration returned HTTP 429: `oauth/register` is limited to 10 per hour per client name and `agy` registers on every launch, several times in parallel. Staging was temporarily raised to `OAUTH_REGISTRATION_PER_HOUR=100` for the run. `agy` needs `oauth` enabled on the server entry and a `permissions.allow` rule such as `mcp(staging-artfct/get_connection)` for headless tool calls. |
 
 None of the clients above displays the protocol version it negotiated, so it is
 read from the server: the `initialize` handshake is stored on the connection
@@ -586,6 +591,7 @@ for the 2026-09-30 to 2026-10-02 runs:
 | Codex CLI 0.159.3      | `codex-mcp-client`   | `2025-06-18`        |
 | OpenCode 1.17.18       | `opencode-debug`     | `2025-11-25`        |
 | Gemini CLI 0.42.0      | not recorded         | not run (no model credential) |
+| Antigravity CLI `agy` 1.2.14 | `antigravity-client` | `2025-11-25`  |
 
 Codex negotiates the older `2025-06-18` revision, which the server still
 supports; the session worked, so there is no known incompatibility for it.

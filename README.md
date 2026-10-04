@@ -39,7 +39,9 @@ Links are encrypted and ephemeral by default: they expire 5 days after last
 access unless you set a custom TTL. Public metadata stays visible for link
 previews, while the fragment passcode is never sent to the server.
 
-## CLI
+## CLI (optional)
+
+The command line is optional. To connect an AI tool, use the hosted MCP server described below; nothing needs to be installed for that. Install the CLI only if you want to deploy from a terminal or script:
 
 Install the latest release:
 
@@ -47,7 +49,7 @@ Install the latest release:
 curl -fsSL https://artfct.dev/install.sh | sh
 ```
 
-The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent` to configure the MCP server for all detected AI agents (Cursor, Claude Desktop, Gemini, and Codex) without prompts. There is no native Windows build; use WSL.
+The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent`, which writes a local MCP server entry into the config of every detected AI agent (Cursor, Claude Desktop, Gemini, and Codex) without prompts; this is the optional local path and is being retired (RUB-432). There is no native Windows build; use WSL.
 
 If you want to skip automatic MCP configuration during installation, set `ARTFCT_INSTALL_SETUP=0`:
 
@@ -128,9 +130,18 @@ Options:
   -h, --help                   Print help
 ```
 
-### MCP Server Setup
+### Connect your AI tool
 
-You can automatically register `artfct` as a local MCP server for all detected clients:
+The recommended way is the hosted MCP server. Add `https://artfct.dev/mcp` in your AI tool's MCP
+settings and approve the browser sign-in; nothing needs to be installed. For Claude Code:
+
+```sh
+claude mcp add --transport http artfct https://artfct.dev/mcp
+```
+
+### Local MCP server (optional)
+
+If your tool cannot use the hosted server, you can automatically register `artfct` as a local MCP server for all detected clients:
 
 ```sh
 # Automatically find and configure all client config files (silent mode)

@@ -211,42 +211,12 @@ export default function McpConnections({
                     <CardHeader>
                         <CardTitle>Connect an agent</CardTitle>
                         <CardDescription>
-                            Choose local CLI mode for coding agents on this
-                            machine, or use the hosted endpoint for clients that
-                            support Streamable HTTP and OAuth.
+                            Add the hosted endpoint to any client that supports
+                            Streamable HTTP and OAuth. Nothing needs to be
+                            installed. The local CLI is optional.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-lg border p-4">
-                            <p className="font-medium">Local CLI</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Install once, add artfct to your agent, then
-                                complete browser sign-in for this workspace.
-                            </p>
-                            <code className="mt-3 block rounded-md bg-muted p-3 font-mono text-xs leading-6">
-                                curl -fsSL https://artfct.dev/install.sh | sh
-                                <br />
-                                artfct setup
-                                <br />
-                                {cliCommand}
-                            </code>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-3"
-                                onClick={() => copy(cliCommand, 'cli')}
-                            >
-                                {copied === 'cli' ? (
-                                    <Check className="size-3.5" />
-                                ) : (
-                                    <Copy className="size-3.5" />
-                                )}
-                                {copied === 'cli'
-                                    ? 'Copied'
-                                    : 'Copy sign-in command'}
-                            </Button>
-                        </div>
                         <div className="rounded-lg border p-4">
                             <p className="font-medium">Hosted MCP</p>
                             <p className="mt-1 text-sm text-muted-foreground">
@@ -283,6 +253,36 @@ export default function McpConnections({
                                     {oauthMetadataUrl}
                                 </a>
                             </p>
+                        </div>
+                        <div className="rounded-lg border p-4">
+                            <p className="font-medium">Local CLI (optional)</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Install once, add artfct to your agent, then
+                                complete browser sign-in for this workspace.
+                            </p>
+                            <code className="mt-3 block rounded-md bg-muted p-3 font-mono text-xs leading-6">
+                                curl -fsSL https://artfct.dev/install.sh | sh
+                                <br />
+                                artfct setup
+                                <br />
+                                {cliCommand}
+                            </code>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={() => copy(cliCommand, 'cli')}
+                            >
+                                {copied === 'cli' ? (
+                                    <Check className="size-3.5" />
+                                ) : (
+                                    <Copy className="size-3.5" />
+                                )}
+                                {copied === 'cli'
+                                    ? 'Copied'
+                                    : 'Copy sign-in command'}
+                            </Button>
                         </div>
                         <div className="rounded-lg border border-dashed p-4 md:col-span-2">
                             <p className="font-medium">

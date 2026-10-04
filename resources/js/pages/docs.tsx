@@ -622,9 +622,9 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
         {
             title: 'Get started',
             items: [
-                { id: 'cli', label: 'Command line' },
                 { id: 'mcp', label: 'MCP server' },
                 { id: 'skills', label: 'Skills' },
+                { id: 'cli', label: 'Command line (optional)' },
             ],
         },
         {
@@ -681,56 +681,116 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                     </header>
 
                     <Section
-                        id="cli"
-                        eyebrow="Get started"
-                        title="The Artfct command line"
-                    >
-                        <Prose>
-                            The <Code>artfct</Code> command deploys HTML files
-                            from your terminal and from pipes. Pre-built
-                            binaries are available for macOS and Linux, with no
-                            runtime required.
-                        </Prose>
-
-                        <SubHeading>Install</SubHeading>
-                        <Prose>
-                            Works on macOS (Apple Silicon and Intel) and Linux
-                            (x86_64 and ARM64). Installs to{' '}
-                            <Code>~/.local/bin</Code> by default. If your shell
-                            cannot find <Code>artfct</Code> afterwards, add that
-                            folder to your <Code>PATH</Code> and open a new
-                            terminal. There is no native Windows build; use WSL.
-                        </Prose>
-                        <Prose>
-                            This installer and the CLI examples below use the
-                            environment serving this page. Staging docs
-                            therefore keep sign-in and artifact actions on
-                            staging.
-                        </Prose>
-                        <CodeBlock code={`curl -fsSL ${installerUrl} | sh`} />
-                        <CodeBlock code={cliInstallOptions(installerUrl)} />
-
-                        <SubHeading>Usage</SubHeading>
-                        <CodeBlock code={cliUsage(hostedMcpBaseUrl)} />
-
-                        <SubHeading>Deploy options</SubHeading>
-                        <FieldTable fields={CLI_DEPLOY_FLAGS} />
-                    </Section>
-
-                    <Section
                         id="mcp"
                         eyebrow="Get started"
                         title="Use Artfct from your AI tool"
                     >
                         <Prose>
-                            Start Artfct as a local MCP server over stdio. It
-                            publishes to your workspace with the{' '}
-                            <Code>deploy_artifact</Code> tool, so Claude
-                            Desktop, Claude Code, Cursor and other
-                            MCP-compatible tools can publish HTML without
-                            leaving the session.
-                            <Code>deploy_to_canvas</Code> is deprecated; use{' '}
-                            <Code>deploy_artifact</Code> instead.
+                            Add the hosted Artfct server to your AI tool and
+                            approve the browser sign-in. There is nothing to
+                            install. Your tool can then publish HTML to your
+                            workspace with the <Code>deploy_artifact</Code>{' '}
+                            tool, so Claude Code, Codex, OpenCode and other
+                            compatible tools can publish without leaving the
+                            session. <Code>deploy_to_canvas</Code> is
+                            deprecated; use <Code>deploy_artifact</Code>{' '}
+                            instead.
+                        </Prose>
+
+                        <SubHeading>Use the hosted server</SubHeading>
+                        <Prose>
+                            For clients that support OAuth discovery, add the
+                            endpoint below. The client opens browser consent and
+                            requests only the scopes it needs; no bearer token
+                            needs to be copied into configuration. These URLs
+                            point to the environment serving this page; keep
+                            each client on the same environment. See the runbook
+                            for staging verification steps. The public{' '}
+                            <Link href={terms.url()}>terms</Link> and{' '}
+                            <Link href={privacy.url()}>privacy policy</Link>{' '}
+                            explain the service and its data handling.
+                        </Prose>
+                        <CodeBlock code={hostedMcpConfiguration} />
+                        <Prose>
+                            In Claude Code, add it with the command below, then
+                            run <Code>/mcp</Code> inside Claude Code to sign in.
+                            In Cursor, add the same address to{' '}
+                            <Code>~/.cursor/mcp.json</Code> (or{' '}
+                            <Code>.cursor/mcp.json</Code> in a project) and
+                            approve the browser consent when it opens.
+                        </Prose>
+                        <CodeBlock
+                            code={`claude mcp add --transport http artfct ${hostedMcpUrl}`}
+                        />
+                        <CodeBlock code={hostedMcpJsonConfig} />
+
+                        <SubHeading>Scopes</SubHeading>
+                        <CodeBlock code={MCP_SCOPES} />
+                        <Prose>
+                            If a connection expires or is revoked, sign in again
+                            for the intended workspace, then run{' '}
+                            <Code>artfct doctor</Code> to verify recovery.
+                            Workspace administrators can revoke hosted
+                            connections in your workspace settings under{' '}
+                            <Code>MCP connections</Code>.{' '}
+                            <Code>artfct logout</Code> asks the server to end
+                            your saved sign-in and then removes your local
+                            credentials; if the server cannot be reached it
+                            warns you and still removes them.
+                        </Prose>
+                        <Prose>
+                            Hosted-client sign-in is separate from the local CLI
+                            session. In Claude Code, open <Code>/mcp</Code>,
+                            choose <Code>artfct</Code>, and select{' '}
+                            <Code>Reconnect</Code> to repeat browser sign-in;
+                            check the result with{' '}
+                            <Code>claude mcp get artfct</Code>. In Cursor, use
+                            its MCP panel to reconnect, or run{' '}
+                            <Code>cursor-agent mcp login artfct</Code> and{' '}
+                            <Code>cursor-agent mcp list</Code> in Cursor CLI.
+                            These client steps repair hosted OAuth;{' '}
+                            <Code>artfct login</Code> signs in the local CLI.
+                            See the{' '}
+                            <a
+                                href="https://code.claude.com/docs/en/mcp"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Claude Code MCP guide
+                            </a>{' '}
+                            and{' '}
+                            <a
+                                href="https://docs.cursor.com/en/cli/reference/parameters"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Cursor CLI reference
+                            </a>{' '}
+                            for client details.
+                        </Prose>
+
+                        <SubHeading>Limits and data kept</SubHeading>
+                        <Prose>
+                            Hosted requests are limited to 120 per minute for
+                            each workspace and, separately, 120 per minute for
+                            each connection. A limited request returns status{' '}
+                            <Code>429</Code> with a <Code>Retry-After</Code>{' '}
+                            header; wait that long before trying again. Records
+                            of MCP activity are kept for 90 days by default and
+                            then removed automatically. Workspace administrators
+                            can remove a connection at any time in workspace
+                            settings under <Code>MCP connections</Code>.
+                        </Prose>
+
+                        <SubHeading>
+                            Run it locally instead (optional)
+                        </SubHeading>
+                        <Prose>
+                            If your tool cannot use the hosted server, install
+                            the
+                            <Code>artfct</Code> command and start it as a local
+                            MCP server over stdio. It uses the same tools and
+                            the same workspace as the hosted server.
                         </Prose>
                         <CodeBlock
                             code={`ARTFCT_API_BASE_URL=${hostedMcpBaseUrl} artfct mcp serve`}
@@ -819,91 +879,6 @@ Hosted MCP health
                             to run <Code>artfct login --oauth</Code>.
                         </Prose>
 
-                        <SubHeading>Use the hosted server</SubHeading>
-                        <Prose>
-                            For clients that support OAuth discovery, add the
-                            endpoint below. The client opens browser consent and
-                            requests only the scopes it needs; no bearer token
-                            needs to be copied into configuration. These URLs
-                            point to the environment serving this page; keep
-                            each client on the same environment. See the runbook
-                            for staging verification steps. The public{' '}
-                            <Link href={terms.url()}>terms</Link> and{' '}
-                            <Link href={privacy.url()}>privacy policy</Link>{' '}
-                            explain the service and its data handling.
-                        </Prose>
-                        <CodeBlock code={hostedMcpConfiguration} />
-                        <Prose>
-                            In Claude Code, add it with the command below, then
-                            run <Code>/mcp</Code> inside Claude Code to sign in.
-                            In Cursor, add the same address to{' '}
-                            <Code>~/.cursor/mcp.json</Code> (or{' '}
-                            <Code>.cursor/mcp.json</Code> in a project) and
-                            approve the browser consent when it opens.
-                        </Prose>
-                        <CodeBlock
-                            code={`claude mcp add --transport http artfct ${hostedMcpUrl}`}
-                        />
-                        <CodeBlock code={hostedMcpJsonConfig} />
-
-                        <SubHeading>Scopes</SubHeading>
-                        <CodeBlock code={MCP_SCOPES} />
-                        <Prose>
-                            If a connection expires or is revoked, sign in again
-                            for the intended workspace, then run{' '}
-                            <Code>artfct doctor</Code> to verify recovery.
-                            Workspace administrators can revoke hosted
-                            connections in your workspace settings under{' '}
-                            <Code>MCP connections</Code>.{' '}
-                            <Code>artfct logout</Code> asks the server to end
-                            your saved sign-in and then removes your local
-                            credentials; if the server cannot be reached it
-                            warns you and still removes them.
-                        </Prose>
-                        <Prose>
-                            Hosted-client sign-in is separate from the local CLI
-                            session. In Claude Code, open <Code>/mcp</Code>,
-                            choose <Code>artfct</Code>, and select{' '}
-                            <Code>Reconnect</Code> to repeat browser sign-in;
-                            check the result with{' '}
-                            <Code>claude mcp get artfct</Code>. In Cursor, use
-                            its MCP panel to reconnect, or run{' '}
-                            <Code>cursor-agent mcp login artfct</Code> and{' '}
-                            <Code>cursor-agent mcp list</Code> in Cursor CLI.
-                            These client steps repair hosted OAuth;{' '}
-                            <Code>artfct login</Code> signs in the local CLI.
-                            See the{' '}
-                            <a
-                                href="https://code.claude.com/docs/en/mcp"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Claude Code MCP guide
-                            </a>{' '}
-                            and{' '}
-                            <a
-                                href="https://docs.cursor.com/en/cli/reference/parameters"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Cursor CLI reference
-                            </a>{' '}
-                            for client details.
-                        </Prose>
-
-                        <SubHeading>Limits and data kept</SubHeading>
-                        <Prose>
-                            Hosted requests are limited to 120 per minute for
-                            each workspace and, separately, 120 per minute for
-                            each connection. A limited request returns status{' '}
-                            <Code>429</Code> with a <Code>Retry-After</Code>{' '}
-                            header; wait that long before trying again. Records
-                            of MCP activity are kept for 90 days by default and
-                            then removed automatically. Workspace administrators
-                            can remove a connection at any time in workspace
-                            settings under <Code>MCP connections</Code>.
-                        </Prose>
-
                         <SubHeading>Remove it</SubHeading>
                         <Prose>
                             To uninstall the binary and remove the MCP
@@ -956,6 +931,43 @@ Hosted MCP health
                             </a>
                             .
                         </Prose>
+                    </Section>
+
+                    <Section
+                        id="cli"
+                        eyebrow="Get started"
+                        title="The Artfct command line (optional)"
+                    >
+                        <Prose>
+                            The <Code>artfct</Code> command deploys HTML files
+                            from your terminal and from pipes. Pre-built
+                            binaries are available for macOS and Linux, with no
+                            runtime required.
+                        </Prose>
+
+                        <SubHeading>Install</SubHeading>
+                        <Prose>
+                            Works on macOS (Apple Silicon and Intel) and Linux
+                            (x86_64 and ARM64). Installs to{' '}
+                            <Code>~/.local/bin</Code> by default. If your shell
+                            cannot find <Code>artfct</Code> afterwards, add that
+                            folder to your <Code>PATH</Code> and open a new
+                            terminal. There is no native Windows build; use WSL.
+                        </Prose>
+                        <Prose>
+                            This installer and the CLI examples below use the
+                            environment serving this page. Staging docs
+                            therefore keep sign-in and artifact actions on
+                            staging.
+                        </Prose>
+                        <CodeBlock code={`curl -fsSL ${installerUrl} | sh`} />
+                        <CodeBlock code={cliInstallOptions(installerUrl)} />
+
+                        <SubHeading>Usage</SubHeading>
+                        <CodeBlock code={cliUsage(hostedMcpBaseUrl)} />
+
+                        <SubHeading>Deploy options</SubHeading>
+                        <FieldTable fields={CLI_DEPLOY_FLAGS} />
                     </Section>
 
                     {/* Generated directly from openapi/artfct.yaml. */}

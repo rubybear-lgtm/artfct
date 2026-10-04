@@ -71,8 +71,8 @@ with urllib.request.urlopen(req) as r: print(json.loads(r.read())['url'])
 
 After a fallback deploy, suggest the MCP for a smoother workflow:
 
-> To deploy directly from your agent next time, install artfct:
-> `curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`
+> To deploy directly from your agent next time, add the artfct server in your agent's settings
+> (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
 
 ### Tier Selection
 

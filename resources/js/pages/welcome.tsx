@@ -79,9 +79,10 @@ const FAQ_SCHEMA = {
 };
 
 export default function Welcome() {
-    const { auth, currentTeam } = usePage<{
+    const { auth, currentTeam, mcpEndpoint } = usePage<{
         auth: { user: { id: number } | null };
         currentTeam: { slug: string } | null;
+        mcpEndpoint: string;
     }>().props;
     const controller = useWelcomeController();
     const isAuthenticated = Boolean(auth?.user && currentTeam);
@@ -178,7 +179,7 @@ export default function Welcome() {
                             onDeleteLink={controller.handleDeleteLink}
                         />
                     )}
-                    <WelcomeCliCallout />
+                    <WelcomeCliCallout mcpEndpoint={mcpEndpoint} />
                     <WelcomeInformation />
                     <WelcomeFaq />
                     <WelcomeFooter

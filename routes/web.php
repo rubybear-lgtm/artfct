@@ -40,12 +40,13 @@ Route::inertia('/', 'landing', [
     ],
 ])->name('home');
 
-Route::inertia('/free', 'welcome', [
+Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [
         'title' => 'artfct — share HTML & markdown instantly',
         'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Encrypted by default.',
     ],
-])->name('free');
+    'mcpEndpoint' => url('/mcp'),
+]))->name('free');
 
 Route::get('/docs', DocsController::class)->name('docs');
 

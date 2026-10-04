@@ -415,3 +415,7 @@ Assume a greenfield rewrite. No `/v2` courtesy endpoint, no compatibility shims,
 3. Provenance struct + both builders, provenance **required** on the request.
 4. Replace `CreateArtifactRequest` with the tagged two-mode shape, in place at `/v1`.
 5. Bundle/manifest population — defer to phase 3, but the discriminant lands now.
+
+### Decision (2026-10-04): the hosted MCP server is the primary connection path
+
+Users connect their AI tools to the hosted server (Streamable HTTP with OAuth, no install). All five clients in the compatibility matrix (RUB-383) were verified on that path. The local stdio server (`artfct mcp serve`) and `artfct setup` stay in the code as an optional fallback and are no longer promoted in the landing page, docs, skills or README. Removing them is a separate decision that needs explicit approval. Tracked in RUB-431.

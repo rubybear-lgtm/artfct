@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export function WelcomeAgentPrompt() {
+export function WelcomeAgentPrompt({ mcpEndpoint }: { mcpEndpoint: string }) {
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
     const skillInstall = 'npx skills add rubybear-lgtm/artfct@artfct';
-    const cliInstall = 'curl -fsSL https://artfct.dev/install.sh | sh';
+    const connectionUrl = mcpEndpoint;
 
     const toggle = async (): Promise<void> => {
         const nextState = !expanded;
@@ -13,7 +13,7 @@ export function WelcomeAgentPrompt() {
 
         if (nextState) {
             await navigator.clipboard.writeText(
-                `Please add the artfct skill to guide your deployment workflows:\n${skillInstall}\n\nNote: The MCP server is not required to use the skill, but is highly encouraged for native agent tool calls:\n${cliInstall} && artfct setup`,
+                `Please add the artfct skill to guide your deployment workflows:\n${skillInstall}\n\nTo let you deploy to artfct directly, add this connection URL in your settings and approve the sign-in in my browser:\n${connectionUrl}`,
             );
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -43,16 +43,16 @@ export function WelcomeAgentPrompt() {
                 <div className="fade-in welcome-agent-details">
                     <span className="welcome-agent-description">
                         install the artfct skill to give your agent built-in
-                        guidance. MCP is not a requirement to the skills (they
-                        fall back to API deploys), but it is highly encouraged
-                        for a native tool call:
+                        guidance (optional). to let it deploy directly, add the
+                        connection url in its settings and approve the sign-in
+                        in your browser. connecting needs no install:
                     </span>
                     <pre className="welcome-agent-command">
-                        {`# 1. install the skill (MCP optional but encouraged):
+                        {`# 1. (optional) add the skill:
 ${skillInstall}
 
-# 2. (optional but highly encouraged) setup MCP for native tool calls:
-${cliInstall} && artfct setup`}
+# 2. connect your agent (add this url, then approve the sign-in):
+${connectionUrl}`}
                     </pre>
                 </div>
             )}
