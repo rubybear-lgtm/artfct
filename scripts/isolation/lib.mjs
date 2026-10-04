@@ -43,6 +43,36 @@ export function expectStatus(name, response, allowed) {
     );
 }
 
+const REDIRECT_URI = 'http://127.0.0.1:0/callback';
+let registered = null;
+
+/**
+ * The OAuth client every consent in this suite uses. The server has no built-in
+ * client, so it is registered dynamically (RFC 7591); a repeat registration of
+ * identical metadata returns the same client (RUB-433).
+ */
+export function clientId() {
+    registered ??= fetch(`${laravel}/oauth/register`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({
+            client_name: 'artfct isolation suite',
+            redirect_uris: [REDIRECT_URI],
+        }),
+    }).then(async (response) => {
+        if (response.status !== 201) {
+            throw new Error(`client registration answered ${response.status}`);
+        }
+
+        return (await response.json()).client_id;
+    });
+
+    return registered;
+}
+
 /** Retry a request once after the limiter's Retry-After if it answered 429. */
 export async function retry429(send) {
     const first = await send();
@@ -190,10 +220,11 @@ export class Session {
         const challenge = createHash('sha256')
             .update(verifier)
             .digest('base64url');
-        const redirectUri = 'http://127.0.0.1:0/callback';
+        const redirectUri = REDIRECT_URI;
+        const client = await clientId();
         const parameters = {
             response_type: 'code',
-            client_id: 'artfct-cli',
+            client_id: client,
             redirect_uri: redirectUri,
             scope,
             state: randomBytes(8).toString('hex'),
@@ -258,7 +289,7 @@ export class Session {
                 body: JSON.stringify({
                     grant_type: 'authorization_code',
                     code,
-                    client_id: 'artfct-cli',
+                    client_id: client,
                     redirect_uri: redirectUri,
                     code_verifier: verifier,
                 }),

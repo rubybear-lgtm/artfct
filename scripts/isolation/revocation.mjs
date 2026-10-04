@@ -6,6 +6,7 @@ import {
     Session,
     authed,
     check,
+    clientId,
     deploy,
     eventually,
     expectStatus,
@@ -26,7 +27,7 @@ async function refreshAttempt(refreshToken) {
         body: JSON.stringify({
             grant_type: 'refresh_token',
             refresh_token: refreshToken,
-            client_id: 'artfct-cli',
+            client_id: await clientId(),
         }),
     });
 }
