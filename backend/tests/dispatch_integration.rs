@@ -2,7 +2,7 @@
 //!
 //! Every check this file describes needs a live Cloudflare Workers for
 //! Platforms dispatch namespace: a paid tier not enabled in this
-//! environment. Unlike `mcp-server/tests/storage_integration.rs` (D1/R2 via
+//! environment. Unlike `storage_integration.rs` (D1/R2 via
 //! a local `wrangler dev`), there is no local equivalent for a dispatch
 //! namespace, per-dispatch CPU limits, or Logpush, so there is no
 //! environment variable that could gate a real test here the way

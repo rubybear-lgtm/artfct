@@ -135,11 +135,9 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
 });
 
 /**
- * The artifact view-link contract, asserted on the hosted server against the
- * same fixture `mcp-server/src/mcp.rs` asserts the local stdio server against
- * (`view_url_follows_the_shared_cross_server_contract`). One file, two
- * servers: a change to the field name or to which link a tier gets fails both,
- * instead of letting one side drift while its own tests keep passing.
+ * The artifact view-link contract, asserted on the hosted server against a
+ * checked-in fixture, so a change to the field name or to which link a tier
+ * gets fails here instead of drifting silently.
  */
 test('the hosted server keeps the shared cross-server view_url contract', function () {
     $contract = json_decode(
@@ -188,4 +186,18 @@ test('public permanent links keep relative bundle assets under the artifact path
     expect($published)->toBe("https://worker.test/p/{$id}/")
         ->and($fallback)->toBe("https://artfct.dev/p/{$id}/")
         ->and(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}");
+});
+
+test('deploy_artifact advertises bundle input and does not require html', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+
+    $schema = $server->createContext()->tools()
+        ->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')
+        ->toArray()['inputSchema'];
+
+    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint'])
+        ->and($schema['properties']['files']['type'])->toContain('array')
+        ->and($schema['properties']['files']['items']['required'])->toBe(['path', 'content'])
+        ->and($schema['required'] ?? [])->not->toContain('html');
 });

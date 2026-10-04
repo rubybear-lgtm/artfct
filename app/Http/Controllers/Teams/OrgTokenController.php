@@ -45,7 +45,7 @@ class OrgTokenController extends Controller
     }
 
     /**
-     * Mint a new org token (spec 07 `orgToken`) for the CLI/MCP server/CI.
+     * Mint a new org token (spec 07 `orgToken`) for the REST API and CI.
      * The raw JWT is returned exactly once, here, in this response — the
      * `org_tokens` row stores only `jti` and a display-only `last_four`
      * (spec 07: "token creation returns value once only").

@@ -69,7 +69,7 @@ HAS_FRONTEND=false
 
 for FILE in "${STAGED_FILES[@]}"; do
     case "$FILE" in
-        Cargo.toml|Cargo.lock|backend/*|mcp-server/*)
+        Cargo.toml|Cargo.lock|backend/*)
             HAS_RUST=true
             ;;
     esac
@@ -96,16 +96,15 @@ if [ "$HAS_RUST" = true ]; then
         exit 1
     fi
 
-    echo "🦀 Running Rust and CLI pre-commit checks..."
+    echo "🦀 Running Rust pre-commit checks..."
 
     cargo fmt --all -- --check
     cargo check --workspace --locked
     cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
     cargo clippy --workspace --all-targets --locked -- -D warnings
-    cargo test -p artfct --locked
-    cargo run -p artfct --locked -- doctor >/dev/null
+    cargo test -p artfct-backend --locked
 
-    echo "✅ Rust and CLI checks passed."
+    echo "✅ Rust checks passed."
 fi
 
 if [ "$HAS_PHP" = true ]; then

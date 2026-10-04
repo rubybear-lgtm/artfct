@@ -8,89 +8,12 @@ import { login, privacy, terms } from '@/routes';
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
 
-// ── CLI content ───────────────────────────────────────────────────────────────
-function cliInstallOptions(installerUrl: string): string {
-    return `# install a specific version
-curl -fsSL ${installerUrl} | ARTFCT_INSTALL_VERSION=v0.1.0 sh
-
-# install to a custom directory
-curl -fsSL ${installerUrl} | ARTFCT_INSTALL_DIR="$HOME/bin" sh`;
-}
-
-function cliUsage(apiBaseUrl: string): string {
-    return `# Keep CLI requests in the same environment as this docs page
-export ARTFCT_API_BASE_URL=${apiBaseUrl}
-
-# deploy a file — prints the URL
-artfct deploy page.html
-
-# deploy from stdin
-cat page.html | artfct deploy --stdin
-echo '<h1>hello</h1>' | artfct deploy --stdin
-
-# delete an artifact by ID
-artfct delete bdf7cd9dd9
-
-# delete an artifact by preview URL
-artfct delete ${apiBaseUrl}/p/bdf7cd9dd9
-
-# check connectivity
-artfct doctor`;
-}
-
-function cliAuth(apiBaseUrl: string): string {
-    return `# Keep sign-in on the environment serving this page
-export ARTFCT_API_BASE_URL=${apiBaseUrl}
-
-# browser sign-in with PKCE
-artfct login --oauth
-
-# sign in and pin a workspace
-artfct login --oauth --organization acme
-
-# inspect available workspaces
-artfct organizations
-
-# check credentials, workspace context, and MCP health
-artfct doctor
-
-# revoke the remote session and remove local credentials
-artfct logout`;
-}
-
 const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
 artifacts:deploy     deploy artifacts to the workspace
 artifacts:delete     delete artifacts when policy permits
 collections:read     list workspace collections
 collections:write    create collections and add artifacts
 usage:read           read customer-safe usage and quota totals`;
-
-const CLI_DEPLOY_FLAGS = [
-    {
-        name: 'FILE',
-        type: 'path',
-        req: false,
-        note: 'Path to the HTML file to deploy.',
-    },
-    {
-        name: '--stdin',
-        type: 'flag',
-        req: false,
-        note: 'Read HTML from stdin instead of a file.',
-    },
-    {
-        name: '--tier',
-        type: 'string',
-        req: false,
-        note: 'public · secure · ephemeral · permanent  (default: ephemeral; permanent needs an organization token)',
-    },
-    {
-        name: '--ttl-minutes',
-        type: 'integer',
-        req: false,
-        note: 'Minutes until expiry after last access. Default: 7200 (5 days). Max: 525600 (365 days).',
-    },
-] as const;
 
 type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
@@ -604,7 +527,6 @@ function Sidebar({
 export default function Docs({ contract }: DocsProps) {
     const hostedMcpBaseUrl = contract.servers[0].url.replace(/\/$/, '');
     const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
-    const installerUrl = `${hostedMcpBaseUrl}/install.sh`;
     const hostedMcpConfiguration = `MCP endpoint:
 ${hostedMcpUrl}
 
@@ -624,7 +546,6 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
             items: [
                 { id: 'mcp', label: 'MCP server' },
                 { id: 'skills', label: 'Skills' },
-                { id: 'cli', label: 'Command line (optional)' },
             ],
         },
         {
@@ -648,7 +569,7 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
             <Head title="Documentation">
                 <meta
                     name="description"
-                    content="Connect your AI tools to Artfct and build on it: the MCP server, skills, REST API and optional command line."
+                    content="Connect your AI tools to Artfct and build on it: the MCP server, skills and REST API."
                 />
             </Head>
 
@@ -667,8 +588,8 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                         </h1>
                         <p className="mt-5 max-w-[52ch] text-lg text-muted-foreground">
                             Connect your AI tools, and share and read artifacts
-                            from your own code: the MCP server, skills, the REST
-                            API and the optional command line.
+                            from your own code: the MCP server, skills and the
+                            REST API.
                         </p>
                         <details className="mt-8 rounded-[10px] border border-border bg-paper px-4 py-3 text-sm lg:hidden">
                             <summary className="cursor-pointer font-semibold">
@@ -728,28 +649,19 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                         <CodeBlock code={MCP_SCOPES} />
                         <Prose>
                             If a connection expires or is revoked, sign in again
-                            for the intended workspace, then run{' '}
-                            <Code>artfct doctor</Code> to verify recovery.
-                            Workspace administrators can revoke hosted
-                            connections in your workspace settings under{' '}
-                            <Code>MCP connections</Code>.{' '}
-                            <Code>artfct logout</Code> asks the server to end
-                            your saved sign-in and then removes your local
-                            credentials; if the server cannot be reached it
-                            warns you and still removes them.
+                            for the intended workspace. Workspace administrators
+                            can revoke hosted connections in your workspace
+                            settings under <Code>MCP connections</Code>.
                         </Prose>
                         <Prose>
-                            Hosted-client sign-in is separate from the local CLI
-                            session. In Claude Code, open <Code>/mcp</Code>,
-                            choose <Code>artfct</Code>, and select{' '}
+                            In Claude Code, open <Code>/mcp</Code>, choose{' '}
+                            <Code>artfct</Code>, and select{' '}
                             <Code>Reconnect</Code> to repeat browser sign-in;
                             check the result with{' '}
                             <Code>claude mcp get artfct</Code>. In Cursor, use
                             its MCP panel to reconnect, or run{' '}
                             <Code>cursor-agent mcp login artfct</Code> and{' '}
                             <Code>cursor-agent mcp list</Code> in Cursor CLI.
-                            These client steps repair hosted OAuth;{' '}
-                            <Code>artfct login</Code> signs in the local CLI.
                             See the{' '}
                             <a
                                 href="https://code.claude.com/docs/en/mcp"
@@ -782,111 +694,22 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                             settings under <Code>MCP connections</Code>.
                         </Prose>
 
-                        <SubHeading>
-                            Run it locally instead (optional)
-                        </SubHeading>
-                        <Prose>
-                            If your tool cannot use the hosted server, install
-                            the
-                            <Code>artfct</Code> command and start it as a local
-                            MCP server over stdio. It uses the same tools and
-                            the same workspace as the hosted server.
-                        </Prose>
-                        <CodeBlock
-                            code={`ARTFCT_API_BASE_URL=${hostedMcpBaseUrl} artfct mcp serve`}
-                        />
-
-                        <SubHeading>Set it up automatically</SubHeading>
-                        <Prose>
-                            To configure the MCP server for every detected tool
-                            (Cursor, Claude Desktop, Gemini, Codex and more),
-                            run:
-                        </Prose>
-                        <CodeBlock code="artfct setup" />
-                        <Prose>
-                            Pass <Code>--silent</Code> to skip the prompts, or{' '}
-                            <Code>--list</Code> to preview which configuration
-                            files will change.
-                        </Prose>
-
-                        <SubHeading>Set it up by hand</SubHeading>
-                        <Prose>
-                            Add this block to your client&apos;s settings file.
-                            Use <Code>cursor</Code> or <Code>claude-code</Code>{' '}
-                            (or your tool&apos;s name) after <Code>--host</Code>{' '}
-                            so Artfct knows which tool is calling:
-                        </Prose>
-                        <CodeBlock
-                            code={`{
-  "mcpServers": {
-    "artfct": {
-      "command": "artfct",
-      "args": ["mcp", "serve", "--host", "cursor"]
-    }
-  }
-}`}
-                        />
-
-                        <SubHeading>Sign in from the command line</SubHeading>
-                        <Prose>
-                            Local stdio and hosted Streamable HTTP use the same
-                            organization-scoped tool catalog. Authenticate in a
-                            browser with OAuth and PKCE. Tokens are stored in
-                            the platform credential store when available; the
-                            CLI never writes them to agent config.
-                        </Prose>
+                        <SubHeading>Workspaces and sign-in</SubHeading>
                         <Prose>
                             In the web app, an organization is called a team;
-                            the CLI and OAuth protocol also call it a workspace.
-                            They mean the same boundary for members, artifacts,
+                            the OAuth protocol also calls it a workspace. They
+                            mean the same boundary for members, artifacts,
                             collections, and access. Sign in at{' '}
                             <Link href={login.url()}>sign-in page</Link>. If you
                             have not joined a team, Artfct asks you to create
                             your first one. To join an existing team, ask its
                             administrator to invite the email address you use to
                             sign in. Hosted MCP uses browser sign-in, so you do
-                            not need to create an API token. For automation, an
-                            administrator can create one in team settings under{' '}
-                            <Code>API tokens</Code>; pass it as{' '}
-                            <Code>ARTFCT_ORG_TOKEN</Code> through your secret
+                            not need to create an API token. For automation
+                            against the REST API, an administrator can create
+                            one in team settings under <Code>API tokens</Code>;
+                            send it as a bearer token and keep it in your secret
                             manager.
-                        </Prose>
-                        <CodeBlock code={cliAuth(hostedMcpBaseUrl)} />
-                        <Prose>
-                            <Code>doctor</Code> reports the selected
-                            organization, available organizations and hosted MCP
-                            initialize and tool health without printing
-                            credentials. Example of a healthy result (your
-                            organization and numbers will differ):
-                        </Prose>
-                        <CodeBlock
-                            code={`Diagnostics
-  Saved credential    configured (value hidden)
-
-Organization context
-  Selected: acme · admin
-  Available organizations: acme
-
-Hosted MCP health
-  Connected: artfct · protocol 2025-11-25 · 10 tools`}
-                        />
-                        <Prose>
-                            A saved sign-in that is missing or invalid shows as{' '}
-                            <Code>not configured</Code> or <Code>invalid</Code>{' '}
-                            with <Code>run `artfct login`</Code> next to it. An
-                            expired or revoked sign-in shows{' '}
-                            <Code>MCP health check failed</Code> and tells you
-                            to run <Code>artfct login --oauth</Code>.
-                        </Prose>
-
-                        <SubHeading>Remove it</SubHeading>
-                        <Prose>
-                            To uninstall the binary and remove the MCP
-                            configuration from every supported client, run:
-                        </Prose>
-                        <CodeBlock code="artfct uninstall" />
-                        <Prose>
-                            Pass <Code>--silent</Code> to skip the prompts.
                         </Prose>
                     </Section>
 
@@ -931,43 +754,6 @@ Hosted MCP health
                             </a>
                             .
                         </Prose>
-                    </Section>
-
-                    <Section
-                        id="cli"
-                        eyebrow="Get started"
-                        title="The Artfct command line (optional)"
-                    >
-                        <Prose>
-                            The <Code>artfct</Code> command deploys HTML files
-                            from your terminal and from pipes. Pre-built
-                            binaries are available for macOS and Linux, with no
-                            runtime required.
-                        </Prose>
-
-                        <SubHeading>Install</SubHeading>
-                        <Prose>
-                            Works on macOS (Apple Silicon and Intel) and Linux
-                            (x86_64 and ARM64). Installs to{' '}
-                            <Code>~/.local/bin</Code> by default. If your shell
-                            cannot find <Code>artfct</Code> afterwards, add that
-                            folder to your <Code>PATH</Code> and open a new
-                            terminal. There is no native Windows build; use WSL.
-                        </Prose>
-                        <Prose>
-                            This installer and the CLI examples below use the
-                            environment serving this page. Staging docs
-                            therefore keep sign-in and artifact actions on
-                            staging.
-                        </Prose>
-                        <CodeBlock code={`curl -fsSL ${installerUrl} | sh`} />
-                        <CodeBlock code={cliInstallOptions(installerUrl)} />
-
-                        <SubHeading>Usage</SubHeading>
-                        <CodeBlock code={cliUsage(hostedMcpBaseUrl)} />
-
-                        <SubHeading>Deploy options</SubHeading>
-                        <FieldTable fields={CLI_DEPLOY_FLAGS} />
                     </Section>
 
                     {/* Generated directly from openapi/artfct.yaml. */}

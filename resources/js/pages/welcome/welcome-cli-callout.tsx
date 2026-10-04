@@ -9,8 +9,7 @@ export function WelcomeCliCallout({ mcpEndpoint }: { mcpEndpoint: string }) {
             <span className="welcome-cli-heading">connect your ai agent</span>
             <span className="welcome-cli-description">
                 add the artfct connection url to your agent, or add the artfct
-                skills to guide its deployment workflows. the command line is
-                optional.
+                skills to guide its deployment workflows.
             </span>
 
             <div className="welcome-cli-options">

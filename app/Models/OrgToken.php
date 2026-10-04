@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * An org-scoped API credential for the CLI, MCP server, or CI (spec 07's
+ * An org-scoped API credential for the REST API or CI (spec 07's
  * `orgToken`). The raw JWT is minted once at creation time and never
  * persisted — this row only ever stores `jti` (the denylist key), a
  * display-only `last_four`, and the claims that were signed into the

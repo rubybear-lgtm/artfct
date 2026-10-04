@@ -1,28 +1,26 @@
-# MCP and CLI launch runbook
+# MCP launch runbook
 
 This runbook covers the supported ways to connect an AI agent to artfct, verify
 the connection, and recover from common authentication or policy failures.
 
 ## Choose a transport
 
-- **Hosted Streamable HTTP (primary)**: for staging verification, configure
-  `https://staging.artfct.dev/mcp` in an MCP client that supports OAuth
-  discovery. The client authenticates in a browser and sends bearer access
-  tokens to the hosted endpoint. Nothing is installed. This is the path the
-  product leads with (decision 2026-10-04, RUB-431) and the one the client
-  matrix below verifies.
-- **Local stdio (optional fallback)**: install the `artfct` CLI and run
-  `artfct mcp serve`. The agent starts a local process; credentials stay in the
-  user's local config. It stays supported but is no longer promoted.
+- **Hosted Streamable HTTP (the only transport)**: for staging verification,
+  configure `https://staging.artfct.dev/mcp` in an MCP client that supports
+  OAuth discovery. The client authenticates in a browser and sends bearer
+  access tokens to the hosted endpoint. Nothing is installed. This is the path
+  the product leads with (decision 2026-10-04, RUB-431) and the one the client
+  matrix below verifies. The local `artfct` CLI and its stdio server were
+  retired (RUB-432); an AI tool that cannot use a hosted server is not
+  supported.
 
 The production URL `https://artfct.dev/mcp` is not currently routed to the
 hosted MCP handler; a read-only probe returns 404. Do not use it for the live
 client matrix until the production route is deliberately deployed and verified.
 
-Both transports expose the same versioned tool catalog and organization-scoped
-behavior. Hosted sessions are registered in the workspace's MCP connections
-view; local sessions are identified by their client metadata and connection
-registration calls. Hosted MCP is stateless between HTTP requests: the
+The hosted endpoint exposes a versioned tool catalog with organization-scoped
+behavior. Sessions are registered in the workspace's MCP connections view.
+Hosted MCP is stateless between HTTP requests: the
 `MCP-Session-Id` header is used for correlation and telemetry, never for
 authorization. Every request resolves its organization from the bearer
 credential, so copying a session ID cannot cross tenant boundaries.
@@ -30,38 +28,15 @@ The endpoint intentionally supports POST for JSON-RPC messages only; GET and
 DELETE return `405 Allow: POST` because this deployment does not maintain a
 server-side event stream or session store.
 
-## Local setup
+## Connecting a client
 
-```sh
-curl -fsSL https://staging.artfct.dev/install.sh | sh
-export ARTFCT_API_BASE_URL=https://staging.artfct.dev
-artfct setup
-```
+Add the hosted URL (`https://staging.artfct.dev/mcp` for staging) to the AI
+tool and complete OAuth in the browser. The tool lists the artfct tools after
+the consent screen. Nothing is installed and no token is pasted anywhere.
 
-For a staging-only session, point CLI authentication and API calls at staging
-before signing in. Without this override, the CLI defaults to the production
-API base URL:
-
-```sh
-export ARTFCT_API_BASE_URL=https://staging.artfct.dev
-artfct login --oauth --organization <organization-slug>
-artfct doctor
-```
-
-`artfct setup --list` previews detected agent configuration files. Setup keeps
-timestamped backups of valid files and never overwrites malformed JSON or TOML
-without preserving a recovery copy. `artfct doctor` reports configuration,
-credential state, selected organization, available organizations, and hosted
-MCP initialize/tool discovery health without printing tokens.
-
-For CI or other non-interactive environments, use an explicitly provided
-`ARTFCT_ORG_TOKEN`. Environment credentials take precedence over the saved
-interactive session and should be injected through the CI secret store.
-
-Interactive credentials are stored in the macOS Keychain or Linux Secret
-Service when available. The CLI falls back to a 0600 file only when the
-platform store is unavailable, and `artfct doctor` reports the credential
-state without printing its value.
+For CI or other non-interactive environments, mint an organization token on
+**Settings → Tokens** and inject it through the CI secret store. Organization
+tokens authenticate REST API calls; they are not an MCP connection.
 
 ## OAuth and organization context
 
@@ -92,12 +67,7 @@ Supported scopes:
 
 Request the smallest set needed. Viewer accounts cannot receive mutation
 scopes; collection mutations additionally require `collections:write` and the
-workspace policy. The CLI can show the authenticated context with:
-
-```sh
-artfct organizations
-artfct login --oauth --organization <organization-slug>
-```
+workspace policy. The `get_connection` tool shows the authenticated context.
 
 ## Revocation and recovery
 
@@ -114,23 +84,12 @@ is in [spec 07](specs/07-auth-seam.md). If an environment's Worker or KV is
 unavailable, treat the window as unverified and follow the incident runbook
 rather than assuming immediate edge rejection.
 
-A revoked or expired local session should be repaired
-with:
-
-```sh
-artfct login --oauth --organization <organization-slug>
-artfct doctor
-```
+A revoked or expired connection is repaired by completing OAuth again in the
+client.
 
 Refresh tokens rotate on every use. If a previously rotated refresh token is
 presented again, artfct treats it as possible credential reuse and revokes the
 entire linked connection; sign in again rather than retrying the old token.
-
-To remove the local session and request server-side OAuth revocation:
-
-```sh
-artfct logout
-```
 
 If a client has cached an old connection, remove its MCP server entry, restart
 the client, and complete OAuth again. Never paste a bearer token into an agent
@@ -143,7 +102,7 @@ If a client credential may have leaked, revoke its connection immediately from
 revoke that token in the workspace console and disable the corresponding CI
 secret before investigating logs. Do not delete database rows or edit JWTs by
 hand. The edge denylist is eventually consistent; treat the documented KV
-propagation window as active until a fresh `artfct doctor` or staging smoke
+propagation window as active until a fresh `get_connection` call or staging smoke
 check confirms the replacement connection.
 
 For a suspected signing-key compromise, pause new MCP connections, generate a
@@ -177,18 +136,11 @@ not evidence that OAuth is repaired.
 
 ## Rollback and release recovery
 
-Keep the last known-good Worker version and CLI release identifier in the
-deployment record. A Worker rollback is an operator action through Wrangler:
+Keep the last known-good Worker version in the deployment record. A Worker rollback is an operator action through Wrangler:
 deploy the known-good version to 100%, then rerun the staging smoke suite and
 check the running version before declaring recovery. `npm run worker:deploy`
 publishes the current build; it is not a rollback command, so do not rerun it
 against a broken checkout and call that a rollback.
-
-For a published CLI release, the repository's guarded rollback workflow is
-**Actions → rollback-cli-release**. Supply the tag, a public reason, and type
-`WITHDRAW`; it marks the release draft so new installs cannot select it. A
-withdrawn CLI does not revoke already-issued OAuth credentials, so perform the
-connection or token revocation steps above separately.
 
 ## Protocol and tool-schema versioning
 
@@ -231,18 +183,13 @@ anonymous, expiring records with no workspace row, so the open route could only
 accepts, and it opens on the Worker origin. The fragment is the decryption key —
 strip it and the page renders only a placeholder.
 
-`view_url` replaces the earlier `url` field, on both the hosted and the local
-stdio server. An agent should present `view_url` rather than reconstructing a
+`view_url` replaces the earlier `url` field. An agent should present `view_url` rather than reconstructing a
 `/p/{id}` URL from an artifact id: the raw URL carries no credential, so a
 browser cannot open a secure artifact with it.
 
 If a tool call fails with the non-retryable `signed_link_unavailable` code, the
 environment has no signing secret configured, so no openable link exists —
 retrying cannot help.
-
-The local stdio server builds a secure `view_url` against `ARTFCT_APP_BASE_URL`
-(default `https://artfct.dev`); point it at your control plane when you run a
-local or staging deployment.
 
 ## Safe retries and policy errors
 
@@ -287,13 +234,13 @@ key into that Worker — seeds two synthetic organizations
 without touching staging or your real `.env`/database:
 
 ```sh
-scripts/mcp-e2e-stack.sh run    # up, smoke suite, Rust integration tests, tear down
+scripts/mcp-e2e-stack.sh run    # up, smoke suite, Worker storage integration tests, tear down
 scripts/mcp-e2e-stack.sh up     # start the stack and leave it running
-scripts/mcp-e2e-stack.sh rust   # run the Rust storage/provenance integration tests against a running stack
+scripts/mcp-e2e-stack.sh rust   # run the Worker storage integration tests against a running stack
 scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
 ```
 
-`run` also drives `mcp-server/tests/storage_integration.rs` and
+`run` also drives `backend/tests/storage_integration.rs` and
 `provenance_integration.rs` — 26 tests (25 and 1 respectively) that assert
 real production-path behavior (blob refcounting, concurrent creates/deletes,
 export round-trips, bundle redeploys) against a live Worker, and that were
@@ -467,12 +414,6 @@ supported tool retries across that new session.
 
 Known, currently verified compatibility:
 
-- **Local stdio** (the `artfct` CLI binary): fully supported and covered by
-  the crate's unit tests in `mcp-server/src/mcp.rs` (protocol negotiation,
-  tool listing, session/host capture). The `stdio_integration.rs`
-  child-process test pipes JSON-RPC initialize and tools/list through the built
-  binary and verifies stdout contains only parseable JSON lines. This is the
-  transport for clients that only speak stdio MCP.
 - **Streamable HTTP reconnection:** expired or credential-mismatched session
   IDs are rejected with reinitialization guidance, and a stable request ID
   deduplicates retries across newly initialized sessions. Feature tests cover
@@ -503,12 +444,9 @@ protocol version.
 
 ```sh
 export MCP_LIVE_BASE_URL=https://staging.artfct.dev
-export ARTFCT_API_BASE_URL=https://staging.artfct.dev
-artfct setup --list
-artfct setup --silent
-artfct login --oauth --organization <staging-organization>
-artfct doctor
 ```
+
+Then add `https://staging.artfct.dev/mcp` to the client and complete OAuth.
 
 Use the client-specific entrypoint below, then call `get_connection` and one
 read-only tool such as `list_collections` from that client:
@@ -537,6 +475,8 @@ protocol version it negotiated, and any workaround needed, so this table
 stays a source of truth rather than a claim.
 
 ### Client preflight inventory (2026-10-01)
+
+_Historical record: the `artfct` CLI named in this section (`setup`, local stdio) was retired on 2026-10-04 (RUB-432)._
 
 This is an installation and setup preflight, not a hosted compatibility result:
 no client below completed OAuth consent or called a hosted tool during this
@@ -624,9 +564,9 @@ recorded per client (the server default is `2025-11-25`).
 
 Client-specific notes from these runs:
 
-- **Codex:** a URL override under the name `artfct` collides with the stdio
-  entry that `artfct setup` writes, and Codex refuses it (`url is not supported
-for stdio`). Use a different server name for the hosted entry.
+- **Codex:** a URL override under the name `artfct` collided with the stdio
+  entry the retired `artfct setup` wrote (`url is not supported for stdio`).
+  Use a distinct server name for the hosted entry if an old entry remains.
 - **Gemini:** project-level MCP settings are ignored in an untrusted folder, so
   `gemini mcp list` reports no servers until the folder is trusted (for a single
   session, set `GEMINI_CLI_TRUST_WORKSPACE=true`).
@@ -638,7 +578,7 @@ clients remain the human steps tracked on RUB-383.
 
 ## Incident checklist
 
-1. Run `artfct doctor` and capture only its redacted output.
+1. Call `get_connection` from the affected client and capture only its redacted output.
 2. Identify the workspace, connection name, client, and transport from the
    MCP connections page. Each activity row also carries the request ID
    (`activity[].requestId`, from `mcp_activities.request_id`) but the table

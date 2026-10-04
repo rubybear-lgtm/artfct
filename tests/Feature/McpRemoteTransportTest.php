@@ -590,6 +590,41 @@ test('hosted activity uses the client identity captured during initialize', func
     expect(McpActivity::query()->latest('id')->value('protocol_version'))->toBe('2025-11-25');
 });
 
+test('hosted initialize tolerates empty params', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => (object) [],
+    ])->assertOk()->assertJsonMissingPath('error');
+});
+
+test('hosted MCP accepts cancellation notifications without a response body', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+
+    $initialize = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25', 'clientInfo' => ['name' => 'fixture-agent', 'version' => '1']],
+    ])->assertOk();
+
+    $response = $this->withToken($token)
+        ->withHeader('MCP-Session-Id', $initialize->headers->get('MCP-Session-Id'))
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'method' => 'notifications/cancelled',
+            'params' => ['requestId' => 1, 'reason' => 'user cancelled'],
+        ]);
+
+    $response->assertStatus(202);
+    expect($response->getContent())->toBe('');
+});
+
 test('compatibility failures identify client transport protocol version and remediation', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);

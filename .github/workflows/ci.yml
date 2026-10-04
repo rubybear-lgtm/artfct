@@ -59,7 +59,6 @@ jobs:
       - name: contract_drift
         run: |
           cargo test -p artfct-backend --locked
-          cargo test -p artfct --locked
 
   application:
     runs-on: ubuntu-latest
@@ -163,14 +162,13 @@ jobs:
     needs:
       - application
       - contract_drift
-      - cli
     runs-on: ubuntu-latest
 
     steps:
       - name: Confirm release-critical suites are required
         run: |
           set -euo pipefail
-          echo 'Authentication, tenancy, quota, contract, and CLI checks are required by this gate.'
+          echo 'Authentication, tenancy, quota and contract checks are required by this gate.'
 
   secrets:
     runs-on: ubuntu-latest
@@ -239,78 +237,6 @@ jobs:
 
       - name: Test Rust workspace
         run: cargo test --workspace --locked
-
-  cli:
-    name: CLI
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
-        with:
-          toolchain: stable
-
-      - name: Cache cargo
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cli-cargo-${{ hashFiles('Cargo.lock') }}
-
-      - name: Build CLI
-        run: cargo build -p artfct --locked
-
-      - name: Test CLI package
-        run: cargo test -p artfct --locked
-
-      - name: Smoke test CLI commands
-        run: |
-          cargo run -p artfct --locked -- --help
-          cargo run -p artfct --locked -- login --help
-          cargo run -p artfct --locked -- deploy --help
-          cargo run -p artfct --locked -- mcp --help
-          cargo run -p artfct --locked -- doctor
-
-  mcp_quality:
-    name: MCP contract and quality gate
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
-        with:
-          toolchain: stable
-          components: clippy
-
-      - name: Cache cargo
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-mcp-cargo-${{ hashFiles('Cargo.lock') }}
-
-      - name: Check MCP formatting
-        run: cargo fmt --all -- --check
-
-      - name: Check MCP lint
-        run: cargo clippy -p artfct --all-targets --locked -- -D warnings
-
-      - name: Run MCP contract tests
-        run: cargo test -p artfct --locked
 
   mcp_application:
     name: Hosted MCP application contract gate

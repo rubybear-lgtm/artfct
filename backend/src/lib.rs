@@ -2885,7 +2885,7 @@ mod tests {
     /// equivalent guarantee against real D1 (`ref_count` read back from a
     /// live database after a delete) is
     /// `delete_once_keeps_shared_blob_and_delete_last_removes_it` in
-    /// `mcp-server/tests/storage_integration.rs`.
+    /// `backend/tests/storage_integration.rs`.
     #[test]
     fn shared_blob_survives_single_artifact_delete() {
         let store = store::MemoryArtifactStore::new();
@@ -2908,7 +2908,7 @@ mod tests {
     /// equivalent (`ref_count` reaching zero and the row/R2 object actually
     /// being removed) is proven by `create_delete_create_delete_returns_
     /// refcount_to_zero` and `delete_once_keeps_shared_blob_and_delete_last_
-    /// removes_it` in `mcp-server/tests/storage_integration.rs`.
+    /// removes_it` in `backend/tests/storage_integration.rs`.
     #[test]
     fn blob_removed_at_refcount_zero() {
         let store = store::MemoryArtifactStore::new();

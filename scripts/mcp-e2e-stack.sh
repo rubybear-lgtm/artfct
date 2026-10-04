@@ -166,8 +166,7 @@ up() {
     " >/dev/null
 
     # A long-lived org JWT for the Rust storage/provenance integration
-    # tests (mcp-server/tests/storage_integration.rs,
-    # provenance_integration.rs) — real production-path checks against a
+    # tests (backend/tests/storage_integration.rs) — real production-path checks against a
     # live Worker that `cargo test` otherwise silently skips
     # (#[ignore]d) because nothing sets up a Worker + token for them.
     INTEGRATION_TOKEN=$(php artisan tinker --execute "
@@ -267,8 +266,8 @@ rust() {
     # the org — run concurrently, a delete from one test can race a
     # concurrently-running export in another and 404. Confirmed by running
     # the failing test alone: passes every time in isolation.
-    cargo test -p artfct --locked \
-        --test storage_integration --test provenance_integration \
+    cargo test -p artfct-backend --locked \
+        --test storage_integration \
         -- --ignored --test-threads=1
 }
 

@@ -24,7 +24,7 @@ const FAQ_SCHEMA = {
             name: 'What is artfct?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'artfct is an instant encrypted HTML sharing tool for developers. Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get a shareable link in seconds. No sign-up required.',
+                text: 'artfct is an instant encrypted HTML sharing tool for developers. Drop a self-contained HTML or Markdown file — via browser, API, or AI agent — and get a shareable link in seconds. No sign-up required.',
             },
         },
         {
@@ -61,14 +61,6 @@ const FAQ_SCHEMA = {
         },
         {
             '@type': 'Question',
-            name: 'Can I use artfct from the CLI?',
-            acceptedAnswer: {
-                '@type': 'Answer',
-                text: 'Yes. Pipe HTML from stdin: "cat dashboard.html | npx artfct". The CLI returns a URL to stdout — perfect for shell scripts, CI pipelines, and automation.',
-            },
-        },
-        {
-            '@type': 'Question',
             name: 'Does artfct work with AI agents?',
             acceptedAnswer: {
                 '@type': 'Answer',
@@ -99,13 +91,13 @@ export default function Welcome() {
                 />
                 <meta
                     property="og:description"
-                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
+                    content="Drop a self-contained HTML file — via browser, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
                 />
                 <meta property="og:url" content="https://artfct.dev" />
                 <meta property="og:type" content="website" />
                 <meta
                     name="description"
-                    content="Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
+                    content="Drop a self-contained HTML file — via browser, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
                 />
             </Head>
             <ThemeToggle />

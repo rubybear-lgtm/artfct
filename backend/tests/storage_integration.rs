@@ -4,7 +4,7 @@
 //! `ARTFCT_INTEGRATION_BASE_URL`, `ARTFCT_INTEGRATION_TOKEN`,
 //! `ARTFCT_INTEGRATION_PERSIST_TO`, `ARTFCT_WRANGLER_BIN`, and
 //! `ARTFCT_ARTIFACT_TOKEN_SECRET`, and `ARTFCT_GOVERNANCE_SECRET`, then run with:
-//! `cargo test -p artfct --test storage_integration -- --ignored`.
+//! `cargo test -p artfct-backend --test storage_integration -- --ignored`.
 //!
 //! The token secret is required rather than optional on purpose: it is what
 //! the Worker verifies isolated-origin links with, so a run without it can
@@ -428,6 +428,68 @@ async fn create_and_upload_bundle(
     Ok(id)
 }
 
+fn content_type_for(path: &str) -> &'static str {
+    match std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+    {
+        Some("html") => "text/html; charset=utf-8",
+        Some("css") => "text/css",
+        Some("js") => "application/javascript",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Publishes every file under `directory` as one permanent bundle the way the
+/// hosted `deploy_artifact` tool does: create with the manifest, then upload
+/// only the files the Worker reports missing. Returns the published URL and
+/// how many files were uploaded.
+async fn deploy_directory(
+    context: &Context,
+    client: &RetryingClient,
+    directory: &std::path::Path,
+) -> Result<(String, usize), Box<dyn Error>> {
+    let mut collected = Vec::new();
+    collect_files(directory, directory, &mut collected)?;
+    let files: Vec<(&str, &[u8], &str)> = collected
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.as_slice(), content_type_for(path)))
+        .collect();
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&bundle_payload(&files, "index.html"))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    let id = body["id"].as_str().ok_or("create response omitted id")?;
+    let url = body["url"]
+        .as_str()
+        .ok_or("create response omitted url")?
+        .to_string();
+    let missing = body["missing_files"]
+        .as_array()
+        .ok_or("missing_files omitted")?;
+    for hash in missing {
+        let hash = hash.as_str().ok_or("invalid missing hash")?;
+        let (_, bytes, content_type) = files
+            .iter()
+            .find(|(_, bytes, _)| sha256(bytes) == hash)
+            .ok_or("missing local file")?;
+        let upload = client
+            .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
+            .bearer_auth(&context.token)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .body(bytes.to_vec())
+            .send()
+            .await?;
+        assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    Ok((url, missing.len()))
+}
+
 async fn create_and_upload(
     context: &Context,
     client: &RetryingClient,
@@ -470,7 +532,7 @@ async fn create_and_upload_payload(
 }
 
 fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
-    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
+    let working_directory = env!("CARGO_MANIFEST_DIR").to_string();
     let output = Command::new(&context.wrangler)
         .current_dir(&working_directory)
         .args([
@@ -512,7 +574,7 @@ fn d1_row(context: &Context, sql: &str) -> Result<Value, Box<dyn Error>> {
 fn anonymous_viewer_keys(artifact_id: &str) -> Result<Vec<Option<String>>, Box<dyn Error>> {
     let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .ok_or("mcp-server directory has no repository parent")?;
+        .ok_or("backend directory has no repository parent")?;
     let expression = format!(
         "echo json_encode(App\\Models\\ArtifactUsageEvent::query()->where('artifact_id', '{artifact_id}')->orderBy('id')->pluck('viewer_key')->all());"
     );
@@ -539,7 +601,7 @@ fn anonymous_viewer_keys(artifact_id: &str) -> Result<Vec<Option<String>>, Box<d
 }
 
 fn d1_execute(context: &Context, sql: &str) -> Result<(), Box<dyn Error>> {
-    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
+    let working_directory = env!("CARGO_MANIFEST_DIR").to_string();
     let output = Command::new(&context.wrangler)
         .current_dir(&working_directory)
         .args([
@@ -577,7 +639,7 @@ fn r2_object_get(
     context: &Context,
     content_hash: &str,
 ) -> Result<std::process::Output, Box<dyn Error>> {
-    let working_directory = format!("{}/../backend", env!("CARGO_MANIFEST_DIR"));
+    let working_directory = env!("CARGO_MANIFEST_DIR").to_string();
     let object_path = format!("artfct-blobs/blobs/{content_hash}");
     let output = Command::new(&context.wrangler)
         .current_dir(&working_directory)
@@ -1706,28 +1768,29 @@ async fn export_metadata_round_trips() -> Result<(), Box<dyn Error>> {
         return Ok(());
     };
     let client = RetryingClient::new();
-    let bytes = unique_html("cli-export");
+    let bytes = unique_html("worker-export");
     let (_, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
-    let directory = tempfile::tempdir()?;
-    let output = Command::new(env!("CARGO_BIN_EXE_artfct"))
-        .args([
-            "export",
-            &context.org,
-            directory.path().to_str().ok_or("directory is not UTF-8")?,
-        ])
-        .env("ARTFCT_API_BASE_URL", &context.base)
-        .env("ARTFCT_ORG_TOKEN", &context.token)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "CLI export failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let metadata: Value =
-        serde_json::from_slice(&fs::read(directory.path().join("metadata.json"))?)?;
+    let metadata: Value = client
+        .get(format!("{}/v1/orgs/{}/export", context.base, context.org))
+        .bearer_auth(&context.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
     assert!(metadata["artifacts"].is_array());
-    assert!(metadata["blobs"][&hash].as_str().is_some());
-    assert_eq!(fs::read(directory.path().join("blobs").join(&hash))?, bytes);
+    let blob_url = metadata["blobs"][&hash]
+        .as_str()
+        .ok_or("export omitted the uploaded blob")?;
+    let blob = client
+        .get(blob_url)
+        .bearer_auth(&context.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    assert_eq!(blob.as_ref(), bytes.as_slice());
     Ok(())
 }
 
@@ -1843,27 +1906,25 @@ async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
     let Some(context) = context() else {
         return Ok(());
     };
-    let directory = tempfile::tempdir()?;
-    let html_path = directory.path().join("ephemeral.html");
-    fs::write(&html_path, b"<h1>ephemeral integration</h1>")?;
-    let output = Command::new(env!("CARGO_BIN_EXE_artfct"))
-        .args(["deploy", html_path.to_str().ok_or("path is not UTF-8")?])
-        .env("ARTFCT_API_BASE_URL", &context.base)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "CLI deploy failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let base_prefix = format!("{}/p/", context.base);
-    let stdout = String::from_utf8(output.stdout)?;
-    let preview_url = stdout
-        .lines()
-        .find(|line| line.trim_start().starts_with(&base_prefix))
-        .and_then(|line| line.trim().split('#').next())
-        .ok_or("CLI deploy omitted preview URL")?
+    let client = RetryingClient::new();
+    let created = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .json(&json!({
+            "tier": "secure",
+            "body_ciphertext_b64": "ZXBoZW1lcmFsLWludGVncmF0aW9u",
+            "body_iv_b64": "AAAAAAAAAAAAAAAA",
+            "title": "Ephemeral integration"
+        }))
+        .send()
+        .await?;
+    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
+    let created: Value = created.json().await?;
+    let preview_url = created["url"]
+        .as_str()
+        .ok_or("create response omitted url")?
         .to_string();
-    let preview = RetryingClient::new().get(preview_url).send().await?;
+    assert!(preview_url.starts_with(&format!("{}/p/", context.base)));
+    let preview = client.get(preview_url).send().await?;
     assert_eq!(preview.status(), reqwest::StatusCode::OK);
     let body = preview.text().await?;
     assert!(body.contains("bodyCiphertextB64"));
@@ -1890,30 +1951,7 @@ async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
         "Vite build failed: {}",
         String::from_utf8_lossy(&build.stderr)
     );
-    let output = Command::new(env!("CARGO_BIN_EXE_artfct"))
-        .args([
-            "deploy",
-            output_dir.path().to_str().ok_or("path is not UTF-8")?,
-            "--tier",
-            "permanent",
-        ])
-        .env("ARTFCT_API_BASE_URL", &context.base)
-        .env("ARTFCT_ORG_TOKEN", &context.token)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "bundle deploy failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let base_prefix = format!("{}/p/", context.base);
-    let url = String::from_utf8(output.stdout)?
-        .lines()
-        .find(|line| line.trim_start().starts_with(&base_prefix))
-        .ok_or("bundle deploy omitted URL")?
-        .split_whitespace()
-        .next()
-        .ok_or("bundle deploy URL was empty")?
-        .to_string();
+    let (url, _) = deploy_directory(&context, &RetryingClient::new(), output_dir.path()).await?;
     let preview = RetryingClient::new().get(&url).send().await?;
     assert_eq!(preview.status(), reqwest::StatusCode::OK);
     let index = preview.text().await?;
@@ -2293,18 +2331,7 @@ async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Err
     );
     let mut initial_files = Vec::new();
     collect_files(output_dir.path(), output_dir.path(), &mut initial_files)?;
-    let run = |dir: &std::path::Path| -> Result<std::process::Output, Box<dyn Error>> {
-        Ok(Command::new(env!("CARGO_BIN_EXE_artfct"))
-            .args([
-                "deploy",
-                dir.to_str().ok_or("path is not UTF-8")?,
-                "--tier",
-                "permanent",
-            ])
-            .env("ARTFCT_API_BASE_URL", &context.base)
-            .env("ARTFCT_ORG_TOKEN", &context.token)
-            .output()?)
-    };
+    let client = RetryingClient::new();
     // The Vite build is deterministic and this store is shared with every
     // earlier run in the same stack, so the build has to be revised into
     // something no run has published before it is first deployed. Otherwise the
@@ -2319,26 +2346,17 @@ async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Err
             .as_nanos()
     ));
     fs::write(&revision, html)?;
-    let first = run(output_dir.path())?;
-    assert!(first.status.success(), "first deploy failed");
+    deploy_directory(&context, &client, output_dir.path()).await?;
     let changed = output_dir.path().join("index.html");
     let mut html = fs::read_to_string(&changed)?;
     html.push_str("<!-- changed -->");
     fs::write(changed, html)?;
-    let second = run(output_dir.path())?;
-    assert!(
-        second.status.success(),
-        "second deploy failed: {}",
-        String::from_utf8_lossy(&second.stderr)
-    );
-    let stdout = String::from_utf8(second.stdout)?;
-    assert!(
-        stdout.contains("uploaded 1 file(s)"),
-        "unexpected upload report: {stdout}"
-    );
-    assert!(
-        stdout.contains(&format!("skipped {} file(s)", initial_files.len() - 1)),
-        "unexpected skip report: {stdout}"
+    let (_, uploaded) = deploy_directory(&context, &client, output_dir.path()).await?;
+    assert_eq!(
+        uploaded,
+        1,
+        "only the changed index.html should be uploaded; {} files total",
+        initial_files.len()
     );
     Ok(())
 }

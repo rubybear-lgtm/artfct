@@ -29,14 +29,6 @@
 
 return [
     // ── Transports ────────────────────────────────────────────────────────
-    'transport.stdio' => [
-        'surface' => 'transport',
-        'evidence' => [
-            'kind' => 'rust',
-            'file' => 'mcp-server/tests/stdio_integration.rs',
-            'name' => 'stdio_server_round_trips_initialize_and_tools_list_as_json_lines',
-        ],
-    ],
     'transport.streamable_http' => [
         'surface' => 'transport',
         'evidence' => [
@@ -49,11 +41,11 @@ return [
     // ── Protocol operations ───────────────────────────────────────────────
     'protocol.initialize' => [
         'surface' => 'protocol',
-        'evidence' => ['kind' => 'rust', 'file' => 'mcp-server/src/mcp.rs', 'name' => 'initialize_captures_client_info'],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'hosted activity uses the client identity captured during initialize'],
     ],
     'protocol.initialize_tolerates_empty_params' => [
         'surface' => 'protocol',
-        'evidence' => ['kind' => 'rust', 'file' => 'mcp-server/src/mcp.rs', 'name' => 'initialize_with_empty_params_does_not_error'],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'hosted initialize tolerates empty params'],
     ],
     'protocol.version_negotiation' => [
         'surface' => 'protocol',
@@ -73,7 +65,7 @@ return [
     ],
     'protocol.cancellation' => [
         'surface' => 'protocol',
-        'evidence' => ['kind' => 'rust', 'file' => 'mcp-server/src/mcp.rs', 'name' => 'accepts_cancellation_notifications_without_a_response'],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'hosted MCP accepts cancellation notifications without a response body'],
     ],
     'protocol.retries' => [
         'surface' => 'protocol',
@@ -144,14 +136,6 @@ return [
     ],
 
     // ── Clients ───────────────────────────────────────────────────────────
-    'clients.agent_discovery' => [
-        'surface' => 'clients',
-        'evidence' => ['kind' => 'rust', 'file' => 'mcp-server/src/setup.rs', 'name' => 'discovers_known_agents'],
-    ],
-    'clients.config_writers' => [
-        'surface' => 'clients',
-        'evidence' => ['kind' => 'rust', 'file' => 'mcp-server/src/setup.rs', 'name' => 'setup_writes_host_flag_for_each_agent'],
-    ],
     'clients.live_compatibility' => [
         'surface' => 'clients',
         'gap' => [
@@ -186,7 +170,7 @@ return [
         'surface' => 'robustness',
         'gap' => [
             'issue' => 'RUB-381',
-            'reason' => 'Storage and error bodies are covered, but nothing asserts a credential is absent from logs, traces, or the config files the CLI writes.',
+            'reason' => 'Storage and error bodies are covered, but nothing asserts a credential is absent from logs, traces, or the artifacts and records the hosted server writes.',
         ],
     ],
 
@@ -194,12 +178,6 @@ return [
     'load.concurrent_sessions' => [
         'surface' => 'load',
         'evidence' => ['kind' => 'js', 'file' => 'scripts/mcp-live-smoke.mjs', 'name' => 'assertConcurrentSessionsKeepTheirTenant'],
-    ],
-
-    // ── Release gate ──────────────────────────────────────────────────────
-    'release.approval_gate' => [
-        'surface' => 'release',
-        'evidence' => ['kind' => 'marker', 'file' => '.github/workflows/release-cli.yml', 'name' => 'release approval gate'],
     ],
 
     // ── Failure attribution ────────────────────────────────────────────────

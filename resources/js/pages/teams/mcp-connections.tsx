@@ -130,7 +130,6 @@ export default function McpConnections({
     const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
         string | null
     >(null);
-    const cliCommand = `artfct login --oauth --organization ${team.slug}`;
     const createForm = useForm({
         client_name: 'custom MCP client',
         scopes: defaultScopes,
@@ -213,7 +212,7 @@ export default function McpConnections({
                         <CardDescription>
                             Add the hosted endpoint to any client that supports
                             Streamable HTTP and OAuth. Nothing needs to be
-                            installed. The local CLI is optional.
+                            installed.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 md:grid-cols-2">
@@ -253,36 +252,6 @@ export default function McpConnections({
                                     {oauthMetadataUrl}
                                 </a>
                             </p>
-                        </div>
-                        <div className="rounded-lg border p-4">
-                            <p className="font-medium">Local CLI (optional)</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Install once, add artfct to your agent, then
-                                complete browser sign-in for this workspace.
-                            </p>
-                            <code className="mt-3 block rounded-md bg-muted p-3 font-mono text-xs leading-6">
-                                curl -fsSL https://artfct.dev/install.sh | sh
-                                <br />
-                                artfct setup
-                                <br />
-                                {cliCommand}
-                            </code>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-3"
-                                onClick={() => copy(cliCommand, 'cli')}
-                            >
-                                {copied === 'cli' ? (
-                                    <Check className="size-3.5" />
-                                ) : (
-                                    <Copy className="size-3.5" />
-                                )}
-                                {copied === 'cli'
-                                    ? 'Copied'
-                                    : 'Copy sign-in command'}
-                            </Button>
                         </div>
                         <div className="rounded-lg border border-dashed p-4 md:col-span-2">
                             <p className="font-medium">
@@ -595,28 +564,11 @@ export default function McpConnections({
                                                         </div>
                                                         {status !==
                                                             'active' && (
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="mt-2"
-                                                                onClick={() =>
-                                                                    copy(
-                                                                        cliCommand,
-                                                                        `reconnect-${connection.id}`,
-                                                                    )
-                                                                }
-                                                                aria-label={`Copy reconnect command for ${connection.name}`}
-                                                            >
-                                                                {copied ===
-                                                                `reconnect-${connection.id}` ? (
-                                                                    <>
-                                                                        <Check className="size-3.5" />
-                                                                        Copied
-                                                                    </>
-                                                                ) : (
-                                                                    'Reconnect'
-                                                                )}
-                                                            </Button>
+                                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                                Reconnect from
+                                                                your AI tool to
+                                                                sign in again.
+                                                            </p>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="font-mono text-xs">

@@ -1,27 +1,25 @@
 <?php
 
 /**
- * Pins the artifact key derivation across the three places that implement it.
+ * Pins the artifact key derivation across the two places that implement it.
  *
- * The CLI encrypts a secure artifact; the browser encryptor does the same for
- * the public upload page; and the viewer the Worker serves decrypts. All three
- * must derive identical bytes, and the failure mode if they do not is silent:
- * nothing here exercises the encrypted-artifact decrypt path end to end, so a
- * one-byte disagreement would make every new secure artifact unopenable and no
- * existing test would say so.
+ * The browser encryptor encrypts a secure artifact on the public upload page,
+ * and the viewer the Worker serves decrypts it. Both must derive identical
+ * bytes, and the failure mode if they do not is silent: nothing here exercises
+ * the encrypted-artifact decrypt path end to end, so a one-byte disagreement
+ * would make every new secure artifact unopenable and no existing test would
+ * say so.
  *
  * Two complementary guards, because this repository has no JavaScript test
  * runner to host the assertion natively:
  *
  * 1. The shared vector is derived through WebCrypto in node -- the same API the
- *    browser and the Worker's viewer use -- and must equal the value
- *    `salted_derivation_matches_the_shared_test_vector` asserts against ring in
- *    the Rust suite. Together the two tests pin Rust == WebCrypto.
- * 2. Each of the three sources must carry that same iteration count, version and
- *    salt length, so the shipped code cannot drift from the parameters the
- *    vector was computed with.
+ *    browser and the Worker's viewer use -- and must equal the vector's key.
+ * 2. Each source must carry that same iteration count, version and salt length,
+ *    so the shipped code cannot drift from the parameters the vector was
+ *    computed with.
  */
-test('webcrypto derives the same key as ring for the shared vector', function () {
+test('webcrypto derives the shared vector key', function () {
     $vector = json_decode(
         (string) file_get_contents(base_path('tests/Fixtures/artifact-kdf-vector.json')),
         true,
@@ -68,7 +66,7 @@ test('webcrypto derives the same key as ring for the shared vector', function ()
     expect($output)->not->toContain('Error', 'node or WebCrypto is unavailable: '.$output)
         ->and($output)->toBe(
             $vector['key_hex'],
-            'WebCrypto and ring disagree on the artifact key derivation, which would make every new secure artifact unopenable',
+            'WebCrypto disagrees with the shared vector on the artifact key derivation, which would make every new secure artifact unopenable',
         );
 });
 
@@ -80,7 +78,6 @@ test('every derivation site uses the same parameters', function () {
     );
 
     $sites = [
-        'CLI encryptor' => 'mcp-server/src/artifact_crypto.rs',
         'browser encryptor' => 'resources/js/lib/artifactCrypto.ts',
         'viewer decryptor' => 'backend/src/preview.rs',
     ];
@@ -99,26 +96,21 @@ test('every derivation site uses the same parameters', function () {
         }
     }
 
-    $rust = (string) file_get_contents(base_path('mcp-server/src/artifact_crypto.rs'));
     $typescript = (string) file_get_contents(base_path('resources/js/lib/artifactCrypto.ts'));
     $worker = (string) file_get_contents(base_path('backend/src/preview.rs'));
-
-    if (! str_contains($rust, 'pbkdf2::PBKDF2_HMAC_SHA256')) {
-        $problems[] = 'the CLI encryptor does not derive with PBKDF2-HMAC-SHA256';
-    }
 
     if (! str_contains($typescript, "'PBKDF2'")) {
         $problems[] = 'the browser encryptor does not derive with PBKDF2';
     }
 
     $saltBytes = intdiv(strlen((string) $vector['salt_hex']), 2);
-    if (! preg_match('/KDF_SALT_BYTES: usize = '.$saltBytes.'/', $rust) || ! preg_match('/KDF_SALT_BYTES = '.$saltBytes.'/', $typescript)) {
+    if (! preg_match('/KDF_SALT_BYTES = '.$saltBytes.'/', $typescript)) {
         $problems[] = 'the encryptor salt lengths do not match the shared fixture';
     }
 
     // The version tag is what selects the derivation; if the writers and the
     // reader disagree on it, new links fall back to the legacy path and fail.
-    if (! preg_match('/KDF_VERSION: u32 = '.$vector['version'].'/', $rust) || ! preg_match('/KDF_VERSION = '.$vector['version'].'/', $typescript)) {
+    if (! preg_match('/KDF_VERSION = '.$vector['version'].'/', $typescript)) {
         $problems[] = 'the KDF version tag does not match the shared fixture';
     }
 
@@ -143,8 +135,8 @@ test('the viewer still opens fragments minted before the salted KDF', function (
 
     // The legacy derivation is a bare SHA-256 of the code, and the links already
     // in the wild were minted with it, so the value is pinned here -- in the
-    // language that actually still performs it. The CLI never decrypts, so this
-    // is the decryptor's contract, not the encryptor's.
+    // language that actually still performs it. This is the
+    // decryptor's contract, not the encryptor's.
     $script = <<<'JS'
     const { webcrypto } = require('crypto');
 

@@ -87,8 +87,7 @@ test('public docs expose the MCP onboarding path', function () {
     $baseUrl = rtrim((string) config('app.url'), '/');
 
     visit(route('docs'))
-        ->assertSee('Sign in from the command line')
-        ->assertSee('artfct login --oauth')
+        ->assertSee('Workspaces and sign-in')
         ->assertSee($baseUrl.'/mcp')
         ->assertSee('Base URL '.$baseUrl)
         ->assertSee('artifacts:read')

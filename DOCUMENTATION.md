@@ -9,8 +9,8 @@ metadata, promoted provenance columns, and the complete provenance JSON in D1.
 Content hashes are lowercase SHA-256 values; the public ID is the first 32
 characters of the canonical manifest hash.
 
-Use `artfct export ORG DIRECTORY` with `ARTFCT_ORG_TOKEN` to export metadata and
-byte-identical blobs locally.
+Organization admins download metadata and byte-identical blobs as a zip from
+the console (`console.export`); each blob is verified against its SHA-256.
 
 Permanent create, upload, and delete operations serialize per content hash using
 short-lived D1 leases. This keeps D1 reference counts and R2 object lifecycles
@@ -130,7 +130,7 @@ in production.
 ## Auth seam
 
 Two credential types (spec 07): `sessionJwt` (console-issued, minutes) and
-`orgToken` (CLI/MCP/CI, long-lived until revoked). Both share one claim
+`orgToken` (REST API and CI, long-lived until revoked). Both share one claim
 shape — `org_id`, `user_id`, `role`, `exp`, `jti` — and Laravel is the only
 signer. `App\Services\Auth\OrgJwtService::mint()` signs RS256 via
 `firebase/php-jwt`, using the team's `slug` as `org_id` (the same string
@@ -390,7 +390,7 @@ covered. Laravel's destructive governance commands still default to dry-run,
 and live staging verification remains an environment gate rather than an
 implicit claim of local tests. `gdpr_erasure_removes_bytes_from_r2` is an
 implemented, `#[ignore]`d Rust integration test in
-`mcp-server/tests/storage_integration.rs`. It runs against an isolated local
+`backend/tests/storage_integration.rs`. It runs against an isolated local
 Wrangler Worker with persisted local D1/R2, creates two artifacts sharing one
 blob plus unique blobs, erases each artifact, and checks both the HTTP blob
 route and direct R2 reads. It passed in the local E2E stack on 2026-10-01
@@ -459,7 +459,7 @@ cost model; real-provider retrieval latency must also be measured.
 ## Retrieval (spec 13)
 
 **The second MCP tool.** `search_artifacts` is listed alongside
-`deploy_to_canvas` in `mcp-server`'s `tools/list`. Its description
+`deploy_to_canvas` in the hosted `tools/list`. Its description
 explicitly tells an agent *when* to call it — before generating a
 dashboard/page/report the user references — because, per the spec, a
 tool agents don't know when to call is a tool that gets ignored in favor

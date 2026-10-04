@@ -9,7 +9,7 @@
 
 share encrypted html. get a link. that's it.
 
-Drop a self-contained HTML file — via browser, CLI, API, or AI agent — and get back a
+Drop a self-contained HTML file — via browser, API, or AI agent — and get back a
 shareable encrypted link. No sign-up required.
 
 ---
@@ -39,144 +39,23 @@ Links are encrypted and ephemeral by default: they expire 5 days after last
 access unless you set a custom TTL. Public metadata stays visible for link
 previews, while the fragment passcode is never sent to the server.
 
-## CLI (optional)
+## Connect your AI tool
 
-The command line is optional. To connect an AI tool, use the hosted MCP server described below; nothing needs to be installed for that. Install the CLI only if you want to deploy from a terminal or script:
-
-Install the latest release:
-
-```sh
-curl -fsSL https://artfct.dev/install.sh | sh
-```
-
-The installer downloads the correct binary for macOS (Apple Silicon or Intel) or Linux (x86_64 or ARM64) and installs it to `~/.local/bin/artfct` by default. It also automatically runs `artfct setup --silent`, which writes a local MCP server entry into the config of every detected AI agent (Cursor, Claude Desktop, Gemini, and Codex) without prompts; this is the optional local path and is being retired (RUB-432). There is no native Windows build; use WSL.
-
-If you want to skip automatic MCP configuration during installation, set `ARTFCT_INSTALL_SETUP=0`:
-
-```sh
-curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_SETUP=0 sh
-```
-
-If `~/.local/bin` is not on your `PATH`, add it:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Install a specific version or to a custom directory:
-
-```sh
-curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_VERSION=v0.0.4 sh
-curl -fsSL https://artfct.dev/install.sh | ARTFCT_INSTALL_DIR="$HOME/bin" sh
-```
-
-### Deploy
-
-```sh
-# Deploy a file — prints the URL
-artfct deploy ./dashboard.html
-
-# Deploy from stdin
-cat dashboard.html | artfct deploy --stdin
-echo '<h1>hello</h1>' | artfct deploy --stdin
-
-# Set tier and expiration
-artfct deploy ./dashboard.html --tier ephemeral --ttl-minutes 30
-
-# Deploy a readable permanent artifact (requires an organization token)
-ARTFCT_ORG_TOKEN=token artfct deploy ./dashboard.html --tier permanent
-
-# Deploy a Vite/static bundle (all files are uploaded individually)
-ARTFCT_ORG_TOKEN=token artfct deploy ./dist/ --tier permanent
-ARTFCT_ORG_TOKEN=token artfct deploy ./dist/ --tier permanent --entrypoint app.html
-
-# Export an organization's permanent artifacts
-ARTFCT_ORG_TOKEN=token artfct export acme ./artifact-export
-```
-
-Output:
-
-```
-https://artfct.dev/p/<artifact-id>#<passcode>
-```
-
-### Delete
-
-```sh
-# Delete an ephemeral artifact by its 10-character ID
-artfct delete abc123def4
-
-# Delete a permanent artifact by its 32-character ID
-ARTFCT_ORG_TOKEN=token artfct delete abc123def456789012345678901234ab
-
-# Delete an artifact by its preview URL
-artfct delete https://artfct.dev/p/abc123def456789012345678901234ab
-```
-
-### Options
-
-```
-Usage: artfct deploy [OPTIONS] [FILE]
-
-Arguments:
-  [FILE]  Path to a self-contained HTML file
-
-Options:
-      --stdin                  Read HTML from stdin
-      --tier <TIER>            public | secure | ephemeral | permanent  [default: ephemeral]
-      --entrypoint <PATH>      Entrypoint path for a permanent directory bundle
-      --ttl-minutes <MINUTES>  Minutes until expiry after last access
-      --org-token <TOKEN>      Organization token for permanent artifacts
-  -h, --help                   Print help
-```
-
-### Connect your AI tool
-
-The recommended way is the hosted MCP server. Add `https://artfct.dev/mcp` in your AI tool's MCP
-settings and approve the browser sign-in; nothing needs to be installed. For Claude Code:
+Artfct has one way to connect an AI tool: the hosted MCP server. Add `https://artfct.dev/mcp` in
+your AI tool's MCP settings and approve the browser sign-in; nothing needs to be installed. For
+Claude Code:
 
 ```sh
 claude mcp add --transport http artfct https://artfct.dev/mcp
 ```
 
-### Local MCP server (optional)
+An AI tool that cannot use a hosted server is not supported. Workspace administrators download an
+organization's permanent artifacts from the console as a zip, and automation uses the REST API
+with an organization token (team settings, **API tokens**).
 
-If your tool cannot use the hosted server, you can automatically register `artfct` as a local MCP server for all detected clients:
+The hosted server exposes these tools:
 
-```sh
-# Automatically find and configure all client config files (silent mode)
-artfct setup --silent
-
-# Preview which configuration files would be written
-artfct setup --list
-```
-
-Or run the server manually over stdio:
-
-```sh
-artfct mcp serve --host cursor
-```
-
-`artfct setup --silent` writes the matching `--host` value for Claude Code,
-Cursor, Gemini, Codex, and OpenCode. Project-local `.mcp.json` entries omit the
-flag when the client cannot be identified safely.
-
-To configure it manually in your client's settings file (Cursor's `mcp.json` or Claude Desktop's config file):
-
-```json
-{
-    "mcpServers": {
-        "artfct": {
-            "command": "artfct",
-            "args": ["mcp", "serve", "--host", "cursor"]
-        }
-    }
-}
-```
-
-The local server exposes these tools:
-
-- `deploy_artifact` — publish HTML as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage. Returns a `view_url`: the app's own open route for a secure artifact, the workspace's public artifact URL for a public one.
+- `deploy_artifact` — publish HTML, or a multi-file bundle (`files` and `entrypoint`, up to 500 files and 8 MB, base64 for binaries), as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage. Returns a `view_url`: the app's own open route for a secure artifact, the workspace's public artifact URL for a public one.
 - `deploy_to_canvas` — **deprecated**, use `deploy_artifact`. Publishes an anonymous, encrypted, expiring artifact that the workspace cannot search or retrieve.
 - `search_artifacts` — search previously deployed artifacts without returning HTML. Each result carries a `view_url` on the app's open route.
 - `get_connection` — inspect the authenticated workspace, scopes, and client context.
@@ -186,17 +65,6 @@ The local server exposes these tools:
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
 
-Run `artfct login --oauth` for browser-based OAuth with PKCE. Use
-`artfct login --oauth --organization acme` to pin consent to a workspace, or
-`artfct login` to save an organization token. OAuth credentials use the macOS
-Keychain or Linux Secret Service when available. If neither is available, the
-CLI falls back to a 0600 file under the user config directory and warns.
-`artfct logout` revokes the remote session and removes the local credential.
-Run `artfct organizations` to inspect the organizations
-available to the signed-in account and the currently selected context; run
-`artfct login --oauth --organization <slug>` to switch. `ARTFCT_ORG_TOKEN` takes
-precedence and is useful for CI.
-
 For hosted MCP staging verification, use `https://staging.artfct.dev/mcp` as
 the server URL. A client that supports OAuth should discover authorization
 through `https://staging.artfct.dev/.well-known/oauth-protected-resource` and
@@ -204,8 +72,7 @@ request only the scopes it needs. The production `/mcp` route is not currently
 deployed; do not use `https://artfct.dev/mcp` until the production route is
 deliberately deployed and verified. The dashboard's **MCP connections** page
 shows the same setup instructions and lets workspace administrators inspect,
-monitor, and revoke connections. Hosted connections use Streamable HTTP; local
-setup uses stdio.
+monitor, and revoke connections. Connections use Streamable HTTP.
 `deploy_artifact` is naturally idempotent: publishing identical content to the
 same workspace returns the same artifact. For safe retries of the deprecated
 `deploy_to_canvas`, send a stable `MCP-Request-Id` (or `Idempotency-Key`)
@@ -232,46 +99,8 @@ isolation. The same check is available as the manual `mcp-live` GitHub Actions w
 Keep the credentials in the staging environment secrets; never commit them or
 put them in ordinary pull-request CI.
 
-See [the MCP and CLI launch runbook](docs/mcp-cli-runbook.md) for supported
+See [the MCP launch runbook](docs/mcp-runbook.md) for supported
 client setup, recovery, policy errors, and incident procedures.
-
-### Diagnostics
-
-```sh
-artfct doctor       # check connectivity and configuration
-artfct --help
-artfct deploy --help
-artfct mcp --help
-artfct setup --help
-artfct delete --help
-artfct uninstall --help
-```
-
-### Uninstall
-
-Uninstall the CLI binary and remove MCP configurations from all supported client configuration files:
-
-```sh
-# Prompts for verification before removing the CLI binary
-artfct uninstall
-
-# Run without interactive prompts
-artfct uninstall --silent
-```
-
-### Environment
-
-```
-ARTFCT_API_BASE_URL      API base URL. Defaults to https://artfct.dev
-ARTFCT_INSTALL_VERSION   Release tag to install. Defaults to latest.
-ARTFCT_INSTALL_DIR       Install directory. Defaults to ~/.local/bin.
-ARTFCT_INSTALL_REPO      GitHub repo. Defaults to rubybear-lgtm/artfct.
-ARTFCT_ORG_TOKEN         Organization token for permanent deploy, delete, export, and search.
-ARTFCT_SEARCH_BASE_URL   search_artifacts endpoint base URL. Defaults to ARTFCT_API_BASE_URL.
-ARTFCT_APP_BASE_URL      Control-plane base URL, used to build a secure artifact's view_url
-                         (the app's open route). Defaults to https://artfct.dev; set it for a
-                         local or staging control plane.
-```
 
 ## Production
 
@@ -322,7 +151,7 @@ curl -X POST https://artfct.dev/v1/artifacts \
 curl -X DELETE https://artfct.dev/v1/artifacts/<id>
 ```
 
-The CLI handles encryption and metadata extraction for you. No authentication.
+Encryption happens in the browser. No authentication.
 Rate limited to 60 creates / minute per IP.
 
 ## AI Agents
@@ -330,9 +159,9 @@ Rate limited to 60 creates / minute per IP.
 ### MCP Tool
 
 When artfct is configured as an MCP server, agents get the publishing,
-retrieval, collection, usage, and connection tools documented in [MCP Server
-Setup](#mcp-server-setup). `deploy_artifact` accepts a complete HTML payload
-and publishes it to the workspace — agents should deploy instead of emitting raw
+retrieval, collection, usage, and connection tools documented in [Connect your AI
+Tool](#connect-your-ai-tool). `deploy_artifact` accepts a complete HTML payload
+or a multi-file bundle and publishes it to the workspace — agents should deploy instead of emitting raw
 code blocks whenever they produce visual output. Artifacts are stored readable
 by the workspace (that is what makes them searchable); `secure` limits who can
 open the link, `public` does not. A secure artifact's `view_url` is the app's
@@ -348,6 +177,21 @@ session and gets no token minted for it.
     "html": "<!DOCTYPE html>...",
     "tier": "secure",
     "model": "optional-agent-attested-model"
+  }
+}
+```
+
+A multi-file bundle passes `files` instead of `html`; the entrypoint defaults to `index.html`:
+
+```json
+{
+  "name": "deploy_artifact",
+  "arguments": {
+    "files": [
+      { "path": "index.html", "content": "<!DOCTYPE html><link rel=\"stylesheet\" href=\"assets/app.css\">..." },
+      { "path": "assets/app.css", "content": "body { margin: 0 }" },
+      { "path": "assets/logo.png", "content": "<base64>", "encoding": "base64" }
+    ]
   }
 }
 ```
@@ -371,9 +215,7 @@ separate from process-observed identity.
 }
 ```
 
-Requires `ARTFCT_ORG_TOKEN` (see [Environment](#environment) above) and, optionally, `ARTFCT_SEARCH_BASE_URL` if the search endpoint is hosted separately from `ARTFCT_API_BASE_URL`.
-
-See [MCP Server Setup](#mcp-server-setup) above for configuration instructions.
+Requires the `artifacts:read` scope. See [Connect your AI tool](#connect-your-ai-tool) above for configuration instructions.
 
 ### Skills
 
@@ -394,12 +236,11 @@ Skills are resolved from the `skills/artfct/` directory in this repo and follow 
 
 ## Development
 
-The project is a Cargo workspace with two crates and a Laravel frontend.
+The project is a Cargo workspace with one crate and a Laravel frontend.
 
 ```
 Cargo.toml          # workspace root
 backend/            # Cloudflare Worker (Rust, wasm32)
-mcp-server/         # CLI + MCP server binary (Rust)
 resources/          # Laravel frontend (React + Inertia + Tailwind)
 ```
 
@@ -454,12 +295,4 @@ Requirements: Rust stable, `wrangler`.
 npm run worker:kv:create   # create the KV namespace (once)
 npm run worker:dev         # local worker on http://localhost:8787
 npm run worker:deploy      # deploy to Cloudflare
-```
-
-### CLI
-
-```sh
-cargo build -p artfct              # debug build
-cargo test -p artfct               # run tests
-cargo run -p artfct -- deploy --help
 ```

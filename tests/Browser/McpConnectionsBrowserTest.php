@@ -127,7 +127,7 @@ test('an active connection can be forced through reauthorization', function () {
         ->and($connection->fresh()->revoked_at)->toBeNull();
 });
 
-test('expired connections offer a direct reconnect command', function () {
+test('expired connections tell the member to reconnect from their AI tool', function () {
     $owner = User::factory()->create();
     $team = app(CreateTeam::class)->handle($owner, 'MCP Recovery Co');
     McpConnection::factory()->create([
@@ -142,6 +142,6 @@ test('expired connections offer a direct reconnect command', function () {
     visit(route('teams.mcp-connections.index', $team))
         ->assertSee('Expired browser agent')
         ->assertSee('expired')
-        ->assertSee('Reconnect')
+        ->assertSee('Reconnect from your AI tool to sign in again.')
         ->assertNoJavaScriptErrors();
 });

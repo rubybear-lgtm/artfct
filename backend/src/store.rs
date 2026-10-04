@@ -977,7 +977,7 @@ pub fn like_pattern(query: &str) -> String {
 ///
 /// Production persistence guarantees, including leases, SQL refcounts, and
 /// object lifecycle behavior, are covered separately by the ignored local
-/// Wrangler integration suite in `mcp-server/tests/storage_integration.rs`.
+/// Wrangler integration suite in `backend/tests/storage_integration.rs`.
 #[derive(Default)]
 pub struct MemoryArtifactStore {
     artifacts: Mutex<HashMap<u64, Artifact>>,

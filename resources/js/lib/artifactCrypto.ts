@@ -7,9 +7,9 @@ const SHARE_CODE_LENGTH = 10;
 const KDF_VERSION = 2;
 const KDF_SALT_BYTES = 16;
 
-/// Must match `KDF_ITERATIONS` in `mcp-server/src/artifact_crypto.rs` and in the
-/// viewer the Worker serves. All three derive the same key or nothing opens;
-/// `tests/Fixtures/artifact-kdf-vector.json` is consumed by all language tests.
+/// Must match the iteration count in the viewer the Worker serves
+/// (`backend/src/preview.rs`). Both derive the same key or nothing opens;
+/// `tests/Fixtures/artifact-kdf-vector.json` is the shared vector.
 const KDF_ITERATIONS = 210_000;
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 

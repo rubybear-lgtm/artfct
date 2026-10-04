@@ -233,7 +233,7 @@ Check these before touching storage, request routing, identity, cryptography, or
 
 **Cross-language contracts need one shared fixture.** The same algorithm implemented in Rust, TypeScript and PHP drifts silently unless a single test vector or fixture is asserted from all of them.
 
-**Registries, matrices and runbooks are claim sets** and drift like prose — `tests/Fixtures/mcp-verification-matrix.php` and `docs/mcp-cli-runbook.md` have each carried claims the code contradicted.
+**Registries, matrices and runbooks are claim sets** and drift like prose — `tests/Fixtures/mcp-verification-matrix.php` and `docs/mcp-runbook.md` have each carried claims the code contradicted.
 
 **Stage coverage is not flow coverage**, and an entry point with no test is invisible to every other check.
 
@@ -270,7 +270,7 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 **What it is** — artfct publishes self-contained HTML to artfct.dev and returns a shareable, encrypted link. This repo is a Cargo workspace plus a Laravel control plane:
 
 - `backend/` — Cloudflare Worker (Rust → wasm) named `artfct-engine`; serves `artfct.dev/v1/*` (API) and `artfct.dev/p/*` (artifact delivery). Bindings: `ARTIFACTS_KV`, `ARTIFACTS_DB` (D1), `ARTIFACTS_BUCKET` (R2).
-- `mcp-server/` — Rust CLI + MCP server binary exposing `deploy_to_canvas` and `search_artifacts`.
+- The hosted MCP server lives in the Laravel app (`app/Mcp/`) and is the only way to connect an AI tool: no CLI and no local stdio server (retired in RUB-432).
 - `app/`, `routes/`, `resources/` — Laravel 13 + Inertia React control plane (browser UI, docs, teams, billing, admin). Architecture reference: `DOCUMENTATION.md` and `docs/`.
 
 **Local development**
@@ -283,7 +283,7 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 **Verification gates** — `.githooks/pre-commit` (wired via `core.hooksPath`) runs, per staged file type:
 
 - always: gitleaks secret scan on staged files
-- Rust staged: `cargo fmt --all -- --check`, `cargo check --workspace --locked`, `cargo check -p artfct-backend --target wasm32-unknown-unknown`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p artfct`, `cargo run -p artfct -- doctor`
+- Rust staged: `cargo fmt --all -- --check`, `cargo check --workspace --locked`, `cargo check -p artfct-backend --target wasm32-unknown-unknown`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p artfct-backend`
 - PHP staged: `vendor/bin/pint --test --format agent`
 - frontend staged: `npm run format:check`, `npm run lint:check`, `npm run types:check`
 
@@ -302,7 +302,7 @@ Use the `artfct-staging` MCP server to store what development and sessions produ
 **How**
 
 - Search first: `search_artifacts` (natural-language `query`, optionally `repo`, `collection`, `since`) before writing a new spec, plan or explanation, so existing work is reused or updated instead of duplicated.
-- Publish with `deploy_artifact`: `html` must be one self-contained HTML document (convert markdown to styled HTML first). Always set `title` and a one-sentence `description` so search can find it; set `model` for provenance. Re-publishing identical content returns the same artifact.
+- Publish with `deploy_artifact`: give `html` as one self-contained HTML document (convert markdown to styled HTML first), or `files` plus `entrypoint` for a multi-file bundle. Always set `title` and a one-sentence `description` so search can find it; set `model` for provenance. Re-publishing identical content returns the same artifact.
 - Tier: `secure` (the default, signed-in workspace members only) for anything internal, which is nearly everything here. Use `public` only when the user asks for a link anyone can open.
 - Group related artifacts with `list_collections`, `create_collection` and `add_collection_artifact` (for example one collection per spec or feature). Reuse an existing collection before creating one.
 - Share the returned `view_url` with the user. Use `get_artifact` for a fresh link.

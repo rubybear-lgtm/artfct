@@ -45,10 +45,6 @@ export function WelcomeInstallOptions() {
     return (
         <>
             <InstallOption
-                description="or run the command to install it yourself:"
-                command="curl -fsSL https://artfct.dev/install.sh | sh"
-            />
-            <InstallOption
                 description="or install only the agent skills:"
                 command="npx skills add rubybear-lgtm/artfct@artfct"
             />

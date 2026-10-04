@@ -37,7 +37,6 @@ function mcpVerificationCapabilities(): array
 {
     return [
         // Scope: transports.
-        'transport.stdio',
         'transport.streamable_http',
         // Scope: protocol operations.
         'protocol.initialize',
@@ -65,8 +64,6 @@ function mcpVerificationCapabilities(): array
         'policy.quota',
         'policy.degraded_service',
         // Scope: client setup paths.
-        'clients.agent_discovery',
-        'clients.config_writers',
         'clients.live_compatibility',
         // Scope: dashboard onboarding.
         'ui.connection_onboarding',
@@ -77,8 +74,6 @@ function mcpVerificationCapabilities(): array
         'robustness.secret_redaction',
         // Scope: load.
         'load.concurrent_sessions',
-        // Definition of done: the release gate.
-        'release.approval_gate',
         // Definition of done: a compatibility failure names client, transport,
         // protocol version and remediation.
         'telemetry.failure_attribution',
@@ -181,16 +176,10 @@ test('every gap names a filed issue and a reason why it is not automated', funct
     expect($problems)->toBe([]);
 });
 
-test('completed stdio and reconnection coverage are not reported as open gaps', function () {
+test('completed reconnection coverage is not reported as an open gap', function () {
     $matrix = mcpVerificationMatrix();
 
-    expect($matrix['transport.stdio']['evidence'])->toBe([
-        'kind' => 'rust',
-        'file' => 'mcp-server/tests/stdio_integration.rs',
-        'name' => 'stdio_server_round_trips_initialize_and_tools_list_as_json_lines',
-    ])
-        ->and(isset($matrix['transport.stdio']['gap']))->toBeFalse()
-        ->and($matrix['protocol.reconnection']['evidence']['name'])
+    expect($matrix['protocol.reconnection']['evidence']['name'])
         ->toBe('remote MCP refuses an expired session with stable reinitialization guidance')
         ->and(isset($matrix['protocol.reconnection']['gap']))->toBeFalse()
         ->and($matrix['protocol.reconnection']['residual'])
@@ -199,18 +188,17 @@ test('completed stdio and reconnection coverage are not reported as open gaps', 
     $runbook = (string) preg_replace(
         '/\s+/',
         ' ',
-        (string) file_get_contents(base_path('docs/mcp-cli-runbook.md')),
+        (string) file_get_contents(base_path('docs/mcp-runbook.md')),
     );
 
-    expect($runbook)->toContain('does not sever a live transport mid-request')
-        ->and($runbook)->toContain('The `stdio_integration.rs` child-process test');
+    expect($runbook)->toContain('does not sever a live transport mid-request');
 });
 
-test('the runbook keeps hosted discovery and CLI OAuth on staging', function () {
-    $runbook = (string) file_get_contents(base_path('docs/mcp-cli-runbook.md'));
+test('the runbook keeps hosted discovery on staging', function () {
+    $runbook = (string) file_get_contents(base_path('docs/mcp-runbook.md'));
 
     expect($runbook)
-        ->toContain('export ARTFCT_API_BASE_URL=https://staging.artfct.dev')
+        ->toContain('export MCP_LIVE_BASE_URL=https://staging.artfct.dev')
         ->toContain('https://staging.artfct.dev/.well-known/oauth-protected-resource')
         ->toContain('https://staging.artfct.dev/.well-known/oauth-authorization-server')
         ->not->toContain('https://artfct.dev/.well-known/oauth-protected-resource')
@@ -221,7 +209,7 @@ test('the production domain plan preserves artifact origin isolation checks', fu
     $runbook = (string) preg_replace(
         '/\s+/',
         ' ',
-        (string) file_get_contents(base_path('docs/mcp-cli-runbook.md')),
+        (string) file_get_contents(base_path('docs/mcp-runbook.md')),
     );
 
     expect($runbook)
