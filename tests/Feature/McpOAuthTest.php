@@ -128,8 +128,94 @@ test('registers a public client and pins its redirect URIs', function () {
     expect(OAuthClient::query()->where('client_id', $response->json('client_id'))->exists())->toBeTrue();
 });
 
-test('bounds dynamic registration metadata and rate limits registration attempts', function () {
-    config(['auth.oauth_registration_per_hour' => 3]);
+test('registering the same client again returns the existing client and spends no creation budget', function () {
+    config(['auth.oauth_registration_per_hour' => 1]);
+    RateLimiter::clear('oauth-registration:127.0.0.1');
+
+    $payload = [
+        'client_name' => 'Google Antigravity',
+        'redirect_uris' => ['https://antigravity.google/oauth-callback'],
+    ];
+
+    $first = $this->postJson('/oauth/register', $payload)->assertCreated();
+
+    foreach (range(1, 5) as $repeat) {
+        $this->postJson('/oauth/register', $payload)
+            ->assertCreated()
+            ->assertJsonPath('client_id', $first->json('client_id'));
+    }
+
+    expect(OAuthClient::query()->where('client_name', 'Google Antigravity')->count())->toBe(1);
+});
+
+test('the same client name with different redirect URIs is a different client', function () {
+    RateLimiter::clear('oauth-registration:127.0.0.1');
+
+    $a = $this->postJson('/oauth/register', [
+        'client_name' => 'Shared Name',
+        'redirect_uris' => ['https://one.example.test/callback'],
+    ])->assertCreated();
+    $b = $this->postJson('/oauth/register', [
+        'client_name' => 'Shared Name',
+        'redirect_uris' => ['https://two.example.test/callback'],
+    ])->assertCreated();
+
+    expect($a->json('client_id'))->not->toBe($b->json('client_id'));
+});
+
+test('one client name no longer shares a creation limit across different callers', function () {
+    config(['auth.oauth_registration_per_hour' => 2]);
+    RateLimiter::clear('oauth-registration:127.0.0.1');
+    RateLimiter::clear('oauth-registration:198.51.100.7');
+
+    foreach (['https://a.example.test/cb', 'https://b.example.test/cb'] as $uri) {
+        $this->postJson('/oauth/register', ['client_name' => 'Claude Code', 'redirect_uris' => [$uri]])->assertCreated();
+    }
+
+    // The first caller has spent its budget, but a different caller registering
+    // under the very same name is not locked out.
+    $this->postJson('/oauth/register', ['client_name' => 'Claude Code', 'redirect_uris' => ['https://c.example.test/cb']])
+        ->assertTooManyRequests();
+
+    $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+        ->postJson('/oauth/register', ['client_name' => 'Claude Code', 'redirect_uris' => ['https://d.example.test/cb']])
+        ->assertCreated();
+});
+
+test('a limited registration answers with JSON and Retry-After even without an Accept header', function () {
+    config(['auth.oauth_registration_per_hour' => 1]);
+    RateLimiter::clear('oauth-registration:127.0.0.1');
+
+    $this->postJson('/oauth/register', ['client_name' => 'One', 'redirect_uris' => ['https://one.example.test/cb']])
+        ->assertCreated();
+
+    $limited = $this->call('POST', '/oauth/register', [], [], [], [
+        'HTTP_ACCEPT' => 'text/html',
+        'CONTENT_TYPE' => 'application/json',
+    ], json_encode(['client_name' => 'Two', 'redirect_uris' => ['https://two.example.test/cb']]));
+
+    expect($limited->getStatusCode())->toBe(429)
+        ->and($limited->headers->get('Content-Type'))->toContain('application/json')
+        ->and($limited->headers->get('Retry-After'))->not->toBeNull()
+        ->and($limited->json('error'))->toBe('temporarily_unavailable')
+        ->and($limited->json('error_description'))->toBeString();
+});
+
+test('the registration burst guard also answers with JSON', function () {
+    config(['auth.oauth_registration_per_minute' => 1]);
+    RateLimiter::clear('oauth-registration-burst:127.0.0.1');
+
+    $this->postJson('/oauth/register', ['client_name' => 'Burst', 'redirect_uris' => ['https://burst.example.test/cb']])->assertCreated();
+
+    $limited = $this->call('POST', '/oauth/register', [], [], [], ['HTTP_ACCEPT' => 'text/html'], '{}');
+
+    expect($limited->getStatusCode())->toBe(429)
+        ->and($limited->headers->get('Content-Type'))->toContain('application/json')
+        ->and($limited->headers->get('Retry-After'))->not->toBeNull();
+});
+
+test('bounds dynamic registration metadata and rate limits new registrations', function () {
+    config(['auth.oauth_registration_per_hour' => 1]);
     RateLimiter::clear('oauth-registration:127.0.0.1');
 
     $invalidName = $this->postJson('/oauth/register', [

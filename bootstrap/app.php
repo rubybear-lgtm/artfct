@@ -51,7 +51,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // OAuth clients and MCP clients do not send `Accept: application/json`
+        // on every call, and show a bare `Unauthorized` when a 429 or error
+        // arrives as an HTML page. `oauth/authorize` stays HTML: it is a page.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*', 'oauth/register', 'oauth/token', 'oauth/revoke', 'mcp'),
         );
     })->create();

@@ -253,20 +253,16 @@ class AppServiceProvider extends ServiceProvider
 
             return $limits;
         });
-        RateLimiter::for('oauth-registration', function (Request $request): array {
-            $perHour = (int) config('auth.oauth_registration_per_hour', 10);
-            $limits = [Limit::perHour($perHour)->by('oauth-registration:'.ClientIp::for($request))];
+        // Registration is open to anyone, so this only guards the endpoint
+        // against bursts. The budget for creating new clients is spent in the
+        // controller, where a repeat of an existing registration costs nothing.
+        // Neither key uses the client name: every copy of a client such as
+        // Claude Code sends the same name, so a name-keyed bucket let one
+        // caller lock out every user of that client.
+        RateLimiter::for('oauth-registration', function (Request $request): Limit {
+            $perMinute = (int) config('auth.oauth_registration_per_minute', 120);
 
-            // Registration has no account to key on, but it does name the client
-            // it is creating, so one name cannot be hammered even from many
-            // addresses.
-            $name = mb_strtolower(trim((string) $request->input('client_name')));
-
-            if ($name !== '') {
-                $limits[] = Limit::perHour($perHour)->by('oauth-registration-name:'.$name);
-            }
-
-            return $limits;
+            return Limit::perMinute($perMinute)->by('oauth-registration-burst:'.ClientIp::for($request));
         });
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);

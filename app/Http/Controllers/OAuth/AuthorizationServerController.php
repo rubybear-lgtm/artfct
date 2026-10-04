@@ -16,6 +16,7 @@ use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevocationRetry;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
+use App\Support\ClientIp;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -76,15 +78,43 @@ final class AuthorizationServerController extends Controller
             }
         }
 
-        $client = OAuthClient::query()->create([
-            'client_id' => 'artfct_'.Str::lower(Str::random(32)),
-            'client_name' => $validated['client_name'],
-            'redirect_uris' => array_values($validated['redirect_uris']),
-            'grant_types' => $validated['grant_types'] ?? ['authorization_code', 'refresh_token'],
-            'response_types' => $validated['response_types'] ?? ['code'],
-            'token_endpoint_auth_method' => 'none',
-            'client_id_issued_at' => now()->timestamp,
-        ]);
+        $redirectUris = array_values($validated['redirect_uris']);
+        $grantTypes = $validated['grant_types'] ?? ['authorization_code', 'refresh_token'];
+        $responseTypes = $validated['response_types'] ?? ['code'];
+
+        // A public client has no secret, so handing back the client it already
+        // registered gives the caller nothing new. Clients such as Antigravity
+        // register on every launch with identical metadata; answering those from
+        // the existing row keeps them from filling the table or spending the
+        // creation budget below.
+        $client = $this->findMatchingClient($validated['client_name'], $redirectUris, $grantTypes, $responseTypes);
+
+        if ($client === null) {
+            $limitKey = 'oauth-registration:'.ClientIp::for($request);
+
+            if (RateLimiter::tooManyAttempts($limitKey, (int) config('auth.oauth_registration_per_hour', 60))) {
+                return response()->json([
+                    'error' => 'temporarily_unavailable',
+                    'error_description' => 'Too many new clients were registered. Try again later.',
+                ], 429)->withHeaders([
+                    'Retry-After' => (string) RateLimiter::availableIn($limitKey),
+                    'Cache-Control' => 'no-store',
+                    'Pragma' => 'no-cache',
+                ]);
+            }
+
+            RateLimiter::hit($limitKey, 3600);
+
+            $client = OAuthClient::query()->create([
+                'client_id' => 'artfct_'.Str::lower(Str::random(32)),
+                'client_name' => $validated['client_name'],
+                'redirect_uris' => $redirectUris,
+                'grant_types' => $grantTypes,
+                'response_types' => $responseTypes,
+                'token_endpoint_auth_method' => 'none',
+                'client_id_issued_at' => now()->timestamp,
+            ]);
+        }
 
         return response()->json([
             'client_id' => $client->client_id,
@@ -835,6 +865,32 @@ final class AuthorizationServerController extends Controller
         return response()->json(['error' => $error, 'error_description' => $description], 400)
             ->header('Cache-Control', 'no-store')
             ->header('Pragma', 'no-cache');
+    }
+
+    /**
+     * Find a client registered earlier with exactly this metadata.
+     *
+     * @param  list<string>  $redirectUris
+     * @param  list<string>  $grantTypes
+     * @param  list<string>  $responseTypes
+     */
+    private function findMatchingClient(string $name, array $redirectUris, array $grantTypes, array $responseTypes): ?OAuthClient
+    {
+        $normalise = static function (array $values): array {
+            $values = array_values($values);
+            sort($values);
+
+            return $values;
+        };
+
+        return OAuthClient::query()
+            ->where('client_name', $name)
+            ->latest('id')
+            ->limit(100)
+            ->get()
+            ->first(fn (OAuthClient $candidate): bool => $normalise($candidate->redirect_uris) === $normalise($redirectUris)
+                && $normalise($candidate->grant_types ?? []) === $normalise($grantTypes)
+                && $normalise($candidate->response_types ?? []) === $normalise($responseTypes));
     }
 
     private function registrationError(string $description): JsonResponse
