@@ -291,7 +291,25 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 
 **Deploying** — `npm run worker:deploy` (wraps `scripts/deploy-worker-version.mjs`); worker routes and bindings live in `backend/wrangler.jsonc`.
 
-**Agent output** — for any visual HTML, call `deploy_to_canvas` rather than emitting a code block: tier `public` by default, `ephemeral` + `ttl_minutes` for throwaway previews, `secure` for sensitive content. Deployable skills live in `skills/` (`artfct`, `developer-tools`, `presentation`); Boost-managed skills live in `.agents/skills/`.
+**Agent output** — for any visual HTML, publish it with the artfct MCP rather than emitting a code block (see "Storing artifacts with the artfct MCP" below). Deployable skills live in `skills/` (`artfct`, `developer-tools`, `presentation`); Boost-managed skills live in `.agents/skills/`.
+
+## Storing artifacts with the artfct MCP
+
+Use the `artfct-staging` MCP server to store what development and sessions produce, so the team and every AI tool on it can find it later.
+
+**What counts as an artifact** — anything worth keeping beyond the session: specs, plans, design briefs, architecture explanations, investigation write-ups, RFCs, audit reports, runbooks, comparisons, dashboards and visual mockups. Not artifacts: code changes, scratch notes, command output, one-off answers. If it is unclear whether something qualifies, ask the user before publishing.
+
+**How**
+
+- Search first: `search_artifacts` (natural-language `query`, optionally `repo`, `collection`, `since`) before writing a new spec, plan or explanation, so existing work is reused or updated instead of duplicated.
+- Publish with `deploy_artifact`: `html` must be one self-contained HTML document (convert markdown to styled HTML first). Always set `title` and a one-sentence `description` so search can find it; set `model` for provenance. Re-publishing identical content returns the same artifact.
+- Tier: `secure` (the default, signed-in workspace members only) for anything internal, which is nearly everything here. Use `public` only when the user asks for a link anyone can open.
+- Group related artifacts with `list_collections`, `create_collection` and `add_collection_artifact` (for example one collection per spec or feature). Reuse an existing collection before creating one.
+- Share the returned `view_url` with the user. Use `get_artifact` for a fresh link.
+- Never put secrets, credentials or customer data in an artifact.
+- `deploy_to_canvas` is deprecated: it creates anonymous expiring artifacts the workspace cannot search. Do not use it for development artifacts.
+
+**When** — publish at the end of the step that produced the artifact (spec agreed, plan approved, investigation concluded), not as an afterthought. This overrides the "documentation files" rule above only for artifact publishing: artfct artifacts are not repository files, so do not also commit them as docs unless asked.
 
 **Stitch MCP (design work)** — the `Artfct Editorial Terminal` design system and the landing-page explorations live in a Stitch project; the landing page they vary is `resources/js/pages/welcome.tsx`.
 
