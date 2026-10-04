@@ -5,6 +5,8 @@ namespace App\Services\Billing;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Models\Team;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 
 /**
  * Quota status and enforcement (spec 14). "Bundle size is the only line
@@ -67,6 +69,9 @@ final class QuotaService
      *                                caller could forget one of).
      * @throws BundleTooLargeException when `$bundleSizeBytes` exceeds the
      *                                 tenant's per-artifact ceiling.
+     * @throws ConnectionException when usage cannot be read.
+     * @throws RequestException when usage cannot be read.
+     * @throws \RuntimeException when the Worker base URL is not configured.
      */
     public function assertCanCreateArtifact(Team $team, int $bundleSizeBytes): void
     {

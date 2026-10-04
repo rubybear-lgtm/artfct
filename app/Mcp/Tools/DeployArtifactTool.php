@@ -29,7 +29,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Publish a self-contained HTML document as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
@@ -54,6 +54,21 @@ final class DeployArtifactTool extends Tool
 
     private const MAX_HTML_BYTES = 1024 * 1024;
 
+    private const MAX_BUNDLE_FILES = 500;
+
+    private const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
+
+    private const DEFAULT_ENTRYPOINT = 'index.html';
+
+    private const CONTENT_TYPES = [
+        'html' => 'text/html; charset=utf-8', 'htm' => 'text/html; charset=utf-8',
+        'css' => 'text/css', 'js' => 'text/javascript', 'mjs' => 'text/javascript',
+        'json' => 'application/json', 'wasm' => 'application/wasm', 'svg' => 'image/svg+xml',
+        'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif',
+        'webp' => 'image/webp', 'woff' => 'font/woff', 'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf', 'otf' => 'font/otf',
+    ];
+
     private const CONTENT_TYPE = 'text/html; charset=utf-8';
 
     public function __construct(private readonly AuditLogger $audit) {}
@@ -66,22 +81,49 @@ final class DeployArtifactTool extends Tool
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
         $validated = $request->validate([
-            'html' => ['required', 'string', 'max:1048576'],
+            'html' => ['nullable', 'string', 'max:1048576'],
+            'files' => ['nullable', 'array', 'min:1', 'max:'.self::MAX_BUNDLE_FILES],
+            'files.*.path' => ['required', 'string', 'max:255'],
+            'files.*.content' => ['required', 'string'],
+            'files.*.encoding' => ['nullable', 'string', 'in:utf8,base64'],
+            'files.*.content_type' => ['nullable', 'string', 'max:100'],
+            'entrypoint' => ['nullable', 'string', 'max:255'],
             'tier' => ['nullable', 'string', 'in:public,secure'],
             'title' => ['nullable', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $html = trim($validated['html']);
-        if ($html === '' || strlen($html) > self::MAX_HTML_BYTES) {
-            return McpErrorResponse::error('The HTML payload must be between 1 byte and 1 MB.', 'payload_too_large');
+        $hasHtml = isset($validated['html']) && trim($validated['html']) !== '';
+        $hasFiles = ! empty($validated['files']);
+        if ($hasHtml === $hasFiles) {
+            return McpErrorResponse::error('Provide either `html` (one document) or `files` (a bundle), not both and not neither.', 'invalid_request');
+        }
+
+        $bundle = $hasFiles
+            ? $this->bundleFromFiles($validated['files'], $validated['entrypoint'] ?? self::DEFAULT_ENTRYPOINT)
+            : $this->bundleFromHtml(trim($validated['html']));
+
+        if (is_string($bundle)) {
+            return McpErrorResponse::error($bundle, 'invalid_request');
+        }
+
+        $entrypoint = $bundle['entrypoint'];
+        $files = $bundle['files'];
+        $totalBytes = 0;
+        foreach ($files as $file) {
+            $totalBytes += strlen($file['bytes']);
+        }
+        $entryBytes = $files[$entrypoint]['bytes'];
+
+        if ($totalBytes < 1 || $totalBytes > ($hasFiles ? self::MAX_BUNDLE_BYTES : self::MAX_HTML_BYTES)) {
+            return McpErrorResponse::error($hasFiles ? 'The bundle must be between 1 byte and 8 MB in total.' : 'The HTML payload must be between 1 byte and 1 MB.', 'payload_too_large');
         }
 
         $team = McpContext::team();
 
         try {
-            $quotaService->assertCanCreateArtifact($team, strlen($html));
+            $quotaService->assertCanCreateArtifact($team, $totalBytes);
         } catch (QuotaExceededException|BundleTooLargeException $exception) {
             app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
 
@@ -104,8 +146,7 @@ final class DeployArtifactTool extends Tool
 
         $baseUrl = rtrim($workerBaseUrl, '/');
         $token = McpContext::httpRequest()->bearerToken();
-        $sha256 = hash('sha256', $html);
-        $title = $validated['title'] ?? $this->extractTitle($html);
+        $title = $validated['title'] ?? $this->extractTitle($entryBytes);
         $description = $validated['description'] ?? $title;
 
         try {
@@ -117,27 +158,36 @@ final class DeployArtifactTool extends Tool
                 'thumbnail' => 'https://artfct.dev/og-image.svg',
                 'preview_blurred' => false,
                 'manifest' => [
-                    'entrypoint' => 'index.html',
-                    'files' => [[
-                        'path' => 'index.html',
-                        'content_type' => self::CONTENT_TYPE,
-                        'size_bytes' => strlen($html),
-                        'sha256' => $sha256,
-                    ]],
+                    'entrypoint' => $entrypoint,
+                    'files' => array_values(array_map(fn (array $file): array => [
+                        'path' => $file['path'],
+                        'content_type' => $file['content_type'],
+                        'size_bytes' => strlen($file['bytes']),
+                        'sha256' => $file['sha256'],
+                    ], $files)),
                     'external_origins' => [],
                 ],
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ]);
 
-            if ($created->successful() && in_array($sha256, (array) $created->json('missing_files', []), true)) {
-                $upload = Http::withToken($token)
-                    ->withBody($html, self::CONTENT_TYPE)
-                    ->put($baseUrl.'/v1/artifacts/'.$created->json('id').'/files/'.$sha256);
+            if ($created->successful()) {
+                $uploaded = [];
+                foreach ((array) $created->json('missing_files', []) as $missing) {
+                    $file = collect($files)->firstWhere('sha256', $missing);
+                    if ($file === null || isset($uploaded[$missing])) {
+                        continue;
+                    }
+                    $uploaded[$missing] = true;
 
-                if (! $upload->successful()) {
-                    app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
+                    $upload = Http::withToken($token)
+                        ->withBody($file['bytes'], $file['content_type'])
+                        ->put($baseUrl.'/v1/artifacts/'.$created->json('id').'/files/'.$missing);
 
-                    return McpErrorResponse::error('The artifact service could not store the artifact content.', 'deployment_rejected', true);
+                    if (! $upload->successful()) {
+                        app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
+
+                        return McpErrorResponse::error('The artifact service could not store the artifact content.', 'deployment_rejected', true);
+                    }
                 }
             }
         } catch (\Throwable $exception) {
@@ -200,12 +250,90 @@ final class DeployArtifactTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'html' => $schema->string()->min(1)->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document.')->required(),
+            'html' => $schema->string()->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document. Give this or `files`, not both.')->nullable(),
+            'files' => $schema->array()->items($schema->object([
+                'path' => $schema->string()->max(255)->description('Relative path inside the bundle, e.g. `index.html` or `assets/app.css`. No leading slash, `..` or backslashes.')->required(),
+                'content' => $schema->string()->description('The file content.')->required(),
+                'encoding' => $schema->string()->enum(['utf8', 'base64'])->description('How `content` is encoded: utf8 (default, for text) or base64 (for images, fonts and other binary files).')->nullable(),
+                'content_type' => $schema->string()->max(100)->description('Optional media type; inferred from the file extension when omitted.')->nullable(),
+            ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
+            'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
             'tier' => $schema->string()->enum(['public', 'secure'])->description('Who can open the link: secure (default, signed-in workspace members) or public.')->nullable(),
             'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title.')->nullable(),
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
         ];
+    }
+
+    /**
+     * @param  list<array{path: string, content: string, encoding?: ?string, content_type?: ?string}>  $input
+     * @return array{entrypoint: string, files: array<string, array{path: string, bytes: string, content_type: string, sha256: string}>}|string An error message when the bundle is invalid.
+     */
+    private function bundleFromFiles(array $input, string $entrypoint): array|string
+    {
+        $files = [];
+        foreach ($input as $file) {
+            $path = $file['path'];
+            if (! $this->isValidPath($path)) {
+                return "Invalid file path [{$path}]: use a relative path without a leading slash, `..`, empty segments, backslashes or colons.";
+            }
+            if (isset($files[$path])) {
+                return "Duplicate file path [{$path}].";
+            }
+
+            $bytes = ($file['encoding'] ?? 'utf8') === 'base64'
+                ? base64_decode($file['content'], true)
+                : $file['content'];
+            if ($bytes === false) {
+                return "File [{$path}] is not valid base64.";
+            }
+
+            $files[$path] = [
+                'path' => $path,
+                'bytes' => $bytes,
+                'content_type' => $file['content_type'] ?? $this->contentTypeFor($path),
+                'sha256' => hash('sha256', $bytes),
+            ];
+        }
+
+        if (! $this->isValidPath($entrypoint) || ! isset($files[$entrypoint])) {
+            return "The entrypoint [{$entrypoint}] must be one of the files in the bundle.";
+        }
+
+        return ['entrypoint' => $entrypoint, 'files' => $files];
+    }
+
+    /**
+     * @return array{entrypoint: string, files: array<string, array{path: string, bytes: string, content_type: string, sha256: string}>}
+     */
+    private function bundleFromHtml(string $html): array
+    {
+        return [
+            'entrypoint' => self::DEFAULT_ENTRYPOINT,
+            'files' => [self::DEFAULT_ENTRYPOINT => [
+                'path' => self::DEFAULT_ENTRYPOINT,
+                'bytes' => $html,
+                'content_type' => self::CONTENT_TYPE,
+                'sha256' => hash('sha256', $html),
+            ]],
+        ];
+    }
+
+    /** Mirrors the Worker's `is_valid_relative_path`, so a bad path is named here instead of refused opaquely there. */
+    private function isValidPath(string $path): bool
+    {
+        return $path !== ''
+            && strlen($path) <= 255
+            && ! str_starts_with($path, '/')
+            && ! str_contains($path, '\\')
+            && ! str_contains($path, ':')
+            && ! in_array('..', explode('/', $path), true)
+            && ! in_array('', explode('/', $path), true);
+    }
+
+    private function contentTypeFor(string $path): string
+    {
+        return self::CONTENT_TYPES[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
     }
 
     private function extractTitle(string $html): string

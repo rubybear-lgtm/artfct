@@ -1130,6 +1130,98 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         && $request->body() === $html);
 });
 
+test('deploy_artifact publishes a multi-file bundle and uploads every missing file', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $page = '<!doctype html><title>Bundle</title><link rel="stylesheet" href="assets/app.css">';
+    $css = 'body{color:#701a24}';
+    $png = "\x89PNG\r\n\x1a\n\x00\xff";
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [hash('sha256', $page), hash('sha256', $css), hash('sha256', $png)]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['files' => [
+            ['path' => 'index.html', 'content' => $page],
+            ['path' => 'assets/app.css', 'content' => $css],
+            ['path' => 'assets/logo.png', 'content' => base64_encode($png), 'encoding' => 'base64'],
+        ]]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonPath('result.structuredContent.title', 'Bundle');
+
+    Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+        && str_ends_with((string) $request->url(), '/v1/artifacts')
+        && $request['manifest']['entrypoint'] === 'index.html'
+        && collect($request['manifest']['files'])->pluck('path')->all() === ['index.html', 'assets/app.css', 'assets/logo.png']
+        && collect($request['manifest']['files'])->firstWhere('path', 'assets/logo.png')['content_type'] === 'image/png'
+        && collect($request['manifest']['files'])->firstWhere('path', 'assets/logo.png')['size_bytes'] === strlen($png));
+    Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+        && str_ends_with((string) $request->url(), '/files/'.hash('sha256', $png))
+        && $request->body() === $png);
+    Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+        && str_ends_with((string) $request->url(), '/files/'.hash('sha256', $css))
+        && $request->body() === $css);
+    Http::assertSentCount(4);
+});
+
+test('deploy_artifact uploads only the files the Worker is missing', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $css = 'a{color:red}';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [hash('sha256', $css)]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['entrypoint' => 'home.html', 'files' => [
+            ['path' => 'home.html', 'content' => '<p>home</p>'],
+            ['path' => 'a.css', 'content' => $css],
+            ['path' => 'b.css', 'content' => $css],
+        ]]],
+    ])->assertOk()->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID);
+
+    Http::assertSentCount(2);
+});
+
+test('deploy_artifact refuses invalid bundles before contacting the Worker', function (array $arguments, string $message) {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'invalid_request')
+        ->assertJsonFragment(['text' => $message]);
+
+    Http::assertNothingSent();
+})->with([
+    'both html and files' => [['html' => '<p>x</p>', 'files' => [['path' => 'index.html', 'content' => 'x']]], 'Provide either `html` (one document) or `files` (a bundle), not both and not neither.'],
+    'neither html nor files' => [[], 'Provide either `html` (one document) or `files` (a bundle), not both and not neither.'],
+    'traversal path' => [['files' => [['path' => 'index.html', 'content' => 'x'], ['path' => '../secret', 'content' => 'x']]], 'Invalid file path [../secret]: use a relative path without a leading slash, `..`, empty segments, backslashes or colons.'],
+    'absolute path' => [['files' => [['path' => '/index.html', 'content' => 'x']]], 'Invalid file path [/index.html]: use a relative path without a leading slash, `..`, empty segments, backslashes or colons.'],
+    'duplicate path' => [['files' => [['path' => 'index.html', 'content' => 'x'], ['path' => 'index.html', 'content' => 'y']]], 'Duplicate file path [index.html].'],
+    'missing entrypoint' => [['files' => [['path' => 'page.html', 'content' => 'x']]], 'The entrypoint [index.html] must be one of the files in the bundle.'],
+    'bad base64' => [['files' => [['path' => 'index.html', 'content' => '***', 'encoding' => 'base64']]], 'File [index.html] is not valid base64.'],
+]);
+
 test('deploy_artifact skips the upload when the Worker already has the content', function () {
     configureArtifactLinks();
 
