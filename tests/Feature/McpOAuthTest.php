@@ -338,17 +338,23 @@ test('requires a safe redirect URI and S256 PKCE', function () {
     ])))->assertSessionHasErrors('code_challenge');
 });
 
-test('rejects a non-loopback redirect URI for the built-in CLI client', function () {
-    // The built-in CLI's client_id is public and anyone can type it, so it has
-    // no registered redirect list to pin it to. Without the loopback rule this
-    // request is accepted and the authorization code is delivered to whatever
-    // HTTPS host the requester named.
+test('rejects a redirect URI that is not registered for the client', function () {
+    // The authorization code would otherwise be delivered to whatever host the
+    // requester named.
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => 'https://attacker.example/oauth/callback',
     ])))->assertSessionHasErrors('redirect_uri');
 });
 
-test('issues no authorization code for a non-loopback CLI redirect', function () {
+test('the retired artfct-cli client id is no longer accepted', function () {
+    // It was an unregistered, loopback-only client anyone could name. Only
+    // registered clients exist now.
+    $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
+        'client_id' => 'artfct-cli',
+    ])))->assertSessionHasErrors('redirect_uri');
+});
+
+test('issues no authorization code for an unregistered redirect', function () {
     // The full attack needs an authenticated approval, so this is the half the
     // unauthenticated test above cannot speak to. approve() validates the
     // request before it mints anything, so the attack dies before a code
@@ -377,6 +383,9 @@ test('rejects a redirect URI that PHP and browsers parse differently', function 
     // cannot rest on parse_url's host while the browser decides the
     // destination, so the raw string is matched instead.
     $redirectUri = 'http://evil.example\@127.0.0.1/cb';
+    // Stored directly: registration refuses this URI, but a row written before
+    // that rule existed must not be honoured either.
+    oauthTestClient([$redirectUri]);
 
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => $redirectUri,
@@ -396,6 +405,8 @@ test('rejects a redirect URI that PHP and browsers parse differently', function 
 });
 
 test('rejects a redirect URI carrying userinfo or a fragment', function (string $redirectUri) {
+    oauthTestClient([$redirectUri]);
+
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => $redirectUri,
     ])))->assertSessionHasErrors('redirect_uri');
@@ -421,9 +432,9 @@ test('refuses to register a redirect URI carrying userinfo or a fragment', funct
     'fragment' => ['https://evil.example/cb#frag'],
 ]);
 
-test('accepts a loopback redirect URI for the built-in CLI client', function () {
-    // The real CLI binds an ephemeral loopback port, so this is the shape it
-    // actually sends; the rule must not cut it off.
+test('accepts a registered loopback redirect URI for a native client', function () {
+    // A native app redirects to a loopback address; the rule must not cut it
+    // off.
     $this->get('/oauth/authorize?'.http_build_query(oauthParameters('challenge', [
         'redirect_uri' => 'http://127.0.0.1:43123/oauth/callback',
     ])))->assertRedirect(route('login'))->assertSessionHasNoErrors();
@@ -466,7 +477,7 @@ test('approves a PKCE request and redeems its code once', function () {
         ->assertOk()
         ->assertInertia(fn (AssertableJson $page) => $page
             ->component('oauth/authorize')
-            ->where('clientId', 'artfct-cli')
+            ->where('clientId', 'test-native-client')
             ->where('userName', $user->name)
             ->where('team.slug', $team->slug));
 
@@ -483,7 +494,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $token = $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ]);
@@ -506,7 +517,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $refreshToken,
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ]);
 
     $refreshed->assertOk()
@@ -520,7 +531,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $refreshToken,
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     expect(OAuthRefreshToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->count())->toBe(2)
@@ -529,7 +540,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $this->postJson('/oauth/revoke', [
         'token' => $refreshed->json('refresh_token'),
         'token_type_hint' => 'refresh_token',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
 
     expect(OAuthRefreshToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->count())->toBe(2);
@@ -537,7 +548,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $this->postJson('/oauth/revoke', [
         'token' => $refreshed->json('access_token'),
         'token_type_hint' => 'access_token',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
 
     expect(OrgToken::query()->where('team_id', $team->id)->whereNotNull('revoked_at')->count())->toBe(2);
@@ -545,13 +556,13 @@ test('approves a PKCE request and redeems its code once', function () {
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $refreshToken,
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
@@ -576,7 +587,7 @@ test('keeps an MCP session active when OAuth refresh rotates its access token', 
     $issued = $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertOk();
@@ -599,7 +610,7 @@ test('keeps an MCP session active when OAuth refresh rotates its access token', 
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $issued->json('refresh_token'),
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
     $refreshedClaims = OrgJwtService::default()->verify($refreshed->json('access_token'));
 
@@ -636,7 +647,7 @@ test('does not mint a token with an invalid verifier', function () {
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => str_repeat('x', 64),
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
@@ -664,7 +675,7 @@ test('logs why a token request was rejected without exposing the code or verifie
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => 'http://localhost:9/other',
         'code_verifier' => $verifier,
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
@@ -672,7 +683,7 @@ test('logs why a token request was rejected without exposing the code or verifie
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertStatus(400);
@@ -706,7 +717,7 @@ test('does not mint mutation scopes for a viewer', function () {
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_scope');

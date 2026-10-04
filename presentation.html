@@ -358,7 +358,7 @@
 |_| |_|____|  |_|  \___/\____/|___/
       </div>
       <div class="tagline">Share HTML. Get a link. That's it.</div>
-      <p class="subtitle">Zero-signup ephemeral HTML hosting &mdash; from browser, CLI, API, or AI agent</p>
+      <p class="subtitle">Zero-signup ephemeral HTML hosting &mdash; from browser, API, or AI agent</p>
       <div class="accent-bar"></div>
       <div class="flow-list">
         <span class="flow-step"><span class="step-num">1</span> Drop HTML</span>
@@ -414,7 +414,7 @@
         <div class="card">
           <span class="fly-icon">&#x1F4E6;</span>
           <h4>Multi-modal</h4>
-          <p>Browser drag-and-drop, CLI pipe, REST API, or AI agent MCP tool.</p>
+          <p>Browser drag-and-drop, REST API, or AI agent MCP tool.</p>
         </div>
         <div class="card">
           <span class="fly-icon">&#x23F1;&#xFE0F;</span>
@@ -455,13 +455,10 @@
           </div>
         </div>
         <div class="card">
-          <h4>&#x1F4BB; CLI</h4>
-          <p>Pipe from stdout or pass a file path.</p>
-          <div class="code-block mt-1">
-            curl https://example.com/report.html | artfct deploy
-          </div>
-          <div class="code-block">
-            artfct deploy ./dashboard.html
+          <h4>&#x1F916; AI agent</h4>
+          <p>Add the hosted MCP server, approve the browser sign-in, and let your agent publish.</p>
+          <div class="code-block mt-1" style="font-size:0.8rem">
+            claude mcp add --transport http artfct https://artfct.dev/mcp
           </div>
         </div>
         <div class="card">
@@ -558,10 +555,9 @@ curl -X POST https://artfct.dev/v1/artifacts \<br>
       <div class="grid-2" style="text-align:left">
         <div class="card">
           <h4>&#x1F9E0; MCP Server</h4>
-          <p>Standard JSON-RPC over stdio. Exposes <code>deploy_to_canvas</code> with params: html, tier, ttl_minutes. Auto-discovers Cursor, Claude Desktop, Gemini, Codex.</p>
+          <p>Hosted over Streamable HTTP with OAuth sign-in and nothing to install. Exposes <code>deploy_artifact</code>, <code>search_artifacts</code> and collection tools for Claude Code, Cursor, Codex and other clients.</p>
           <div class="code-block mt-1" style="font-size:0.8rem">
-artfct setup    <span class="cm"># configures all clients</span>
-artfct mcp serve <span class="cm"># runs MCP server</span>
+claude mcp add --transport http artfct https://artfct.dev/mcp
           </div>
         </div>
         <div class="card">
@@ -602,13 +598,13 @@ npx skills add rubybear-lgtm/artfct@artfct
           </ul>
         </div>
         <div class="card">
-          <h4>&#x1F4E6; CLI &amp; MCP</h4>
+          <h4>&#x1F4E6; MCP server</h4>
           <ul>
-            <li>Single Rust binary (artfct)</li>
-            <li>Commands: deploy, delete, mcp, setup, doctor</li>
-            <li>Cross-platform (macOS, Linux)</li>
-            <li>One-liner install script</li>
-            <li>Auto-configures agent MCP clients</li>
+            <li>Hosted, Streamable HTTP</li>
+            <li>OAuth sign-in with PKCE</li>
+            <li>Multi-file bundles supported</li>
+            <li>Nothing to install</li>
+            <li>Workspace-scoped and revocable</li>
           </ul>
         </div>
         <div class="card">
@@ -681,7 +677,7 @@ npx skills add rubybear-lgtm/artfct@artfct
       <p class="subtitle">No account. No config. No friction.</p>
       <div style="margin:1.5rem 0">
         <div style="display:inline-block; background:var(--bg2); border-radius:8px; padding:0.75rem 1.5rem; margin:0.25rem">
-          <code style="font-size:clamp(0.8rem,1.5vw,1rem); color:var(--sol-yellow)">curl -fsSL https://artfct.dev/install.sh | sh</code>
+          <code style="font-size:clamp(0.8rem,1.5vw,1rem); color:var(--sol-yellow)">claude mcp add --transport http artfct https://artfct.dev/mcp</code>
         </div>
       </div>
       <p style="color:var(--text-em); margin-bottom:1.5rem">Or use it right now &mdash; no install needed:</p>

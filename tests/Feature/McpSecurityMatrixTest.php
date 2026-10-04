@@ -33,7 +33,7 @@ function mcpOAuthTokens(Team $team, User $user): array
     $token = test()->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $parameters['redirect_uri'],
         'code_verifier' => $verifier,
     ])->assertOk();
@@ -63,7 +63,7 @@ test('a refresh token rotates and replaying the old one revokes the connection',
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
 
     expect($refreshed->json('refresh_token'))->not->toBe($tokens['refresh_token']);
@@ -72,7 +72,7 @@ test('a refresh token rotates and replaying the old one revokes the connection',
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     expect(McpConnection::query()->where('team_id', $team->id)->whereNull('revoked_at')->count())->toBe(0);
@@ -96,13 +96,13 @@ test('refresh token replay persists and retries a failed worker denylist write',
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
 
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     $retry = DB::table('org_token_revocation_retries')->first();
@@ -142,13 +142,13 @@ test('a legacy refresh-token replay with no connection link queues every matchin
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
 
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
 
     expect(DB::table('org_token_revocation_retries')->count())->toBe(2)
@@ -180,7 +180,7 @@ test('revoking the refresh token stops the access token and the refresh path', f
     $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertStatus(400);
 });
 
@@ -338,7 +338,7 @@ test('OAuth and MCP entry points never write bearer credentials to application l
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $tokens['refresh_token'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
     ])->assertOk();
     $this->postJson('/oauth/revoke', ['token' => $refreshed->json('refresh_token')])->assertOk();
 

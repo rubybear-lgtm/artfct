@@ -11,10 +11,11 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
     $team = app(CreateTeam::class)->handle($user, 'Consent Workspace');
 
     test()->actingAs($user);
+    oauthTestClient();
 
     $parameters = http_build_query([
         'response_type' => 'code',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => 'http://127.0.0.1:43123/oauth/callback',
         'scope' => 'artifacts:read artifacts:delete usage:read',
         'state' => 'browser-state',
@@ -24,7 +25,7 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
     ]);
 
     visit('/oauth/authorize?'.$parameters)
-        ->assertSee('Connect artfct-cli')
+        ->assertSee('Connect test-native-client')
         ->assertSee('Consent Reviewer')
         ->assertSee('Consent Workspace')
         ->assertSee('Read artifacts and search your workspace')
@@ -38,6 +39,7 @@ test('consent marks a destructive scope and leaves a read-only scope unmarked', 
     $team = app(CreateTeam::class)->handle($user, 'Risk Workspace');
 
     test()->actingAs($user);
+    oauthTestClient();
 
     // Both risk levels are on the page at once so the read-only row is
     // checked against a page that is genuinely rendering a warning somewhere
@@ -45,7 +47,7 @@ test('consent marks a destructive scope and leaves a read-only scope unmarked', 
     // consent screen that had lost the marking entirely.
     $parameters = http_build_query([
         'response_type' => 'code',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => 'http://127.0.0.1:43123/oauth/callback',
         'scope' => 'artifacts:read artifacts:delete',
         'state' => 'risk-state',
@@ -66,27 +68,28 @@ test('consent marks a destructive scope and leaves a read-only scope unmarked', 
         ->assertNoJavaScriptErrors();
 });
 
-test('the consent form completes a CLI login by handing an authorization code to the loopback callback', function () {
-    $user = User::factory()->create(['name' => 'CLI Approver']);
-    $team = app(CreateTeam::class)->handle($user, 'CLI Workspace');
+test('the consent form completes a native client login by handing an authorization code to the loopback callback', function () {
+    $user = User::factory()->create(['name' => 'Native Approver']);
+    $team = app(CreateTeam::class)->handle($user, 'Native Workspace');
 
     test()->actingAs($user);
 
-    // `artfct login --oauth` binds 127.0.0.1 on an ephemeral port and sends the
+    // A native client binds 127.0.0.1 on an ephemeral port and sends the
     // resulting loopback redirect URI with a PKCE S256 challenge. This suite
     // already serves the browser from a listening loopback address of its own,
-    // so the callback is aimed there: same scheme, host and path shape the CLI
-    // sends, and a port something actually answers on. A handoff that never
+    // so the callback is aimed there: same scheme, host and path shape a native
+    // client sends, and a port something actually answers on. A handoff that never
     // happens cannot be mistaken for one that did -- the browser is left on
     // chrome-error://chromewebdata/ when nothing is listening.
     $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
     $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
     $verifier = str_repeat('v', 64);
-    $state = 'cli-browser-state';
+    $state = 'native-browser-state';
 
     $parameters = http_build_query([
         'response_type' => 'code',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $callback,
         'scope' => 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
         'state' => $state,
@@ -96,8 +99,8 @@ test('the consent form completes a CLI login by handing an authorization code to
     ]);
 
     $page = visit('/oauth/authorize?'.$parameters)
-        ->assertSee('Connect artfct-cli')
-        ->assertSee('CLI Workspace')
+        ->assertSee('Connect test-native-client')
+        ->assertSee('Native Workspace')
         ->assertSee('Read artifacts and search your workspace')
         ->assertNoJavaScriptErrors();
 
@@ -114,13 +117,13 @@ test('the consent form completes a CLI login by handing an authorization code to
     parse_str((string) parse_url($page->url(), PHP_URL_QUERY), $callbackQuery);
 
     // Receiving a code is half a login: it is only a real authorization code if
-    // the verifier the CLI never put in a URL completes the PKCE exchange.
+    // the verifier the client never put in a URL completes the PKCE exchange.
     configureSigning(testSigningKey());
 
     $this->postJson('/oauth/token', [
         'grant_type' => 'authorization_code',
         'code' => $callbackQuery['code'],
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => $callback,
         'code_verifier' => $verifier,
     ])->assertOk()

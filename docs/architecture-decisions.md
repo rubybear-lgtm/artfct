@@ -1,5 +1,7 @@
 # artfct → enterprise artifact store: what it would take
 
+> **Note (2026-10-04, RUB-432):** the `artfct` CLI and the local stdio MCP server were retired. Artfct supports one way to connect an AI tool: the hosted OAuth MCP server. References to the CLI below describe the design at the time they were written and are kept as a historical record.
+
 Exploration only. No code, no migrations, no dependency changes.
 
 **Status: architecture and phase-1 client work decided; ready to implement §12.** Cloudflare-native, Workers for Platforms, one codebase with two storage modes, flat hostname scheme, provenance captured from day one. See §3 for the reopen conditions and §11 for the phase-1 decision record.

@@ -701,13 +701,12 @@ final class AuthorizationServerController extends Controller
         }
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
-        $isBuiltInCli = $parameters['client_id'] === 'artfct-cli';
 
-        if (! $isBuiltInCli && (! $client instanceof OAuthClient || ! in_array($parameters['redirect_uri'], $client->redirect_uris, true))) {
+        if (! $client instanceof OAuthClient || ! in_array($parameters['redirect_uri'], $client->redirect_uris, true)) {
             throw ValidationException::withMessages(['redirect_uri' => 'The redirect URI is not allowed.']);
         }
 
-        if (! $this->isAllowedRedirectUri($parameters['redirect_uri'], $isBuiltInCli)) {
+        if (! $this->isAllowedRedirectUri($parameters['redirect_uri'])) {
             throw ValidationException::withMessages(['redirect_uri' => 'The redirect URI is not allowed.']);
         }
 
@@ -729,25 +728,14 @@ final class AuthorizationServerController extends Controller
     }
 
     /**
-     * The built-in CLI ships in the open with a client_id anyone can type, so
-     * unlike a registered client there is no redirect list to pin it to. It is
-     * a native app, so it may claim only a loopback redirect (RFC 8252), where
-     * the authorization code cannot leave the machine holding the PKCE
-     * verifier.
-     *
-     * Loopback is decided by an anchored pattern over the raw string rather
-     * than by reading parse_url's host, because PHP and the WHATWG parser that
-     * browsers use disagree about some authorities: for
+     * A registered redirect URI is still checked here because PHP and the WHATWG
+     * parser that browsers use disagree about some authorities: for
      * `http://evil.example\@127.0.0.1/cb` PHP reports host 127.0.0.1 while a
      * browser navigates to evil.example, and the authorization code follows the
-     * browser. One parser -- ours -- removes the disagreement entirely.
+     * browser. Anything the two can read differently is refused outright.
      */
-    private function isAllowedRedirectUri(string $redirectUri, bool $loopbackOnly = false): bool
+    private function isAllowedRedirectUri(string $redirectUri): bool
     {
-        if ($loopbackOnly) {
-            return preg_match('~\Ahttps?://(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?(?:[/?][^\s\\\\\x00-\x1f\x7f#]*)?\z~i', $redirectUri) === 1;
-        }
-
         $parts = parse_url($redirectUri);
         if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
             return false;

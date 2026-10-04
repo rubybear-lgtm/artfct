@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\OAuthClient;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
@@ -134,11 +135,34 @@ function configureSigning(string $pem, string $kid = 'staging-2026-09'): void
     ]);
 }
 
+/**
+ * The registered public client the OAuth tests act as: a native app that
+ * redirects to a loopback address, the shape dynamic registration produces.
+ *
+ * @param  list<string>  $redirectUris
+ */
+function oauthTestClient(array $redirectUris = ['http://127.0.0.1:43123/callback', 'http://127.0.0.1:43123/oauth/callback']): OAuthClient
+{
+    return OAuthClient::query()->firstOrCreate(
+        ['client_id' => 'test-native-client'],
+        [
+            'client_name' => 'Test native client',
+            'redirect_uris' => $redirectUris,
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'response_types' => ['code'],
+            'token_endpoint_auth_method' => 'none',
+            'client_id_issued_at' => now()->timestamp,
+        ],
+    );
+}
+
 function oauthParameters(string $challenge, array $overrides = []): array
 {
+    oauthTestClient();
+
     $parameters = array_merge([
         'response_type' => 'code',
-        'client_id' => 'artfct-cli',
+        'client_id' => 'test-native-client',
         'redirect_uri' => 'http://127.0.0.1:43123/callback',
         'scope' => 'artifacts:read artifacts:deploy',
         'state' => 'state-123',

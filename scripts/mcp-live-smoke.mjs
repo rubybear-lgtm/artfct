@@ -474,7 +474,8 @@ async function assertDeployIsIndexedAndCounted(
                 },
             );
             hiddenFromOtherOrganization = !(
-                otherOrganizationResults.result?.structuredContent?.results ?? []
+                otherOrganizationResults.result?.structuredContent?.results ??
+                []
             ).some((result) => result.id === id);
         }
 
@@ -825,9 +826,10 @@ async function devLoginConsent(email, organization) {
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(16).toString('hex');
     const redirectUri = 'http://127.0.0.1:0/callback';
+    const clientId = await registerClient(redirectUri);
     const parameters = {
         response_type: 'code',
-        client_id: 'artfct-cli',
+        client_id: clientId,
         redirect_uri: redirectUri,
         scope: 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
         state,
@@ -896,7 +898,7 @@ async function devLoginConsent(email, organization) {
     const token = await tokenRequest({
         grant_type: 'authorization_code',
         code,
-        client_id: 'artfct-cli',
+        client_id: clientId,
         redirect_uri: redirectUri,
         code_verifier: verifier,
     });
@@ -905,7 +907,35 @@ async function devLoginConsent(email, organization) {
         `Consent resolved to "${token.organization}" instead of "${organization}"`,
     );
 
-    return { access: token.access_token, refresh: token.refresh_token };
+    return {
+        access: token.access_token,
+        refresh: token.refresh_token,
+        clientId,
+    };
+}
+
+/**
+ * Registers a public client for one redirect URI (RFC 7591). The server has no
+ * built-in client, so every OAuth flow in this suite starts here.
+ */
+async function registerClient(redirectUri) {
+    const response = await fetch(`${baseUrl}/oauth/register`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({
+            client_name: 'artfct live smoke',
+            redirect_uris: [redirectUri],
+        }),
+    });
+    assert(
+        response.status === 201,
+        `Client registration failed (HTTP ${response.status})`,
+    );
+
+    return (await response.json()).client_id;
 }
 
 async function oauthLogin(organization) {
@@ -921,11 +951,12 @@ async function oauthLogin(organization) {
 
         return `http://127.0.0.1:${server.address().port}/callback`;
     });
+    const clientId = await registerClient(redirectUri);
 
     const authorizeUrl = new URL(`${baseUrl}/oauth/authorize`);
     authorizeUrl.search = new URLSearchParams({
         response_type: 'code',
-        client_id: 'artfct-cli',
+        client_id: clientId,
         redirect_uri: redirectUri,
         scope: 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
         state,
@@ -979,7 +1010,7 @@ async function oauthLogin(organization) {
     const token = await tokenRequest({
         grant_type: 'authorization_code',
         code,
-        client_id: 'artfct-cli',
+        client_id: clientId,
         redirect_uri: redirectUri,
         code_verifier: verifier,
     });
@@ -988,14 +1019,18 @@ async function oauthLogin(organization) {
         `Consent resolved to "${token.organization}" instead of "${organization}"`,
     );
 
-    return { access: token.access_token, refresh: token.refresh_token };
+    return {
+        access: token.access_token,
+        refresh: token.refresh_token,
+        clientId,
+    };
 }
 
 async function refresh(token) {
     const renewed = await tokenRequest({
         grant_type: 'refresh_token',
         refresh_token: token.refresh,
-        client_id: 'artfct-cli',
+        client_id: token.clientId,
     });
     token.access = renewed.access_token;
     token.refresh = renewed.refresh_token;

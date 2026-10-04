@@ -1,5 +1,7 @@
 # artfct enterprise transition — spec checkpoints
 
+> **Note (2026-10-04, RUB-432):** the `artfct` CLI and the local stdio MCP server were retired. Artfct supports one way to connect an AI tool: the hosted OAuth MCP server. References to the CLI below describe the design at the time they were written and are kept as a historical record.
+
 Each spec is independently verifiable and safe to stop at. **Every spec follows the template below and is not done until its DoD checklist and its tests both pass.** All 17 are written (0–16) — files in `specs/`. Architecture rationale lives in the [decision record](../architecture-decisions.md); product scope in the [PRD](../prd.md).
 
 | # | Spec | Headline DoD |
