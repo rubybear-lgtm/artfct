@@ -56,7 +56,7 @@ function notPages(): array
         'api.collections.index' => 'organization-scoped collection directory JSON',
         'oauth.authorize' => 'OAuth authorization handshake and consent flow',
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
-        'teams.audit.export' => 'file download', 'console.export' => 'JSON download',
+        'teams.audit.export' => 'file download', 'console.export' => 'zip download',
     ];
 }
 

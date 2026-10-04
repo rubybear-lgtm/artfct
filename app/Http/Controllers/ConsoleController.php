@@ -14,16 +14,17 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\IndexingService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
 /**
@@ -158,10 +159,10 @@ class ConsoleController extends Controller
     }
 
     /**
-     * Export all artifacts for the organization.
-     * Admin only, rate-limited.
+     * Download all permanent artifacts for the organization as a zip
+     * (metadata plus every file). Admin only, rate-limited, audited.
      */
-    public function export(Request $request, string $teamSlug): JsonResponse
+    public function export(Request $request, string $teamSlug, OrganizationExportArchive $archive): BinaryFileResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -181,9 +182,13 @@ class ConsoleController extends Controller
         }
 
         try {
-            $data = $this->artifacts->exportArtifacts($team->slug);
+            $path = $archive->build($team->slug);
 
-            return response()->json($data);
+            $this->auditLogger->recordForRequest($request, AuditEventType::ExportPerformed, $team, (string) $user->id, "team:{$team->slug}");
+
+            return response()
+                ->download($path, "{$team->slug}-artifacts-".now()->format('Y-m-d').'.zip', ['Content-Type' => 'application/zip'])
+                ->deleteFileAfterSend();
         } catch (\Exception $e) {
             if ($e->getCode() === 404) {
                 abort(404);

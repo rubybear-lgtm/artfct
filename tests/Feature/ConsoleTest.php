@@ -1,12 +1,14 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\VectorIndexContract;
@@ -149,6 +151,52 @@ test('export_requires_admin', function () {
 
     $response->assertForbidden();
     Http::assertNothingSent();
+});
+
+test('admin_export_is_a_zip_with_metadata_and_byte_identical_blobs', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    $response = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/export");
+
+    $response->assertOk()->assertDownload();
+    expect($response->headers->get('Content-Disposition'))->toContain('test-org-artifacts-');
+
+    $zip = new ZipArchive;
+    expect($zip->open($response->baseResponse->getFile()->getPathname()))->toBeTrue();
+
+    $metadata = json_decode($zip->getFromName('artifacts.json'), true);
+    expect($metadata['artifacts'])->toHaveCount(2);
+
+    $body = '<!doctype html><title>abcdef123456</title>';
+    expect($zip->getFromName('blobs/'.hash('sha256', $body)))->toBe($body);
+    expect($zip->numFiles)->toBe(3);
+    $zip->close();
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ExportPerformed)->count())->toBe(1);
+});
+
+test('export_refuses_a_blob_that_does_not_match_its_hash', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    $directory = new class extends FakeArtifactDirectory
+    {
+        public function fetchBlob(string $orgSlug, string $sha256): ?string
+        {
+            return 'tampered';
+        }
+    };
+    app()->instance(ArtifactDirectory::class, $directory);
+
+    test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/export")
+        ->assertServerError();
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ExportPerformed)->count())->toBe(0);
 });
 
 test('export_is_rate_limited', function () {

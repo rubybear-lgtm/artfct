@@ -44,4 +44,15 @@ interface ArtifactDirectory
      * @throws \Exception If access denied or rate limited
      */
     public function exportArtifacts(string $orgSlug): array;
+
+    /**
+     * Fetch one export blob's bytes, or null when the organization has no
+     * permanent artifact referencing it.
+     *
+     * @param  string  $orgSlug  Organization slug
+     * @param  string  $sha256  Lowercase hex SHA-256 of the blob
+     *
+     * @throws \Exception If access denied
+     */
+    public function fetchBlob(string $orgSlug, string $sha256): ?string;
 }

@@ -106,6 +106,32 @@ final class HttpArtifactDirectory implements ArtifactDirectory
         return $response->json() ?: ['artifacts' => [], 'blobs' => []];
     }
 
+    public function fetchBlob(string $orgSlug, string $sha256): ?string
+    {
+        if (! $this->baseUrl) {
+            throw new \Exception('Worker base URL not configured');
+        }
+
+        if (preg_match('/^[0-9a-f]{64}$/', $sha256) !== 1) {
+            return null;
+        }
+
+        $response = Http::withToken($this->tokenFor($orgSlug))
+            ->get(rtrim($this->baseUrl, '/')."/v1/blobs/{$sha256}");
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        if ($response->status() === 403) {
+            throw new HttpResponseException(response()->json(['error' => 'Forbidden'], 403));
+        }
+
+        $response->throw();
+
+        return $response->body();
+    }
+
     /**
      * The credential for a Worker call about `$orgSlug`: the caller's own
      * bearer token when the request carries one (API callers), otherwise a

@@ -108,10 +108,6 @@ export default function ConsoleIndex({
         );
     };
 
-    const handleExport = () => {
-        router.get(ConsoleController.export.url({ team: team.slug }));
-    };
-
     /**
      * The app's own open route, never a Worker URL and never a token: the
      * route authorizes the viewer, then either redirects a public artifact to
@@ -197,10 +193,16 @@ export default function ConsoleIndex({
                                     Actions
                                 </label>
                                 <Button
-                                    onClick={handleExport}
+                                    asChild
                                     className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
                                 >
-                                    Export All
+                                    <a
+                                        href={ConsoleController.export.url({
+                                            team: team.slug,
+                                        })}
+                                    >
+                                        Download export (.zip)
+                                    </a>
                                 </Button>
                             </div>
                         )}

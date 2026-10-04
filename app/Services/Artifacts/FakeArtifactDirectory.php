@@ -8,7 +8,7 @@ use App\Contracts\ArtifactDirectory;
  * In-memory fake artifact directory for browser tests.
  * Provides test data without calling the Worker API.
  */
-final class FakeArtifactDirectory implements ArtifactDirectory
+class FakeArtifactDirectory implements ArtifactDirectory
 {
     /**
      * @var list<array> Demo artifacts, served for whichever org slug asks —
@@ -111,13 +111,32 @@ final class FakeArtifactDirectory implements ArtifactDirectory
         $blobs = [];
 
         foreach ($artifacts as $artifact) {
-            $blobs[$artifact['content_hash']] = "/v1/blobs/{$artifact['content_hash']}";
+            $sha256 = hash('sha256', self::blobBody($artifact['content_hash']));
+            $blobs[$sha256] = "/v1/blobs/{$sha256}";
         }
 
         return [
             'artifacts' => $artifacts,
             'blobs' => $blobs,
         ];
+    }
+
+    public function fetchBlob(string $orgSlug, string $sha256): ?string
+    {
+        foreach ($this->artifacts as $artifact) {
+            $body = self::blobBody($artifact['content_hash']);
+
+            if (hash('sha256', $body) === $sha256) {
+                return $body;
+            }
+        }
+
+        return null;
+    }
+
+    private static function blobBody(string $contentHash): string
+    {
+        return "<!doctype html><title>{$contentHash}</title>";
     }
 
     private function seedArtifacts(): void
