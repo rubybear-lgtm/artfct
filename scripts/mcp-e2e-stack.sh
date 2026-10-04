@@ -11,6 +11,7 @@
 #   scripts/mcp-e2e-stack.sh up      # start everything, print exported env
 #   scripts/mcp-e2e-stack.sh down    # stop everything, including Postgres
 #   scripts/mcp-e2e-stack.sh run     # up, run mcp-live-smoke.mjs against it, down
+#   scripts/mcp-e2e-stack.sh isolation  # tenant isolation checks against a running stack (RUB-435)
 #
 # Never touches the developer's real .env or database: every Laravel process
 # this script starts gets its config from exported environment variables
@@ -289,6 +290,18 @@ link() {
     php -d memory_limit=512M vendor/bin/pest tests/Feature/Console/IsolatedOriginLinkTest.php --compact
 }
 
+# RUB-435: tenant isolation, end to end. Two real users create two real teams
+# and mint credentials through Laravel's own OAuth consent, then every check
+# tries to cross from one team into the other against this stack's Laravel and
+# Worker. It creates its own uniquely named users and teams, so it neither
+# needs nor disturbs the seeded orgs, and it MUST run before `link`, which
+# migrates the database fresh.
+isolation() {
+    ISO_LARAVEL_URL="http://127.0.0.1:${LARAVEL_PORT}" \
+        ISO_WORKER_URL="http://127.0.0.1:${WORKER_PORT}" \
+        node scripts/tenant-isolation-e2e.mjs
+}
+
 # The probe runs on the queue worker, so what it reports is the origin that
 # worker would put in a user-facing link. The queue holds its own copy of
 # APP_URL, and a drifted copy is invisible from the web service -- staging
@@ -350,6 +363,7 @@ run() {
         MCP_LIVE_DEV_LOGIN_EMAIL="$ADMIN_EMAIL" \
         MCP_LIVE_INDEXING_ENABLED="${INDEXING_ENABLED}" node scripts/mcp-live-smoke.mjs
     rust
+    isolation
     link
 }
 
@@ -359,8 +373,9 @@ case "${1:-}" in
     run) run ;;
     rust) rust ;;
     link) link ;;
+    isolation) isolation ;;
     *)
-        echo "Usage: $0 {up|down|run|rust|link}" >&2
+        echo "Usage: $0 {up|down|run|rust|link|isolation}" >&2
         exit 1
         ;;
 esac
