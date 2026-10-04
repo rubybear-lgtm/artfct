@@ -648,7 +648,7 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
             <Head title="Documentation">
                 <meta
                     name="description"
-                    content="Connect your AI tools to Artfct and build on it: the command line, MCP server, skills and REST API."
+                    content="Connect your AI tools to Artfct and build on it: the MCP server, skills, REST API and optional command line."
                 />
             </Head>
 
@@ -667,8 +667,8 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                         </h1>
                         <p className="mt-5 max-w-[52ch] text-lg text-muted-foreground">
                             Connect your AI tools, and share and read artifacts
-                            from your own code: the command line, the MCP
-                            server, skills and the REST API.
+                            from your own code: the MCP server, skills, the REST
+                            API and the optional command line.
                         </p>
                         <details className="mt-8 rounded-[10px] border border-border bg-paper px-4 py-3 text-sm lg:hidden">
                             <summary className="cursor-pointer font-semibold">

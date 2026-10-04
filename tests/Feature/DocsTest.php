@@ -95,7 +95,9 @@ test('connection guidance leads with the hosted server and keeps the local insta
         ->and(strpos($docs, 'id="mcp"'))
         ->toBeLessThan(strpos($docs, 'id="cli"'))
         ->and($welcome)->not->toContain('https://artfct.dev/mcp')
-        ->and($welcome)->toContain('mcpEndpoint');
+        ->and($welcome)->toContain('mcpEndpoint')
+        ->and(strpos($docs, 'the MCP server, skills, the'))
+        ->toBeLessThan(strpos($docs, 'the optional command line'));
 });
 
 test('the docs page states the hosted rate limit and activity retention the app enforces', function () {
