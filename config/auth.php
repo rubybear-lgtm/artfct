@@ -114,6 +114,7 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'throttle_per_minute' => env('AUTH_THROTTLE_PER_MINUTE', 20),
     'mcp_throttle_per_minute' => env('MCP_THROTTLE_PER_MINUTE', 120),
     'mcp_idempotency_ttl_seconds' => env('MCP_IDEMPOTENCY_TTL_SECONDS', 600),
     'mcp_session_ttl_minutes' => env('MCP_SESSION_TTL_MINUTES', 30),

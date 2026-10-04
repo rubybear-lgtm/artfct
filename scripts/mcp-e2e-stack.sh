@@ -78,6 +78,11 @@ up() {
     export SESSION_DRIVER="database"
     export CACHE_STORE="database"
     export APP_ENV="local"
+    # The sign-in limiter keys on the peer address, and in this stack every
+    # caller is 127.0.0.1, so the isolation suite (many users, many consents)
+    # would be throttled as one. Raised for the local stack only; the default
+    # stays 20.
+    export AUTH_THROTTLE_PER_MINUTE="${MCP_E2E_AUTH_THROTTLE_PER_MINUTE:-1000}"
     # Passed to the smoke as well, so its indexing expectations are derived from
     # the same value the app receives rather than guessed independently.
     export INDEXING_ENABLED="${MCP_E2E_INDEXING_ENABLED:-0}"
@@ -93,7 +98,7 @@ up() {
     export WORKOS_API_KEY=""
     export WORKOS_REDIRECT_URL=""
     : > "$STATE_DIR/env" # record the env this run used, for `run`'s child processes
-    env | grep -E '^(ORG_JWT_|ARTFCT_|DB_|QUEUE_CONNECTION|SESSION_DRIVER|CACHE_STORE|APP_ENV|APP_URL|AUTHKIT_|WORKOS_)' > "$STATE_DIR/env"
+    env | grep -E '^(ORG_JWT_|ARTFCT_|DB_|QUEUE_CONNECTION|SESSION_DRIVER|CACHE_STORE|APP_ENV|APP_URL|AUTHKIT_|WORKOS_|INDEXING_|AUTH_THROTTLE_)' > "$STATE_DIR/env"
 
     [ -n "${APP_KEY:-}" ] || export APP_KEY="base64:$(openssl rand -base64 32)"
     echo "APP_KEY=$APP_KEY" >> "$STATE_DIR/env"

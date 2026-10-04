@@ -237,6 +237,7 @@ without touching staging or your real `.env`/database:
 scripts/mcp-e2e-stack.sh run    # up, smoke suite, Worker storage integration tests, tear down
 scripts/mcp-e2e-stack.sh up     # start the stack and leave it running
 scripts/mcp-e2e-stack.sh rust   # run the Worker storage integration tests against a running stack
+scripts/mcp-e2e-stack.sh isolation  # tenant isolation checks against a running stack (RUB-435)
 scripts/mcp-e2e-stack.sh down   # stop everything, including Postgres
 ```
 
@@ -267,6 +268,44 @@ this with a native GitHub Actions service container instead of
 
 This is what the `mcp_e2e` CI job runs on every push/PR — the same script,
 not a separate reimplementation, so a local failure reproduces the CI one.
+
+### Tenant isolation suite (RUB-435)
+
+`scripts/mcp-e2e-stack.sh isolation` runs `scripts/tenant-isolation-e2e.mjs`
+against a running stack (`run` includes it, after the Rust tests and before
+`link`, which migrates the database fresh). It proves that two teams cannot
+reach each other's data, with real users and real credentials: users sign in
+through the dev-login stand-in, create teams through `POST /settings/teams`,
+and obtain tokens through the real OAuth consent flow. Nothing is a token
+fabricated by a helper. Each scenario is one module in `scripts/isolation/`:
+
+| Scenario | What it attacks |
+| --- | --- |
+| `baseline` | The cross-team matrix on the Worker (list, export, usage, content, metadata, serve, blob, delete) both ways, then the RUB-434 attack: rename a team, claim its old slug, get a token naming it. |
+| `webRoutes` | A non-member against a team's settings, console and API routes, and a member pairing their own team's URL with another team's ids (IDOR), on a dedicated victim team so a missing guard cannot damage the other teams. |
+| `originLink` | The signed per-artifact link: valid on its own host, refused on another artifact's host, without its token, or altered. |
+| `matrix` | Every Laravel route with a `{team}` or `{current_team}` parameter, attacked automatically; every other route must be classified in `scripts/isolation/route-classification.json`; every Worker `/v1` and `/p` path in `openapi/artfct.yaml` is attacked with the other team's credentials. An unclassified or stale route fails the run. |
+| `roles` | Viewer, member and admin limits, and tokens consented with fewer scopes than the role allows. |
+| `revocation` | A removed member's token and refresh token, and every credential of a deleted team, stop working (polled, since revocation reaches the Worker asynchronously). |
+
+Adding a route is a one-line job: team routes are covered by the matrix with no
+change, a route outside a team goes in `route-classification.json` with the
+class that describes how it is protected, and a team-route that is meant for
+non-members (the SSO sign-in) needs an entry under `team_exceptions` with a
+reason. Start the stack with `MCP_E2E_INDEXING_ENABLED=1` to exercise the
+re-index route's ownership check; with indexing off (the CI default) that
+route answers 409 before it looks at the artifact, and the suite says so.
+
+Mutation checks that were run when this was built, each of which makes the
+suite fail and passes again once reverted: restoring the pre-RUB-434 slug
+regeneration; removing the Worker list route's org comparison; removing both
+the controller and policy ownership checks on MCP connection revocation; and
+removing a route from the classification or adding a stale one.
+
+Known limits: search leakage is not exercised live (the stack has no embedding
+provider, so the Pest search tests carry it), and a member is added to a team
+directly in the database in the roles scenario rather than through the
+invitation e-mail.
 
 ## Production domain plan (draft, not applied)
 
