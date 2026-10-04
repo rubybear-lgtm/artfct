@@ -12,6 +12,25 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+// Node 22's fetch (undici) can throw `assert(!this.paused)` from deep inside the
+// HTTP parser when a response body is left unread and the server then closes
+// the socket, which is what happens on the larger pages this suite only checks
+// the status of. Every response is therefore read to the end here, and handed
+// back as an ordinary Response, so no caller can leave one dangling.
+const nativeFetch = globalThis.fetch;
+const BODYLESS = new Set([101, 204, 205, 304]);
+
+globalThis.fetch = async (...args) => {
+    const response = await nativeFetch(...args);
+    const body = await response.arrayBuffer();
+
+    return new Response(BODYLESS.has(response.status) ? null : body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+    });
+};
+
 export const laravel = (
     process.env.ISO_LARAVEL_URL ?? 'http://127.0.0.1:8990'
 ).replace(/\/$/, '');
