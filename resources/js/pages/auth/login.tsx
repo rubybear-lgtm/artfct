@@ -19,9 +19,9 @@ import AuthLayout from '@/layouts/auth-layout';
  * Only reachable when AuthKitLoginController resolves the fake client —
  * see App\Http\Controllers\Auth\AuthKitLoginController.
  */
-export default function Login() {
+export default function Login({ loginHint }: { loginHint?: string | null }) {
     const { data, setData, post, processing, errors } = useForm({
-        email: '',
+        email: loginHint ?? '',
         name: '',
         provider: 'GoogleOAuth',
     });

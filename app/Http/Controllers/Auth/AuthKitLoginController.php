@@ -21,11 +21,18 @@ class AuthKitLoginController extends Controller
      * credentials, this redirects straight to WorkOS's hosted UI (Google,
      * Microsoft, Apple, passkeys, Magic Auth). Otherwise it renders a
      * local dev/test login screen backed by FakeAuthKitClient.
+     *
+     * Optional `screen_hint` (sign-up or sign-in) and `login_hint` (an
+     * email) query parameters open the hosted UI on the right screen with
+     * the email filled in, as the invitation flow does.
      */
     public function __invoke(Request $request, AuthKitClientContract $client): Response|SymfonyResponse
     {
+        $screenHint = in_array($request->query('screen_hint'), ['sign-up', 'sign-in'], true) ? $request->query('screen_hint') : null;
+        $loginHint = filter_var($request->query('login_hint'), FILTER_VALIDATE_EMAIL) ?: null;
+
         if ($client instanceof FakeAuthKitClient) {
-            return Inertia::render('auth/login');
+            return Inertia::render('auth/login', ['loginHint' => $loginHint]);
         }
 
         $clientId = config('services.workos.client_id');
@@ -46,6 +53,8 @@ class AuthKitLoginController extends Controller
             config('services.workos.redirect_url'),
             $state,
             'authkit',
+            loginHint: $loginHint,
+            screenHint: $screenHint,
         );
 
         return Inertia::location($url);

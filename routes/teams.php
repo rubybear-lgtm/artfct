@@ -23,7 +23,8 @@ use App\Http\Controllers\Teams\TeamOwnerController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
-Route::get('invitations/{invitation}', InvitationLandingController::class)->name('invitations.show');
+Route::get('invitations/{invitation}', [InvitationLandingController::class, 'show'])->name('invitations.show');
+Route::post('invitations/{invitation}/join', [InvitationLandingController::class, 'join'])->middleware('guest')->name('invitations.join');
 
 Route::prefix('{current_team}')
     ->middleware(['auth', EnsureTeamMembership::class])

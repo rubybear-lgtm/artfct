@@ -44,9 +44,9 @@ class TeamInvitation extends Notification implements ShouldQueue
                 'inviterName' => $inviter->name,
                 'teamName' => $team->name,
             ]))
-            ->line(__('Use the link below to review the invitation and accept or decline it.'))
+            ->line(__('Accept below to create your account, or sign in, and join the team.'))
             ->action(
-                __('View invitation'),
+                __('Join :teamName', ['teamName' => $team->name]),
                 route('invitations.show', $this->invitation),
             );
     }

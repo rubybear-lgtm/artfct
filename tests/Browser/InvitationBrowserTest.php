@@ -6,7 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-test('invitee_signs_in_from_the_email_link_and_accepts', function () {
+test('invitee_accepts_from_the_email_link_and_lands_in_the_team', function () {
     $team = Team::factory()->create(['name' => 'Northwind Analytics']);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $invitation = $team->invitations()->create([
@@ -20,12 +20,11 @@ test('invitee_signs_in_from_the_email_link_and_accepts', function () {
 
     $page->assertNoJavaScriptErrors()
         ->assertSee('Join Northwind Analytics')
-        ->click('Sign in to accept')
-        ->fill('email', 'invitee@example.com')
+        ->click('Accept invitation')
+        ->assertValue('email', 'invitee@example.com')
         ->fill('name', 'Invitee')
         ->click('Continue with Google')
-        ->assertSee('Join Northwind Analytics')
-        ->click('Accept')
+        ->assertSee('Welcome to Northwind Analytics')
         ->assertNoJavaScriptErrors();
 
     expect($team->memberships()->whereHas('user', fn ($query) => $query->where('email', 'invitee@example.com'))->exists())->toBeTrue();

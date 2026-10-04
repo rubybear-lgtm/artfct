@@ -1,7 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
 
 import { Button } from '@/components/ui/button';
-import { login } from '@/routes';
+import AuthLayout from '@/layouts/auth-layout';
+import { home, logout } from '@/routes';
 import invitations from '@/routes/invitations';
 
 type State = 'sign_in' | 'ready' | 'accepted' | 'expired' | 'wrong_email';
@@ -19,12 +20,6 @@ interface Props {
     signedInAs: string | null;
 }
 
-const messages: Record<Exclude<State, 'sign_in' | 'ready'>, string> = {
-    accepted: 'This invitation has already been accepted.',
-    expired: 'This invitation has expired. Ask an admin to send a new one.',
-    wrong_email: 'This invitation was sent to a different email address.',
-};
-
 export default function InvitationShow({
     state,
     invitation,
@@ -34,51 +29,95 @@ export default function InvitationShow({
         router.post(invitations.accept.url({ invitation: invitation.code }));
     const decline = () =>
         router.delete(invitations.decline.url({ invitation: invitation.code }));
+    const signOut = () => router.post(logout.url());
+
+    const join = (account: 'new' | 'existing') =>
+        router.post(invitations.join.url({ invitation: invitation.code }), {
+            account,
+        });
 
     return (
         <>
             <Head title={`Join ${invitation.teamName}`} />
-            <div
-                style={{
-                    maxWidth: 480,
-                    margin: '4rem auto',
-                    fontFamily: 'ui-sans-serif, system-ui',
-                }}
-            >
-                <h1>Join {invitation.teamName}</h1>
-                <p>
-                    {invitation.inviterName ?? 'An admin'} invited{' '}
-                    <strong>{invitation.email}</strong> to join as{' '}
-                    <strong>{invitation.role}</strong>.
-                </p>
+            <p className="mb-2 text-xs font-semibold tracking-[0.08em] text-primary uppercase">
+                Team invitation
+            </p>
+            <h1 className="mb-2 font-serif text-3xl tracking-tight">
+                Join {invitation.teamName}
+            </h1>
+            <p className="mb-6 text-sm text-muted-foreground">
+                {invitation.inviterName ?? 'An admin'} invited{' '}
+                <strong className="font-semibold text-foreground">
+                    {invitation.email}
+                </strong>{' '}
+                to join as {invitation.role}.
+            </p>
 
-                {state === 'sign_in' && (
-                    <p>
-                        <Link href={login.url()}>Sign in to accept</Link> as{' '}
-                        {invitation.email}. You will return here afterwards.
+            {state === 'sign_in' && (
+                <div className="flex flex-col gap-3">
+                    <Button onClick={() => join('new')}>
+                        Accept invitation
+                    </Button>
+                    <p className="text-center text-sm text-muted-foreground">
+                        Already have an account?{' '}
+                        <button
+                            type="button"
+                            onClick={() => join('existing')}
+                            className="cursor-pointer font-semibold text-foreground underline underline-offset-4"
+                        >
+                            Sign in
+                        </button>
                     </p>
-                )}
+                </div>
+            )}
 
-                {state === 'ready' && (
-                    <p>
-                        <Button onClick={accept}>Accept</Button>{' '}
-                        <Button variant="outline" onClick={decline}>
-                            Decline
-                        </Button>
+            {state === 'ready' && (
+                <div className="flex flex-col gap-3">
+                    <Button onClick={accept}>Accept invitation</Button>
+                    <Button variant="outline" onClick={decline}>
+                        Decline
+                    </Button>
+                </div>
+            )}
+
+            {state === 'wrong_email' && (
+                <div className="flex flex-col gap-3">
+                    <p role="alert" className="text-sm">
+                        You are signed in as {signedInAs}. Sign out, then open
+                        the invitation link again and continue as{' '}
+                        {invitation.email}.
                     </p>
-                )}
+                    <Button onClick={signOut}>Sign out</Button>
+                </div>
+            )}
 
-                {state === 'wrong_email' && (
-                    <p role="alert">
-                        {messages.wrong_email} You are signed in as {signedInAs}
-                        ; sign in with {invitation.email} to accept.
+            {state === 'accepted' && (
+                <div className="flex flex-col gap-3">
+                    <p role="alert" className="text-sm">
+                        This invitation has already been accepted.
                     </p>
-                )}
+                    <Button asChild>
+                        <Link href={home.url()}>Go to Artfct</Link>
+                    </Button>
+                </div>
+            )}
 
-                {(state === 'accepted' || state === 'expired') && (
-                    <p role="alert">{messages[state]}</p>
-                )}
-            </div>
+            {state === 'expired' && (
+                <div className="flex flex-col gap-3">
+                    <p role="alert" className="text-sm">
+                        This invitation has expired. Ask{' '}
+                        {invitation.inviterName ?? 'an admin'} to send a new
+                        one.
+                    </p>
+                    <Button asChild variant="outline">
+                        <Link href={home.url()}>Go to Artfct</Link>
+                    </Button>
+                </div>
+            )}
         </>
     );
 }
+
+InvitationShow.layout = (page: React.ReactNode) => (
+    <AuthLayout>{page}</AuthLayout>
+);
