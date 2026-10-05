@@ -33,7 +33,12 @@ test('guest_sees_sign_in_state_and_return_url_is_remembered', function () {
 
     test()->get(route('invitations.show', $invitation))
         ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page->component('invitations/show')->where('state', 'sign_in')->where('invitation.email', 'invitee@example.com'));
+        ->assertInertia(fn (Assert $page) => $page->component('invitations/show')
+            ->where('state', 'sign_in')
+            ->where('invitation.email', 'invitee@example.com')
+            ->where('invitation.roleLabel', 'Member')
+            ->where('invitation.roleDescription', 'Members can share work with the team and find what others have shared.')
+            ->where('invitation.dashboardUrl', null));
 
     expect(session('url.intended'))->toBe(route('invitations.show', $invitation));
 });
@@ -76,6 +81,17 @@ test('expired_and_accepted_invitations_show_a_clear_state', function () {
 
     test()->get(route('invitations.show', $expired))->assertInertia(fn (Assert $page) => $page->where('state', 'expired'));
     test()->get(route('invitations.show', $accepted))->assertInertia(fn (Assert $page) => $page->where('state', 'accepted'));
+});
+
+test('an_accepted_invitation_links_a_signed_in_member_to_the_dashboard', function () {
+    $invitation = pendingInvitation('invitee@example.com', ['accepted_at' => now()]);
+    $user = User::factory()->create(['email' => 'invitee@example.com']);
+    $invitation->team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+
+    test()->actingAs($user)->get(route('invitations.show', $invitation))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('state', 'accepted')
+            ->where('invitation.dashboardUrl', route('dashboard', ['current_team' => $invitation->team->slug])));
 });
 
 test('invitation_email_links_to_the_landing_page', function () {

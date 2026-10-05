@@ -20,7 +20,7 @@ test('invitee_accepts_from_the_email_link_and_lands_in_the_team', function () {
 
     $page->assertNoJavaScriptErrors()
         ->assertSee('Join Northwind Analytics')
-        ->click('Accept invitation')
+        ->click('Create an account and join')
         ->assertValue('email', 'invitee@example.com')
         ->fill('name', 'Invitee')
         ->click('Continue with Google')
