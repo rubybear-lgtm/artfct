@@ -11,6 +11,27 @@ use Inertia\Inertia;
 
 $blogPosts = [
     [
+        'slug' => 'share-ai-agent-knowledge-team',
+        'title' => 'Share AI Agent Knowledge Across Your Team With artfct',
+        'date' => '2026-10-04',
+        'tag' => 'workflows',
+        'description' => "Publish an agent's findings to your team's artfct library so other connected agents can find them and use them to guide their next task.",
+    ],
+    [
+        'slug' => 'share-context-claude-code-codex-mcp',
+        'title' => 'Share Context Between Claude Code and Codex With MCP',
+        'date' => '2026-10-04',
+        'tag' => 'workflows',
+        'description' => "Save an investigation from Claude Code, find it in Codex, and carry verified findings forward with artfct's hosted MCP server.",
+    ],
+    [
+        'slug' => 'semantic-search-ai-generated-reports',
+        'title' => 'Find AI-generated reports when you forget the title',
+        'date' => '2026-10-04',
+        'tag' => 'workflows',
+        'description' => 'Use semantic search to find published AI reports by the problem they describe, with snippets, provenance and links to inspect the source.',
+    ],
+    [
         'slug' => 'developer-tools',
         'title' => 'Four developer tools, one skill install',
         'date' => '2026-06-04',
