@@ -14,6 +14,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
     Dialog,
     DialogClose,
@@ -65,7 +66,29 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
     const [busy, setBusy] = useState(false);
     const [created, setCreated] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [revoking, setRevoking] = useState<Token | null>(null);
+    const [revokingBusy, setRevokingBusy] = useState(false);
     usePage();
+
+    const revoke = () => {
+        if (revoking === null) {
+            return;
+        }
+
+        router.delete(
+            teamRoutes.tokens.destroy.url({
+                team: team.slug,
+                token: revoking.id,
+            }),
+            {
+                onStart: () => setRevokingBusy(true),
+                onFinish: () => {
+                    setRevokingBusy(false);
+                    setRevoking(null);
+                },
+            },
+        );
+    };
 
     const create = async (e: FormEvent) => {
         e.preventDefault();
@@ -108,8 +131,9 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                         <CardHeader>
                             <CardTitle>Create a token</CardTitle>
                             <CardDescription>
-                                Lets an AI tool share to and read from this
-                                team. The value is shown once.
+                                For your own scripts that call the Artfct API.
+                                You don&apos;t need a token to connect an AI
+                                tool.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -209,13 +233,8 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                                             variant="ghost"
                                                             size="sm"
                                                             onClick={() =>
-                                                                router.delete(
-                                                                    teamRoutes.tokens.destroy.url(
-                                                                        {
-                                                                            team: team.slug,
-                                                                            token: token.id,
-                                                                        },
-                                                                    ),
+                                                                setRevoking(
+                                                                    token,
                                                                 )
                                                             }
                                                         >
@@ -262,6 +281,16 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog
+                open={revoking !== null}
+                onOpenChange={(open) => !open && setRevoking(null)}
+                title="Revoke this token?"
+                description="Anything using this token stops working within a minute. This cannot be undone."
+                confirmLabel="Revoke token"
+                onConfirm={revoke}
+                processing={revokingBusy}
+            />
         </>
     );
 }

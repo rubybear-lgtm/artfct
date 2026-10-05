@@ -13,6 +13,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
@@ -60,6 +61,8 @@ export default function Authentication({
     const domainForm = useForm({ domain: '' });
     const connectionForm = useForm({ metadata_url: '' });
     const [confirmed, setConfirmed] = useState(false);
+    const [confirmingRemove, setConfirmingRemove] = useState(false);
+    const [removeError, setRemoveError] = useState<string | null>(null);
 
     const addDomain = (event: FormEvent) => {
         event.preventDefault();
@@ -83,6 +86,23 @@ export default function Authentication({
             auth_mode: mode,
             confirmed,
         });
+
+    const removeConnection = () => {
+        setRemoveError(null);
+        router.delete(
+            AuthenticationController.destroyConnection.url({
+                team: team.slug,
+            }),
+            {
+                onError: (errors) =>
+                    setRemoveError(
+                        Object.values(errors)[0] ??
+                            'Could not remove the connection.',
+                    ),
+                onFinish: () => setConfirmingRemove(false),
+            },
+        );
+    };
 
     return (
         <>
@@ -342,9 +362,9 @@ export default function Authentication({
                                 {connectionForm.errors.metadata_url}
                             </p>
                         )}
-                        <div className="flex gap-2">
-                            {connections && connections.length > 0 && (
-                                <>
+                        {connections && connections.length > 0 && (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex gap-2">
                                     <Button asChild variant="outline" size="sm">
                                         <a
                                             href={ssoRoutes.login.url({
@@ -354,25 +374,43 @@ export default function Authentication({
                                             Test sign-in
                                         </a>
                                     </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() =>
-                                            router.delete(
-                                                AuthenticationController.destroyConnection.url(
-                                                    { team: team.slug },
-                                                ),
-                                            )
-                                        }
-                                    >
-                                        Remove connection
-                                    </Button>
-                                </>
-                            )}
-                        </div>
+                                    {authMode !== 'polis' && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                setConfirmingRemove(true)
+                                            }
+                                        >
+                                            Remove connection
+                                        </Button>
+                                    )}
+                                </div>
+                                {authMode === 'polis' && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Switch off SSO-only sign-in before
+                                        removing the connection.
+                                    </p>
+                                )}
+                                {removeError && (
+                                    <p className="text-sm text-destructive">
+                                        {removeError}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
+
+            <ConfirmDialog
+                open={confirmingRemove}
+                onOpenChange={setConfirmingRemove}
+                title="Remove this SSO connection?"
+                description="People will no longer be able to sign in through your identity provider. Standard sign-in still works."
+                confirmLabel="Remove SSO connection"
+                onConfirm={removeConnection}
+            />
         </>
     );
 }

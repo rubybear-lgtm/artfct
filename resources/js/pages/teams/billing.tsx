@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teams from '@/routes/teams';
@@ -130,6 +131,26 @@ export default function Billing({
 }: Props) {
     const paid = team.plan !== 'free';
     const awaitingWebhook = checkout === 'success' && !paid;
+    const [pollExhausted, setPollExhausted] = useState(false);
+    const [confirmingCancel, setConfirmingCancel] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
+    const periodEnd = team.renewsAt
+        ? new Date(team.renewsAt).toLocaleDateString()
+        : 'the end of the current billing period';
+
+    const cancelSubscription = () => {
+        router.post(
+            teams.billing.cancel.url({ team: team.slug }),
+            {},
+            {
+                onStart: () => setCancelling(true),
+                onFinish: () => {
+                    setCancelling(false);
+                    setConfirmingCancel(false);
+                },
+            },
+        );
+    };
 
     // The redirect back from Stripe never grants access; poll until the webhook lands.
     useEffect(() => {
@@ -143,6 +164,7 @@ export default function Billing({
 
             if (attempts > 15) {
                 window.clearInterval(timer);
+                setPollExhausted(true);
 
                 return;
             }
@@ -159,10 +181,17 @@ export default function Billing({
             <h1 className="mb-6 text-2xl font-semibold">Billing</h1>
 
             <div className="flex flex-col gap-6">
-                {awaitingWebhook && (
+                {awaitingWebhook && !pollExhausted && (
                     <Alert>
                         Thanks. Your payment is being confirmed; this page
                         updates when Stripe reports it.
+                    </Alert>
+                )}
+                {awaitingWebhook && pollExhausted && (
+                    <Alert variant="warning">
+                        We haven&apos;t had confirmation from Stripe yet.
+                        Refresh in a minute, or open Payment method &amp;
+                        invoices to check.
                     </Alert>
                 )}
                 {checkout === 'success' && paid && (
@@ -255,13 +284,7 @@ export default function Billing({
                             ) : (
                                 <Button
                                     variant="outline"
-                                    onClick={() =>
-                                        router.post(
-                                            teams.billing.cancel.url({
-                                                team: team.slug,
-                                            }),
-                                        )
-                                    }
+                                    onClick={() => setConfirmingCancel(true)}
                                 >
                                     Cancel subscription
                                 </Button>
@@ -397,6 +420,16 @@ export default function Billing({
                     </CardContent>
                 </Card>
             </div>
+
+            <ConfirmDialog
+                open={confirmingCancel}
+                onOpenChange={setConfirmingCancel}
+                title="Cancel this subscription?"
+                description={`${team.name} keeps the ${team.plan} plan until ${periodEnd}. You can resume before then.`}
+                confirmLabel="Cancel subscription"
+                onConfirm={cancelSubscription}
+                processing={cancelling}
+            />
         </>
     );
 }

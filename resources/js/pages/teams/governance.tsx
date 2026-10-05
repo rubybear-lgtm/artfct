@@ -1,4 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 import GovernancePageController from '@/actions/App/Http/Controllers/Teams/GovernancePageController';
@@ -11,6 +12,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
@@ -39,10 +41,28 @@ export default function Governance({
 }: Props) {
     const retention = useForm({ retention_days: retentionDays ?? '' });
     const hold = useForm({ artifact_id: '' });
+    const [releasing, setReleasing] = useState<string | null>(null);
+    const [releasingBusy, setReleasingBusy] = useState(false);
 
     const saveRetention = (event: FormEvent) => {
         event.preventDefault();
         retention.patch(teamRoutes.retention.update.url({ team: team.slug }));
+    };
+
+    const releaseHold = (id: string) => {
+        router.delete(
+            GovernancePageController.releaseHold.url({
+                team: team.slug,
+                artifactId: id,
+            }),
+            {
+                onStart: () => setReleasingBusy(true),
+                onFinish: () => {
+                    setReleasingBusy(false);
+                    setReleasing(null);
+                },
+            },
+        );
     };
 
     const placeHold = (event: FormEvent) => {
@@ -174,16 +194,7 @@ export default function Governance({
                                             variant="link"
                                             size="sm"
                                             className="ml-auto underline"
-                                            onClick={() =>
-                                                router.delete(
-                                                    GovernancePageController.releaseHold.url(
-                                                        {
-                                                            team: team.slug,
-                                                            artifactId: id,
-                                                        },
-                                                    ),
-                                                )
-                                            }
+                                            onClick={() => setReleasing(id)}
                                         >
                                             Release
                                         </Button>
@@ -227,6 +238,22 @@ export default function Governance({
                     operator, not from this page. Contact support to request it.
                 </Alert>
             </div>
+
+            <ConfirmDialog
+                open={releasing !== null}
+                onOpenChange={(open) => !open && setReleasing(null)}
+                title="Release this legal hold?"
+                description={
+                    <>
+                        <span className="tabular-nums">{releasing}</span> is
+                        currently kept for good. Retention can delete this
+                        artifact on its next run once the hold is released.
+                    </>
+                }
+                confirmLabel="Release hold"
+                onConfirm={() => releasing !== null && releaseHold(releasing)}
+                processing={releasingBusy}
+            />
         </>
     );
 }

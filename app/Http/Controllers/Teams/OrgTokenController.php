@@ -13,6 +13,7 @@ use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -86,14 +87,20 @@ class OrgTokenController extends Controller
      * Worker's KV denylist so the next request using it is rejected at the
      * edge within the documented propagation window.
      */
-    public function destroy(Request $request, Team $team, OrgToken $token, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): JsonResponse
+    public function destroy(Request $request, Team $team, OrgToken $token, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): JsonResponse|RedirectResponse
     {
         abort_unless($token->team_id === $team->id, 404);
 
         Gate::authorize('revoke', $token);
 
         if (! $tokenRevoker->denylistTokens([$token])) {
-            abort(503, __('Unable to revoke this token at the Worker. The token remains active; please retry shortly.'));
+            if ($request->expectsJson()) {
+                abort(503, __('Unable to revoke this token at the Worker. The token remains active; please retry shortly.'));
+            }
+
+            Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't revoke the token right now. It still works, so try again in a minute.")]);
+
+            return back();
         }
 
         $token->revoked_at = now();
@@ -105,6 +112,12 @@ class OrgTokenController extends Controller
 
         $auditLogger->recordForRequest($request, AuditEventType::TokenRevoked, $team, (string) $request->user()->id, "token:{$token->id}");
 
-        return response()->json(['revoked' => true]);
+        if ($request->expectsJson()) {
+            return response()->json(['revoked' => true]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Token revoked. Anything using it stops working within a minute.')]);
+
+        return back();
     }
 }
