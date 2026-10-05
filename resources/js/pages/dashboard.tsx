@@ -38,22 +38,14 @@ export default function Dashboard({
             detail: 'Everyone on the team can then find what gets shared.',
         },
         {
-            done: setup?.createdToken ?? false,
-            href: currentTeam
-                ? teamRoutes.tokens.index.url({ team: currentTeam.slug })
-                : teamRoutes.index.url(),
-            label: 'Connect your first AI tool',
-            detail: 'So what it makes can be shared to the team.',
-        },
-        {
             done: setup?.connectedMcp ?? false,
             href: currentTeam
                 ? teamRoutes.mcpConnections.index.url({
                       team: currentTeam.slug,
                   })
                 : teamRoutes.index.url(),
-            label: 'Connect an MCP client',
-            detail: 'Let your AI tools search and read what the team shares.',
+            label: 'Connect your AI tools',
+            detail: 'So what they make can be shared with the team, and they can find what the team has shared.',
         },
         {
             done: setup?.choseAPlan ?? false,
