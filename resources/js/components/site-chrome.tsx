@@ -51,13 +51,44 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                         Blog
                     </Link>
                 </nav>
+                <details className="relative sm:hidden">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                        Menu
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-2 flex min-w-[200px] flex-col rounded-md border border-border bg-background p-2 text-sm text-muted-foreground shadow-lg">
+                        <Link
+                            href={`${home.url()}#how`}
+                            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
+                        >
+                            How it works
+                        </Link>
+                        <Link
+                            href={`${home.url()}#plans`}
+                            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
+                        >
+                            Pricing
+                        </Link>
+                        <Link
+                            href={docs.url()}
+                            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
+                        >
+                            Docs
+                        </Link>
+                        <Link
+                            href={blog.url()}
+                            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
+                        >
+                            Blog
+                        </Link>
+                    </div>
+                </details>
                 <div className="flex items-center gap-[18px] text-sm">
                     <Link href={login.url()}>Sign in</Link>
                     <Link
                         href={login.url()}
                         className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-deep"
                     >
-                        Try free
+                        Try Team free
                     </Link>
                 </div>
             </div>

@@ -89,6 +89,8 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
         ['loc' => url('/free'), 'priority' => '0.8', 'changefreq' => 'weekly'],
         ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
         ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
+        ['loc' => url('/terms'), 'priority' => '0.3', 'changefreq' => 'yearly'],
+        ['loc' => url('/privacy'), 'priority' => '0.3', 'changefreq' => 'yearly'],
     ];
 
     foreach ($blogPosts as $post) {
