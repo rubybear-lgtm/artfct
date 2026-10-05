@@ -18,7 +18,7 @@ export function LegalPage({
             <Head title={title} />
             <main className="mx-auto max-w-2xl px-5 py-12">
                 <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
-                <Alert variant="warning">
+                <Alert variant="warning" role="status">
                     Draft text (version {version}). It describes how the service
                     works today and has not had legal review. It is not legal
                     advice.

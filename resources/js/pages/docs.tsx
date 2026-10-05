@@ -786,6 +786,15 @@ function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
     const current =
         guides.find((guide) => guide.id === (selected ?? hash)) ?? guides[0];
 
+    /**
+     * Keeps the URL hash on the visible tab so a copied link opens the same
+     * tool. replaceState does not fire hashchange, so `selected` still wins.
+     */
+    const select = (id: string) => {
+        setSelected(id);
+        window.history.replaceState(null, '', `#${id}`);
+    };
+
     /** Roving tabIndex: focus the newly selected tab, wrapping at both ends. */
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         const index = guides.findIndex((guide) => guide.id === current.id);
@@ -810,7 +819,7 @@ function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
         }
 
         event.preventDefault();
-        setSelected(guides[next].id);
+        select(guides[next].id);
         tablist.current
             ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
             [next]?.focus();
@@ -834,7 +843,7 @@ function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
                         aria-selected={guide.id === current.id}
                         aria-controls={`${guide.id}-panel`}
                         tabIndex={guide.id === current.id ? 0 : -1}
-                        onClick={() => setSelected(guide.id)}
+                        onClick={() => select(guide.id)}
                         className={`-mb-px scroll-mt-8 border-b-2 pb-2.5 text-sm font-semibold transition-colors ${
                             guide.id === current.id
                                 ? 'border-primary text-foreground'

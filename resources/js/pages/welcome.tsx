@@ -84,20 +84,20 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="artfct — share encrypted html instantly">
+            <Head title="artfct — share HTML & markdown privately">
                 <meta
                     property="og:title"
-                    content="artfct — share encrypted html. get a link. that's it."
+                    content="artfct — share HTML & markdown privately"
                 />
                 <meta
                     property="og:description"
-                    content="Drop a self-contained HTML file — via browser, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
+                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
                 />
                 <meta property="og:url" content="https://artfct.dev" />
                 <meta property="og:type" content="website" />
                 <meta
                     name="description"
-                    content="Drop a self-contained HTML file — via browser, API, or AI agent — and get back a shareable encrypted link. No sign-up required."
+                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
                 />
             </Head>
             <ThemeToggle />

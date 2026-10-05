@@ -202,6 +202,7 @@ const icon = {
 export default function Landing() {
     const page = useRef<HTMLDivElement>(null);
     const demo = useRef<HTMLDivElement>(null);
+    const navMenu = useRef<HTMLDetailsElement>(null);
     useHeroDemo(demo);
     useSettleOnScroll(page);
 
@@ -218,9 +219,16 @@ export default function Landing() {
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
                     </div>
-                    <details className="navmenu">
+                    <details ref={navMenu} className="navmenu">
                         <summary>Menu</summary>
-                        <div className="navmenu-links">
+                        <div
+                            className="navmenu-links"
+                            onClick={() => {
+                                if (navMenu.current) {
+                                    navMenu.current.open = false;
+                                }
+                            }}
+                        >
                             <a href="#how">How it works</a>
                             <a href="#plans">Pricing</a>
                             <Link href={docs.url()}>Docs</Link>
