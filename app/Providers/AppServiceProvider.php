@@ -59,6 +59,7 @@ use App\Support\ClientIp;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -70,6 +71,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\ExceptionResponse;
+use Inertia\Inertia;
 use Laravel\Mcp\Events\SessionInitialized;
 
 class AppServiceProvider extends ServiceProvider
@@ -160,6 +163,44 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // A browser that hits a refused or missing page lands on one branded,
+        // plain-language screen instead of Laravel's bare "404 | Not Found".
+        // JSON clients keep the machine-readable body they parse, and local
+        // debug keeps Laravel's stack trace.
+        Inertia::handleExceptionsUsing(function (ExceptionResponse $response): ?ExceptionResponse {
+            if (! in_array($response->statusCode(), [403, 404, 419, 429, 500, 503], true)) {
+                return null;
+            }
+
+            if (config('app.debug')) {
+                return null;
+            }
+
+            $request = $response->request;
+
+            // Never replace a JSON error body. The path list mirrors the
+            // shouldRenderJsonWhen patterns in bootstrap/app.php; checking the
+            // rendered response too means a divergence there cannot break a
+            // client contract.
+            if ($request->expectsJson()
+                || $request->is('api/*', 'oauth/register', 'oauth/token', 'oauth/revoke', 'mcp')
+                || $response->response instanceof JsonResponse) {
+                return null;
+            }
+
+            $props = ['status' => $response->statusCode()];
+
+            if ($response->statusCode() === 429) {
+                $retryAfter = $response->response->headers->get('Retry-After');
+
+                if (is_numeric($retryAfter)) {
+                    $props['retryAfter'] = (int) $retryAfter;
+                }
+            }
+
+            return $response->render('error', $props)->withSharedData();
+        });
 
         Mail::extend('cloudflare', fn (): CloudflareEmailTransport => new CloudflareEmailTransport(
             (string) config('services.cloudflare_email.account_id'),
