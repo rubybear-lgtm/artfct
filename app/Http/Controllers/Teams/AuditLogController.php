@@ -54,6 +54,7 @@ class AuditLogController extends Controller
         $events = $paginator->through(fn (AuditEvent $event): array => [
             'id' => $event->id,
             'type' => $event->event_type->value,
+            'typeLabel' => $event->event_type->label(),
             'actor' => $event->actor,
             'actorName' => $names[$event->actor] ?? $event->actor,
             'target' => $event->target,
@@ -62,10 +63,23 @@ class AuditLogController extends Controller
             'at' => $event->created_at->toIso8601String(),
         ]);
 
+        $members = $team->members()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $member): array => [
+                'id' => (string) $member->id,
+                'name' => $member->name,
+            ]);
+
         return Inertia::render('teams/audit', [
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'events' => $events,
-            'types' => array_map(fn (AuditEventType $case): string => $case->value, AuditEventType::cases()),
+            'types' => array_map(fn (AuditEventType $case): array => [
+                'value' => $case->value,
+                'label' => $case->label(),
+            ], AuditEventType::cases()),
+            'members' => $members,
+            'total' => $paginator->total(),
             'filters' => [
                 'type' => $type?->value,
                 'actor' => $filters['actor'] ?? null,

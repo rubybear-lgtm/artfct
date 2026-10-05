@@ -43,4 +43,48 @@ enum AuditEventType: string
     case McpConnectionRefreshed = 'mcp.connection_refreshed';
     case McpConnectionRevoked = 'mcp.connection_revoked';
     case McpConnectionReauthorized = 'mcp.connection_reauthorized';
+
+    /**
+     * Plain sentence-case label for admins who are not engineers, shown in
+     * the audit log in place of the wire value. Deliberately has no
+     * `default` arm: a new case has to be labelled here.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::ArtifactCreated => 'Artifact created',
+            self::ArtifactDeployed => 'Artifact deployed',
+            self::ArtifactViewed => 'Artifact viewed',
+            self::ArtifactShared => 'Artifact shared',
+            self::ArtifactRevoked => 'Artifact revoked',
+            self::ArtifactLinkMinted => 'Open link created',
+            self::ArtifactDeleted => 'Artifact deleted',
+            self::ShareCreated => 'Share created',
+            self::ShareRevoked => 'Share revoked',
+            self::MemberAdded => 'Member added',
+            self::MemberRemoved => 'Member removed',
+            self::RoleChanged => 'Role changed',
+            self::TokenCreated => 'Token created',
+            self::TokenRevoked => 'Token revoked',
+            self::AuthModeChanged => 'Sign-in method changed',
+            self::ExportPerformed => 'Audit log exported',
+            self::RetentionApplied => 'Retention applied',
+            self::LegalHoldApplied => 'Legal hold placed',
+            self::SearchPerformed => 'Search run',
+            self::OwnershipTransferred => 'Ownership transferred',
+            self::SeatsSynced => 'Seats updated',
+            self::AccountDeleted => 'Account deleted',
+            self::InvitationDeclined => 'Invitation declined',
+            self::TeamCreated => 'Team created',
+            self::TeamRenamed => 'Team renamed',
+            self::TeamDeleted => 'Team deleted',
+            self::MemberLeft => 'Member left',
+            self::SubscriptionCancelled => 'Subscription cancelled',
+            self::SubscriptionResumed => 'Subscription resumed',
+            self::McpConnectionCreated => 'AI tool connected',
+            self::McpConnectionRefreshed => 'AI tool connection refreshed',
+            self::McpConnectionRevoked => 'AI tool disconnected',
+            self::McpConnectionReauthorized => 'AI tool reconnected',
+        };
+    }
 }
