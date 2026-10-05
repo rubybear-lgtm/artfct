@@ -516,6 +516,11 @@ html {
         background-color 0.1s ease;
 }
 
+.welcome-file-dropzone:focus-visible {
+    outline: 2px solid var(--sol-base00);
+    outline-offset: 3px;
+}
+
 .welcome-file-dropzone.is-dragging {
     border-style: double;
     border-color: var(--sol-blue);
@@ -535,7 +540,7 @@ html {
 }
 
 .welcome-file-status {
-    color: var(--sol-base1);
+    color: var(--sol-base00);
     font-size: 14px;
 }
 

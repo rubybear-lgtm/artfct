@@ -24,7 +24,7 @@ const FAQ_SCHEMA = {
             name: 'What is artfct?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'artfct is an instant encrypted HTML sharing tool for developers. Drop a self-contained HTML or Markdown file — via browser, API, or AI agent — and get a shareable link in seconds. No sign-up required.',
+                text: 'artfct turns a self-contained HTML or Markdown file into a private, shareable link in seconds. No sign-up, no accounts.',
             },
         },
         {
@@ -32,7 +32,7 @@ const FAQ_SCHEMA = {
             name: 'Is artfct free?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Yes. All artifact tiers are free right now. Paid plans with higher usage limits may be added in the future, but the core service will remain free.',
+                text: 'Yes. Free links cost nothing and need no sign-up. Team plans add sharing across your team.',
             },
         },
         {
@@ -40,15 +40,15 @@ const FAQ_SCHEMA = {
             name: 'How does encryption work?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Every artifact is encrypted in the browser using AES-GCM before it ever reaches the server. The encryption key is embedded in the URL fragment (the part after #), which the server never sees.',
+                text: 'Every link is encrypted in your browser using AES-GCM before it ever reaches the server. The encryption key is embedded in the URL fragment (the part after #), which the server never sees.',
             },
         },
         {
             '@type': 'Question',
-            name: 'What are the three tiers?',
+            name: 'How private are free links?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: "Public — open-access URLs, shareable with anyone. Secure — high-entropy fragment keys with blurred previews by default. Ephemeral — intentionally short-lived, same as public but named for things you don't need to keep.",
+                text: 'Every free link is encrypted in your browser before upload, and the preview is blurred by default, so only someone with the full link can read it. Links expire 5 days after the last visit; you can change that from Recent deployments.',
             },
         },
         {
@@ -56,15 +56,15 @@ const FAQ_SCHEMA = {
             name: 'How long do artifacts last?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'All artifacts use sliding expiration — every access resets the clock. Default TTL is 5 days, configurable up to 1 year. There is no permanent tier.',
+                text: 'All links use sliding expiration — every visit resets the clock. The default is 5 days, and you can change it up to 1 year from Recent deployments. If a link is not visited within its duration, it expires and is deleted.',
             },
         },
         {
             '@type': 'Question',
-            name: 'Does artfct work with AI agents?',
+            name: 'Does artfct work with AI tools?',
             acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Yes. Install the artfct MCP server or the artfct skill in Claude Code, Cursor, Codex, or Gemini. Your agent can build HTML artifacts and deploy them automatically with a single MCP call.',
+                text: "Yes. In your AI tool's settings, add the Artfct connection address shown above and approve the sign-in in your browser. There is nothing to install.",
             },
         },
     ],
