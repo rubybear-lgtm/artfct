@@ -97,6 +97,46 @@ test('token_revocation_fails_closed_when_worker_connection_throws', function () 
     expect($token->fresh()->revoked_at)->toBeNull();
 });
 
+test('token_revocation_through_an_inertia_visit_redirects_with_a_toast', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgToken::factory()->for($team)->for($admin)->create();
+
+    test()->actingAs($admin)->delete("/settings/teams/{$team->slug}/tokens/{$token->id}")
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'success',
+            'message' => 'Token revoked. Anything using it stops working within a minute.',
+        ]);
+
+    expect($token->fresh()->revoked_at)->not->toBeNull();
+});
+
+test('a_failed_inertia_revocation_redirects_with_an_error_toast', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
+    ]);
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgToken::factory()->for($team)->for($admin)->create();
+
+    test()->actingAs($admin)->delete("/settings/teams/{$team->slug}/tokens/{$token->id}")
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'error',
+            'message' => "Couldn't revoke the token right now. It still works, so try again in a minute.",
+        ]);
+
+    expect($token->fresh()->revoked_at)->toBeNull();
+});
+
 test('member_cannot_revoke_another_users_token', function () {
     configureOrgJwt();
     Http::fake([
