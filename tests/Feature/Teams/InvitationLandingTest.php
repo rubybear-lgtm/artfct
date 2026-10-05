@@ -83,6 +83,15 @@ test('expired_and_accepted_invitations_show_a_clear_state', function () {
     test()->get(route('invitations.show', $accepted))->assertInertia(fn (Assert $page) => $page->where('state', 'accepted'));
 });
 
+test('an_unknown_invitation_code_shows_the_branded_invalid_page', function () {
+    test()->get(route('invitations.show', 'no-such-invitation-code'))
+        ->assertNotFound()
+        ->assertInertia(fn (Assert $page) => $page->component('invitations/show')
+            ->where('state', 'invalid')
+            ->where('invitation', null)
+            ->where('signedInAs', null));
+});
+
 test('an_accepted_invitation_links_a_signed_in_member_to_the_dashboard', function () {
     $invitation = pendingInvitation('invitee@example.com', ['accepted_at' => now()]);
     $user = User::factory()->create(['email' => 'invitee@example.com']);
