@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Teams;
 
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Collection;
@@ -21,11 +22,15 @@ use Inertia\Response;
  */
 class CollectionController extends Controller
 {
-    public function index(Request $request, Team $team): Response
+    public function index(Request $request, Team $team, ArtifactDirectory $artifacts): Response
     {
         $this->authorizeMember($request, $team);
 
         return Inertia::render('teams/collections', [
+            // The picker offers the team's own artifacts by title, so a
+            // curator never has to paste an id. Revoked artifacts are left
+            // out; the directory returns the most recent page first.
+            'artifactOptions' => $this->artifactOptions($artifacts, $team),
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'canEdit' => $this->canEdit($request, $team),
             'canPin' => $request->user()->can('pinCanonicalCollection', $team),
@@ -64,6 +69,8 @@ class CollectionController extends Controller
 
         $collections->create($team, $request->user(), $validated['name'], $validated['description'] ?? null);
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Collection created.')]);
+
         return back();
     }
 
@@ -77,6 +84,8 @@ class CollectionController extends Controller
 
         $collection->update(['name' => $validated['name']]);
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Collection renamed.')]);
+
         return back();
     }
 
@@ -88,6 +97,8 @@ class CollectionController extends Controller
 
         $collections->addArtifact($collection, $validated['artifact_id']);
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Added to :name.', ['name' => $collection->name])]);
+
         return back();
     }
 
@@ -96,6 +107,8 @@ class CollectionController extends Controller
         $this->authorizeEditor($request, $team, $collection);
 
         $collections->removeArtifact($collection, $artifactId);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Removed from :name.', ['name' => $collection->name])]);
 
         return back();
     }
@@ -107,6 +120,8 @@ class CollectionController extends Controller
 
         $collections->pinCanonical($collection, $request->user());
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Pinned.')]);
+
         return back();
     }
 
@@ -117,7 +132,36 @@ class CollectionController extends Controller
 
         $collections->unpinCanonical($collection, $request->user());
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Unpinned.')]);
+
         return back();
+    }
+
+    /**
+     * The team's recent artifacts by title for the picker, so a curator never
+     * has to paste an id. A directory outage leaves the picker empty instead
+     * of breaking the page.
+     *
+     * @return list<array{id: string, title: string}>
+     */
+    private function artifactOptions(ArtifactDirectory $artifacts, Team $team): array
+    {
+        try {
+            $listed = $artifacts->listArtifacts($team->slug, [], null, 100)['artifacts'];
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return [];
+        }
+
+        return collect($listed)
+            ->reject(fn (array $artifact): bool => ($artifact['revoked_at'] ?? null) !== null)
+            ->map(fn (array $artifact): array => [
+                'id' => $artifact['id'],
+                'title' => ($artifact['title'] ?? '') !== '' ? $artifact['title'] : substr($artifact['id'], 0, 8),
+            ])
+            ->values()
+            ->all();
     }
 
     private function authorizeMember(Request $request, Team $team): void
