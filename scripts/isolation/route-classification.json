@@ -25,6 +25,7 @@
         "DELETE invitations/{invitation}": "user",
         "GET invitations/{invitation}": "public",
         "POST invitations/{invitation}/accept": "user",
+        "POST invitations/{invitation}/join": "guest",
         "GET login": "guest",
         "POST logout": "user",
         "DELETE mcp": "token",
