@@ -3,9 +3,11 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
     useSyncExternalStore,
 } from 'react';
+import type { KeyboardEvent } from 'react';
 
 import { GITHUB, SitePage } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
@@ -780,14 +782,47 @@ function readHash(): string {
 function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
     const hash = useSyncExternalStore(subscribeToHash, readHash, () => '');
     const [selected, setSelected] = useState<string | null>(null);
+    const tablist = useRef<HTMLDivElement>(null);
     const current =
         guides.find((guide) => guide.id === (selected ?? hash)) ?? guides[0];
+
+    /** Roving tabIndex: focus the newly selected tab, wrapping at both ends. */
+    const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        const index = guides.findIndex((guide) => guide.id === current.id);
+        const last = guides.length - 1;
+        let next: number;
+
+        switch (event.key) {
+            case 'ArrowRight':
+                next = index === last ? 0 : index + 1;
+                break;
+            case 'ArrowLeft':
+                next = index <= 0 ? last : index - 1;
+                break;
+            case 'Home':
+                next = 0;
+                break;
+            case 'End':
+                next = last;
+                break;
+            default:
+                return;
+        }
+
+        event.preventDefault();
+        setSelected(guides[next].id);
+        tablist.current
+            ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+            [next]?.focus();
+    };
 
     return (
         <div className="flex flex-col gap-6">
             <div
+                ref={tablist}
                 role="tablist"
                 aria-label="AI tool"
+                onKeyDown={onKeyDown}
                 className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border"
             >
                 {guides.map((guide) => (
@@ -798,6 +833,7 @@ function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
                         role="tab"
                         aria-selected={guide.id === current.id}
                         aria-controls={`${guide.id}-panel`}
+                        tabIndex={guide.id === current.id ? 0 : -1}
                         onClick={() => setSelected(guide.id)}
                         className={`-mb-px scroll-mt-8 border-b-2 pb-2.5 text-sm font-semibold transition-colors ${
                             guide.id === current.id

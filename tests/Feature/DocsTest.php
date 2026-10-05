@@ -151,3 +151,22 @@ test('the free tool page gives the prompt the endpoint of the environment servin
             ->component('welcome')
             ->where('mcpEndpoint', url('/mcp')));
 });
+
+/*
+ * Guards the tab pattern the way the tests above guard the guide content:
+ * the roving tabIndex and arrow keys are client-only, so a source assertion
+ * is the only check that fails if someone drops them.
+ */
+test('the AI tool tabs keep roving focus and arrow-key navigation', function () {
+    $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
+
+    expect($page)
+        ->toContain('role="tablist"')
+        ->toContain('tabIndex={guide.id === current.id ? 0 : -1}')
+        ->toContain("case 'ArrowLeft':")
+        ->toContain("case 'ArrowRight':")
+        ->toContain("case 'Home':")
+        ->toContain("case 'End':")
+        ->toContain("querySelectorAll<HTMLButtonElement>('[role=\"tab\"]')")
+        ->toContain('.focus();');
+});
