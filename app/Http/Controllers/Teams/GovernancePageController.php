@@ -86,6 +86,8 @@ class GovernancePageController extends Controller
             throw ValidationException::withMessages(['artifact_id' => $exception->getMessage()]);
         }
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Hold released.')]);
+
         return back();
     }
 

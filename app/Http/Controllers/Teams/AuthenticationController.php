@@ -90,6 +90,8 @@ class AuthenticationController extends Controller
         $polis->deleteConnections($team->slug);
         $auditLogger->recordForRequest($request, AuditEventType::AuthModeChanged, $team, (string) $request->user()->id, 'sso connection removed');
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('SSO connection removed.')]);
+
         return back();
     }
 }

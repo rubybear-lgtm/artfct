@@ -63,6 +63,10 @@ export default function Authentication({
     const [confirmed, setConfirmed] = useState(false);
     const [confirmingRemove, setConfirmingRemove] = useState(false);
     const [removeError, setRemoveError] = useState<string | null>(null);
+    const [removingDomain, setRemovingDomain] = useState<{
+        id: number;
+        domain: string;
+    } | null>(null);
 
     const addDomain = (event: FormEvent) => {
         event.preventDefault();
@@ -178,14 +182,7 @@ export default function Authentication({
                                             size="sm"
                                             variant="ghost"
                                             onClick={() =>
-                                                router.delete(
-                                                    teamRoutes.domains.destroy.url(
-                                                        {
-                                                            team: team.slug,
-                                                            domain: domain.id,
-                                                        },
-                                                    ),
-                                                )
+                                                setRemovingDomain(domain)
                                             }
                                         >
                                             Remove
@@ -402,6 +399,26 @@ export default function Authentication({
                     </CardContent>
                 </Card>
             </div>
+
+            <ConfirmDialog
+                open={removingDomain !== null}
+                onOpenChange={(open) => !open && setRemovingDomain(null)}
+                title={`Remove ${removingDomain?.domain}?`}
+                description="This domain will no longer be verified, so SSO cannot be turned on for it."
+                confirmLabel="Remove domain"
+                onConfirm={() => {
+                    if (removingDomain) {
+                        router.delete(
+                            teamRoutes.domains.destroy.url({
+                                team: team.slug,
+                                domain: removingDomain.id,
+                            }),
+                        );
+                    }
+
+                    setRemovingDomain(null);
+                }}
+            />
 
             <ConfirmDialog
                 open={confirmingRemove}

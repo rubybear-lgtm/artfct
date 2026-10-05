@@ -1,7 +1,9 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowRight, Check } from 'lucide-react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import AppLayout from '@/layouts/app-layout';
 import invitations from '@/routes/invitations';
 import teamRoutes from '@/routes/teams';
@@ -28,6 +30,7 @@ export default function Dashboard({
     setup: SetupProgress | null;
 }) {
     const { currentTeam } = usePage<SharedProps>().props;
+    const [declining, setDeclining] = useState<PendingInvitation | null>(null);
     const steps = [
         {
             done: setup?.invitedTeammates ?? false,
@@ -119,12 +122,7 @@ export default function Dashboard({
                                             size="sm"
                                             variant="outline"
                                             onClick={() =>
-                                                router.delete(
-                                                    invitations.decline.url({
-                                                        invitation:
-                                                            invitation.code,
-                                                    }),
-                                                )
+                                                setDeclining(invitation)
                                             }
                                         >
                                             Decline
@@ -197,6 +195,25 @@ export default function Dashboard({
                     </section>
                 )}
             </div>
+            <ConfirmDialog
+                open={declining !== null}
+                onOpenChange={(open) => !open && setDeclining(null)}
+                title={`Decline the invitation to ${declining?.team.name}?`}
+                description="You can only join later if someone invites you again."
+                confirmLabel="Decline invitation"
+                destructive={false}
+                onConfirm={() => {
+                    if (declining) {
+                        router.delete(
+                            invitations.decline.url({
+                                invitation: declining.code,
+                            }),
+                        );
+                    }
+
+                    setDeclining(null);
+                }}
+            />
         </>
     );
 }

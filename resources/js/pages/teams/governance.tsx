@@ -43,6 +43,7 @@ export default function Governance({
     const hold = useForm({ artifact_id: '' });
     const [releasing, setReleasing] = useState<string | null>(null);
     const [releasingBusy, setReleasingBusy] = useState(false);
+    const [releaseError, setReleaseError] = useState<string | null>(null);
 
     const saveRetention = (event: FormEvent) => {
         event.preventDefault();
@@ -50,6 +51,7 @@ export default function Governance({
     };
 
     const releaseHold = (id: string) => {
+        setReleaseError(null);
         router.delete(
             GovernancePageController.releaseHold.url({
                 team: team.slug,
@@ -57,6 +59,11 @@ export default function Governance({
             }),
             {
                 onStart: () => setReleasingBusy(true),
+                onError: (errors) =>
+                    setReleaseError(
+                        errors.artifact_id ??
+                            'Could not release the hold. Try again.',
+                    ),
                 onFinish: () => {
                     setReleasingBusy(false);
                     setReleasing(null);
@@ -201,6 +208,14 @@ export default function Governance({
                                     </li>
                                 ))}
                             </ul>
+                        )}
+                        {releaseError && (
+                            <p
+                                role="alert"
+                                className="text-sm text-destructive"
+                            >
+                                {releaseError}
+                            </p>
                         )}
                         <form onSubmit={placeHold} className="flex gap-2">
                             <Input

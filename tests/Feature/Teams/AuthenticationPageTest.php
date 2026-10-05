@@ -83,7 +83,8 @@ test('an_enterprise_admin_adds_and_removes_a_connection_through_polis', function
         && $request['metadataUrl'] === 'https://idp.example.com/m'
         && $request->hasHeader('Authorization', 'Api-Key k'));
 
-    test()->actingAs($admin)->delete(route('teams.authentication.connection.destroy', $team))->assertRedirect();
+    test()->actingAs($admin)->delete(route('teams.authentication.connection.destroy', $team))->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'SSO connection removed.']);
     Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'tenant=acme') && str_contains($request->url(), 'product=artfct'));
 });
 

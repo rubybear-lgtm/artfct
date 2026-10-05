@@ -196,7 +196,13 @@ class McpConnectionController extends Controller
 
         if ($connection->revoked_at === null) {
             if (! $this->revokeLiveCredentials($connection, $tokenRevoker)) {
-                abort(503, __('Unable to revoke this connection’s active credentials. Please retry shortly.'));
+                if ($request->expectsJson()) {
+                    abort(503, __('Unable to revoke this connection’s active credentials. Please retry shortly.'));
+                }
+
+                Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't disconnect it right now. It still works, so try again in a minute.")]);
+
+                return back();
             }
 
             $connection->forceFill(['revoked_at' => now()])->save();
@@ -208,6 +214,8 @@ class McpConnectionController extends Controller
                 "mcp_connection:{$connection->public_id}",
             );
         }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('AI tool disconnected.')]);
 
         return back();
     }
