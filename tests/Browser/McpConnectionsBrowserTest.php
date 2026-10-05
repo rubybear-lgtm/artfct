@@ -26,7 +26,7 @@ test('team members can inspect setup details and revoke an MCP connection', func
     $page = visit(route('teams.mcp-connections.index', $team))
         ->assertSee('Connect an AI tool')
         ->assertSee('Technical details')
-        ->assertSee('Read shared work')
+        ->assertSee('Read and search your team\'s shared work')
         ->assertSee('Browser agent')
         ->assertNoJavaScriptErrors();
 

@@ -27,12 +27,12 @@ enum McpScope: string
     public function label(): string
     {
         return match ($this) {
-            self::ArtifactsRead => 'Read artifacts and search your workspace',
-            self::ArtifactsDeploy => 'Deploy artifacts to your workspace',
-            self::ArtifactsDelete => 'Delete artifacts from your workspace',
-            self::CollectionsRead => 'View approved artifact collections',
-            self::CollectionsWrite => 'Create collections and add artifacts',
-            self::UsageRead => 'View usage and quota totals',
+            self::ArtifactsRead => 'Read and search your team\'s shared work',
+            self::ArtifactsDeploy => 'Share new work with your team',
+            self::ArtifactsDelete => 'Delete shared work',
+            self::CollectionsRead => 'See your team\'s collections',
+            self::CollectionsWrite => 'Create collections and add work to them',
+            self::UsageRead => 'See usage and plan limits',
         };
     }
 

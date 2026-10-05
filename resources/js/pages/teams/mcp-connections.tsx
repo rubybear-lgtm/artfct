@@ -80,6 +80,7 @@ interface Props {
     activity: Activity[];
     usage: Usage;
     scopeOptions: string[];
+    scopeLabels: Record<string, string>;
     defaultScopes: string[];
 }
 
@@ -115,19 +116,6 @@ const statusVariant = {
     revoked: 'destructive',
 } as const;
 
-const scopeLabels: Record<string, string> = {
-    'artifacts:read': 'Read shared work',
-    'artifacts:deploy': 'Share new work',
-    'artifacts:delete': 'Delete shared work',
-    'collections:read': 'See collections',
-    'collections:write': 'Add to collections',
-    'usage:read': 'See usage',
-};
-
-function labelForScope(scope: string): string {
-    return scopeLabels[scope] ?? scope;
-}
-
 export default function McpConnections({
     team,
     mcpEndpoint,
@@ -136,8 +124,15 @@ export default function McpConnections({
     activity,
     usage,
     scopeOptions,
+    scopeLabels,
     defaultScopes,
 }: Props) {
+    const labelForScope = (scope: string): string =>
+        scopeLabels[scope] ?? scope;
+    const transports = [
+        ...new Set(connections.map((connection) => connection.transport)),
+    ];
+
     const [copied, setCopied] = useState<string | null>(null);
     const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
     const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
@@ -301,6 +296,12 @@ export default function McpConnections({
                                     {oauthMetadataUrl}
                                 </a>
                             </p>
+                            {transports.length > 0 && (
+                                <p className="mt-2">
+                                    Connection transport:{' '}
+                                    {transports.join(', ')}
+                                </p>
+                            )}
                         </details>
                     </CardContent>
                 </Card>
@@ -544,9 +545,6 @@ export default function McpConnections({
                                     <thead>
                                         <tr>
                                             <TableHead>AI tool</TableHead>
-                                            <TableHead>
-                                                Connection type
-                                            </TableHead>
                                             <TableHead>Permissions</TableHead>
                                             <TableHead>Last used</TableHead>
                                             <TableHead>Status</TableHead>
@@ -583,9 +581,6 @@ export default function McpConnections({
                                                                 sign in again.
                                                             </p>
                                                         )}
-                                                    </TableCell>
-                                                    <TableCell className="font-mono text-xs">
-                                                        {connection.transport}
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex max-w-64 flex-wrap gap-1">

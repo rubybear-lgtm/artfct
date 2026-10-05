@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
@@ -10,6 +11,7 @@ use App\Models\OAuthRefreshToken;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -37,6 +39,17 @@ test('team members can view connection metadata without credentials', function (
             ->has('activity', 0)
             ->missing('connections.0.token')
             ->missing('connections.0.accessToken'));
+});
+
+test('the connections page receives a plain-language label for every MCP scope', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->get(route('teams.mcp-connections.index', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('scopeLabels', fn (Collection $labels): bool => $labels->keys()->all() === McpScope::values()
+                && $labels->every(fn ($label): bool => is_string($label) && trim($label) !== '')));
 });
 
 test('team members can inspect recent MCP activity without sensitive payloads', function () {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -65,6 +66,9 @@ class McpConnectionController extends Controller
             'mcpEndpoint' => url('/mcp'),
             'oauthMetadataUrl' => url('/.well-known/oauth-protected-resource'),
             'scopeOptions' => $this->allowedScopesForRole($request->user()->teamRole($team)),
+            'scopeLabels' => collect(McpScope::cases())
+                ->mapWithKeys(fn (McpScope $scope): array => [$scope->value => $scope->label()])
+                ->all(),
             'defaultScopes' => self::DEFAULT_SCOPES,
             'usage' => [
                 'periodDays' => 30,

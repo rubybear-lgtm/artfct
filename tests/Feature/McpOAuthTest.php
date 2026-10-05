@@ -60,12 +60,12 @@ test('consent carries the risk level the server defines for each requested scope
         ->assertInertia(fn (AssertableJson $page) => $page
             ->component('oauth/authorize')
             ->where('requestedScopes.0.value', 'artifacts:read')
-            ->where('requestedScopes.0.label', 'Read artifacts and search your workspace')
+            ->where('requestedScopes.0.label', 'Read and search your team\'s shared work')
             ->where('requestedScopes.0.risk', 'read')
             ->where('requestedScopes.1.value', 'artifacts:deploy')
             ->where('requestedScopes.1.risk', 'write')
             ->where('requestedScopes.2.value', 'artifacts:delete')
-            ->where('requestedScopes.2.label', 'Delete artifacts from your workspace')
+            ->where('requestedScopes.2.label', 'Delete shared work')
             ->where('requestedScopes.2.risk', 'destructive'));
 });
 

@@ -28,9 +28,9 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
         ->assertSee('Test native client wants to connect to Consent Workspace')
         ->assertSee('Consent Reviewer')
         ->assertSee('Consent Workspace')
-        ->assertSee('Read artifacts and search your workspace')
-        ->assertSee('Delete artifacts from your workspace')
-        ->assertSee('View usage and quota totals')
+        ->assertSee('Read and search your team\'s shared work')
+        ->assertSee('Delete shared work')
+        ->assertSee('See usage and plan limits')
         ->assertNoJavaScriptErrors();
 });
 
@@ -59,10 +59,10 @@ test('consent marks a destructive scope and leaves a read-only scope unmarked', 
     visit('/oauth/authorize?'.$parameters)
         ->assertCount('@scope-risk-read', 1)
         ->assertCount('@scope-risk-destructive', 1)
-        ->assertSeeIn('@scope-risk-read', 'Read artifacts and search your workspace')
+        ->assertSeeIn('@scope-risk-read', 'Read and search your team\'s shared work')
         ->assertDontSeeIn('@scope-risk-read', 'Destructive')
         ->assertDontSeeIn('@scope-risk-read', 'Can permanently delete artifacts.')
-        ->assertSeeIn('@scope-risk-destructive', 'Delete artifacts from your workspace')
+        ->assertSeeIn('@scope-risk-destructive', 'Delete shared work')
         ->assertSeeIn('@scope-risk-destructive', 'Destructive')
         ->assertSeeIn('@scope-risk-destructive', 'Can permanently delete artifacts.')
         ->assertNoJavaScriptErrors();
@@ -101,7 +101,7 @@ test('the consent form completes a native client login by handing an authorizati
     $page = visit('/oauth/authorize?'.$parameters)
         ->assertSee('Test native client wants to connect to Native Workspace')
         ->assertSee('Native Workspace')
-        ->assertSee('Read artifacts and search your workspace')
+        ->assertSee('Read and search your team\'s shared work')
         ->assertNoJavaScriptErrors();
 
     // Everything above passes on a rendered consent screen alone, so the flow
