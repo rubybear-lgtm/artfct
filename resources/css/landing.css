@@ -40,7 +40,7 @@
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 15px;
-    color: var(--sol-base1);
+    color: var(--sol-base00);
     letter-spacing: 0.04em;
     min-height: 1em;
 }

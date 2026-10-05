@@ -43,7 +43,7 @@ Route::inertia('/', 'landing', [
 Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [
         'title' => 'artfct — share HTML & markdown instantly',
-        'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Encrypted by default.',
+        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default.',
     ],
     'mcpEndpoint' => url('/mcp'),
 ]))->name('free');
@@ -60,7 +60,7 @@ Route::middleware('auth')->group(function () {
 Route::inertia('/blog', 'blog', [
     'meta' => [
         'title' => 'blog — artfct',
-        'description' => 'Product updates, tips, and behind-the-scenes on artfct — the instant HTML sharing tool for developers.',
+        'description' => 'Product updates and tips from artfct, where what your AI makes is shared with your team.',
     ],
     'posts' => $blogPosts,
 ])->name('blog');

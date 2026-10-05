@@ -1,6 +1,6 @@
 import { Link } from '@inertiajs/react';
 
-import { blog, docs, login, privacy, terms } from '@/routes';
+import { blog, docs, home, login, privacy, terms } from '@/routes';
 import consoleRoutes from '@/routes/console';
 
 function FaqItem({ q, children }: { q: string; children: React.ReactNode }) {
@@ -18,31 +18,32 @@ export function WelcomeInformation() {
             <div className="welcome-information-copy">
                 <h2 className="welcome-section-heading">what is artfct?</h2>
                 <p>
-                    artfct is an{' '}
+                    artfct turns a self-contained HTML or Markdown file into a{' '}
                     <strong className="welcome-information-emphasis">
-                        instant encrypted HTML sharing
+                        private, shareable link
                     </strong>{' '}
-                    tool for developers. Drop a self-contained HTML file — or
-                    pipe one via CLI, API, or AI agent — and get a shareable
-                    link in seconds. No sign-up, no accounts, no configuration.
+                    in seconds. No sign-up, no accounts. For keeping what your
+                    team&apos;s AI tools make, see the{' '}
+                    <Link
+                        href={`${home.url()}#plans`}
+                        className="welcome-information-link"
+                    >
+                        Team plan
+                    </Link>
+                    .
                 </p>
                 <p>
-                    Every artifact is encrypted in the browser with AES-GCM
-                    before it ever reaches the server. The encryption key lives
-                    in the URL fragment, which the server never sees. Choose
-                    from three access tiers:{' '}
-                    <span className="welcome-accent-text">public</span>,{' '}
-                    <span className="welcome-accent-text">secure</span>, or{' '}
-                    <span className="welcome-accent-text">ephemeral</span>. All
-                    artifacts use sliding expiration — each access resets the
-                    clock. Default TTL is 5 days, configurable up to 1 year.
+                    Every free link is encrypted in your browser before upload,
+                    and the preview is blurred by default, so only someone with
+                    the full link can read it. Links expire 5 days after the
+                    last visit; you can change that from Recent deployments.
                 </p>
                 <p>
                     Perfect for sharing UI prototypes, dashboard previews,
                     AI-generated visual outputs, HTML demos, markdown documents,
-                    and any other self-contained web content. Works from the
-                    browser, terminal, and through MCP-compatible AI agents like
-                    Claude, Cursor, and Gemini.
+                    and any other self-contained web content. Works in the
+                    browser, and with AI tools that support adding a remote
+                    connection.
                 </p>
             </div>
         </div>
@@ -54,59 +55,34 @@ export function WelcomeFaq() {
         <div className="welcome-faq">
             <h2 className="welcome-section-heading">faq</h2>
             <FaqItem q="What is artfct?">
-                artfct is an instant encrypted HTML sharing tool for developers.
-                Drop a self-contained HTML or Markdown file — via browser, CLI,
-                API, or AI agent — and get a shareable link in seconds. No
-                sign-up required. Think of it as &quot;deploy and share&quot;
-                for self-contained web content.
+                artfct turns a self-contained HTML or Markdown file into a
+                private, shareable link in seconds. No sign-up, no accounts.
             </FaqItem>
             <FaqItem q="Is artfct free?">
-                Yes. All artifact tiers are free right now. Paid plans with
-                higher usage limits may be added in the future, but the core
-                service will remain free.
+                Yes. Free links cost nothing and need no sign-up. Team plans add
+                sharing across your team.
             </FaqItem>
             <FaqItem q="How does encryption work?">
-                Every artifact is encrypted in the browser using AES-GCM before
-                it ever reaches the server. The encryption key is embedded in
-                the URL fragment (the part after #), which the server never
-                sees. For secure artifacts, the preview is blurred by default —
-                only someone with the full URL can read the content.
+                Every link is encrypted in your browser using AES-GCM before it
+                ever reaches the server. The encryption key is embedded in the
+                URL fragment (the part after #), which the server never sees.
             </FaqItem>
-            <FaqItem q="What are the three tiers?">
-                <strong className="welcome-accent-text">public</strong> —
-                open-access URLs, shareable with anyone. Best for demos,
-                prototypes, and public documents.
-                <br />
-                <strong className="welcome-accent-text">secure</strong> —
-                high-entropy fragment keys with blurred previews by default. The
-                content is encrypted and only accessible with the full URL. Best
-                for sensitive documents or internal tools.
-                <br />
-                <strong className="welcome-accent-text">ephemeral</strong> —
-                intentionally short-lived. Same as public, just named for things
-                you don&apos;t need to keep. Best for temporary shares, drafts,
-                and one-off reviews.
+            <FaqItem q="How private are free links?">
+                Every free link is encrypted in your browser before upload, and
+                the preview is blurred by default, so only someone with the full
+                link can read it. Links expire 5 days after the last visit; you
+                can change that from Recent deployments.
             </FaqItem>
             <FaqItem q="How long do artifacts last?">
-                All artifacts use sliding expiration — every access resets the
-                clock. The default TTL is 5 days, configurable up to 1 year. If
-                an artifact isn&apos;t accessed within its TTL, it expires and
-                is deleted. There is no &quot;permanent&quot; tier — everything
-                has a shelf life.
+                All links use sliding expiration — every visit resets the clock.
+                The default is 5 days, and you can change it up to 1 year from
+                Recent deployments. If a link isn&apos;t visited within its
+                duration, it expires and is deleted.
             </FaqItem>
-            <FaqItem q="Can I use artfct from the CLI?">
-                Yes. Pipe HTML from stdin:{' '}
-                <code className="welcome-inline-code">
-                    cat dashboard.html | npx artfct
-                </code>
-                . The CLI returns a URL to stdout — perfect for shell scripts,
-                CI pipelines, and automation.
-            </FaqItem>
-            <FaqItem q="Does artfct work with AI agents?">
-                Yes. Install the artfct MCP server or the artfct skill in Claude
-                Code, Cursor, Codex, or Gemini. Your agent can build HTML
-                artifacts (dashboards, diagrams, presentations, tools) and
-                deploy them automatically with a single MCP call. See the{' '}
+            <FaqItem q="Does artfct work with AI tools?">
+                Yes. In your AI tool&apos;s settings, add the Artfct connection
+                address shown above and approve the sign-in in your browser.
+                There is nothing to install. See the{' '}
                 <Link href={docs.url()} className="welcome-information-link">
                     docs
                 </Link>{' '}
@@ -155,7 +131,7 @@ export function WelcomeFooter({
                     github
                 </a>
             </div>
-            <span>public · secure · ephemeral</span>
+            <span>encrypted · private by default · expires after 5 days</span>
         </footer>
     );
 }
