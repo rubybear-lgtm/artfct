@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 export interface CachedLink {
@@ -48,8 +49,29 @@ function CachedLinkRow({
     link: CachedLink;
     onManage: (link: CachedLink) => void;
 }) {
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
+        'idle',
+    );
     const time = timeUntil(link.expiresAt);
     const isExpired = time === 'expired';
+
+    const copy = async (): Promise<void> => {
+        try {
+            await navigator.clipboard.writeText(link.url);
+            setCopyState('copied');
+        } catch {
+            setCopyState('failed');
+        }
+
+        setTimeout(() => setCopyState('idle'), 2000);
+    };
+
+    const copyLabel =
+        copyState === 'copied'
+            ? 'copied'
+            : copyState === 'failed'
+              ? 'copy failed'
+              : 'copy';
 
     return (
         <div
@@ -72,6 +94,13 @@ function CachedLinkRow({
                 <span className="welcome-cached-link-status">
                     {isExpired ? 'expired' : `expires in ${time}`}
                 </span>
+                <Button
+                    onClick={copy}
+                    aria-label={`Copy link to ${link.filename || link.url}`}
+                    className={`welcome-cached-link-copy ${copyState === 'copied' ? 'is-copied' : ''} ${copyState === 'failed' ? 'is-failed' : ''}`}
+                >
+                    {copyLabel}
+                </Button>
                 <Button
                     onClick={() => onManage(link)}
                     className="manage-btn welcome-cached-link-manage"
