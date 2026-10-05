@@ -17,7 +17,15 @@ const alertVariants = cva('rounded-md border px-4 py-3 text-sm', {
 export function Alert({
     className,
     variant,
+    role = 'alert',
     ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof alertVariants>) {
-    return <div role="alert" className={cn(alertVariants({ variant }), className)} {...props} />;
+}: React.ComponentProps<'div'> &
+    VariantProps<typeof alertVariants> & { role?: 'alert' | 'status' }) {
+    return (
+        <div
+            role={role}
+            className={cn(alertVariants({ variant }), className)}
+            {...props}
+        />
+    );
 }

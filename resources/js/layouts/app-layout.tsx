@@ -31,6 +31,69 @@ function initials(name: string) {
         .toUpperCase();
 }
 
+type Quota = NonNullable<SharedProps['quota']>;
+type QuotaDimension = Quota['storage'];
+
+const quotaDimensionKinds = ['storage', 'artifacts'] as const;
+
+type QuotaDimensionKind = (typeof quotaDimensionKinds)[number];
+
+function formatBytes(bytes: number) {
+    if (bytes >= 1024 ** 3) {
+        return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    }
+
+    if (bytes >= 1024 ** 2) {
+        return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+    }
+
+    if (bytes >= 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${bytes} B`;
+}
+
+function quotaAmount(kind: QuotaDimensionKind, dimension: QuotaDimension) {
+    return kind === 'storage'
+        ? `${formatBytes(dimension.used)} of ${formatBytes(dimension.limit)}`
+        : `${dimension.used} of ${dimension.limit}`;
+}
+
+function quotaDimensionLabel(kind: QuotaDimensionKind) {
+    return kind === 'storage' ? 'storage' : 'monthly artifact';
+}
+
+/**
+ * One sentence naming every limit the team has hit or is close to, so the
+ * banner says which limit and how much rather than "a plan limit".
+ */
+function quotaMessage(teamName: string, quota: Quota) {
+    const qualifying = quotaDimensionKinds.filter(
+        (kind) => quota[kind].warning || quota[kind].exceeded,
+    );
+
+    if (qualifying.length === 0) {
+        return null;
+    }
+
+    const clauses = qualifying.map((kind) => {
+        const dimension = quota[kind];
+        const label = quotaDimensionLabel(kind);
+        const amount = quotaAmount(kind, dimension);
+
+        return dimension.exceeded
+            ? `reached its ${label} limit (${amount})`
+            : `used ${Math.round(dimension.percent * 100)}% of its ${label} limit (${amount})`;
+    });
+
+    const suffix = quota.exceeded
+        ? ' New shares are paused until you upgrade or free up space.'
+        : '';
+
+    return `${teamName} has ${clauses.join(' and ')}.${suffix}`;
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
     const { auth, teams, currentTeam, quota } = usePage<SharedProps>().props;
     const { flash, url } = usePage();
@@ -47,6 +110,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     useAppTheme();
 
     const team = currentTeam;
+    const banner = team && quota ? quotaMessage(team.name, quota) : null;
     const navLinkClass = (href: string, exact = false) =>
         `border-b-2 py-3 transition-colors hover:text-foreground ${
             url.split('?')[0] === href || (!exact && url.startsWith(`${href}/`))
@@ -291,26 +355,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 )}
             </header>
 
-            {team && quota?.exceeded && (
+            {team && quota && banner && (
                 <div className="mx-auto max-w-5xl px-5 pt-4">
-                    <Alert variant="warning">
-                        This team is over its plan limits. New artifacts are
-                        blocked; existing ones keep serving.{' '}
-                        <Link
-                            className="underline"
-                            href={teamRoutes.billing.show.url({
-                                team: team.slug,
-                            })}
-                        >
-                            See usage
-                        </Link>
-                    </Alert>
-                </div>
-            )}
-            {team && quota?.warning && !quota.exceeded && (
-                <div className="mx-auto max-w-5xl px-5 pt-4">
-                    <Alert>
-                        This team has used over 80% of a plan limit.{' '}
+                    <Alert
+                        variant={quota.exceeded ? 'warning' : 'default'}
+                        role="status"
+                    >
+                        {banner}{' '}
                         <Link
                             className="underline"
                             href={teamRoutes.billing.show.url({
@@ -324,7 +375,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
             {team?.paymentStatus === 'past_due' && (
                 <div className="mx-auto max-w-5xl px-5 pt-4">
-                    <Alert variant="warning">
+                    <Alert variant="warning" role="status">
                         Payment is past due. New artifacts are blocked; existing
                         ones keep serving.{' '}
                         <Link
