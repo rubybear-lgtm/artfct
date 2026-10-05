@@ -146,11 +146,11 @@ function CollectionCard({
                                             target="_blank"
                                             rel="noreferrer"
                                         >
-                                            {id}
+                                            {artifactName(artifactOptions, id)}
                                         </a>
                                     ) : (
                                         <span className="tabular-nums">
-                                            {id}
+                                            {artifactName(artifactOptions, id)}
                                         </span>
                                     )}
                                     {canEdit && (

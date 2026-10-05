@@ -1,4 +1,5 @@
 import { Link } from '@inertiajs/react';
+import { useRef } from 'react';
 
 import { useAppTheme } from '@/lib/useAppTheme';
 import { blog, docs, home, login, privacy, terms } from '@/routes';
@@ -29,6 +30,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
         `transition-colors hover:text-foreground ${
             section && active === section ? 'text-foreground' : ''
         }`;
+    const phoneMenu = useRef<HTMLDetailsElement>(null);
 
     return (
         <header className="border-b border-border">
@@ -51,11 +53,18 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                         Blog
                     </Link>
                 </nav>
-                <details className="relative sm:hidden">
+                <details ref={phoneMenu} className="relative sm:hidden">
                     <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
                         Menu
                     </summary>
-                    <div className="absolute right-0 z-20 mt-2 flex min-w-[200px] flex-col rounded-md border border-border bg-background p-2 text-sm text-muted-foreground shadow-lg">
+                    <div
+                        className="absolute right-0 z-20 mt-2 flex min-w-[200px] flex-col rounded-md border border-border bg-background p-2 text-sm text-muted-foreground shadow-lg"
+                        onClick={() => {
+                            if (phoneMenu.current) {
+                                phoneMenu.current.open = false;
+                            }
+                        }}
+                    >
                         <Link
                             href={`${home.url()}#how`}
                             className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
