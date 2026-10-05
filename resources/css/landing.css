@@ -120,6 +120,7 @@
         border-bottom: 1px solid var(--line);
         margin-inline: -20px;
         padding-inline: 20px;
+        position: relative;
     }
 
     & .logo {
@@ -153,9 +154,61 @@
         font-size: 14px;
     }
 
+    & .navmenu {
+        display: none;
+        font-size: 14px;
+    }
+
+    & .navmenu summary {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding-inline: 12px;
+        cursor: pointer;
+        list-style: none;
+        font-weight: 600;
+    }
+
+    & .navmenu summary::-webkit-details-marker {
+        display: none;
+    }
+
+    & .navmenu-links {
+        position: absolute;
+        right: 20px;
+        top: calc(100% + 8px);
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+        padding: 8px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 14px 34px -16px rgba(0, 0, 0, 0.35);
+    }
+
+    & .navmenu-links a {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding-inline: 12px;
+        border-radius: 6px;
+        color: var(--ink-2);
+    }
+
+    & .navmenu-links a:hover {
+        background: var(--bone);
+        color: var(--ink);
+    }
+
     @media (max-width: 720px) {
         & .navlinks {
             display: none;
+        }
+
+        & .navmenu {
+            display: block;
         }
     }
 
@@ -262,7 +315,7 @@
     }
 
     & .def {
-        color: var(--ink-3);
+        color: var(--ink-2);
         font-size: 14px;
         margin-top: 12px;
     }
@@ -317,7 +370,7 @@
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--ink-3);
+        color: var(--ink-2);
         font-weight: 600;
         margin-bottom: 10px;
         display: flex;
@@ -345,7 +398,7 @@
 
     & .search svg {
         flex: none;
-        color: var(--ink-3);
+        color: var(--ink-2);
     }
 
     & .query {
@@ -406,7 +459,7 @@
 
     & .row .m {
         font-size: 12.5px;
-        color: var(--ink-3);
+        color: var(--ink-2);
     }
 
     & .row .tag {
@@ -536,7 +589,7 @@
 
     & .caption {
         text-align: center;
-        color: var(--ink-3);
+        color: var(--ink-2);
         font-size: 13.5px;
         margin-top: 14px;
     }
@@ -651,7 +704,7 @@
         font-size: 13px;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: var(--ink-3);
+        color: var(--ink-2);
     }
 
     & .cmp > div + div h4 {
@@ -675,7 +728,7 @@
 
     & .cmp li::before {
         content: '–';
-        color: var(--ink-3);
+        color: var(--ink-2);
     }
 
     & .cmp > div + div li::before {
@@ -727,7 +780,7 @@
     }
 
     & .fine {
-        color: var(--ink-3);
+        color: var(--ink-2);
         font-size: 13.5px;
         margin-top: 14px;
         max-width: 46ch;
@@ -869,7 +922,7 @@
         gap: 16px;
         flex-wrap: wrap;
         font-size: 13.5px;
-        color: var(--ink-3);
+        color: var(--ink-2);
     }
 
     & footer .l {

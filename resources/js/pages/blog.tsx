@@ -46,7 +46,13 @@ export default function Blog({ posts }: BlogPageProps) {
                                         dateTime={post.date}
                                         className="font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase"
                                     >
-                                        {post.date}
+                                        {new Date(
+                                            post.date + 'T00:00:00',
+                                        ).toLocaleDateString('en-GB', {
+                                            day: 'numeric',
+                                            month: 'long',
+                                            year: 'numeric',
+                                        })}
                                     </time>
                                     <span className="rounded-[5px] bg-primary/10 px-2 py-0.5 font-semibold text-primary">
                                         {post.tag}
