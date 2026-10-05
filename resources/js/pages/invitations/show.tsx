@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
-import { home, logout } from '@/routes';
+import { home, login, logout } from '@/routes';
 import invitations from '@/routes/invitations';
 
 type State = 'sign_in' | 'ready' | 'accepted' | 'expired' | 'wrong_email';
@@ -14,9 +14,12 @@ interface Props {
         code: string;
         email: string;
         role: string;
+        roleLabel: string;
+        roleDescription: string;
         teamName: string;
         inviterName: string | null;
         expiresAt: string | null;
+        dashboardUrl: string | null;
     };
     signedInAs: string | null;
 }
@@ -66,6 +69,14 @@ export default function InvitationShow({
             visitOptions,
         );
 
+    const article = /^[aeiou]/i.test(invitation.roleLabel) ? 'an' : 'a';
+    const expiresAt = invitation.expiresAt
+        ? new Date(invitation.expiresAt)
+        : null;
+    const expiryLabel = expiresAt
+        ? `This invitation works until ${expiresAt.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`
+        : null;
+
     return (
         <>
             <Head title={`Join ${invitation.teamName}`} />
@@ -75,18 +86,23 @@ export default function InvitationShow({
             <h1 className="mb-2 font-serif text-3xl tracking-tight">
                 Join {invitation.teamName}
             </h1>
-            <p className="mb-6 text-sm text-muted-foreground">
+            <p className="mb-2 text-sm text-muted-foreground">
                 {invitation.inviterName ?? 'An admin'} invited{' '}
                 <strong className="font-semibold text-foreground">
                     {invitation.email}
                 </strong>{' '}
-                to join as {invitation.role}.
+                to join as {article} {invitation.roleLabel}.
+            </p>
+            <p className="mb-6 text-sm text-muted-foreground">
+                {invitation.roleDescription}
             </p>
 
             {state === 'sign_in' && (
                 <div className="flex flex-col gap-3">
                     <Button onClick={() => join('new')} disabled={busy}>
-                        {busy ? 'Opening sign-up…' : 'Accept invitation'}
+                        {busy
+                            ? 'Opening sign-up…'
+                            : 'Create an account and join'}
                     </Button>
                     <p className="text-center text-sm text-muted-foreground">
                         Already have an account?{' '}
@@ -99,6 +115,11 @@ export default function InvitationShow({
                             Sign in
                         </button>
                     </p>
+                    {expiryLabel && (
+                        <p className="text-center text-sm text-muted-foreground">
+                            {expiryLabel}
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -110,6 +131,11 @@ export default function InvitationShow({
                     <Button variant="outline" onClick={decline} disabled={busy}>
                         Decline
                     </Button>
+                    {expiryLabel && (
+                        <p className="text-center text-sm text-muted-foreground">
+                            {expiryLabel}
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -132,7 +158,13 @@ export default function InvitationShow({
                         This invitation has already been accepted.
                     </p>
                     <Button asChild>
-                        <Link href={home.url()}>Go to Artfct</Link>
+                        {invitation.dashboardUrl ? (
+                            <Link href={invitation.dashboardUrl}>
+                                Go to {invitation.teamName}
+                            </Link>
+                        ) : (
+                            <Link href={login.url()}>Sign in</Link>
+                        )}
                     </Button>
                 </div>
             )}
@@ -145,7 +177,7 @@ export default function InvitationShow({
                         one.
                     </p>
                     <Button asChild variant="outline">
-                        <Link href={home.url()}>Go to Artfct</Link>
+                        <Link href={home.url()}>Learn about Artfct</Link>
                     </Button>
                 </div>
             )}

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\AcceptTeamInvitation;
+use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\TeamInvitation;
 use Illuminate\Http\RedirectResponse;
@@ -57,9 +58,18 @@ class InvitationLandingController extends Controller
                 'code' => $invitation->code,
                 'email' => $invitation->email,
                 'role' => $invitation->role->value,
+                'roleLabel' => $invitation->role->label(),
+                'roleDescription' => match ($invitation->role) {
+                    TeamRole::Admin => __('Admins can share and find work, invite people and manage the team.'),
+                    TeamRole::Member => __('Members can share work with the team and find what others have shared.'),
+                    TeamRole::Viewer => __('Viewers can find and open what the team has shared.'),
+                },
                 'teamName' => $invitation->team->name,
                 'inviterName' => $invitation->inviter?->name,
                 'expiresAt' => $invitation->expires_at?->toIso8601String(),
+                'dashboardUrl' => $user !== null && $user->belongsToTeam($invitation->team)
+                    ? route('dashboard', ['current_team' => $invitation->team->slug])
+                    : null,
             ],
             'signedInAs' => $user?->email,
         ]);
