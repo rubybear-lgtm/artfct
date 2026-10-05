@@ -76,3 +76,25 @@ test('the_first_team_needs_a_name', function () {
     test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => ''])->assertSessionHasErrors('name');
     test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => 'x'])->assertSessionHasErrors('name');
 });
+
+test('the_first_team_rejects_a_reserved_name', function () {
+    $user = freshSignUp();
+
+    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => 'dashboard'])
+        ->assertSessionHasErrors('name');
+
+    expect(Team::query()->where('name', 'dashboard')->exists())->toBeFalse();
+});
+
+test('the_first_team_name_is_trimmed_before_validation_and_storage', function () {
+    $user = freshSignUp();
+
+    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => '  Northwind Analytics  '])
+        ->assertRedirect();
+
+    expect(Team::query()->where('name', 'Northwind Analytics')->exists())->toBeTrue()
+        ->and(Team::query()->where('name', '  Northwind Analytics  ')->exists())->toBeFalse();
+
+    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => '  x  '])
+        ->assertSessionHasErrors('name');
+});

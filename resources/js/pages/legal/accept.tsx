@@ -1,9 +1,9 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
-import { privacy, terms } from '@/routes';
+import { logout, privacy, terms } from '@/routes';
 import termsRoutes from '@/routes/terms';
 
 export default function Accept({ version }: { version: string }) {
@@ -13,6 +13,8 @@ export default function Accept({ version }: { version: string }) {
         event.preventDefault();
         form.post(termsRoutes.accept.url());
     };
+
+    const signOut = () => router.post(logout.url());
 
     return (
         <>
@@ -44,20 +46,32 @@ export default function Accept({ version }: { version: string }) {
                         onChange={(e) =>
                             form.setData('accepted', e.target.checked)
                         }
+                        aria-invalid={form.errors.accepted ? true : undefined}
+                        aria-describedby={
+                            form.errors.accepted ? 'accepted-error' : undefined
+                        }
                     />
                     I have read and accept the terms and privacy policy.
                 </label>
                 {form.errors.accepted && (
-                    <p className="text-sm text-destructive">
+                    <p
+                        id="accepted-error"
+                        role="alert"
+                        className="text-sm text-destructive"
+                    >
                         You need to accept to continue.
                     </p>
                 )}
-                <Button
-                    type="submit"
-                    disabled={!form.data.accepted || form.processing}
-                >
+                <Button type="submit" disabled={form.processing}>
                     Accept and continue
                 </Button>
+                <button
+                    type="button"
+                    onClick={signOut}
+                    className="cursor-pointer self-center text-sm text-muted-foreground underline underline-offset-4"
+                >
+                    Sign out instead
+                </button>
             </form>
         </>
     );

@@ -6,7 +6,13 @@ import AuthLayout from '@/layouts/auth-layout';
 import { home, login, logout } from '@/routes';
 import invitations from '@/routes/invitations';
 
-type State = 'sign_in' | 'ready' | 'accepted' | 'expired' | 'wrong_email';
+type State =
+    | 'sign_in'
+    | 'ready'
+    | 'accepted'
+    | 'expired'
+    | 'wrong_email'
+    | 'invalid';
 
 interface Props {
     state: State;
@@ -20,7 +26,7 @@ interface Props {
         inviterName: string | null;
         expiresAt: string | null;
         dashboardUrl: string | null;
-    };
+    } | null;
     signedInAs: string | null;
 }
 
@@ -41,6 +47,24 @@ export default function InvitationShow({
 
         return () => window.removeEventListener('pageshow', reset);
     }, []);
+
+    if (state === 'invalid' || invitation === null) {
+        return (
+            <>
+                <Head title="Invitation link is not valid" />
+                <h1 className="mb-2 font-serif text-3xl tracking-tight">
+                    This invitation link is no longer valid
+                </h1>
+                <p className="mb-6 text-sm text-muted-foreground">
+                    It may have been cancelled, or the link was cut short. Ask
+                    the person who invited you to send a new one.
+                </p>
+                <Button asChild variant="outline">
+                    <Link href={home.url()}>Learn about Artfct</Link>
+                </Button>
+            </>
+        );
+    }
 
     const visitOptions = {
         onStart: () => setBusy(true),

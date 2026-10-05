@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Teams\CreateTeam;
 use App\Enums\AuditEventType;
+use App\Rules\TeamName;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,9 +30,15 @@ class OnboardingController extends Controller
 
     public function store(Request $request, CreateTeam $createTeam, AuditLogger $auditLogger): RedirectResponse
     {
-        $validated = $request->validate(['name' => ['required', 'string', 'min:2', 'max:100']]);
+        $submitted = $request->input('name');
 
-        $team = $createTeam->handle($request->user(), trim($validated['name']));
+        $request->merge(['name' => is_string($submitted) ? trim($submitted) : $submitted]);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:255', new TeamName],
+        ]);
+
+        $team = $createTeam->handle($request->user(), $validated['name']);
 
         $auditLogger->recordForRequest($request, AuditEventType::TeamCreated, $team, (string) $request->user()->id, $team->slug);
 

@@ -25,8 +25,8 @@ export default function OnboardingTeam({
                 Create your first team
             </h1>
             <p className="mb-4 text-sm text-muted-foreground">
-                A team holds your artifacts, API tokens and billing, and you are
-                its owner. You can invite teammates next.
+                Everything your team shares lives here, and only your team can
+                see it. You can change the name later and invite people next.
             </p>
             <form onSubmit={submit} className="flex flex-col gap-3">
                 <Label htmlFor="name">Team name</Label>

@@ -16,7 +16,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             >
                 Artfct
             </Link>
-            <div className="w-full max-w-sm">{children}</div>
+            <main className="w-full max-w-sm">{children}</main>
             <Toaster />
         </div>
     );
