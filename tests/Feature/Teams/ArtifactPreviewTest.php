@@ -26,13 +26,13 @@ function artifactPreviewUrl(Team|string $team, string $artifactId): string
     ]);
 }
 
-function assertArtifactPreviewHeaders(TestResponse $response): void
+function assertArtifactPreviewHeaders(TestResponse $response, string $cacheControl = 'max-age=120, private'): void
 {
     $response
         ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
-        // Symfony alphabetizes Cache-Control directives, so the exact wire
-        // value is `no-store, private`; both directives are required.
-        ->assertHeader('Cache-Control', 'no-store, private')
+        // Symfony alphabetizes Cache-Control directives. A found artifact is
+        // cacheable by the viewer's browser alone; refusals are `no-store`.
+        ->assertHeader('Cache-Control', $cacheControl)
         ->assertHeader('X-Content-Type-Options', 'nosniff')
         ->assertHeader('Referrer-Policy', 'no-referrer')
         ->assertHeader('Content-Security-Policy', ARTIFACT_PREVIEW_CSP);
@@ -115,7 +115,7 @@ test('a_non_member_is_refused_before_the_worker_is_called', function () {
     $response = test()->actingAs($outsider)->get(artifactPreviewUrl($team, 'artifact-1'));
 
     $response->assertNotFound()->assertSee('Preview unavailable');
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     Http::assertNothingSent();
 });
 
@@ -126,7 +126,7 @@ test('an_unknown_team_reads_the_same_as_a_foreign_one', function () {
     $response = test()->actingAs(User::factory()->create())->get(artifactPreviewUrl('ghost-org', 'artifact-1'));
 
     $response->assertNotFound()->assertSee('Preview unavailable');
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     Http::assertNothingSent();
 });
 
@@ -148,7 +148,7 @@ test('a_missing_or_revoked_artifact_is_a_generic_404', function () {
     $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
 
     $response->assertNotFound();
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     expect($response->getContent())
         ->not->toContain($artifactId)
         ->not->toContain('artifact_not_found');
@@ -173,7 +173,7 @@ test('an_artifact_from_another_org_is_a_generic_404', function () {
     $response = test()->actingAs($member)->get(artifactPreviewUrl($team, 'artifact-1'));
 
     $response->assertNotFound();
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     expect($response->getContent())->not->toContain('another org');
 });
 
@@ -189,7 +189,7 @@ test('a_worker_connection_failure_is_a_generic_503', function () {
     $response = test()->actingAs($member)->get(artifactPreviewUrl($team, 'artifact-1'));
 
     $response->assertStatus(503);
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     expect($response->getContent())
         ->not->toContain('Connection refused')
         ->not->toContain('artifact-1');
@@ -209,7 +209,7 @@ test('an_upstream_failure_is_a_generic_503', function () {
     $response = test()->actingAs($member)->get(artifactPreviewUrl($team, 'artifact-1'));
 
     $response->assertStatus(503);
-    assertArtifactPreviewHeaders($response);
+    assertArtifactPreviewHeaders($response, 'no-store, private');
     expect($response->getContent())
         ->not->toContain('internal_error')
         ->not->toContain('worker exploded')

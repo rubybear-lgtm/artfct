@@ -18,8 +18,10 @@ use Throwable;
  * response's `sandbox` directive and a `default-src 'none'` policy: scripts
  * and external resources are blocked, the document cannot keep the app's
  * origin, and it cannot navigate its parent. The preview is
- * session-authenticated and per-viewer (`private, no-store`), never a
- * shareable URL.
+ * session-authenticated and per-viewer, never a shareable URL: a found
+ * artifact is cacheable by the viewer's own browser only (`private`, briefly),
+ * so a stack of cards showing the same artifact does not refetch it from the
+ * Worker, while a refusal is never cached.
  *
  * Membership is resolved from the caller's own teams before the Worker is
  * asked for anything. A missing, revoked or foreign artifact is one generic
@@ -34,6 +36,9 @@ class ArtifactPreviewController extends Controller
      * own origin, so every source is refused rather than narrowed. Inline
      * styles stay allowed because the stored HTML is self-contained.
      */
+    /** Seconds a viewer's browser may reuse a found artifact's preview. */
+    private const CACHE_SECONDS = 120;
+
     private const CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'; sandbox; frame-ancestors 'self'";
 
     /**
@@ -108,7 +113,7 @@ class ArtifactPreviewController extends Controller
     {
         return response($body, $status, [
             'Content-Type' => 'text/html; charset=UTF-8',
-            'Cache-Control' => 'private, no-store',
+            'Cache-Control' => $status === 200 ? 'private, max-age='.self::CACHE_SECONDS : 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
             'Referrer-Policy' => 'no-referrer',
             'Content-Security-Policy' => self::CONTENT_SECURITY_POLICY,

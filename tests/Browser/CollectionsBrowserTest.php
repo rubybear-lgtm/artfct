@@ -12,20 +12,12 @@ uses(RefreshDatabase::class);
 /**
  * The collections page as document stacks, exercised in a browser.
  *
- * What only a browser can prove here: the stack toggle expands an inline
- * panel that spans the collection grid's full width directly beneath its own
- * row (responsive 1/2/3 columns), multiple panels stay open together, a second
- * tap collapses again, keyboard Enter toggles, and POST/PATCH/DELETE visits
- * keep the open panels open. Toast/redirect coverage for those mutations lives
- * in `Feature/Teams/CollectionPageTest.php`; this file proves the client-side
- * half — expansion state surviving the Inertia visit.
- *
- * Preview iframes need the `previewUrls` the backend serves from the team's
- * session-auth preview route, which is not in this worktree until that
- * integration merges — so this file covers expansion, layout, keyboard,
- * mutations, and Open semantics only. Actual-preview assertions (lazy mount,
- * sandbox, scaling) are deferred to the manager after the backend lands; no
- * local route stubs are registered here.
+ * What only a browser can prove here: tapping a stack opens its artifacts in a
+ * modal dialog that fits the viewport (one at a time), the close button and
+ * Escape dismiss it, keyboard Enter opens it, and POST/DELETE visits keep the
+ * open dialog open. Toast/redirect coverage for those mutations lives in
+ * `Feature/Teams/CollectionPageTest.php`; preview-frame assertions live in
+ * `CollectionPreviewBrowserTest.php`.
  */
 function stacksTeam(string $teamName = 'Stacks Users', string $email = 'stacks-user@example.com'): array
 {
@@ -92,7 +84,7 @@ test('collection_stacks_show_names_counts_and_canonical_badges', function () {
         ->assertNoJavaScriptErrors();
 });
 
-test('a_stack_expands_inline_and_collapses_on_a_second_tap', function () {
+test('a_stack_opens_in_a_modal_and_closes_with_its_close_button', function () {
     [$team, $owner] = stacksTeam('Tap Users', 'tap-user@example.com');
     seedStackArtifact($team, 'tap-report-1', 'Tap report');
 
@@ -111,93 +103,51 @@ test('a_stack_expands_inline_and_collapses_on_a_second_tap', function () {
         ->assertSee('tap-unkn')
         ->assertNoJavaScriptErrors();
 
-    $page->click("@collection-toggle-{$collection->id}")
+    $page->click("@collection-close-{$collection->id}")
         ->wait(0.5)
         ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'false')
         ->assertMissing("@collection-panel-{$collection->id}")
         ->assertNoJavaScriptErrors();
 });
 
-test('multiple_stacks_stay_expanded_with_full_width_panels_under_their_rows', function () {
-    [$team, $owner] = stacksTeam('Wide Users', 'wide-user@example.com');
-    seedStackArtifact($team, 'wide-report-1', 'Wide report one');
-    seedStackArtifact($team, 'wide-report-2', 'Wide report two');
+test('only_one_stack_modal_is_open_at_a_time_and_it_fits_every_viewport', function (int $width, int $height) {
+    [$team, $owner] = stacksTeam('Wide Users '.$width, 'wide-user-'.$width.'@example.com');
+    seedStackArtifact($team, 'wide-report-'.$width.'-1', 'Wide report one');
+    seedStackArtifact($team, 'wide-report-'.$width.'-2', 'Wide report two');
 
-    $first = seedStackCollection($team, $owner->id, 'First', ['wide-report-1']);
-    $second = seedStackCollection($team, $owner->id, 'Second', ['wide-report-2']);
-    seedStackCollection($team, $owner->id, 'Third', []);
-    seedStackCollection($team, $owner->id, 'Fourth', []);
+    $first = seedStackCollection($team, $owner->id, 'First', ['wide-report-'.$width.'-1']);
+    $second = seedStackCollection($team, $owner->id, 'Second', ['wide-report-'.$width.'-2']);
     test()->actingAs($owner);
 
-    $page = visit(stacksUrl($team))->assertNoJavaScriptErrors();
+    $page = visit(stacksUrl($team))->resize($width, $height)->assertNoJavaScriptErrors();
 
     $page->click("@collection-toggle-{$first->id}")
         ->wait(0.5)
-        ->click("@collection-toggle-{$second->id}")
-        ->wait(0.5)
-        ->assertAttribute("@collection-toggle-{$first->id}", 'aria-expanded', 'true')
-        ->assertAttribute("@collection-toggle-{$second->id}", 'aria-expanded', 'true')
         ->assertPresent("@collection-panel-{$first->id}")
-        ->assertPresent("@collection-panel-{$second->id}")
+        ->assertMissing("@collection-panel-{$second->id}")
         ->assertSee('Wide report one')
-        ->assertSee('Wide report two');
+        ->assertScript('document.querySelectorAll("[role=dialog]").length', 1)
+        ->assertScript(<<<'JS'
+            (() => {
+                const dialog = document.querySelector('[role="dialog"]');
+                const rect = dialog.getBoundingClientRect();
 
-    // Desktop is three columns; each panel spans its row's full grid width
-    // and sits below its own card, not wedged between cards.
-    $page->assertScript(<<<JS
-        (() => {
-            const row = document.querySelector('[data-testid="collection-row-0"]');
-            const card = document.querySelector('[data-testid="collection-card-{$first->id}"]');
-            const panel = document.querySelector('[data-testid="collection-panel-{$first->id}"]');
+                return rect.left >= 0
+                    && rect.top >= 0
+                    && rect.right <= window.innerWidth + 1
+                    && rect.bottom <= window.innerHeight + 1
+                    && document.documentElement.scrollWidth <= window.innerWidth + 1;
+            })()
+            JS, true);
 
-            if (! row || ! card || ! panel) {
-                return false;
-            }
-
-            const columns = getComputedStyle(row).gridTemplateColumns.split(' ').length;
-            const rowRect = row.getBoundingClientRect();
-            const cardRect = card.getBoundingClientRect();
-            const panelRect = panel.getBoundingClientRect();
-
-            return columns === 3
-                && Math.abs(panelRect.width - rowRect.width) <= 2
-                && panelRect.top >= cardRect.bottom - 2;
-        })()
-        JS, true);
-
-    // A tablet viewport regroups into two columns; the panels still span.
-    $page->resize(800, 900)->wait(0.5);
-    foreach ([$first, $second] as $collection) {
-        $page->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
-            ->assertPresent("@collection-panel-{$collection->id}");
-    }
-
-    $page->assertScript(<<<'JS'
-        (() => {
-            const row = document.querySelector('[data-testid="collection-row-0"]');
-            const panel = document.querySelector('[data-testid^="collection-panel-"]');
-
-            if (! row || ! panel) {
-                return false;
-            }
-
-            const columns = getComputedStyle(row).gridTemplateColumns.split(' ').length;
-            const rowRect = row.getBoundingClientRect();
-            const panelRect = panel.getBoundingClientRect();
-
-            return columns === 2
-                && Math.abs(panelRect.width - rowRect.width) <= 2
-                && panelRect.top >= rowRect.bottom - 2;
-        })()
-        JS, true);
-
-    $page->resize(1280, 900)->wait(0.2);
-    foreach ([$first, $second] as $collection) {
-        $page->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
-            ->assertPresent("@collection-panel-{$collection->id}");
-    }
-    $page->assertNoJavaScriptErrors();
-});
+    $page->keys('[role=dialog]', 'Escape')->wait(0.5)
+        ->assertMissing("@collection-panel-{$first->id}")
+        ->click("@collection-toggle-{$second->id}")->wait(0.5)
+        ->assertPresent("@collection-panel-{$second->id}")
+        ->assertMissing("@collection-panel-{$first->id}")
+        ->assertSee('Wide report two')
+        ->assertNoJavaScriptErrors();
+})->with([[390, 700], [800, 900], [1280, 900]]);
 
 test('collection_stacks_fit_a_phone_viewport_and_toggle_by_tap', function () {
     [$team, $owner] = stacksTeam('Phone Users', 'phone-user@example.com');
@@ -257,7 +207,7 @@ test('collection_stacks_fit_a_phone_viewport_and_toggle_by_tap', function () {
     $page->assertNoJavaScriptErrors();
 });
 
-test('the_stack_toggle_works_from_the_keyboard', function () {
+test('the_stack_opens_from_the_keyboard_and_closes_with_escape', function () {
     [$team, $owner] = stacksTeam('Keyboard Users', 'keyboard-user@example.com');
     seedStackArtifact($team, 'keys-report-1', 'Keyboard report');
 
@@ -272,14 +222,14 @@ test('the_stack_toggle_works_from_the_keyboard', function () {
         ->assertPresent("@collection-panel-{$collection->id}")
         ->assertSee('Keyboard report');
 
-    $page->keys("@collection-toggle-{$collection->id}", 'Enter')
+    $page->keys('[role=dialog]', 'Escape')
         ->wait(0.5)
         ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'false')
         ->assertMissing("@collection-panel-{$collection->id}")
         ->assertNoJavaScriptErrors();
 });
 
-test('rename_add_and_remove_keep_the_stack_expanded', function () {
+test('rename_add_and_remove_keep_the_stack_modal_open', function () {
     [$team, $owner] = stacksTeam('Mutation Users', 'mutation-user@example.com');
     seedStackArtifact($team, 'mut-report-1', 'Keep me report');
     seedStackArtifact($team, 'mut-report-2', 'Add me report');
@@ -289,21 +239,18 @@ test('rename_add_and_remove_keep_the_stack_expanded', function () {
 
     $page = visit(stacksUrl($team))->assertNoJavaScriptErrors();
 
-    $page->click("@collection-toggle-{$collection->id}")
-        ->wait(0.5)
-        ->assertPresent("@collection-panel-{$collection->id}");
-
-    // PATCH: renaming through the dialog keeps the panel open.
+    // PATCH: renaming through the card's dialog, then opening the stack.
     $page->click('Rename')
         ->fill("#rename-{$collection->id}", 'Mutable renamed')
         ->click('Save name')
         ->waitForText('Collection renamed.')
-        ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
+        ->click("@collection-toggle-{$collection->id}")
+        ->wait(0.5)
         ->assertPresent("@collection-panel-{$collection->id}")
         ->assertSee('Mutable renamed')
         ->assertSee('Keep me report');
 
-    // DELETE: removing the only artifact keeps the (now empty) panel open.
+    // DELETE: removing the only artifact keeps the (now empty) modal open.
     $page->click('Remove')
         ->click('Remove from collection')
         ->waitForText('Removed from Mutable renamed.')
@@ -312,12 +259,13 @@ test('rename_add_and_remove_keep_the_stack_expanded', function () {
         ->assertSee('No artifacts yet')
         ->assertMissing("@collection-artifact-{$collection->id}-mut-report-1");
 
-    // POST: adding an artifact keeps the panel open on the new row.
-    $page->select("#add-artifact-{$collection->id}", 'Add me report')
+    // POST: the add control lives on the card, so close the modal, add, and
+    // reopen to find the new row.
+    $page->click("@collection-close-{$collection->id}")->wait(0.3)
+        ->select("#add-artifact-{$collection->id}", 'Add me report')
         ->click('Add')
         ->waitForText('Added to Mutable renamed.')
-        ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
-        ->assertPresent("@collection-panel-{$collection->id}")
+        ->click("@collection-toggle-{$collection->id}")->wait(0.3)
         ->assertPresent("@collection-artifact-{$collection->id}-mut-report-2")
         ->assertNoJavaScriptErrors();
 });
@@ -358,7 +306,7 @@ test('collection_open_links_use_the_apps_open_route_in_a_new_tab', function () {
         ->assertNoJavaScriptErrors();
 });
 
-test('renaming a collection across grid rows preserves its expansion', function () {
+test('renaming a collection moves its card across grid rows', function () {
     [$team, $owner] = stacksTeam('Reorder Users', 'reorder-user@example.com');
     foreach (['Alpha', 'Bravo', 'Charlie'] as $name) {
         seedStackCollection($team, $owner->id, $name, []);
@@ -367,13 +315,10 @@ test('renaming a collection across grid rows preserves its expansion', function 
     test()->actingAs($owner);
 
     $page = visit(stacksUrl($team))->resize(1280, 850);
-    $page->click("@collection-toggle-{$collection->id}")
-        ->assertScript("document.querySelector('[data-testid=collection-row-1] [data-testid=collection-toggle-{$collection->id}]') !== null")
+    $page->assertScript("document.querySelector('[data-testid=collection-row-1] [data-testid=collection-toggle-{$collection->id}]') !== null")
         ->click("[data-testid=collection-card-{$collection->id}] button:text-is(\"Rename\")")
         ->fill("#rename-{$collection->id}", '0 renamed')
         ->click('Save name')->waitForText('Collection renamed.')
-        ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
-        ->assertPresent("@collection-panel-{$collection->id}")
         ->assertScript("document.querySelector('[data-testid=collection-row-0] [data-testid=collection-toggle-{$collection->id}]') !== null")
         ->assertNoJavaScriptErrors();
 });

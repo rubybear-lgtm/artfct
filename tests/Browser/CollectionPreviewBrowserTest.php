@@ -87,10 +87,9 @@ test('large collections mount only nearby previews and unload them when scrolled
     $page->wait(0.2)
         ->assertScript('document.querySelector(\'iframe[src*="preview-document-29/"]\') !== null')
         ->assertScript('document.querySelectorAll("iframe").length < 10')
-        ->assertScript("document.querySelector('[data-testid=collection-stack-{$collection->id}] iframe') === null")
         ->assertNoJavaScriptErrors();
 
-    $page->click("@collection-toggle-{$collection->id}")->wait(0.2)
+    $page->click("@collection-close-{$collection->id}")->wait(0.2)
         ->assertMissing("@collection-panel-{$collection->id}")
         ->assertScript('document.querySelectorAll("iframe").length <= 1')
         ->assertNoJavaScriptErrors();
@@ -120,11 +119,11 @@ test('stack management permissions remain distinct from expansion', function (Te
         $page->click('Keep it');
 
         if ($role === TeamRole::Admin) {
+            // The card's controls sit behind the modal, so close it first.
+            $page->click("@collection-close-{$collection->id}")->wait(0.2);
             $page->click('Unpin canonical')->waitForText('Unpinned.')
-                ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
                 ->assertSee('Pin as canonical');
             $page->click('Pin as canonical')->waitForText('Pinned.')
-                ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
                 ->assertSee('Unpin canonical');
         } else {
             $page->assertDontSee('Unpin canonical')->assertDontSee('Pin as canonical');

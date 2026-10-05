@@ -147,7 +147,7 @@ function chunk<T>(items: T[], size: number): T[][] {
     return rows;
 }
 
-function StackChevron({ open }: { open: boolean }) {
+function StackChevron() {
     return (
         <svg
             width="16"
@@ -157,7 +157,7 @@ function StackChevron({ open }: { open: boolean }) {
             stroke="currentColor"
             strokeWidth={2}
             aria-hidden="true"
-            className={open ? 'rotate-180' : undefined}
+            className="-rotate-90"
         >
             <path d="m6 9 6 6 6-6" />
         </svg>
@@ -248,9 +248,10 @@ function CollectionCard({
                 <CardContent className="flex flex-1 flex-col gap-3">
                     <button
                         type="button"
+                        aria-haspopup="dialog"
                         aria-expanded={expanded}
                         aria-controls={panelId}
-                        aria-label={`${expanded ? 'Hide' : 'Show'} artifacts in ${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
+                        aria-label={`Show artifacts in ${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
                         data-testid={`collection-toggle-${collection.id}`}
                         onClick={onToggle}
                         className="min-h-11 w-full rounded-lg border border-border bg-muted/40 p-3 text-left transition-colors hover:bg-muted motion-reduce:transition-none"
@@ -294,7 +295,7 @@ function CollectionCard({
                         </span>
                         <span className="mt-2 flex min-h-11 items-center justify-between gap-2 text-sm font-medium">
                             <span>
-                                {expanded ? 'Hide artifacts' : 'Show artifacts'}
+                                Show artifacts
                                 <span className="font-normal text-muted-foreground">
                                     {' '}
                                     ·{' '}
@@ -303,7 +304,7 @@ function CollectionCard({
                                     )}
                                 </span>
                             </span>
-                            <StackChevron open={expanded} />
+                            <StackChevron />
                         </span>
                     </button>
                     {canEdit &&
@@ -476,15 +477,24 @@ function CollectionPanel({
                 id={`collection-panel-${collection.id}`}
                 aria-label={`${collection.name} artifacts`}
                 data-testid={`collection-panel-${collection.id}`}
-                className="min-w-0 rounded-[10px] border border-border bg-paper p-4 md:p-5"
+                className="min-w-0"
             >
-                <p className="mb-3 min-w-0 text-sm font-semibold break-words">
-                    {collection.name}
-                    <span className="font-normal text-muted-foreground">
-                        {' '}
-                        · {artifactCountLabel(collection.artifactIds.length)}
-                    </span>
-                </p>
+                <DialogClose asChild>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute top-2 right-2 min-h-11 min-w-11"
+                        aria-label="Close"
+                        data-testid={`collection-close-${collection.id}`}
+                    >
+                        <span aria-hidden="true">✕</span>
+                    </Button>
+                </DialogClose>
+                <DialogTitle className="pr-12">{collection.name}</DialogTitle>
+                <DialogDescription className="mb-4">
+                    {artifactCountLabel(collection.artifactIds.length)}
+                </DialogDescription>
                 {collection.artifactIds.length === 0 ? (
                     <EmptyState title="No artifacts yet." />
                 ) : (
@@ -607,28 +617,14 @@ export default function Collections({
     artifactOptions,
 }: Props) {
     const form = useForm({ name: '', description: '' });
-    // Expansion lives here, keyed by collection id, so POST/PATCH/DELETE
+    // The open stack lives here, keyed by collection id, so POST/PATCH/DELETE
     // visits — which swap props but keep this component mounted — never
-    // collapse what the reader opened, even across reorderings.
-    const [expandedIds, setExpandedIds] = useState<ReadonlySet<number>>(
-        () => new Set<number>(),
-    );
+    // close what the reader opened, even across reorderings.
+    const [openId, setOpenId] = useState<number | null>(null);
     const columns = useColumnCount();
     const rows = chunk(collections, columns);
 
-    const toggleCollection = (id: number) => {
-        setExpandedIds((previous) => {
-            const next = new Set(previous);
-
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
-
-            return next;
-        });
-    };
+    const openCollection = collections.find((c) => c.id === openId);
 
     const create = (event: FormEvent) => {
         event.preventDefault();
@@ -686,33 +682,38 @@ export default function Collections({
                                     key={collection.id}
                                     team={team.slug}
                                     collection={collection}
-                                    expanded={expandedIds.has(collection.id)}
-                                    onToggle={() =>
-                                        toggleCollection(collection.id)
-                                    }
+                                    expanded={openId === collection.id}
+                                    onToggle={() => setOpenId(collection.id)}
                                     canEdit={canEdit}
                                     canPin={canPin}
                                     artifactOptions={artifactOptions}
                                 />
                             ))}
                         </div>
-                        {row
-                            .filter((collection) =>
-                                expandedIds.has(collection.id),
-                            )
-                            .map((collection) => (
-                                <CollectionPanel
-                                    key={`panel-${collection.id}`}
-                                    team={team.slug}
-                                    collection={collection}
-                                    canEdit={canEdit}
-                                    canOpenArtifacts={canOpenArtifacts}
-                                    artifactOptions={artifactOptions}
-                                />
-                            ))}
                     </Fragment>
                 ))}
             </div>
+
+            <Dialog
+                open={openCollection !== undefined}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setOpenId(null);
+                    }
+                }}
+            >
+                <DialogContent className="max-w-5xl p-4 md:p-6">
+                    {openCollection && (
+                        <CollectionPanel
+                            team={team.slug}
+                            collection={openCollection}
+                            canEdit={canEdit}
+                            canOpenArtifacts={canOpenArtifacts}
+                            artifactOptions={artifactOptions}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
         </>
     );
 }
