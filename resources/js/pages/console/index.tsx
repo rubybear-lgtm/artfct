@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
+import { aiToolName, AI_TOOL_NAMES } from '@/lib/ai-tools';
 import teamRoutes from '@/routes/teams';
 
 interface Artifact {
@@ -51,21 +53,6 @@ interface ConsoleIndexProps {
     }[];
 }
 
-/** Plain-language names for the tool ids the artifacts carry. */
-const AI_TOOL_NAMES: Record<string, string> = {
-    'claude-code': 'Claude Code',
-    cursor: 'Cursor',
-    codex: 'Codex',
-    copilot: 'Copilot',
-    chatgpt: 'ChatGPT',
-    claude: 'Claude',
-};
-
-/** A tool id as a name the user recognises, falling back to the id itself. */
-function aiToolName(agent: string) {
-    return AI_TOOL_NAMES[agent] ?? agent;
-}
-
 /** The row's name as plain text: its title, or the short id when it has none. */
 function artifactName(artifact: Artifact) {
     return artifact.title || artifact.id.slice(0, 8);
@@ -96,9 +83,7 @@ export default function ConsoleIndex({
     indexingFailures,
 }: ConsoleIndexProps) {
     const [localFilters, setLocalFilters] = useState(filters);
-    const [confirmingRevoke, setConfirmingRevoke] = useState<string | null>(
-        null,
-    );
+    const [revoking, setRevoking] = useState<Artifact | null>(null);
     const pendingFilterVisit = useRef<ReturnType<typeof setTimeout> | null>(
         null,
     );
@@ -192,14 +177,13 @@ export default function ConsoleIndex({
         visitWithFilters(cleared);
     };
 
-    const handleRevoke = (artifactId: string) => {
-        if (confirmingRevoke !== artifactId) {
-            setConfirmingRevoke(artifactId);
-
+    const handleRevoke = () => {
+        if (revoking === null) {
             return;
         }
 
-        setConfirmingRevoke(null);
+        const artifactId = revoking.id;
+        setRevoking(null);
         router.patch(
             ConsoleController.revoke.url({ team: team.slug, artifactId }),
         );
@@ -377,7 +361,7 @@ export default function ConsoleIndex({
                                     Repository
                                 </th>
                                 <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    Agent
+                                    AI tool
                                 </th>
                                 <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Created
@@ -547,8 +531,9 @@ export default function ConsoleIndex({
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-muted-foreground">
-                                            {artifact.provenance.agent ||
-                                                'Unknown'}
+                                            {aiToolName(
+                                                artifact.provenance.agent,
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-muted-foreground">
                                             {new Date(
@@ -598,17 +583,14 @@ export default function ConsoleIndex({
                                                         !artifact.revoked_at && (
                                                             <Button
                                                                 variant="outline"
-                                                                aria-label={`${confirmingRevoke === artifact.id ? 'Confirm revoke of' : 'Revoke'} ${artifactName(artifact)}`}
+                                                                aria-label={`Revoke ${artifactName(artifact)}`}
                                                                 onClick={() =>
-                                                                    handleRevoke(
-                                                                        artifact.id,
+                                                                    setRevoking(
+                                                                        artifact,
                                                                     )
                                                                 }
                                                             >
-                                                                {confirmingRevoke ===
-                                                                artifact.id
-                                                                    ? 'Confirm revoke?'
-                                                                    : 'Revoke'}
+                                                                Revoke
                                                             </Button>
                                                         )}
                                                 </div>
@@ -650,6 +632,21 @@ export default function ConsoleIndex({
                             </Button>
                         )}
                     </div>
+                )}
+
+                {revoking && (
+                    <ConfirmDialog
+                        open
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setRevoking(null);
+                            }
+                        }}
+                        title={`Revoke ${artifactName(revoking)}?`}
+                        description="People and AI tools lose access to it right away. This cannot be undone."
+                        confirmLabel="Revoke artifact"
+                        onConfirm={handleRevoke}
+                    />
                 )}
             </div>
         </div>
