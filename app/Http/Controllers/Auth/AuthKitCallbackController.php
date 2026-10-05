@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Models\User;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
@@ -78,7 +79,8 @@ class AuthKitCallbackController extends Controller
         }
 
         return redirect()->intended(
-            $currentTeam ? route('dashboard', ['current_team' => $currentTeam->slug]) : route('teams.index')
+            InvitationLandingController::pendingJoinUrl($request)
+                ?? ($currentTeam ? route('dashboard', ['current_team' => $currentTeam->slug]) : route('teams.index'))
         );
     }
 }

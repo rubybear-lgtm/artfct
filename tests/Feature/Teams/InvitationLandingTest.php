@@ -185,6 +185,68 @@ test('a_remembered_acceptance_for_another_invitation_is_ignored', function () {
         ->and($other->fresh()->isAccepted())->toBeFalse();
 });
 
+test('accepting_terms_without_an_intended_url_returns_to_the_pending_invitation', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
+    $invitation = pendingInvitation('invitee@example.com');
+    $user = User::factory()->create(['email' => 'invitee@example.com', 'terms_version' => null]);
+
+    test()->actingAs($user)
+        ->withSession([InvitationLandingController::ACCEPTING_SESSION_KEY => $invitation->code])
+        ->post(route('terms.accept'), ['accepted' => true])
+        ->assertRedirect(route('invitations.show', $invitation));
+
+    test()->get(route('invitations.show', $invitation))
+        ->assertRedirect(route('dashboard', ['current_team' => $invitation->team->slug]));
+
+    expect($invitation->team->memberships()->where('user_id', $user->id)->exists())->toBeTrue()
+        ->and($invitation->fresh()->isAccepted())->toBeTrue()
+        ->and(session(InvitationLandingController::ACCEPTING_SESSION_KEY))->toBeNull();
+});
+
+test('the_full_flow_survives_the_terms_gate_and_a_double_submit', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
+    $invitation = pendingInvitation('invitee@example.com');
+    test()->post(route('invitations.join', $invitation), ['account' => 'new']);
+
+    $code = FakeAuthKitClient::codeFor(new AuthKitProfile('id-1', 'MagicAuth', 'invitee@example.com', true, 'Invitee', null, null));
+    test()->get(route('authenticate', ['code' => $code]))->assertRedirect(route('invitations.show', $invitation));
+
+    test()->get(route('invitations.show', $invitation))->assertRedirect(route('terms.accept.show'));
+
+    test()->post(route('terms.accept'), ['accepted' => true]);
+    test()->post(route('terms.accept'), ['accepted' => true])->assertRedirect(route('invitations.show', $invitation));
+
+    test()->get(route('invitations.show', $invitation))
+        ->assertRedirect(route('dashboard', ['current_team' => $invitation->team->slug]));
+
+    $user = User::query()->where('email', 'invitee@example.com')->sole();
+
+    expect($invitation->team->memberships()->where('user_id', $user->id)->exists())->toBeTrue()
+        ->and($invitation->fresh()->isAccepted())->toBeTrue();
+});
+
+test('terms_fallback_is_unchanged_without_a_pending_invitation', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
+    $user = User::factory()->create(['email' => 'invitee@example.com', 'terms_version' => null]);
+
+    test()->actingAs($user)
+        ->post(route('terms.accept'), ['accepted' => true])
+        ->assertRedirect(route('teams.index'));
+});
+
+test('a_pending_join_url_is_only_offered_for_an_existing_invitation', function () {
+    config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
+    $invitation = pendingInvitation('invitee@example.com');
+    $user = User::factory()->create(['email' => 'invitee@example.com', 'terms_version' => null]);
+
+    test()->actingAs($user)
+        ->withSession([InvitationLandingController::ACCEPTING_SESSION_KEY => 'no-such-code'])
+        ->post(route('terms.accept'), ['accepted' => true])
+        ->assertRedirect(route('teams.index'));
+
+    expect($invitation->fresh()->isAccepted())->toBeFalse();
+});
+
 test('login_passes_only_valid_hints_to_workos', function () {
     config(['services.workos.client_id' => 'client_x', 'services.workos.secret' => 'sk_test_x', 'services.workos.redirect_url' => 'https://app.test/authenticate']);
     app()->instance(AuthKitClientContract::class, new RealAuthKitClient);

@@ -66,6 +66,29 @@ class InvitationLandingController extends Controller
     }
 
     /**
+     * The landing page for the invitation a guest chose to accept, if their
+     * session still remembers it. Used as the fallback for post-sign-in and
+     * post-consent redirects when `url.intended` was consumed or lost, so the
+     * guest still lands on the page that completes the join.
+     */
+    public static function pendingJoinUrl(Request $request): ?string
+    {
+        $code = $request->session()->get(self::ACCEPTING_SESSION_KEY);
+
+        if (! is_string($code) || $code === '') {
+            return null;
+        }
+
+        $invitation = TeamInvitation::query()->where('code', $code)->first();
+
+        if ($invitation === null) {
+            return null;
+        }
+
+        return route('invitations.show', $invitation);
+    }
+
+    /**
      * A guest chose to accept: remember that, then send them to create an
      * account (or sign in) with the invited email filled in. The sign-in
      * callback returns them to the landing page, which completes the join.

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Teams\InvitationLandingController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,7 +23,7 @@ class LegalController extends Controller
     public function showAcceptance(Request $request): Response|RedirectResponse
     {
         if ($request->user()->terms_version === config('legal.terms_version')) {
-            return redirect()->intended(route('teams.index'));
+            return redirect()->intended(InvitationLandingController::pendingJoinUrl($request) ?? route('teams.index'));
         }
 
         return Inertia::render('legal/accept', ['version' => config('legal.terms_version')]);
@@ -37,6 +38,6 @@ class LegalController extends Controller
             'terms_accepted_at' => now(),
         ])->save();
 
-        return redirect()->intended(route('teams.index'));
+        return redirect()->intended(InvitationLandingController::pendingJoinUrl($request) ?? route('teams.index'));
     }
 }
