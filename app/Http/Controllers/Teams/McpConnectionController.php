@@ -137,7 +137,7 @@ class McpConnectionController extends Controller
         $connection->forceFill([
             'team_id' => $team->id,
             'user_id' => $request->user()->id,
-            'name' => "{$validated['client_name']} MCP",
+            'name' => $validated['client_name'],
             'client_name' => $validated['client_name'],
             'transport' => 'streamable-http',
             'scopes' => $scopes,

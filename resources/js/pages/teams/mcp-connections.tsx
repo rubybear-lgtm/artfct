@@ -115,6 +115,19 @@ const statusVariant = {
     revoked: 'destructive',
 } as const;
 
+const scopeLabels: Record<string, string> = {
+    'artifacts:read': 'Read shared work',
+    'artifacts:deploy': 'Share new work',
+    'artifacts:delete': 'Delete shared work',
+    'collections:read': 'See collections',
+    'collections:write': 'Add to collections',
+    'usage:read': 'See usage',
+};
+
+function labelForScope(scope: string): string {
+    return scopeLabels[scope] ?? scope;
+}
+
 export default function McpConnections({
     team,
     mcpEndpoint,
@@ -131,7 +144,7 @@ export default function McpConnections({
         string | null
     >(null);
     const createForm = useForm({
-        client_name: 'custom MCP client',
+        client_name: 'My AI tool',
         scopes: defaultScopes,
     });
 
@@ -191,24 +204,24 @@ export default function McpConnections({
 
     return (
         <>
-            <Head title="MCP connections" />
-            <h1 className="mb-1 text-2xl font-semibold">MCP connections</h1>
+            <Head title="AI tool connections" />
+            <h1 className="mb-1 text-2xl font-semibold">AI tool connections</h1>
             <p className="mb-6 text-sm text-muted-foreground">
-                Review the agents connected to {team.name}. Credentials are
-                never displayed here.
+                Connect the AI tools your team uses so they can share to this
+                team and find what it has shared.
             </p>
 
             <div className="flex flex-col gap-6">
                 <Alert>
                     <ShieldCheck className="size-4" />
-                    Revoke a connection when an agent is lost, decommissioned,
-                    or no longer needs access. The connection metadata remains
+                    Revoke a connection when an AI tool is lost, retired, or no
+                    longer needs access. The connection metadata remains
                     available for audit purposes.
                 </Alert>
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Connect an agent</CardTitle>
+                        <CardTitle>Connect an AI tool</CardTitle>
                         <CardDescription>
                             Add this address to your AI tool and approve the
                             sign-in in your browser. Nothing needs to be
@@ -241,26 +254,13 @@ export default function McpConnections({
                                     ? 'Copied'
                                     : 'Copy address'}
                             </Button>
-                            <p className="mt-3 text-xs text-muted-foreground">
-                                OAuth discovery:{' '}
-                                <a
-                                    href={oauthMetadataUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="break-all underline underline-offset-2"
-                                >
-                                    {oauthMetadataUrl}
-                                </a>
-                            </p>
                         </div>
                         <div className="rounded-lg border border-dashed p-4 md:col-span-2">
-                            <p className="font-medium">
-                                Least-privilege access
-                            </p>
+                            <p className="font-medium">What each tool can do</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                OAuth clients request scopes during sign-in.
-                                Start with only the capabilities the agent
-                                needs; access can be revoked below.
+                                Each tool asks for these permissions when
+                                someone signs in: start with only what the AI
+                                tool needs; access can be revoked below.
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {[
@@ -270,7 +270,7 @@ export default function McpConnections({
                                     'usage:read',
                                 ].map((scope) => (
                                     <Badge key={scope} variant="outline">
-                                        {scope}
+                                        {labelForScope(scope)}
                                     </Badge>
                                 ))}
                             </div>
@@ -282,10 +282,26 @@ export default function McpConnections({
                                 </Link>
                             </Button>
                             <span className="text-xs text-muted-foreground">
-                                Access is scoped to this workspace and can be
+                                Access is limited to this team and can be
                                 revoked below.
                             </span>
                         </div>
+                        <details className="rounded-lg border p-4 text-xs text-muted-foreground md:col-span-2">
+                            <summary className="cursor-pointer font-medium text-foreground">
+                                Technical details
+                            </summary>
+                            <p className="mt-3">
+                                OAuth discovery:{' '}
+                                <a
+                                    href={oauthMetadataUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="break-all underline underline-offset-2"
+                                >
+                                    {oauthMetadataUrl}
+                                </a>
+                            </p>
+                        </details>
                     </CardContent>
                 </Card>
 
@@ -362,7 +378,7 @@ export default function McpConnections({
                         <CardHeader>
                             <CardTitle>Usage by tool</CardTitle>
                             <CardDescription>
-                                A rolling view of how connected agents use
+                                A rolling view of how connected AI tools use
                                 artfct.
                             </CardDescription>
                         </CardHeader>
@@ -407,11 +423,10 @@ export default function McpConnections({
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Start a connection</CardTitle>
+                        <CardTitle>Set up a tool manually</CardTitle>
                         <CardDescription>
-                            Register a client against {team.name}. Scopes
-                            default to read-only and can never exceed your team
-                            role.
+                            Only needed if your AI tool can't sign in on its
+                            own.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -420,7 +435,7 @@ export default function McpConnections({
                             className="flex flex-col gap-4"
                         >
                             <div className="flex max-w-sm flex-col gap-1.5">
-                                <Label htmlFor="client-name">Client</Label>
+                                <Label htmlFor="client-name">Tool name</Label>
                                 <Input
                                     id="client-name"
                                     name="client_name"
@@ -443,7 +458,7 @@ export default function McpConnections({
                             </div>
                             <fieldset className="flex flex-col gap-2">
                                 <legend className="text-sm font-medium">
-                                    Scopes
+                                    Permissions
                                 </legend>
                                 <div className="flex flex-wrap gap-x-6 gap-y-2">
                                     {scopeOptions.map((scope) => (
@@ -466,8 +481,8 @@ export default function McpConnections({
                                                 }
                                                 className="size-4 accent-primary"
                                             />
-                                            <span className="font-mono text-xs">
-                                                {scope}
+                                            <span className="text-xs">
+                                                {labelForScope(scope)}
                                             </span>
                                         </label>
                                     ))}
@@ -499,11 +514,11 @@ export default function McpConnections({
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Cable className="size-5" />
-                            Connected agents
+                            Connected AI tools
                         </CardTitle>
                         <CardDescription>
                             {connections.length === 0
-                                ? 'No MCP clients have connected yet.'
+                                ? 'No AI tools connected yet.'
                                 : `${connections.length} connection${connections.length === 1 ? '' : 's'} registered`}
                         </CardDescription>
                     </CardHeader>
@@ -511,19 +526,15 @@ export default function McpConnections({
                         {connections.length === 0 ? (
                             <EmptyState
                                 title="Nothing connected"
-                                description="Use the connection guide above to add a local or hosted MCP client."
+                                description="Follow the steps above to connect your first one."
                             >
                                 <Button
                                     asChild
                                     variant="outline"
                                     className="mt-4"
                                 >
-                                    <Link
-                                        href={teamRoutes.tokens.index.url({
-                                            team: team.slug,
-                                        })}
-                                    >
-                                        Manage API tokens
+                                    <Link href={`${docs.url()}#mcp`}>
+                                        Open setup guide
                                     </Link>
                                 </Button>
                             </EmptyState>
@@ -532,9 +543,11 @@ export default function McpConnections({
                                 <Table>
                                     <thead>
                                         <tr>
-                                            <TableHead>Client</TableHead>
-                                            <TableHead>Transport</TableHead>
-                                            <TableHead>Scopes</TableHead>
+                                            <TableHead>AI tool</TableHead>
+                                            <TableHead>
+                                                Connection type
+                                            </TableHead>
+                                            <TableHead>Permissions</TableHead>
                                             <TableHead>Last used</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead />
@@ -584,7 +597,9 @@ export default function McpConnections({
                                                                         }
                                                                         variant="outline"
                                                                     >
-                                                                        {scope}
+                                                                        {labelForScope(
+                                                                            scope,
+                                                                        )}
                                                                     </Badge>
                                                                 ),
                                                             )}
@@ -718,14 +733,14 @@ export default function McpConnections({
                     </CardHeader>
                     <CardContent>
                         {activity.length === 0 ? (
-                            <EmptyState title="No MCP tool calls yet." />
+                            <EmptyState title="No activity from AI tools yet." />
                         ) : (
                             <div className="overflow-x-auto">
                                 <Table>
                                     <thead>
                                         <tr>
                                             <TableHead>Tool</TableHead>
-                                            <TableHead>Client</TableHead>
+                                            <TableHead>AI tool</TableHead>
                                             <TableHead>Result</TableHead>
                                             <TableHead>Latency</TableHead>
                                             <TableHead>When</TableHead>
@@ -741,7 +756,7 @@ export default function McpConnections({
                                                 </TableCell>
                                                 <TableCell>
                                                     {entry.clientName ??
-                                                        'Unknown client'}
+                                                        'Unknown tool'}
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge

@@ -24,9 +24,9 @@ test('team members can inspect setup details and revoke an MCP connection', func
     test()->actingAs($owner);
 
     $page = visit(route('teams.mcp-connections.index', $team))
-        ->assertSee('Connect an agent')
-        ->assertSee('OAuth discovery:')
-        ->assertSee('artifacts:read')
+        ->assertSee('Connect an AI tool')
+        ->assertSee('Technical details')
+        ->assertSee('Read shared work')
         ->assertSee('Browser agent')
         ->assertNoJavaScriptErrors();
 
@@ -67,7 +67,7 @@ test('team members can start a new connection through the page', function () {
     test()->actingAs($owner);
 
     $page = visit(route('teams.mcp-connections.index', $team))
-        ->assertSee('Start a connection')
+        ->assertSee('Set up a tool manually')
         ->assertNoJavaScriptErrors();
 
     $page->fill('client_name', 'Browser-created agent')
