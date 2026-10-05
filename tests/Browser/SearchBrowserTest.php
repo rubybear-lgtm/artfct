@@ -58,7 +58,7 @@ test('search_and_open_result', function () {
         ->click('button[type=submit]')
         ->wait(1)
         ->assertSee('Billing dashboard')
-        ->assertSee('cursor')
+        ->assertSee('Cursor')
         ->assertAttribute('@search-result-link', 'target', '_blank')
         ->assertAttributeContains('@search-result-link', 'href', '/open')
         ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')

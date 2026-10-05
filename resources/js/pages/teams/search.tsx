@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import { aiToolName } from '@/lib/ai-tools';
 import teamRoutes from '@/routes/teams';
 
 interface Result {
@@ -84,9 +85,9 @@ function SearchForm({
                 onChange={(e) => setForm({ ...form, q: e.target.value })}
             />
             <Input
-                aria-label="Agent"
+                aria-label="AI tool"
                 className="w-40"
-                placeholder="Agent"
+                placeholder="AI tool"
                 value={form.agent}
                 disabled={!indexingEnabled}
                 onChange={(e) => setForm({ ...form, agent: e.target.value })}
@@ -207,7 +208,7 @@ export default function Search({
                                 )}
                                 {result.agent && (
                                     <Badge variant="outline">
-                                        {result.agent}
+                                        {aiToolName(result.agent)}
                                     </Badge>
                                 )}
                                 {result.repoUrl && (

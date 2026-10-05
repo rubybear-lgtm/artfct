@@ -65,12 +65,12 @@ test('admin_finds_artifact_by_repo_and_revokes_it', function () {
         ->wait(1);
     $page->assertSee('Dashboard HTML');
 
-    // Click revoke button, then confirm (two-step in-page confirmation,
-    // not a native confirm() dialog — Pest's browser driver has no dialog
-    // API to accept one).
+    // Open the shared confirmation dialog, then confirm. Pest's browser driver
+    // has no dialog API to accept a native confirm(), which is why the page
+    // uses its own.
     $page->click('Revoke')
         ->wait(1)
-        ->click('Confirm revoke?')
+        ->click('Revoke artifact')
         ->wait(1);
 
     // Verify the artifact is now marked as revoked
