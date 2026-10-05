@@ -1,5 +1,11 @@
 import { Head, Link } from '@inertiajs/react';
-import { useCallback, useEffect, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+    useSyncExternalStore,
+} from 'react';
 
 import { GITHUB, SitePage } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
@@ -8,12 +14,61 @@ import { login, privacy, terms } from '@/routes';
 // ── Skills content ───────────────────────────────────────────────────────────
 const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
 
-const MCP_SCOPES = `artifacts:read       search and retrieve safe artifact metadata
-artifacts:deploy     deploy artifacts to the workspace
-artifacts:delete     delete artifacts when policy permits
-collections:read     list workspace collections
-collections:write    create collections and add artifacts
-usage:read           read customer-safe usage and quota totals`;
+const PERMISSIONS = [
+    {
+        name: 'artifacts:read',
+        type: 'Find and read',
+        note: 'Search your team’s artifacts and open their details.',
+    },
+    {
+        name: 'artifacts:deploy',
+        type: 'Publish',
+        note: 'Save new artifacts to your team’s workspace.',
+    },
+    {
+        name: 'artifacts:delete',
+        type: 'Delete',
+        note: 'Remove artifacts, when your team’s rules allow it.',
+    },
+    {
+        name: 'collections:read',
+        type: 'See collections',
+        note: 'List your team’s collections.',
+    },
+    {
+        name: 'collections:write',
+        type: 'Organize',
+        note: 'Create collections and add artifacts to them.',
+    },
+    {
+        name: 'usage:read',
+        type: 'See usage',
+        note: 'Read storage and quota totals for your team.',
+    },
+] as const;
+
+const TROUBLESHOOTING = [
+    {
+        name: 'The sign-in did not open, or access expired',
+        type: 'Sign in again',
+        note: 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. Antigravity: type /mcp in agy and choose artfct.',
+    },
+    {
+        name: 'Connected to the wrong team',
+        type: 'Sign out, then in',
+        note: 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team under Workspace on the approval page.',
+    },
+    {
+        name: 'Your tool says it is being rate limited',
+        type: 'Wait a moment',
+        note: 'Wait as long as your tool reports, then try again.',
+    },
+    {
+        name: 'An administrator removed or reset the connection',
+        type: 'Sign in again',
+        note: 'Repeat the sign-in step for your tool and approve access again. If you have left the team, ask an administrator to invite you back.',
+    },
+] as const;
 
 type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
@@ -161,9 +216,18 @@ function Section({
     );
 }
 
-function SubHeading({ children }: { children: React.ReactNode }) {
+function SubHeading({
+    id,
+    children,
+}: {
+    id?: string;
+    children: React.ReactNode;
+}) {
     return (
-        <h3 className="mt-4 font-serif text-xl font-medium tracking-tight">
+        <h3
+            id={id}
+            className="mt-4 scroll-mt-8 font-serif text-xl font-medium tracking-tight"
+        >
             {children}
         </h3>
     );
@@ -195,7 +259,7 @@ function Tag({ children }: { children: React.ReactNode }) {
 
 function Label({ children }: { children: React.ReactNode }) {
     return (
-        <p className="text-[11px] font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase">
+        <p className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
             {children}
         </p>
     );
@@ -228,6 +292,7 @@ function CodeBlock({ code }: { code: string }) {
 
 function FieldTable({
     fields,
+    headings = ['Name', 'Type', 'Description'],
 }: {
     fields: ReadonlyArray<{
         name: string;
@@ -235,13 +300,14 @@ function FieldTable({
         req?: boolean;
         note: string;
     }>;
+    headings?: [string, string, string];
 }) {
     return (
         <div className="overflow-hidden rounded-[10px] border border-border bg-paper">
-            <div className="hidden grid-cols-[11rem_9rem_1fr] gap-4 border-b border-border px-4 py-2.5 text-[11px] font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase sm:grid">
-                <span>Name</span>
-                <span>Type</span>
-                <span>Description</span>
+            <div className="hidden grid-cols-[11rem_9rem_1fr] gap-4 border-b border-border px-4 py-2.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase sm:grid">
+                {headings.map((heading) => (
+                    <span key={heading}>{heading}</span>
+                ))}
             </div>
             <ul className="divide-y divide-border">
                 {fields.map((field) => (
@@ -493,7 +559,7 @@ function Sidebar({
         <nav aria-label="On this page" className="flex flex-col gap-8 text-sm">
             {groups.map((group) => (
                 <div key={group.title}>
-                    <p className="mb-3 text-[11px] font-bold tracking-[0.08em] text-[var(--sol-base1)] uppercase">
+                    <p className="mb-3 text-[11px] font-bold tracking-[0.08em] text-muted-foreground uppercase">
                         {group.title}
                     </p>
                     <ul className="flex flex-col border-l border-border">
@@ -523,28 +589,252 @@ function Sidebar({
     );
 }
 
+// ── connecting an AI tool ────────────────────────────────────────────────────
+function Steps({ children }: { children: React.ReactNode }) {
+    return (
+        <ol className="flex list-decimal flex-col gap-4 pl-5 marker:font-semibold marker:text-primary">
+            {children}
+        </ol>
+    );
+}
+
+function Step({ children }: { children: React.ReactNode }) {
+    return (
+        <li className="pl-1 leading-relaxed text-muted-foreground">
+            <div className="flex flex-col gap-3">{children}</div>
+        </li>
+    );
+}
+
+type ConnectionGuide = {
+    id: string;
+    label: string;
+    steps: React.ReactNode;
+};
+
+/**
+ * Setup steps for each AI tool that has completed browser sign-in and a tool
+ * call against staging (see docs/mcp-runbook.md, "Client compatibility").
+ * Everything else lives under "Other tools" until it has been verified.
+ */
+function connectionGuides(mcpUrl: string, baseUrl: string): ConnectionGuide[] {
+    return [
+        {
+            id: 'connect-claude-code',
+            label: 'Claude Code',
+            steps: (
+                <Steps>
+                    <Step>
+                        Run this in your terminal:
+                        <CodeBlock
+                            code={`claude mcp add --transport http artfct ${mcpUrl}`}
+                        />
+                    </Step>
+                    <Step>
+                        <span>
+                            Start Claude Code, type <Code>/mcp</Code>, choose{' '}
+                            <Code>artfct</Code> and select{' '}
+                            <Code>Authenticate</Code>.
+                        </span>
+                    </Step>
+                    <Step>Approve the sign-in that opens in your browser.</Step>
+                </Steps>
+            ),
+        },
+        {
+            id: 'connect-codex',
+            label: 'Codex',
+            steps: (
+                <Steps>
+                    <Step>
+                        Run this in your terminal:
+                        <CodeBlock
+                            code={`codex mcp add artfct --url ${mcpUrl}`}
+                        />
+                    </Step>
+                    <Step>
+                        Sign in, and approve the page that opens in your
+                        browser:
+                        <CodeBlock code="codex mcp login artfct" />
+                    </Step>
+                    <Step>Start Codex. Artfct is ready to use.</Step>
+                </Steps>
+            ),
+        },
+        {
+            id: 'connect-opencode',
+            label: 'OpenCode',
+            steps: (
+                <Steps>
+                    <Step>
+                        Run this in your terminal:
+                        <CodeBlock
+                            code={`opencode mcp add artfct --url ${mcpUrl}`}
+                        />
+                    </Step>
+                    <Step>
+                        Sign in:
+                        <CodeBlock code="opencode mcp auth artfct" />
+                        <span>
+                            Select <strong>Approve</strong> once. Approving the
+                            same page twice makes OpenCode report that the code
+                            is invalid or expired; if that happens, run the
+                            command again.
+                        </span>
+                    </Step>
+                    <Step>Start OpenCode. Artfct is ready to use.</Step>
+                </Steps>
+            ),
+        },
+        {
+            id: 'connect-antigravity',
+            label: 'Antigravity',
+            steps: (
+                <Steps>
+                    <Step>
+                        Run this in your terminal:
+                        <CodeBlock code={`agy mcp add artfct ${mcpUrl}`} />
+                    </Step>
+                    <Step>
+                        <span>
+                            Open <Code>~/.gemini/config/mcp_config.json</Code>{' '}
+                            and add <Code>"oauth": {'{}'}</Code> to the{' '}
+                            <Code>artfct</Code> entry, so it reads:
+                        </span>
+                        <CodeBlock
+                            code={JSON.stringify(
+                                {
+                                    artfct: {
+                                        serverUrl: mcpUrl,
+                                        oauth: {},
+                                    },
+                                },
+                                null,
+                                2,
+                            )}
+                        />
+                    </Step>
+                    <Step>
+                        <span>
+                            Start <Code>agy</Code>, type <Code>/mcp</Code>,
+                            choose <Code>artfct</Code> to sign in, and approve
+                            the page that opens in your browser.
+                        </span>
+                    </Step>
+                </Steps>
+            ),
+        },
+        {
+            id: 'connect-other',
+            label: 'Other tools',
+            steps: (
+                <div className="flex flex-col gap-4">
+                    <Prose>
+                        Most AI tools have a place to add a remote server
+                        (sometimes called an HTTP or URL server). Add one named{' '}
+                        <Code>artfct</Code> with the address above and approve
+                        the sign-in when your browser opens. If your tool is set
+                        up with a JSON file, the entry usually looks like this:
+                    </Prose>
+                    <CodeBlock
+                        code={JSON.stringify(
+                            { mcpServers: { artfct: { url: mcpUrl } } },
+                            null,
+                            2,
+                        )}
+                    />
+                    <Prose>
+                        Cursor reads this from <Code>~/.cursor/mcp.json</Code>;
+                        sign in from its settings or with{' '}
+                        <Code>cursor-agent mcp login artfct</Code>. We have not
+                        tested these tools yet, so if one does not connect,{' '}
+                        <a
+                            href={`${GITHUB}/issues`}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            tell us which
+                        </a>
+                        . Tools that need the sign-in details find them
+                        automatically at{' '}
+                        <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code>
+                        .
+                    </Prose>
+                </div>
+            ),
+        },
+    ];
+}
+
+/** Lets other pages link straight to a tool, e.g. /docs#connect-codex. */
+function subscribeToHash(onChange: () => void): () => void {
+    window.addEventListener('hashchange', onChange);
+
+    return () => window.removeEventListener('hashchange', onChange);
+}
+
+function readHash(): string {
+    return window.location.hash.slice(1);
+}
+
+function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
+    const hash = useSyncExternalStore(subscribeToHash, readHash, () => '');
+    const [selected, setSelected] = useState<string | null>(null);
+    const current =
+        guides.find((guide) => guide.id === (selected ?? hash)) ?? guides[0];
+
+    return (
+        <div className="flex flex-col gap-6">
+            <div
+                role="tablist"
+                aria-label="AI tool"
+                className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border"
+            >
+                {guides.map((guide) => (
+                    <button
+                        key={guide.id}
+                        id={guide.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={guide.id === current.id}
+                        aria-controls={`${guide.id}-panel`}
+                        onClick={() => setSelected(guide.id)}
+                        className={`-mb-px scroll-mt-8 border-b-2 pb-2.5 text-sm font-semibold transition-colors ${
+                            guide.id === current.id
+                                ? 'border-primary text-foreground'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        {guide.label}
+                    </button>
+                ))}
+            </div>
+            <div
+                id={`${current.id}-panel`}
+                role="tabpanel"
+                aria-labelledby={current.id}
+            >
+                {current.steps}
+            </div>
+        </div>
+    );
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
 export default function Docs({ contract }: DocsProps) {
     const hostedMcpBaseUrl = contract.servers[0].url.replace(/\/$/, '');
     const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
-    const hostedMcpConfiguration = `MCP endpoint:
-${hostedMcpUrl}
-
-OAuth protected-resource metadata:
-${hostedMcpBaseUrl}/.well-known/oauth-protected-resource
-
-OAuth authorization-server metadata:
-${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
-    const hostedMcpJsonConfig = JSON.stringify(
-        { mcpServers: { artfct: { url: hostedMcpUrl } } },
-        null,
-        2,
+    const guides = useMemo(
+        () => connectionGuides(hostedMcpUrl, hostedMcpBaseUrl),
+        [hostedMcpUrl, hostedMcpBaseUrl],
     );
     const groups: SidebarGroup[] = [
         {
             title: 'Get started',
             items: [
-                { id: 'mcp', label: 'MCP server' },
+                { id: 'mcp', label: 'Connect your AI tool' },
+                { id: 'connect-check', label: 'Check that it works' },
+                { id: 'connect-troubleshooting', label: 'Troubleshooting' },
                 { id: 'skills', label: 'Skills' },
             ],
         },
@@ -569,7 +859,7 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
             <Head title="Documentation">
                 <meta
                     name="description"
-                    content="Connect your AI tools to Artfct and build on it: the MCP server, skills and REST API."
+                    content="Connect your AI tool to Artfct in about a minute, add the Artfct skill, and use the REST API."
                 />
             </Head>
 
@@ -587,9 +877,9 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                             Build with <em className="text-primary">Artfct</em>
                         </h1>
                         <p className="mt-5 max-w-[52ch] text-lg text-muted-foreground">
-                            Connect your AI tools, and share and read artifacts
-                            from your own code: the MCP server, skills and the
-                            REST API.
+                            Connect your AI tool so it can publish to your team
+                            and read what is already there, then go further with
+                            skills and the REST API.
                         </p>
                         <details className="mt-8 rounded-[10px] border border-border bg-paper px-4 py-3 text-sm lg:hidden">
                             <summary className="cursor-pointer font-semibold">
@@ -604,112 +894,94 @@ ${hostedMcpBaseUrl}/.well-known/oauth-authorization-server`;
                     <Section
                         id="mcp"
                         eyebrow="Get started"
-                        title="Use Artfct from your AI tool"
+                        title="Connect your AI tool"
                     >
                         <Prose>
-                            Add the hosted Artfct server to your AI tool and
-                            approve the browser sign-in. There is nothing to
-                            install. Your tool can then publish HTML to your
-                            workspace with the <Code>deploy_artifact</Code>{' '}
-                            tool, so Claude Code, Codex, OpenCode and other
-                            compatible tools can publish without leaving the
-                            session. <Code>deploy_to_canvas</Code> is
-                            deprecated; use <Code>deploy_artifact</Code>{' '}
-                            instead.
+                            Connect once and your AI tool can publish to your
+                            team’s workspace and find what is already there,
+                            with sources. There is nothing to install and no key
+                            to copy: you add one address and approve a sign-in
+                            in your browser. It takes about a minute.
                         </Prose>
 
-                        <SubHeading>Use the hosted server</SubHeading>
+                        <SubHeading>1. Copy your Artfct address</SubHeading>
+                        <CodeBlock code={hostedMcpUrl} />
                         <Prose>
-                            For clients that support OAuth discovery, add the
-                            endpoint below. The client opens browser consent and
-                            requests only the scopes it needs; no bearer token
-                            needs to be copied into configuration. These URLs
-                            point to the environment serving this page; keep
-                            each client on the same environment. See the runbook
-                            for staging verification steps. The public{' '}
-                            <Link href={terms.url()}>terms</Link> and{' '}
-                            <Link href={privacy.url()}>privacy policy</Link>{' '}
-                            explain the service and its data handling.
+                            This address belongs to the site you are reading
+                            now, so use this one on every tool you connect.
                         </Prose>
-                        <CodeBlock code={hostedMcpConfiguration} />
+
+                        <SubHeading>2. Add it to your AI tool</SubHeading>
+                        <ConnectionTabs guides={guides} />
+
+                        <SubHeading id="connect-check">
+                            3. Check that it works
+                        </SubHeading>
                         <Prose>
-                            In Claude Code, add it with the command below, then
-                            run <Code>/mcp</Code> inside Claude Code to sign in.
-                            In Cursor, add the same address to{' '}
-                            <Code>~/.cursor/mcp.json</Code> (or{' '}
-                            <Code>.cursor/mcp.json</Code> in a project) and
-                            approve the browser consent when it opens.
+                            Ask your AI tool:{' '}
+                            <em>“Which Artfct workspace am I connected to?”</em>{' '}
+                            It should answer with your team’s name. From then
+                            on, ask it to publish what it makes to Artfct, or to
+                            search Artfct for something your team already
+                            shared.
                         </Prose>
-                        <CodeBlock
-                            code={`claude mcp add --transport http artfct ${hostedMcpUrl}`}
+
+                        <SubHeading id="connect-troubleshooting">
+                            If something goes wrong
+                        </SubHeading>
+                        <FieldTable
+                            headings={['Problem', 'Fix', 'How']}
+                            fields={TROUBLESHOOTING}
                         />
-                        <CodeBlock code={hostedMcpJsonConfig} />
+                        <Prose>
+                            If you used the old Artfct command-line app, remove
+                            its <Code>artfct</Code> entry before adding the
+                            address above, for example with{' '}
+                            <Code>claude mcp remove artfct</Code> or{' '}
+                            <Code>codex mcp remove artfct</Code>. The
+                            command-line app has been retired.
+                        </Prose>
 
-                        <SubHeading>Scopes</SubHeading>
-                        <CodeBlock code={MCP_SCOPES} />
+                        <SubHeading>What your AI tool can do</SubHeading>
                         <Prose>
-                            If a connection expires or is revoked, sign in again
-                            for the intended workspace. Workspace administrators
-                            can revoke hosted connections in your workspace
-                            settings under <Code>MCP connections</Code>.
+                            During sign-in, your tool asks for the permissions
+                            it needs and you approve them. Each connection only
+                            reaches the team you signed in to.
                         </Prose>
-                        <Prose>
-                            In Claude Code, open <Code>/mcp</Code>, choose{' '}
-                            <Code>artfct</Code>, and select{' '}
-                            <Code>Reconnect</Code> to repeat browser sign-in;
-                            check the result with{' '}
-                            <Code>claude mcp get artfct</Code>. In Cursor, use
-                            its MCP panel to reconnect, or run{' '}
-                            <Code>cursor-agent mcp login artfct</Code> and{' '}
-                            <Code>cursor-agent mcp list</Code> in Cursor CLI.
-                            See the{' '}
-                            <a
-                                href="https://code.claude.com/docs/en/mcp"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Claude Code MCP guide
-                            </a>{' '}
-                            and{' '}
-                            <a
-                                href="https://docs.cursor.com/en/cli/reference/parameters"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Cursor CLI reference
-                            </a>{' '}
-                            for client details.
-                        </Prose>
+                        <FieldTable
+                            headings={['Permission', 'Allows', 'Details']}
+                            fields={PERMISSIONS}
+                        />
 
                         <SubHeading>Limits and data kept</SubHeading>
                         <Prose>
-                            Hosted requests are limited to 120 per minute for
-                            each workspace and, separately, 120 per minute for
-                            each connection. A limited request returns status{' '}
-                            <Code>429</Code> with a <Code>Retry-After</Code>{' '}
-                            header; wait that long before trying again. Records
-                            of MCP activity are kept for 90 days by default and
-                            then removed automatically. Workspace administrators
-                            can remove a connection at any time in workspace
-                            settings under <Code>MCP connections</Code>.
+                            Each team can make 120 requests per minute, and so
+                            can each connection. Past that, your tool is asked
+                            to wait (status <Code>429</Code>, with a{' '}
+                            <Code>Retry-After</Code> header saying how long).
+                            Records of what connected tools did are kept for 90
+                            days by default and then removed automatically.
                         </Prose>
 
-                        <SubHeading>Workspaces and sign-in</SubHeading>
+                        <SubHeading>Teams and sign-in</SubHeading>
                         <Prose>
-                            In the web app, an organization is called a team;
-                            the OAuth protocol also calls it a workspace. They
-                            mean the same boundary for members, artifacts,
-                            collections, and access. Sign in at{' '}
+                            In the web app your organization is called a team;
+                            the sign-in screen may also call it a workspace.
+                            Both mean the same group of people, artifacts and
+                            collections. Sign in on the{' '}
                             <Link href={login.url()}>sign-in page</Link>. If you
-                            have not joined a team, Artfct asks you to create
-                            your first one. To join an existing team, ask its
-                            administrator to invite the email address you use to
-                            sign in. Hosted MCP uses browser sign-in, so you do
-                            not need to create an API token. For automation
-                            against the REST API, an administrator can create
-                            one in team settings under <Code>API tokens</Code>;
-                            send it as a bearer token and keep it in your secret
-                            manager.
+                            have not joined a team yet, Artfct asks you to
+                            create your first one; to join an existing team, ask
+                            its administrator to invite the email address you
+                            sign in with. Administrators can see and remove
+                            connected tools in team settings under{' '}
+                            <Code>MCP connections</Code>. Connecting an AI tool
+                            never needs an API token; tokens are only for your
+                            own code calling the REST API below, which sends one
+                            as a bearer token. The{' '}
+                            <Link href={terms.url()}>terms</Link> and{' '}
+                            <Link href={privacy.url()}>privacy policy</Link>{' '}
+                            explain how your data is handled.
                         </Prose>
                     </Section>
 

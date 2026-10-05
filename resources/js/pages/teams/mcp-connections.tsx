@@ -210,17 +210,17 @@ export default function McpConnections({
                     <CardHeader>
                         <CardTitle>Connect an agent</CardTitle>
                         <CardDescription>
-                            Add the hosted endpoint to any client that supports
-                            Streamable HTTP and OAuth. Nothing needs to be
-                            installed.
+                            Add this address to your AI tool and approve the
+                            sign-in in your browser. Nothing needs to be
+                            installed and no key is copied.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 md:grid-cols-2">
                         <div className="rounded-lg border p-4">
-                            <p className="font-medium">Hosted MCP</p>
+                            <p className="font-medium">Your Artfct address</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Add this URL to an MCP client that supports
-                                OAuth discovery. No token needs to be copied.
+                                The setup guide has the exact steps for Claude
+                                Code, Codex, OpenCode and Antigravity.
                             </p>
                             <code className="mt-3 block rounded-md bg-muted p-3 font-mono text-xs break-all">
                                 {mcpEndpoint}
@@ -239,7 +239,7 @@ export default function McpConnections({
                                 )}
                                 {copied === 'endpoint'
                                     ? 'Copied'
-                                    : 'Copy endpoint'}
+                                    : 'Copy address'}
                             </Button>
                             <p className="mt-3 text-xs text-muted-foreground">
                                 OAuth discovery:{' '}
@@ -277,7 +277,7 @@ export default function McpConnections({
                         </div>
                         <div className="flex flex-wrap items-center gap-3 md:col-span-2">
                             <Button asChild>
-                                <Link href={`${docs.url()}#cli`}>
+                                <Link href={`${docs.url()}#mcp`}>
                                     Open setup guide
                                 </Link>
                             </Button>

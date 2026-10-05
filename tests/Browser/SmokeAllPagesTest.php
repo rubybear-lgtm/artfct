@@ -87,10 +87,25 @@ test('public docs expose the MCP onboarding path', function () {
     $baseUrl = rtrim((string) config('app.url'), '/');
 
     visit(route('docs'))
-        ->assertSee('Workspaces and sign-in')
+        ->assertSee('Connect your AI tool')
+        ->assertSee('Teams and sign-in')
         ->assertSee($baseUrl.'/mcp')
+        ->assertSee('claude mcp add --transport http artfct '.$baseUrl.'/mcp')
         ->assertSee('Base URL '.$baseUrl)
         ->assertSee('artifacts:read')
+        ->click('#connect-codex')
+        ->assertSee('codex mcp login artfct')
+        ->click('#connect-opencode')
+        ->assertSee('opencode mcp auth artfct')
+        ->assertScript("getComputedStyle(document.querySelector('[role=tabpanel] ol li')).display", 'list-item')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a docs link to one AI tool opens that tool\'s setup steps', function () {
+    $baseUrl = rtrim((string) config('app.url'), '/');
+
+    visit(route('docs').'#connect-antigravity')
+        ->assertSee('agy mcp add artfct '.$baseUrl.'/mcp')
         ->assertNoJavaScriptErrors();
 });
 

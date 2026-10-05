@@ -137,7 +137,7 @@ When `deploy_to_canvas` fails:
 - **HTML validation error** — the payload contained invalid or empty HTML. Regenerate with a complete `<!DOCTYPE html>` document and retry.
 - **Network/API error** — the artfct API was unreachable. Inform the user and offer to emit the raw HTML as a code block instead.
 - **Size limit exceeded** — inline all large assets as external CDN URLs rather than base64. Base64-encoded images dramatically increase payload size.
-- **MCP not available** — `deploy_to_canvas` is not in the tool list. Use Option B (API fallback) above, then suggest the user install artfct for future sessions.
+- **MCP not available** — `deploy_to_canvas` is not in the tool list. Use Option B (API fallback) above, then suggest the user connect artfct for future sessions (see `references/setup.md`).
 
 ## HTML Requirements
 
@@ -207,4 +207,4 @@ Deployed → https://artfct.dev/p/4fA8gX9z (expires in 60 minutes)
 ## Additional Resources
 
 - **`references/html-authoring.md`** — Canonical HTML template, SRI hashes, common library snippets, responsive/accessible defaults
-- **`references/setup.md`** — CLI installation and MCP configuration instructions (share with users who need to get set up)
+- **`references/setup.md`** — Step-by-step connection instructions for Claude Code, Codex, OpenCode and Antigravity (share with users who need to get set up)

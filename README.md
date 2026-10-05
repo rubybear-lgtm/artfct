@@ -41,13 +41,23 @@ previews, while the fragment passcode is never sent to the server.
 
 ## Connect your AI tool
 
-Artfct has one way to connect an AI tool: the hosted MCP server. Add `https://artfct.dev/mcp` in
-your AI tool's MCP settings and approve the browser sign-in; nothing needs to be installed. For
-Claude Code:
+Artfct has one way to connect an AI tool: the hosted MCP server. Add the server address to your
+AI tool and approve the browser sign-in; nothing needs to be installed and no key is copied. The
+address is `<site>/mcp` for the environment you use: `https://staging.artfct.dev/mcp` today, and
+`https://artfct.dev/mcp` once the production route is deployed (it currently returns 404).
 
-```sh
-claude mcp add --transport http artfct https://artfct.dev/mcp
-```
+| Tool        | Add the server                                           | Sign in                                       |
+| ----------- | -------------------------------------------------------- | --------------------------------------------- |
+| Claude Code | `claude mcp add --transport http artfct <address>`       | `/mcp` → `artfct` → Authenticate              |
+| Codex       | `codex mcp add artfct --url <address>`                   | `codex mcp login artfct`                      |
+| OpenCode    | `opencode mcp add artfct --url <address>`                | `opencode mcp auth artfct` (approve once)     |
+| Antigravity | `agy mcp add artfct <address>`, then add `"oauth": {}` to the entry in `~/.gemini/config/mcp_config.json` | `/mcp` → `artfct` |
+
+Then ask the tool "Which Artfct workspace am I connected to?" to confirm. Other tools (Cursor,
+desktop apps) take the same address as a remote server but have not been verified yet. The `/docs`
+page shows these steps with the right address filled in, plus troubleshooting. If you used the
+retired `artfct` command-line app, remove its old `artfct` entry first (`claude mcp remove artfct`,
+`codex mcp remove artfct`).
 
 An AI tool that cannot use a hosted server is not supported. Workspace administrators download an
 organization's permanent artifacts from the console as a zip, and automation uses the REST API
@@ -65,14 +75,9 @@ The hosted server exposes these tools:
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
 
-For hosted MCP staging verification, use `https://staging.artfct.dev/mcp` as
-the server URL. A client that supports OAuth should discover authorization
-through `https://staging.artfct.dev/.well-known/oauth-protected-resource` and
-request only the scopes it needs. The production `/mcp` route is not currently
-deployed; do not use `https://artfct.dev/mcp` until the production route is
-deliberately deployed and verified. The dashboard's **MCP connections** page
-shows the same setup instructions and lets workspace administrators inspect,
-monitor, and revoke connections. Connections use Streamable HTTP.
+Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request
+only the scopes they need. The dashboard's **MCP connections** page shows the address and lets
+workspace administrators inspect, monitor, and revoke connections. Connections use Streamable HTTP.
 `deploy_artifact` is naturally idempotent: publishing identical content to the
 same workspace returns the same artifact. For safe retries of the deprecated
 `deploy_to_canvas`, send a stable `MCP-Request-Id` (or `Idempotency-Key`)

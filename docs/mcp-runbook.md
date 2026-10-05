@@ -34,6 +34,12 @@ Add the hosted URL (`https://staging.artfct.dev/mcp` for staging) to the AI
 tool and complete OAuth in the browser. The tool lists the artfct tools after
 the consent screen. Nothing is installed and no token is pasted anywhere.
 
+The user-facing steps live on the `/docs` page (`#mcp`), with one tab per
+verified client: Claude Code, Codex, OpenCode and Antigravity, plus an
+"Other tools" tab for unverified clients such as Cursor. Only add a client tab
+once its run is recorded under "Client compatibility" below; the docs copy is
+pinned by `tests/Feature/DocsTest.php`.
+
 For CI or other non-interactive environments, mint an organization token on
 **Settings → Tokens** and inject it through the CI secret store. Organization
 tokens authenticate REST API calls; they are not an MCP connection.
@@ -606,6 +612,10 @@ Client-specific notes from these runs:
 - **Codex:** a URL override under the name `artfct` collided with the stdio
   entry the retired `artfct setup` wrote (`url is not supported for stdio`).
   Use a distinct server name for the hosted entry if an old entry remains.
+- **OpenCode:** `OPENCODE_CONFIG` redirects what OpenCode reads, but
+  `opencode mcp add` still writes to the user's global
+  `~/.config/opencode/opencode.json` (observed 2026-10-04 with 1.17.x). Write
+  the temporary config file by hand instead of using `mcp add`.
 - **Gemini:** project-level MCP settings are ignored in an untrusted folder, so
   `gemini mcp list` reports no servers until the folder is trusted (for a single
   session, set `GEMINI_CLI_TRUST_WORKSPACE=true`).
