@@ -14,7 +14,7 @@ Note what this problem is *not*. The labs shipped governance during 2026: Claude
 
 What no lab can fix, because it is structural rather than neglected:
 
-- **Artifacts are trapped per-vendor.** Most engineers run two to four AI tools. A report a PM generated in Cursor is invisible to an engineer in Claude Code, and always will be — Anthropic will not index Cursor's output.
+- **Artifacts are trapped per-vendor.** Most teams run two to four AI tools. A report a PM generated in Cursor is invisible to an engineer in Claude Code, and always will be — Anthropic will not index Cursor's output.
 - **Work gets rebuilt.** The next agent cannot see what the last one produced, so it produces it again.
 - **Nothing accumulates.** A team's good report formats, dashboard patterns and runbooks stay one-off outputs instead of becoming the way that team works.
 - **Non-technical teammates are stuck entirely.** A PM with an HTML file has no way to open, send or place it anywhere their team will look.
@@ -25,24 +25,24 @@ Not "we need artifact hosting," and not "we need AI governance."
 
 ## 2. Users and buyer
 
-They are not the same person, and this asymmetry shapes the whole GTM.
+**Decided 2026-10-04.** Artfct is not a developer tool. It is built first for business people who use AI tools every day, at companies of roughly 10 to 200 people. Engineers are welcome and well served, but they are not who the product is designed around. This replaces the earlier framing in which engineers were the core user.
 
-There are **two user segments, not one**, and `.impeccable.md` said so before this PRD narrowed it: devs are the core audience, "but the tool is simple enough that other professionals (designers, PMs, marketers) who occasionally deal with HTML files would also find it useful."
-
-| | **Technical user** | **Business user** | **Buyer** |
+| | **Primary user** | **Secondary user** | **Buyer** |
 |---|---|---|---|
-| Who | Engineer, or their agent acting for them | PM, designer, analyst, marketer — in Cursor or a desktop agent | Engineering or ops lead; security owner joins at Enterprise |
-| Produces | Dashboards, demos, diagrams, tooling | Reports, summaries, one-pagers, decks |
-| Wants | The deploy stays one call | Somewhere to *put* the thing their agent just made | Their team faster; findable work; a defensible answer at review |
-| Reaches us via | CLI, MCP tool | **IT configuring MCP org-wide**, or browser drag-and-drop | — |
-| Shares via | link, Slack | **Slack, almost exclusively** | — |
-| Status today | **Reachable, not acquired** — CLI, installer, MCP server and skill are built and published, but there is no user base | Same, and further from a CLI than the PRD previously assumed | **Unvalidated** — no buyer conversation has happened |
+| Who | PM, analyst, designer, marketer, operations — anyone whose AI tool makes something worth keeping | Engineer, or their AI tool acting for them | Team or department lead who already pays for several AI tools; IT and security join at Enterprise |
+| Produces | Reports, analyses, tables, one-pagers, markdown docs, mockups, interactive HTML | Dashboards, demos, diagrams, RFCs, tooling | — |
+| Wants | Somewhere to *put* what their AI just made, so the team and the team's other AI tools can find it | Sharing that stays one step; work other tools can reuse | A team that stops redoing work; findable output; a defensible answer at review |
+| Reaches us via | **The lead connecting the team's AI tools once** (hosted connection with sign-in), or drag-and-drop in the browser | The same hosted connection | — |
+| Shares via | Slack and links, almost exclusively | Links, Slack | — |
+| Status today | **Reachable, not acquired** — no user base yet | Same | **Unvalidated** — no buyer conversation has happened |
 
-**Value runs inverse to technical ability.** An engineer with an HTML file has a dozen options. A PM who just generated a report in Cursor has none. That is where "drop it, get a link" is transformative rather than convenient.
+**Value runs inverse to technical ability.** An engineer with an HTML file has a dozen options. A PM who just generated a report in their AI tool has none. That is where "share it with the team" is transformative rather than convenient, and why the business user leads.
 
-**Org-wide MCP configuration is a distribution channel**, not a setup step — one admin action reaches hundreds of people who would never install a CLI.
+**The buyer sets up once; the team benefits without setup.** The lead connects the team's AI tools through the hosted connection and invites people. Members never install anything, copy a token or read a technical term. Every product surface a member sees must work for someone who has never opened a terminal. The command-line app and local server are retired (2026-10-04); the hosted connection is the only path.
 
-**There are no users yet.** The distribution *mechanism* exists and works; the distribution itself does not. This is the single most important correction to make when reading the rest of this document: nothing here can lean on an installed base, a friction moment inside an existing team, or organic pull. Both sides of the funnel start from zero, and the buyer has never been tested.
+**Who is in the product:** the *lead/admin* (connects tools, invites, pays, sets retention), *members* (share, search, open, curate collections), and the *AI tools themselves* (publish to and read from the team's store, with sources).
+
+**There are no users yet.** The distribution *mechanism* exists and works; the distribution itself does not. Nothing here can lean on an installed base, a friction moment inside an existing team, or organic pull. Both sides of the funnel start from zero, and the buyer has never been tested.
 
 ## 3. Positioning
 
@@ -54,28 +54,31 @@ Three properties, and the combination is what nobody else has:
 2. **Two audiences, one object.** A teammate opens it from Slack; another agent finds it through retrieval. Memory products serve only agents. Vercel and Tiiny Host serve only humans.
 3. **It accumulates.** Teams build up a store of the artifacts that turned out to matter, and agents draw on it.
 
-This is a **capability** pitch, not a compliance one. Compliance competes with controls the labs already shipped; capability competes with nothing. It also changes who buys: an engineering or ops lead who wants their team faster, rather than a security owner working through procurement.
+This is a **capability** pitch, not a compliance one. Compliance competes with controls the labs already shipped; capability competes with nothing. It also changes who buys: a team or department lead who wants their team faster, rather than a security owner working through procurement.
 
 **The claim to make, because it demos in one interaction:** *Codex does not rebuild the dashboard Claude already built.* Not "we transfer understanding" — the artifact is the deliverable, and moving finished work is provable in a way transferring insight is not.
 
 ## 4. Goals and non-goals
 
 ### Goals
-1. An org can point every engineer's agent at its own store with one config change.
-2. An admin can see, search, and revoke every artifact the org's agents have produced.
-3. Artifacts persist indefinitely with provenance attached — which agent, which model, which repo, which commit.
-4. Pass a mid-size company's security review without an exception.
-5. Prove that indexed artifacts fed back to agents change how agents work.
+1. A team lead can connect every AI tool the team uses to the team's store once, without technical help.
+2. A member who has never used a terminal can share, find and reopen what their AI made, and send it to a colleague.
+3. An admin can see, search, and revoke every artifact the team's AI tools have produced.
+4. Artifacts persist indefinitely with provenance attached — which tool, which model, and, where there is one, which repo and commit.
+5. Pass a mid-size company's security review without an exception.
+6. Prove that indexed artifacts fed back to AI tools change how those tools work.
 
 ### Non-goals — this section does more work than the requirements
+- **Not a developer tool.** No surface a member sees may require a terminal, a token, JSON or protocol vocabulary. Developer-only features (API tokens, the REST API) stay available but out of the primary path.
 - **Not static site hosting.** No custom builds, no frameworks, no `npm run build`.
 - **Not a CDN.** Artifacts are shared with tens of people, not millions.
-- **Not a Notion or Confluence competitor.** No authoring, no editing, no wiki.
-- **Not general file storage.** HTML bundles and their assets. Nothing else at launch.
-- **Not non-HTML artifacts at launch** — no notebooks, no PDFs, no video. Adjacent and tempting; explicitly out.
-- **Not a document tool.** Broadening to business users pulls straight toward Confluence and Google Docs. Hold the line: **expand the user, not the artifact type.** Interactive HTML an agent produced is what those tools handle badly. The moment this becomes "share any document," we are a worse wiki.
+- **Not a Notion or Confluence competitor.** No authoring, no editing, no wiki. Artfct stores and finds what an AI already made; people write elsewhere.
+- **Not general file storage.** An artifact is something an AI made that renders as a page: interactive HTML, reports, markdown documents, tables and mockups (markdown and tables are rendered to HTML). Uploading arbitrary office files, images or archives for their own sake is out.
+- **Not notebooks, PDFs or video at launch.** Adjacent and tempting; explicitly out.
 - **Not a memory or context layer.** We move finished artifacts, not reasoning. Different category, different competitors.
 - **Not BYOC or self-hosting.** Out of scope, not deferred.
+
+The earlier rule "expand the user, not the artifact type" is replaced: business users make documents and tables as often as interactive pages, so those are in scope. What keeps this from becoming a worse wiki is the no-authoring line above, not a format restriction.
 
 ## 5. Requirements, keyed to the build phases
 
@@ -83,7 +86,7 @@ Keyed to the ADR's phases so the two documents stay in sync rather than drifting
 
 **P0 — Team tier, the first thing anyone can pay for**
 - Every artifact stamped with full provenance at create time. Required, not optional. *(Client refactor, ships first)*
-- Org-scoped API tokens for CLI and MCP, revocable individually. *(Phase 2)*
+- Org-scoped API tokens for the REST API, revocable individually (AI tools connect through the hosted sign-in, not tokens). *(Phase 2)*
 - Orgs, memberships, invitations, roles — **inherited from the Laravel starter kit's Teams support**, not built. *(Phase 2)*
 - Self-serve auth via WorkOS AuthKit — social, passkeys, Magic Auth. *(Phase 2)*
 - **Tier upgrade path built in from the start**: `external_identities` table, `auth_mode` state machine (`authkit` → `dual` → `polis`), domain verification before SAML enforcement, and a tested downgrade. *(Phase 2)*
@@ -145,14 +148,14 @@ Two derivations, both unvalidated until buyer conversations happen. Any figure b
 - **The remaining cost is go-to-market time** — sales, security questionnaires, pen-test reports, DPAs, renewals. It is the dominant cost and it is not engineering support.
 - **The trade:** self-hosting the auth path means community-cadence CVE patching, since Ory gates security SLAs behind its enterprise license. Accepted deliberately; Ory Network's managed Polis is the escape hatch and the integration is identical.
 
-**Enterprise budget anchor:** this comes out of a per-seat dev-tools line. 50 engineers × $25–50/seat/month ≈ $15–30k/year. That the cost floor and the budget anchor point at the same order of magnitude is weak corroboration that a five-figure annual contract is sane — nothing more. The real number comes from the first three buyer conversations.
+**Enterprise budget anchor:** this comes out of the per-seat AI-tools line a team already pays. 50 people × $25–50/seat/month ≈ $15–30k/year. That the cost floor and the budget anchor point at the same order of magnitude is weak corroboration that a five-figure annual contract is sane — nothing more. The real number comes from the first three buyer conversations.
 
 ## 7. Go to market
 
 With no users and no validated buyer, both sides of the funnel start at zero. The sequencing matters more than the tactics.
 
 1. **Design partner first, before phase 2.** One org, early, discounted or free, in exchange for being the indexing testbed and the source of the first real price signal. This is the cheapest de-risking available for the six-month infrastructure stretch, and it substitutes for the organic pull that does not exist yet.
-2. **Build distribution while building the product.** The CLI, MCP server and agent skill exist and work — but publishing them is not distributing them. Getting the free tier in front of engineers is its own workstream, not a side effect of shipping.
+2. **Build distribution while building the product.** The hosted connection and the free tool exist and work — but publishing them is not distributing them. Getting Artfct in front of team leads and the business users they manage is its own workstream, not a side effect of shipping.
 3. **Team tier as the revenue and validation step.** Self-serve, no sales cycle. If small teams will not pay for permanent governed storage, the enterprise thesis is in trouble and it is much cheaper to learn that here.
 4. **Land Enterprise on governance, renew on retrieval.** The first contract closes on audit and retention. Renewal depends on phase 5 actually working.
 
@@ -191,11 +194,12 @@ With no users and no validated buyer, both sides of the funnel start at zero. Th
 - **A design partner will be recruited.** Confirmed as the first GTM step, ahead of phase 2.
 - **Self-host Polis from day one**, including pre-revenue for testing. Running it before a customer depends on it validates the integration early and starts the operational learning curve while the stakes are low. Managed Ory Network stays the escape hatch.
 - **The free tier does not change.** Anonymous, ephemeral, E2EE, no accounts. Consequence to accept: free-tier usage is countable but **not attributable** — deploy volume is measurable, individual users are not, so the funnel gives no lead list. GTM leans on the design partner and outbound instead.
-- **Tenant-branded domains before non-HTML artifact types.** See the cost warning below.
+- **Tenant-branded domains before notebook, PDF or video artifact types.** See the cost warning below.
+- **Audience (2026-10-04):** business users first, teams of 10 to 200, a team lead buys; artifacts include documents and tables, not only HTML. See §2 and §4.
 
 **Still open**
 
-- **Team tier pricing model, not just the number.** Per-seat looked obvious when the user was an engineer. With business users in scope, finance balks at buying seats for people who deploy twice a month — so active-user or artifact-volume pricing may fit better. Answer comes from the design partner and the first self-serve signups, not from a spreadsheet.
+- **Team tier pricing model, not just the number.** Per-seat looked obvious when the user was an engineer. With business users now the primary user, finance balks at buying seats for people who deploy twice a month — so active-user or artifact-volume pricing may fit better. Answer comes from the design partner and the first self-serve signups, not from a spreadsheet.
 
 ### ⚠️ Tenant-branded domains carry a Cloudflare plan cost
 
