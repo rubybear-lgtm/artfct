@@ -33,9 +33,13 @@ class TeamInvitationController extends Controller
         }
 
         // An invitation can never grant more privilege than the inviter holds.
-        if (! $request->user()->teamRole($team)?->canGrant(TeamRole::from($request->validated('role')))) {
-            throw ValidationException::withMessages(['role' => __('You can only invite people with a role up to your own.')]);
-        }
+        // The form only offers grantable roles, so reaching this is a refused
+        // authorization, not a typo: answer 403 like every other admin route.
+        abort_unless(
+            $request->user()->teamRole($team)?->canGrant(TeamRole::from($request->validated('role'))),
+            403,
+            __('You can only invite people with a role up to your own.'),
+        );
 
         $invitation = $team->invitations()->create([
             'email' => $request->validated('email'),

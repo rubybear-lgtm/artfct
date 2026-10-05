@@ -47,7 +47,7 @@ test('member_cannot_invite_someone_as_admin', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
 
-    test()->actingAs($member)->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'admin'])->assertSessionHasErrors('role');
+    test()->actingAs($member)->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'admin'])->assertForbidden();
 
     expect($team->invitations()->count())->toBe(0);
 });

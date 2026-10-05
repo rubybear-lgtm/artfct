@@ -209,14 +209,14 @@ test('available_roles_only_lists_roles_the_viewer_can_grant', function () {
             ->where('availableRoles', fn ($roles) => collect($roles)->pluck('value')->values()->all() === ['member', 'viewer']));
 });
 
-test('a_member_inviting_a_higher_role_gets_a_role_validation_error', function () {
+test('a_member_inviting_a_higher_role_is_refused', function () {
     Notification::fake();
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)
         ->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'admin'])
-        ->assertSessionHasErrors('role');
+        ->assertForbidden();
 
     expect($team->invitations()->count())->toBe(0);
     Notification::assertNothingSent();

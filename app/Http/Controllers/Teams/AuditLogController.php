@@ -127,7 +127,10 @@ class AuditLogController extends Controller
             ->pluck('users.id')
             ->map(fn (int $id): string => (string) $id);
 
-        return collect($this->actorNames($memberIds->merge($actorIds)->unique()->values()))
+        /** @var Collection<int, string> $ids */
+        $ids = $memberIds->merge($actorIds)->map(fn (int|string $id): string => (string) $id)->unique()->values();
+
+        return collect($this->actorNames($ids))
             ->map(fn (string $name, int|string $id): array => [
                 'id' => (string) $id,
                 'name' => $name,
