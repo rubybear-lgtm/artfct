@@ -1,9 +1,11 @@
 <?php
 
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function collectionTeam(): array
@@ -106,4 +108,106 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
 
     test()->actingAs($member)->get(route('teams.collections.index', $team))
         ->assertInertia(fn (Assert $page) => $page->where('canOpenArtifacts', false));
+});
+
+test('every_collection_action_flashes_a_toast', function () {
+    [$team, , $member] = collectionTeam();
+
+    test()->actingAs($member)
+        ->post(route('teams.collections.store', $team), ['name' => 'reporting'])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'success',
+            'message' => 'Collection created.',
+        ]);
+
+    $collection = Collection::query()->where('team_id', $team->id)->firstOrFail();
+
+    test()->actingAs($member)
+        ->patch(route('teams.collections.update', [$team, $collection]), ['name' => 'reporting-v2'])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'success',
+            'message' => 'Collection renamed.',
+        ]);
+
+    test()->actingAs($member)
+        ->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => 'art1'])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'success',
+            'message' => 'Added to reporting-v2.',
+        ]);
+
+    test()->actingAs($member)
+        ->delete(route('teams.collections.artifacts.remove', [$team, $collection, 'art1']))
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'success',
+            'message' => 'Removed from reporting-v2.',
+        ]);
+});
+
+test('pinning_and_unpinning_flash_a_toast', function () {
+    [$team, $admin] = collectionTeam();
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $admin->id]);
+
+    test()->actingAs($admin)
+        ->post(route('teams.collections.pin', [$team, $collection]))
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'Pinned.']);
+
+    test()->actingAs($admin)
+        ->delete(route('teams.collections.unpin', [$team, $collection]))
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'Unpinned.']);
+});
+
+test('the_page_offers_active_artifacts_to_add_by_name', function () {
+    [$team, , $member] = collectionTeam();
+
+    test()->actingAs($member)->get(route('teams.collections.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('teams/collections')
+            ->has('artifactOptions', 2)
+            ->where('artifactOptions.0.id', '1234567890')
+            ->where('artifactOptions.0.title', 'Dashboard HTML')
+            ->where('artifactOptions.1.id', 'abcdefghij')
+            ->where('artifactOptions.1.title', 'API Documentation'));
+});
+
+test('revoked_artifacts_are_not_offered', function () {
+    [$team, , $member] = collectionTeam();
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->revokeArtifact($team->slug, '1234567890');
+
+    test()->actingAs($member)->get(route('teams.collections.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('artifactOptions', 1)
+            ->where('artifactOptions.0.id', 'abcdefghij'));
+});
+
+test('an_artifact_without_a_title_is_offered_by_a_short_id', function () {
+    [$team, , $member] = collectionTeam();
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => 'noname1234567890',
+        'org_id' => $team->slug,
+        'user_id' => 1,
+        'title' => '',
+        'description' => 'Untitled',
+        'content_hash' => 'noname',
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/misc', 'commit_sha' => 'a'],
+    ]);
+
+    test()->actingAs($member)->get(route('teams.collections.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('artifactOptions.2.id', 'noname1234567890')
+            ->where('artifactOptions.2.title', 'noname12'));
 });
