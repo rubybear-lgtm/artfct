@@ -117,6 +117,28 @@ test('token_revocation_through_an_inertia_visit_redirects_with_a_toast', functio
     expect($token->fresh()->revoked_at)->not->toBeNull();
 });
 
+test('token_revocation_with_the_headers_inertia_sends_redirects_instead_of_returning_json', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgToken::factory()->for($team)->for($admin)->create();
+
+    test()->actingAs($admin)
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+            'Accept' => 'text/html, application/xhtml+xml',
+        ])
+        ->delete("/settings/teams/{$team->slug}/tokens/{$token->id}")
+        ->assertRedirect();
+
+    expect($token->fresh()->revoked_at)->not->toBeNull();
+});
+
 test('a_failed_inertia_revocation_redirects_with_an_error_toast', function () {
     configureOrgJwt();
     Http::fake([

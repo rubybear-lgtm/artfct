@@ -98,7 +98,8 @@ test('the MCP docs explain workspace terminology and first-time access', functio
 
     expect($page)
         ->toContain('your organization is called a team')
-        ->toContain('the sign-in screen may also call it a workspace')
+        ->toContain('your AI tool may also call it a workspace')
+        ->toContain('AI tool connections')
         ->toContain('Artfct asks you to create')
         ->toContain('ask its administrator to invite')
         ->toContain('Connecting an AI tool never needs an API token')

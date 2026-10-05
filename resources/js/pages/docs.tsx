@@ -966,19 +966,19 @@ export default function Docs({ contract }: DocsProps) {
                         <SubHeading>Teams and sign-in</SubHeading>
                         <Prose>
                             In the web app your organization is called a team;
-                            the sign-in screen may also call it a workspace.
-                            Both mean the same group of people, artifacts and
-                            collections. Sign in on the{' '}
+                            your AI tool may also call it a workspace. Both mean
+                            the same group of people, artifacts and collections.
+                            Sign in on the{' '}
                             <Link href={login.url()}>sign-in page</Link>. If you
                             have not joined a team yet, Artfct asks you to
                             create your first one; to join an existing team, ask
                             its administrator to invite the email address you
                             sign in with. Administrators can see and remove
                             connected tools in team settings under{' '}
-                            <Code>MCP connections</Code>. Connecting an AI tool
-                            never needs an API token; tokens are only for your
-                            own code calling the REST API below, which sends one
-                            as a bearer token. The{' '}
+                            <strong>AI tool connections</strong>. Connecting an
+                            AI tool never needs an API token; tokens are only
+                            for your own code calling the REST API below, which
+                            sends one as a bearer token. The{' '}
                             <Link href={terms.url()}>terms</Link> and{' '}
                             <Link href={privacy.url()}>privacy policy</Link>{' '}
                             explain how your data is handled.
