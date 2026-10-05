@@ -116,6 +116,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
+        row-gap: 8px;
         padding-block: 18px;
         border-bottom: 1px solid var(--line);
         margin-inline: -20px;
@@ -403,6 +405,7 @@
 
     & .query {
         flex: 1;
+        min-width: 0;
         font-size: 15px;
         min-height: 1.5em;
         white-space: nowrap;
@@ -438,6 +441,15 @@
             border-color 0.35s,
             opacity 0.35s,
             transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+
+    & .row > div {
+        min-width: 0;
+    }
+
+    & .row .t,
+    & .row .m {
+        overflow-wrap: break-word;
     }
 
     & .row .ico {
@@ -943,6 +955,8 @@
     & footer .r {
         display: flex;
         gap: 20px;
+        flex-wrap: wrap;
+        row-gap: 8px;
     }
 
     & .rv {
@@ -970,6 +984,38 @@
 
         & .dotset {
             display: none;
+        }
+    }
+
+    /* Below 768px every tappable element reaches the 44px target. Desktop
+       is untouched: these rules only apply under the mobile breakpoint. */
+    @media (max-width: 767px) {
+        & .navright {
+            gap: 12px;
+        }
+
+        & .navright > a {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+        }
+
+        /* The shared button sets a fixed 36px height, which padding alone
+           does not lift. Scoped to phones so desktop is untouched. */
+        & .btn {
+            min-height: 44px;
+        }
+
+        & .cta .link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+        }
+
+        & footer .r a {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
         }
     }
 }

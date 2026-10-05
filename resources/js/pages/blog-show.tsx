@@ -54,7 +54,7 @@ export default function BlogShow({ post }: BlogShowProps) {
 
                 <article className="mt-10">
                     <header className="border-b border-border pb-10">
-                        <p className="mb-4 flex items-center gap-3 text-xs">
+                        <p className="mb-4 flex flex-wrap items-center gap-3 text-xs">
                             <time
                                 dateTime={post.date}
                                 className="font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase"
@@ -71,7 +71,7 @@ export default function BlogShow({ post }: BlogShowProps) {
                                 {post.tag}
                             </span>
                         </p>
-                        <h1>{post.title}</h1>
+                        <h1 className="break-words">{post.title}</h1>
                         <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
                             {post.description}
                         </p>
@@ -96,7 +96,9 @@ export default function BlogShow({ post }: BlogShowProps) {
                         )}
                     </header>
 
-                    <div className="pt-10">{fullPost.body}</div>
+                    <div className="min-w-0 pt-10 break-words">
+                        {fullPost.body}
+                    </div>
                 </article>
 
                 <div className="mt-16 border-t border-border pt-8">

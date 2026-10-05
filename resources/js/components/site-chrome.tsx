@@ -74,7 +74,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
 
     return (
         <header className="border-b border-border">
-            <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-6 px-5 py-[18px]">
+            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-[14px] sm:gap-6 sm:px-5 sm:py-[18px]">
                 <Wordmark />
                 <nav
                     aria-label="Site"
@@ -132,11 +132,15 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                     </div>
                 </details>
                 <div
-                    className="flex items-center gap-[18px] text-sm"
+                    className="flex flex-wrap items-center gap-x-[18px] gap-y-2 text-sm"
                     data-testid="site-account"
                 >
                     {!isAuthenticated && (
-                        <Link href={login.url()} data-testid="site-signin">
+                        <Link
+                            href={login.url()}
+                            data-testid="site-signin"
+                            className="site-signin"
+                        >
                             Sign in
                         </Link>
                     )}
@@ -161,7 +165,7 @@ export function SiteFooter() {
                     <Wordmark className="text-xl text-foreground" />
                     <span>© {new Date().getFullYear()} Artfct</span>
                 </div>
-                <div className="flex gap-5">
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
                     <Link href={docs.url()}>Docs</Link>
                     <Link href={blog.url()}>Blog</Link>
                     <a href={GITHUB} target="_blank" rel="noreferrer">
@@ -186,7 +190,7 @@ export function SitePage({
     useAppTheme();
 
     return (
-        <div className="min-h-screen bg-background text-foreground">
+        <div className="site-page min-h-screen bg-background text-foreground">
             <SiteHeader active={active} />
             {children}
             <SiteFooter />

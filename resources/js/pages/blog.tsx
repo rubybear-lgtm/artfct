@@ -41,7 +41,7 @@ export default function Blog({ posts }: BlogPageProps) {
                                 href={blogRoutes.show.url({ slug: post.slug })}
                                 className="group flex flex-col gap-3 py-8"
                             >
-                                <span className="flex items-center gap-3 text-xs">
+                                <span className="flex flex-wrap items-center gap-3 text-xs">
                                     <time
                                         dateTime={post.date}
                                         className="font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase"

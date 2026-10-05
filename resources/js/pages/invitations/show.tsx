@@ -112,7 +112,7 @@ export default function InvitationShow({
             </h1>
             <p className="mb-2 text-sm text-muted-foreground">
                 {invitation.inviterName ?? 'An admin'} invited{' '}
-                <strong className="font-semibold text-foreground">
+                <strong className="font-semibold break-all text-foreground">
                     {invitation.email}
                 </strong>{' '}
                 to join as {article} {invitation.roleLabel}.

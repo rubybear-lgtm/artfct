@@ -237,7 +237,7 @@ function SubHeading({
 
 function Prose({ children }: { children: React.ReactNode }) {
     return (
-        <p className="max-w-[65ch] leading-relaxed text-muted-foreground">
+        <p className="max-w-[65ch] leading-relaxed break-words text-muted-foreground">
             {children}
         </p>
     );
@@ -245,7 +245,7 @@ function Prose({ children }: { children: React.ReactNode }) {
 
 function Code({ children }: { children: React.ReactNode }) {
     return (
-        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] break-words text-foreground">
             {children}
         </code>
     );
@@ -253,7 +253,7 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Tag({ children }: { children: React.ReactNode }) {
     return (
-        <span className="rounded-[5px] bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        <span className="max-w-full min-w-0 rounded-[5px] bg-muted px-2 py-0.5 text-xs font-medium break-words text-muted-foreground">
             {children}
         </span>
     );
@@ -334,7 +334,7 @@ function FieldTable({
                         <span className="break-words text-muted-foreground">
                             {field.type}
                         </span>
-                        <span className="text-muted-foreground">
+                        <span className="break-words text-muted-foreground">
                             {field.note}
                         </span>
                     </li>

@@ -98,24 +98,24 @@ export default function Authorize({
                     <div className="grid gap-3 rounded-md border p-3 text-sm sm:grid-cols-2">
                         <div>
                             <div className="font-medium">App</div>
-                            <div className="mt-1 text-muted-foreground">
+                            <div className="mt-1 break-words text-muted-foreground">
                                 {clientName}
                             </div>
                             {clientId !== clientName && (
-                                <div className="mt-1 text-xs text-muted-foreground">
+                                <div className="mt-1 text-xs break-all text-muted-foreground">
                                     {clientId}
                                 </div>
                             )}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="font-medium">Signed in as</div>
-                            <div className="mt-1 text-muted-foreground">
+                            <div className="mt-1 break-words text-muted-foreground">
                                 {userName}
                             </div>
                         </div>
                         <div className="sm:col-span-2">
                             <div className="font-medium">Team</div>
-                            <div className="mt-1 text-muted-foreground">
+                            <div className="mt-1 break-words text-muted-foreground">
                                 {team.name}
                             </div>
                         </div>
@@ -142,12 +142,12 @@ export default function Authorize({
                                                 : 'px-1'
                                         }
                                     >
-                                        <div className="flex items-center justify-between gap-3">
+                                        <div className="flex min-w-0 items-center justify-between gap-3">
                                             <span
                                                 className={
                                                     isDestructive
-                                                        ? 'font-medium text-destructive'
-                                                        : 'text-muted-foreground'
+                                                        ? 'min-w-0 font-medium break-words text-destructive'
+                                                        : 'min-w-0 break-words text-muted-foreground'
                                                 }
                                             >
                                                 {requestedScope.label}
@@ -218,7 +218,7 @@ export default function Authorize({
                     )}
 
                     <form
-                        className="flex gap-3"
+                        className="flex flex-col gap-3 sm:flex-row"
                         onSubmit={(event: FormEvent) => {
                             event.preventDefault();
                             submit('approve');

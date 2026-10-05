@@ -1184,3 +1184,146 @@ html {
 .modal-content {
     animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* ── Public + auth responsive fixes (below 768px) ─────────────────────────
+   Scoped to the public shells (site pages, auth layout, free tool) so the
+   signed-in app keeps its own styles. Desktop is untouched: everything here
+   only applies below the mobile breakpoint. */
+@media (max-width: 767px) {
+    /* 16px form text stops phones from zooming into fields. */
+    .site-page input:not([type='checkbox']):not([type='radio']),
+    .site-page select,
+    .site-page textarea,
+    .auth-page input:not([type='checkbox']):not([type='radio']),
+    .auth-page select,
+    .auth-page textarea,
+    .welcome-manage-duration-input,
+    .welcome-manage-duration-select {
+        font-size: 16px;
+    }
+
+    /* Primary controls reach the 44px touch target. min-height wins over the
+       fixed ui heights (h-9 etc.) without touching desktop. */
+    .site-page header summary,
+    .site-page header [data-testid='site-account'] a,
+    .site-page [role='tab'],
+    .site-page button,
+    .auth-page button,
+    .auth-page a.inline-flex,
+    .auth-page input:not([type='checkbox']):not([type='radio']),
+    .auth-page select,
+    .welcome-manage-duration-input,
+    .welcome-manage-duration-select,
+    .welcome-deploy-button,
+    .welcome-result-action,
+    .welcome-cached-link-copy,
+    .welcome-cached-link-manage,
+    .welcome-agent-toggle,
+    .welcome-install-copy,
+    .welcome-manage-action,
+    .welcome-cached-links-clear,
+    .welcome-result-reset,
+    .welcome-upload-retry,
+    .welcome-manage-close,
+    .welcome-signin {
+        min-height: 44px;
+    }
+
+    .site-page header [data-testid='site-account'] a,
+    .welcome-signin {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .welcome-manage-close {
+        min-width: 44px;
+        justify-content: center;
+    }
+
+    /* The fixed theme switch on the free tool is a small control. */
+    button[title*='theme \2014  click for'] {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* Disclosure rows keep their marker and gain a full-row target. */
+    .site-page details > summary {
+        min-height: 44px;
+        align-content: center;
+    }
+
+    .welcome-faq-question {
+        padding-block: 12px;
+    }
+
+    /* Flex items need min-width: 0 before long content can wrap or scroll. */
+    .welcome-manage-duration-input,
+    .welcome-install-code {
+        min-width: 0;
+    }
+
+    .welcome-file-name {
+        overflow-wrap: anywhere;
+    }
+
+    .welcome-footer,
+    .welcome-footer-links,
+    .welcome-result-meta {
+        flex-wrap: wrap;
+        row-gap: 0.75rem;
+    }
+}
+
+/* Rows that fit side by side on a phone but not on a 320px one. */
+@media (max-width: 480px) {
+    .welcome-cached-link-row {
+        flex-wrap: wrap;
+        row-gap: 0.6rem;
+    }
+
+    .welcome-cached-link-details {
+        flex: 1 1 100%;
+        margin-right: 0;
+    }
+
+    .welcome-cached-link-actions {
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+}
+
+@media (max-width: 380px) {
+    .welcome-result-link-row {
+        flex-wrap: wrap;
+    }
+
+    .welcome-result-url {
+        flex: 1 1 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        border-bottom: 1px solid var(--sol-green);
+    }
+
+    .welcome-result-action {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .welcome-manage-duration-controls {
+        flex-direction: column;
+    }
+
+    .welcome-manage-duration-select {
+        width: 100%;
+    }
+
+    .welcome-file-dropzone {
+        padding: 1.5rem 1rem;
+    }
+
+    /* The ASCII hero is 50ch wide with visible overflow: at 8px it can
+       exceed a 320px content box by a pixel or two, so step it down. */
+    .ascii-hero {
+        font-size: 7px !important;
+    }
+}

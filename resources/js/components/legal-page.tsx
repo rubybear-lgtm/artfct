@@ -23,7 +23,7 @@ export function LegalPage({
                     works today and has not had legal review. It is not legal
                     advice.
                 </Alert>
-                <div className="mt-6 flex flex-col gap-4 text-sm leading-6">
+                <div className="mt-6 flex min-w-0 flex-col gap-4 text-sm leading-6 break-words">
                     {children}
                 </div>
             </main>
