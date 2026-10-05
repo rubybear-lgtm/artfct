@@ -1,6 +1,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +30,7 @@ type ScopeRisk = 'read' | 'write' | 'destructive';
 
 interface Props {
     clientId: string;
+    clientName: string;
     userName: string;
     redirectUri: string;
     scope: string;
@@ -48,6 +50,7 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
 
 export default function Authorize({
     clientId,
+    clientName,
     userName,
     redirectUri,
     scope,
@@ -79,22 +82,30 @@ export default function Authorize({
 
     return (
         <>
-            <Head title="Authorize MCP connection" />
+            <Head title="Connect an AI tool" />
             <Card>
                 <CardHeader>
-                    <CardTitle>Connect {clientId}</CardTitle>
+                    <CardTitle>
+                        {clientName} wants to connect to {team.name}
+                    </CardTitle>
                     <CardDescription>
-                        This MCP client is requesting access to artfct. Review
-                        what it can do before continuing.
+                        It will be able to do the things listed below with your
+                        team's shared work. Only continue if you started this
+                        from your AI tool.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-5">
                     <div className="grid gap-3 rounded-md border p-3 text-sm sm:grid-cols-2">
                         <div>
-                            <div className="font-medium">Client</div>
+                            <div className="font-medium">App</div>
                             <div className="mt-1 text-muted-foreground">
-                                {clientId}
+                                {clientName}
                             </div>
+                            {clientId !== clientName && (
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                    {clientId}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <div className="font-medium">Signed in as</div>
@@ -103,18 +114,15 @@ export default function Authorize({
                             </div>
                         </div>
                         <div className="sm:col-span-2">
-                            <div className="font-medium">Workspace</div>
+                            <div className="font-medium">Team</div>
                             <div className="mt-1 text-muted-foreground">
-                                {team.name}{' '}
-                                <span className="font-mono text-xs">
-                                    ({team.slug})
-                                </span>
+                                {team.name}
                             </div>
                         </div>
                     </div>
 
                     <div className="rounded-md border p-3 text-sm">
-                        <div className="font-medium">Requested access</div>
+                        <div className="font-medium">What it can do</div>
                         <ul className="mt-2 space-y-2">
                             {requestedScopes.map((requestedScope) => {
                                 const isDestructive =
@@ -171,7 +179,7 @@ export default function Authorize({
 
                     {teams.length > 1 && (
                         <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="team">Workspace</Label>
+                            <Label htmlFor="team">Team</Label>
                             <select
                                 id="team"
                                 className="h-10 rounded-md border bg-background px-3 text-sm"
@@ -193,10 +201,21 @@ export default function Authorize({
                     )}
 
                     <p className="text-xs text-muted-foreground">
-                        You can revoke this connection later from workspace
-                        settings. artfct never shows the resulting credential
-                        again.
+                        You can disconnect it any time in AI tool connections.
                     </p>
+
+                    {Object.keys(form.errors).length > 0 && (
+                        <Alert
+                            variant="destructive"
+                            className="flex flex-col gap-1"
+                        >
+                            {Object.entries(form.errors).map(
+                                ([field, message]) => (
+                                    <p key={field}>{message}</p>
+                                ),
+                            )}
+                        </Alert>
+                    )}
 
                     <form
                         className="flex gap-3"
@@ -211,7 +230,7 @@ export default function Authorize({
                             disabled={form.processing}
                             onClick={() => submit('deny')}
                         >
-                            Deny
+                            Cancel
                         </Button>
                         <Button type="submit" disabled={form.processing}>
                             Allow access
