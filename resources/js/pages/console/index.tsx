@@ -27,6 +27,8 @@ interface ConsoleIndexProps {
         slug: string;
     };
     artifacts: Artifact[];
+    /** The AI tools the listed artifacts were produced with. */
+    agents: string[];
     filters: {
         user_id: string | null;
         repo_url: string | null;
@@ -49,6 +51,21 @@ interface ConsoleIndexProps {
     }[];
 }
 
+/** Plain-language names for the tool ids the artifacts carry. */
+const AI_TOOL_NAMES: Record<string, string> = {
+    'claude-code': 'Claude Code',
+    cursor: 'Cursor',
+    codex: 'Codex',
+    copilot: 'Copilot',
+    chatgpt: 'ChatGPT',
+    claude: 'Claude',
+};
+
+/** A tool id as a name the user recognises, falling back to the id itself. */
+function aiToolName(agent: string) {
+    return AI_TOOL_NAMES[agent] ?? agent;
+}
+
 /** The row's name as plain text: its title, or the short id when it has none. */
 function artifactName(artifact: Artifact) {
     return artifact.title || artifact.id.slice(0, 8);
@@ -66,6 +83,7 @@ function artifactTitle(artifact: Artifact) {
 export default function ConsoleIndex({
     team,
     artifacts,
+    agents,
     filters,
     nextCursor,
     cursor,
@@ -86,6 +104,15 @@ export default function ConsoleIndex({
     );
     const hasActionsColumn = isAdmin || canOpenArtifacts;
     const hasActiveFilters = Object.values(localFilters).some(Boolean);
+    // Known tools are always offered, so narrowing to one tool never hides the
+    // others from the list; tools seen on this page and the active filter are added.
+    const aiTools = [
+        ...new Set([
+            ...Object.keys(AI_TOOL_NAMES),
+            ...agents,
+            ...(localFilters.agent ? [localFilters.agent] : []),
+        ]),
+    ].sort((a, b) => aiToolName(a).localeCompare(aiToolName(b)));
 
     // A pending debounced visit must not outlive the page it was scheduled on.
     useEffect(() => {
@@ -228,19 +255,27 @@ export default function ConsoleIndex({
                             />
                         </div>
                         <div>
-                            <label className="mb-2 block text-sm font-medium text-foreground">
-                                Agent
+                            <label
+                                htmlFor="agent"
+                                className="mb-2 block text-sm font-medium text-foreground"
+                            >
+                                AI tool
                             </label>
                             <select
+                                id="agent"
+                                name="agent"
                                 value={localFilters.agent || ''}
                                 onChange={(e) =>
                                     handleSelectChange('agent', e.target.value)
                                 }
                                 className="w-full rounded-md border border-border px-3 py-2 text-sm"
                             >
-                                <option value="">All agents</option>
-                                <option value="cursor">Cursor</option>
-                                <option value="claude-code">Claude Code</option>
+                                <option value="">All AI tools</option>
+                                {aiTools.map((agent) => (
+                                    <option key={agent} value={agent}>
+                                        {aiToolName(agent)}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div>
