@@ -25,7 +25,7 @@ const PERMISSIONS = [
     {
         name: 'artifacts:deploy',
         type: 'Publish',
-        note: 'Save new artifacts to your team’s workspace.',
+        note: 'Save new artifacts to your team.',
     },
     {
         name: 'artifacts:delete',
@@ -58,7 +58,7 @@ const TROUBLESHOOTING = [
     {
         name: 'Connected to the wrong team',
         type: 'Sign out, then in',
-        note: 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team under Workspace on the approval page.',
+        note: 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.',
     },
     {
         name: 'Your tool says it is being rate limited',
@@ -934,10 +934,10 @@ export default function Docs({ contract }: DocsProps) {
                     >
                         <Prose>
                             Connect once and your AI tool can publish to your
-                            team’s workspace and find what is already there,
-                            with sources. There is nothing to install and no key
-                            to copy: you add one address and approve a sign-in
-                            in your browser. It takes about a minute.
+                            team and find what is already there, with sources.
+                            There is nothing to install and no key to copy: you
+                            add one address and approve a sign-in in your
+                            browser. It takes about a minute.
                         </Prose>
 
                         <SubHeading>1. Copy your Artfct address</SubHeading>

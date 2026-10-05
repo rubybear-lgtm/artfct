@@ -110,6 +110,27 @@ test('the MCP docs explain workspace terminology and first-time access', functio
         ->toContain('privacy.url()');
 });
 
+test('team wording replaces workspace everywhere outside AI tool terminology', function () {
+    $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
+    $landing = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/landing.tsx')));
+    $welcome = file_get_contents(resource_path('js/pages/welcome/welcome-agent-prompt.tsx'));
+    $callout = file_get_contents(resource_path('js/pages/welcome/welcome-cli-callout.tsx'));
+
+    expect($page)
+        ->toContain('Save new artifacts to your team.')
+        ->toContain('pick the team on the approval page')
+        ->toContain('publish to your team and find what is already there')
+        ->not->toContain('team’s workspace')
+        ->and($page)->toContain('your AI tool may also call it a workspace')
+        ->and($page)->toContain('Which Artfct workspace am I connected to?')
+        ->and($landing)->not->toContain('shared workspace')
+        ->and($landing)->toContain('A shared library that your team’s AI fills for you.')
+        ->and($callout)->not->toContain('WelcomeInstallOptions')
+        ->and($welcome)->not->toContain('npx skills add')
+        ->and($welcome)->not->toContain('<pre')
+        ->and($welcome)->toContain('mcpEndpoint');
+});
+
 test('the docs give step-by-step setup for every verified AI tool', function () {
     $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
 
