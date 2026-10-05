@@ -14,6 +14,7 @@ import teamRoutes from '@/routes/teams';
 interface AuditRow {
     id: number;
     type: string;
+    typeLabel: string;
     actor: string;
     actorName: string;
     target: string;
@@ -29,7 +30,9 @@ interface Props {
         prev_page_url: string | null;
         next_page_url: string | null;
     };
-    types: string[];
+    types: { value: string; label: string }[];
+    members: { id: string; name: string }[];
+    total: number;
     filters: {
         type: string | null;
         actor: string | null;
@@ -43,6 +46,8 @@ export default function Audit({
     team,
     events,
     types,
+    members,
+    total,
     filters,
     canExport,
 }: Props) {
@@ -52,6 +57,8 @@ export default function Audit({
         from: filters.from ?? '',
         to: filters.to ?? '',
     });
+
+    const hasFilters = Object.values(filters).some((value) => value !== null);
 
     const apply = (event: FormEvent) => {
         event.preventDefault();
@@ -64,14 +71,55 @@ export default function Audit({
         );
     };
 
+    const clearFilters = () => {
+        setForm({ type: '', actor: '', from: '', to: '' });
+        router.get(teamRoutes.audit.index.url({ team: team.slug }));
+    };
+
     return (
         <>
             <Head title="Audit log" />
-            <h1 className="mb-1 text-2xl font-semibold">Audit log</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
-                Every member, role, token, retention and export action for{' '}
-                {team.name}. Entries cannot be edited or deleted.
-            </p>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h1 className="mb-1 text-2xl font-semibold">Audit log</h1>
+                    <p className="text-sm text-muted-foreground">
+                        Every member, role, token, retention and export action
+                        for {team.name}. Entries cannot be edited or deleted.
+                    </p>
+                </div>
+                <div className="flex flex-col items-start gap-1">
+                    {canExport ? (
+                        <>
+                            <Button asChild variant="outline">
+                                <a
+                                    href={teamRoutes.audit.export.url({
+                                        team: team.slug,
+                                    })}
+                                >
+                                    Download full log
+                                </a>
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                                Includes every event, not just the filtered
+                                ones.
+                            </p>
+                        </>
+                    ) : (
+                        <span className="text-sm text-muted-foreground">
+                            Export to your security tool is an Enterprise
+                            feature.{' '}
+                            <Link
+                                className="underline"
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                See plans
+                            </Link>
+                        </span>
+                    )}
+                </div>
+            </div>
 
             <form
                 onSubmit={apply}
@@ -88,20 +136,28 @@ export default function Audit({
                     >
                         <option value="">All events</option>
                         {types.map((type) => (
-                            <option key={type} value={type}>
-                                {type}
+                            <option key={type.value} value={type.value}>
+                                {type.label}
                             </option>
                         ))}
                     </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                    Actor id
-                    <Input
+                    Person
+                    <select
+                        className="rounded-md border border-border bg-background px-2 py-2"
                         value={form.actor}
                         onChange={(e) =>
                             setForm({ ...form, actor: e.target.value })
                         }
-                    />
+                    >
+                        <option value="">Anyone</option>
+                        {members.map((member) => (
+                            <option key={member.id} value={member.id}>
+                                {member.name}
+                            </option>
+                        ))}
+                    </select>
                 </label>
                 <label className="flex flex-col gap-1">
                     From
@@ -124,42 +180,35 @@ export default function Audit({
                     />
                 </label>
                 <Button type="submit">Filter</Button>
-                {canExport ? (
-                    <Button asChild variant="outline">
-                        <a
-                            href={teamRoutes.audit.export.url({
-                                team: team.slug,
-                            })}
-                        >
-                            Export JSON Lines
-                        </a>
-                    </Button>
-                ) : (
-                    <span className="text-muted-foreground">
-                        SIEM export is an Enterprise feature.{' '}
-                        <Link
-                            className="underline"
-                            href={teamRoutes.billing.show.url({
-                                team: team.slug,
-                            })}
-                        >
-                            See plans
-                        </Link>
-                    </span>
-                )}
             </form>
+
+            <p className="mb-2 text-sm text-muted-foreground">
+                {total} {total === 1 ? 'event' : 'events'}
+            </p>
 
             <Card>
                 <CardContent className="pt-4">
                     {events.data.length === 0 ? (
-                        <EmptyState title="No audit events yet." />
+                        hasFilters ? (
+                            <EmptyState title="No events match these filters.">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={clearFilters}
+                                >
+                                    Clear filters
+                                </Button>
+                            </EmptyState>
+                        ) : (
+                            <EmptyState title="No audit events yet." />
+                        )
                     ) : (
                         <Table>
                             <thead>
                                 <tr>
                                     <TableHead>When</TableHead>
                                     <TableHead>Event</TableHead>
-                                    <TableHead>Actor</TableHead>
+                                    <TableHead>Person</TableHead>
                                     <TableHead>Target</TableHead>
                                     <TableHead>Outcome</TableHead>
                                 </tr>
@@ -171,7 +220,7 @@ export default function Audit({
                                             {new Date(row.at).toLocaleString()}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge>{row.type}</Badge>
+                                            <Badge>{row.typeLabel}</Badge>
                                         </TableCell>
                                         <TableCell title={row.actor}>
                                             {row.actorName}

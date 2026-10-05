@@ -75,6 +75,31 @@ test('actor_ids_resolve_to_names_and_deleted_users_render', function () {
             ->where('events.data.0.actorName', 'slack:unfurl'));
 });
 
+test('the_page_labels_events_and_offers_a_person_picker', function () {
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    auditEvent($team, AuditEventType::TokenCreated, (string) $admin->id);
+
+    test()->actingAs($admin)->get(route('teams.audit.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('types', count(AuditEventType::cases()))
+            ->where('types.0', ['value' => 'artifact.created', 'label' => 'Artifact created'])
+            ->where('events.data.0.type', 'token.created')
+            ->where('events.data.0.typeLabel', 'Token created')
+            ->where('total', 1)
+            ->has('members', 1)
+            ->where('members.0', ['id' => (string) $admin->id, 'name' => $admin->name]));
+});
+
+test('every_audit_event_type_has_a_plain_language_label', function () {
+    foreach (AuditEventType::cases() as $case) {
+        expect($case->label())
+            ->toBeString()
+            ->not->toBe('')
+            ->not->toContain('.');
+    }
+});
+
 test('the_audit_log_filters_by_actor_and_date', function () {
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
