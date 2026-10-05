@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import type { CachedLink } from '@/pages/welcome/welcome-cached-links';
@@ -34,6 +35,22 @@ export function WelcomeManageModal({
     onUpdateTtl,
     onDeleteLink,
 }: WelcomeManageModalProps) {
+    const [failedAction, setFailedAction] = useState<
+        'update' | 'delete' | null
+    >(null);
+
+    const handleUpdateTtl = (): void | Promise<void> => {
+        setFailedAction('update');
+
+        return onUpdateTtl();
+    };
+
+    const handleDeleteLink = (): void | Promise<void> => {
+        setFailedAction('delete');
+
+        return onDeleteLink();
+    };
+
     return (
         <div className="welcome-manage-overlay" onClick={onClose}>
             <div
@@ -64,24 +81,32 @@ export function WelcomeManageModal({
                     setNewTtlMinutes={setNewTtlMinutes}
                     isUpdatingTtl={isUpdatingTtl}
                     isDeletingLink={isDeletingLink}
-                    onUpdateTtl={onUpdateTtl}
+                    onUpdateTtl={handleUpdateTtl}
                 />
 
                 {modalError && (
-                    <div className="welcome-manage-message is-error">
-                        ✗ {modalError}
+                    <div
+                        role="alert"
+                        className="welcome-manage-message is-error"
+                    >
+                        {failedAction === 'delete'
+                            ? `Couldn't delete: ${modalError}`
+                            : `Couldn't update: ${modalError}`}
                     </div>
                 )}
                 {modalSuccess && (
-                    <div className="welcome-manage-message is-success">
-                        ✓ duration updated successfully!
+                    <div
+                        role="status"
+                        className="welcome-manage-message is-success"
+                    >
+                        Duration updated.
                     </div>
                 )}
 
                 <ManageDeploymentDanger
                     isUpdatingTtl={isUpdatingTtl}
                     isDeletingLink={isDeletingLink}
-                    onDeleteLink={onDeleteLink}
+                    onDeleteLink={handleDeleteLink}
                 />
             </div>
         </div>

@@ -1,6 +1,8 @@
+import { Link } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { timeUntil } from '@/pages/welcome/welcome-cached-links';
+import { home } from '@/routes';
 
 function useTypewriter(text: string, speed: number) {
     const [index, setIndex] = useState(0);
@@ -74,6 +76,15 @@ export function WelcomeResult({
                     deploy another
                 </Button>
             </div>
+            <p className="welcome-result-team">
+                Want this kept for your whole team?{' '}
+                <Link
+                    href={`${home.url()}#plans`}
+                    className="welcome-result-team-link"
+                >
+                    See the Team plan
+                </Link>
+            </p>
         </div>
     );
 }

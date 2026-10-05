@@ -678,6 +678,18 @@ html {
     border: none;
 }
 
+.welcome-result-team {
+    margin: 0;
+    color: var(--sol-base00);
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+}
+
+.welcome-result-team-link {
+    color: var(--sol-blue);
+    text-decoration: underline;
+}
+
 .welcome-cached-links {
     flex-direction: column;
     gap: 0.75rem;
@@ -788,6 +800,30 @@ html {
     cursor: pointer;
     background-color: transparent;
     border: 1px solid var(--sol-base1);
+}
+
+.welcome-cached-link-copy {
+    padding: 0.25rem 0.6rem;
+    color: var(--sol-base00);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    background-color: transparent;
+    border: 1px solid var(--sol-base1);
+}
+
+.welcome-cached-link-copy.is-copied {
+    color: var(--sol-base3);
+    background-color: var(--sol-green);
+    border-color: var(--sol-green);
+}
+
+.welcome-cached-link-copy.is-failed {
+    color: var(--sol-base3);
+    background-color: var(--sol-red);
+    border-color: var(--sol-red);
 }
 
 /* Welcome CLI, MCP, and skills callout */
