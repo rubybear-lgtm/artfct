@@ -25,9 +25,9 @@ test('new_user_signs_up_becomes_owner_and_invites_a_teammate', function () {
         ->assertNoJavaScriptErrors();
 
     $page->navigate('/settings/teams')
-        ->assertSee('Your orgs')
+        ->assertSee('Your teams')
         ->fill('name', 'Northwind Analytics')
-        ->click('Create org')
+        ->click('Create team')
         ->assertSee('Northwind Analytics')
         ->assertSee('owner')
         ->fill('email', 'teammate@example.com')

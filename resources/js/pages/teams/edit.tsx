@@ -104,6 +104,7 @@ export default function TeamEdit({
     availableRoles,
 }: Props) {
     const inviteForm = useForm({ email: '', role: 'member' });
+    const renameForm = useForm({ name: team.name });
     const domainForm = useForm({ domain: '' });
     const authModeForm = useForm({ auth_mode: team.authMode });
     const deleteForm = useForm({ name: '' });
@@ -113,8 +114,16 @@ export default function TeamEdit({
     const { errors } = usePage<SharedProps>().props;
     // Errors already shown next to their field, so they are not repeated here.
     const inlineErrorKeys = ['email', 'domain', 'auth_mode', 'name'];
+    const inlineMessages = [
+        inviteForm,
+        renameForm,
+        domainForm,
+        authModeForm,
+        deleteForm,
+    ].flatMap((form) => Object.values(form.errors));
     const pageErrors = Object.entries(errors).filter(
-        ([key]) => !inlineErrorKeys.includes(key),
+        ([key, message]) =>
+            !inlineErrorKeys.includes(key) && !inlineMessages.includes(message),
     );
     const admins = members.filter(
         (member) => member.role === 'admin' && member.id !== viewer.id,
@@ -157,6 +166,57 @@ export default function TeamEdit({
                         </ul>
                     </Alert>
                 )}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Team name</CardTitle>
+                        <CardDescription>
+                            Shown across the app and in invitation emails.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                renameForm.patch(
+                                    TeamController.update.url({
+                                        team: team.slug,
+                                    }),
+                                );
+                            }}
+                            className="flex flex-wrap items-end gap-3"
+                        >
+                            <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                                <Label htmlFor="team-name">Name</Label>
+                                <Input
+                                    id="team-name"
+                                    name="name"
+                                    value={renameForm.data.name}
+                                    onChange={(e) =>
+                                        renameForm.setData(
+                                            'name',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                            </div>
+                            <Button
+                                type="submit"
+                                disabled={renameForm.processing}
+                            >
+                                Save name
+                            </Button>
+                        </form>
+                        {renameForm.errors.name && (
+                            <p
+                                role="alert"
+                                className="mt-2 text-sm text-destructive"
+                            >
+                                {renameForm.errors.name}
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
 
                 <Card>
                     <CardHeader>
@@ -310,6 +370,14 @@ export default function TeamEdit({
                                             </option>
                                         ))}
                                     </select>
+                                    {inviteForm.errors.role && (
+                                        <p
+                                            role="alert"
+                                            className="text-sm text-destructive"
+                                        >
+                                            {inviteForm.errors.role}
+                                        </p>
+                                    )}
                                 </div>
                                 <Button
                                     type="submit"

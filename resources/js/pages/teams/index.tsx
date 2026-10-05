@@ -29,8 +29,8 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
 
     return (
         <>
-            <Head title="Your orgs" />
-            <h1 className="mb-6 text-2xl font-semibold">Your orgs</h1>
+            <Head title="Your teams" />
+            <h1 className="mb-6 text-2xl font-semibold">Your teams</h1>
 
             <div className="flex flex-col gap-6">
                 <Card>
@@ -89,7 +89,7 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>New org</CardTitle>
+                        <CardTitle>New team</CardTitle>
                         <CardDescription>
                             You become its owner and admin.
                         </CardDescription>
@@ -100,9 +100,9 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                             className="flex flex-wrap items-end gap-3"
                         >
                             <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-                                <Label htmlFor="org-name">Name</Label>
+                                <Label htmlFor="team-name">Name</Label>
                                 <Input
-                                    id="org-name"
+                                    id="team-name"
                                     name="name"
                                     value={data.name}
                                     onChange={(e) =>
@@ -119,11 +119,11 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                                 )}
                             </div>
                             <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-                                <Label htmlFor="org-slug">
+                                <Label htmlFor="team-slug">
                                     Slug (optional)
                                 </Label>
                                 <Input
-                                    id="org-slug"
+                                    id="team-slug"
                                     name="slug"
                                     value={data.slug}
                                     onChange={(e) =>
@@ -140,7 +140,7 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                                 )}
                             </div>
                             <Button type="submit" disabled={processing}>
-                                Create org
+                                Create team
                             </Button>
                         </form>
                     </CardContent>
