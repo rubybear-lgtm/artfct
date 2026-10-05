@@ -254,10 +254,9 @@ export const POSTS: Post[] = [
                 <H2>The library travels across supported agent tools</H2>
                 <P>
                     The shared library belongs to the authenticated workspace.
-                    Its usefulness doesn't depend on everyone choosing the same
-                    agent harness. Supported clients connected through MCP can
-                    retrieve the same team artifacts, subject to their access
-                    permissions.
+                    It works whichever agent tool each person prefers. Supported
+                    clients connected through MCP can retrieve the same team
+                    artifacts, subject to their access permissions.
                 </P>
                 <P>
                     The artifact's link is ready after successful publishing.
@@ -286,9 +285,7 @@ export const POSTS: Post[] = [
                     <A href={`${docs().url}#mcp`}>
                         Connect your agents to artfct through MCP
                     </A>
-                    . Give the next agent the finding your team already worked
-                    to establish. For the tool-to-tool version of this workflow,
-                    see{' '}
+                    . For the tool-to-tool version of this workflow, see{' '}
                     <Link
                         href={blogShow.url({
                             slug: 'share-context-claude-code-codex-mcp',
@@ -397,7 +394,7 @@ export const POSTS: Post[] = [
                     meaning. A collection or created-since filter helps narrow
                     the results when several projects have reports called
                     “Webhook investigation.” Put the project name in the title,
-                    too. Naming things remains undefeated.
+                    too.
                 </P>
                 <P>
                     Codex can use the returned snippet to choose its next check.
@@ -442,8 +439,8 @@ export const POSTS: Post[] = [
                     Before this workflow, the investigation sits in a
                     conversation you have to locate and condense. After it,
                     there is a named report that another supported tool can help
-                    you find. The handoff still requires judgment. At least the
-                    evidence has an address.
+                    you find. You still have to judge the findings, but you know
+                    where they are.
                 </P>
                 <P>
                     <A href={`${docs().url}#mcp`}>
@@ -508,8 +505,8 @@ export const POSTS: Post[] = [
                 <BlogDemo kind="search" />
                 <H2>A worked example: the billing report</H2>
                 <P>
-                    Consider an illustrative example. An agent reviewed a
-                    billing integration and published an HTML report titled{' '}
+                    Here is an illustrative example. An agent reviewed a billing
+                    integration and published an HTML report titled{' '}
                     <strong>Billing integration review</strong>. Inside it, a
                     section explains how repeated webhook deliveries could
                     trigger duplicate charges when an idempotency check is
@@ -553,12 +550,12 @@ export const POSTS: Post[] = [
                     compare related passages and queries.
                 </P>
                 <P>
-                    That distinction matters for HTML indexing. A report
-                    containing normal headings and paragraphs gives the index
-                    something to read. A chart drawn entirely on a canvas, or an
-                    image containing all the findings, may not. Rendering has
-                    limits too. Put the conclusions in readable text if you
-                    expect someone to find them later.
+                    The difference matters for HTML. A report containing normal
+                    headings and paragraphs gives the index something to read. A
+                    chart drawn entirely on a canvas, or an image containing all
+                    the findings, may not. Rendering has limits too. Put the
+                    conclusions in readable text if you expect someone to find
+                    them later.
                 </P>
                 <P>
                     Indexing runs as queued work with retries. A published link
