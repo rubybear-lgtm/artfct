@@ -113,7 +113,10 @@ class TeamController extends Controller
                 'verified_at' => $domain->verified_at?->toISOString(),
             ]),
             'permissions' => $user->toTeamPermissions($team),
-            'availableRoles' => TeamRole::assignable(),
+            'availableRoles' => collect(TeamRole::cases())
+                ->filter(fn (TeamRole $role) => $user->teamRole($team)?->canGrant($role))
+                ->map(fn (TeamRole $role) => ['value' => $role->value, 'label' => $role->label()])
+                ->values(),
         ]);
     }
 

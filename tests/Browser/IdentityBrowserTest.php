@@ -20,7 +20,7 @@ test('registration_and_org_creation_flow', function () {
     $page->assertNoJavaScriptErrors()
         ->assertSee("Browser User's Team")
         ->fill('name', 'Browser Org')
-        ->click('Create org')
+        ->click('Create team')
         ->assertSee('Browser Org');
 });
 

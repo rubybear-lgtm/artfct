@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /** @return array{string, OrgToken, McpConnection, OAuthRefreshToken} */
@@ -197,4 +198,26 @@ test('deactivated_members_are_flagged_in_the_member_list', function () {
     test()->actingAs($admin)->get(route('teams.edit', $team))
         ->assertInertia(fn (Assert $page) => $page
             ->where('members', fn ($members) => collect($members)->firstWhere('id', $gone->id)['deactivated'] === true));
+});
+
+test('available_roles_only_lists_roles_the_viewer_can_grant', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->get(route('teams.edit', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('availableRoles', fn ($roles) => collect($roles)->pluck('value')->values()->all() === ['member', 'viewer']));
+});
+
+test('a_member_inviting_a_higher_role_gets_a_role_validation_error', function () {
+    Notification::fake();
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)
+        ->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'admin'])
+        ->assertSessionHasErrors('role');
+
+    expect($team->invitations()->count())->toBe(0);
+    Notification::assertNothingSent();
 });
