@@ -541,10 +541,10 @@ export default function Landing() {
                             </div>
                         </div>
                         <p className="fine">
-                            A shared workspace that your team’s AI fills for
-                            you. Drive holds files. Artfct is built for your AI
-                            to share to, and for every AI tool to read from,
-                            with sources.
+                            A shared library that your team’s AI fills for you.
+                            Drive holds files. Artfct is built for your AI to
+                            share to, and for every AI tool to read from, with
+                            sources.
                         </p>
                     </section>
 
