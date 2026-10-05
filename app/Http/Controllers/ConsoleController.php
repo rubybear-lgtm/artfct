@@ -66,6 +66,17 @@ class ConsoleController extends Controller
 
         $data = $this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit);
 
+        // The filter's tool list is built from the artifacts on screen rather
+        // than a hardcoded subset, so a tool the org actually uses can never be
+        // missing from the dropdown. Free: the page is already in memory.
+        $agents = collect($data['artifacts'])
+            ->pluck('provenance.agent')
+            ->filter(fn ($agent): bool => is_string($agent) && $agent !== '')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
         $artifactIds = collect($data['artifacts'])->pluck('id')->all();
         $indexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)->pluck('artifact_id')->all();
         $failed = ArtifactIndexingFailure::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)->pluck('artifact_id')->all();
@@ -80,6 +91,7 @@ class ConsoleController extends Controller
             ])->all(),
             'team' => $team,
             'artifacts' => $data['artifacts'],
+            'agents' => $agents,
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
             'cursor' => is_string($cursor) ? $cursor : null,

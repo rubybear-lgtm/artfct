@@ -44,16 +44,23 @@ interface Props {
     error: string | null;
 }
 
-export default function Search({
+type SearchFormProps = Pick<
+    Props,
+    'team' | 'filters' | 'indexingEnabled' | 'collections'
+>;
+
+/**
+ * The form owns its draft state, seeded from the server's filters. The page
+ * keys it on those filters: a history restore keeps this page mounted and only
+ * swaps its props, so without the key the inputs would still show the query
+ * typed after the results sitting under them.
+ */
+function SearchForm({
     team,
-    indexingEnabled,
-    canOpenArtifacts,
     filters,
+    indexingEnabled,
     collections,
-    results,
-    searched,
-    error,
-}: Props) {
+}: SearchFormProps) {
     const [form, setForm] = useState(filters);
 
     const submit = (event: FormEvent) => {
@@ -66,6 +73,76 @@ export default function Search({
         );
     };
 
+    return (
+        <form onSubmit={submit} className="mb-6 flex flex-wrap gap-3">
+            <Input
+                aria-label="Search query"
+                className="h-11 min-w-64 flex-1 text-base"
+                placeholder="What are you looking for?"
+                value={form.q}
+                disabled={!indexingEnabled}
+                onChange={(e) => setForm({ ...form, q: e.target.value })}
+            />
+            <Input
+                aria-label="Agent"
+                className="w-40"
+                placeholder="Agent"
+                value={form.agent}
+                disabled={!indexingEnabled}
+                onChange={(e) => setForm({ ...form, agent: e.target.value })}
+            />
+            <Input
+                aria-label="Repository"
+                className="w-56"
+                placeholder="Repository URL"
+                value={form.repo}
+                disabled={!indexingEnabled}
+                onChange={(e) => setForm({ ...form, repo: e.target.value })}
+            />
+            <Input
+                aria-label="Created since"
+                type="date"
+                className="w-40"
+                value={form.since}
+                disabled={!indexingEnabled}
+                onChange={(e) => setForm({ ...form, since: e.target.value })}
+            />
+            {collections.length > 0 && (
+                <select
+                    aria-label="Collection"
+                    className="rounded-md border border-border bg-background px-2"
+                    value={form.collection}
+                    disabled={!indexingEnabled}
+                    onChange={(e) =>
+                        setForm({ ...form, collection: e.target.value })
+                    }
+                >
+                    <option value="">All collections</option>
+                    {collections.map((collection) => (
+                        <option key={collection.name} value={collection.name}>
+                            {collection.name}
+                            {collection.canonical ? ' (canonical)' : ''}
+                        </option>
+                    ))}
+                </select>
+            )}
+            <Button type="submit" disabled={!indexingEnabled}>
+                Search
+            </Button>
+        </form>
+    );
+}
+
+export default function Search({
+    team,
+    indexingEnabled,
+    canOpenArtifacts,
+    filters,
+    collections,
+    results,
+    searched,
+    error,
+}: Props) {
     return (
         <>
             <Head title="Search" />
@@ -82,69 +159,13 @@ export default function Search({
                 </Alert>
             )}
 
-            <form onSubmit={submit} className="mb-6 flex flex-wrap gap-3">
-                <Input
-                    aria-label="Search query"
-                    className="h-11 min-w-64 flex-1 text-base"
-                    placeholder="What are you looking for?"
-                    value={form.q}
-                    disabled={!indexingEnabled}
-                    onChange={(e) => setForm({ ...form, q: e.target.value })}
-                />
-                <Input
-                    aria-label="Agent"
-                    className="w-40"
-                    placeholder="Agent"
-                    value={form.agent}
-                    disabled={!indexingEnabled}
-                    onChange={(e) =>
-                        setForm({ ...form, agent: e.target.value })
-                    }
-                />
-                <Input
-                    aria-label="Repository"
-                    className="w-56"
-                    placeholder="Repository URL"
-                    value={form.repo}
-                    disabled={!indexingEnabled}
-                    onChange={(e) => setForm({ ...form, repo: e.target.value })}
-                />
-                <Input
-                    aria-label="Created since"
-                    type="date"
-                    className="w-40"
-                    value={form.since}
-                    disabled={!indexingEnabled}
-                    onChange={(e) =>
-                        setForm({ ...form, since: e.target.value })
-                    }
-                />
-                {collections.length > 0 && (
-                    <select
-                        aria-label="Collection"
-                        className="rounded-md border border-border bg-background px-2"
-                        value={form.collection}
-                        disabled={!indexingEnabled}
-                        onChange={(e) =>
-                            setForm({ ...form, collection: e.target.value })
-                        }
-                    >
-                        <option value="">All collections</option>
-                        {collections.map((collection) => (
-                            <option
-                                key={collection.name}
-                                value={collection.name}
-                            >
-                                {collection.name}
-                                {collection.canonical ? ' (canonical)' : ''}
-                            </option>
-                        ))}
-                    </select>
-                )}
-                <Button type="submit" disabled={!indexingEnabled}>
-                    Search
-                </Button>
-            </form>
+            <SearchForm
+                key={JSON.stringify(filters)}
+                team={team}
+                filters={filters}
+                indexingEnabled={indexingEnabled}
+                collections={collections}
+            />
 
             {error && <Alert variant="warning">{error}</Alert>}
 

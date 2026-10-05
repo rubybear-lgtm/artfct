@@ -269,6 +269,35 @@ test('admin_can_list_artifacts', function () {
     );
 });
 
+test('the_ai_tool_filter_is_built_from_the_artifacts_it_lists', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    // A tool no code constant lists: the dropdown must name whatever the
+    // org's artifacts actually carry, not a list compiled into the view.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => 'windsurf-made',
+        'org_id' => $team->slug,
+        'user_id' => 3,
+        'title' => 'Windsurf artifact',
+        'description' => 'Built by Windsurf',
+        'content_hash' => 'aaaabbbbcccc',
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => ['agent' => 'windsurf', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('console/index')
+            ->where('agents', ['claude-code', 'cursor', 'windsurf'])
+        );
+});
+
 test('viewer_can_list_artifacts_but_no_admin_controls', function () {
     Http::fake([
         'https://worker.test/v1/orgs/test-org/artifacts' => Http::response([
