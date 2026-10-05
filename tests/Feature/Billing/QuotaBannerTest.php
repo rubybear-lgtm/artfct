@@ -27,15 +27,37 @@ test('no_banner_flags_when_usage_is_healthy', function () {
     [$team, $member] = bannerTeam(0, 0);
 
     test()->actingAs($member)->get(route('dashboard', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('quota.warning', false)->where('quota.exceeded', false));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('quota.warning', false)
+            ->where('quota.exceeded', false)
+            ->where('quota.storage.used', 0)
+            ->where('quota.storage.limit', (int) config('billing.plans.free.storage_bytes'))
+            ->where('quota.storage.percent', 0)
+            ->where('quota.storage.warning', false)
+            ->where('quota.storage.exceeded', false)
+            ->where('quota.artifacts.used', 0)
+            ->where('quota.artifacts.limit', (int) config('billing.plans.free.artifacts_per_month'))
+            ->where('quota.artifacts.percent', 0)
+            ->where('quota.artifacts.warning', false)
+            ->where('quota.artifacts.exceeded', false));
 });
 
 test('a_warning_is_shared_at_eighty_percent_of_a_limit', function () {
     $limit = (int) config('billing.plans.free.artifacts_per_month');
-    [$team, $member] = bannerTeam(0, (int) ceil($limit * 0.85));
+    $used = (int) ceil($limit * 0.85);
+    [$team, $member] = bannerTeam(0, $used);
 
     test()->actingAs($member)->get(route('dashboard', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('quota.warning', true)->where('quota.exceeded', false));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('quota.warning', true)
+            ->where('quota.exceeded', false)
+            ->where('quota.artifacts.used', $used)
+            ->where('quota.artifacts.limit', $limit)
+            ->where('quota.artifacts.percent', $used / $limit)
+            ->where('quota.artifacts.warning', true)
+            ->where('quota.artifacts.exceeded', false)
+            ->where('quota.storage.warning', false)
+            ->where('quota.storage.exceeded', false));
 });
 
 test('exceeded_is_shared_at_the_limit', function () {
@@ -43,7 +65,16 @@ test('exceeded_is_shared_at_the_limit', function () {
     [$team, $member] = bannerTeam(0, $limit);
 
     test()->actingAs($member)->get(route('dashboard', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('quota.exceeded', true));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('quota.warning', true)
+            ->where('quota.exceeded', true)
+            ->where('quota.artifacts.used', $limit)
+            ->where('quota.artifacts.limit', $limit)
+            ->where('quota.artifacts.percent', 1)
+            ->where('quota.artifacts.warning', true)
+            ->where('quota.artifacts.exceeded', true)
+            ->where('quota.storage.warning', false)
+            ->where('quota.storage.exceeded', false));
 });
 
 test('an_unreachable_worker_degrades_to_no_banner_not_an_error', function () {
@@ -83,7 +114,16 @@ test('the_meter_uses_the_limits_the_worker_reports_over_the_plans', function () 
     });
 
     test()->actingAs($member)->get(route('dashboard', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('quota.warning', true)->where('quota.exceeded', false));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('quota.warning', true)
+            ->where('quota.exceeded', false)
+            ->where('quota.storage.used', 900)
+            ->where('quota.storage.limit', 1000)
+            ->where('quota.storage.percent', 0.9)
+            ->where('quota.storage.warning', true)
+            ->where('quota.storage.exceeded', false)
+            ->where('quota.artifacts.limit', 50)
+            ->where('quota.artifacts.exceeded', false));
 });
 
 test('real_usage_returns_the_limits_the_worker_enforces', function () {

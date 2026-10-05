@@ -62,6 +62,20 @@ class HandleInertiaRequests extends Middleware
                         return [
                             'warning' => $status->anyWarning(),
                             'exceeded' => $status->anyExceeded(),
+                            'storage' => [
+                                'used' => $status->storageBytes,
+                                'limit' => $status->storageLimitBytes,
+                                'percent' => $status->storagePercent,
+                                'warning' => $status->storageWarning,
+                                'exceeded' => $status->storageExceeded,
+                            ],
+                            'artifacts' => [
+                                'used' => $status->artifactsThisPeriod,
+                                'limit' => $status->artifactsLimit,
+                                'percent' => $status->artifactsPercent,
+                                'warning' => $status->artifactsWarning,
+                                'exceeded' => $status->artifactsExceeded,
+                            ],
                         ];
                     });
                 } catch (\Throwable) {

@@ -16,10 +16,25 @@ export type CurrentTeam = {
     isOwner: boolean;
 } | null;
 
+export type QuotaDimension = {
+    used: number;
+    limit: number;
+    percent: number;
+    warning: boolean;
+    exceeded: boolean;
+};
+
+export type Quota = {
+    warning: boolean;
+    exceeded: boolean;
+    storage: QuotaDimension;
+    artifacts: QuotaDimension;
+} | null;
+
 export type SharedProps = {
     name: string;
     auth: { user: { id: number; name: string; email: string } | null };
     teams: SharedTeam[];
     currentTeam: CurrentTeam;
-    quota: { warning: boolean; exceeded: boolean } | null;
+    quota: Quota;
 };
