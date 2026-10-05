@@ -30,7 +30,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
@@ -92,7 +91,7 @@ interface Props {
 }
 
 const selectClass =
-    'h-9 rounded-md border border-border bg-transparent px-2 text-sm';
+    'h-9 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base';
 
 export default function TeamEdit({
     team,
@@ -150,10 +149,12 @@ export default function TeamEdit({
         <>
             <Head title={team.name} />
 
-            <div className="mb-6 flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-semibold">{team.name}</h1>
+            <div className="mb-6 flex min-w-0 flex-wrap items-center gap-3">
+                <h1 className="min-w-0 text-2xl font-semibold break-words">
+                    {team.name}
+                </h1>
                 <Badge variant="outline">{team.plan}</Badge>
-                <span className="text-sm text-muted-foreground tabular-nums">
+                <span className="text-sm break-all text-muted-foreground tabular-nums">
                     {team.slug}
                 </span>
             </div>
@@ -228,94 +229,140 @@ export default function TeamEdit({
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Table>
-                            <thead>
-                                <tr>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {members.map((member) => (
-                                    <TableRow key={member.id}>
-                                        <TableCell>
-                                            {member.name}
-                                            {member.id === team.ownerId && (
-                                                <Badge
-                                                    className="ml-2"
-                                                    variant="success"
+                        <div className="max-md:p-1 md:overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="max-md:hidden">
+                                    <tr>
+                                        <th className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                            Name
+                                        </th>
+                                        <th className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                            Email
+                                        </th>
+                                        <th className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                            Role
+                                        </th>
+                                        <th className="px-3 py-2">
+                                            <span className="sr-only">
+                                                Actions
+                                            </span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border max-md:block max-md:space-y-3 max-md:divide-y-0">
+                                    {members.map((member) => (
+                                        <tr
+                                            key={member.id}
+                                            className="border-t border-border max-md:block max-md:rounded-lg max-md:border max-md:p-4"
+                                        >
+                                            <td className="min-w-0 px-3 py-2 align-middle break-words max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
                                                 >
-                                                    owner
-                                                </Badge>
-                                            )}
-                                            {member.deactivated && (
-                                                <Badge
-                                                    className="ml-2"
-                                                    variant="outline"
+                                                    Name
+                                                </span>
+                                                {member.name}
+                                                {member.id === team.ownerId && (
+                                                    <Badge
+                                                        className="ml-2"
+                                                        variant="success"
+                                                    >
+                                                        owner
+                                                    </Badge>
+                                                )}
+                                                {member.deactivated && (
+                                                    <Badge
+                                                        className="ml-2"
+                                                        variant="outline"
+                                                    >
+                                                        deactivated
+                                                    </Badge>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2 align-middle break-all max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
                                                 >
-                                                    deactivated
-                                                </Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>{member.email}</TableCell>
-                                        <TableCell>
-                                            {viewer.canUpdateMember ? (
-                                                <select
-                                                    aria-label={`Role for ${member.name}`}
-                                                    className={selectClass}
-                                                    value={member.role}
-                                                    onChange={(e) =>
-                                                        router.patch(
-                                                            TeamMemberController.update.url(
+                                                    Email
+                                                </span>
+                                                {member.email}
+                                            </td>
+                                            <td className="px-3 py-2 align-middle max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                >
+                                                    Role
+                                                </span>
+                                                {viewer.canUpdateMember ? (
+                                                    <select
+                                                        aria-label={`Role for ${member.name}`}
+                                                        className={selectClass}
+                                                        value={member.role}
+                                                        onChange={(e) =>
+                                                            router.patch(
+                                                                TeamMemberController.update.url(
+                                                                    {
+                                                                        team: team.slug,
+                                                                        user: member.id,
+                                                                    },
+                                                                ),
                                                                 {
-                                                                    team: team.slug,
-                                                                    user: member.id,
+                                                                    role: e
+                                                                        .target
+                                                                        .value,
                                                                 },
-                                                            ),
-                                                            {
-                                                                role: e.target
-                                                                    .value,
-                                                            },
-                                                        )
-                                                    }
-                                                >
-                                                    {availableRoles.map(
-                                                        (role) => (
-                                                            <option
-                                                                key={role.value}
-                                                                value={
-                                                                    role.value
-                                                                }
-                                                            >
-                                                                {role.label}
-                                                            </option>
-                                                        ),
-                                                    )}
-                                                </select>
-                                            ) : (
-                                                member.role_label
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            {viewer.canRemoveMember &&
-                                                member.id !== viewer.id && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            setRemoving(member)
+                                                            )
                                                         }
                                                     >
-                                                        Remove
-                                                    </Button>
+                                                        {availableRoles.map(
+                                                            (role) => (
+                                                                <option
+                                                                    key={
+                                                                        role.value
+                                                                    }
+                                                                    value={
+                                                                        role.value
+                                                                    }
+                                                                >
+                                                                    {role.label}
+                                                                </option>
+                                                            ),
+                                                        )}
+                                                    </select>
+                                                ) : (
+                                                    member.role_label
                                                 )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </tbody>
-                        </Table>
+                                            </td>
+                                            <td className="px-3 py-2 align-middle max-md:block max-md:border-0 max-md:px-0 max-md:py-1 md:text-right">
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                >
+                                                    Actions
+                                                </span>
+                                                {viewer.canRemoveMember &&
+                                                    member.id !== viewer.id && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                setRemoving(
+                                                                    member,
+                                                                )
+                                                            }
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -398,69 +445,102 @@ export default function TeamEdit({
                             )}
 
                             {invitations.length > 0 && (
-                                <Table className="mt-5">
-                                    <thead>
-                                        <tr>
-                                            <TableHead>Pending</TableHead>
-                                            <TableHead>Role</TableHead>
-                                            <TableHead />
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {invitations.map((invitation) => (
-                                            <TableRow key={invitation.code}>
-                                                <TableCell>
-                                                    {invitation.email}
-                                                </TableCell>
-                                                <TableCell>
-                                                    {invitation.role_label}
-                                                </TableCell>
-                                                <TableCell className="flex justify-end gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            copyLink(
-                                                                invitation.url,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Copy className="size-3.5" />{' '}
-                                                        Copy link
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            router.post(
-                                                                TeamInvitationController.resend.url(
-                                                                    {
-                                                                        team: team.slug,
-                                                                        invitation:
-                                                                            invitation.code,
-                                                                    },
-                                                                ),
-                                                            )
-                                                        }
-                                                    >
-                                                        Resend
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            setCancellingInvitation(
-                                                                invitation,
-                                                            )
-                                                        }
-                                                    >
-                                                        Cancel
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </tbody>
-                                </Table>
+                                <div className="mt-5 max-md:p-1 md:overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="max-md:hidden">
+                                            <tr>
+                                                <th className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                                    Pending
+                                                </th>
+                                                <th className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                                    Role
+                                                </th>
+                                                <th className="px-3 py-2">
+                                                    <span className="sr-only">
+                                                        Actions
+                                                    </span>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border max-md:block max-md:space-y-3 max-md:divide-y-0">
+                                            {invitations.map((invitation) => (
+                                                <tr
+                                                    key={invitation.code}
+                                                    className="border-t border-border max-md:block max-md:rounded-lg max-md:border max-md:p-4"
+                                                >
+                                                    <td className="min-w-0 px-3 py-2 align-middle break-all max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                        <span
+                                                            aria-hidden="true"
+                                                            className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                        >
+                                                            Pending
+                                                        </span>
+                                                        {invitation.email}
+                                                    </td>
+                                                    <td className="px-3 py-2 align-middle max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                        <span
+                                                            aria-hidden="true"
+                                                            className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                        >
+                                                            Role
+                                                        </span>
+                                                        {invitation.role_label}
+                                                    </td>
+                                                    <td className="px-3 py-2 align-middle max-md:block max-md:border-0 max-md:px-0 max-md:py-1 md:text-right">
+                                                        <span
+                                                            aria-hidden="true"
+                                                            className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                        >
+                                                            Actions
+                                                        </span>
+                                                        <div className="flex flex-wrap gap-1 md:justify-end">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    copyLink(
+                                                                        invitation.url,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Copy className="size-3.5" />{' '}
+                                                                Copy link
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    router.post(
+                                                                        TeamInvitationController.resend.url(
+                                                                            {
+                                                                                team: team.slug,
+                                                                                invitation:
+                                                                                    invitation.code,
+                                                                            },
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            >
+                                                                Resend
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    setCancellingInvitation(
+                                                                        invitation,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </CardContent>
                     </Card>
@@ -511,10 +591,12 @@ export default function TeamEdit({
                             {domains.map((domain) => (
                                 <div
                                     key={domain.id}
-                                    className="rounded-md border border-border p-3 text-sm"
+                                    className="min-w-0 rounded-md border border-border p-3 text-sm"
                                 >
-                                    <div className="flex items-center gap-2">
-                                        <strong>{domain.domain}</strong>
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <strong className="min-w-0 break-all">
+                                            {domain.domain}
+                                        </strong>
                                         <Badge
                                             variant={
                                                 domain.verified_at
@@ -529,13 +611,13 @@ export default function TeamEdit({
                                     </div>
                                     {!domain.verified_at && (
                                         <>
-                                            <p className="mt-2 text-muted-foreground">
+                                            <p className="mt-2 min-w-0 break-words text-muted-foreground">
                                                 Add a TXT record{' '}
-                                                <code>
+                                                <code className="break-all">
                                                     {domain.txt_record_name}
                                                 </code>{' '}
                                                 ={' '}
-                                                <code>
+                                                <code className="break-all">
                                                     {domain.verification_token}
                                                 </code>
                                             </p>

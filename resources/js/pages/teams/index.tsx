@@ -30,7 +30,9 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
     return (
         <>
             <Head title="Your teams" />
-            <h1 className="mb-6 text-2xl font-semibold">Your teams</h1>
+            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
+                Your teams
+            </h1>
 
             <div className="flex flex-col gap-6">
                 <Card>
@@ -45,10 +47,10 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                             {teams.map((team) => (
                                 <li
                                     key={team.id}
-                                    className="flex items-center gap-3 py-3"
+                                    className="flex min-w-0 flex-wrap items-center gap-2 py-3 md:gap-3"
                                 >
                                     <Link
-                                        className="font-medium hover:underline"
+                                        className="min-w-0 font-medium break-words hover:underline"
                                         href={teamRoutes.edit.url({
                                             team: team.slug,
                                         })}

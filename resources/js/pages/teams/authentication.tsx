@@ -111,8 +111,10 @@ export default function Authentication({
     return (
         <>
             <Head title="Authentication" />
-            <h1 className="mb-1 text-2xl font-semibold">Authentication</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
+            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
+                Authentication
+            </h1>
+            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
                 How people sign in to {team.name}.
             </p>
 
@@ -143,9 +145,9 @@ export default function Authentication({
                             <EmptyState title="No domains yet." />
                         )}
                         {domains.map((domain) => (
-                            <div key={domain.id} className="text-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-medium">
+                            <div key={domain.id} className="min-w-0 text-sm">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <span className="min-w-0 font-medium break-all">
                                         {domain.domain}
                                     </span>
                                     <Badge
@@ -190,7 +192,7 @@ export default function Authentication({
                                     </span>
                                 </div>
                                 {!domain.verified && (
-                                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                                    <p className="mt-1 min-w-0 text-xs break-words text-muted-foreground tabular-nums">
                                         Add a TXT record named{' '}
                                         {domain.txtRecordName} with the value{' '}
                                         {domain.verificationToken}
@@ -198,10 +200,14 @@ export default function Authentication({
                                 )}
                             </div>
                         ))}
-                        <form onSubmit={addDomain} className="flex gap-2">
+                        <form
+                            onSubmit={addDomain}
+                            className="flex min-w-0 flex-wrap gap-2"
+                        >
                             <Input
                                 aria-label="Domain"
                                 placeholder="acme.com"
+                                className="min-w-0 flex-1"
                                 value={domainForm.data.domain}
                                 onChange={(e) =>
                                     domainForm.setData('domain', e.target.value)
@@ -237,8 +243,8 @@ export default function Authentication({
                                     key={mode}
                                     className="rounded-md border border-border p-3 text-sm"
                                 >
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-medium">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <span className="min-w-0 font-medium break-words">
                                             {MODE_LABELS[mode]}
                                         </span>
                                         {current && <Badge>current</Badge>}
@@ -266,8 +272,8 @@ export default function Authentication({
                                         </p>
                                     )}
                                     {!current && preview.needsConfirmation && (
-                                        <div className="mt-2">
-                                            <p>
+                                        <div className="mt-2 min-w-0">
+                                            <p className="break-words">
                                                 These members have no SSO
                                                 identity and will lose access:{' '}
                                                 {preview.atRisk.join(', ')}
@@ -336,11 +342,12 @@ export default function Authentication({
                         {isEnterprise && (
                             <form
                                 onSubmit={addConnection}
-                                className="flex gap-2"
+                                className="flex min-w-0 flex-wrap gap-2"
                             >
                                 <Input
                                     aria-label="SAML metadata URL"
                                     placeholder="https://idp.example.com/metadata"
+                                    className="min-w-0 flex-1"
                                     value={connectionForm.data.metadata_url}
                                     onChange={(e) =>
                                         connectionForm.setData(
@@ -361,7 +368,7 @@ export default function Authentication({
                         )}
                         {connections && connections.length > 0 && (
                             <div className="flex flex-col gap-2">
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                     <Button asChild variant="outline" size="sm">
                                         <a
                                             href={ssoRoutes.login.url({

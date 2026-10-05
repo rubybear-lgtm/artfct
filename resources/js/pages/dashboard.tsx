@@ -64,7 +64,7 @@ export default function Dashboard({
         <>
             <Head title="Dashboard" />
             <header className="mb-10 border-b border-border pb-8">
-                <p className="eyebrow mb-3">
+                <p className="eyebrow mb-3 min-w-0 break-words">
                     {currentTeam ? currentTeam.name : 'Welcome'}
                 </p>
                 <h1 className="font-serif text-4xl leading-tight tracking-tight md:text-5xl">
@@ -96,9 +96,9 @@ export default function Dashboard({
                             {pendingInvitations.map((invitation) => (
                                 <li
                                     key={invitation.code}
-                                    className="flex flex-wrap items-center gap-3 py-4 text-sm"
+                                    className="flex min-w-0 flex-wrap items-center gap-3 py-4 text-sm"
                                 >
-                                    <span>
+                                    <span className="min-w-0 flex-1 break-words">
                                         {invitation.inviterName} invited you to{' '}
                                         <strong className="font-semibold">
                                             {invitation.team.name}
@@ -168,9 +168,9 @@ export default function Dashboard({
                                                 index + 1
                                             )}
                                         </span>
-                                        <span className="flex flex-col">
+                                        <span className="flex min-w-0 flex-1 flex-col">
                                             <span
-                                                className={`font-semibold ${
+                                                className={`font-semibold break-words ${
                                                     step.done
                                                         ? 'text-muted-foreground line-through'
                                                         : ''

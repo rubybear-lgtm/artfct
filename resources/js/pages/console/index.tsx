@@ -235,7 +235,7 @@ export default function ConsoleIndex({
                                     )
                                 }
                                 placeholder="github.com/example/repo"
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
                             />
                         </div>
                         <div>
@@ -252,7 +252,7 @@ export default function ConsoleIndex({
                                 onChange={(e) =>
                                     handleSelectChange('agent', e.target.value)
                                 }
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
                             >
                                 <option value="">All AI tools</option>
                                 {aiTools.map((agent) => (
@@ -273,7 +273,7 @@ export default function ConsoleIndex({
                                     handleFilterChange('q', e.target.value)
                                 }
                                 placeholder="Title or description..."
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm"
+                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
                             />
                         </div>
                         {isAdmin && (
@@ -313,12 +313,12 @@ export default function ConsoleIndex({
                             {indexingFailures.map((failure) => (
                                 <li
                                     key={failure.artifact_id}
-                                    className="flex items-center gap-3 py-2"
+                                    className="flex flex-wrap items-center gap-3 py-2"
                                 >
-                                    <span className="tabular-nums">
+                                    <span className="break-all tabular-nums">
                                         {failure.artifact_id.slice(0, 8)}
                                     </span>
-                                    <span className="text-muted-foreground">
+                                    <span className="break-words text-muted-foreground">
                                         {failure.attempts} attempts:{' '}
                                         {failure.reason}
                                     </span>
@@ -348,11 +348,11 @@ export default function ConsoleIndex({
 
                 {/* Artifact List */}
                 <div
-                    className="overflow-x-auto rounded-[10px] border border-border bg-paper"
+                    className="overflow-x-auto rounded-[10px] border border-border bg-paper max-md:p-3"
                     data-testid="artifact-list"
                 >
                     <table className="w-full">
-                        <thead className="border-b border-border bg-muted">
+                        <thead className="border-b border-border bg-muted max-md:hidden">
                             <tr>
                                 <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
                                     Title
@@ -376,12 +376,12 @@ export default function ConsoleIndex({
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border">
+                        <tbody className="divide-y divide-border max-md:block max-md:space-y-3 max-md:divide-y-0">
                             {artifacts.length === 0 ? (
-                                <tr>
+                                <tr className="max-md:block max-md:rounded-lg max-md:border max-md:border-border max-md:p-4">
                                     <td
                                         colSpan={hasActionsColumn ? 6 : 5}
-                                        className="px-6 py-4 text-center text-muted-foreground"
+                                        className="px-6 py-4 text-center text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1"
                                     >
                                         {hasActiveFilters ? (
                                             <EmptyState title="No artifacts match these filters">
@@ -422,9 +422,15 @@ export default function ConsoleIndex({
                                 artifacts.map((artifact) => (
                                     <tr
                                         key={artifact.id}
-                                        className="hover:bg-muted"
+                                        className="hover:bg-muted max-md:block max-md:rounded-lg max-md:border max-md:border-border max-md:p-4"
                                     >
-                                        <td className="px-6 py-4">
+                                        <td className="min-w-0 px-6 py-4 break-words max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                            <span
+                                                aria-hidden="true"
+                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                            >
+                                                Title
+                                            </span>
                                             {artifact.revoked_at ? (
                                                 <span
                                                     className="text-sm font-medium text-muted-foreground"
@@ -449,7 +455,7 @@ export default function ConsoleIndex({
                                                     {artifactTitle(artifact)}
                                                 </span>
                                             )}
-                                            <div className="text-xs text-muted-foreground">
+                                            <div className="text-xs break-words text-muted-foreground">
                                                 {artifact.description}
                                             </div>
                                             <div
@@ -463,7 +469,7 @@ export default function ConsoleIndex({
                                                 collections.length > 0 && (
                                                     <select
                                                         aria-label={`Add ${artifact.title || artifact.id} to a collection`}
-                                                        className="mt-1 rounded border border-border bg-background px-1 text-xs"
+                                                        className="mt-1 rounded border border-border bg-background px-1 text-xs max-md:min-h-[44px] max-md:text-base"
                                                         value=""
                                                         onChange={(e) => {
                                                             if (
@@ -508,7 +514,13 @@ export default function ConsoleIndex({
                                                     </select>
                                                 )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                            <span
+                                                aria-hidden="true"
+                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                            >
+                                                Repository
+                                            </span>
                                             {artifact.provenance.repo_url ? (
                                                 <a
                                                     href={
@@ -517,7 +529,7 @@ export default function ConsoleIndex({
                                                     }
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-primary hover:underline"
+                                                    className="break-all text-primary hover:underline"
                                                 >
                                                     {artifact.provenance.repo_url
                                                         .split('/')
@@ -530,17 +542,35 @@ export default function ConsoleIndex({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                            <span
+                                                aria-hidden="true"
+                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                            >
+                                                AI tool
+                                            </span>
                                             {aiToolName(
                                                 artifact.provenance.agent,
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                            <span
+                                                aria-hidden="true"
+                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                            >
+                                                Created
+                                            </span>
                                             {new Date(
                                                 artifact.created_at,
                                             ).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                            <span
+                                                aria-hidden="true"
+                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                            >
+                                                Status
+                                            </span>
                                             {artifact.revoked_at ? (
                                                 <span className="inline-block rounded bg-destructive/15 px-2 py-1 text-xs font-semibold text-destructive">
                                                     Revoked
@@ -552,8 +582,14 @@ export default function ConsoleIndex({
                                             )}
                                         </td>
                                         {hasActionsColumn && (
-                                            <td className="px-6 py-4 text-sm">
-                                                <div className="flex items-center gap-3">
+                                            <td className="px-6 py-4 text-sm max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                >
+                                                    Actions
+                                                </span>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                                                     {canOpenArtifacts &&
                                                         (artifact.revoked_at ? (
                                                             <span
@@ -573,7 +609,7 @@ export default function ConsoleIndex({
                                                                 )}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="font-medium text-primary hover:underline"
+                                                                className="font-medium text-primary hover:underline max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
                                                                 data-testid="open-artifact"
                                                             >
                                                                 Open
@@ -605,7 +641,7 @@ export default function ConsoleIndex({
 
                 {/* Pagination */}
                 {(nextCursor || cursor) && (
-                    <div className="mt-6 flex justify-center gap-3">
+                    <div className="mt-6 flex flex-wrap justify-center gap-3">
                         {cursor && (
                             <Button
                                 variant="outline"

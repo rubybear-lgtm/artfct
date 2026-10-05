@@ -125,10 +125,10 @@ export default function Audit({
                 onSubmit={apply}
                 className="mb-4 flex flex-wrap items-end gap-3 text-sm"
             >
-                <label className="flex flex-col gap-1">
+                <label className="flex min-w-0 flex-col gap-1">
                     Event
                     <select
-                        className="rounded-md border border-border bg-background px-2 py-2"
+                        className="rounded-md border border-border bg-background px-2 py-2 max-md:min-h-[44px] max-md:text-base"
                         value={form.type}
                         onChange={(e) =>
                             setForm({ ...form, type: e.target.value })
@@ -142,10 +142,10 @@ export default function Audit({
                         ))}
                     </select>
                 </label>
-                <label className="flex flex-col gap-1">
+                <label className="flex min-w-0 flex-col gap-1">
                     Person
                     <select
-                        className="rounded-md border border-border bg-background px-2 py-2"
+                        className="rounded-md border border-border bg-background px-2 py-2 max-md:min-h-[44px] max-md:text-base"
                         value={form.actor}
                         onChange={(e) =>
                             setForm({ ...form, actor: e.target.value })
@@ -159,7 +159,7 @@ export default function Audit({
                         ))}
                     </select>
                 </label>
-                <label className="flex flex-col gap-1">
+                <label className="flex min-w-0 flex-col gap-1">
                     From
                     <Input
                         type="date"
@@ -169,7 +169,7 @@ export default function Audit({
                         }
                     />
                 </label>
-                <label className="flex flex-col gap-1">
+                <label className="flex min-w-0 flex-col gap-1">
                     To
                     <Input
                         type="date"
@@ -222,10 +222,13 @@ export default function Audit({
                                         <TableCell>
                                             <Badge>{row.typeLabel}</Badge>
                                         </TableCell>
-                                        <TableCell title={row.actor}>
+                                        <TableCell
+                                            title={row.actor}
+                                            className="min-w-0 break-all"
+                                        >
                                             {row.actorName}
                                         </TableCell>
-                                        <TableCell className="text-xs tabular-nums">
+                                        <TableCell className="text-xs break-all tabular-nums">
                                             {row.target}
                                         </TableCell>
                                         <TableCell>{row.outcome}</TableCell>

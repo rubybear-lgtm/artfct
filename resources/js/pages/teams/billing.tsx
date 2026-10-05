@@ -98,9 +98,9 @@ function Meter({
 
     return (
         <div>
-            <div className="mb-1 flex justify-between text-sm">
-                <span>{label}</span>
-                <span className="text-muted-foreground">
+            <div className="mb-1 flex min-w-0 justify-between gap-2 text-sm">
+                <span className="min-w-0 break-words">{label}</span>
+                <span className="shrink-0 text-muted-foreground tabular-nums">
                     {detail} · {percent}%
                 </span>
             </div>
@@ -178,7 +178,9 @@ export default function Billing({
     return (
         <>
             <Head title="Billing" />
-            <h1 className="mb-6 text-2xl font-semibold">Billing</h1>
+            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
+                Billing
+            </h1>
 
             <div className="flex flex-col gap-6">
                 {awaitingWebhook && !pollExhausted && (
@@ -218,7 +220,7 @@ export default function Billing({
 
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
+                        <CardTitle className="flex min-w-0 flex-wrap items-center gap-2 break-words">
                             Current plan{' '}
                             <Badge variant={paid ? 'success' : 'outline'}>
                                 {team.plan}
