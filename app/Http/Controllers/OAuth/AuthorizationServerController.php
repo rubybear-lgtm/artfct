@@ -184,10 +184,13 @@ final class AuthorizationServerController extends Controller
         $user = $request->user();
         $team = $this->teamFor($user, $parameters['team']);
 
-        abort_if($team === null, 403, 'You must belong to a team before connecting an MCP client.');
+        abort_if($team === null, 403, 'Create a team first, then start the connection again from your AI tool.');
+
+        $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
 
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
+            'clientName' => $client?->client_name ?: $parameters['client_id'],
             'userName' => $user->name,
             'redirectUri' => $parameters['redirect_uri'],
             'scope' => $parameters['scope'],

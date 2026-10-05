@@ -25,7 +25,7 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
     ]);
 
     visit('/oauth/authorize?'.$parameters)
-        ->assertSee('Connect test-native-client')
+        ->assertSee('Test native client wants to connect to Consent Workspace')
         ->assertSee('Consent Reviewer')
         ->assertSee('Consent Workspace')
         ->assertSee('Read artifacts and search your workspace')
@@ -99,7 +99,7 @@ test('the consent form completes a native client login by handing an authorizati
     ]);
 
     $page = visit('/oauth/authorize?'.$parameters)
-        ->assertSee('Connect test-native-client')
+        ->assertSee('Test native client wants to connect to Native Workspace')
         ->assertSee('Native Workspace')
         ->assertSee('Read artifacts and search your workspace')
         ->assertNoJavaScriptErrors();

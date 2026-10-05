@@ -82,10 +82,26 @@ test('consent shows the requested workspace selector and preserves the chosen wo
         ->assertOk()
         ->assertInertia(fn (AssertableJson $page) => $page
             ->component('oauth/authorize')
+            ->where('clientName', 'Test native client')
             ->where('team.slug', $secondTeam->slug)
             ->where('teams', fn ($teams): bool => $teams->count() === 2
                 && $teams->contains('slug', $firstTeam->slug)
                 && $teams->contains('slug', $secondTeam->slug)));
+});
+
+test('consent falls back to the client id when the client has no name', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $parameters = oauthParameters('challenge', ['team' => $team->slug]);
+    OAuthClient::query()->where('client_id', 'test-native-client')->update(['client_name' => '']);
+
+    $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($parameters))
+        ->assertOk()
+        ->assertInertia(fn (AssertableJson $page) => $page
+            ->component('oauth/authorize')
+            ->where('clientName', 'test-native-client'));
 });
 
 test('OAuth metadata follows the configured JWT issuer contract', function () {
