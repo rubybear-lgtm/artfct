@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Toaster } from '@/components/ui/sonner';
 import { useAppTheme } from '@/lib/useAppTheme';
-import { blog, docs, home, logout, privacy, terms } from '@/routes';
+import { blog, dashboard, docs, home, logout, privacy, terms } from '@/routes';
 import accountRoutes from '@/routes/account';
 import consoleRoutes from '@/routes/console';
 import teamRoutes from '@/routes/teams';
@@ -59,7 +59,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <header className="border-b border-border bg-background">
                 <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-5">
                     <Link
-                        href={home.url()}
+                        href={
+                            team
+                                ? dashboard.url({ current_team: team.slug })
+                                : home.url()
+                        }
                         className="font-serif text-2xl tracking-tight"
                     >
                         Artfct
@@ -153,6 +157,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="mx-auto max-w-5xl overflow-x-auto px-5">
                         <nav className="flex w-max items-center gap-x-6 text-sm font-medium whitespace-nowrap">
                             <Link
+                                href={dashboard.url({
+                                    current_team: team.slug,
+                                })}
+                                className={navLinkClass(
+                                    dashboard.url({ current_team: team.slug }),
+                                )}
+                            >
+                                Dashboard
+                            </Link>
+                            <Link
                                 href={consoleRoutes.index.url({
                                     team: team.slug,
                                 })}
@@ -217,7 +231,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     }),
                                 )}
                             >
-                                MCP connections
+                                AI tool connections
                             </Link>
                             <Link
                                 href={teamRoutes.billing.show.url({

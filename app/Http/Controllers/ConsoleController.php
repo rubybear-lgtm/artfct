@@ -82,6 +82,7 @@ class ConsoleController extends Controller
             'artifacts' => $data['artifacts'],
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
+            'cursor' => is_string($cursor) ? $cursor : null,
             'isAdmin' => $user->isAdminOf($team),
             // The signing secret belongs to the environment, not the member:
             // without one the page is not given an open control. A secure row
@@ -128,7 +129,9 @@ class ConsoleController extends Controller
             }
         }
 
-        return redirect()->route('console.index', ['team' => $team])->with('message', 'Indexing queued.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Indexing queued.')]);
+
+        return redirect()->route('console.index', ['team' => $team]);
     }
 
     /**
@@ -148,8 +151,9 @@ class ConsoleController extends Controller
 
             $this->auditLogger->recordForRequest($request, AuditEventType::ArtifactRevoked, $team, (string) $user->id, "artifact:{$artifactId}");
 
-            return redirect()->route('console.index', ['team' => $team])
-                ->with('message', 'Artifact revoked successfully.');
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Artifact revoked.')]);
+
+            return redirect()->route('console.index', ['team' => $team]);
         } catch (\Exception $e) {
             if ($e->getCode() === 404) {
                 abort(404);

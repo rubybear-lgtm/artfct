@@ -13,6 +13,7 @@ use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\VectorIndexContract;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 
 test('viewer_cannot_revoke', function () {
@@ -55,9 +56,33 @@ test('revoking_an_artifact_removes_its_index_chunks', function () {
 
     test()->actingAs($admin)
         ->patch("/settings/teams/{$team->slug}/console/artifacts/{$artifactId}/revoke")
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertSessionHas('inertia.flash_data.toast', [
+            'type' => 'success',
+            'message' => 'Artifact revoked.',
+        ]);
 
     expect($index->artifactHasVectors($team->slug, $artifactId))->toBeFalse();
+});
+
+test('reindex_flashes_a_success_toast', function () {
+    config(['indexing.enabled' => true]);
+    Bus::fake();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, '1234567890', '<h1>Hello</h1>');
+
+    test()->actingAs($admin)
+        ->post("/settings/teams/{$team->slug}/console/artifacts/1234567890/reindex")
+        ->assertRedirect()
+        ->assertSessionHas('inertia.flash_data.toast', [
+            'type' => 'success',
+            'message' => 'Indexing queued.',
+        ]);
 });
 
 test('member_cannot_read_other_org_list', function () {

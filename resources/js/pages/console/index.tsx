@@ -1,11 +1,12 @@
-import { router } from '@inertiajs/react';
-import { useState } from 'react';
+import { Link, router } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
+import teamRoutes from '@/routes/teams';
 
 interface Artifact {
     id: string;
@@ -33,6 +34,7 @@ interface ConsoleIndexProps {
         q: string | null;
     };
     nextCursor: string | null;
+    cursor: string | null;
     isAdmin: boolean;
     canOpenArtifacts: boolean;
     collections: { id: number; name: string }[];
@@ -47,11 +49,16 @@ interface ConsoleIndexProps {
     }[];
 }
 
+/** The row's name as plain text: its title, or the short id when it has none. */
+function artifactName(artifact: Artifact) {
+    return artifact.title || artifact.id.slice(0, 8);
+}
+
 /** The row's name: its title, or the short id when it has none. */
 function artifactTitle(artifact: Artifact) {
     return (
         artifact.title || (
-            <span className="tabular-nums">{artifact.id.slice(0, 8)}</span>
+            <span className="tabular-nums">{artifactName(artifact)}</span>
         )
     );
 }
@@ -61,6 +68,7 @@ export default function ConsoleIndex({
     artifacts,
     filters,
     nextCursor,
+    cursor,
     isAdmin,
     canOpenArtifacts,
     collections,
@@ -73,17 +81,37 @@ export default function ConsoleIndex({
     const [confirmingRevoke, setConfirmingRevoke] = useState<string | null>(
         null,
     );
+    const pendingFilterVisit = useRef<ReturnType<typeof setTimeout> | null>(
+        null,
+    );
     const hasActionsColumn = isAdmin || canOpenArtifacts;
+    const hasActiveFilters = Object.values(localFilters).some(Boolean);
 
-    const handleFilterChange = (key: keyof typeof filters, value: string) => {
-        const newFilters = { ...localFilters, [key]: value || null };
-        setLocalFilters(newFilters);
+    // A pending debounced visit must not outlive the page it was scheduled on.
+    useEffect(() => {
+        return () => {
+            if (pendingFilterVisit.current !== null) {
+                clearTimeout(pendingFilterVisit.current);
+            }
+        };
+    }, []);
 
-        // Build query string
+    const visitWithFilters = (
+        nextFilters: typeof filters,
+        {
+            cursor = null,
+            replace = true,
+        }: { cursor?: string | null; replace?: boolean } = {},
+    ) => {
         const params = new URLSearchParams();
-        Object.entries(newFilters).forEach(([k, v]) => {
-            if (v) {
-                params.set(k, v as string);
+
+        if (cursor) {
+            params.set('cursor', cursor);
+        }
+
+        Object.entries(nextFilters).forEach(([key, value]) => {
+            if (value) {
+                params.set(key, value);
             }
         });
 
@@ -92,7 +120,49 @@ export default function ConsoleIndex({
                 { team: team.slug },
                 { query: Object.fromEntries(params.entries()) },
             ),
+            {},
+            { preserveState: true, preserveScroll: true, replace },
         );
+    };
+
+    const clearPendingFilterVisit = () => {
+        if (pendingFilterVisit.current !== null) {
+            clearTimeout(pendingFilterVisit.current);
+            pendingFilterVisit.current = null;
+        }
+    };
+
+    // Free-text filters wait for a pause in typing: one visit and one history
+    // entry per keystroke is what a debounce is for.
+    const handleFilterChange = (key: keyof typeof filters, value: string) => {
+        const nextFilters = { ...localFilters, [key]: value || null };
+        setLocalFilters(nextFilters);
+
+        clearPendingFilterVisit();
+        pendingFilterVisit.current = setTimeout(() => {
+            pendingFilterVisit.current = null;
+            visitWithFilters(nextFilters);
+        }, 300);
+    };
+
+    // A select commits a whole value at once, so it needs no debounce.
+    const handleSelectChange = (key: keyof typeof filters, value: string) => {
+        const nextFilters = { ...localFilters, [key]: value || null };
+        setLocalFilters(nextFilters);
+        clearPendingFilterVisit();
+        visitWithFilters(nextFilters);
+    };
+
+    const clearFilters = () => {
+        const cleared: typeof filters = {
+            user_id: null,
+            repo_url: null,
+            agent: null,
+            q: null,
+        };
+        setLocalFilters(cleared);
+        clearPendingFilterVisit();
+        visitWithFilters(cleared);
     };
 
     const handleRevoke = (artifactId: string) => {
@@ -164,7 +234,7 @@ export default function ConsoleIndex({
                             <select
                                 value={localFilters.agent || ''}
                                 onChange={(e) =>
-                                    handleFilterChange('agent', e.target.value)
+                                    handleSelectChange('agent', e.target.value)
                                 }
                                 className="w-full rounded-md border border-border px-3 py-2 text-sm"
                             >
@@ -259,7 +329,7 @@ export default function ConsoleIndex({
 
                 {/* Artifact List */}
                 <div
-                    className="overflow-hidden rounded-[10px] border border-border bg-paper"
+                    className="overflow-x-auto rounded-[10px] border border-border bg-paper"
                     data-testid="artifact-list"
                 >
                     <table className="w-full">
@@ -294,7 +364,39 @@ export default function ConsoleIndex({
                                         colSpan={hasActionsColumn ? 6 : 5}
                                         className="px-6 py-4 text-center text-muted-foreground"
                                     >
-                                        <EmptyState title="No artifacts found" />
+                                        {hasActiveFilters ? (
+                                            <EmptyState title="No artifacts match these filters">
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={clearFilters}
+                                                >
+                                                    Clear filters
+                                                </Button>
+                                            </EmptyState>
+                                        ) : (
+                                            <EmptyState title="No artifacts yet">
+                                                <p className="text-sm">
+                                                    Connect an AI tool, then
+                                                    share something it made. It
+                                                    will appear here.
+                                                </p>
+                                                <Button
+                                                    asChild
+                                                    variant="outline"
+                                                    className="mt-4"
+                                                >
+                                                    <Link
+                                                        href={teamRoutes.mcpConnections.index.url(
+                                                            {
+                                                                team: team.slug,
+                                                            },
+                                                        )}
+                                                    >
+                                                        AI tool connections
+                                                    </Link>
+                                                </Button>
+                                            </EmptyState>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (
@@ -460,12 +562,13 @@ export default function ConsoleIndex({
                                                     {isAdmin &&
                                                         !artifact.revoked_at && (
                                                             <Button
+                                                                variant="outline"
+                                                                aria-label={`${confirmingRevoke === artifact.id ? 'Confirm revoke of' : 'Revoke'} ${artifactName(artifact)}`}
                                                                 onClick={() =>
                                                                     handleRevoke(
                                                                         artifact.id,
                                                                     )
                                                                 }
-                                                                className="font-medium text-destructive hover:text-red-900"
                                                             >
                                                                 {confirmingRevoke ===
                                                                 artifact.id
@@ -484,34 +587,33 @@ export default function ConsoleIndex({
                 </div>
 
                 {/* Pagination */}
-                {nextCursor && (
-                    <div className="mt-6 flex justify-center">
-                        <Button
-                            onClick={() => {
-                                const params = new URLSearchParams();
-                                params.set('cursor', nextCursor);
-                                Object.entries(localFilters).forEach(
-                                    ([k, v]) => {
-                                        if (v) {
-                                            params.set(k, v as string);
-                                        }
-                                    },
-                                );
-                                router.get(
-                                    ConsoleController.index.url(
-                                        { team: team.slug },
-                                        {
-                                            query: Object.fromEntries(
-                                                params.entries(),
-                                            ),
-                                        },
-                                    ),
-                                );
-                            }}
-                            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90"
-                        >
-                            Load More
-                        </Button>
+                {(nextCursor || cursor) && (
+                    <div className="mt-6 flex justify-center gap-3">
+                        {cursor && (
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    visitWithFilters(localFilters, {
+                                        cursor: null,
+                                        replace: false,
+                                    })
+                                }
+                            >
+                                First page
+                            </Button>
+                        )}
+                        {nextCursor && (
+                            <Button
+                                onClick={() =>
+                                    visitWithFilters(localFilters, {
+                                        cursor: nextCursor,
+                                        replace: false,
+                                    })
+                                }
+                            >
+                                Next page
+                            </Button>
+                        )}
                     </div>
                 )}
             </div>
