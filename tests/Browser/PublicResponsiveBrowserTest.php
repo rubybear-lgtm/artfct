@@ -22,14 +22,17 @@ function responsiveWidths(): array
 }
 
 /** @param  array<string>  $urls */
-function assertPagesFitViewports(array $urls): void
+function assertPagesFitViewports(array $urls, ?string $expectedText = null): void
 {
     foreach ($urls as $url) {
         foreach (responsiveWidths() as $width) {
-            visit($url)
+            $page = visit($url)
                 ->resize($width, 900)
                 ->assertScript('document.documentElement.scrollWidth <= window.innerWidth + 1', true)
                 ->assertNoJavaScriptErrors();
+            if ($expectedText !== null) {
+                $page->assertSee($expectedText);
+            }
         }
     }
 }
@@ -47,10 +50,13 @@ test('public reading pages fit every viewport without sideways scrolling', funct
 });
 
 test('auth pages fit every viewport without sideways scrolling', function () {
-    $user = User::factory()->create(['email' => 'responsive@example.com']);
-    $team = app(CreateTeam::class)->handle($user, 'Responsive Co');
+    assertPagesFitViewports(['/login'], 'Continue to Artfct');
 
+    $user = User::factory()->create(['email' => 'responsive@example.com']);
     test()->actingAs($user);
+    assertPagesFitViewports(['/onboarding/team'], 'Create your first team');
+
+    $team = app(CreateTeam::class)->handle($user, 'Responsive Co');
     oauthTestClient();
 
     $oauth = '/oauth/authorize?'.http_build_query([
@@ -64,7 +70,7 @@ test('auth pages fit every viewport without sideways scrolling', function () {
         'team' => $team->slug,
     ]);
 
-    assertPagesFitViewports(['/login', '/onboarding/team', $oauth]);
+    assertPagesFitViewports([$oauth], 'Responsive Co');
 });
 
 test('invitation and terms acceptance fit every viewport', function () {

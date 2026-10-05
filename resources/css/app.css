@@ -1230,9 +1230,12 @@ html {
     }
 
     .site-page header [data-testid='site-account'] a,
+    .site-page footer a,
     .welcome-signin {
         display: inline-flex;
         align-items: center;
+        min-height: 44px;
+        min-width: 44px;
     }
 
     .welcome-manage-close {
@@ -1240,8 +1243,7 @@ html {
         justify-content: center;
     }
 
-    /* The fixed theme switch on the free tool is a small control. */
-    button[title*='theme \2014  click for'] {
+    .theme-toggle {
         min-width: 44px;
         min-height: 44px;
     }

@@ -54,6 +54,7 @@ export function ThemeToggle() {
 
     return (
         <button
+            className="theme-toggle"
             onClick={cycle}
             title={TITLE[theme]}
             style={{

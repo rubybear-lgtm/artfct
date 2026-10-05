@@ -120,6 +120,7 @@ export default [
             'target',
             'bootstrap/ssr',
             '.claude/worktrees/**',
+            '.worktrees/**',
             'tailwind.config.js',
             'vite.config.ts',
             'resources/js/actions/**',

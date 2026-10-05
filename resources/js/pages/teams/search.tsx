@@ -182,10 +182,10 @@ export default function Search({
             <div className="flex flex-col gap-3">
                 {results.map((result) => (
                     <Card key={result.id}>
-                        <CardContent className="flex flex-col gap-1 pt-4">
+                        <CardContent className="flex min-w-0 flex-col gap-1 pt-4 break-words">
                             {canOpenArtifacts ? (
                                 <a
-                                    className="font-medium underline"
+                                    className="min-w-0 font-medium break-words underline max-md:block max-md:min-h-11 max-md:py-2"
                                     data-testid="search-result-link"
                                     href={result.openUrl}
                                     target="_blank"

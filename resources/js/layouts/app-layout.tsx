@@ -158,14 +158,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 ? dashboard.url({ current_team: team.slug })
                                 : home.url()
                         }
-                        className="shrink-0 font-serif text-2xl tracking-tight"
+                        className="inline-flex shrink-0 items-center font-serif text-2xl tracking-tight max-md:min-h-11"
                     >
                         Artfct
                     </Link>
 
                     {team && (
                         <DropdownMenu>
-                            <DropdownMenuTrigger className="flex max-w-[36vw] min-w-0 items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-muted md:max-w-none">
+                            <DropdownMenuTrigger className="flex max-w-[36vw] min-w-0 items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-muted max-md:min-h-11 md:max-w-none">
                                 <span className="min-w-0 truncate">
                                     {team.name}
                                 </span>
@@ -205,7 +205,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         {auth.user && (
                             <>
                                 <DropdownMenu>
-                                    <DropdownMenuTrigger aria-label="Account menu">
+                                    <DropdownMenuTrigger
+                                        aria-label="Account menu"
+                                        className="inline-flex items-center justify-center max-md:min-h-11 max-md:min-w-11"
+                                    >
                                         <Avatar>
                                             <AvatarFallback>
                                                 {initials(auth.user.name)}
@@ -681,7 +684,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 {children}
             </main>
             <footer className="border-t border-border">
-                <div className="mx-auto flex max-w-5xl min-w-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-sm text-muted-foreground md:px-5">
+                <div className="mx-auto flex max-w-5xl min-w-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-sm text-muted-foreground md:px-5 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:min-w-11 max-md:[&_a]:items-center">
                     <Link className="hover:text-foreground" href={docs.url()}>
                         Documentation
                     </Link>

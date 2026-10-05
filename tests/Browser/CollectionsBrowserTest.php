@@ -167,6 +167,10 @@ test('multiple_stacks_stay_expanded_with_full_width_panels_under_their_rows', fu
 
     // A tablet viewport regroups into two columns; the panels still span.
     $page->resize(800, 900)->wait(0.5);
+    foreach ([$first, $second] as $collection) {
+        $page->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
+            ->assertPresent("@collection-panel-{$collection->id}");
+    }
 
     $page->assertScript(<<<'JS'
         (() => {
@@ -187,6 +191,11 @@ test('multiple_stacks_stay_expanded_with_full_width_panels_under_their_rows', fu
         })()
         JS, true);
 
+    $page->resize(1280, 900)->wait(0.2);
+    foreach ([$first, $second] as $collection) {
+        $page->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
+            ->assertPresent("@collection-panel-{$collection->id}");
+    }
     $page->assertNoJavaScriptErrors();
 });
 
@@ -346,5 +355,25 @@ test('collection_open_links_use_the_apps_open_route_in_a_new_tab', function () {
                 return open !== null && open.getBoundingClientRect().height >= 43.5;
             })()
             JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+test('renaming a collection across grid rows preserves its expansion', function () {
+    [$team, $owner] = stacksTeam('Reorder Users', 'reorder-user@example.com');
+    foreach (['Alpha', 'Bravo', 'Charlie'] as $name) {
+        seedStackCollection($team, $owner->id, $name, []);
+    }
+    $collection = seedStackCollection($team, $owner->id, 'Zebra', []);
+    test()->actingAs($owner);
+
+    $page = visit(stacksUrl($team))->resize(1280, 850);
+    $page->click("@collection-toggle-{$collection->id}")
+        ->assertScript("document.querySelector('[data-testid=collection-row-1] [data-testid=collection-toggle-{$collection->id}]') !== null")
+        ->click("[data-testid=collection-card-{$collection->id}] button:text-is(\"Rename\")")
+        ->fill("#rename-{$collection->id}", '0 renamed')
+        ->click('Save name')->waitForText('Collection renamed.')
+        ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
+        ->assertPresent("@collection-panel-{$collection->id}")
+        ->assertScript("document.querySelector('[data-testid=collection-row-0] [data-testid=collection-toggle-{$collection->id}]') !== null")
         ->assertNoJavaScriptErrors();
 });

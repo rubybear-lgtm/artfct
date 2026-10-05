@@ -36,7 +36,7 @@ test('search_and_open_result', function () {
     /** @var FakeArtifactDirectory $directory */
     $directory = app(ArtifactDirectory::class);
     $directory->seedArtifact([
-        'id' => 'billing-dash', 'org_id' => $team->slug, 'user_id' => 1, 'title' => 'Billing dashboard',
+        'id' => 'billing-dash', 'org_id' => $team->slug, 'user_id' => 1, 'title' => 'Billing dashboard '.str_repeat('LongTitle', 15),
         'description' => 'Revenue overview', 'content_hash' => md5('billing-dash'),
         'created_at' => now()->subDay()->toIso8601String(), 'revoked_at' => null,
         'provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/billing', 'commit_sha' => 'abc'],
@@ -52,7 +52,7 @@ test('search_and_open_result', function () {
 
     test()->actingAs($owner);
 
-    visit('/settings/teams/'.$team->slug.'/search')
+    $page = visit('/settings/teams/'.$team->slug.'/search')
         ->assertNoJavaScriptErrors()
         ->type('input[placeholder^=What]', $text)
         ->click('button[type=submit]')
@@ -63,4 +63,13 @@ test('search_and_open_result', function () {
         ->assertAttributeContains('@search-result-link', 'href', '/open')
         ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')
         ->assertNoJavaScriptErrors();
+
+    foreach ([320, 390, 768, 1280] as $width) {
+        $page->resize($width, 850)
+            ->assertScript('document.documentElement.scrollWidth <= window.innerWidth')
+            ->assertNoJavaScriptErrors();
+        if ($width < 768) {
+            $page->assertScript('document.querySelector(\'[data-testid="search-result-link"]\').getBoundingClientRect().height >= 44');
+        }
+    }
 });

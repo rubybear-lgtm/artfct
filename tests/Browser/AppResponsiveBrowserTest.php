@@ -227,18 +227,13 @@ test('mobile_menu_traps_focus_and_closes_with_escape', function () {
 
     $page = visit(route('dashboard', $team))->resize(390, 844);
 
-    openMobileMenu($page)
+    $page->keys('@mobile-menu-button', 'Enter')->assertVisible('@mobile-menu')
         ->assertScript('document.querySelector(\'[data-testid="mobile-menu"]\').contains(document.activeElement)');
 
-    // The driver presses buttons by text, so Tab is sent as a keydown:
-    // from the last focusable control it must wrap inside the menu.
-    $page->script('([...document.querySelector(\'[data-testid="mobile-menu"]\').querySelectorAll(\'a[href],button:not([disabled])\')].pop().focus(), document.dispatchEvent(new KeyboardEvent(\'keydown\', {key: \'Tab\', bubbles: true, cancelable: true})))');
-    $page->assertScript('document.querySelector(\'[data-testid="mobile-menu"]\').contains(document.activeElement)');
-
-    // pest-plugin-browser presses buttons by text; Escape is sent as a keydown
-    // because Radix closes the dialog on the document keydown handler.
-    $page->script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))");
-    $page->wait(0.5)->assertMissing('@mobile-menu')->assertNoJavaScriptErrors();
+    $page->keys('Sign out', 'Tab')
+        ->assertScript('document.querySelector(\'[data-testid="mobile-menu"]\').contains(document.activeElement)')
+        ->keys('Close menu', 'Escape')
+        ->wait(0.2)->assertMissing('@mobile-menu')->assertNoJavaScriptErrors();
 
     // The trigger lives outside the Dialog Root, so focus is returned to it
     // explicitly when the menu closes.
@@ -295,6 +290,7 @@ test('mobile_controls_meet_touch_and_font_targets', function () {
 
     // iOS zooms inputs under 16px; filters must stay at body size on phones.
     $page->assertScript('parseFloat(getComputedStyle(document.querySelector("#repo_url")).fontSize) >= 16')
+        ->assertScript('Array.from(document.querySelectorAll("header button, header > div > a, footer a")).filter((element) => element.getBoundingClientRect().width > 0).every((element) => element.getBoundingClientRect().height >= 44)')
         ->assertScript('(document.querySelector(\'[data-testid="mobile-menu-button"]\').getBoundingClientRect().height) >= 44')
         ->assertScript('(document.querySelector(\'[data-testid="open-artifact"]\').getBoundingClientRect().height) >= 44')
         ->assertNoJavaScriptErrors();

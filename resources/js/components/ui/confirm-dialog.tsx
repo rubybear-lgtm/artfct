@@ -44,7 +44,7 @@ export function ConfirmDialog({
                 <DialogDescription asChild>
                     <div>{description}</div>
                 </DialogDescription>
-                <div className="mt-5 flex justify-end gap-2">
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
                     <DialogClose asChild>
                         <Button variant="outline">{cancelLabel}</Button>
                     </DialogClose>

@@ -25,9 +25,9 @@ export function DialogContent({ className, children, ...props }: React.Component
 }
 
 export function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
-    return <DialogPrimitive.Title className={cn('text-lg font-semibold', className)} {...props} />;
+    return <DialogPrimitive.Title className={cn('text-lg font-semibold break-words', className)} {...props} />;
 }
 
 export function DialogDescription({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Description>) {
-    return <DialogPrimitive.Description className={cn('mt-1 text-sm text-muted-foreground', className)} {...props} />;
+    return <DialogPrimitive.Description className={cn('mt-1 text-sm break-words text-muted-foreground', className)} {...props} />;
 }

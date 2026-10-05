@@ -57,6 +57,7 @@ function notPages(): array
         'oauth.authorize' => 'OAuth authorization handshake and consent flow',
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
         'teams.audit.export' => 'file download', 'console.export' => 'zip download',
+        'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
 }
 
