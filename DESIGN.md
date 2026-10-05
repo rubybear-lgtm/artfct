@@ -10,7 +10,7 @@ This replaces the earlier Solarized Light / ASCII direction, which suited the fr
 
 Warm, editorial and calm. Think of a well-set page in a quiet reading room: bone-colored paper, charcoal ink, and a single deep red used sparingly. It should feel trustworthy and unhurried, the way a company's shared library feels, never like a terminal or a dashboard.
 
-- **Audience:** everyone in a company who produces something worth keeping (engineers, designers, analysts, managers). Nothing on the page should require technical knowledge.
+- **Audience:** business people who use AI tools every day (product managers, analysts, designers, marketers, operations) at companies of about 10 to 200 people; engineers are welcome but secondary. The buyer is the team or department lead who connects the team's AI tools once. Nothing on the page should require technical knowledge.
 - **Density:** generous whitespace, hairline dividers instead of boxed cards, one lifted object per screen (the product demo).
 - **Personality:** confident and plain-spoken. Precision comes from restraint, not decoration.
 - **Not:** retro, developer-flavored, gradient-heavy, or neon. No ASCII art, no terminals, no code blocks, no monospace-heavy UI.
