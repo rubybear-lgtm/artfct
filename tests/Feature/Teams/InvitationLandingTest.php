@@ -89,7 +89,11 @@ test('an_unknown_invitation_code_shows_the_branded_invalid_page', function () {
         ->assertInertia(fn (Assert $page) => $page->component('invitations/show')
             ->where('state', 'invalid')
             ->where('invitation', null)
-            ->where('signedInAs', null));
+            ->where('signedInAs', null)
+            // The shared props prove the page came from the exception handler
+            // with the web middleware's Inertia share, not a bare Route::missing
+            // render that SubstituteBindings runs before that middleware.
+            ->where('auth.user', null));
 });
 
 test('an_accepted_invitation_links_a_signed_in_member_to_the_dashboard', function () {

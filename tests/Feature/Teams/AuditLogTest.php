@@ -91,6 +91,24 @@ test('the_page_labels_events_and_offers_a_person_picker', function () {
             ->where('members.0', ['id' => (string) $admin->id, 'name' => $admin->name]));
 });
 
+test('the_person_picker_keeps_people_who_left_the_team', function () {
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $departed = User::factory()->create(['name' => 'Zoe Departed']);
+    $team->memberships()->create(['user_id' => $departed->id, 'role' => TeamRole::Member]);
+    auditEvent($team, AuditEventType::MemberAdded, (string) $departed->id);
+
+    $team->memberships()->where('user_id', $departed->id)->delete();
+
+    test()->actingAs($admin)->get(route('teams.audit.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('members', 2)
+            ->where('members', fn ($members) => collect($members)->contains(
+                fn (array $member): bool => $member['id'] === (string) $departed->id
+                    && $member['name'] === 'Zoe Departed'
+            )));
+});
+
 test('every_audit_event_type_has_a_plain_language_label', function () {
     foreach (AuditEventType::cases() as $case) {
         expect($case->label())

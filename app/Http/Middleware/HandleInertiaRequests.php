@@ -56,7 +56,12 @@ class HandleInertiaRequests extends Middleware
                 }
 
                 try {
-                    return Cache::remember("quota-banner:{$team->id}", 60, function () use ($team): array {
+                    // Versioned because the cached payload gained the storage
+                    // and artifacts dimensions: the database store keeps
+                    // entries written by a previous deploy for up to a minute,
+                    // and the layout reads quota.storage.used without a
+                    // fallback.
+                    return Cache::remember("quota-banner:v2:{$team->id}", 60, function () use ($team): array {
                         $status = app(QuotaService::class)->status($team);
 
                         return [

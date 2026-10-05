@@ -3,6 +3,7 @@
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('a browser request to an unknown page renders the branded error page', function () {
@@ -76,6 +77,19 @@ test('a throttled browser request renders the branded error page with a retry hi
             ->component('error')
             ->where('status', 429)
             ->where('retryAfter', fn ($value) => is_int($value) && $value > 0));
+});
+
+test('a retry hint of zero reads as no hint at all', function () {
+    config(['app.debug' => false]);
+
+    Route::get('/test-throttled-zero', fn () => abort(429, '', ['Retry-After' => '0']));
+
+    $this->get('/test-throttled-zero')
+        ->assertStatus(429)
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('error')
+            ->where('status', 429)
+            ->missing('retryAfter'));
 });
 
 test('debug mode keeps laravel default rendering instead of the branded page', function () {

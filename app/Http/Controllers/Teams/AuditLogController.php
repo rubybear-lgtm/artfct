@@ -63,13 +63,7 @@ class AuditLogController extends Controller
             'at' => $event->created_at->toIso8601String(),
         ]);
 
-        $members = $team->members()
-            ->orderBy('name')
-            ->get()
-            ->map(fn (User $member): array => [
-                'id' => (string) $member->id,
-                'name' => $member->name,
-            ]);
+        $members = $this->personPicker($team);
 
         return Inertia::render('teams/audit', [
             'team' => ['slug' => $team->slug, 'name' => $team->name],
@@ -111,6 +105,35 @@ class AuditLogController extends Controller
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
         Gate::authorize('manageGovernance', $team);
+    }
+
+    /**
+     * Names for the Person filter: current members plus anyone numeric who
+     * acted on this team but has since left. Removing a member must not erase
+     * their events from the filter, and a departed user keeps their name (a
+     * deleted row still reads "deleted user"). Sorted by name.
+     *
+     * @return Collection<int, array{id: string, name: string}>
+     */
+    private function personPicker(Team $team): Collection
+    {
+        $actorIds = AuditEvent::query()
+            ->where('team_id', $team->id)
+            ->distinct()
+            ->pluck('actor')
+            ->filter(fn (string $actor): bool => ctype_digit($actor));
+
+        $memberIds = $team->members()
+            ->pluck('users.id')
+            ->map(fn (int $id): string => (string) $id);
+
+        return collect($this->actorNames($memberIds->merge($actorIds)->unique()->values()))
+            ->map(fn (string $name, int|string $id): array => [
+                'id' => (string) $id,
+                'name' => $name,
+            ])
+            ->sortBy('name')
+            ->values();
     }
 
     /**

@@ -77,6 +77,20 @@ test('exceeded_is_shared_at_the_limit', function () {
             ->where('quota.storage.exceeded', false));
 });
 
+test('a_banner_cache_entry_from_the_previous_payload_shape_is_ignored', function () {
+    [$team, $member] = bannerTeam(0, 0);
+
+    // The pre-versioned shape, as left in the database store by a previous
+    // deploy: it has no storage/artifacts dimensions, and reading it back
+    // would break the layout's quotaMessage().
+    Cache::put("quota-banner:{$team->id}", ['warning' => false, 'exceeded' => false], 60);
+
+    test()->actingAs($member)->get(route('dashboard', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('quota.storage.used', 0)
+            ->where('quota.artifacts.used', 0));
+});
+
 test('an_unreachable_worker_degrades_to_no_banner_not_an_error', function () {
     Cache::flush();
     $team = Team::factory()->create();

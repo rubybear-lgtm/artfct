@@ -22,10 +22,8 @@ use App\Http\Controllers\Teams\TeamMemberController;
 use App\Http\Controllers\Teams\TeamOwnerController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::get('invitations/{invitation}', [InvitationLandingController::class, 'show'])
-    ->missing(fn () => Inertia::render('invitations/show', ['state' => 'invalid', 'invitation' => null, 'signedInAs' => auth()->user()?->email])->toResponse(request())->setStatusCode(404))
     ->name('invitations.show');
 Route::post('invitations/{invitation}/join', [InvitationLandingController::class, 'join'])->middleware('guest')->name('invitations.join');
 

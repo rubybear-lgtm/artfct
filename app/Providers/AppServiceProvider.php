@@ -169,6 +169,32 @@ class AppServiceProvider extends ServiceProvider
         // JSON clients keep the machine-readable body they parse, and local
         // debug keeps Laravel's stack trace.
         Inertia::handleExceptionsUsing(function (ExceptionResponse $response): ?ExceptionResponse {
+            $request = $response->request;
+
+            // A dead invitation code is a page, not a generic 404. Rendering it
+            // here (rather than from Route::missing, which runs inside
+            // SubstituteBindings and so before the appended web middleware) is
+            // what gives it the shared props the layout and page expect. It has
+            // to precede the debug check below so the page renders in local
+            // development too.
+            if ($response->statusCode() === 404
+                && $request->route()?->getName() === 'invitations.show'
+                && ! $request->expectsJson()) {
+                try {
+                    return $response
+                        ->render('invitations/show', [
+                            'state' => 'invalid',
+                            'invitation' => null,
+                            'signedInAs' => $request->user()?->email,
+                        ])
+                        ->withSharedData();
+                } catch (\Throwable $e) {
+                    report($e);
+
+                    return null;
+                }
+            }
+
             if (! in_array($response->statusCode(), [403, 404, 419, 429, 500, 503], true)) {
                 return null;
             }
@@ -176,8 +202,6 @@ class AppServiceProvider extends ServiceProvider
             if (config('app.debug')) {
                 return null;
             }
-
-            $request = $response->request;
 
             // Never replace a JSON error body. The path list mirrors the
             // shouldRenderJsonWhen patterns in bootstrap/app.php; checking the
@@ -194,12 +218,22 @@ class AppServiceProvider extends ServiceProvider
             if ($response->statusCode() === 429) {
                 $retryAfter = $response->response->headers->get('Retry-After');
 
-                if (is_numeric($retryAfter)) {
+                // A non-positive hint is no hint: "Wait 0 seconds" is worse
+                // than saying nothing.
+                if (is_numeric($retryAfter) && (int) $retryAfter > 0) {
                     $props['retryAfter'] = (int) $retryAfter;
                 }
             }
 
-            return $response->render('error', $props)->withSharedData();
+            try {
+                return $response->render('error', $props)->withSharedData();
+            } catch (\Throwable $e) {
+                // A throwing share closure must not turn a handled error into a
+                // bare framework error page.
+                report($e);
+
+                return null;
+            }
         });
 
         Mail::extend('cloudflare', fn (): CloudflareEmailTransport => new CloudflareEmailTransport(
