@@ -11,6 +11,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
@@ -19,15 +20,29 @@ import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
 interface Props {
-    teams: { slug: string; name: string; role: string | null }[];
+    teams: {
+        slug: string;
+        name: string;
+        role: string | null;
+        canLeave: boolean;
+        leaveBlockedReason: string | null;
+    }[];
     identities: { provider: string; email: string }[];
     blockingTeams: string[];
 }
 
 export default function Account({ teams, identities, blockingTeams }: Props) {
     const [confirmation, setConfirmation] = useState('');
-    const { auth } = usePage<SharedProps>().props;
+    const [leavingTeam, setLeavingTeam] = useState<{
+        slug: string;
+        name: string;
+    } | null>(null);
+    const { auth, errors } = usePage<SharedProps>().props;
     const form = useForm({ name: auth.user?.name ?? '' });
+
+    // 'name' is shown next to its field; anything else (a refused leave, a
+    // refused transfer) has no field on this page, so show it at the top.
+    const pageErrors = Object.entries(errors).filter(([key]) => key !== 'name');
 
     const save = (event: FormEvent) => {
         event.preventDefault();
@@ -41,6 +56,16 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
         <>
             <Head title="Account" />
             <h1 className="mb-6 text-2xl font-semibold">Account</h1>
+
+            {pageErrors.length > 0 && (
+                <Alert variant="destructive" className="mb-6">
+                    <ul className="flex flex-col gap-1">
+                        {pageErrors.map(([key, message]) => (
+                            <li key={key}>{message}</li>
+                        ))}
+                    </ul>
+                </Alert>
+            )}
 
             <div className="flex flex-col gap-6">
                 <Card>
@@ -111,20 +136,20 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                                     <span className="text-muted-foreground">
                                         {team.role}
                                     </span>
-                                    <Button
-                                        className="ml-auto"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                            router.delete(
-                                                teamRoutes.leave.url({
-                                                    team: team.slug,
-                                                }),
-                                            )
-                                        }
-                                    >
-                                        Leave
-                                    </Button>
+                                    {team.canLeave ? (
+                                        <Button
+                                            className="ml-auto"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => setLeavingTeam(team)}
+                                        >
+                                            Leave
+                                        </Button>
+                                    ) : (
+                                        <span className="ml-auto text-muted-foreground">
+                                            {team.leaveBlockedReason}
+                                        </span>
+                                    )}
                                 </li>
                             ))}
                         </ul>
@@ -135,8 +160,9 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                     <CardHeader>
                         <CardTitle>Delete account</CardTitle>
                         <CardDescription>
-                            Revokes your API tokens and removes you from every
-                            team.
+                            Deletes the teams you own and everything in them,
+                            revokes your tokens, and removes you from every
+                            other team. This cannot be undone.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-3">
@@ -171,6 +197,23 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                     </CardContent>
                 </Card>
             </div>
+
+            <ConfirmDialog
+                open={leavingTeam !== null}
+                onOpenChange={(open) => !open && setLeavingTeam(null)}
+                title={`Leave ${leavingTeam?.name}?`}
+                description={`You lose access to everything shared in ${leavingTeam?.name}. An admin will need to invite you again.`}
+                confirmLabel="Leave team"
+                onConfirm={() => {
+                    if (leavingTeam) {
+                        router.delete(
+                            teamRoutes.leave.url({ team: leavingTeam.slug }),
+                        );
+                    }
+
+                    setLeavingTeam(null);
+                }}
+            />
         </>
     );
 }

@@ -103,3 +103,55 @@ test('account_page_lists_the_users_teams', function () {
     test()->actingAs($member)->get(route('account.show'))
         ->assertInertia(fn (Assert $page) => $page->where('teams.0.slug', $team->slug));
 });
+
+test('account_page_marks_the_personal_team_as_cannot_leave', function () {
+    $user = User::factory()->create();
+    $personal = Team::factory()->personal()->create();
+    $personal->forceFill(['owner_user_id' => $user->id])->save();
+    $personal->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    test()->actingAs($user)->get(route('account.show'))
+        ->assertInertia(fn (Assert $page) => $page->where('teams', function ($teams) use ($personal) {
+            $row = collect($teams)->firstWhere('slug', $personal->slug);
+
+            return $row['canLeave'] === false && $row['leaveBlockedReason'] === 'This is your personal team.';
+        }));
+});
+
+test('account_page_marks_an_owned_team_as_cannot_leave', function () {
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $team->forceFill(['owner_user_id' => $owner->id])->save();
+
+    test()->actingAs($owner)->get(route('account.show'))
+        ->assertInertia(fn (Assert $page) => $page->where('teams', function ($teams) use ($team) {
+            $row = collect($teams)->firstWhere('slug', $team->slug);
+
+            return $row['canLeave'] === false && $row['leaveBlockedReason'] === 'Transfer ownership first.';
+        }));
+});
+
+test('account_page_marks_a_team_where_the_user_is_a_plain_member_as_can_leave', function () {
+    $team = Team::factory()->create();
+    memberOfTeam($team, TeamRole::Admin);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->get(route('account.show'))
+        ->assertInertia(fn (Assert $page) => $page->where('teams', function ($teams) use ($team) {
+            $row = collect($teams)->firstWhere('slug', $team->slug);
+
+            return $row['canLeave'] === true && $row['leaveBlockedReason'] === null;
+        }));
+});
+
+test('account_page_marks_the_last_admin_as_cannot_leave', function () {
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->get(route('account.show'))
+        ->assertInertia(fn (Assert $page) => $page->where('teams', function ($teams) use ($team) {
+            $row = collect($teams)->firstWhere('slug', $team->slug);
+
+            return $row['canLeave'] === false && $row['leaveBlockedReason'] === 'Promote another admin first.';
+        }));
+});

@@ -1,4 +1,4 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Copy } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -10,6 +10,7 @@ import TeamDomainController from '@/actions/App/Http/Controllers/Teams/TeamDomai
 import TeamInvitationController from '@/actions/App/Http/Controllers/Teams/TeamInvitationController';
 import TeamMemberController from '@/actions/App/Http/Controllers/Teams/TeamMemberController';
 import TeamOwnerController from '@/actions/App/Http/Controllers/Teams/TeamOwnerController';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
     Dialog,
     DialogClose,
@@ -31,6 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
+import type { SharedProps } from '@/types/shared';
 
 interface Member {
     id: number;
@@ -106,6 +109,13 @@ export default function TeamEdit({
     const deleteForm = useForm({ name: '' });
     const [removing, setRemoving] = useState<Member | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [leaving, setLeaving] = useState(false);
+    const { errors } = usePage<SharedProps>().props;
+    // Errors already shown next to their field, so they are not repeated here.
+    const inlineErrorKeys = ['email', 'domain', 'auth_mode', 'name'];
+    const pageErrors = Object.entries(errors).filter(
+        ([key]) => !inlineErrorKeys.includes(key),
+    );
     const admins = members.filter(
         (member) => member.role === 'admin' && member.id !== viewer.id,
     );
@@ -138,6 +148,16 @@ export default function TeamEdit({
             </div>
 
             <div className="flex flex-col gap-6">
+                {pageErrors.length > 0 && (
+                    <Alert variant="destructive">
+                        <ul className="flex flex-col gap-1">
+                            {pageErrors.map(([key, message]) => (
+                                <li key={key}>{message}</li>
+                            ))}
+                        </ul>
+                    </Alert>
+                )}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Members</CardTitle>
@@ -586,13 +606,7 @@ export default function TeamEdit({
                             {viewer.canLeave && !viewer.isOwner && (
                                 <Button
                                     variant="outline"
-                                    onClick={() =>
-                                        router.delete(
-                                            teamRoutes.leave.url({
-                                                team: team.slug,
-                                            }),
-                                        )
-                                    }
+                                    onClick={() => setLeaving(true)}
                                 >
                                     Leave team
                                 </Button>
@@ -692,6 +706,18 @@ export default function TeamEdit({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog
+                open={leaving}
+                onOpenChange={setLeaving}
+                title={`Leave ${team.name}?`}
+                description={`You lose access to everything shared in ${team.name}. An admin will need to invite you again.`}
+                confirmLabel="Leave team"
+                onConfirm={() => {
+                    router.delete(teamRoutes.leave.url({ team: team.slug }));
+                    setLeaving(false);
+                }}
+            />
         </>
     );
 }
