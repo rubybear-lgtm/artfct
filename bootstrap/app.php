@@ -4,6 +4,7 @@ use App\Http\Middleware\CacheControl;
 use App\Http\Middleware\EnsureTermsAccepted;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NoIndexOutsideProduction;
+use App\Http\Middleware\PinRequestScheme;
 use App\Http\Middleware\RequireOrgScope;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use Illuminate\Foundation\Application;
@@ -34,6 +35,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Trusted proxies are configured in AppServiceProvider, not here: the list
         // comes from config/trusted_ingress.php, and this closure runs before the
         // config repository is bound (RUB-372).
+
+        // Runs first so the session, auth and terms gates see the configured
+        // https scheme when they store the current URL (see PinRequestScheme).
+        $middleware->prepend(PinRequestScheme::class);
 
         $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis', 'oauth/register', 'oauth/token', 'oauth/revoke']);
 

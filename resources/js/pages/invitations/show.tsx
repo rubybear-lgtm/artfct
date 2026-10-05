@@ -1,4 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
@@ -25,16 +26,45 @@ export default function InvitationShow({
     invitation,
     signedInAs,
 }: Props) {
+    // Stays true while the browser heads to sign-in, which can take a few
+    // seconds on a phone; without it the page looks idle and invites a second
+    // tap. Reset when the page is restored from the back/forward cache.
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        const reset = (event: PageTransitionEvent) =>
+            event.persisted && setBusy(false);
+        window.addEventListener('pageshow', reset);
+
+        return () => window.removeEventListener('pageshow', reset);
+    }, []);
+
+    const visitOptions = {
+        onStart: () => setBusy(true),
+        onError: () => setBusy(false),
+        onCancel: () => setBusy(false),
+        onNetworkError: () => setBusy(false),
+    };
+
     const accept = () =>
-        router.post(invitations.accept.url({ invitation: invitation.code }));
+        router.post(
+            invitations.accept.url({ invitation: invitation.code }),
+            {},
+            visitOptions,
+        );
     const decline = () =>
-        router.delete(invitations.decline.url({ invitation: invitation.code }));
-    const signOut = () => router.post(logout.url());
+        router.delete(
+            invitations.decline.url({ invitation: invitation.code }),
+            visitOptions,
+        );
+    const signOut = () => router.post(logout.url(), {}, visitOptions);
 
     const join = (account: 'new' | 'existing') =>
-        router.post(invitations.join.url({ invitation: invitation.code }), {
-            account,
-        });
+        router.post(
+            invitations.join.url({ invitation: invitation.code }),
+            { account },
+            visitOptions,
+        );
 
     return (
         <>
@@ -55,14 +85,15 @@ export default function InvitationShow({
 
             {state === 'sign_in' && (
                 <div className="flex flex-col gap-3">
-                    <Button onClick={() => join('new')}>
-                        Accept invitation
+                    <Button onClick={() => join('new')} disabled={busy}>
+                        {busy ? 'Opening sign-up…' : 'Accept invitation'}
                     </Button>
                     <p className="text-center text-sm text-muted-foreground">
                         Already have an account?{' '}
                         <button
                             type="button"
                             onClick={() => join('existing')}
+                            disabled={busy}
                             className="cursor-pointer font-semibold text-foreground underline underline-offset-4"
                         >
                             Sign in
@@ -73,8 +104,10 @@ export default function InvitationShow({
 
             {state === 'ready' && (
                 <div className="flex flex-col gap-3">
-                    <Button onClick={accept}>Accept invitation</Button>
-                    <Button variant="outline" onClick={decline}>
+                    <Button onClick={accept} disabled={busy}>
+                        {busy ? 'Joining…' : 'Accept invitation'}
+                    </Button>
+                    <Button variant="outline" onClick={decline} disabled={busy}>
                         Decline
                     </Button>
                 </div>
@@ -87,7 +120,9 @@ export default function InvitationShow({
                         the invitation link again and continue as{' '}
                         {invitation.email}.
                     </p>
-                    <Button onClick={signOut}>Sign out</Button>
+                    <Button onClick={signOut} disabled={busy}>
+                        Sign out
+                    </Button>
                 </div>
             )}
 

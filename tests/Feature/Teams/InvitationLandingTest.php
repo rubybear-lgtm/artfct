@@ -12,6 +12,7 @@ use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\AuthKitProfile;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
+use Illuminate\Support\Facades\URL;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function pendingInvitation(string $email = 'invitee@example.com', array $overrides = []): TeamInvitation
@@ -269,4 +270,20 @@ test('login_passes_only_valid_hints_to_workos', function () {
 test('dev_login_prefills_the_hinted_email', function () {
     test()->get(route('login', ['login_hint' => 'invitee@example.com']))
         ->assertInertia(fn (Assert $page) => $page->component('auth/login')->where('loginHint', 'invitee@example.com'));
+});
+
+test('the_terms_gate_returns_to_an_https_invitation_url_behind_an_untrusted_edge', function () {
+    config(['app.url' => 'https://staging.artfct.dev', 'legal.consent_required' => true]);
+    URL::forceRootUrl('https://staging.artfct.dev');
+    URL::forceScheme('https');
+
+    $invitation = pendingInvitation('invitee@example.com');
+    $user = User::factory()->create(['email' => 'invitee@example.com', 'terms_version' => null]);
+
+    // The Railway edge reaches the app over plain http and is not a trusted proxy.
+    test()->actingAs($user)->get('http://staging.artfct.dev/invitations/'.$invitation->code)
+        ->assertRedirect(route('terms.accept.show'));
+
+    test()->actingAs($user)->post('http://staging.artfct.dev/terms/accept', ['accepted' => true])
+        ->assertRedirect('https://staging.artfct.dev/invitations/'.$invitation->code);
 });
