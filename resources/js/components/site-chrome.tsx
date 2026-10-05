@@ -1,12 +1,51 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { useRef } from 'react';
-
 import { useAppTheme } from '@/lib/useAppTheme';
 import { blog, docs, home, login, privacy, terms } from '@/routes';
+import consoleRoutes from '@/routes/console';
+import onboardingRoutes from '@/routes/onboarding';
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 
 type SiteSection = 'docs' | 'blog';
+
+/**
+ * Account controls shared by the public site chrome. `auth.user` is the login
+ * state; `currentTeam` only chooses the destination once signed in, so a user
+ * without a team is still treated as signed in.
+ */
+export function useAccountNav(): {
+    isAuthenticated: boolean;
+    accountLabel: string;
+    accountUrl: string;
+} {
+    const { auth, currentTeam } = usePage<{
+        auth: { user: { id: number } | null };
+        currentTeam: { slug: string } | null;
+    }>().props;
+
+    if (!auth?.user) {
+        return {
+            isAuthenticated: false,
+            accountLabel: 'Try Team free',
+            accountUrl: login.url(),
+        };
+    }
+
+    if (currentTeam) {
+        return {
+            isAuthenticated: true,
+            accountLabel: 'Open console',
+            accountUrl: consoleRoutes.index.url({ team: currentTeam.slug }),
+        };
+    }
+
+    return {
+        isAuthenticated: true,
+        accountLabel: 'Create team',
+        accountUrl: onboardingRoutes.team.show.url(),
+    };
+}
 
 /** Wordmark shared by the site header and footer. */
 function Wordmark({ className = '' }: { className?: string }) {
@@ -31,6 +70,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
             section && active === section ? 'text-foreground' : ''
         }`;
     const phoneMenu = useRef<HTMLDetailsElement>(null);
+    const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
 
     return (
         <header className="border-b border-border">
@@ -91,13 +131,21 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                         </Link>
                     </div>
                 </details>
-                <div className="flex items-center gap-[18px] text-sm">
-                    <Link href={login.url()}>Sign in</Link>
+                <div
+                    className="flex items-center gap-[18px] text-sm"
+                    data-testid="site-account"
+                >
+                    {!isAuthenticated && (
+                        <Link href={login.url()} data-testid="site-signin">
+                            Sign in
+                        </Link>
+                    )}
                     <Link
-                        href={login.url()}
+                        href={accountUrl}
+                        data-testid="site-account-cta"
                         className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-deep"
                     >
-                        Try Team free
+                        {accountLabel}
                     </Link>
                 </div>
             </div>

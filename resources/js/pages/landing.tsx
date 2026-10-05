@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { useEffect, useRef } from 'react';
 
+import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
 
@@ -203,6 +204,7 @@ export default function Landing() {
     const page = useRef<HTMLDivElement>(null);
     const demo = useRef<HTMLDivElement>(null);
     const navMenu = useRef<HTMLDetailsElement>(null);
+    const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
     useHeroDemo(demo);
     useSettleOnScroll(page);
 
@@ -235,10 +237,22 @@ export default function Landing() {
                             <Link href={blog.url()}>Blog</Link>
                         </div>
                     </details>
-                    <div className="navright">
-                        <Link href={login.url()}>Sign in</Link>
+                    <div className="navright" data-testid="landing-account">
+                        {!isAuthenticated && (
+                            <Link
+                                href={login.url()}
+                                data-testid="landing-signin"
+                            >
+                                Sign in
+                            </Link>
+                        )}
                         <Button asChild className="btn btn-primary sm">
-                            <Link href={login.url()}>Try Team free</Link>
+                            <Link
+                                href={accountUrl}
+                                data-testid="landing-account-cta"
+                            >
+                                {accountLabel}
+                            </Link>
                         </Button>
                     </div>
                 </nav>
@@ -260,8 +274,11 @@ export default function Landing() {
                         </p>
                         <div className="cta">
                             <Button asChild className="btn btn-primary">
-                                <Link href={login.url()}>
-                                    Try Team free{' '}
+                                <Link
+                                    href={accountUrl}
+                                    data-testid="landing-hero-cta"
+                                >
+                                    {accountLabel}{' '}
                                     <span className="arrow">→</span>
                                 </Link>
                             </Button>
@@ -798,8 +815,11 @@ export default function Landing() {
                                     document in full.
                                 </p>
                                 <Button asChild className="btn btn-primary">
-                                    <Link href={login.url()}>
-                                        Try Team free
+                                    <Link
+                                        href={accountUrl}
+                                        data-testid="landing-pricing-cta"
+                                    >
+                                        {accountLabel}
                                     </Link>
                                 </Button>
                             </div>
@@ -828,8 +848,11 @@ export default function Landing() {
                         </p>
                         <div className="cta no-top-margin">
                             <Button asChild className="btn btn-primary">
-                                <Link href={login.url()}>
-                                    Try Team free{' '}
+                                <Link
+                                    href={accountUrl}
+                                    data-testid="landing-closing-cta"
+                                >
+                                    {accountLabel}{' '}
                                     <span className="arrow">→</span>
                                 </Link>
                             </Button>
