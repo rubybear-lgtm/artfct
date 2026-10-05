@@ -97,17 +97,25 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
     $collection->artifacts()->create(['artifact_id' => ARTIFACT_LINK_ID, 'added_at' => now()]);
 
     $openUrl = route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
+    $previewUrl = route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
 
     test()->actingAs($member)->get(route('teams.collections.index', $team))
         ->assertInertia(fn (Assert $page) => $page
             ->where('canOpenArtifacts', true)
             ->where('collections.0.artifactIds', [ARTIFACT_LINK_ID])
-            ->where('collections.0.openUrls.'.ARTIFACT_LINK_ID, $openUrl));
+            ->where('collections.0.openUrls.'.ARTIFACT_LINK_ID, $openUrl)
+            ->where('collections.0.previewUrls.'.ARTIFACT_LINK_ID, $previewUrl));
 
     config(['services.artifact_access.token_secret' => null]);
 
+    // A preview is independent of the signing secret and of the Open gate:
+    // it authorizes the viewer itself, so the row keeps a working preview URL
+    // even when opening would only 503 for a secure artifact.
     test()->actingAs($member)->get(route('teams.collections.index', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('canOpenArtifacts', false));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('canOpenArtifacts', false)
+            ->where('collections.0.openUrls.'.ARTIFACT_LINK_ID, $openUrl)
+            ->where('collections.0.previewUrls.'.ARTIFACT_LINK_ID, $previewUrl));
 });
 
 test('every_collection_action_flashes_a_toast', function () {

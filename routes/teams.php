@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\Teams\ArtifactPreviewController;
 use App\Http\Controllers\Teams\AuditLogController;
 use App\Http\Controllers\Teams\AuthenticationController;
 use App\Http\Controllers\Teams\AuthModeController;
@@ -69,6 +70,12 @@ Route::middleware(['auth'])->group(function () {
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
+
+    // Session-authenticated, inert preview of one artifact. It lives outside
+    // the membership middleware group on purpose: the controller resolves the
+    // caller's own team and answers a foreign org with the same generic 404 as
+    // a missing artifact, rather than a 403 that would confirm the org exists.
+    Route::get('settings/teams/{team}/artifacts/{artifactId}/preview', ArtifactPreviewController::class)->name('teams.artifacts.preview');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->middleware('throttle:team-creation')->name('teams.store');

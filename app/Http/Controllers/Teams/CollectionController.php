@@ -54,6 +54,16 @@ class CollectionController extends Controller
                     'openUrls' => $collection->artifacts->mapWithKeys(fn ($artifact): array => [
                         $artifact->artifact_id => ArtifactViewLink::forArtifact($team->slug, $artifact->artifact_id, null),
                     ])->all(),
+                    // Inert previews go through the app's session-authenticated
+                    // preview route: it authorizes the viewer and reads the
+                    // content server-side, so the page never needs the signing
+                    // secret and the URL never becomes a shareable credential.
+                    'previewUrls' => $collection->artifacts->mapWithKeys(fn ($artifact): array => [
+                        $artifact->artifact_id => route('teams.artifacts.preview', [
+                            'team' => $team->slug,
+                            'artifactId' => $artifact->artifact_id,
+                        ]),
+                    ])->all(),
                 ]),
         ]);
     }
