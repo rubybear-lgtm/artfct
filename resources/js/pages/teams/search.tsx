@@ -111,7 +111,7 @@ function SearchForm({
             {collections.length > 0 && (
                 <select
                     aria-label="Collection"
-                    className="rounded-md border border-border bg-background px-2"
+                    className="rounded-md border border-border bg-background px-2 max-md:min-h-[44px] max-md:text-base"
                     value={form.collection}
                     disabled={!indexingEnabled}
                     onChange={(e) =>
@@ -147,8 +147,10 @@ export default function Search({
     return (
         <>
             <Head title="Search" />
-            <h1 className="mb-1 text-2xl font-semibold">Search</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
+            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
+                Search
+            </h1>
+            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
                 Find artifacts across {team.name} by what they say, not just
                 their title.
             </p>
@@ -202,7 +204,7 @@ export default function Search({
                                 </p>
                             )}
                             <p className="text-sm">{result.snippet}</p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 {result.canonical && (
                                     <Badge variant="success">canonical</Badge>
                                 )}
@@ -212,7 +214,10 @@ export default function Search({
                                     </Badge>
                                 )}
                                 {result.repoUrl && (
-                                    <Badge variant="outline">
+                                    <Badge
+                                        variant="outline"
+                                        className="min-w-0 break-all"
+                                    >
                                         {result.repoUrl}
                                     </Badge>
                                 )}

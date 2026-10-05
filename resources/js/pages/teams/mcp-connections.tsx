@@ -200,8 +200,10 @@ export default function McpConnections({
     return (
         <>
             <Head title="AI tool connections" />
-            <h1 className="mb-1 text-2xl font-semibold">AI tool connections</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
+            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
+                AI tool connections
+            </h1>
+            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
                 Connect the AI tools your team uses so they can share to this
                 team and find what it has shared.
             </p>
@@ -558,11 +560,11 @@ export default function McpConnections({
 
                                             return (
                                                 <TableRow key={connection.id}>
-                                                    <TableCell>
-                                                        <div className="font-medium">
+                                                    <TableCell className="min-w-0">
+                                                        <div className="font-medium break-words">
                                                             {connection.name}
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className="text-xs break-words text-muted-foreground">
                                                             {
                                                                 connection.clientName
                                                             }
@@ -746,7 +748,7 @@ export default function McpConnections({
                                             <TableRow
                                                 key={`${entry.requestId ?? entry.tool}-${index}`}
                                             >
-                                                <TableCell className="font-mono text-xs">
+                                                <TableCell className="font-mono text-xs break-all">
                                                     {entry.tool}
                                                 </TableCell>
                                                 <TableCell>

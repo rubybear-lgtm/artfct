@@ -82,8 +82,10 @@ export default function Governance({
     return (
         <>
             <Head title="Governance" />
-            <h1 className="mb-1 text-2xl font-semibold">Governance</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
+            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
+                Governance
+            </h1>
+            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
                 How long {team.name} keeps artifacts, and which ones are
                 protected from deletion.
             </p>
@@ -193,7 +195,7 @@ export default function Governance({
                                         key={id}
                                         className="flex items-center gap-2"
                                     >
-                                        <span className="tabular-nums">
+                                        <span className="break-all tabular-nums">
                                             {id}
                                         </span>
                                         <Button
@@ -217,10 +219,14 @@ export default function Governance({
                                 {releaseError}
                             </p>
                         )}
-                        <form onSubmit={placeHold} className="flex gap-2">
+                        <form
+                            onSubmit={placeHold}
+                            className="flex min-w-0 flex-wrap gap-2"
+                        >
                             <Input
                                 aria-label="Artifact id to hold"
                                 placeholder="Artifact id"
+                                className="min-w-0 flex-1"
                                 disabled={!isEnterprise}
                                 value={hold.data.artifact_id}
                                 onChange={(e) =>

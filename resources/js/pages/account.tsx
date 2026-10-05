@@ -55,7 +55,9 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
     return (
         <>
             <Head title="Account" />
-            <h1 className="mb-6 text-2xl font-semibold">Account</h1>
+            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
+                Account
+            </h1>
 
             {pageErrors.length > 0 && (
                 <Alert variant="destructive" className="mb-6">
@@ -112,6 +114,7 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                                 {identities.map((identity) => (
                                     <li
                                         key={`${identity.provider}:${identity.email}`}
+                                        className="break-all"
                                     >
                                         {identity.provider} · {identity.email}
                                     </li>
@@ -130,9 +133,11 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                             {teams.map((team) => (
                                 <li
                                     key={team.slug}
-                                    className="flex items-center gap-3 py-2"
+                                    className="flex min-w-0 flex-wrap items-center gap-2 py-2"
                                 >
-                                    <span>{team.name}</span>
+                                    <span className="min-w-0 break-words">
+                                        {team.name}
+                                    </span>
                                     <span className="text-muted-foreground">
                                         {team.role}
                                     </span>
@@ -146,7 +151,7 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                                             Leave
                                         </Button>
                                     ) : (
-                                        <span className="ml-auto text-muted-foreground">
+                                        <span className="ml-auto min-w-0 break-words text-muted-foreground">
                                             {team.leaveBlockedReason}
                                         </span>
                                     )}

@@ -123,7 +123,9 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
     return (
         <>
             <Head title="API tokens" />
-            <h1 className="mb-6 text-2xl font-semibold">API tokens</h1>
+            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
+                API tokens
+            </h1>
 
             <div className="flex flex-col gap-6">
                 {canCreate && (
@@ -157,7 +159,7 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                     <Label htmlFor="token-role">Role</Label>
                                     <select
                                         id="token-role"
-                                        className="h-9 rounded-md border border-border bg-transparent px-2 text-sm"
+                                        className="h-9 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base"
                                         value={role}
                                         onChange={(e) =>
                                             setRole(e.target.value)
@@ -210,7 +212,9 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                 <tbody>
                                     {tokens.map((token) => (
                                         <TableRow key={token.id}>
-                                            <TableCell>{token.name}</TableCell>
+                                            <TableCell className="min-w-0 break-words">
+                                                {token.name}
+                                            </TableCell>
                                             <TableCell>{token.role}</TableCell>
                                             <TableCell className="tabular-nums">
                                                 …{token.lastFour}
