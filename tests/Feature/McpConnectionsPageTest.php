@@ -109,7 +109,8 @@ test('connection creators can revoke and the action is audited', function () {
     ]);
 
     test()->actingAs($creator)->delete(route('teams.mcp-connections.destroy', [$team, $connection->public_id]))
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'AI tool disconnected.']);
 
     expect($connection->fresh()->revoked_at)->not->toBeNull()
         ->and(AuditEvent::query()
@@ -260,12 +261,36 @@ test('revoking a connection fails closed when worker propagation fails', functio
         'mcp_connection_id' => $connection->id,
     ]);
 
-    test()->actingAs($owner)->delete(route('teams.mcp-connections.destroy', [$team, $connection->public_id]))
+    test()->actingAs($owner)->deleteJson(route('teams.mcp-connections.destroy', [$team, $connection->public_id]))
         ->assertStatus(503);
 
     expect($connection->fresh()->revoked_at)->toBeNull()
         ->and($orgToken->fresh()->revoked_at)->toBeNull()
         ->and($refreshToken->fresh()->revoked_at)->toBeNull();
+});
+
+test('a failed page-visit revocation redirects with an error toast instead of a 503', function () {
+    configureOrgJwt();
+    Http::fake(['https://worker.test/v1/internal/revocations' => Http::response([], 503)]);
+
+    $team = Team::factory()->create();
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $connection = McpConnection::factory()->create(['team_id' => $team->id, 'user_id' => $owner->id]);
+    $orgToken = OrgToken::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $owner->id,
+        'mcp_connection_id' => $connection->id,
+    ]);
+
+    test()->actingAs($owner)->delete(route('teams.mcp-connections.destroy', [$team, $connection->public_id]))
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', [
+            'type' => 'error',
+            'message' => "Couldn't disconnect it right now. It still works, so try again in a minute.",
+        ]);
+
+    expect($connection->fresh()->revoked_at)->toBeNull()
+        ->and($orgToken->fresh()->revoked_at)->toBeNull();
 });
 
 test('example', function () {

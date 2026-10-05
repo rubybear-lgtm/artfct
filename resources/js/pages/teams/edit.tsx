@@ -109,6 +109,8 @@ export default function TeamEdit({
     const authModeForm = useForm({ auth_mode: team.authMode });
     const deleteForm = useForm({ name: '' });
     const [removing, setRemoving] = useState<Member | null>(null);
+    const [cancellingInvitation, setCancellingInvitation] =
+        useState<Invitation | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [leaving, setLeaving] = useState(false);
     const { errors } = usePage<SharedProps>().props;
@@ -447,14 +449,8 @@ export default function TeamEdit({
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() =>
-                                                            router.delete(
-                                                                TeamInvitationController.destroy.url(
-                                                                    {
-                                                                        team: team.slug,
-                                                                        invitation:
-                                                                            invitation.code,
-                                                                    },
-                                                                ),
+                                                            setCancellingInvitation(
+                                                                invitation,
                                                             )
                                                         }
                                                     >
@@ -774,6 +770,27 @@ export default function TeamEdit({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog
+                open={cancellingInvitation !== null}
+                onOpenChange={(open) => !open && setCancellingInvitation(null)}
+                title={`Cancel the invitation to ${cancellingInvitation?.email}?`}
+                description="The link in their email will stop working."
+                confirmLabel="Cancel invitation"
+                cancelLabel="Keep invitation"
+                onConfirm={() => {
+                    if (cancellingInvitation) {
+                        router.delete(
+                            TeamInvitationController.destroy.url({
+                                team: team.slug,
+                                invitation: cancellingInvitation.code,
+                            }),
+                        );
+                    }
+
+                    setCancellingInvitation(null);
+                }}
+            />
 
             <ConfirmDialog
                 open={leaving}

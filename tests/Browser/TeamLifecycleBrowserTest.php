@@ -110,7 +110,7 @@ test('invite_resend_revoke_flow', function () {
 
     expect($invitation->fresh()->code)->not->toBe($oldCode);
 
-    $page->click('Cancel')->wait(1)->assertDontSee('pending@example.com')->assertNoJavaScriptErrors();
+    $page->click('Cancel')->click('Cancel invitation')->wait(1)->assertDontSee('pending@example.com')->assertNoJavaScriptErrors();
 
     expect($team->invitations()->count())->toBe(0);
 });

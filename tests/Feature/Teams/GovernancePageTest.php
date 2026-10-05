@@ -5,6 +5,8 @@ use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Team;
+use App\Services\Billing\PlanGateException;
+use App\Services\Governance\ArtifactGovernanceContract;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function governanceTeam(Plan $plan = Plan::Enterprise): array
@@ -47,9 +49,23 @@ test('holds_can_be_placed_and_released_on_enterprise', function () {
     [$team, $admin] = governanceTeam();
 
     test()->actingAs($admin)->post(route('teams.governance.holds.place', $team), ['artifact_id' => 'art1'])->assertRedirect();
-    test()->actingAs($admin)->delete(route('teams.governance.holds.release', [$team, 'art1']))->assertRedirect();
+    test()->actingAs($admin)->delete(route('teams.governance.holds.release', [$team, 'art1']))
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'Hold released.']);
 
     expect(AuditEvent::query()->where('team_id', $team->id)->where('event_type', AuditEventType::LegalHoldApplied)->count())->toBe(2);
+});
+
+test('a_release_refused_by_the_plan_gate_reports_the_error_on_artifact_id', function () {
+    [$team, $admin] = governanceTeam(Plan::Team);
+
+    $governance = Mockery::mock(ArtifactGovernanceContract::class);
+    $governance->shouldReceive('releaseLegalHold')->once()
+        ->andThrow(new PlanGateException('Legal hold'));
+    app()->instance(ArtifactGovernanceContract::class, $governance);
+
+    test()->actingAs($admin)->delete(route('teams.governance.holds.release', [$team, 'art1']))
+        ->assertSessionHasErrors('artifact_id');
 });
 
 test('placing_a_hold_on_a_team_plan_is_refused', function () {
