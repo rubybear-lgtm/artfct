@@ -7,7 +7,6 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Route;
 
 uses(RefreshDatabase::class);
 
@@ -128,21 +127,12 @@ test('following_the_console_open_link_reaches_the_public_artifact_url_without_a_
 
     $page = visit(consoleUrl($team))->assertNoJavaScriptErrors();
 
-    // A public artifact is served by the Worker to anyone, so the browser is
-    // sent straight to that URL and no token is minted for it. Pointing the
-    // public base at this harness is what makes the hop followable here.
+    // RUB-439: the console's open link lands on the short viewer link for
+    // every sharing level. A public artifact needs no token, so none is minted
+    // and none appears in the URL.
     $harness = (string) config('app.url');
 
     expect($harness)->toStartWith('http://127.0.0.1');
-
-    config(['app.public_base_url' => $harness]);
-
-    // The Worker's half of that origin: the harness runs no Worker, so the
-    // artifact's public URL is stood up here to prove the browser completes the
-    // hop and renders what the link points at.
-    Route::get('/p/{artifact}', fn (string $artifact) => response(
-        '<!doctype html><title>RUB367 artifact</title><h1>RUB367 artifact body '.$artifact.'</h1>'
-    ));
 
     $href = $page->attribute('@open-artifact-title', 'href');
 
@@ -150,10 +140,8 @@ test('following_the_console_open_link_reaches_the_public_artifact_url_without_a_
 
     $page->navigate($href)
         ->assertNoJavaScriptErrors()
-        ->assertPathIs('/p/'.ARTIFACT_LINK_ID.'/')
-        ->assertQueryStringMissing('token')
-        ->assertSee('RUB367 artifact body')
-        ->assertSee(ARTIFACT_LINK_ID);
+        ->assertPathIs('/a/'.ARTIFACT_LINK_ID)
+        ->assertQueryStringMissing('token');
 
     expect($page->url())->toStartWith($harness)
         ->and($page->url())->not->toContain('token');
