@@ -5,6 +5,7 @@ use App\Http\Controllers\ArtifactVersionController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\Teams\AdminOverviewController;
 use App\Http\Controllers\Teams\ArtifactPreviewController;
 use App\Http\Controllers\Teams\AuditLogController;
 use App\Http\Controllers\Teams\AuthenticationController;
@@ -47,6 +48,7 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('invitations/{invitation}', [TeamInvitationController::class, 'decline'])->name('invitations.decline');
 
     // Console routes (manually resolve team for 404 on cross-org access, not 403)
+    Route::get('settings/teams/{team}/admin', AdminOverviewController::class)->name('teams.admin.show');
     Route::get('settings/teams/{team}/billing', [BillingController::class, 'show'])->name('teams.billing.show');
     Route::post('settings/teams/{team}/billing/cancel', [BillingController::class, 'cancel'])->name('teams.billing.cancel');
     Route::get('settings/teams/{team}/collections', [CollectionController::class, 'index'])->name('teams.collections.index');

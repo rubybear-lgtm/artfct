@@ -14,6 +14,8 @@ export type CurrentTeam = {
     plan: 'free' | 'team' | 'enterprise';
     paymentStatus: 'active' | 'past_due';
     isOwner: boolean;
+    role: 'admin' | 'member' | 'viewer' | null;
+    isAdmin: boolean;
 } | null;
 
 export type QuotaDimension = {

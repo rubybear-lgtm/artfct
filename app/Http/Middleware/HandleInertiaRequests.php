@@ -96,6 +96,8 @@ class HandleInertiaRequests extends Middleware
                     'plan' => ($team->plan ?? Plan::Free)->value,
                     'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
                     'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
+                    'role' => $request->user()->teamRole($team)?->value,
+                    'isAdmin' => $request->user()->isAdminOf($team),
                 ];
             },
         ];

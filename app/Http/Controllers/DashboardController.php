@@ -63,7 +63,8 @@ class DashboardController extends Controller
 
     /**
      * Which first-run steps the current team has completed, or null when the
-     * user has no current team yet.
+     * user has no current team yet or is not one of its admins: the checklist
+     * is the admin's setup work, so teammates never see it.
      *
      * @return array{invitedTeammates: bool, createdToken: bool, connectedMcp: bool, choseAPlan: bool}|null
      */
@@ -71,7 +72,7 @@ class DashboardController extends Controller
     {
         $team = $request->user()->currentTeam;
 
-        if ($team === null) {
+        if ($team === null || ! $request->user()->isAdminOf($team)) {
             return null;
         }
 
