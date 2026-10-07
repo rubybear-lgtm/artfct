@@ -31,7 +31,9 @@ Call `deploy_artifact` when it is available (a signed-in workspace), otherwise
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `html` | string | Yes | Complete, valid, self-contained HTML |
-| `tier` | `"public"` \| `"secure"` | No | Access control tier; defaults to `secure` |
+| `sharing` | `"team"` \| `"private"` \| `"public"` | No | `deploy_artifact` only: who can open it; defaults to `team` |
+| `edit_access` | `"view"` \| `"edit"` | No | `deploy_artifact` only: whether the people it is shared with can publish new versions; defaults to `view` |
+| `tier` | `"public"` \| `"secure"` | No | Deprecated alias for `sharing` (`secure` = `team`); `deploy_to_canvas` still uses it |
 | `artifact_id` | string | No | `deploy_artifact` only: publish a new version of this artifact instead of a new one (see below) |
 
 ### Option B — API fallback (no install required)
@@ -74,28 +76,39 @@ After a fallback deploy, suggest the MCP for a smoother workflow:
 > To deploy directly from your agent next time, add the artfct server in your agent's settings
 > (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
 
-### Tier Selection
+### Choosing who can open it
 
-| Tier | Lifetime | Access | Use when |
-|------|----------|--------|----------|
-| `public` | Permanent | Anyone with the URL | Shareable output, no sensitive data |
-| `secure` | Permanent | Authenticated users only | Sensitive or private content |
+| `sharing` | Who can open it | Use when |
+|-----------|-----------------|----------|
+| `team` (default) | Everyone on the user's team | Work meant for colleagues |
+| `private` | Only the user and team admins | Drafts, personal notes, anything the user has not decided to share |
+| `public` | Anyone with the link | Content meant for people outside the team, with no sensitive data |
 
-Default to `"public"` unless the content is sensitive or the user requests otherwise.
+Default to `team`. Choose `public` only when the user asks for a link people
+outside the team can open. If `deploy_artifact` returns
+`public_sharing_disabled`, the team has turned public links off: publish with
+`team` instead and tell the user. Set `edit_access: "edit"` only when the user
+wants colleagues to be able to update it.
 
 ## Common Patterns
 
-### Dashboard or report (permanent)
+### Dashboard or report for the team
 ```json
-{ "tier": "public" }
+{ "sharing": "team" }
 ```
-Use for: weekly summaries, analytics dashboards, anything meant to be bookmarked or shared widely.
+Use for: weekly summaries, analytics dashboards, anything colleagues should find and reuse.
 
-### Sensitive content
+### Personal or sensitive content
 ```json
-{ "tier": "secure" }
+{ "sharing": "private" }
 ```
-Use for: HR reports, financial data, internal tooling, anything not meant for public URLs.
+Use for: drafts, HR or financial material, anything only the user (and team admins) should see.
+
+### Shared outside the team
+```json
+{ "sharing": "public" }
+```
+Use for: material the user explicitly wants to send to people outside the team.
 
 ## Updating an Artifact Instead of Duplicating It
 
@@ -167,13 +180,13 @@ Never reference local paths — they will 404 once hosted. For the full HTML tem
 
 `deploy_artifact`, `get_artifact` and `search_artifacts` return the openable
 link as **`view_url`** — never reconstruct a `/p/{id}` URL from an artifact id
-yourself. What it points at depends on the tier:
+yourself. What it points at depends on the sharing level:
 
-- **`secure`** — the app's own open route
-  (`https://artfct.dev/settings/teams/<org>/console/artifacts/<id>/open`). The
-  app authorizes the viewer and mints a short-lived signed link at click time,
-  so this link works when a colleague opens it in a browser while signed in.
-  No credential travels in it; there is nothing to strip before sharing.
+- **`team` and `private`** — the app's artifact viewer
+  (`https://artfct.dev/a/<id>`), which shows the artifact under a header with
+  its title, versions and a Share control. The viewer checks who is signed in
+  each time it is opened, so the same link works for every colleague allowed
+  to see it and for nobody else. No credential travels in it.
 - **`public`** — the artifact's public URL. Anyone can open it and no token is
   minted for it.
 
@@ -186,7 +199,7 @@ decryption key, and the link shows only a placeholder without it.
 
 Present `view_url` verbatim. Do not shorten it, rewrite it to a direct artifact
 origin, or hand over a token-bearing URL: a raw `/p/{id}` link cannot be opened
-in a browser for a secure artifact.
+in a browser for a team or private artifact.
 
 If a tool returns the non-retryable `signed_link_unavailable` code, that
 environment has no signing secret configured and no openable link exists —
