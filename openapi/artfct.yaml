@@ -39,7 +39,7 @@
                 "required": ["id", "type", "org_id", "occurred_at", "data"],
                 "properties": {
                   "id": { "type": "string", "format": "uuid" },
-                  "type": { "type": "string", "examples": ["artifact.created", "artifact.viewed"] },
+                  "type": { "type": "string", "examples": ["artifact.created", "artifact.version_created", "artifact.viewed"] },
                   "org_id": { "type": "string" },
                   "occurred_at": { "type": "string", "format": "date-time" },
                   "data": { "type": "object" }
@@ -314,6 +314,132 @@
         }
       }
     },
+    "/v1/artifacts/{id}/versions": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Artifacts"],
+        "summary": "List an artifact's versions",
+        "description": "Completed versions of a permanent artifact in the credential's organization, newest first. Another organization's artifact is 404.",
+        "operationId": "listArtifactVersions",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Version history.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["Artifacts"],
+        "summary": "Publish a new version of an artifact",
+        "description": "Starts a new version with the same stable id, link, collections and usage history. Identical bytes to the current version are a no-op (created: false). Missing files are uploaded with PUT /v1/artifacts/{id}/files/{sha256}; the version becomes current, and is re-indexed, once every file is present. Only the owner (or, once sharing lands, people the artifact is shared with edit permission) may publish; others get 403 forbidden.",
+        "operationId": "createArtifactVersion",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Identical bytes to the current version; nothing created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionResponse" } } }
+          },
+          "201": {
+            "description": "Version created (current immediately when missing_files is empty, otherwise pending upload).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/artifacts/{id}/versions/{version}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+      ],
+      "get": {
+        "tags": ["Artifacts"],
+        "summary": "Read one version's metadata",
+        "operationId": "getArtifactVersion",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Version metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersion" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/artifacts/{id}/versions/{version}/restore": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+      ],
+      "post": {
+        "tags": ["Artifacts"],
+        "summary": "Restore a past version",
+        "description": "Publishes a past version's content as a new version (history is append-only). Its blobs already exist, so the new version is current immediately. Restoring the current version is a no-op (created: false). Same permission rule as publishing a version.",
+        "operationId": "restoreArtifactVersion",
+        "security": [{ "orgToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Already the current content; nothing created.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionResponse" } } }
+          },
+          "201": {
+            "description": "Restored as a new current version.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactVersionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/p/{id}/v:{version}/{path}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" },
+        { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+        { "$ref": "#/components/parameters/RelativePath" }
+      ],
+      "get": {
+        "tags": ["Previews"],
+        "summary": "Serve a file from a specific version of a permanent artifact",
+        "description": "Same access rules as /p/{id}/{path}, served from the named version. An empty path serves the version's entrypoint (/p/{id}/v:{version}/). The v: segment cannot collide with a bundle path because manifest paths may not contain a colon.",
+        "operationId": "renderArtifactVersionFile",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Bundle file bytes.",
+            "headers": {
+              "X-Content-Type-Options": {
+                "schema": { "type": "string", "const": "nosniff" }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/blobs/{sha256}": {
       "parameters": [
         { "$ref": "#/components/parameters/Sha256" }
@@ -452,9 +578,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["id", "content_type", "provenance", "content"],
+                  "required": ["id", "content_type", "provenance", "content", "version"],
                   "properties": {
                     "id": { "type": "string" },
+                    "version": { "type": "integer", "minimum": 1, "description": "The current version whose entrypoint is returned." },
                     "content_type": { "type": "string" },
                     "provenance": {
                       "type": "object",
@@ -1087,10 +1214,10 @@
         "name": "id",
         "in": "path",
         "required": true,
-        "description": "Artifact identifier.",
+        "description": "Artifact identifier: a 10-character ephemeral id, a 13-character lowercase base36 stable id (new permanent artifacts), or a 32-character hex id (permanent artifacts published before versioning). The stable id survives new versions.",
         "schema": {
           "type": "string",
-          "pattern": "^(?:[A-Za-z0-9]{10}|[a-f0-9]{32})$"
+          "pattern": "^(?:[A-Za-z0-9]{10}|[a-z0-9]{13}|[a-f0-9]{32})$"
         }
       },
       "OrganizationId": {
@@ -1140,6 +1267,14 @@
       },
       "Forbidden": {
         "description": "The authenticated principal cannot access this organization or artifact.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Another new version of this artifact was being published at the same moment. Retry the request.",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
@@ -1372,10 +1507,13 @@
       },
     "ArtifactMetadata": {
         "type": "object",
-        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description"],
+        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at"],
         "properties": {
           "id": { "type": "string" },
           "tier": { "type": "string", "enum": ["public", "secure", "ephemeral"] },
+          "version": { "type": "integer", "minimum": 1, "description": "The current (served and indexed) version number." },
+          "version_count": { "type": "integer", "minimum": 1, "description": "Number of completed versions." },
+          "updated_at": { "type": "string", "format": "date-time", "description": "When the current version was published." },
           "entrypoint": { "type": "string" },
           "created_at": { "type": "string", "format": "date-time" },
           "expires_at": { "type": ["string", "null"], "format": "date-time" },
@@ -1682,11 +1820,12 @@
       "PermanentArtifactResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "url", "tier", "missing_files"],
+        "required": ["id", "url", "tier", "missing_files", "version"],
         "properties": {
           "id": { "type": "string" },
           "url": { "type": "string", "format": "uri" },
           "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "version": { "type": "integer", "minimum": 1, "description": "The version this upload creates, or the existing current version when identical bytes were re-posted." },
           "missing_files": {
             "type": "array",
             "uniqueItems": true,
@@ -1695,6 +1834,63 @@
               "pattern": "^[a-f0-9]{64}$"
             }
           }
+        }
+      },
+      "ArtifactVersionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "description", "thumbnail", "preview_blurred", "manifest", "provenance"],
+        "description": "A new version of an existing permanent artifact. Same bundle fields as PermanentArtifactRequest; the sharing tier is not changed by a new version.",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "thumbnail": { "type": "string", "format": "uri" },
+          "preview_blurred": { "type": "boolean" },
+          "manifest": { "$ref": "#/components/schemas/Manifest" },
+          "provenance": { "$ref": "#/components/schemas/Provenance" }
+        }
+      },
+      "ArtifactVersionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version", "url", "created", "missing_files"],
+        "properties": {
+          "id": { "type": "string", "description": "The artifact's stable id (unchanged)." },
+          "version": { "type": "integer", "minimum": 1 },
+          "url": { "type": "string", "format": "uri", "description": "The artifact's current URL (/p/{id}/)." },
+          "created": { "type": "boolean", "description": "False when the bytes were identical to the current version: nothing was created and version is the current one." },
+          "missing_files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "description": "Files to upload with PUT /v1/artifacts/{id}/files/{sha256} before the version becomes current. Empty means the version is already current."
+          }
+        }
+      },
+      "ArtifactVersion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "created_at", "created_by", "agent", "title", "description", "content_hash", "current"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "created_by": { "type": ["string", "null"], "description": "User id of the publisher; null for versions published before owners were recorded." },
+          "agent": { "type": ["string", "null"], "description": "Publishing agent from provenance." },
+          "title": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "current": { "type": "boolean" },
+          "restored_from": { "type": ["integer", "null"], "description": "The version this one restored, if it was created by a restore." }
+        }
+      },
+      "ArtifactVersionList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "current_version", "versions"],
+        "properties": {
+          "id": { "type": "string" },
+          "current_version": { "type": "integer", "minimum": 1 },
+          "versions": { "type": "array", "items": { "$ref": "#/components/schemas/ArtifactVersion" }, "description": "Completed versions, newest first. Versions whose upload is still pending are omitted." }
         }
       },
       "UpdateArtifactRequest": {
@@ -1767,7 +1963,9 @@
           "internal_error",
           "authentication_required",
           "rate_limited",
-          "quota_exceeded"
+          "quota_exceeded",
+          "version_conflict",
+          "version_not_found"
         ]
       }
     }
