@@ -35,9 +35,9 @@ use artifact_origin::{
 };
 use artifact_routes::{
     constant_time_equal, create_permanent_artifact, decide_org_read, delete_artifact,
-    get_artifact_metadata, get_org_artifact_content, list_org_artifacts, parse_content_path,
-    parse_sharing_path, resolve_permanent_artifact, update_artifact_sharing, upload_permanent_file,
-    write_revocation, OrgReadDecision,
+    get_artifact_metadata, get_org_artifact_content, get_public_artifact_metadata,
+    list_org_artifacts, parse_content_path, parse_sharing_path, resolve_permanent_artifact,
+    update_artifact_sharing, upload_permanent_file, write_revocation, OrgReadDecision,
 };
 #[cfg(test)]
 use artifact_routes::{
@@ -452,6 +452,9 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         (Method::Get, path) if parse_usage_path(path).is_some() => {
             get_org_usage(path, &req, &env).await
         }
+        (Method::Get, path) if path.starts_with("/v1/public/artifacts/") => {
+            get_public_artifact_metadata(path, &env).await
+        }
         (Method::Get, path) if path.starts_with("/v1/artifacts/") && !path.contains("/files/") => {
             get_artifact_metadata(path, &req, &env).await
         }
@@ -686,7 +689,9 @@ mod tests {
         permanent_file_response_headers, verified_token_viewer, verify_access_token,
         IsolatedAccess, TokenViewer,
     };
-    use crate::artifact_routes::isolated_access_for_artifact;
+    use crate::artifact_routes::{
+        build_public_artifact_metadata, isolated_access_for_artifact, public_entrypoint_redirect,
+    };
     use crate::governance_routes::{
         decode_governance_cursor, encode_governance_cursor, governance_authorized,
         parse_governance_path, GovernanceRoute,
@@ -2702,6 +2707,81 @@ mod tests {
             verified_token_viewer(Some(secret), &expired, artifact_id, now),
             None
         );
+    }
+
+    #[test]
+    fn only_browser_navigations_to_public_entrypoints_redirect_to_the_viewer() {
+        let app = Some("https://artfct.dev");
+        let id = "0123456789abc";
+        let redirect = |app: Option<&str>,
+                        shared: bool,
+                        navigation: bool,
+                        path: Option<&str>,
+                        sharing: Sharing,
+                        version: Option<u32>| {
+            public_entrypoint_redirect(app, shared, navigation, path, sharing, id, version)
+        };
+        assert_eq!(
+            redirect(app, true, true, None, Sharing::Public, None),
+            Some("https://artfct.dev/a/0123456789abc".to_string())
+        );
+        assert_eq!(
+            redirect(app, true, true, None, Sharing::Public, Some(3)),
+            Some("https://artfct.dev/a/0123456789abc/v/3".to_string())
+        );
+        // Programmatic fetches and iframe embeds keep receiving the artifact.
+        assert_eq!(
+            redirect(app, true, false, None, Sharing::Public, None),
+            None
+        );
+        // Isolated hosts serve the artifact itself (the viewer frames them).
+        assert_eq!(
+            redirect(app, false, true, None, Sharing::Public, None),
+            None
+        );
+        // Bundle files keep loading from the shared origin.
+        assert_eq!(
+            redirect(app, true, true, Some("app.js"), Sharing::Public, None),
+            None
+        );
+        // Team and private keep the uniform 404 / credential path.
+        for sharing in [Sharing::Team, Sharing::Private] {
+            assert_eq!(redirect(app, true, true, None, sharing, None), None);
+        }
+        // No app origin configured: serve as before.
+        assert_eq!(
+            redirect(None, true, true, None, Sharing::Public, None),
+            None
+        );
+    }
+
+    #[test]
+    fn public_artifact_metadata_matches_documented_schema() {
+        let contract = openapi_contract();
+        let body = build_public_artifact_metadata(
+            "0123456789abc",
+            "acme",
+            Some("Q3 report"),
+            None,
+            2,
+            2,
+            "2026-10-07T00:00:00Z",
+            EditAccess::Edit,
+        );
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/public/artifacts/{id}",
+                "get",
+                "200",
+                "application/json",
+            ),
+            &body,
+        )
+        .unwrap();
+        assert_eq!(body["sharing"], "public");
+        assert_eq!(body["edit_access"], "edit");
     }
 
     #[test]
