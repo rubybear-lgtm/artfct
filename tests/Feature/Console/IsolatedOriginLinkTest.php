@@ -76,7 +76,7 @@ test('the console link opens the artifact on its isolated origin', function () {
     expect($created->status())->toBe(201, 'artifact create failed: '.$created->body());
 
     $artifactId = (string) $created->json('id');
-    expect($artifactId)->toMatch('/^[0-9a-f]{32}$/');
+    expect($artifactId)->toMatch('/\A[a-z0-9]{13}\z/');
 
     $upload = Http::withToken($token)
         ->withBody($bytes, 'text/html; charset=utf-8')

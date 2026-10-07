@@ -50,7 +50,7 @@ test('live_js_heavy_artifact_indexes_post_hydration_text', function () {
         'provenance' => ['agent' => 'pest-live-indexing'],
     ])->throw();
     $id = $created->json('id');
-    expect($id)->toMatch('/^[0-9a-f]{32}$/');
+    expect($id)->toMatch('/\A[a-z0-9]{13}\z/');
     foreach ($files as $file) {
         $sha256 = hash('sha256', $file['body']);
         if (in_array($sha256, $created->json('missing_files', []), true)) {
