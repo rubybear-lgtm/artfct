@@ -3,6 +3,7 @@
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LegalController;
+use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
@@ -70,6 +71,8 @@ Route::get('/free', fn () => Inertia::render('welcome', [
 ]))->name('free');
 
 Route::get('/docs', DocsController::class)->name('docs');
+Route::get('/llms.txt', [LlmsTextController::class, 'index'])->name('llms.index');
+Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.full');
 
 Route::get('/terms', [LegalController::class, 'terms'])->name('terms');
 Route::get('/privacy', [LegalController::class, 'privacy'])->name('privacy');

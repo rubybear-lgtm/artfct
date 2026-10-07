@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AiToolSetup;
 use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -18,8 +19,9 @@ class DocsController extends Controller
         return Inertia::render('docs', [
             'meta' => [
                 'title' => 'Documentation — Artfct',
-                'description' => 'REST API reference and MCP setup for artfct. Create, serve, and manage HTML artifacts programmatically.',
+                'description' => 'Connect Claude, ChatGPT, Cursor, Codex and other AI tools to Artfct in about a minute, then use skills and the REST API.',
             ],
+            'setup' => fn (): array => AiToolSetup::forCurrentEnvironment()->toArray(),
             'contract' => function (): array {
                 $contract = json_decode(
                     File::get(base_path('openapi/artfct.yaml')),

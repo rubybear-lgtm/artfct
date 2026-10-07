@@ -2,7 +2,6 @@ import { Head, Link } from '@inertiajs/react';
 import {
     useCallback,
     useEffect,
-    useMemo,
     useRef,
     useState,
     useSyncExternalStore,
@@ -13,64 +12,29 @@ import { GITHUB, SitePage } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { login, privacy, terms } from '@/routes';
 
-// ── Skills content ───────────────────────────────────────────────────────────
-const SKILLS_INSTALL = `npx skills add rubybear-lgtm/artfct@artfct`;
+// ── AI tool setup (from App\\Support\\AiToolSetup) ─────────────────────────
+type SetupStep = { text: string; code?: string };
 
-const PERMISSIONS = [
-    {
-        name: 'artifacts:read',
-        type: 'Find and read',
-        note: 'Search your team’s artifacts and open their details.',
-    },
-    {
-        name: 'artifacts:deploy',
-        type: 'Publish',
-        note: 'Save new artifacts to your team.',
-    },
-    {
-        name: 'artifacts:delete',
-        type: 'Delete',
-        note: 'Remove artifacts, when your team’s rules allow it.',
-    },
-    {
-        name: 'collections:read',
-        type: 'See collections',
-        note: 'List your team’s collections.',
-    },
-    {
-        name: 'collections:write',
-        type: 'Organize',
-        note: 'Create collections and add artifacts to them.',
-    },
-    {
-        name: 'usage:read',
-        type: 'See usage',
-        note: 'Read storage and quota totals for your team.',
-    },
-] as const;
+type ConnectionGuide = {
+    id: string;
+    label: string;
+    verified: boolean;
+    intro?: string;
+    steps: SetupStep[];
+};
 
-const TROUBLESHOOTING = [
-    {
-        name: 'The sign-in did not open, or access expired',
-        type: 'Sign in again',
-        note: 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. Antigravity: type /mcp in agy and choose artfct.',
-    },
-    {
-        name: 'Connected to the wrong team',
-        type: 'Sign out, then in',
-        note: 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.',
-    },
-    {
-        name: 'Your tool says it is being rate limited',
-        type: 'Wait a moment',
-        note: 'Wait as long as your tool reports, then try again.',
-    },
-    {
-        name: 'An administrator removed or reset the connection',
-        type: 'Sign in again',
-        note: 'Repeat the sign-in step for your tool and approve access again. If you have left the team, ask an administrator to invite you back.',
-    },
-] as const;
+type AiToolSetup = {
+    mcpUrl: string;
+    llmsUrl: string;
+    llmsFullUrl: string;
+    quickInstall: string;
+    guides: ConnectionGuide[];
+    tools: Array<{ name: string; does: string; permission: string }>;
+    permissions: Array<{ name: string; type: string; note: string }>;
+    troubleshooting: Array<{ name: string; type: string; note: string }>;
+    skills: Array<{ name: string; install: string; note: string }>;
+    projectInstructions: string;
+};
 
 type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
@@ -129,6 +93,7 @@ type OpenApiDocument = {
 
 type DocsProps = {
     contract: OpenApiDocument;
+    setup: AiToolSetup;
 };
 
 const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'patch', 'delete', 'put'];
@@ -608,164 +573,62 @@ function Step({ children }: { children: React.ReactNode }) {
     );
 }
 
-type ConnectionGuide = {
-    id: string;
-    label: string;
-    steps: React.ReactNode;
-};
+/** Renders `backticked` spans in setup text as inline code. */
+function Inline({ text }: { text: string }) {
+    return (
+        <>
+            {text
+                .split(/(`[^`]+`)/)
+                .map((part, index) =>
+                    part.startsWith('`') && part.endsWith('`') ? (
+                        <Code key={index}>{part.slice(1, -1)}</Code>
+                    ) : (
+                        part
+                    ),
+                )}
+        </>
+    );
+}
 
-/**
- * Setup steps for each AI tool that has completed browser sign-in and a tool
- * call against staging (see docs/mcp-runbook.md, "Client compatibility").
- * Everything else lives under "Other tools" until it has been verified.
- */
-function connectionGuides(mcpUrl: string, baseUrl: string): ConnectionGuide[] {
-    return [
-        {
-            id: 'connect-claude-code',
-            label: 'Claude Code',
-            steps: (
-                <Steps>
-                    <Step>
-                        Run this in your terminal:
-                        <CodeBlock
-                            code={`claude mcp add --transport http artfct ${mcpUrl}`}
-                        />
-                    </Step>
-                    <Step>
-                        <span>
-                            Start Claude Code, type <Code>/mcp</Code>, choose{' '}
-                            <Code>artfct</Code> and select{' '}
-                            <Code>Authenticate</Code>.
-                        </span>
-                    </Step>
-                    <Step>Approve the sign-in that opens in your browser.</Step>
-                </Steps>
-            ),
-        },
-        {
-            id: 'connect-codex',
-            label: 'Codex',
-            steps: (
-                <Steps>
-                    <Step>
-                        Run this in your terminal:
-                        <CodeBlock
-                            code={`codex mcp add artfct --url ${mcpUrl}`}
-                        />
-                    </Step>
-                    <Step>
-                        Sign in, and approve the page that opens in your
-                        browser:
-                        <CodeBlock code="codex mcp login artfct" />
-                    </Step>
-                    <Step>Start Codex. Artfct is ready to use.</Step>
-                </Steps>
-            ),
-        },
-        {
-            id: 'connect-opencode',
-            label: 'OpenCode',
-            steps: (
-                <Steps>
-                    <Step>
-                        Run this in your terminal:
-                        <CodeBlock
-                            code={`opencode mcp add artfct --url ${mcpUrl}`}
-                        />
-                    </Step>
-                    <Step>
-                        Sign in:
-                        <CodeBlock code="opencode mcp auth artfct" />
-                        <span>
-                            Select <strong>Approve</strong> once. Approving the
-                            same page twice makes OpenCode report that the code
-                            is invalid or expired; if that happens, run the
-                            command again.
-                        </span>
-                    </Step>
-                    <Step>Start OpenCode. Artfct is ready to use.</Step>
-                </Steps>
-            ),
-        },
-        {
-            id: 'connect-antigravity',
-            label: 'Antigravity',
-            steps: (
-                <Steps>
-                    <Step>
-                        Run this in your terminal:
-                        <CodeBlock code={`agy mcp add artfct ${mcpUrl}`} />
-                    </Step>
-                    <Step>
-                        <span>
-                            Open <Code>~/.gemini/config/mcp_config.json</Code>{' '}
-                            and add <Code>"oauth": {'{}'}</Code> to the{' '}
-                            <Code>artfct</Code> entry, so it reads:
-                        </span>
-                        <CodeBlock
-                            code={JSON.stringify(
-                                {
-                                    artfct: {
-                                        serverUrl: mcpUrl,
-                                        oauth: {},
-                                    },
-                                },
-                                null,
-                                2,
-                            )}
-                        />
-                    </Step>
-                    <Step>
-                        <span>
-                            Start <Code>agy</Code>, type <Code>/mcp</Code>,
-                            choose <Code>artfct</Code> to sign in, and approve
-                            the page that opens in your browser.
-                        </span>
-                    </Step>
-                </Steps>
-            ),
-        },
-        {
-            id: 'connect-other',
-            label: 'Other tools',
-            steps: (
-                <div className="flex flex-col gap-4">
-                    <Prose>
-                        Most AI tools have a place to add a remote server
-                        (sometimes called an HTTP or URL server). Add one named{' '}
-                        <Code>artfct</Code> with the address above and approve
-                        the sign-in when your browser opens. If your tool is set
-                        up with a JSON file, the entry usually looks like this:
-                    </Prose>
-                    <CodeBlock
-                        code={JSON.stringify(
-                            { mcpServers: { artfct: { url: mcpUrl } } },
-                            null,
-                            2,
-                        )}
-                    />
-                    <Prose>
-                        Cursor reads this from <Code>~/.cursor/mcp.json</Code>;
-                        sign in from its settings or with{' '}
-                        <Code>cursor-agent mcp login artfct</Code>. We have not
-                        tested these tools yet, so if one does not connect,{' '}
-                        <a
-                            href={`${GITHUB}/issues`}
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            tell us which
-                        </a>
-                        . Tools that need the sign-in details find them
-                        automatically at{' '}
-                        <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code>
-                        .
-                    </Prose>
+function GuideSteps({ guide }: { guide: ConnectionGuide }) {
+    return (
+        <div className="flex flex-col gap-4">
+            {!guide.verified && (
+                <div className="flex flex-wrap gap-2">
+                    <Tag>Not yet tested by us</Tag>
                 </div>
-            ),
-        },
-    ];
+            )}
+            {guide.intro && (
+                <Prose>
+                    <Inline text={guide.intro} />
+                </Prose>
+            )}
+            <Steps>
+                {guide.steps.map((step) => (
+                    <Step key={step.text}>
+                        <span>
+                            <Inline text={step.text} />
+                        </span>
+                        {step.code && <CodeBlock code={step.code} />}
+                    </Step>
+                ))}
+            </Steps>
+            {!guide.verified && (
+                <Prose>
+                    If these steps do not match what you see, or the tool does
+                    not connect,{' '}
+                    <a
+                        href={`${GITHUB}/issues`}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        tell us
+                    </a>
+                    .
+                </Prose>
+            )}
+        </div>
+    );
 }
 
 /** Lets other pages link straight to a tool, e.g. /docs#connect-codex. */
@@ -859,28 +722,31 @@ function ConnectionTabs({ guides }: { guides: ConnectionGuide[] }) {
                 role="tabpanel"
                 aria-labelledby={current.id}
             >
-                {current.steps}
+                <GuideSteps guide={current} />
             </div>
         </div>
     );
 }
 
 // ── page ─────────────────────────────────────────────────────────────────────
-export default function Docs({ contract }: DocsProps) {
-    const hostedMcpBaseUrl = contract.servers[0].url.replace(/\/$/, '');
-    const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;
-    const guides = useMemo(
-        () => connectionGuides(hostedMcpUrl, hostedMcpBaseUrl),
-        [hostedMcpUrl, hostedMcpBaseUrl],
-    );
+export default function Docs({ contract, setup }: DocsProps) {
     const groups: SidebarGroup[] = [
         {
             title: 'Get started',
             items: [
                 { id: 'mcp', label: 'Connect your AI tool' },
+                { id: 'connect-quick', label: 'Set up several tools' },
                 { id: 'connect-check', label: 'Check that it works' },
+                { id: 'connect-tools', label: 'What your AI tool can do' },
                 { id: 'connect-troubleshooting', label: 'Troubleshooting' },
+            ],
+        },
+        {
+            title: 'Go further',
+            items: [
+                { id: 'instructions', label: 'Project instructions' },
                 { id: 'skills', label: 'Skills' },
+                { id: 'llms', label: 'Docs for AI tools' },
             ],
         },
         {
@@ -904,7 +770,13 @@ export default function Docs({ contract }: DocsProps) {
             <Head title="Documentation">
                 <meta
                     name="description"
-                    content="Connect your AI tool to Artfct in about a minute, add the Artfct skill, and use the REST API."
+                    content="Connect Claude, ChatGPT, Cursor, Codex and other AI tools to Artfct in about a minute, then use skills and the REST API."
+                />
+                <link
+                    rel="alternate"
+                    type="text/plain"
+                    title="Artfct docs for AI tools"
+                    href={setup.llmsFullUrl}
                 />
             </Head>
 
@@ -944,20 +816,60 @@ export default function Docs({ contract }: DocsProps) {
                         <Prose>
                             Connect once and your AI tool can publish to your
                             team and find what is already there, with sources.
-                            There is nothing to install and no key to copy: you
+                            Artfct runs online, so there is no key to copy: you
                             add one address and approve a sign-in in your
                             browser. It takes about a minute.
                         </Prose>
 
                         <SubHeading>1. Copy your Artfct address</SubHeading>
-                        <CodeBlock code={hostedMcpUrl} />
+                        <CodeBlock code={setup.mcpUrl} />
                         <Prose>
                             This address belongs to the site you are reading
                             now, so use this one on every tool you connect.
                         </Prose>
 
                         <SubHeading>2. Add it to your AI tool</SubHeading>
-                        <ConnectionTabs guides={guides} />
+                        <Prose>
+                            Choose your tool. We have tested the first four from
+                            sign-in to a finished request; the rest follow each
+                            tool’s own instructions.
+                        </Prose>
+                        <ConnectionTabs guides={setup.guides} />
+
+                        <SubHeading id="connect-quick">
+                            Or set up several tools at once
+                        </SubHeading>
+                        <Prose>
+                            If you use AI tools on your computer, this command
+                            finds the ones you have (Claude Code, Codex, Cursor,
+                            OpenCode, VS Code, Windsurf, Zed, Antigravity and
+                            more) and adds Artfct to each one you pick. It needs{' '}
+                            <a
+                                href="https://nodejs.org"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Node.js
+                            </a>{' '}
+                            and uses the open-source{' '}
+                            <a
+                                href="https://add-mcp.com"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                add-mcp
+                            </a>{' '}
+                            tool.
+                        </Prose>
+                        <CodeBlock code={setup.quickInstall} />
+                        <Prose>
+                            Each tool still asks you to sign in the first time
+                            you use it; follow the last steps for your tool
+                            above. Antigravity also needs{' '}
+                            <Code>"oauth": {'{}'}</Code> added to its entry. The
+                            Claude app and ChatGPT are set up in their own
+                            settings, not with this command.
+                        </Prose>
 
                         <SubHeading id="connect-check">
                             3. Check that it works
@@ -970,24 +882,28 @@ export default function Docs({ contract }: DocsProps) {
                             search Artfct for something your team already
                             shared.
                         </Prose>
+                    </Section>
 
-                        <SubHeading id="connect-troubleshooting">
-                            If something goes wrong
-                        </SubHeading>
-                        <FieldTable
-                            headings={['Problem', 'Fix', 'How']}
-                            fields={TROUBLESHOOTING}
-                        />
+                    <Section
+                        id="connect-tools"
+                        eyebrow="Get started"
+                        title="What your AI tool can do"
+                    >
                         <Prose>
-                            If you used the old Artfct command-line app, remove
-                            its <Code>artfct</Code> entry before adding the
-                            address above, for example with{' '}
-                            <Code>claude mcp remove artfct</Code> or{' '}
-                            <Code>codex mcp remove artfct</Code>. The
-                            command-line app has been retired.
+                            Once connected, your AI tool can use these actions.
+                            You do not call them yourself: ask in your own words
+                            and the tool picks the right one.
                         </Prose>
+                        <FieldTable
+                            headings={['Action', 'Needs', 'What it does']}
+                            fields={setup.tools.map((tool) => ({
+                                name: tool.name,
+                                type: tool.permission,
+                                note: tool.does,
+                            }))}
+                        />
 
-                        <SubHeading>What your AI tool can do</SubHeading>
+                        <SubHeading>Permissions</SubHeading>
                         <Prose>
                             During sign-in, your tool asks for the permissions
                             it needs and you approve them. Each connection only
@@ -995,7 +911,7 @@ export default function Docs({ contract }: DocsProps) {
                         </Prose>
                         <FieldTable
                             headings={['Permission', 'Allows', 'Details']}
-                            fields={PERMISSIONS}
+                            fields={setup.permissions}
                         />
 
                         <SubHeading>Limits and data kept</SubHeading>
@@ -1031,24 +947,64 @@ export default function Docs({ contract }: DocsProps) {
                     </Section>
 
                     <Section
-                        id="skills"
+                        id="connect-troubleshooting"
                         eyebrow="Get started"
+                        title="If something goes wrong"
+                    >
+                        <FieldTable
+                            headings={['Problem', 'Fix', 'How']}
+                            fields={setup.troubleshooting}
+                        />
+                        <Prose>
+                            If you used the old Artfct command-line app, remove
+                            its <Code>artfct</Code> entry before adding the
+                            address above, for example with{' '}
+                            <Code>claude mcp remove artfct</Code> or{' '}
+                            <Code>codex mcp remove artfct</Code>. The
+                            command-line app has been retired.
+                        </Prose>
+                    </Section>
+
+                    <Section
+                        id="instructions"
+                        eyebrow="Go further"
+                        title="Tell your AI tool when to use Artfct"
+                    >
+                        <Prose>
+                            Many AI tools read a project instructions file
+                            before they start: <Code>AGENTS.md</Code>,{' '}
+                            <Code>CLAUDE.md</Code> or Cursor rules. Paste this
+                            in so your tool checks what your team already made
+                            and saves what is worth keeping, without being asked
+                            each time.
+                        </Prose>
+                        <CodeBlock code={setup.projectInstructions} />
+                    </Section>
+
+                    <Section
+                        id="skills"
+                        eyebrow="Go further"
                         title="Skills for your AI tools"
                     >
                         <Prose>
-                            Install the Artfct skill to give any compatible AI
-                            tool (such as Claude Code, Codex or OpenCode)
-                            built-in guidance on when and how to deploy
-                            artifacts: choosing a tier, writing self-contained
-                            HTML, pinning scripts and handling errors.
+                            Skills give an AI tool that supports them (such as
+                            Claude Code, Codex or OpenCode) built-in guidance
+                            for a kind of task. Install the ones you want:
                         </Prose>
-                        <CodeBlock code={SKILLS_INSTALL} />
-                        <Prose>
-                            Once installed, your AI tool calls{' '}
-                            <Code>deploy_artifact</Code> whenever it produces
-                            visual HTML such as a dashboard, report, chart or
-                            interactive demo, instead of printing raw code.
-                        </Prose>
+                        {setup.skills.map((skill) => (
+                            <div
+                                key={skill.name}
+                                className="flex flex-col gap-2"
+                            >
+                                <p className="text-sm">
+                                    <strong>{skill.name}</strong>{' '}
+                                    <span className="text-muted-foreground">
+                                        {skill.note}
+                                    </span>
+                                </p>
+                                <CodeBlock code={skill.install} />
+                            </div>
+                        ))}
                         <Prose>
                             Skills follow the{' '}
                             <a
@@ -1060,7 +1016,7 @@ export default function Docs({ contract }: DocsProps) {
                                 skills.sh
                             </a>{' '}
                             format and are resolved from the{' '}
-                            <Code>skills/artfct/</Code> directory in the{' '}
+                            <Code>skills/</Code> directory in the{' '}
                             <a
                                 href={GITHUB}
                                 target="_blank"
@@ -1071,6 +1027,33 @@ export default function Docs({ contract }: DocsProps) {
                             </a>
                             .
                         </Prose>
+                    </Section>
+
+                    <Section
+                        id="llms"
+                        eyebrow="Go further"
+                        title="Docs your AI tool can read"
+                    >
+                        <Prose>
+                            These docs are also published as plain text, so you
+                            can hand them to an AI tool and ask it to set up
+                            Artfct or explain a step.
+                        </Prose>
+                        <FieldTable
+                            headings={['Address', 'Contains', 'Use it for']}
+                            fields={[
+                                {
+                                    name: setup.llmsUrl,
+                                    type: 'A short index',
+                                    note: 'A quick overview with links to each part of the docs.',
+                                },
+                                {
+                                    name: setup.llmsFullUrl,
+                                    type: 'Everything',
+                                    note: 'Every setup guide, action, permission and troubleshooting step, plus a summary of the REST API, in one file.',
+                                },
+                            ]}
+                        />
                     </Section>
 
                     {/* Generated directly from openapi/artfct.yaml. */}

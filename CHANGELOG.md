@@ -6,6 +6,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
+- Expanded `/docs` setup for AI tools: one-command setup with `npx add-mcp` for tools on the computer, guides for the Claude app, ChatGPT, Cursor, VS Code, Windsurf and Zed (marked untested next to the four verified tools), a table of the actions a connected tool can use, a project-instructions snippet for AGENTS.md or CLAUDE.md, and all three skills. Setup content now lives in `App\Support\AiToolSetup`, which also feeds the new plain-text `/llms.txt` and `/llms-full.txt`.
 - Added the MCP `deploy_artifact` tool (RUB-364): permanent, org-scoped publishing for authenticated workspaces on both the hosted and local servers, so artifacts are searchable, retrievable, collectable and counted in usage. `deploy_to_canvas` is deprecated (catalog metadata `compatibility: deprecated`, `replacedBy: deploy_artifact`) but keeps working. `add_collection_artifact` (MCP and REST) now verifies the artifact is visible to the caller's org before adding it.
 - Added the OpenAPI 3.1 contract, blocking contract-drift CI checks, and a generated API reference on `/docs` for Spec 0.
 - Added stateful MCP client identity, deterministic host-source resolution, per-process session IDs, and host-aware setup configuration for Spec 1.

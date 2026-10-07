@@ -1,6 +1,23 @@
 <?php
 
+use App\Mcp\Servers\ArtfctServer;
+use App\Support\AiToolSetup;
 use Inertia\Testing\AssertableInertia as Assert;
+use Laravel\Mcp\Server\Attributes\Name;
+
+/**
+ * The docs page copy plus the setup data it renders, whitespace-collapsed, so
+ * copy assertions hold whether a sentence lives in the page or in AiToolSetup.
+ */
+function docsCopy(): string
+{
+    $setup = json_encode(
+        AiToolSetup::forCurrentEnvironment()->toArray(),
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+    );
+
+    return preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')).$setup);
+}
 
 test('docs page renders the generated OpenAPI contract', function () {
     $response = $this->get(route('docs'));
@@ -48,15 +65,19 @@ test('hosted MCP docs and API reference use the URL configured for the current e
 ]);
 
 test('the MCP config block on the docs page is the hosted URL only', function () {
-    $page = file_get_contents(resource_path('js/pages/docs.tsx'));
+    config(['app.url' => 'https://staging.artfct.dev']);
 
-    expect($page)
-        ->toContain('contract.servers[0].url.replace')
-        ->toContain('const hostedMcpUrl = `${hostedMcpBaseUrl}/mcp`;')
-        ->toContain('connectionGuides(hostedMcpUrl, hostedMcpBaseUrl)')
-        ->toContain('<CodeBlock code={hostedMcpUrl} />')
-        ->toContain('url: mcpUrl')
-        ->toContain('claude mcp add --transport http artfct ${mcpUrl}')
+    $this->get(route('docs'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('setup.mcpUrl', 'https://staging.artfct.dev/mcp')
+            ->where('setup.llmsFullUrl', 'https://staging.artfct.dev/llms-full.txt')
+            ->where('setup.guides.0.id', 'connect-claude-code')
+            ->where('setup.guides.0.steps.0.code', 'claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
+            ->where('setup.quickInstall', 'npx add-mcp@latest https://staging.artfct.dev/mcp --name artfct --global'));
+
+    expect(file_get_contents(resource_path('js/pages/docs.tsx')))
+        ->toContain('<CodeBlock code={setup.mcpUrl} />')
         ->not->toContain('"command": "artfct"');
 });
 
@@ -89,8 +110,8 @@ test('connection guidance is hosted only and states its limits', function () {
 
     expect(config('auth.mcp_throttle_per_minute'))->toBe(120)
         ->and(config('auth.mcp_activity_retention_days'))->toBe(90)
-        ->and(preg_replace('/\s+/', ' ', $page))->toContain('120 requests per minute')
-        ->and(preg_replace('/\s+/', ' ', $page))->toContain('90 days by default');
+        ->and(docsCopy())->toContain('120 requests per minute')
+        ->and(docsCopy())->toContain('90 days by default');
 });
 
 test('the MCP docs explain workspace terminology and first-time access', function () {
@@ -111,7 +132,7 @@ test('the MCP docs explain workspace terminology and first-time access', functio
 });
 
 test('team wording replaces workspace everywhere outside AI tool terminology', function () {
-    $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
+    $page = docsCopy();
     $landing = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/landing.tsx')));
     $welcome = file_get_contents(resource_path('js/pages/welcome/welcome-agent-prompt.tsx'));
     $callout = file_get_contents(resource_path('js/pages/welcome/welcome-cli-callout.tsx'));
@@ -132,27 +153,111 @@ test('team wording replaces workspace everywhere outside AI tool terminology', f
 });
 
 test('the docs give step-by-step setup for every verified AI tool', function () {
-    $page = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/docs.tsx')));
+    $setup = new AiToolSetup('https://staging.artfct.dev');
+    $guides = collect($setup->guides())->keyBy('id');
+    $codes = fn (string $id): array => collect($guides[$id]['steps'])->pluck('code')->filter()->values()->all();
 
-    expect($page)
-        ->toContain("id: 'connect-claude-code'")
-        ->toContain('claude mcp add --transport http artfct ${mcpUrl}')
-        ->toContain("id: 'connect-codex'")
-        ->toContain('codex mcp add artfct --url ${mcpUrl}')
-        ->toContain('codex mcp login artfct')
-        ->toContain("id: 'connect-opencode'")
-        ->toContain('opencode mcp add artfct --url ${mcpUrl}')
-        ->toContain('opencode mcp auth artfct')
-        ->toContain('Select <strong>Approve</strong> once')
-        ->toContain("id: 'connect-antigravity'")
-        ->toContain('agy mcp add artfct ${mcpUrl}')
-        ->toContain('~/.gemini/config/mcp_config.json')
-        ->toContain('oauth: {}')
-        ->toContain("id: 'connect-other'")
-        ->toContain('cursor-agent mcp login artfct')
-        ->toContain('We have not tested these tools yet')
+    expect($guides->where('verified', true)->keys()->all())
+        ->toBe(['connect-claude-code', 'connect-codex', 'connect-opencode', 'connect-antigravity'])
+        ->and($codes('connect-claude-code'))->toContain('claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
+        ->and($codes('connect-codex'))->toBe(['codex mcp add artfct --url https://staging.artfct.dev/mcp', 'codex mcp login artfct'])
+        ->and($codes('connect-opencode'))->toBe(['opencode mcp add artfct --url https://staging.artfct.dev/mcp', 'opencode mcp auth artfct'])
+        ->and($guides['connect-opencode']['steps'][1]['text'])->toContain('select Approve once')
+        ->and($codes('connect-antigravity')[0])->toBe('agy mcp add artfct https://staging.artfct.dev/mcp')
+        ->and(json_decode($codes('connect-antigravity')[1], true))->toBe(['artfct' => ['serverUrl' => 'https://staging.artfct.dev/mcp', 'oauth' => []]])
+        ->and($guides['connect-antigravity']['steps'][1]['text'])->toContain('~/.gemini/config/mcp_config.json');
+
+    expect(docsCopy())
         ->toContain('Which Artfct workspace am I connected to?')
         ->toContain('claude mcp remove artfct');
+});
+
+test('setup guides for tools we have not verified are labelled as untested', function () {
+    $guides = collect((new AiToolSetup('https://artfct.dev'))->guides())->keyBy('id');
+
+    expect($guides->where('verified', false)->keys()->all())
+        ->toBe(['connect-claude', 'connect-chatgpt', 'connect-cursor', 'connect-vscode', 'connect-windsurf', 'connect-zed', 'connect-other'])
+        ->and(collect($guides['connect-cursor']['steps'])->pluck('code')->filter()->all())->toContain('cursor-agent mcp login artfct')
+        ->and(json_decode($guides['connect-vscode']['steps'][0]['code'], true))->toBe(['servers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
+        ->and(json_decode($guides['connect-windsurf']['steps'][0]['code'], true))->toBe(['mcpServers' => ['artfct' => ['serverUrl' => 'https://artfct.dev/mcp']]]);
+
+    expect(file_get_contents(resource_path('js/pages/docs.tsx')))
+        ->toContain('{!guide.verified && (')
+        ->toContain('Not yet tested by us');
+});
+
+test('the documented actions match the tools the server registers, minus the deprecated one', function () {
+    $registered = collect((new ReflectionClass(ArtfctServer::class))->getProperty('tools')->getDefaultValue())
+        ->map(fn (string $tool): string => (new ReflectionClass($tool))->getAttributes(Name::class)[0]->getArguments()[0])
+        ->reject(fn (string $name): bool => $name === 'deploy_to_canvas')
+        ->sort()
+        ->values()
+        ->all();
+
+    $documented = collect((new AiToolSetup('https://artfct.dev'))->tools())->pluck('name')->sort()->values()->all();
+
+    expect($documented)->toBe($registered);
+});
+
+test('every documented action needs a permission the docs explain', function () {
+    $setup = new AiToolSetup('https://artfct.dev');
+    $permissions = collect($setup->permissions())->pluck('name')->push('Any');
+
+    foreach ($setup->tools() as $tool) {
+        expect($permissions)->toContain($tool['permission']);
+    }
+});
+
+test('llms.txt indexes the docs for AI tools', function () {
+    config(['app.url' => 'https://staging.artfct.dev']);
+
+    $response = $this->get('/llms.txt');
+
+    $response->assertOk()->assertHeader('Content-Type', 'text/plain; charset=UTF-8');
+
+    expect($response->getContent())
+        ->toStartWith("# Artfct\n\n> ")
+        ->toContain('https://staging.artfct.dev/mcp')
+        ->toContain('(https://staging.artfct.dev/llms-full.txt)')
+        ->toContain('(https://staging.artfct.dev/docs#mcp)')
+        ->toContain('(https://staging.artfct.dev/docs#rest-api)');
+});
+
+test('llms-full.txt carries every setup guide, action and endpoint the docs page shows', function () {
+    config(['app.url' => 'https://staging.artfct.dev']);
+    $setup = AiToolSetup::forCurrentEnvironment();
+
+    $response = $this->get('/llms-full.txt');
+
+    $response->assertOk()->assertHeader('Content-Type', 'text/plain; charset=UTF-8');
+    $body = $response->getContent();
+
+    expect($body)
+        ->toContain($setup->quickInstall())
+        ->toContain($setup->projectInstructions())
+        ->toContain('### ChatGPT (not yet tested by Artfct)')
+        ->not->toContain('### Codex (not yet tested')
+        ->not->toContain('deploy_to_canvas');
+
+    foreach ($setup->guides() as $guide) {
+        expect($body)->toContain("### {$guide['label']}");
+
+        foreach ($guide['steps'] as $step) {
+            expect($body)->toContain($step['text']);
+
+            foreach (explode("\n", $step['code'] ?? '') as $line) {
+                expect($body)->toContain($line);
+            }
+        }
+    }
+
+    foreach ([...$setup->tools(), ...$setup->permissions(), ...$setup->troubleshooting(), ...$setup->skills()] as $row) {
+        expect($body)->toContain($row['name']);
+    }
+
+    foreach (['GET /v1/artifacts', 'POST /v1/artifacts', 'POST /v1/search'] as $endpoint) {
+        expect($body)->toContain("`{$endpoint}");
+    }
 });
 
 test('the connections page links to the setup guide that exists on the docs page', function () {
