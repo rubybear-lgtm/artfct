@@ -1,7 +1,7 @@
 use super::*;
 use crate::artifact_origin::{
     access_token_cookie, access_token_from_cookie, app_frame_ancestor, parse_isolated_hostname,
-    verify_access_token,
+    token_opens_private, verified_token_viewer, verify_access_token,
 };
 use crate::sharing::{
     self, can_change_sharing, can_publish_version, can_view, sharing_allowed, EditAccess, Sharing,
@@ -846,6 +846,7 @@ pub(crate) fn isolated_access_for_artifact(
     artifact_id: &str,
     artifact_org: &str,
     sharing: Sharing,
+    owner_user_id: Option<&str>,
     secret: Option<&str>,
     now: chrono::DateTime<Utc>,
     origin_suffix: &str,
@@ -859,7 +860,21 @@ pub(crate) fn isolated_access_for_artifact(
         now,
         origin_suffix,
     );
-    if access == IsolatedAccess::Authorized || !sharing.is_anonymous() {
+    if access == IsolatedAccess::Authorized {
+        // A private artifact also needs a token minted for its owner or for
+        // someone who sees every private artifact; a link minted while it was
+        // shared with the team stops working the moment it becomes private.
+        if sharing == Sharing::Private {
+            let permitted = token
+                .and_then(|token| verified_token_viewer(secret, token, artifact_id, now))
+                .is_some_and(|viewer| token_opens_private(&viewer, owner_user_id));
+            if !permitted {
+                return IsolatedAccess::Forbidden;
+            }
+        }
+        return access;
+    }
+    if !sharing.is_anonymous() {
         return access;
     }
     // Only an anonymous (public) artifact can skip the token, and only on its
@@ -918,6 +933,7 @@ pub(crate) async fn resolve_permanent_artifact(
         artifact_id,
         &row.org,
         sharing,
+        row.user_id.as_deref(),
         artifact_token_secret(env).as_deref(),
         now,
         &artifact_origin_suffix(env),
@@ -928,9 +944,10 @@ pub(crate) async fn resolve_permanent_artifact(
         IsolatedAccess::Authorized => {}
         IsolatedAccess::NotIsolated => {
             // Only a public artifact is anonymous on the shared origin.
-            // Everything else needs a credential of the artifact's own org,
-            // and a private one the member cannot view is the same 404 as a
-            // missing artifact (never 403).
+            // Everything else needs a credential of the artifact's own org.
+            // Every refusal (no or a bad credential, another org's, or a
+            // private artifact the member cannot view) is the same 404 as a
+            // missing artifact, so this URL never confirms that an id exists.
             if !sharing.is_anonymous() {
                 match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
                     Ok(credential) if credential.org_id == row.org => {
@@ -940,14 +957,7 @@ pub(crate) async fn resolve_permanent_artifact(
                         }
                         viewer_user_id = Some(credential.user_id.clone());
                     }
-                    Ok(_) => {
-                        return json_error(
-                            ErrorCode::Unauthorized,
-                            "Invalid organization token.",
-                            401,
-                        )
-                    }
-                    Err(refusal) => return Ok(refusal),
+                    Ok(_) | Err(_) => return expired_response(),
                 }
             }
         }
@@ -1334,15 +1344,25 @@ async fn existing_artifact_response(
 /// hex). Revoked rows are excluded: re-publishing after a revocation must mint
 /// a fresh row rather than resurrect the revoked one. Called while holding the
 /// bundle lock, so it cannot race a concurrent create of the same bundle.
+/// Only artifacts the creator can see are candidates, so re-posting bytes
+/// identical to someone else's private artifact creates a new artifact rather
+/// than revealing that one's id and sharing.
 async fn existing_permanent_by_content(
     storage: &store::D1R2ArtifactStore,
     org: &str,
     bundle_hash: &str,
+    viewer: &Viewer<'_>,
 ) -> Result<Option<ExistingArtifactRow>> {
+    let reads_private = viewer.is_admin() || viewer.reads_private();
     storage
         .database
-        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND content_hash = ? AND revoked_at IS NULL ORDER BY created_at, row_id LIMIT 1")
-        .bind(&[JsValue::from_str(org), JsValue::from_str(bundle_hash)])?
+        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND content_hash = ? AND revoked_at IS NULL AND (tier IN ('public', 'secure') OR user_id = ? OR ? = 1) ORDER BY created_at, row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(bundle_hash),
+            JsValue::from_str(viewer.user_id),
+            JsValue::from_f64(if reads_private { 1.0 } else { 0.0 }),
+        ])?
         .first::<ExistingArtifactRow>(None)
         .await
 }
@@ -1694,7 +1714,14 @@ pub(crate) async fn create_permanent_artifact(
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
-    match existing_permanent_by_content(&storage, &org, content_hash).await {
+    match existing_permanent_by_content(
+        &storage,
+        &org,
+        content_hash,
+        &Viewer::from_credential(&credential),
+    )
+    .await
+    {
         Ok(Some(existing)) => {
             let response = existing_artifact_response(&storage, env, &existing).await;
             let release = storage

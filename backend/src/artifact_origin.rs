@@ -68,26 +68,123 @@ pub(crate) fn verify_access_token(
     artifact_id: &str,
     now: chrono::DateTime<Utc>,
 ) -> bool {
-    let Some(secret) = secret.filter(|value| !value.is_empty()) else {
-        return false;
-    };
-    let mut parts = token.splitn(3, '.');
-    let (Some(token_artifact_id), Some(expires_at_raw), Some(signature)) =
-        (parts.next(), parts.next(), parts.next())
-    else {
-        return false;
+    verified_token_viewer(secret, token, artifact_id, now).is_some()
+}
+
+/// Who an access token was minted for (RUB-438). A legacy three-part token
+/// (`{id}.{expiry}.{hmac}`) names nobody; a five-part token
+/// (`{id}.{expiry}.{viewer}.{p|m}.{hmac}`) names the Laravel user it was minted
+/// for and whether that user may see private artifacts in the team (`p`: a team
+/// admin, or the `system` renderer).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TokenViewer {
+    pub(crate) viewer: Option<String>,
+    pub(crate) sees_private: bool,
+}
+
+/// [`verify_access_token`], returning who the token names. `None` for every
+/// rejection.
+pub(crate) fn verified_token_viewer(
+    secret: Option<&str>,
+    token: &str,
+    artifact_id: &str,
+    now: chrono::DateTime<Utc>,
+) -> Option<TokenViewer> {
+    let secret = secret.filter(|value| !value.is_empty())?;
+    let parts: Vec<&str> = token.split('.').collect();
+    let (token_artifact_id, expires_at_raw, viewer, signature) = match parts.as_slice() {
+        [id, expiry, signature] => (*id, *expiry, None, *signature),
+        [id, expiry, viewer, scope, signature] => {
+            (*id, *expiry, Some((*viewer, *scope)), *signature)
+        }
+        _ => return None,
     };
     if !constant_time_equal(token_artifact_id.as_bytes(), artifact_id.as_bytes()) {
-        return false;
+        return None;
     }
-    let Ok(expires_at_unix) = expires_at_raw.parse::<i64>() else {
-        return false;
-    };
+    let expires_at_unix = expires_at_raw.parse::<i64>().ok()?;
     if now.timestamp() >= expires_at_unix {
-        return false;
+        return None;
     }
-    let expected = access_token_signature(secret, token_artifact_id, expires_at_unix);
-    constant_time_equal(signature.as_bytes(), expected.as_bytes())
+    let expected = match viewer {
+        None => access_token_signature(secret, token_artifact_id, expires_at_unix),
+        Some((viewer, scope)) => {
+            if !valid_token_viewer(viewer) || !matches!(scope, "p" | "m") {
+                return None;
+            }
+            viewer_token_signature(secret, token_artifact_id, expires_at_unix, viewer, scope)
+        }
+    };
+    if !constant_time_equal(signature.as_bytes(), expected.as_bytes()) {
+        return None;
+    }
+    Some(match viewer {
+        None => TokenViewer {
+            viewer: None,
+            sees_private: false,
+        },
+        Some((viewer, scope)) => TokenViewer {
+            viewer: Some(viewer.to_string()),
+            sees_private: scope == "p",
+        },
+    })
+}
+
+/// A viewer field Laravel can mint: a user id or `system`, 1 to 64 of
+/// `[A-Za-z0-9_-]`, so it can never contain the `.` separator.
+fn valid_token_viewer(viewer: &str) -> bool {
+    !viewer.is_empty()
+        && viewer.len() <= 64
+        && viewer
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+/// HMAC over `{id}.{expiry}.{viewer}.{scope}` for a five-part token.
+pub(crate) fn viewer_token_signature(
+    secret: &str,
+    artifact_id: &str,
+    expires_at_unix: i64,
+    viewer: &str,
+    scope: &str,
+) -> String {
+    let message = format!("{artifact_id}.{expires_at_unix}.{viewer}.{scope}");
+    store::hmac_sha256(secret.as_bytes(), message.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Whether a verified token may open a *private* artifact: only one minted for
+/// its owner, or for a viewer who sees every private artifact in the team. A
+/// legacy token names nobody, so it never opens a private artifact. This is
+/// what makes "make it private" take effect for links minted while the
+/// artifact was still shared with the team.
+pub(crate) fn token_opens_private(token: &TokenViewer, owner_user_id: Option<&str>) -> bool {
+    token.sees_private
+        || matches!(
+            (token.viewer.as_deref(), owner_user_id),
+            (Some(viewer), Some(owner)) if !owner.is_empty() && viewer == owner
+        )
+}
+
+/// Mints a five-part token naming its viewer. The control plane mints these;
+/// this copy exists for the tests.
+#[allow(
+    dead_code,
+    reason = "minted by the control plane; exercised by the token tests"
+)]
+pub(crate) fn mint_viewer_access_token(
+    secret: &str,
+    artifact_id: &str,
+    expires_at: chrono::DateTime<Utc>,
+    viewer: &str,
+    sees_private: bool,
+) -> String {
+    let expires_at_unix = expires_at.timestamp();
+    let scope = if sees_private { "p" } else { "m" };
+    let signature = viewer_token_signature(secret, artifact_id, expires_at_unix, viewer, scope);
+    format!("{artifact_id}.{expires_at_unix}.{viewer}.{scope}.{signature}")
 }
 
 const ARTIFACT_ACCESS_COOKIE: &str = "artfct_access";
@@ -211,6 +308,9 @@ pub(crate) fn permanent_file_response_headers(
         ("X-Content-Type-Options", "nosniff".to_string()),
         ("Content-Security-Policy", csp),
         ("Cache-Control", "private, no-store".to_string()),
+        // An isolated entrypoint URL carries `?token=`; a manifest's external
+        // origins must never receive it in a Referer header.
+        ("Referrer-Policy", "no-referrer".to_string()),
     ]
 }
 

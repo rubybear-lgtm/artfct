@@ -682,8 +682,9 @@ mod tests {
     use crate::artifact_origin::{
         access_token_cookie, access_token_from_cookie, frame_ancestor_source,
         isolated_access_check, isolated_artifact_hostname, isolated_content_security_policy,
-        mint_access_token, parse_isolated_hostname, permanent_file_response_headers,
-        verify_access_token, IsolatedAccess,
+        mint_access_token, mint_viewer_access_token, parse_isolated_hostname,
+        permanent_file_response_headers, verified_token_viewer, verify_access_token,
+        IsolatedAccess, TokenViewer,
     };
     use crate::artifact_routes::isolated_access_for_artifact;
     use crate::governance_routes::{
@@ -2184,7 +2185,8 @@ mod tests {
                 "Content-Type",
                 "X-Content-Type-Options",
                 "Content-Security-Policy",
-                "Cache-Control"
+                "Cache-Control",
+                "Referrer-Policy"
             ]
         );
     }
@@ -2560,6 +2562,7 @@ mod tests {
                 artifact_id,
                 "acme",
                 Sharing::Public,
+                None,
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
@@ -2575,6 +2578,7 @@ mod tests {
                     artifact_id,
                     "acme",
                     sharing,
+                    None,
                     Some(secret),
                     now,
                     ARTIFACT_ORIGIN_SUFFIX
@@ -2591,6 +2595,7 @@ mod tests {
                 artifact_id,
                 "acme",
                 Sharing::Public,
+                None,
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
@@ -2606,12 +2611,109 @@ mod tests {
                 artifact_id,
                 "acme",
                 Sharing::Team,
+                None,
                 Some(secret),
                 now,
                 ARTIFACT_ORIGIN_SUFFIX
             ),
             IsolatedAccess::Authorized
         );
+    }
+
+    #[test]
+    fn private_artifacts_need_a_token_minted_for_their_owner_or_an_admin() {
+        let secret = "s3cr3t";
+        let artifact_id = "0123456789abc";
+        let host = isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        let now = Utc::now();
+        let later = now + chrono::Duration::minutes(5);
+        let access = |token: &str, sharing: Sharing| {
+            isolated_access_for_artifact(
+                Some(&host),
+                Some(token),
+                artifact_id,
+                "acme",
+                sharing,
+                Some("7"),
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX,
+            )
+        };
+        let owner = mint_viewer_access_token(secret, artifact_id, later, "7", false);
+        let member = mint_viewer_access_token(secret, artifact_id, later, "8", false);
+        let admin = mint_viewer_access_token(secret, artifact_id, later, "9", true);
+        let system = mint_viewer_access_token(secret, artifact_id, later, "system", true);
+        let legacy = mint_access_token(secret, artifact_id, later);
+
+        assert_eq!(access(&owner, Sharing::Private), IsolatedAccess::Authorized);
+        assert_eq!(access(&admin, Sharing::Private), IsolatedAccess::Authorized);
+        assert_eq!(
+            access(&system, Sharing::Private),
+            IsolatedAccess::Authorized
+        );
+        // A link minted for another member while the artifact was shared with
+        // the team stops working once it is private.
+        assert_eq!(access(&member, Sharing::Private), IsolatedAccess::Forbidden);
+        // A legacy token names nobody, so it never opens a private artifact.
+        assert_eq!(access(&legacy, Sharing::Private), IsolatedAccess::Forbidden);
+        // Team artifacts accept every valid token, as before.
+        for token in [&owner, &member, &admin, &legacy] {
+            assert_eq!(access(token, Sharing::Team), IsolatedAccess::Authorized);
+        }
+    }
+
+    #[test]
+    fn viewer_tokens_are_tamper_evident() {
+        let secret = "s3cr3t";
+        let artifact_id = "0123456789abc";
+        let now = Utc::now();
+        let later = now + chrono::Duration::minutes(5);
+        let member = mint_viewer_access_token(secret, artifact_id, later, "8", false);
+        assert_eq!(
+            verified_token_viewer(Some(secret), &member, artifact_id, now),
+            Some(TokenViewer {
+                viewer: Some("8".to_string()),
+                sees_private: false
+            })
+        );
+        // Promoting the scope or renaming the viewer breaks the signature.
+        let promoted = member.replacen(".8.m.", ".8.p.", 1);
+        let renamed = member.replacen(".8.m.", ".7.m.", 1);
+        for forged in [&promoted, &renamed] {
+            assert_eq!(
+                verified_token_viewer(Some(secret), forged, artifact_id, now),
+                None
+            );
+        }
+        for bad in [
+            format!("{artifact_id}.{}.8.x.deadbeef", later.timestamp()),
+            format!("{artifact_id}.{}.a.b.8.m.deadbeef", later.timestamp()),
+            format!("{artifact_id}.{}..m.deadbeef", later.timestamp()),
+        ] {
+            assert_eq!(
+                verified_token_viewer(Some(secret), &bad, artifact_id, now),
+                None,
+                "{bad}"
+            );
+        }
+        let expired = mint_viewer_access_token(secret, artifact_id, now, "7", true);
+        assert_eq!(
+            verified_token_viewer(Some(secret), &expired, artifact_id, now),
+            None
+        );
+    }
+
+    #[test]
+    fn permanent_responses_send_no_referrer() {
+        let manifest = permanent_manifest(vec![], false);
+        for is_isolated in [false, true] {
+            assert!(
+                permanent_file_response_headers("text/html", &manifest, is_isolated, None)
+                    .iter()
+                    .any(|(name, value)| *name == "Referrer-Policy" && value == "no-referrer")
+            );
+        }
     }
 
     #[test]

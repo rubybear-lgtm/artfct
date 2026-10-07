@@ -1010,8 +1010,9 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
     );
 
     // 6. ...and the credential that behaviour demands is still demanded: a
-    //    secure artifact on the shared origin is a 401 without an org token,
-    //    and serves with one.
+    //    secure artifact on the shared origin is refused without an org token
+    //    (404, the same as a missing artifact, so the URL never confirms that
+    //    an id exists), and serves with one.
     let secure_bytes = unique_html("isolated-origin-secure");
     let (secure_id, _) = create_and_upload_payload(
         &context,
@@ -1028,7 +1029,7 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
         .await?;
     assert_eq!(
         uncredentialed.status(),
-        reqwest::StatusCode::UNAUTHORIZED,
+        reqwest::StatusCode::NOT_FOUND,
         "a secure artifact on the shared origin still requires an org credential"
     );
     let credentialed = client
