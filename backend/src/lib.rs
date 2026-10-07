@@ -21,6 +21,7 @@ mod governance_routes;
 mod org_admin;
 mod preview;
 mod validation;
+mod version_routes;
 
 use preview::{
     build_preview_response, default_preview_blurred, expired_response, html_error,
@@ -54,8 +55,8 @@ use auth::{
 #[cfg(test)]
 use ephemeral_routes::{build_create_artifact_response, build_update_artifact_response};
 use ephemeral_routes::{
-    create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_viewed,
-    resolve_artifact, update_artifact, PermanentHashRow, PresenceRow,
+    create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_version_created,
+    emit_artifact_viewed, resolve_artifact, update_artifact, PermanentHashRow, PresenceRow,
 };
 use governance_routes::governance_route;
 use org_admin::{
@@ -71,6 +72,7 @@ use validation::{
     clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path, missing_manifest_files,
     upload_expired, uploaded_file_error, validate_permanent_manifest,
 };
+use version_routes::{get_version, parse_version_path, post_version};
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
@@ -413,6 +415,14 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
     }
 
     let result = match (method, path) {
+        // Version routes are matched before the generic `/v1/artifacts/...`
+        // arms below so `/versions` is never mistaken for a metadata read.
+        (Method::Get, path) if parse_version_path(path).is_some() => {
+            get_version(path, &req, &env).await
+        }
+        (Method::Post, path) if parse_version_path(path).is_some() => {
+            post_version(path, &mut req, &env, &ctx).await
+        }
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
         (method, path) if path.starts_with("/v1/internal/orgs/") => {
@@ -433,7 +443,7 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
             update_artifact(path, &mut req, &env).await
         }
         (Method::Put, path) if path.starts_with("/v1/artifacts/") && path.contains("/files/") => {
-            upload_permanent_file(path, &mut req, &env).await
+            upload_permanent_file(path, &mut req, &env, &ctx).await
         }
         (Method::Get, path) if parse_content_path(path).is_some() => {
             get_org_artifact_content(path, &req, &env).await
@@ -635,6 +645,13 @@ fn artifact_insert_conflict(message: &str) -> ArtifactInsertConflict {
 /// `blob_locks`, so this key must never equal a 64-hex file hash.
 fn bundle_lock_key(org: &str, bundle_hash: &str) -> String {
     format!("bundle:{org}:{bundle_hash}")
+}
+
+/// The `blob_locks` key that serialises version publication for one artifact
+/// row, so two publishes cannot both mint `MAX(version) + 1` or promote out of
+/// order. Namespaced like [`bundle_lock_key`] so it never equals a file hash.
+fn artifact_lock_key(row_id: &str) -> String {
+    format!("artifact:{row_id}")
 }
 
 #[cfg(test)]
@@ -1480,6 +1497,73 @@ mod tests {
 
         assert_schema_matches("PermanentArtifactResponse", &response);
         assert_schema_matches("CreateArtifactResponse", &response);
+    }
+
+    fn version_row_fixture() -> version_routes::VersionRow {
+        version_routes::VersionRow {
+            id: "row-1-v2".to_string(),
+            version: 2,
+            created_at: "2026-09-02T00:00:00Z".to_string(),
+            created_by: Some("user-a".to_string()),
+            agent: Some("cli".to_string()),
+            repo_url: None,
+            commit_sha: None,
+            title: None,
+            description: None,
+            content_hash: "a".repeat(64),
+            manifest: "{}".to_string(),
+            entrypoint: Some("index.html".to_string()),
+            provenance: "{}".to_string(),
+            restored_from: None,
+            expires_at: None,
+        }
+    }
+
+    #[test]
+    fn version_responses_match_documented_schemas() {
+        let contract = openapi_contract();
+
+        let response = version_routes::build_version_response(
+            "abcdefghijklm",
+            "https://artfct.dev",
+            2,
+            true,
+            vec!["a".repeat(64)],
+        );
+        let response = serde_json::to_value(&response).expect("response serializes");
+        assert_schema_matches("ArtifactVersionResponse", &response);
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/artifacts/{id}/versions",
+                "post",
+                "201",
+                "application/json",
+            ),
+            &response,
+        )
+        .unwrap();
+
+        let version = version_routes::build_artifact_version(&version_row_fixture(), 2);
+        let version_value = serde_json::to_value(&version).expect("version serializes");
+        assert_schema_matches("ArtifactVersion", &version_value);
+
+        let list = version_routes::build_version_list("abcdefghijklm", 2, vec![version]);
+        let list_value = serde_json::to_value(&list).expect("list serializes");
+        assert_schema_matches("ArtifactVersionList", &list_value);
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/artifacts/{id}/versions",
+                "get",
+                "200",
+                "application/json",
+            ),
+            &list_value,
+        )
+        .unwrap();
     }
 
     #[test]

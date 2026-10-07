@@ -180,6 +180,42 @@ pub(crate) fn emit_artifact_created(
     ctx.wait_until(async move { events::send(&url, event).await });
 }
 
+/// Queues `artifact.version_created` after a version has been promoted to
+/// current. Emitted only on promotion, never when a version is still pending
+/// its uploads. Best effort: the send runs in `waitUntil` and can never change
+/// the response. `org` is the verified credential's org.
+pub(crate) fn emit_artifact_version_created(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    version: u32,
+    tier: ArtifactTier,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let tier = match tier {
+        ArtifactTier::Public => "public",
+        ArtifactTier::Secure => "secure",
+        ArtifactTier::Ephemeral => "ephemeral",
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.version_created",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({"artifact_id": artifact_id, "version": version, "tier": tier}),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
 /// Notifies Laravel after a permanent artifact has been hard-deleted so its
 /// derived search index can be removed without delaying the delete response.
 pub(crate) fn emit_artifact_deleted(

@@ -128,12 +128,85 @@ struct UploadArtifactRow {
     expected_size: i64,
     expires_at: Option<String>,
     manifest: String,
+    /// Present only for a pending v2+ version; `NULL` for the current version.
+    version_id: Option<String>,
+    version: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VersionCompletionRow {
+    expected: i64,
+    present: i64,
+    current_version: i64,
+    tier: String,
+    artifact_id: String,
+}
+
+/// Decrements `blobs.ref_count` once per manifest file and releases any blob no
+/// longer referenced (invariant 3). Callers hold the content lock for each hash.
+async fn decrement_and_release(
+    storage: &store::D1R2ArtifactStore,
+    manifest: &PermanentManifest,
+) -> Result<()> {
+    let hashes = manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.as_str())
+        .collect::<Vec<_>>();
+    for hash in &hashes {
+        storage
+            .database
+            .prepare("UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?")
+            .bind(&[JsValue::from_str(hash)])?
+            .run()
+            .await?;
+    }
+    for hash in hashes.into_iter().collect::<std::collections::HashSet<_>>() {
+        release_blob_if_unreferenced(storage, hash).await?;
+    }
+    Ok(())
+}
+
+/// The upload target for `(artifact_id, org, sha)`: a pending v2+ version whose
+/// manifest names the sha, else the current version. A pending version's
+/// manifest lives on its `artifact_versions` row, so it needs its own lookup;
+/// it is preferred because completing it is the point of the upload. Expired
+/// pending versions are still returned, so the caller can clean them up.
+async fn find_upload_target(
+    database: &worker::D1Database,
+    org: &str,
+    artifact_id: &str,
+    content_hash: &str,
+) -> Result<Option<UploadArtifactRow>> {
+    let pending = database
+        .prepare("SELECT a.row_id, json_extract(mf.value, '$.content_type') AS content_type, json_extract(mf.value, '$.size_bytes') AS expected_size, v.expires_at AS expires_at, v.manifest AS manifest, v.id AS version_id, v.version AS version FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN artifact_versions v ON v.artifact_row_id = a.row_id, json_each(v.manifest, '$.files') mf WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? AND v.version > a.current_version AND v.expires_at IS NOT NULL ORDER BY v.version DESC LIMIT 1")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(org),
+            JsValue::from_str(content_hash),
+        ])?
+        .first::<UploadArtifactRow>(None)
+        .await?;
+    if pending.is_some() {
+        return Ok(pending);
+    }
+    database
+        .prepare("SELECT a.row_id, json_extract(mf.value, '$.content_type') AS content_type, json_extract(mf.value, '$.size_bytes') AS expected_size, a.expires_at AS expires_at, a.manifest AS manifest, NULL AS version_id, NULL AS version FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN blobs b ON b.content_hash = ? JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? LIMIT 1")
+        .bind(&[
+            JsValue::from_str(content_hash),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(org),
+            JsValue::from_str(content_hash),
+        ])?
+        .first::<UploadArtifactRow>(None)
+        .await
 }
 
 pub(crate) async fn upload_permanent_file(
     path: &str,
     req: &mut Request,
     env: &Env,
+    ctx: &worker::Context,
 ) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let credential =
@@ -165,26 +238,11 @@ pub(crate) async fn upload_permanent_file(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
     let org = credential.org_id.clone();
-    let row_statement = match database
-        .prepare("SELECT a.row_id, json_extract(mf.value, '$.content_type') AS content_type, json_extract(mf.value, '$.size_bytes') AS expected_size, a.expires_at, a.manifest FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN blobs b ON b.content_hash = ? JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? LIMIT 1")
-        .bind(&[
-            JsValue::from_str(content_hash),
-            JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
-            JsValue::from_str(content_hash),
-        ]) {
-        Ok(statement) => statement,
-        Err(error) => {
-            return Err(error);
-        }
-    };
-    let row = match row_statement.first::<UploadArtifactRow>(None).await {
-        Ok(row) => row,
-        Err(error) => {
-            return Err(error);
-        }
-    };
-    let Some(row) = row else {
+    // Target selection: a pending v2+ version that names this sha wins over
+    // the current version, because completing it is the point of the upload.
+    // An expired pending version is still selected here so it can be cleaned
+    // up rather than uploaded to.
+    let Some(row) = find_upload_target(database, &org, artifact_id, content_hash).await? else {
         return json_error(
             ErrorCode::ArtifactNotFound,
             "Artifact not found or already uploaded.",
@@ -204,7 +262,7 @@ pub(crate) async fn upload_permanent_file(
     {
         return Ok(refusal);
     }
-    let lock_hashes = serde_json::from_str::<PermanentManifest>(&row.manifest)
+    let mut lock_keys = serde_json::from_str::<PermanentManifest>(&row.manifest)
         .map(|manifest| {
             manifest
                 .files
@@ -213,7 +271,12 @@ pub(crate) async fn upload_permanent_file(
                 .collect::<Vec<_>>()
         })
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    let locks = match storage.acquire_content_locks(&lock_hashes).await {
+    if row.version_id.is_some() {
+        // Completing a pending version promotes it, so serialise with this
+        // artifact's other versioning writes.
+        lock_keys.push(artifact_lock_key(&row.row_id));
+    }
+    let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
@@ -221,40 +284,41 @@ pub(crate) async fn upload_permanent_file(
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
             let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
-            // Explicit deletes rather than ON DELETE CASCADE: foreign keys are
-            // a per-connection pragma that defaults to OFF.
-            database
-                .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id = ?)")
-                .bind(&[JsValue::from_str(&row.row_id)])?
-                .run()
-                .await?;
-            database
-                .prepare("DELETE FROM artifact_versions WHERE artifact_row_id = ?")
-                .bind(&[JsValue::from_str(&row.row_id)])?
-                .run()
-                .await?;
-            database
-                .prepare("DELETE FROM artifacts WHERE row_id = ?")
-                .bind(&[JsValue::from_str(&row.row_id)])?
-                .run()
-                .await?;
-            let hashes = manifest
-                .files
-                .iter()
-                .map(|file| file.sha256.as_str())
-                .collect::<Vec<_>>();
-            for hash in &hashes {
+            if let Some(version_id) = &row.version_id {
+                // A pending v2+ expiring deletes only that version; the artifact
+                // and its current version keep serving (invariant 4).
                 database
-                    .prepare(
-                        "UPDATE blobs SET ref_count = MAX(ref_count - 1, 0) WHERE content_hash = ?",
-                    )
-                    .bind(&[JsValue::from_str(hash)])?
+                    .prepare("DELETE FROM version_files WHERE version_id = ?")
+                    .bind(&[JsValue::from_str(version_id)])?
+                    .run()
+                    .await?;
+                database
+                    .prepare("DELETE FROM artifact_versions WHERE id = ?")
+                    .bind(&[JsValue::from_str(version_id)])?
+                    .run()
+                    .await?;
+            } else {
+                // A pending v1 *is* the artifact's own row, so deleting the
+                // artifact is correct. Explicit deletes rather than ON DELETE
+                // CASCADE: foreign keys are a per-connection pragma that
+                // defaults to OFF.
+                database
+                    .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id = ?)")
+                    .bind(&[JsValue::from_str(&row.row_id)])?
+                    .run()
+                    .await?;
+                database
+                    .prepare("DELETE FROM artifact_versions WHERE artifact_row_id = ?")
+                    .bind(&[JsValue::from_str(&row.row_id)])?
+                    .run()
+                    .await?;
+                database
+                    .prepare("DELETE FROM artifacts WHERE row_id = ?")
+                    .bind(&[JsValue::from_str(&row.row_id)])?
                     .run()
                     .await?;
             }
-            for hash in hashes.into_iter().collect::<std::collections::HashSet<_>>() {
-                release_blob_if_unreferenced(&storage, hash).await?;
-            }
+            decrement_and_release(&storage, &manifest).await?;
             json_error(ErrorCode::ArtifactNotFound, "Artifact upload expired.", 404)
         }
         .await;
@@ -313,11 +377,66 @@ pub(crate) async fn upload_permanent_file(
         return Err(error);
     }
     let now = Utc::now().to_rfc3339();
+    if let Some(version_id) = row.version_id.clone() {
+        // Pending v2+: write only the version's own file rows. The current copy
+        // (`files`, provenance, `artifacts`) is replaced by promotion once every
+        // manifest path has a version_files row (invariants 1-2, 5).
+        let pending: Result<()> = async {
+            database
+                .prepare("INSERT OR REPLACE INTO version_files (version_id, path, content_hash, content_type, size_bytes) SELECT v.id, json_extract(mf.value, '$.path'), ?, json_extract(mf.value, '$.content_type'), json_extract(mf.value, '$.size_bytes') FROM artifact_versions v, json_each(v.manifest, '$.files') mf WHERE v.id = ? AND json_extract(mf.value, '$.sha256') = ? AND (v.expires_at IS NULL OR v.expires_at > ?)")
+                .bind(&[
+                    JsValue::from_str(content_hash),
+                    JsValue::from_str(&version_id),
+                    JsValue::from_str(content_hash),
+                    JsValue::from_str(&now),
+                ])?
+                .run()
+                .await?;
+            let completion = database
+                .prepare("SELECT (SELECT COUNT(*) FROM json_each(v.manifest, '$.files')) AS expected, (SELECT COUNT(*) FROM version_files vf WHERE vf.version_id = v.id) AS present, a.current_version AS current_version, a.tier AS tier, a.id AS artifact_id FROM artifact_versions v JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE v.id = ?")
+                .bind(&[JsValue::from_str(&version_id)])?
+                .first::<VersionCompletionRow>(None)
+                .await?;
+            if let Some(completion) = completion {
+                if completion.expected > 0 && completion.present >= completion.expected {
+                    let version = row.version.unwrap_or(1).max(1) as u32;
+                    let statements = version_routes::promotion_statements(
+                        database,
+                        &row.row_id,
+                        &version_id,
+                        version,
+                        completion.current_version.max(1) as u32,
+                        &now,
+                    )?;
+                    storage.execute_batch(statements).await.map_err(|error| {
+                        worker::Error::RustError(error.to_string())
+                    })?;
+                    emit_artifact_version_created(
+                        ctx,
+                        env,
+                        &org,
+                        &completion.artifact_id,
+                        version,
+                        permanent_tier_from_database(&completion.tier),
+                    );
+                }
+            }
+            Ok(())
+        }
+        .await;
+        let release_result = storage.release_content_locks(&locks).await;
+        pending?;
+        release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+        return EmptyResponseDefinition {
+            status: 204,
+            headers: Vec::new(),
+        }
+        .into_worker_response();
+    }
     // The current copy (`files`) and the version's own file rows move together:
     // invariant 1 says `artifacts` and `files` are a copy of the current
     // version, and invariant 2 says `version_files` holds that version's files.
-    // Resolve the version from `current_version`; v2+ pending uploads are a
-    // later slice.
+    // Resolve the version from `current_version`.
     let files_statement = match database
         .prepare("INSERT OR REPLACE INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT a.row_id, json_extract(mf.value, '$.path'), ?, json_extract(mf.value, '$.content_type'), json_extract(mf.value, '$.size_bytes') FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? AND (a.expires_at IS NULL OR a.expires_at > ?)")
         .bind(&[
