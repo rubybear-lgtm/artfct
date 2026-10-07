@@ -72,7 +72,13 @@ test('the_real_source_previews_public_and_secure_tiers_with_the_org_credential',
     $artifactId = 'facefeedfacefeedfacefeedfacefeed';
     $html = "<!doctype html><h1>{$tier}</h1>";
 
-    Http::fake(['worker.test/*' => Http::response(['content' => $html, 'tier' => $tier], 200)]);
+    Http::fake(['worker.test/*' => Http::response([
+        'content' => $html,
+        'tier' => $tier,
+        // The content contract always carries the sharing level; `secure`
+        // maps to the `team` level. Without it the preview fails closed.
+        'sharing' => $tier === 'public' ? 'public' : 'team',
+    ], 200)]);
 
     $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
 
