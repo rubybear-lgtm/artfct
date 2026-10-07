@@ -22,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -133,7 +134,7 @@ class ConsoleController extends Controller
                 $artifact = $content->fetch($team->slug, $artifactId);
                 abort_if($artifact === null, 404);
 
-                IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'])->onQueue('indexing');
+                IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'], $artifact['version'] ?? null)->onQueue('indexing');
             } catch (Throwable $exception) {
                 Cache::forget($reindexCacheKey);
 
@@ -239,6 +240,21 @@ class ConsoleController extends Controller
 
         Gate::authorize('view', $team);
 
+        // `version` names one published version to open; omitted, the "current"
+        // version is opened exactly as before. A non-positive or non-integer
+        // value is a malformed link, refused as 422 rather than minted into a
+        // URL the Worker can only 404. Validation is explicit because the
+        // app's exception handler renders validation failures as a redirect
+        // for non-API routes.
+        $versionValidator = Validator::make($request->query(), [
+            'version' => ['nullable', 'integer', 'min:1'],
+        ]);
+        if ($versionValidator->fails()) {
+            abort(422, (string) $versionValidator->errors()->first('version'));
+        }
+        $validated = $versionValidator->validated();
+        $version = isset($validated['version']) ? (int) $validated['version'] : null;
+
         // Org-scoped existence check. A revoked artifact reads as absent here,
         // matching the Worker, which serves no content for it either.
         $artifact = $content->fetch($team->slug, $artifactId);
@@ -246,12 +262,12 @@ class ConsoleController extends Controller
         abort_if($artifact === null, 404);
 
         if (ArtifactViewLink::isAnonymous($artifact['tier'] ?? null)) {
-            return redirect()->away(ArtifactViewLink::publicPermanentUrl($artifactId));
+            return redirect()->away(ArtifactViewLink::publicPermanentUrl($artifactId, $version));
         }
 
         $links = ArtifactAccessLink::default();
         $expiresAt = now()->addMinutes($links->ttlMinutes());
-        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt);
+        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version);
 
         abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
 

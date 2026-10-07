@@ -4,18 +4,20 @@ namespace App\Services\WorkerEvents;
 
 use App\Contracts\ArtifactContentSource;
 use App\Jobs\IndexArtifactJob;
-use App\Models\ArtifactIndexEntry;
 use App\Models\Team;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * `artifact.created` -> `IndexArtifactJob` on the `indexing` queue
- * (spec 12). Dedupe by event id already happened in the controller; an
- * already-indexed artifact is skipped here. The content read doubles as the
- * ownership check: an artifact that is not in the event's org is refused.
+ * `artifact.version_created` -> `IndexArtifactJob` on the `indexing` queue
+ * (spec 12). A new version keeps the artifact id, so unlike `artifact.created`
+ * this always re-indexes: the existing entry and its vectors are replaced with
+ * the current version's content. The content read doubles as the ownership
+ * check: an artifact that is not in the event's org is refused. Events can
+ * arrive out of order, so the version stored is the one the `/content` read
+ * reports now rather than the one the event carries.
  */
-final class ArtifactCreatedHandler
+final class ArtifactVersionCreatedHandler
 {
     public function __construct(private readonly ArtifactContentSource $content) {}
 
@@ -32,12 +34,8 @@ final class ArtifactCreatedHandler
         $team = Team::query()->where('slug', $event['org_id'])->first();
 
         if (! is_string($artifactId) || $team === null) {
-            Log::warning('artifact.created event for unknown team or missing artifact id.', ['org_id' => $event['org_id']]);
+            Log::warning('artifact.version_created event for unknown team or missing artifact id.', ['org_id' => $event['org_id']]);
 
-            return;
-        }
-
-        if (ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->exists()) {
             return;
         }
 
@@ -48,7 +46,7 @@ final class ArtifactCreatedHandler
         }
 
         if ($artifact === null) {
-            Log::warning('artifact.created refused: artifact not found in the event org.', [
+            Log::warning('artifact.version_created refused: artifact not found in the event org.', [
                 'org_id' => $event['org_id'],
                 'artifact_id' => $artifactId,
             ]);

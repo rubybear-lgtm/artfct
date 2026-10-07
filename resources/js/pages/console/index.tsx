@@ -1,6 +1,7 @@
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 
+import ArtifactVersionController from '@/actions/App/Http/Controllers/ArtifactVersionController';
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { Button } from '@/components/ui/button';
@@ -465,6 +466,21 @@ export default function ConsoleIndex({
                                                 Indexing:{' '}
                                                 {indexing[artifact.id] ?? 'off'}
                                             </div>
+                                            {!artifact.revoked_at && (
+                                                <Link
+                                                    href={ArtifactVersionController.show.url(
+                                                        {
+                                                            team: team.slug,
+                                                            artifactId:
+                                                                artifact.id,
+                                                        },
+                                                    )}
+                                                    className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+                                                    data-testid={`artifact-history-${artifact.id}`}
+                                                >
+                                                    History
+                                                </Link>
+                                            )}
                                             {canCollect &&
                                                 collections.length > 0 && (
                                                     <select

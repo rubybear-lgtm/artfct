@@ -64,7 +64,7 @@ class IndexBackfillCommand extends Command
                     continue;
                 }
 
-                IndexArtifactJob::dispatch($team->id, $artifactId, $fetched['html'], $fetched['provenance'])->onQueue('indexing');
+                IndexArtifactJob::dispatch($team->id, $artifactId, $fetched['html'], $fetched['provenance'], $fetched['version'] ?? null)->onQueue('indexing');
                 $queued++;
             }
 

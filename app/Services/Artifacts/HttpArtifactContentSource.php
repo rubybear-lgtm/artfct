@@ -42,8 +42,11 @@ final class HttpArtifactContentSource implements ArtifactContentSource
 
         $response->throw();
 
+        $version = $response->json('version');
+
         return [
             'html' => (string) $response->json('content'),
+            'version' => is_numeric($version) ? (int) $version : null,
             // The Worker's `public`/`secure` tier. The open route reads it to
             // decide whether there is a token to mint at all, so it travels
             // with the content rather than costing a second round trip.

@@ -50,18 +50,26 @@ final class ArtifactViewLink
         return rtrim((string) $baseUrl, '/')."/p/{$artifactId}";
     }
 
-    public static function publicPermanentUrl(string $artifactId): string
+    public static function publicPermanentUrl(string $artifactId, ?int $version = null): string
     {
-        return self::withPermanentEntrypointSlash($artifactId, self::publicUrl($artifactId));
+        return self::withPermanentEntrypointSlash($artifactId, self::publicUrl($artifactId), $version);
     }
 
     /**
      * The app's open route for one artifact in `$teamSlug`. Session
-     * authentication lives here, never in the URL.
+     * authentication lives here, never in the URL. A `$version` names which
+     * published version the viewer should be sent to once the route resolves
+     * the tier and mints a link.
      */
-    public static function appOpenUrl(string $teamSlug, string $artifactId): string
+    public static function appOpenUrl(string $teamSlug, string $artifactId, ?int $version = null): string
     {
-        return route('console.open', ['team' => $teamSlug, 'artifactId' => $artifactId]);
+        $parameters = ['team' => $teamSlug, 'artifactId' => $artifactId];
+
+        if ($version !== null) {
+            $parameters['version'] = $version;
+        }
+
+        return route('console.open', $parameters);
     }
 
     /**
@@ -84,17 +92,17 @@ final class ArtifactViewLink
      * base is not the app's, reconstructing from config would hand out a link
      * to the wrong host.
      */
-    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null): string
+    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null, ?int $version = null): string
     {
         if (is_string($tier) && strtolower($tier) === 'public') {
-            return self::withPermanentEntrypointSlash($artifactId, $workerUrl ?: self::publicUrl($artifactId));
+            return self::withPermanentEntrypointSlash($artifactId, $workerUrl ?: self::publicUrl($artifactId), $version);
         }
 
         if (self::isAnonymous($tier)) {
             return self::forAnonymousArtifact($artifactId, $workerUrl);
         }
 
-        return self::appOpenUrl($teamSlug, $artifactId);
+        return self::appOpenUrl($teamSlug, $artifactId, $version);
     }
 
     /**
@@ -109,10 +117,14 @@ final class ArtifactViewLink
         return is_string($workerUrl) && $workerUrl !== '' ? $workerUrl : self::publicUrl($artifactId);
     }
 
-    private static function withPermanentEntrypointSlash(string $artifactId, string $url): string
+    private static function withPermanentEntrypointSlash(string $artifactId, string $url, ?int $version = null): string
     {
-        if (preg_match('/\A[0-9a-f]{32}\z/', $artifactId) !== 1 || ! str_ends_with($url, "/p/{$artifactId}")) {
+        if (! ArtifactIdShape::isPermanent($artifactId) || ! str_ends_with($url, "/p/{$artifactId}")) {
             return $url;
+        }
+
+        if ($version !== null) {
+            return $url."/v:{$version}/";
         }
 
         return $url.'/';

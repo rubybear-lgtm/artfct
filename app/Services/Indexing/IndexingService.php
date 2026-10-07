@@ -27,7 +27,7 @@ final class IndexingService
      * @throws RenderTimeoutException bubbles up so the queued job's retry/
      *                                backoff/dead-letter handling applies.
      */
-    public function indexArtifact(Team $team, string $artifactId, string $html, array $provenance): ArtifactIndexEntry
+    public function indexArtifact(Team $team, string $artifactId, string $html, array $provenance, ?int $version = null): ArtifactIndexEntry
     {
         $rendered = ExtractionHeuristics::needsRender($html);
 
@@ -42,15 +42,24 @@ final class IndexingService
             $headings = [];
         }
 
+        $values = [
+            'rendered' => $rendered,
+            'extracted_text' => $text,
+            'title' => $title,
+            'headings' => $headings,
+            'extracted_at' => Carbon::now(),
+        ];
+
+        // A caller that does not know the version (the console reindex and the
+        // backfill command) must not erase a version a Worker event already
+        // recorded; null means "indexed before versioning", not "unknown".
+        if ($version !== null) {
+            $values['version'] = $version;
+        }
+
         $entry = ArtifactIndexEntry::query()->updateOrCreate(
             ['team_id' => $team->id, 'artifact_id' => $artifactId],
-            [
-                'rendered' => $rendered,
-                'extracted_text' => $text,
-                'title' => $title,
-                'headings' => $headings,
-                'extracted_at' => Carbon::now(),
-            ],
+            $values,
         );
 
         $this->embedAndUpsert($team, $entry, $provenance);

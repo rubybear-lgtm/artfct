@@ -56,11 +56,14 @@ final class McpArtifactLink
      * `$workerUrl` is the URL the Worker published for the artifact, when the
      * response carried one. It is used only for an anonymous artifact, where it
      * is the artifact's real address — see `ArtifactViewLink::forArtifact`.
+     *
+     * `$version` names one published version; omitted, the link resolves to the
+     * artifact's current version exactly as before.
      */
-    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null): string|Response
+    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null, ?int $version = null): string|Response
     {
         if (ArtifactViewLink::isAnonymous($tier)) {
-            return ArtifactViewLink::forArtifact($teamSlug, $artifactId, $tier, $workerUrl);
+            return ArtifactViewLink::forArtifact($teamSlug, $artifactId, $tier, $workerUrl, $version);
         }
 
         $links = ArtifactAccessLink::default();
@@ -80,6 +83,6 @@ final class McpArtifactLink
             return McpErrorResponse::error(self::UNFORMABLE, self::ERROR_CODE);
         }
 
-        return ArtifactViewLink::appOpenUrl($teamSlug, $artifactId);
+        return ArtifactViewLink::appOpenUrl($teamSlug, $artifactId, $version);
     }
 }

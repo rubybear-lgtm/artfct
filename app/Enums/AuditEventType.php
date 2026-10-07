@@ -17,6 +17,7 @@ enum AuditEventType: string
     case ArtifactRevoked = 'artifact.revoked';
     case ArtifactLinkMinted = 'artifact.link_minted';
     case ArtifactDeleted = 'artifact.deleted';
+    case ArtifactVersionRestored = 'artifact.version_restored';
     case ShareCreated = 'share.created';
     case ShareRevoked = 'share.revoked';
     case MemberAdded = 'member.added';
@@ -59,6 +60,7 @@ enum AuditEventType: string
             self::ArtifactRevoked => 'Artifact revoked',
             self::ArtifactLinkMinted => 'Open link created',
             self::ArtifactDeleted => 'Artifact deleted',
+            self::ArtifactVersionRestored => 'Artifact version restored',
             self::ShareCreated => 'Share created',
             self::ShareRevoked => 'Share revoked',
             self::MemberAdded => 'Member added',

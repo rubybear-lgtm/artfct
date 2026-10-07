@@ -132,6 +132,54 @@ final class HttpArtifactDirectory implements ArtifactDirectory
         return $response->body();
     }
 
+    public function listVersions(string $orgSlug, string $artifactId): ?array
+    {
+        if (! $this->baseUrl) {
+            return null;
+        }
+
+        $response = Http::withToken($this->tokenFor($orgSlug))
+            ->get(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}/versions");
+
+        // Another organization's artifact is the same 404 as a missing one, so
+        // the page can render its not-found state without an existence oracle.
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        if ($response->status() === 403) {
+            throw new HttpResponseException(response()->json(['error' => 'Forbidden'], 403));
+        }
+
+        $response->throw();
+
+        return $response->json() ?: null;
+    }
+
+    public function restoreVersion(string $orgSlug, string $artifactId, int $version): array
+    {
+        if (! $this->baseUrl) {
+            return ['status' => 'not_found', 'version' => null];
+        }
+
+        $response = Http::withToken($this->tokenFor($orgSlug))
+            ->post(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}/versions/{$version}/restore");
+
+        if ($response->successful()) {
+            return [
+                'status' => $response->json('created') ? 'restored' : 'unchanged',
+                'version' => is_numeric($response->json('version')) ? (int) $response->json('version') : null,
+            ];
+        }
+
+        return match ($response->status()) {
+            403 => ['status' => 'forbidden', 'version' => null],
+            404 => ['status' => 'not_found', 'version' => null],
+            409 => ['status' => 'conflict', 'version' => null],
+            default => throw new HttpResponseException(response()->json(['error' => 'Artifact service error'], 502)),
+        };
+    }
+
     /**
      * The credential for a Worker call about `$orgSlug`: the caller's own
      * bearer token when the request carries one (API callers), otherwise a

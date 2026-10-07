@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\ArtifactVersionController;
 use App\Http\Controllers\ConsoleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OnboardingController;
@@ -67,6 +68,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
     Route::get('settings/teams/{team}/console/artifacts/{artifactId}/open', [ConsoleController::class, 'open'])->name('console.open');
+    Route::get('settings/teams/{team}/console/artifacts/{artifactId}/versions', [ArtifactVersionController::class, 'show'])->name('console.versions');
+    Route::post('settings/teams/{team}/console/artifacts/{artifactId}/versions/{version}/restore', [ArtifactVersionController::class, 'restore'])->whereNumber('version')->name('console.versions.restore');
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
