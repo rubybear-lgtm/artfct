@@ -20,6 +20,7 @@ mod ephemeral_routes;
 mod governance_routes;
 mod org_admin;
 mod preview;
+mod sharing;
 mod validation;
 mod version_routes;
 
