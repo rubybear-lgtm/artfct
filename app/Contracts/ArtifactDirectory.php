@@ -46,6 +46,29 @@ interface ArtifactDirectory
     public function exportArtifacts(string $orgSlug): array;
 
     /**
+     * List one artifact's completed versions, newest first.
+     *
+     * @param  string  $orgSlug  Organization slug
+     * @param  string  $artifactId  Permanent artifact identifier
+     * @return array{id: string, current_version: int, versions: list<array<string, mixed>>}|null
+     *                                                                                            Null when the artifact is not in this organization (the Worker answers 404).
+     *
+     * @throws \Exception If access denied or the artifact service fails
+     */
+    public function listVersions(string $orgSlug, string $artifactId): ?array;
+
+    /**
+     * Publish a past version as the artifact's current content. Restoring the
+     * current version is a no-op (`unchanged`), never an error.
+     *
+     * @param  string  $orgSlug  Organization slug
+     * @param  string  $artifactId  Permanent artifact identifier
+     * @param  int  $version  The version to restore (1-based)
+     * @return array{status: 'restored'|'unchanged'|'forbidden'|'not_found'|'conflict', version: ?int}
+     */
+    public function restoreVersion(string $orgSlug, string $artifactId, int $version): array;
+
+    /**
      * Fetch one export blob's bytes, or null when the organization has no
      * permanent artifact referencing it.
      *

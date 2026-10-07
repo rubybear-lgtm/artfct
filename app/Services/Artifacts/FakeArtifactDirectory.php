@@ -23,6 +23,19 @@ class FakeArtifactDirectory implements ArtifactDirectory
      */
     private array $exportCounts = [];
 
+    /**
+     * @var array<string, array{id: string, current_version: int, versions: list<array<string, mixed>>}>
+     *                                                                                                   Seeded version history by artifact id. An artifact without one reads
+     *                                                                                                   as a single current version built from its artifact row.
+     */
+    private array $versions = [];
+
+    /**
+     * @var array<string, 'forbidden'|'conflict'|'not_found'> Test hook: make a
+     *                                                        restore for this artifact answer with this status.
+     */
+    private array $restoreOutcomes = [];
+
     public function __construct()
     {
         // Initialize with some demo data
@@ -128,6 +141,115 @@ class FakeArtifactDirectory implements ArtifactDirectory
 
             if (hash('sha256', $body) === $sha256) {
                 return $body;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Seed a version history for one artifact, newest first. `$currentVersion`
+     * defaults to the highest version seeded.
+     *
+     * @param  list<array<string, mixed>>  $versions
+     */
+    public function seedVersions(string $artifactId, array $versions, ?int $currentVersion = null): void
+    {
+        $numbers = array_map(fn (array $version): int => (int) ($version['version'] ?? 0), $versions);
+
+        $this->versions[$artifactId] = [
+            'id' => $artifactId,
+            'current_version' => $currentVersion ?? (int) max($numbers),
+            'versions' => $versions,
+        ];
+    }
+
+    /**
+     * Test hook: make the next restore of `$artifactId` answer `forbidden`,
+     * `conflict` or `not_found` instead of touching the seeded history.
+     */
+    public function failRestore(string $artifactId, string $status = 'forbidden'): void
+    {
+        $this->restoreOutcomes[$artifactId] = $status;
+    }
+
+    public function listVersions(string $orgSlug, string $artifactId): ?array
+    {
+        return $this->historyFor($artifactId);
+    }
+
+    public function restoreVersion(string $orgSlug, string $artifactId, int $version): array
+    {
+        if (isset($this->restoreOutcomes[$artifactId])) {
+            return ['status' => $this->restoreOutcomes[$artifactId], 'version' => null];
+        }
+
+        $history = $this->historyFor($artifactId);
+        if ($history === null) {
+            return ['status' => 'not_found', 'version' => null];
+        }
+
+        $restored = null;
+        foreach ($history['versions'] as $candidate) {
+            if ((int) ($candidate['version'] ?? 0) === $version) {
+                $restored = $candidate;
+                break;
+            }
+        }
+
+        if ($restored === null) {
+            return ['status' => 'not_found', 'version' => null];
+        }
+
+        if ($version === (int) $history['current_version']) {
+            return ['status' => 'unchanged', 'version' => $version];
+        }
+
+        // Restoring republishes the past version's content as a new version,
+        // exactly as the Worker does: history stays append-only.
+        $next = (int) $history['current_version'] + 1;
+        $restored['version'] = $next;
+        $restored['current'] = true;
+        $restored['created_at'] = now()->toIso8601String();
+        $restored['restored_from'] = $version;
+
+        foreach ($history['versions'] as $index => $candidate) {
+            $history['versions'][$index]['current'] = false;
+        }
+
+        array_unshift($history['versions'], $restored);
+        $history['current_version'] = $next;
+        $this->versions[$artifactId] = $history;
+
+        return ['status' => 'restored', 'version' => $next];
+    }
+
+    /**
+     * @return array{id: string, current_version: int, versions: list<array<string, mixed>>}|null
+     */
+    private function historyFor(string $artifactId): ?array
+    {
+        if (isset($this->versions[$artifactId])) {
+            return $this->versions[$artifactId];
+        }
+
+        foreach ($this->artifacts as $artifact) {
+            if ($artifact['id'] === $artifactId) {
+                return [
+                    'id' => $artifactId,
+                    'current_version' => 1,
+                    'versions' => [[
+                        'version' => 1,
+                        'created_at' => $artifact['created_at'] ?? now()->toIso8601String(),
+                        'created_by' => isset($artifact['user_id']) ? (string) $artifact['user_id'] : null,
+                        'agent' => $artifact['provenance']['agent'] ?? null,
+                        'title' => $artifact['title'] ?? null,
+                        'description' => $artifact['description'] ?? null,
+                        'content_hash' => $artifact['content_hash'] ?? null,
+                        'current' => true,
+                        'restored_from' => null,
+                    ]],
+                ];
             }
         }
 
