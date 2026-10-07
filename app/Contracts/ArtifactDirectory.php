@@ -25,6 +25,31 @@ interface ArtifactDirectory
     ): array;
 
     /**
+     * Read one artifact's credential-scoped metadata.
+     *
+     * @param  string  $orgSlug  Organization slug
+     * @param  string  $artifactId  Artifact identifier
+     * @return array<string, mixed>|null Null when the artifact is not visible to the
+     *                                   caller in this organization (the Worker answers 404),
+     *                                   including a private artifact they may not view.
+     *
+     * @throws \Exception If the artifact service fails
+     */
+    public function getArtifact(string $orgSlug, string $artifactId): ?array;
+
+    /**
+     * Change who can open or edit one artifact. The Worker allows it only for
+     * the owner or a team admin, and refuses `public` when the team has turned
+     * public sharing off.
+     *
+     * @param  string  $orgSlug  Organization slug
+     * @param  string  $artifactId  Artifact identifier
+     * @param  array{sharing?: string, edit_access?: string}  $changes  Only the fields being changed
+     * @return array{status: 'updated'|'forbidden'|'public_disabled'|'not_found', sharing: ?string, edit_access: ?string}
+     */
+    public function updateSharing(string $orgSlug, string $artifactId, array $changes): array;
+
+    /**
      * Revoke an artifact (soft delete via revoked_at).
      *
      * @param  string  $orgSlug  Organization slug

@@ -41,6 +41,7 @@ function coveredElsewhere(): array
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
         'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
         'console.versions' => 'ArtifactVersionsBrowserTest (needs a seeded permanent artifact id)',
+        'artifacts.show' => 'ArtifactViewerBrowserTest (needs a seeded artifact id)',
         'teams.search' => 'redirect to the dashboard (SearchBrowserTest: legacy search URL)',
     ];
 }
@@ -60,6 +61,7 @@ function notPages(): array
         'oauth.authorize' => 'OAuth authorization handshake and consent flow',
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
         'teams.audit.export' => 'file download', 'console.export' => 'zip download',
+        'artifacts.download' => 'file download',
         'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
 }

@@ -96,7 +96,7 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
     $collection->artifacts()->create(['artifact_id' => ARTIFACT_LINK_ID, 'added_at' => now()]);
 
-    $openUrl = route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
+    $openUrl = route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]);
     $previewUrl = route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
 
     test()->actingAs($member)->get(route('teams.collections.index', $team))

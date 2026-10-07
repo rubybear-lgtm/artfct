@@ -98,6 +98,21 @@ final class ArtifactAccessLink
     }
 
     /**
+     * The same isolated-origin URL without a token. A `public` artifact is
+     * served by the Worker to anyone, so it needs no credential and no
+     * signing secret is required to build this. The hostname rules are the
+     * same as `forArtifact`, so the tokened and untokened links for one
+     * artifact can never point at different hosts.
+     */
+    public function publicArtifactUrl(string $tenantSlug, string $artifactId, ?int $version = null): string
+    {
+        $hostname = $this->isolatedHostname($tenantSlug, $artifactId);
+        $path = $version === null ? "/p/{$artifactId}/" : "/p/{$artifactId}/v:{$version}/";
+
+        return "https://{$hostname}{$path}";
+    }
+
+    /**
      * `<artifact_id>.<expires_at_unix>.<hmac_hex>` — the exact wire form
      * `verify_access_token` parses and re-derives the signature over.
      */

@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
@@ -10,6 +11,7 @@ use App\Models\McpActivity;
 use App\Models\McpConnection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
@@ -41,7 +43,7 @@ function followArtifactViewUrl(string $viewUrl, ?User $as = null): array
 {
     $host = (string) parse_url($viewUrl, PHP_URL_HOST);
     $workerHost = parse_url((string) config('services.worker.base_url'), PHP_URL_HOST);
-    $appHost = parse_url(route('console.open', ['team' => 'team', 'artifactId' => 'artifact']), PHP_URL_HOST);
+    $appHost = parse_url(route('artifacts.show', ['artifactId' => 'artifact']), PHP_URL_HOST);
 
     if (is_string($workerHost) && $host === $workerHost) {
         $response = Http::get($viewUrl);
@@ -764,7 +766,7 @@ test('deploy_to_canvas hands back a link that resolves for the artifact it creat
     // 404, because the route reads D1 and there is no row. An app-route link
     // with a fragment appended to it can therefore never be the right answer.
     $throughTheApp = followArtifactViewUrl(
-        route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]),
+        route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]),
         $member,
     );
 
@@ -1429,7 +1431,30 @@ test('a secure view_url from the workspace tools opens for a member and is refus
 
     app()->bind(UsageContract::class, FakeUsage::class);
 
-    // A workspace artifact lives in D1, which is what the open route reads.
+    // A workspace artifact lives in D1, which is what the viewer reads. The
+    // fake serves globally, so a subclass pins it to this org: another
+    // workspace's member must not resolve it.
+    $directory = new class extends FakeArtifactDirectory
+    {
+        public function getArtifact(string $orgSlug, string $artifactId): ?array
+        {
+            return $orgSlug === 'rub-367-open' ? parent::getArtifact($orgSlug, $artifactId) : null;
+        }
+    };
+    $directory->seedArtifact([
+        'id' => ARTIFACT_LINK_ID,
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Signed report',
+        'description' => 'A safe summary',
+        'content_hash' => md5(ARTIFACT_LINK_ID),
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+    app()->instance(ArtifactDirectory::class, $directory);
+
     /** @var FakeArtifactContentSource $content */
     $content = app(ArtifactContentSource::class);
     $content->seed($team->slug, ARTIFACT_LINK_ID, $html, ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null], 'secure');
@@ -1446,7 +1471,7 @@ test('a secure view_url from the workspace tools opens for a member and is refus
     // Shape that is genuinely the contract: the link is the app's route for the
     // caller's workspace, and it carries no credential — the token is minted
     // per click, for the viewer, and never handed to the agent.
-    expect($viewUrl)->toBe(route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]))
+    expect($viewUrl)->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]))
         ->and($viewUrl)->not->toContain('token=');
 
     // No session: refused, and nothing is minted for an anonymous reader.
@@ -1463,18 +1488,18 @@ test('a secure view_url from the workspace tools opens for a member and is refus
     expect($refused['status'])->toBe(404)
         ->and($refused['location'])->toBeNull();
 
-    // The member who was sent the link: the redirect carries a token bound to
-    // this artifact, which is the thing that makes the link open.
+    // The member who was sent the link: the viewer renders, and the frame it
+    // renders carries a token bound to this artifact, which is the thing that
+    // makes the link open.
     $followed = followArtifactViewUrl($viewUrl, $member);
 
-    expect($followed['status'])->toBe(302);
+    expect($followed['status'])->toBe(200)
+        ->and($followed['location'])->toBeNull();
 
-    $location = (string) $followed['location'];
-
-    expect($location)->toStartWith('https://'.$team->slug.'--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=');
-
-    parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
-    $minted = (string) ($query['token'] ?? '');
+    // Inertia serialises the page props as JSON, so the frame URL's slashes
+    // are escaped; the token charset is not, so it can be read directly.
+    preg_match('#token=([0-9a-f.]+)#', $followed['body'], $matches);
+    $minted = (string) ($matches[1] ?? '');
     $now = now()->timestamp;
 
     expect($minted)->not->toBe('')
