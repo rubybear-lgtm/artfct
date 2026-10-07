@@ -3832,3 +3832,73 @@ async fn isolated_origin_frames_only_for_the_app() -> Result<(), Box<dyn Error>>
     assert_eq!(anonymous.bytes().await?.as_ref(), bytes.as_slice());
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn old_public_links_and_the_public_read_lead_to_the_viewer() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("short-link-public");
+    let (public_id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    let team_bytes = unique_html("short-link-team");
+    let (team_id, _) = create_and_upload_payload(
+        &context,
+        &client,
+        &team_bytes,
+        permanent_payload_with_tier(&team_bytes, json!({}), "secure"),
+    )
+    .await?;
+
+    // A browser opening an old public link lands on the viewer...
+    let no_redirects = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let navigation = no_redirects
+        .get(format!("{}/p/{public_id}/", context.base))
+        .header("Sec-Fetch-Dest", "document")
+        .send()
+        .await?;
+    assert_eq!(navigation.status(), reqwest::StatusCode::FOUND);
+    let location = navigation
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        location.ends_with(&format!("/a/{public_id}")),
+        "unexpected Location {location}"
+    );
+
+    // ...while a programmatic fetch still receives the artifact.
+    let fetched = no_redirects
+        .get(format!("{}/p/{public_id}/", context.base))
+        .send()
+        .await?;
+    assert_eq!(fetched.status(), reqwest::StatusCode::OK);
+    assert_eq!(fetched.bytes().await?.as_ref(), bytes.as_slice());
+
+    // The public read answers for the public artifact only, with no credential.
+    let public = no_redirects
+        .get(format!("{}/v1/public/artifacts/{public_id}", context.base))
+        .send()
+        .await?;
+    assert_eq!(public.status(), reqwest::StatusCode::OK);
+    let body: Value = public.json().await?;
+    assert_eq!(body["id"], public_id.as_str());
+    assert_eq!(body["sharing"], "public");
+    for hidden in [team_id.as_str(), "zzzzzzzzzzzzz"] {
+        let response = no_redirects
+            .get(format!("{}/v1/public/artifacts/{hidden}", context.base))
+            .send()
+            .await?;
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{hidden} must look missing"
+        );
+    }
+    Ok(())
+}

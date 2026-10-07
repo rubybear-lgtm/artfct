@@ -943,6 +943,27 @@ pub(crate) async fn resolve_permanent_artifact(
         now,
         &artifact_origin_suffix(env),
     );
+    // RUB-439: an old shared-origin link to a public artifact's entrypoint
+    // lands on the app's viewer. Subresources, isolated hosts, ephemeral
+    // artifacts and every non-public level keep their behaviour.
+    let is_navigation = req
+        .headers()
+        .get("Sec-Fetch-Dest")?
+        .is_some_and(|dest| dest.eq_ignore_ascii_case("document"));
+    if let Some(location) = public_entrypoint_redirect(
+        app_frame_ancestor(env).as_deref(),
+        isolated_access == IsolatedAccess::NotIsolated,
+        is_navigation,
+        requested_path,
+        sharing,
+        artifact_id,
+        version,
+    ) {
+        let mut response = Response::empty()?.with_status(302);
+        response.headers_mut().set("Location", &location)?;
+        response.headers_mut().set("Cache-Control", "no-store")?;
+        return Ok(response);
+    }
     let mut viewer_user_id = None;
     match isolated_access {
         IsolatedAccess::Forbidden => return isolated_forbidden_response(),
@@ -2276,4 +2297,109 @@ mod tests {
         let over_200: Vec<String> = (0..201).map(|index| format!("{index:013}")).collect();
         assert!(parse_list_query_params(&list_params(&[("ids", &over_200.join(","))])).is_err());
     }
+}
+
+/// Where an old shared-origin `/p/{id}/` link to a public artifact should go
+/// (RUB-439): the app's viewer, `{app}/a/{id}` or `{app}/a/{id}/v/{n}`. Only a
+/// top-level browser navigation (`Sec-Fetch-Dest: document`) is redirected, so
+/// a person opening an old link lands on the viewer while programmatic
+/// fetches and existing `<iframe>` embeds keep receiving the artifact. `None`
+/// keeps today's behaviour: a request on an isolated host, a non-navigation,
+/// a bundle subresource (`requested_path` set), a non-public artifact, or an
+/// environment without a valid `ARTFCT_APP_ORIGIN`. The caller has already
+/// resolved a live, complete row.
+pub(crate) fn public_entrypoint_redirect(
+    app_origin: Option<&str>,
+    shared_origin: bool,
+    is_navigation: bool,
+    requested_path: Option<&str>,
+    sharing: Sharing,
+    artifact_id: &str,
+    version: Option<u32>,
+) -> Option<String> {
+    if !shared_origin || !is_navigation || requested_path.is_some() || !sharing.is_anonymous() {
+        return None;
+    }
+    let app = app_origin?;
+    Some(match version {
+        Some(version) => format!("{app}/a/{artifact_id}/v/{version}"),
+        None => format!("{app}/a/{artifact_id}"),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct PublicArtifactRow {
+    id: String,
+    org: String,
+    title: Option<String>,
+    description: Option<String>,
+    current_version: i64,
+    version_count: i64,
+    updated_at: String,
+    edit_access: String,
+}
+
+/// The `GET /v1/public/artifacts/{id}` body (RUB-439).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one argument per documented field keeps the builder a pure mirror of the schema"
+)]
+pub(crate) fn build_public_artifact_metadata(
+    id: &str,
+    org: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+    version: i64,
+    version_count: i64,
+    updated_at: &str,
+    edit_access: EditAccess,
+) -> Value {
+    serde_json::json!({
+        "id": id,
+        "org": org,
+        "title": title,
+        "description": description,
+        "version": version.max(1),
+        "version_count": version_count.max(0),
+        "updated_at": updated_at,
+        "sharing": Sharing::Public.as_str(),
+        "edit_access": edit_access.as_str(),
+    })
+}
+
+/// `GET /v1/public/artifacts/{id}` — unauthenticated metadata for a live,
+/// complete, public permanent artifact, for the app's `/a/{id}` viewer when the
+/// visitor is signed out or from another team. Every other case (bad id,
+/// missing, team, private, revoked, pending, ephemeral) is the same 404, so the
+/// endpoint never confirms that a non-public id exists.
+pub(crate) async fn get_public_artifact_metadata(path: &str, env: &Env) -> Result<Response> {
+    let artifact_id = path
+        .trim_start_matches("/v1/public/artifacts/")
+        .trim_end_matches('/');
+    if !store::is_permanent_id(artifact_id) {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    let row = env
+        .d1("ARTIFACTS_DB")?
+        .prepare("SELECT a.id, o.slug AS org, a.title, a.description, a.current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at, a.edit_access FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.tier = 'public' AND a.revoked_at IS NULL AND a.expires_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .bind(&[JsValue::from_str(artifact_id)])?
+        .first::<PublicArtifactRow>(None)
+        .await?;
+    let Some(row) = row else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    JsonResponseDefinition::json(
+        build_public_artifact_metadata(
+            &row.id,
+            &row.org,
+            row.title.as_deref(),
+            row.description.as_deref(),
+            row.current_version,
+            row.version_count,
+            &row.updated_at,
+            EditAccess::from_stored(&row.edit_access),
+        ),
+        200,
+    )
+    .into_worker_response()
 }
