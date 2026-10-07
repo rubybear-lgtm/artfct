@@ -39,7 +39,7 @@
                 "required": ["id", "type", "org_id", "occurred_at", "data"],
                 "properties": {
                   "id": { "type": "string", "format": "uuid" },
-                  "type": { "type": "string", "examples": ["artifact.created", "artifact.version_created", "artifact.viewed"] },
+                  "type": { "type": "string", "examples": ["artifact.created", "artifact.version_created", "artifact.sharing_changed", "artifact.viewed"] },
                   "org_id": { "type": "string" },
                   "occurred_at": { "type": "string", "format": "date-time" },
                   "data": { "type": "object" }
@@ -489,7 +489,7 @@
                   "type": "object",
                   "required": ["artifacts", "next_cursor"],
                   "properties": {
-                    "artifacts": { "type": "array", "items": { "type": "object" } },
+                    "artifacts": { "type": "array", "items": { "$ref": "#/components/schemas/ArtifactAccess" }, "description": "Each item also carries id, org_id, title, description, created_at, revoked_at, size_bytes, content_hash and provenance. Private artifacts appear only for their owner and team admins." },
                     "next_cursor": { "type": ["string", "null"] }
                   }
                 }
@@ -578,9 +578,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["id", "content_type", "provenance", "content", "version"],
+                  "required": ["id", "content_type", "provenance", "content", "version", "sharing", "owner_user_id"],
                   "properties": {
                     "id": { "type": "string" },
+                    "sharing": { "$ref": "#/components/schemas/Sharing" },
+                    "owner_user_id": { "type": ["string", "null"], "description": "Server-side callers (system reads with artifacts:read_private) must apply the Private rule themselves before showing or linking the artifact." },
                     "version": { "type": "integer", "minimum": 1, "description": "The current version whose entrypoint is returned." },
                     "content_type": { "type": "string" },
                     "provenance": {
@@ -641,6 +643,125 @@
         },
         "responses": {
           "200": { "description": "Keys stored." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/artifacts/{id}/sharing": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "patch": {
+        "tags": ["Artifacts"],
+        "summary": "Change who can open or edit an artifact",
+        "description": "The owner or a team admin changes sharing (private, team, public) and edit access (view, edit). Takes effect on the next request. Choosing public is refused with 403 public_sharing_disabled when the team turned public sharing off. Emits artifact.sharing_changed with from and to for the audit log. Another org's artifact, or a private one the caller cannot see, is 404.",
+        "operationId": "updateArtifactSharing",
+        "security": [{ "orgToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactSharingRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Sharing updated (or unchanged when the values were already set).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactSharingResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/internal/org-settings": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Push an organization's sharing settings",
+        "description": "Internal. Laravel pushes whether the team allows public sharing. Authenticated with the limits shared secret. Turning public sharing off downgrades every live public artifact of the org to team in the same request and returns their ids so Laravel can audit each change.",
+        "operationId": "writeOrganizationSettings",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["org", "public_sharing_allowed"],
+                "properties": {
+                  "org": { "type": "string" },
+                  "public_sharing_allowed": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["org", "public_sharing_allowed", "downgraded"],
+                  "properties": {
+                    "org": { "type": "string" },
+                    "public_sharing_allowed": { "type": "boolean" },
+                    "downgraded": { "type": "array", "items": { "type": "string" }, "description": "Ids of public artifacts moved to team by this request." }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/v1/internal/orgs/{org}/owner-backfill": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" }
+      ],
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Give ownerless artifacts an owner",
+        "description": "Internal. Sets owner_user_id on every artifact of the org that has none (published before owners were recorded). Idempotent. Authenticated with the limits shared secret.",
+        "operationId": "backfillArtifactOwners",
+        "x-internal": true,
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["owner_user_id"],
+                "properties": { "owner_user_id": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backfill applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["org", "updated"],
+                  "properties": { "org": { "type": "string" }, "updated": { "type": "integer", "minimum": 0 } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" }
         }
@@ -1507,10 +1628,15 @@
       },
     "ArtifactMetadata": {
         "type": "object",
-        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at"],
+        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at", "sharing", "edit_access", "owner_user_id", "can_edit", "can_change_sharing"],
         "properties": {
           "id": { "type": "string" },
-          "tier": { "type": "string", "enum": ["public", "secure", "ephemeral"] },
+          "tier": { "type": "string", "enum": ["public", "secure", "private", "ephemeral"] },
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess" },
+          "owner_user_id": { "type": ["string", "null"] },
+          "can_edit": { "type": "boolean" },
+          "can_change_sharing": { "type": "boolean" },
           "version": { "type": "integer", "minimum": 1, "description": "The current (served and indexed) version number." },
           "version_count": { "type": "integer", "minimum": 0, "description": "Number of completed versions (0 while the first upload is still pending)." },
           "updated_at": { "type": "string", "format": "date-time", "description": "When the current version was published." },
@@ -1627,7 +1753,6 @@
         "additionalProperties": false,
         "required": [
           "mode",
-          "tier",
           "title",
           "description",
           "thumbnail",
@@ -1637,7 +1762,9 @@
         ],
         "properties": {
           "mode": { "type": "string", "const": "permanent" },
-          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier", "description": "Deprecated: use sharing. Ignored when sharing is given." },
+          "sharing": { "$ref": "#/components/schemas/Sharing", "description": "Defaults to team when neither sharing nor tier is given. public is refused (403 public_sharing_disabled) when the team turned public sharing off." },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess", "description": "Defaults to view." },
           "title": { "type": "string" },
           "description": { "type": "string" },
           "thumbnail": { "type": "string", "format": "uri" },
@@ -1652,7 +1779,52 @@
       },
       "PermanentArtifactTier": {
         "type": "string",
-        "enum": ["public", "secure"]
+        "enum": ["public", "secure", "private"],
+        "description": "Storage name of the sharing level, kept for compatibility: secure = team. New clients use `sharing`."
+      },
+      "Sharing": {
+        "type": "string",
+        "enum": ["private", "team", "public"],
+        "description": "Who can open the artifact. private: the owner and team admins. team: any member of the owning team. public: anyone with the link."
+      },
+      "EditAccess": {
+        "type": "string",
+        "enum": ["view", "edit"],
+        "description": "Whether the people the artifact is shared with may publish new versions. The owner can always edit. Public + edit still requires a signed-in Artfct account to publish."
+      },
+      "ArtifactAccess": {
+        "type": "object",
+        "required": ["sharing", "edit_access", "owner_user_id", "can_edit", "can_change_sharing"],
+        "description": "Sharing state and what the calling credential may do, decided by the Worker.",
+        "properties": {
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess" },
+          "owner_user_id": { "type": ["string", "null"], "description": "Null only for artifacts published before owners were recorded and not yet backfilled." },
+          "can_edit": { "type": "boolean", "description": "The caller may publish a new version." },
+          "can_change_sharing": { "type": "boolean", "description": "The caller may change sharing (the owner or a team admin)." }
+        }
+      },
+      "ArtifactSharingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess" }
+        }
+      },
+      "ArtifactSharingResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "sharing", "edit_access", "tier", "previous_sharing", "previous_edit_access"],
+        "properties": {
+          "id": { "type": "string" },
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess" },
+          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "previous_sharing": { "$ref": "#/components/schemas/Sharing" },
+          "previous_edit_access": { "$ref": "#/components/schemas/EditAccess" }
+        }
       },
       "Provenance": {
         "type": "object",
@@ -1820,11 +1992,13 @@
       "PermanentArtifactResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "url", "tier", "missing_files", "version"],
+        "required": ["id", "url", "tier", "sharing", "edit_access", "missing_files", "version"],
         "properties": {
           "id": { "type": "string" },
           "url": { "type": "string", "format": "uri" },
           "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
+          "edit_access": { "$ref": "#/components/schemas/EditAccess" },
           "version": { "type": "integer", "minimum": 1, "description": "The version this upload creates, or the existing current version when identical bytes were re-posted." },
           "missing_files": {
             "type": "array",
@@ -1853,9 +2027,11 @@
       "ArtifactVersionResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "version", "url", "created", "missing_files"],
+        "required": ["id", "version", "url", "created", "missing_files", "tier", "sharing"],
         "properties": {
           "id": { "type": "string", "description": "The artifact's stable id (unchanged)." },
+          "tier": { "$ref": "#/components/schemas/PermanentArtifactTier" },
+          "sharing": { "$ref": "#/components/schemas/Sharing" },
           "version": { "type": "integer", "minimum": 1 },
           "url": { "type": "string", "format": "uri", "description": "The artifact's current URL (/p/{id}/)." },
           "created": { "type": "boolean", "description": "False when the bytes were identical to the current version: nothing was created and version is the current one." },
@@ -1965,7 +2141,8 @@
           "rate_limited",
           "quota_exceeded",
           "version_conflict",
-          "version_not_found"
+          "version_not_found",
+          "public_sharing_disabled"
         ]
       }
     }
