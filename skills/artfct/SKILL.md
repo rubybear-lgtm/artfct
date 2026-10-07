@@ -110,6 +110,21 @@ Use for: drafts, HR or financial material, anything only the user (and team admi
 ```
 Use for: material the user explicitly wants to send to people outside the team.
 
+## Finding Artifacts: List or Search
+
+- **`search_artifacts`** finds artifacts by what they are about ("the Q3 churn
+  analysis", "pricing page mockups").
+- **`list_artifacts`** lists them by facts: who made them (`owner: "me"` or a
+  teammate's email), when (`created_after`, `updated_after`), how they are
+  shared (`sharing`), which collection, which AI tool (`agent`), title words
+  (`title_contains`) or type (`kind`). Sort by `updated` (default), `created`,
+  `title` or `most_viewed`. Use it for "what did I publish this week?", "our
+  most-opened dashboards" or "everything shared publicly". Page with
+  `next_cursor`.
+
+Each listed item says whether the user can edit it (`can_edit`); use that
+before offering to publish a new version.
+
 ## Updating an Artifact Instead of Duplicating It
 
 When the user asks to change something already published (in this conversation
@@ -178,7 +193,7 @@ Never reference local paths — they will 404 once hosted. For the full HTML tem
 
 ## The Link You Hand Back
 
-`deploy_artifact`, `get_artifact` and `search_artifacts` return the openable
+`deploy_artifact`, `get_artifact`, `list_artifacts` and `search_artifacts` return the openable
 link as **`view_url`** — never reconstruct a `/p/{id}` URL from an artifact id
 yourself. What it points at depends on the sharing level:
 
