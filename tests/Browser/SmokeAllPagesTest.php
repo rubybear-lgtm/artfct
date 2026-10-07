@@ -21,7 +21,7 @@ function signedInPages(): array
         'dashboard', 'account.show', 'teams.index', 'teams.edit', 'teams.audit.index',
         'teams.authentication.show', 'teams.billing.show', 'teams.collections.index',
         'console.index', 'teams.governance.show', 'teams.tokens.index',
-        'teams.mcp-connections.index',
+        'teams.mcp-connections.index', 'teams.admin.show',
     ];
 }
 

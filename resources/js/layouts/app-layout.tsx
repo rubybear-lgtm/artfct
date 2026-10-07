@@ -138,15 +138,182 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         return () => query.removeEventListener('change', closeOnDesktop);
     }, []);
-    const isTeamAdmin =
-        team !== null &&
-        teams.find((t) => t.slug === team.slug)?.role === 'admin';
-    const navLinkClass = (href: string, exact = false) =>
+    // Admins (team leads) get the Admin area; members and viewers stay on the
+    // teammate path. The server decides the role, never the client.
+    const isAdmin = team?.isAdmin === true;
+    const currentPath = url.split('?')[0];
+    const navLinkClassFor = (active: boolean) =>
         `border-b-2 py-3 transition-colors hover:text-foreground ${
-            url.split('?')[0] === href || (!exact && url.startsWith(`${href}/`))
+            active
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground'
         }`;
+    const navLinkClass = (href: string, exact = false) =>
+        navLinkClassFor(
+            currentPath === href || (!exact && url.startsWith(`${href}/`)),
+        );
+
+    // Admin settings pages the Admin nav item stays active on. Members (the
+    // team edit page) is exact: every other settings page shares its prefix.
+    const adminPaths = team
+        ? [
+              teamRoutes.admin.show.url({ team: team.slug }),
+              teamRoutes.tokens.index.url({ team: team.slug }),
+              teamRoutes.billing.show.url({ team: team.slug }),
+              teamRoutes.authentication.show.url({ team: team.slug }),
+              teamRoutes.governance.show.url({ team: team.slug }),
+              teamRoutes.audit.index.url({ team: team.slug }),
+          ]
+        : [];
+    const onAdminPage =
+        isAdmin &&
+        team !== null &&
+        (currentPath === teamRoutes.edit.url({ team: team.slug }) ||
+            adminPaths.some(
+                (href) =>
+                    currentPath === href || currentPath.startsWith(`${href}/`),
+            ));
+
+    const adminSubNav = team
+        ? [
+              {
+                  href: teamRoutes.admin.show.url({ team: team.slug }),
+                  label: 'Overview',
+                  exact: true,
+              },
+              {
+                  href: teamRoutes.edit.url({ team: team.slug }),
+                  label: 'Members',
+                  exact: true,
+              },
+              {
+                  href: teamRoutes.tokens.index.url({ team: team.slug }),
+                  label: 'API tokens',
+                  exact: false,
+              },
+              {
+                  href: teamRoutes.billing.show.url({ team: team.slug }),
+                  label: 'Billing',
+                  exact: false,
+              },
+              {
+                  href: teamRoutes.authentication.show.url({
+                      team: team.slug,
+                  }),
+                  label: 'Sign-in and security',
+                  exact: false,
+              },
+              {
+                  href: teamRoutes.governance.show.url({ team: team.slug }),
+                  label: 'Retention and legal holds',
+                  exact: false,
+              },
+              {
+                  href: teamRoutes.audit.index.url({ team: team.slug }),
+                  label: 'Audit log',
+                  exact: false,
+              },
+          ]
+        : [];
+
+    const mobilePrimaryNav = team
+        ? [
+              {
+                  href: dashboard.url({ current_team: team.slug }),
+                  key: 'dashboard',
+                  label: 'Home',
+              },
+              {
+                  href: consoleRoutes.index.url({ team: team.slug }),
+                  key: 'artifacts',
+                  label: 'Artifacts',
+              },
+              {
+                  href: teamRoutes.collections.index.url({ team: team.slug }),
+                  key: 'collections',
+                  label: 'Collections',
+              },
+              {
+                  href: teamRoutes.mcpConnections.index.url({
+                      team: team.slug,
+                  }),
+                  key: 'connections',
+                  label: 'AI tool connections',
+              },
+          ]
+        : [];
+
+    const mobileTeammateNav = team
+        ? [
+              ...mobilePrimaryNav,
+              {
+                  href: teamRoutes.edit.url({ team: team.slug }),
+                  key: 'team',
+                  label: 'Team',
+              },
+          ]
+        : [];
+
+    const mobileAdminNav =
+        team && isAdmin
+            ? [
+                  {
+                      href: teamRoutes.admin.show.url({ team: team.slug }),
+                      key: 'admin',
+                      label: 'Overview',
+                  },
+                  {
+                      href: teamRoutes.edit.url({ team: team.slug }),
+                      key: 'team',
+                      label: 'Members',
+                  },
+                  {
+                      href: teamRoutes.tokens.index.url({ team: team.slug }),
+                      key: 'tokens',
+                      label: 'API tokens',
+                  },
+                  {
+                      href: teamRoutes.billing.show.url({ team: team.slug }),
+                      key: 'billing',
+                      label: 'Billing',
+                  },
+                  {
+                      href: teamRoutes.authentication.show.url({
+                          team: team.slug,
+                      }),
+                      key: 'authentication',
+                      label: 'Sign-in and security',
+                  },
+                  {
+                      href: teamRoutes.governance.show.url({
+                          team: team.slug,
+                      }),
+                      key: 'governance',
+                      label: 'Retention and legal holds',
+                  },
+                  {
+                      href: teamRoutes.audit.index.url({ team: team.slug }),
+                      key: 'audit',
+                      label: 'Audit log',
+                  },
+              ]
+            : [];
+
+    const mobileNavLink = (item: {
+        href: string;
+        key: string;
+        label: string;
+    }) => (
+        <Link
+            key={item.key}
+            href={item.href}
+            onClick={closeMenu}
+            data-testid={`mobile-nav-${item.key}`}
+            className={`flex min-h-[44px] items-center border-b border-border text-[15px] font-medium break-words ${currentPath === item.href ? 'text-foreground' : 'text-muted-foreground'}`}
+        >
+            {item.label}
+        </Link>
+    );
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -228,6 +395,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         >
                                             Account settings
                                         </DropdownMenuItem>
+                                        {team && !isAdmin && (
+                                            <DropdownMenuItem
+                                                onSelect={() =>
+                                                    router.visit(
+                                                        teamRoutes.tokens.index.url(
+                                                            {
+                                                                team: team.slug,
+                                                            },
+                                                        ),
+                                                    )
+                                                }
+                                            >
+                                                API tokens
+                                            </DropdownMenuItem>
+                                        )}
                                         <DropdownMenuItem
                                             onSelect={() =>
                                                 router.visit(docs.url())
@@ -305,27 +487,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 Collections
                             </Link>
                             <Link
-                                href={teamRoutes.edit.url({ team: team.slug })}
-                                className={navLinkClass(
-                                    teamRoutes.edit.url({ team: team.slug }),
-                                    true,
-                                )}
-                            >
-                                Team
-                            </Link>
-                            <Link
-                                href={teamRoutes.tokens.index.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    teamRoutes.tokens.index.url({
-                                        team: team.slug,
-                                    }),
-                                )}
-                            >
-                                API tokens
-                            </Link>
-                            <Link
                                 href={teamRoutes.mcpConnections.index.url({
                                     team: team.slug,
                                 })}
@@ -337,59 +498,51 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             >
                                 AI tool connections
                             </Link>
-                            <Link
-                                href={teamRoutes.billing.show.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    teamRoutes.billing.show.url({
+                            {isAdmin ? (
+                                <Link
+                                    href={teamRoutes.admin.show.url({
                                         team: team.slug,
-                                    }),
-                                )}
-                            >
-                                Billing
-                            </Link>
-                            {teams.find((t) => t.slug === team.slug)?.role ===
-                                'admin' && (
-                                <>
-                                    <Link
-                                        href={teamRoutes.authentication.show.url(
-                                            { team: team.slug },
-                                        )}
-                                        className={navLinkClass(
-                                            teamRoutes.authentication.show.url({
-                                                team: team.slug,
-                                            }),
-                                        )}
-                                    >
-                                        Authentication
-                                    </Link>
-                                    <Link
-                                        href={teamRoutes.governance.show.url({
+                                    })}
+                                    className={navLinkClassFor(onAdminPage)}
+                                >
+                                    Admin
+                                </Link>
+                            ) : (
+                                <Link
+                                    href={teamRoutes.edit.url({
+                                        team: team.slug,
+                                    })}
+                                    className={navLinkClass(
+                                        teamRoutes.edit.url({
                                             team: team.slug,
-                                        })}
-                                        className={navLinkClass(
-                                            teamRoutes.governance.show.url({
-                                                team: team.slug,
-                                            }),
-                                        )}
-                                    >
-                                        Governance
-                                    </Link>
-                                    <Link
-                                        href={teamRoutes.audit.index.url({
-                                            team: team.slug,
-                                        })}
-                                        className={navLinkClass(
-                                            teamRoutes.audit.index.url({
-                                                team: team.slug,
-                                            }),
-                                        )}
-                                    >
-                                        Audit log
-                                    </Link>
-                                </>
+                                        }),
+                                        true,
+                                    )}
+                                >
+                                    Team
+                                </Link>
                             )}
+                        </nav>
+                    </div>
+                )}
+                {team && isAdmin && onAdminPage && (
+                    <div
+                        data-testid="admin-subnav"
+                        className="mx-auto hidden max-w-5xl overflow-x-auto border-b border-border px-5 md:block"
+                    >
+                        <nav className="flex w-max items-center gap-x-4 text-[13px] font-medium whitespace-nowrap">
+                            {adminSubNav.map((item) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={navLinkClass(
+                                        item.href,
+                                        item.exact,
+                                    )}
+                                >
+                                    {item.label}
+                                </Link>
+                            ))}
                         </nav>
                     </div>
                 )}
@@ -428,106 +581,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         aria-label="Team"
                                         className="flex flex-col"
                                     >
-                                        {[
-                                            {
-                                                href: dashboard.url({
-                                                    current_team: team.slug,
-                                                }),
-                                                key: 'dashboard',
-                                                label: 'Home',
-                                            },
-                                            {
-                                                href: consoleRoutes.index.url({
-                                                    team: team.slug,
-                                                }),
-                                                key: 'artifacts',
-                                                label: 'Artifacts',
-                                            },
-                                            {
-                                                href: teamRoutes.collections.index.url(
-                                                    {
-                                                        team: team.slug,
-                                                    },
-                                                ),
-                                                key: 'collections',
-                                                label: 'Collections',
-                                            },
-                                            {
-                                                href: teamRoutes.edit.url({
-                                                    team: team.slug,
-                                                }),
-                                                key: 'team',
-                                                label: 'Team',
-                                            },
-                                            {
-                                                href: teamRoutes.tokens.index.url(
-                                                    {
-                                                        team: team.slug,
-                                                    },
-                                                ),
-                                                key: 'tokens',
-                                                label: 'API tokens',
-                                            },
-                                            {
-                                                href: teamRoutes.mcpConnections.index.url(
-                                                    {
-                                                        team: team.slug,
-                                                    },
-                                                ),
-                                                key: 'connections',
-                                                label: 'AI tool connections',
-                                            },
-                                            {
-                                                href: teamRoutes.billing.show.url(
-                                                    {
-                                                        team: team.slug,
-                                                    },
-                                                ),
-                                                key: 'billing',
-                                                label: 'Billing',
-                                            },
-                                            ...(isTeamAdmin
-                                                ? [
-                                                      {
-                                                          href: teamRoutes.authentication.show.url(
-                                                              {
-                                                                  team: team.slug,
-                                                              },
-                                                          ),
-                                                          key: 'authentication',
-                                                          label: 'Authentication',
-                                                      },
-                                                      {
-                                                          href: teamRoutes.governance.show.url(
-                                                              {
-                                                                  team: team.slug,
-                                                              },
-                                                          ),
-                                                          key: 'governance',
-                                                          label: 'Governance',
-                                                      },
-                                                      {
-                                                          href: teamRoutes.audit.index.url(
-                                                              {
-                                                                  team: team.slug,
-                                                              },
-                                                          ),
-                                                          key: 'audit',
-                                                          label: 'Audit log',
-                                                      },
-                                                  ]
-                                                : []),
-                                        ].map((item) => (
-                                            <Link
-                                                key={item.label}
-                                                href={item.href}
-                                                onClick={closeMenu}
-                                                data-testid={`mobile-nav-${item.key}`}
-                                                className={`flex min-h-[44px] items-center border-b border-border text-[15px] font-medium break-words ${url.split('?')[0] === item.href ? 'text-foreground' : 'text-muted-foreground'}`}
-                                            >
-                                                {item.label}
-                                            </Link>
-                                        ))}
+                                        {(isAdmin
+                                            ? mobilePrimaryNav
+                                            : mobileTeammateNav
+                                        ).map(mobileNavLink)}
+                                        {isAdmin && (
+                                            <>
+                                                <h2 className="mt-4 mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                                    Admin
+                                                </h2>
+                                                {mobileAdminNav.map(
+                                                    mobileNavLink,
+                                                )}
+                                            </>
+                                        )}
                                     </nav>
                                 )}
                                 {team && (
@@ -635,14 +702,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         role="status"
                     >
                         {banner}{' '}
-                        <Link
-                            className="underline"
-                            href={teamRoutes.billing.show.url({
-                                team: team.slug,
-                            })}
-                        >
-                            See usage
-                        </Link>
+                        {isAdmin ? (
+                            <Link
+                                className="underline"
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                See usage
+                            </Link>
+                        ) : (
+                            'Ask a team admin to upgrade.'
+                        )}
                     </Alert>
                 </div>
             )}
@@ -651,14 +722,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <Alert variant="warning" role="status">
                         Payment is past due. New artifacts are blocked; existing
                         ones keep serving.{' '}
-                        <Link
-                            className="underline"
-                            href={teamRoutes.billing.show.url({
-                                team: team.slug,
-                            })}
-                        >
-                            Fix billing
-                        </Link>
+                        {isAdmin ? (
+                            <Link
+                                className="underline"
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                Fix billing
+                            </Link>
+                        ) : (
+                            'Ask a team admin to update payment.'
+                        )}
                     </Alert>
                 </div>
             )}

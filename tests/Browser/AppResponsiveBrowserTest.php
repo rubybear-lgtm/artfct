@@ -150,12 +150,12 @@ test('mobile_menu_reaches_every_admin_destination_and_closes_on_navigation', fun
 
     openMobileMenu($page);
 
-    foreach (['dashboard', 'artifacts', 'collections', 'team', 'tokens', 'connections', 'billing', 'authentication', 'governance', 'audit'] as $destination) {
+    foreach (['dashboard', 'artifacts', 'collections', 'connections', 'admin', 'team', 'tokens', 'billing', 'authentication', 'governance', 'audit'] as $destination) {
         $page->assertVisible("@mobile-nav-{$destination}");
     }
 
-    $page->click('@mobile-nav-artifacts')->wait(1)
-        ->assertRoute('console.index', ['team' => $team->slug])
+    $page->click('@mobile-nav-admin')->wait(1)
+        ->assertRoute('teams.admin.show', ['team' => $team->slug])
         ->assertMissing('@mobile-menu')
         ->assertNoJavaScriptErrors();
 
@@ -174,15 +174,40 @@ test('mobile_menu_hides_admin_destinations_from_members', function () {
 
     openMobileMenu($page);
 
-    foreach (['dashboard', 'artifacts', 'team', 'billing'] as $destination) {
+    foreach (['dashboard', 'artifacts', 'collections', 'connections', 'team'] as $destination) {
         $page->assertVisible("@mobile-nav-{$destination}");
     }
 
-    foreach (['authentication', 'governance', 'audit'] as $destination) {
+    foreach (['admin', 'tokens', 'billing', 'authentication', 'governance', 'audit'] as $destination) {
         $page->assertMissing("@mobile-nav-{$destination}");
     }
 
     $page->assertNoJavaScriptErrors();
+});
+
+test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', function () {
+    [$team, $owner] = responsiveOwner('subnav-admin@example.com');
+
+    // The sub-nav replaces the plain settings links on desktop: it shows on
+    // the admin overview and on every admin settings page, and not elsewhere.
+    $member = memberOfTeam($team, TeamRole::Member);
+    test()->actingAs($owner);
+
+    visit(route('dashboard', $team))
+        ->assertMissing('@admin-subnav')
+        ->assertNoJavaScriptErrors();
+
+    foreach (['teams.admin.show', 'teams.edit', 'teams.tokens.index', 'teams.billing.show', 'teams.authentication.show', 'teams.governance.show', 'teams.audit.index'] as $name) {
+        visit(route($name, $team))
+            ->assertVisible('@admin-subnav')
+            ->assertNoJavaScriptErrors();
+    }
+
+    test()->actingAs($member);
+
+    visit(route('dashboard', $team))
+        ->assertMissing('@admin-subnav')
+        ->assertNoJavaScriptErrors();
 });
 
 test('mobile_menu_switches_teams_and_reaches_account_settings', function () {
