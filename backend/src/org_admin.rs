@@ -55,14 +55,16 @@ pub(crate) async fn load_org_limits(
 }
 
 /// D1 is the source of truth: storage counts each distinct `content_hash`
-/// once per org; the period count is artifacts created this UTC month
-/// (a soft-deleted artifact still counts; a hard delete would drop it).
+/// once per org across *every* version (`version_files`, invariant 3 — old
+/// versions are still stored), not just the current copy in `files`; the
+/// period count is artifacts created this UTC month (a soft-deleted artifact
+/// still counts; a hard delete would drop it).
 pub(crate) async fn load_org_usage(
     database: &worker::D1Database,
     org: &str,
 ) -> Result<quota::OrgUsage> {
     let storage = database
-        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT f.content_hash, MAX(f.size_bytes) AS size FROM files f JOIN artifacts a ON a.row_id = f.artifact_row_id WHERE a.org_id = ? GROUP BY f.content_hash)")
+        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? GROUP BY vf.content_hash)")
         .bind(&[JsValue::from_str(org)])?
         .first::<CountRow>(None)
         .await?;
@@ -348,6 +350,8 @@ pub(crate) async fn export_organization(path: &str, req: &Request, env: &Env) ->
         return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
     }
     let database = env.d1("ARTIFACTS_DB")?;
+    // Export is current-version only in this release: the `artifacts` row and
+    // its `files` are the current copy, and version history is not exported.
     let rows = database
         .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance, a.manifest FROM artifacts a LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files f ON f.artifact_row_id = a.row_id AND f.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE f.artifact_row_id IS NULL OR b.content_hash IS NULL) ORDER BY a.created_at")
         .bind(&[JsValue::from_str(org)])?
@@ -436,19 +440,50 @@ pub(crate) enum HardDeleteOutcome {
     Contention,
 }
 
+#[derive(Debug, Deserialize)]
+struct ManifestRow {
+    manifest: String,
+}
+
+/// The sorted, de-duplicated union of every version's manifest hashes for one
+/// artifact — what a delete that removes every version must lock before it can
+/// release any blob.
+pub(crate) async fn artifact_version_hashes(
+    database: &worker::D1Database,
+    artifact_id: &str,
+    org: &str,
+) -> Result<Vec<String>> {
+    let rows = database
+        .prepare("SELECT v.manifest AS manifest FROM artifact_versions v JOIN artifacts a ON a.row_id = v.artifact_row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ?")
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .all()
+        .await?
+        .results::<ManifestRow>()?;
+    let mut hashes = std::collections::BTreeSet::new();
+    for row in rows {
+        if let Ok(manifest) = serde_json::from_str::<PermanentManifest>(&row.manifest) {
+            for file in manifest.files {
+                hashes.insert(file.sha256);
+            }
+        }
+    }
+    Ok(hashes.into_iter().collect())
+}
+
 /// The one hard-delete path (public `DELETE` and the governance route):
-/// refuses a held artifact before any write; in one D1 batch deletes the
-/// row (cascading files, provenance, versions, shares), decrements each
-/// referenced blob and writes the audit row; then, under the content locks,
-/// removes blobs whose refcount reached zero. A failed R2 delete leaves an
-/// object and its zero-ref D1 row for `sweep-orphans` to retry.
+/// refuses a held artifact before any write; in one D1 batch deletes the row
+/// and its explicit dependants (`version_files`, `artifact_versions`, `files`,
+/// `provenance`), recomputes `ref_count` on the migration's every-version
+/// basis and writes the audit row; then, under the content locks, removes
+/// blobs whose refcount reached zero. A failed R2 delete leaves an object and
+/// its zero-ref D1 row for `sweep-orphans` to retry.
 pub(crate) async fn hard_delete_permanent(
     storage: &store::D1R2ArtifactStore,
     org: &str,
     artifact_id: &str,
 ) -> Result<HardDeleteOutcome> {
     let database = &storage.database;
-    let select = "SELECT a.manifest, (SELECT MAX(legal_hold) FROM artifacts held WHERE held.id = a.id AND held.org_id = a.org_id) AS legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
+    let select = "SELECT (SELECT MAX(legal_hold) FROM artifacts held WHERE held.id = a.id AND held.org_id = a.org_id) AS legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
     let lock_row = database
         .prepare(select)
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
@@ -462,15 +497,9 @@ pub(crate) async fn hard_delete_permanent(
     {
         return Ok(HardDeleteOutcome::LegalHold);
     }
-    let lock_hashes = serde_json::from_str::<PermanentManifest>(&lock_row.manifest)
-        .map(|manifest| {
-            manifest
-                .files
-                .into_iter()
-                .map(|file| file.sha256)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    // Lock the union of every version's manifest hashes: the delete removes
+    // all of them, so any of them can drop to zero and be released.
+    let lock_hashes = artifact_version_hashes(database, artifact_id, org).await?;
     let locks = match storage.acquire_content_locks(&lock_hashes).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return Ok(HardDeleteOutcome::Contention),
@@ -491,32 +520,41 @@ pub(crate) async fn hard_delete_permanent(
         {
             return Ok(HardDeleteOutcome::LegalHold);
         }
-        let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
         // Delete every row for this (org, id), not only the one the pre-flight
         // resolution happened to return. Before RUB-371 a single-row delete
         // reported 204 while a duplicate kept serving the artifact from
         // `/p/{id}` — a revocation that silently did not revoke, which is what
         // matters for the abuse and legal-hold paths.
-        let mut statements = vec![database
-            .prepare(
-                "DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)",
-            )
-            .bind(&[
-                JsValue::from_str(artifact_id),
-                JsValue::from_str(org),
-            ])?];
-        // Recompute rather than decrement. `ref_count` counts file rows by
-        // construction, and the duplicates this delete is cleaning up had
-        // inflated it N-fold, so decrementing once would leave the count above
-        // zero and the blob unreclaimable forever. After the delete the
-        // surviving file rows are the source of truth.
-        for file in &manifest.files {
+        //
+        // Dependants are deleted explicitly (invariant 3, migration 0005's
+        // no-cascade rule), then `ref_count` is *recomputed* on the migration's
+        // every-version basis rather than decremented. Decrementing once per
+        // manifest file of every version here would be redundant — and, for the
+        // pre-RUB-371 duplicates this cleanup also removes, wrong — because
+        // after the deletes the surviving `artifact_versions` rows are the only
+        // source of truth.
+        let mut statements = vec![
+            database
+                .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM artifact_versions WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM files WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM provenance WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+        ];
+        for hash in &lock_hashes {
             statements.push(
                 database
-                    .prepare(
-                        "UPDATE blobs SET ref_count = (SELECT COUNT(*) FROM files WHERE files.content_hash = blobs.content_hash) WHERE content_hash = ?",
-                    )
-                    .bind(&[JsValue::from_str(&file.sha256)])?,
+                    .prepare("UPDATE blobs SET ref_count = (SELECT COUNT(*) FROM artifact_versions v, json_each(v.manifest, '$.files') mf WHERE json_extract(mf.value, '$.sha256') = blobs.content_hash) WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(hash)])?,
             );
         }
         statements.push(governance_audit_statement(
@@ -529,11 +567,8 @@ pub(crate) async fn hard_delete_permanent(
             .execute_batch(statements)
             .await
             .map_err(|error| worker::Error::RustError(error.to_string()))?;
-        let mut released = std::collections::HashSet::new();
-        for file in manifest.files {
-            if released.insert(file.sha256.clone()) {
-                release_blob_if_unreferenced(storage, &file.sha256).await?;
-            }
+        for hash in &lock_hashes {
+            release_blob_if_unreferenced(storage, hash).await?;
         }
         Ok(HardDeleteOutcome::Deleted)
     }
@@ -632,6 +667,8 @@ pub(crate) async fn download_export_blob(path: &str, req: &Request, env: &Env) -
     }
     let database = env.d1("ARTIFACTS_DB")?;
     let org = credential.org_id.clone();
+    // Export-blob download is current-version only in this release (history is
+    // not exported), so presence is checked against the current `files` copy.
     if database
         .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
         .bind(&[JsValue::from_str(hash), JsValue::from_str(&org)])?

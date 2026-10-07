@@ -303,7 +303,18 @@ pub(crate) async fn resolve_artifact(
             (id, (!file.is_empty()).then_some(file))
         });
     if store::is_permanent_id(artifact_id) {
-        return resolve_permanent_artifact(artifact_id, requested_path, req, env, ctx).await;
+        // A leading `v:{n}` segment selects a specific version: `/p/{id}/v:2/`
+        // and `/p/{id}/v:2/a/b.css`. An invalid segment (`v:0`, `v:x`) parses
+        // to `(None, None)`, which only a version-shaped request can produce,
+        // so it is a 404 rather than a fallthrough to the current version.
+        let (version, version_path) = match requested_path {
+            Some(path) => split_version_segment(path),
+            None => (None, None),
+        };
+        if requested_path.is_some() && version.is_none() && version_path.is_none() {
+            return expired_response();
+        }
+        return resolve_permanent_artifact(artifact_id, version_path, version, req, env, ctx).await;
     }
     if !is_valid_artifact_id(artifact_id) {
         return expired_response();
@@ -342,9 +353,35 @@ pub(crate) async fn resolve_artifact(
     build_preview_response(rendered).into_worker_response()
 }
 
+/// Splits a `/p/{id}/` remainder into an optional version and the file path
+/// within that version. Manifest paths may not contain a colon (see the
+/// contract's `RelativePath`), so a leading `v:` segment can never collide
+/// with a real bundle path.
+///
+/// - `v:2/` -> `(Some(2), None)` (the version's entrypoint)
+/// - `v:2/a/b.css` -> `(Some(2), Some("a/b.css"))`
+/// - `v:0/`, `v:x/` -> `(None, None)`, the caller's not-found sentinel
+/// - `index.html` -> `(None, Some("index.html"))`
+///
+/// Pure so the parsing is unit-tested without a live Worker.
+pub(crate) fn split_version_segment(rest: &str) -> (Option<u32>, Option<&str>) {
+    let Some(after) = rest.strip_prefix("v:") else {
+        return (None, Some(rest));
+    };
+    let (number, remainder) = after
+        .split_once('/')
+        .map_or((after, ""), |(number, remainder)| (number, remainder));
+    let Ok(version) = number.parse::<u32>() else {
+        return (None, None);
+    };
+    if version == 0 {
+        return (None, None);
+    }
+    (Some(version), (!remainder.is_empty()).then_some(remainder))
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct PermanentHashRow {
-    pub(crate) manifest: String,
     #[serde(default)]
     pub(crate) legal_hold: i64,
 }
@@ -445,4 +482,35 @@ pub(crate) fn build_update_artifact_response(
         },
         200,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_version_segment_reads_the_three_shapes() {
+        assert_eq!(split_version_segment("v:2/"), (Some(2), None));
+        assert_eq!(
+            split_version_segment("v:2/a/b.css"),
+            (Some(2), Some("a/b.css"))
+        );
+        assert_eq!(
+            split_version_segment("index.html"),
+            (None, Some("index.html"))
+        );
+        assert_eq!(split_version_segment("a/b.css"), (None, Some("a/b.css")));
+    }
+
+    #[test]
+    fn split_version_segment_treats_invalid_versions_as_not_found() {
+        assert_eq!(split_version_segment("v:0/"), (None, None));
+        assert_eq!(split_version_segment("v:0"), (None, None));
+        assert_eq!(split_version_segment("v:x/"), (None, None));
+        assert_eq!(split_version_segment("v:/"), (None, None));
+        assert_eq!(
+            split_version_segment("v:99999999999999999999/"),
+            (None, None)
+        );
+    }
 }

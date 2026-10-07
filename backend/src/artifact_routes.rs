@@ -2,13 +2,35 @@ use super::*;
 use crate::artifact_origin::{access_token_cookie, access_token_from_cookie};
 
 #[derive(Debug, Deserialize)]
-struct ContentRow {
-    content_hash: String,
-    content_type: String,
-    tier: String,
-    agent: Option<String>,
-    repo_url: Option<String>,
-    commit_sha: Option<String>,
+pub(crate) struct ContentRow {
+    pub(crate) content_hash: String,
+    pub(crate) content_type: String,
+    pub(crate) tier: String,
+    pub(crate) agent: Option<String>,
+    pub(crate) repo_url: Option<String>,
+    pub(crate) commit_sha: Option<String>,
+    pub(crate) current_version: i64,
+}
+
+/// The org-credentialed content read's JSON body. Shared by the handler and
+/// its contract test.
+pub(crate) fn build_org_content_response(
+    artifact_id: &str,
+    row: &ContentRow,
+    content: &str,
+) -> Value {
+    serde_json::json!({
+        "id": artifact_id,
+        "version": row.current_version,
+        "content_type": row.content_type,
+        "tier": row.tier,
+        "provenance": {
+            "agent": row.agent,
+            "repo_url": row.repo_url,
+            "commit_sha": row.commit_sha,
+        },
+        "content": content,
+    })
 }
 
 /// Splits `/v1/orgs/{org}/artifacts/{id}/content` into `(org, id)`.
@@ -74,7 +96,7 @@ pub(crate) async fn get_org_artifact_content(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let row = storage
         .database
-        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<ContentRow>(None)
         .await?;
@@ -94,32 +116,43 @@ pub(crate) async fn get_org_artifact_content(
     };
     let bytes = body.bytes().await?;
     JsonResponseDefinition::json(
-        serde_json::json!({
-            "id": artifact_id,
-            "content_type": row.content_type,
-            "tier": row.tier,
-            "provenance": {
-                "agent": row.agent,
-                "repo_url": row.repo_url,
-                "commit_sha": row.commit_sha,
-            },
-            "content": String::from_utf8_lossy(&bytes),
-        }),
+        build_org_content_response(artifact_id, &row, &String::from_utf8_lossy(&bytes)),
         200,
     )
     .into_worker_response()
 }
 
 #[derive(Debug, Deserialize)]
-struct ArtifactMetadataRow {
+pub(crate) struct ArtifactMetadataRow {
     pub(crate) id: String,
     pub(crate) org_id: String,
-    tier: String,
-    entrypoint: String,
-    created_at: String,
-    expires_at: Option<String>,
-    title: Option<String>,
-    description: Option<String>,
+    pub(crate) tier: String,
+    pub(crate) entrypoint: String,
+    pub(crate) created_at: String,
+    pub(crate) expires_at: Option<String>,
+    pub(crate) title: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) current_version: i64,
+    pub(crate) version_count: i64,
+    pub(crate) updated_at: String,
+}
+
+/// The metadata read's JSON body. `version` is the served version;
+/// `version_count` counts completed versions (pending uploads are omitted).
+/// Shared by the handler and its contract test.
+pub(crate) fn build_artifact_metadata_response(row: &ArtifactMetadataRow) -> Value {
+    serde_json::json!({
+        "id": row.id,
+        "tier": row.tier,
+        "version": row.current_version,
+        "version_count": row.version_count,
+        "updated_at": row.updated_at,
+        "entrypoint": row.entrypoint,
+        "created_at": row.created_at,
+        "expires_at": row.expires_at,
+        "title": row.title,
+        "description": row.description,
+    })
 }
 #[derive(Debug, Deserialize)]
 struct UploadArtifactRow {
@@ -276,6 +309,13 @@ pub(crate) async fn upload_permanent_file(
         // artifact's other versioning writes.
         lock_keys.push(artifact_lock_key(&row.row_id));
     }
+    // A pending v1 that has expired deletes the whole artifact, every version
+    // included, so lock the union of every version's manifest hashes.
+    let expiring_v1 =
+        row.version_id.is_none() && upload_expired(row.expires_at.as_deref(), Utc::now());
+    if expiring_v1 {
+        lock_keys = org_admin::artifact_version_hashes(database, artifact_id, &org).await?;
+    }
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
@@ -283,10 +323,11 @@ pub(crate) async fn upload_permanent_file(
     };
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
-            let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
             if let Some(version_id) = &row.version_id {
                 // A pending v2+ expiring deletes only that version; the artifact
-                // and its current version keep serving (invariant 4).
+                // and its current version keep serving (invariant 4). Its
+                // manifest's refcounts are decremented once per file.
+                let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
                 database
                     .prepare("DELETE FROM version_files WHERE version_id = ?")
                     .bind(&[JsValue::from_str(version_id)])?
@@ -297,11 +338,14 @@ pub(crate) async fn upload_permanent_file(
                     .bind(&[JsValue::from_str(version_id)])?
                     .run()
                     .await?;
+                decrement_and_release(&storage, &manifest).await?;
             } else {
-                // A pending v1 *is* the artifact's own row, so deleting the
-                // artifact is correct. Explicit deletes rather than ON DELETE
-                // CASCADE: foreign keys are a per-connection pragma that
-                // defaults to OFF.
+                // A pending v1 *is* the artifact's own row, so the whole
+                // artifact goes. Dependants are deleted explicitly (invariant 3,
+                // migration 0005's no-cascade rule); ref_count is then
+                // recomputed on the migration's every-version basis rather than
+                // decremented — after the deletes the surviving version rows are
+                // the source of truth.
                 database
                     .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id = ?)")
                     .bind(&[JsValue::from_str(&row.row_id)])?
@@ -313,12 +357,31 @@ pub(crate) async fn upload_permanent_file(
                     .run()
                     .await?;
                 database
+                    .prepare("DELETE FROM files WHERE artifact_row_id = ?")
+                    .bind(&[JsValue::from_str(&row.row_id)])?
+                    .run()
+                    .await?;
+                database
+                    .prepare("DELETE FROM provenance WHERE artifact_row_id = ?")
+                    .bind(&[JsValue::from_str(&row.row_id)])?
+                    .run()
+                    .await?;
+                database
                     .prepare("DELETE FROM artifacts WHERE row_id = ?")
                     .bind(&[JsValue::from_str(&row.row_id)])?
                     .run()
                     .await?;
+                for hash in &lock_keys {
+                    database
+                        .prepare("UPDATE blobs SET ref_count = (SELECT COUNT(*) FROM artifact_versions v, json_each(v.manifest, '$.files') mf WHERE json_extract(mf.value, '$.sha256') = blobs.content_hash) WHERE content_hash = ?")
+                        .bind(&[JsValue::from_str(hash)])?
+                        .run()
+                        .await?;
+                }
+                for hash in &lock_keys {
+                    release_blob_if_unreferenced(&storage, hash).await?;
+                }
             }
-            decrement_and_release(&storage, &manifest).await?;
             json_error(ErrorCode::ArtifactNotFound, "Artifact upload expired.", 404)
         }
         .await;
@@ -562,7 +625,7 @@ pub(crate) async fn get_artifact_metadata(
     let database = env.d1("ARTIFACTS_DB")?;
     let row = database
         .prepare(
-            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
+            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
         )
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<ArtifactMetadataRow>(None)
@@ -577,19 +640,8 @@ pub(crate) async fn get_artifact_metadata(
         }
         ArtifactLookupDecision::Visible => {
             let row = row.expect("Visible is only returned when a row was fetched");
-            JsonResponseDefinition::json(
-                serde_json::json!({
-                    "id": row.id,
-                    "tier": row.tier,
-                    "entrypoint": row.entrypoint,
-                    "created_at": row.created_at,
-                    "expires_at": row.expires_at,
-                    "title": row.title,
-                    "description": row.description,
-                }),
-                200,
-            )
-            .into_worker_response()
+            JsonResponseDefinition::json(build_artifact_metadata_response(&row), 200)
+                .into_worker_response()
         }
     }
 }
@@ -660,9 +712,47 @@ fn visitor_key_secret(env: &Env) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+/// The row needed to serve one file of an artifact: the current version when
+/// `version` is `None`, otherwise the named *completed* version (the version,
+/// not the artifact, must be complete). Both shapes resolve to the same
+/// [`PermanentArtifactRow`], so the access checks, response headers and
+/// access-token cookie below are shared rather than duplicated.
+async fn permanent_artifact_row(
+    database: &worker::D1Database,
+    artifact_id: &str,
+    requested_path: Option<&str>,
+    version: Option<u32>,
+) -> Result<Option<PermanentArtifactRow>> {
+    match version {
+        None => {
+            database
+                .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest, o.slug AS org FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+                .bind(&[
+                    JsValue::from_str(artifact_id),
+                    requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    JsValue::from_str(&Utc::now().to_rfc3339()),
+                ])?
+                .first::<PermanentArtifactRow>(None)
+                .await
+        }
+        Some(version) => {
+            database
+                .prepare("SELECT vf.content_hash, v.entrypoint, a.tier, vf.content_type, v.expires_at, v.manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN artifact_versions v ON v.artifact_row_id = a.row_id AND v.version = ? JOIN version_files vf ON vf.version_id = v.id AND vf.path = COALESCE(?, v.entrypoint) WHERE a.id = ? AND a.revoked_at IS NULL AND v.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(v.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM version_files complete WHERE complete.version_id = v.id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+                .bind(&[
+                    JsValue::from_f64(version as f64),
+                    requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    JsValue::from_str(artifact_id),
+                ])?
+                .first::<PermanentArtifactRow>(None)
+                .await
+        }
+    }
+}
+
 pub(crate) async fn resolve_permanent_artifact(
     artifact_id: &str,
     requested_path: Option<&str>,
+    version: Option<u32>,
     req: &Request,
     env: &Env,
     ctx: &worker::Context,
@@ -673,16 +763,8 @@ pub(crate) async fn resolve_permanent_artifact(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
-    let row = database
-        .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest, o.slug AS org FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
-        .bind(&[
-            JsValue::from_str(artifact_id),
-            requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
-            JsValue::from_str(&Utc::now().to_rfc3339()),
-        ])?
-        .first::<PermanentArtifactRow>(None)
-        .await?;
-    let Some(row) = row else {
+    let Some(row) = permanent_artifact_row(database, artifact_id, requested_path, version).await?
+    else {
         return expired_response();
     };
     let host = req.headers().get("Host")?;
@@ -793,7 +875,9 @@ pub(crate) async fn resolve_permanent_artifact(
             }
         }
     }
-    if requested_path.is_none() {
+    // Only the current-version entrypoint is a "view" for ranking; a version
+    // view is not the published URL.
+    if version.is_none() && requested_path.is_none() {
         emit_artifact_viewed(
             ctx,
             env,

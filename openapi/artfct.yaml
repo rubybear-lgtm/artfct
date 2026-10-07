@@ -1512,7 +1512,7 @@
           "id": { "type": "string" },
           "tier": { "type": "string", "enum": ["public", "secure", "ephemeral"] },
           "version": { "type": "integer", "minimum": 1, "description": "The current (served and indexed) version number." },
-          "version_count": { "type": "integer", "minimum": 1, "description": "Number of completed versions." },
+          "version_count": { "type": "integer", "minimum": 0, "description": "Number of completed versions (0 while the first upload is still pending)." },
           "updated_at": { "type": "string", "format": "date-time", "description": "When the current version was published." },
           "entrypoint": { "type": "string" },
           "created_at": { "type": "string", "format": "date-time" },

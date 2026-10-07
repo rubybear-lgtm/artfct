@@ -63,6 +63,12 @@ pub(crate) struct VersionRow {
 }
 
 /// The live `artifacts` row a version operation targets.
+///
+/// Legal hold and revocation are columns on this single row
+/// (`artifacts.legal_hold`, `artifacts.revoked_at`), so by construction they
+/// cover every version of the artifact. `revoked_at IS NULL` is also why a
+/// revoked artifact's versions can be neither published nor restored: the row
+/// is not found, and both paths map that to 404 (never 403).
 #[derive(Debug, Deserialize)]
 struct LiveArtifactRow {
     row_id: String,

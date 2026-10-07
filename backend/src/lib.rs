@@ -1520,6 +1520,65 @@ mod tests {
     }
 
     #[test]
+    fn metadata_and_content_responses_match_documented_schemas() {
+        let contract = openapi_contract();
+        let metadata = artifact_routes::build_artifact_metadata_response(
+            &artifact_routes::ArtifactMetadataRow {
+                id: "abcdefghijklm".to_string(),
+                org_id: "acme".to_string(),
+                tier: "public".to_string(),
+                entrypoint: "index.html".to_string(),
+                created_at: "2026-09-02T00:00:00Z".to_string(),
+                expires_at: None,
+                title: Some("Title".to_string()),
+                description: None,
+                current_version: 2,
+                version_count: 2,
+                updated_at: "2026-09-03T00:00:00Z".to_string(),
+            },
+        );
+        assert_schema_matches("ArtifactMetadata", &metadata);
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/artifacts/{id}",
+                "get",
+                "200",
+                "application/json",
+            ),
+            &metadata,
+        )
+        .unwrap();
+
+        let content = artifact_routes::build_org_content_response(
+            "abcdefghijklm",
+            &artifact_routes::ContentRow {
+                content_hash: "a".repeat(64),
+                content_type: "text/html".to_string(),
+                tier: "public".to_string(),
+                agent: Some("cli".to_string()),
+                repo_url: None,
+                commit_sha: None,
+                current_version: 2,
+            },
+            "<h1>rendered</h1>",
+        );
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/orgs/{org}/artifacts/{id}/content",
+                "get",
+                "200",
+                "application/json",
+            ),
+            &content,
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn version_responses_match_documented_schemas() {
         let contract = openapi_contract();
 
