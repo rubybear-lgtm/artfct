@@ -146,6 +146,7 @@ up() {
             --var "ARTFCT_GOVERNANCE_SECRET:$ARTFCT_GOVERNANCE_SECRET" \
             --var "ARTFCT_WORKER_EVENT_SECRET:$ARTFCT_WORKER_EVENT_SECRET" \
             --var "ARTFCT_WORKER_EVENT_URL:$ARTFCT_WORKER_EVENT_URL" \
+            --var "ARTFCT_APP_ORIGIN:http://127.0.0.1:${LARAVEL_PORT}" \
             --var "ARTFCT_VISITOR_KEY_SECRET:$ARTFCT_VISITOR_KEY_SECRET" \
             --var "ARTFCT_PUBLIC_BASE_URL:http://127.0.0.1:$WORKER_PORT" \
             >"$STATE_DIR/wrangler.log" 2>&1 &

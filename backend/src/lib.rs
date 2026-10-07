@@ -109,6 +109,10 @@ const ARTIFACT_ORIGIN_SUFFIX_ENV: &str = "ARTFCT_ARTIFACT_ORIGIN_SUFFIX";
 /// access tokens. Follows the same fail-closed pattern as `ARTFCT_ORG_TOKEN`:
 /// a missing binding never authorizes a token, regardless of signature.
 const ARTIFACT_TOKEN_SECRET_ENV: &str = "ARTFCT_ARTIFACT_TOKEN_SECRET";
+/// The app's origin (e.g. `https://staging.artfct.dev`), the only origin
+/// allowed to frame an isolated artifact response (RUB-438 viewer). Unset or
+/// invalid means isolated responses keep `frame-ancestors 'none'`.
+const APP_ORIGIN_ENV: &str = "ARTFCT_APP_ORIGIN";
 /// Env var carrying the shared secret Laravel presents when writing to the
 /// internal revocation-denylist endpoint (spec 07). A credential of its own,
 /// separate from `orgToken`/`sessionJwt` and from `ARTFCT_ORG_TOKEN` — same
@@ -659,10 +663,10 @@ fn artifact_lock_key(row_id: &str) -> String {
 mod tests {
     use super::*;
     use crate::artifact_origin::{
-        access_token_cookie, access_token_from_cookie, isolated_access_check,
-        isolated_artifact_hostname, isolated_content_security_policy, mint_access_token,
-        parse_isolated_hostname, permanent_file_response_headers, verify_access_token,
-        IsolatedAccess,
+        access_token_cookie, access_token_from_cookie, frame_ancestor_source,
+        isolated_access_check, isolated_artifact_hostname, isolated_content_security_policy,
+        mint_access_token, parse_isolated_hostname, permanent_file_response_headers,
+        verify_access_token, IsolatedAccess,
     };
     use crate::governance_routes::{
         decode_governance_cursor, encode_governance_cursor, governance_authorized,
@@ -1485,7 +1489,8 @@ mod tests {
             assert!(permanent_file_response_headers(
                 "application/octet-stream",
                 &manifest,
-                is_isolated
+                is_isolated,
+                None
             )
             .iter()
             .any(|(name, value)| *name == "X-Content-Type-Options" && value == "nosniff"));
@@ -2069,7 +2074,7 @@ mod tests {
     #[test]
     fn artifact_origin_sets_no_cookie() {
         let manifest = permanent_manifest(vec![], false);
-        let headers = permanent_file_response_headers("text/html", &manifest, true);
+        let headers = permanent_file_response_headers("text/html", &manifest, true, None);
         assert!(!headers
             .iter()
             .any(|(name, _)| name.eq_ignore_ascii_case("Set-Cookie")));
@@ -2081,9 +2086,77 @@ mod tests {
             vec![
                 "Content-Type",
                 "X-Content-Type-Options",
-                "Content-Security-Policy"
+                "Content-Security-Policy",
+                "Cache-Control"
             ]
         );
+    }
+
+    #[test]
+    fn permanent_responses_are_never_cached() {
+        let manifest = permanent_manifest(vec![], false);
+        for is_isolated in [false, true] {
+            let headers = permanent_file_response_headers(
+                "text/html",
+                &manifest,
+                is_isolated,
+                Some("https://artfct.dev"),
+            );
+            assert!(headers
+                .iter()
+                .any(|(name, value)| *name == "Cache-Control" && value == "private, no-store"));
+        }
+    }
+
+    #[test]
+    fn isolated_responses_are_framable_only_by_the_app_origin() {
+        let manifest = permanent_manifest(vec![], false);
+        let csp_for = |is_isolated: bool, ancestor: Option<&str>| {
+            permanent_file_response_headers("text/html", &manifest, is_isolated, ancestor)
+                .into_iter()
+                .find(|(name, _)| *name == "Content-Security-Policy")
+                .map(|(_, value)| value)
+                .unwrap()
+        };
+        assert!(csp_for(true, Some("https://staging.artfct.dev"))
+            .contains("frame-ancestors https://staging.artfct.dev;"));
+        assert!(csp_for(true, None).contains("frame-ancestors 'none';"));
+        // A shared-origin response is never framable, whatever is configured.
+        assert!(csp_for(false, Some("https://artfct.dev")).contains("frame-ancestors 'none';"));
+    }
+
+    #[test]
+    fn app_origin_must_be_a_bare_origin() {
+        assert_eq!(
+            frame_ancestor_source("https://staging.artfct.dev"),
+            Some("https://staging.artfct.dev".to_string())
+        );
+        assert_eq!(
+            frame_ancestor_source(" https://artfct.dev/ "),
+            Some("https://artfct.dev".to_string())
+        );
+        assert_eq!(
+            frame_ancestor_source("http://127.0.0.1:8990"),
+            Some("http://127.0.0.1:8990".to_string())
+        );
+        for bad in [
+            "",
+            "artfct.dev",
+            "http://artfct.dev",
+            "https://*.artfct.dev",
+            "https://artfct.dev/path",
+            "https://artfct.dev; script-src *",
+            "https://artfct.dev 'unsafe-inline'",
+            "https://artfct.dev,https://evil.dev",
+            "https://artfct.dev:",
+            "https://artfct.dev:99999x",
+            "https://.artfct.dev",
+            "javascript://artfct.dev",
+            "*",
+            "'self'",
+        ] {
+            assert_eq!(frame_ancestor_source(bad), None, "{bad}");
+        }
     }
 
     #[test]
@@ -2163,7 +2236,7 @@ mod tests {
         // restrictive `default-src 'self'`). Isolation opts artifacts in;
         // it must never silently opt an existing one in by omission.
         let manifest = permanent_manifest(vec![], false);
-        let headers = permanent_file_response_headers("text/html", &manifest, false);
+        let headers = permanent_file_response_headers("text/html", &manifest, false, None);
         let csp = headers
             .iter()
             .find(|(name, _)| *name == "Content-Security-Policy")

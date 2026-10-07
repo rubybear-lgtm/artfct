@@ -146,6 +146,19 @@ pub(crate) fn access_token_cookie(token: &str, now: chrono::DateTime<Utc>) -> Op
 /// `default-src 'self'`; `unsafe-eval` is only ever granted when the
 /// manifest opts in.
 pub(crate) fn isolated_content_security_policy(manifest: &PermanentManifest) -> String {
+    isolated_content_security_policy_framed_by(manifest, None)
+}
+
+/// [`isolated_content_security_policy`] with `frame-ancestors` opened to one
+/// origin: the app's viewer page (RUB-438), which frames the artifact's
+/// isolated origin in a sandboxed `<iframe>`. `None` keeps `'none'`, so an
+/// environment without `ARTFCT_APP_ORIGIN` cannot be framed by anything.
+/// Callers pass only a value that [`frame_ancestor_source`] accepted.
+pub(crate) fn isolated_content_security_policy_framed_by(
+    manifest: &PermanentManifest,
+    frame_ancestor: Option<&str>,
+) -> String {
+    let frame_ancestors = frame_ancestor.unwrap_or("'none'");
     let origins = manifest.external_origins.join(" ");
     let default_src = if origins.is_empty() {
         "'self'".to_string()
@@ -157,7 +170,7 @@ pub(crate) fn isolated_content_security_policy(manifest: &PermanentManifest) -> 
         script_src.push_str(" 'unsafe-eval'");
     }
     format!(
-        "default-src {default_src}; script-src {script_src}; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+        "default-src {default_src}; script-src {script_src}; style-src 'self' 'unsafe-inline'; frame-ancestors {frame_ancestors}; base-uri 'none'; form-action 'none';"
     )
 }
 
@@ -173,13 +186,22 @@ pub(crate) fn isolated_content_security_policy(manifest: &PermanentManifest) -> 
 /// pre-spec-05 `PREVIEW_CONTENT_SECURITY_POLICY` byte-identical, so the CSP
 /// derived from `external_origins`/`unsafe_eval` never silently tightens an
 /// existing artifact that never opted into isolation.
+///
+/// `frame_ancestor` is the app origin allowed to frame an isolated response
+/// (see [`isolated_content_security_policy_framed_by`]); it is ignored for a
+/// shared-origin response, which is never framable.
+///
+/// Every permanent response is `Cache-Control: private, no-store`, so a
+/// sharing downgrade or a revocation takes effect on the very next request
+/// instead of after a browser or shared cache expires.
 pub(crate) fn permanent_file_response_headers(
     content_type: &str,
     manifest: &PermanentManifest,
     is_isolated: bool,
+    frame_ancestor: Option<&str>,
 ) -> Vec<(&'static str, String)> {
     let csp = if is_isolated {
-        isolated_content_security_policy(manifest)
+        isolated_content_security_policy_framed_by(manifest, frame_ancestor)
     } else {
         PREVIEW_CONTENT_SECURITY_POLICY.to_string()
     };
@@ -187,7 +209,43 @@ pub(crate) fn permanent_file_response_headers(
         ("Content-Type", content_type.to_string()),
         ("X-Content-Type-Options", "nosniff".to_string()),
         ("Content-Security-Policy", csp),
+        ("Cache-Control", "private, no-store".to_string()),
     ]
+}
+
+/// The CSP source for `ARTFCT_APP_ORIGIN`, or `None` when the value is not a
+/// bare origin. Only `https://host[:port]` is accepted, plus `http://` for
+/// loopback hosts used by the local e2e stack. Anything carrying a path,
+/// query, wildcard, whitespace, quote, comma or semicolon is refused: the
+/// value is spliced into a CSP header, so a lax check here would let a bad
+/// config add directives or open framing to every origin.
+pub(crate) fn frame_ancestor_source(value: &str) -> Option<String> {
+    let value = value.trim().trim_end_matches('/');
+    let (scheme, authority) = value.split_once("://")?;
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+    };
+    let port_ok = port.is_none_or(|port| {
+        !port.is_empty() && port.len() <= 5 && port.bytes().all(|byte| byte.is_ascii_digit())
+    });
+    let host_ok = !host.is_empty()
+        && host
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+        && !host.starts_with(['.', '-'])
+        && !host.ends_with(['.', '-']);
+    let loopback = matches!(host, "127.0.0.1" | "localhost");
+    let scheme_ok = scheme == "https" || (scheme == "http" && loopback);
+    (scheme_ok && host_ok && port_ok).then(|| format!("{scheme}://{authority}"))
+}
+
+/// This environment's app origin as a frame-ancestors source, if configured
+/// and valid. A misconfigured value fails closed to "not framable".
+pub(crate) fn app_frame_ancestor(env: &Env) -> Option<String> {
+    env.var(APP_ORIGIN_ENV)
+        .ok()
+        .and_then(|value| frame_ancestor_source(&value.to_string()))
 }
 
 #[derive(Debug, PartialEq, Eq)]

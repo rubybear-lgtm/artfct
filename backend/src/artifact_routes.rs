@@ -1,5 +1,5 @@
 use super::*;
-use crate::artifact_origin::{access_token_cookie, access_token_from_cookie};
+use crate::artifact_origin::{access_token_cookie, access_token_from_cookie, app_frame_ancestor};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
@@ -864,8 +864,13 @@ pub(crate) async fn resolve_permanent_artifact(
     });
     let mut response = Response::from_bytes(bytes)?.with_status(200);
     let is_isolated = isolated_access == IsolatedAccess::Authorized;
-    for (name, value) in permanent_file_response_headers(&row.content_type, &manifest, is_isolated)
-    {
+    let frame_ancestor = app_frame_ancestor(env);
+    for (name, value) in permanent_file_response_headers(
+        &row.content_type,
+        &manifest,
+        is_isolated,
+        frame_ancestor.as_deref(),
+    ) {
         response.headers_mut().set(name, &value)?;
     }
     if isolated_access == IsolatedAccess::Authorized && requested_path.is_none() {

@@ -54,6 +54,8 @@
         "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--stg.artfct.dev",
         "ARTFCT_ORG_SLUG": "zz-northwind",
         "ARTFCT_WORKER_EVENT_URL": "https://staging.artfct.dev/internal/worker-events",
+        // RUB-438: the only origin allowed to frame isolated artifacts (the viewer).
+        "ARTFCT_APP_ORIGIN": "https://staging.artfct.dev",
         "ARTFCT_MAX_HTML_BYTES": "1048576",
         "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
         "ARTFCT_MAX_TTL_MINUTES": "525600",
