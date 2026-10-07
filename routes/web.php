@@ -12,6 +12,13 @@ use Inertia\Inertia;
 
 $blogPosts = [
     [
+        'slug' => 'stop-ai-tools-contradicting-each-other',
+        'title' => 'How we stopped our AI tools from contradicting each other',
+        'date' => '2026-10-05',
+        'tag' => 'workflows',
+        'description' => "Claude knew we'd dropped a phrase. Cursor didn't. How a shared team library lets every AI tool find your latest decisions, with sources, before it writes.",
+    ],
+    [
         'slug' => 'share-ai-agent-knowledge-team',
         'title' => 'Share AI Agent Knowledge Across Your Team With artfct',
         'date' => '2026-10-04',

@@ -1329,3 +1329,179 @@ html {
         font-size: 7px !important;
     }
 }
+
+/* ── contradicting tools figure animations ────────────────────────────────── */
+@keyframes figure-fizzle {
+    0% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    55% {
+        transform: translateX(54px);
+        opacity: 1;
+    }
+    75% {
+        transform: translateX(58px);
+        opacity: 0.15;
+    }
+    100% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes figure-flag {
+    0%,
+    60% {
+        box-shadow: 0 0 0 0 rgba(112, 26, 36, 0);
+    }
+    75% {
+        box-shadow: 0 0 0 4px rgba(112, 26, 36, 0.18);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(112, 26, 36, 0);
+    }
+}
+
+@keyframes figure-travel {
+    0% {
+        transform: translateX(0);
+        opacity: 0;
+    }
+    5% {
+        opacity: 1;
+    }
+    30% {
+        transform: translateX(28px);
+        opacity: 1;
+    }
+    38%,
+    100% {
+        transform: translateX(28px);
+        opacity: 0;
+    }
+}
+
+@keyframes figure-travel-back {
+    0% {
+        transform: translateX(0);
+        opacity: 0;
+    }
+    5% {
+        opacity: 1;
+    }
+    30% {
+        transform: translateX(-28px);
+        opacity: 1;
+    }
+    38%,
+    100% {
+        transform: translateX(-28px);
+        opacity: 0;
+    }
+}
+
+@keyframes figure-press {
+    0%,
+    4% {
+        transform: translateY(0);
+    }
+    7% {
+        transform: translateY(1px);
+    }
+    11%,
+    100% {
+        transform: translateY(0);
+    }
+}
+
+@keyframes figure-match {
+    0%,
+    55% {
+        border-left-color: transparent;
+    }
+    62%,
+    92% {
+        border-left-color: var(--sol-blue);
+        background-color: var(--sol-tint);
+    }
+    100% {
+        border-left-color: transparent;
+    }
+}
+
+@keyframes figure-focus {
+    0%,
+    45% {
+        box-shadow: none;
+    }
+    50%,
+    70% {
+        box-shadow: 0 0 0 3px var(--sol-tint);
+        border-color: var(--sol-blue);
+    }
+    80%,
+    100% {
+        box-shadow: none;
+    }
+}
+
+@keyframes figure-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+@keyframes figure-src {
+    0%,
+    68% {
+        background-color: var(--sol-base2);
+        color: var(--sol-base00);
+    }
+    74%,
+    92% {
+        background-color: var(--sol-tint);
+        color: var(--sol-blue);
+    }
+    100% {
+        background-color: var(--sol-base2);
+        color: var(--sol-base00);
+    }
+}
+
+.figure-fizzle-dot {
+    animation: figure-fizzle 3.6s ease-in-out infinite;
+}
+
+.figure-flag {
+    animation: figure-flag 3.6s ease-in-out infinite;
+}
+
+.figure-travel-in-dot {
+    animation: figure-travel 6s ease-in-out infinite;
+}
+
+.figure-travel-out-dot {
+    animation: figure-travel-back 6s 3s ease-in-out infinite;
+}
+
+.figure-share-btn {
+    animation: figure-press 6s ease-in-out infinite;
+}
+
+.figure-row-matched {
+    border-left: 2px solid transparent;
+    animation: figure-match 6s ease-in-out infinite;
+}
+
+.figure-search {
+    animation: figure-focus 6s ease-in-out infinite;
+}
+
+.figure-caret {
+    animation: figure-blink 1s steps(1) infinite;
+}
+
+.figure-source-chip {
+    animation: figure-src 6s ease-in-out infinite;
+}

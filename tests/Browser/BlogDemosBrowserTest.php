@@ -52,3 +52,12 @@ test('workflow demos fit narrow screens in both themes', function (string $slug)
             ->assertNoJavaScriptErrors();
     }
 })->with('blog demo posts');
+
+test('contradicting tools article renders without javascript errors', function () {
+    visit(route('blog.show', ['slug' => 'stop-ai-tools-contradicting-each-other']))
+        ->assertSee('How we stopped our AI tools from contradicting each other')
+        ->assertSee('The Thursday our AI tools disagreed')
+        ->assertSee('Why AI tools contradict each other')
+        ->assertSee('Frequently asked questions')
+        ->assertNoJavaScriptErrors();
+});

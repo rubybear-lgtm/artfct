@@ -11,9 +11,17 @@ use Inertia\Testing\AssertableInertia as Assert;
 function workflowPosts(): array
 {
     return [
+        'stop-ai-tools-contradicting-each-other' => [
+            'stop-ai-tools-contradicting-each-other',
+            0,
+            'How we stopped our AI tools from contradicting each other',
+            "Claude knew we'd dropped a phrase. Cursor didn't. How a shared team library lets every AI tool find your latest decisions, with sources, before it writes.",
+            '2026-10-05',
+            'workflows',
+        ],
         'share-ai-agent-knowledge-team' => [
             'share-ai-agent-knowledge-team',
-            0,
+            1,
             'Share AI Agent Knowledge Across Your Team With artfct',
             "Publish an agent's findings to your team's artfct library so other connected agents can find them and use them to guide their next task.",
             '2026-10-04',
@@ -21,7 +29,7 @@ function workflowPosts(): array
         ],
         'share-context-claude-code-codex-mcp' => [
             'share-context-claude-code-codex-mcp',
-            1,
+            2,
             'Share Context Between Claude Code and Codex With MCP',
             "Save an investigation from Claude Code, find it in Codex, and carry verified findings forward with artfct's hosted MCP server.",
             '2026-10-04',
@@ -29,7 +37,7 @@ function workflowPosts(): array
         ],
         'semantic-search-ai-generated-reports' => [
             'semantic-search-ai-generated-reports',
-            2,
+            3,
             'Find AI-generated reports when you forget the title',
             'Use semantic search to find published AI reports by the problem they describe, with snippets, provenance and links to inspect the source.',
             '2026-10-04',
@@ -45,12 +53,12 @@ test('blog index lists every post including the workflow posts', function (strin
     $response->assertOk();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('blog')
-        ->has('posts', 6)
+        ->has('posts', 7)
         ->where("posts.{$index}.slug", $slug));
 })->with([
-    'developer-tools' => ['developer-tools', 3],
-    'ai-presentations' => ['ai-presentations', 4],
-    'mermaid-diagrams' => ['mermaid-diagrams', 5],
+    'developer-tools' => ['developer-tools', 4],
+    'ai-presentations' => ['ai-presentations', 5],
+    'mermaid-diagrams' => ['mermaid-diagrams', 6],
     ...collect(workflowPosts())
         ->map(fn (array $post): array => [$post[0], $post[1]])
         ->all(),

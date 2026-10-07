@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import React from 'react';
 
 import { BlogDemo } from '@/components/blog-demo';
+import { BreakFigure, LoopFigure } from '@/components/contradicting-figures';
 import { docs } from '@/routes';
 import { show as blogShow } from '@/routes/blog';
 
@@ -145,6 +146,328 @@ const CODE_TEMPLATE_SNIPPET = `<section class="slide slide-content">
   </ul>
 </section>`;
 export const POSTS: Post[] = [
+    {
+        slug: 'stop-ai-tools-contradicting-each-other',
+        date: '2026-10-05',
+        title: 'How we stopped our AI tools from contradicting each other',
+        tag: 'workflows',
+        description:
+            "Claude knew we'd dropped a phrase. Cursor didn't. How a shared team library lets every AI tool find your latest decisions, with sources, before it writes.",
+        body: (
+            <>
+                <P>
+                    If you use Claude for research and Cursor for code, you have
+                    probably hit this: you drop an obsolete phrase during a
+                    morning Claude session, open Cursor that afternoon, and
+                    watch it scaffold a landing page with that exact phrase. The
+                    team is aligned. The tools are completely isolated.
+                </P>
+                <P>
+                    Every AI tool works from its own silo: the active
+                    conversation, recently opened files, and maybe a local rules
+                    file. Decisions made in one session do not exist for the
+                    next. Here is how we stopped Claude and Cursor from
+                    contradicting each other using a shared Model Context
+                    Protocol (MCP) library.
+                </P>
+                <H2>The Thursday our AI tools disagreed</H2>
+                <P>
+                    Last week we were refining our product copy in Claude
+                    Desktop based on customer calls. Users consistently pushed
+                    back on the phrase &ldquo;shared AI brain&rdquo;—it sounded
+                    like unverifiable hype. We agreed on plain positioning:
+                    searchable reports with verified sources and workspace
+                    access rules.
+                </P>
+                <P>Two hours later, an engineer prompted Cursor:</P>
+                <blockquote className="mb-5 border-l-2 border-border pl-4 leading-[1.75] text-muted-foreground italic">
+                    Build a three-column comparison of artfct against a static
+                    wiki and a folder of markdown files. Lead with team
+                    collaboration.
+                </blockquote>
+                <P>
+                    Cursor generated clean TypeScript, matching styles, and a
+                    hero badge:{' '}
+                    <Mono>
+                        &ldquo;The shared AI brain for modern teams.&rdquo;
+                    </Mono>
+                </P>
+                <P>
+                    It was not a hallucination. Cursor had zero visibility into
+                    the Claude Desktop session. It matched patterns from older
+                    components in the repository and reintroduced the phrase we
+                    had just rejected.
+                </P>
+                <BreakFigure />
+                <H2>Why AI tools contradict each other</H2>
+                <P>
+                    Multi-tool AI workflows run into three hard context
+                    boundaries:
+                </P>
+                <ul className="mb-5 list-disc space-y-2 pl-6 leading-[1.75] text-muted-foreground">
+                    <li>
+                        <strong className="text-foreground">
+                            Session isolation:
+                        </strong>{' '}
+                        Closing a chat tab or starting a new agent run wipes
+                        working memory.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Cross-tool silos:
+                        </strong>{' '}
+                        Cursor cannot query closed Claude Desktop threads;
+                        Claude Code cannot inspect IDE composer state.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Speed mismatch:
+                        </strong>{' '}
+                        Positioning and product decisions evolve during morning
+                        discussions. Code ships that afternoon. Without a
+                        bridge, tools generate regressions within hours.
+                    </li>
+                </ul>
+                <H2>Why .cursorrules and CLAUDE.md don&apos;t scale</H2>
+                <P>
+                    Dumping guidelines into <Mono>.cursorrules</Mono> or{' '}
+                    <Mono>CLAUDE.md</Mono> is the standard workaround. It breaks
+                    down quickly:
+                </P>
+                <ul className="mb-5 list-disc space-y-2 pl-6 leading-[1.75] text-muted-foreground">
+                    <li>
+                        <strong className="text-foreground">
+                            Context bloat:
+                        </strong>{' '}
+                        Stuffing personas, banned phrases, and API specs into
+                        system prompts consumes token budget on every query—even
+                        minor bug fixes.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Maintenance friction:
+                        </strong>{' '}
+                        Nobody submits a pull request to update a rules file
+                        after an ad-hoc research session. The file goes stale
+                        immediately.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Repo confinement:
+                        </strong>{' '}
+                        Git-tracked rules help Cursor in your IDE. They do not
+                        help non-engineers drafting in Claude Desktop or
+                        teammates without repo access.
+                    </li>
+                </ul>
+                <H2>How we share context between Claude and Cursor now</H2>
+                <P>
+                    Instead of bloated static files, we connect both tools to
+                    artfct&apos;s shared team library via{' '}
+                    <strong className="text-foreground">
+                        MCP (Model Context Protocol)
+                    </strong>
+                    . Claude and Cursor query the same live index on demand.
+                </P>
+                <H3>1. Publish decisions at the source (Claude)</H3>
+                <P>
+                    When a research or positioning session wraps up, we tell
+                    Claude to publish directly to the team library:
+                </P>
+                <blockquote className="mb-5 border-l-2 border-border pl-4 leading-[1.75] text-muted-foreground italic">
+                    Share this positioning brief to our artfct team library.
+                    Title: &ldquo;Q4 messaging: alternatives to &apos;shared AI
+                    brain&apos;&rdquo;. Include approved phrases, banned terms,
+                    and user interview quotes. Add it to the Messaging
+                    collection.
+                </blockquote>
+                <P>
+                    Claude generates a clean, permanent artifact. The library
+                    indexes it for semantic search within seconds.
+                </P>
+                <H3>2. Use a one-line lookup rule (Cursor)</H3>
+                <P>
+                    Instead of a massive rules file, our{' '}
+                    <Mono>.cursorrules</Mono> contains a single instruction:
+                </P>
+                <blockquote className="mb-5 border-l-2 border-border pl-4 leading-[1.75] text-muted-foreground italic">
+                    Before writing public copy, UI components, or documentation,
+                    search the artfct library for recent guidance in the
+                    Messaging collection. Cite the source link.
+                </blockquote>
+                <H3>3. Retrieve context on demand via semantic search</H3>
+                <P>
+                    When Cursor scaffolds the comparison section, it calls{' '}
+                    <Mono>search_artifacts</Mono> for &ldquo;feature comparison
+                    messaging&rdquo; before generating markup. It gets back the
+                    approved wording, the banned phrase warning, and a link to
+                    the source brief.
+                </P>
+                <P>
+                    Cursor uses the approved copy and appends the source URL in
+                    the file header:
+                </P>
+                <CodeBlock
+                    code={`// Source: https://artfct.dev/p/20a69e009d7433ddd57e0cff888318cb (Q4 Messaging Brief)
+export function FeatureComparison() {
+    // ...
+}`}
+                />
+                <P>
+                    Reviewers verify the rationale in one click. No guessing
+                    where the copy came from.
+                </P>
+                <LoopFigure />
+                <H2>What changes in practice</H2>
+                <ul className="mb-5 list-disc space-y-2 pl-6 leading-[1.75] text-muted-foreground">
+                    <li>
+                        <strong className="text-foreground">
+                            Zero context waste:
+                        </strong>{' '}
+                        Tokens are only consumed when a query actually needs
+                        messaging rules.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Tool independence:
+                        </strong>{' '}
+                        Researchers stay in Claude Desktop; engineers stay in
+                        Cursor. Neither needs to mirror the other&apos;s
+                        workspace.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Verifiable provenance:
+                        </strong>{' '}
+                        Generated code and copy cite the exact decision document
+                        in review.
+                    </li>
+                    <li>
+                        <strong className="text-foreground">
+                            Honest limits:
+                        </strong>{' '}
+                        Semantic search returns targeted excerpts and links, not
+                        raw 10,000-word dumps. Deep edge cases still require
+                        opening the linked artifact.
+                    </li>
+                </ul>
+                <P>
+                    <A href={`${docs().url}#mcp`}>
+                        Connect your AI tools to artfct via MCP →
+                    </A>
+                </P>
+                <H2>Frequently asked questions</H2>
+                <div className="mt-4 divide-y divide-border border-y border-border">
+                    <details className="group py-3.5">
+                        <summary className="flex cursor-pointer list-none justify-between gap-4 font-semibold text-foreground">
+                            <span>
+                                Why do Claude and Cursor contradict each other?
+                            </span>
+                            <span className="text-primary transition-transform group-open:rotate-45">
+                                +
+                            </span>
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Each AI tool operates inside an isolated context
+                            window. Decisions made in Claude Desktop are
+                            invisible to Cursor unless stored in a shared
+                            external layer that both tools can query.
+                        </p>
+                    </details>
+                    <details className="group py-3.5">
+                        <summary className="flex cursor-pointer list-none justify-between gap-4 font-semibold text-foreground">
+                            <span>
+                                Can Claude Desktop and Cursor share the same
+                                context?
+                            </span>
+                            <span className="text-primary transition-transform group-open:rotate-45">
+                                +
+                            </span>
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Yes. By connecting both tools to an external MCP
+                            (Model Context Protocol) server like artfct, Claude
+                            can publish decisions and briefs directly, and
+                            Cursor can search that library on demand before
+                            generating code.
+                        </p>
+                    </details>
+                    <details className="group py-3.5">
+                        <summary className="flex cursor-pointer list-none justify-between gap-4 font-semibold text-foreground">
+                            <span>
+                                Why not put all context into .cursorrules or
+                                CLAUDE.md?
+                            </span>
+                            <span className="text-primary transition-transform group-open:rotate-45">
+                                +
+                            </span>
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Static rules files cause prompt bloat (burning
+                            tokens on every request), become stale because
+                            developers rarely submit PRs to update them, and
+                            cannot be accessed by tools outside the Git
+                            repository.
+                        </p>
+                    </details>
+                    <details className="group py-3.5">
+                        <summary className="flex cursor-pointer list-none justify-between gap-4 font-semibold text-foreground">
+                            <span>
+                                How does Model Context Protocol (MCP) share
+                                context?
+                            </span>
+                            <span className="text-primary transition-transform group-open:rotate-45">
+                                +
+                            </span>
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            MCP is an open standard that lets LLMs connect to
+                            external data sources. Instead of cramming data into
+                            system prompts, agents call MCP tools like{' '}
+                            <code className="font-mono text-xs">
+                                search_artifacts
+                            </code>{' '}
+                            to retrieve only the relevant context when needed.
+                        </p>
+                    </details>
+                </div>
+                <H2>Keep reading</H2>
+                <ul className="divide-y divide-border border-y border-border">
+                    <li className="py-3">
+                        <Link
+                            href={blogShow.url({
+                                slug: 'share-ai-agent-knowledge-team',
+                            })}
+                            className="font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                            Share what your AI learns across the whole team →
+                        </Link>
+                    </li>
+                    <li className="py-3">
+                        <Link
+                            href={blogShow.url({
+                                slug: 'share-context-claude-code-codex-mcp',
+                            })}
+                            className="font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                            Share context between Claude Code and Codex →
+                        </Link>
+                    </li>
+                    <li className="py-3">
+                        <Link
+                            href={blogShow.url({
+                                slug: 'semantic-search-ai-generated-reports',
+                            })}
+                            className="font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                            Find AI-generated reports when you forget the title
+                            →
+                        </Link>
+                    </li>
+                </ul>
+            </>
+        ),
+    },
     {
         slug: 'share-ai-agent-knowledge-team',
         date: '2026-10-04',
