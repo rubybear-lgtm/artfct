@@ -220,6 +220,11 @@ pub(crate) fn build_version_list(
 /// all run before the `artifacts` update, they all see the same pre-promotion
 /// `current_version`: either all of them run, or (a slower, older version) none
 /// of them do and only the version's own `expires_at` is cleared.
+///
+/// `require_public_edit` is set for a cross-org upload completion: the
+/// promotion then only touches an artifact that is still public + edit at the
+/// moment the batch runs, so a downgrade between resolving the target and
+/// completing the upload cannot promote a cross-org author's version.
 pub(crate) fn promotion_statements(
     database: &worker::D1Database,
     row_id: &str,
@@ -227,6 +232,7 @@ pub(crate) fn promotion_statements(
     version: u32,
     current_version: u32,
     updated_at: &str,
+    require_public_edit: bool,
 ) -> Result<Vec<worker::d1::D1PreparedStatement>> {
     // The version still completes in history even when it is not promoted, so
     // clear its upload deadline either way.
@@ -236,32 +242,22 @@ pub(crate) fn promotion_statements(
     if !should_promote(version, current_version) {
         return Ok(vec![clear_expiry]);
     }
+    let guard = if require_public_edit {
+        " AND tier = 'public' AND edit_access = 'edit'"
+    } else {
+        ""
+    };
     let version_number = JsValue::from_f64(version as f64);
     Ok(vec![
         database
-            .prepare("DELETE FROM files WHERE artifact_row_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?)")
+            .prepare(format!("DELETE FROM files WHERE artifact_row_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?{guard})"))
             .bind(&[
                 JsValue::from_str(row_id),
                 JsValue::from_str(row_id),
                 version_number.clone(),
             ])?,
         database
-            .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT ?, vf.path, vf.content_hash, vf.content_type, vf.size_bytes FROM version_files vf WHERE vf.version_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?)")
-            .bind(&[
-                JsValue::from_str(row_id),
-                JsValue::from_str(version_id),
-                JsValue::from_str(row_id),
-                version_number.clone(),
-            ])?,
-        database
-            .prepare("DELETE FROM provenance WHERE artifact_row_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?)")
-            .bind(&[
-                JsValue::from_str(row_id),
-                JsValue::from_str(row_id),
-                version_number.clone(),
-            ])?,
-        database
-            .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) SELECT ?, v.agent, v.repo_url, v.commit_sha, v.provenance FROM artifact_versions v WHERE v.id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?)")
+            .prepare(format!("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT ?, vf.path, vf.content_hash, vf.content_type, vf.size_bytes FROM version_files vf WHERE vf.version_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?{guard})"))
             .bind(&[
                 JsValue::from_str(row_id),
                 JsValue::from_str(version_id),
@@ -269,7 +265,22 @@ pub(crate) fn promotion_statements(
                 version_number.clone(),
             ])?,
         database
-            .prepare("UPDATE artifacts SET content_hash = (SELECT content_hash FROM artifact_versions WHERE id = ?), entrypoint = (SELECT entrypoint FROM artifact_versions WHERE id = ?), manifest = (SELECT manifest FROM artifact_versions WHERE id = ?), title = (SELECT title FROM artifact_versions WHERE id = ?), description = (SELECT description FROM artifact_versions WHERE id = ?), current_version = (SELECT version FROM artifact_versions WHERE id = ?), updated_at = ? WHERE row_id = ? AND current_version < ?")
+            .prepare(format!("DELETE FROM provenance WHERE artifact_row_id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?{guard})"))
+            .bind(&[
+                JsValue::from_str(row_id),
+                JsValue::from_str(row_id),
+                version_number.clone(),
+            ])?,
+        database
+            .prepare(format!("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) SELECT ?, v.agent, v.repo_url, v.commit_sha, v.provenance FROM artifact_versions v WHERE v.id = ? AND EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND current_version < ?{guard})"))
+            .bind(&[
+                JsValue::from_str(row_id),
+                JsValue::from_str(version_id),
+                JsValue::from_str(row_id),
+                version_number.clone(),
+            ])?,
+        database
+            .prepare(format!("UPDATE artifacts SET content_hash = (SELECT content_hash FROM artifact_versions WHERE id = ?), entrypoint = (SELECT entrypoint FROM artifact_versions WHERE id = ?), manifest = (SELECT manifest FROM artifact_versions WHERE id = ?), title = (SELECT title FROM artifact_versions WHERE id = ?), description = (SELECT description FROM artifact_versions WHERE id = ?), current_version = (SELECT version FROM artifact_versions WHERE id = ?), updated_at = ? WHERE row_id = ? AND current_version < ?{guard}"))
             .bind(&[
                 JsValue::from_str(version_id),
                 JsValue::from_str(version_id),
@@ -304,18 +315,73 @@ pub(crate) fn cross_org_edit_allowed(sharing: Sharing, edit_access: EditAccess) 
     sharing == Sharing::Public && edit_access == EditAccess::Edit
 }
 
+/// The write-time guard for a cross-org version write (F3): the target must
+/// still be a live, public + edit artifact. Between resolving the target and
+/// writing, the owner may have downgraded or revoked it, so the version batch
+/// re-checks the row rather than trusting the earlier read. `None` for a
+/// same-org write, which keeps its own permission rule.
+///
+/// Returned as a SQL `EXISTS` predicate so the batch can encode it as a
+/// conditional insert that aborts the whole batch when the artifact no longer
+/// qualifies. This is the only rule for a cross-org write; the pure part is
+/// [`cross_org_edit_allowed`].
+pub(crate) fn cross_org_write_guard(same_org: bool) -> Option<&'static str> {
+    (!same_org).then_some(
+        "EXISTS (SELECT 1 FROM artifacts WHERE row_id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL)",
+    )
+}
+
+/// The D1 error the [`cross_org_write_guard`] statement raises when it aborts a
+/// batch: a conditional insert of a NULL `version`, which only ever runs when
+/// the guard predicate is false. The real version insert always binds a number,
+/// so this message is unambiguous.
+pub(crate) fn is_cross_org_guard_violation(message: &str) -> bool {
+    message.contains("NOT NULL constraint failed") && message.contains("artifact_versions.version")
+}
+
+/// The batch statement that enforces [`cross_org_write_guard`]. When the guard
+/// holds it inserts nothing; when it fails it attempts to insert a NULL
+/// `version`, which violates `artifact_versions.version NOT NULL` and aborts the
+/// enclosing batch (D1 batches are atomic), so no part of the write lands.
+pub(crate) fn cross_org_guard_statement(
+    database: &worker::D1Database,
+    row_id: &str,
+    now: &str,
+    condition: &str,
+) -> Result<worker::d1::D1PreparedStatement> {
+    database
+        .prepare(format!(
+            "INSERT INTO artifact_versions (id, artifact_row_id, version, created_at) SELECT 'cross-org-guard', ?, NULL, ? WHERE NOT ({condition})"
+        ))
+        .bind(&[
+            JsValue::from_str(row_id),
+            JsValue::from_str(now),
+            JsValue::from_str(row_id),
+        ])
+}
+
 /// Picks the live artifact a version write targets, and whether it is in the
 /// credential's own org. Pure: the caller fetches the two candidate rows and
-/// this decides between them. The credential's own row always wins; another
-/// org's row is usable only when it is public + edit, so a team/public-view
-/// artifact of another org is `None` (404) exactly like a missing one and its
-/// existence is never revealed.
+/// this decides between them. The credential's own row wins only when the
+/// caller can see it; a private artifact they cannot see is treated as missing
+/// (`None`) rather than as a refusal, so a version write is not an existence
+/// oracle and answers the same 404 as every read path. Another org's row is
+/// usable only when it is public + edit, so a team/public-view artifact of
+/// another org is `None` (404) exactly like a missing one and its existence is
+/// never revealed.
 pub(crate) fn select_version_target(
     same_org_row: Option<LiveArtifactRow>,
     other_org_row: Option<LiveArtifactRow>,
+    viewer: &Viewer<'_>,
 ) -> Option<(LiveArtifactRow, bool)> {
     if let Some(row) = same_org_row {
-        return Some((row, true));
+        if can_view(
+            Sharing::from_tier(&row.tier),
+            row.user_id.as_deref(),
+            viewer,
+        ) {
+            return Some((row, true));
+        }
     }
     let other = other_org_row?;
     cross_org_edit_allowed(
@@ -335,17 +401,25 @@ pub(crate) async fn version_target(
     database: &worker::D1Database,
     org: &str,
     artifact_id: &str,
+    viewer: &Viewer<'_>,
 ) -> Result<Option<(LiveArtifactRow, bool)>> {
     let same_org = live_artifact(database, org, artifact_id).await?;
-    if same_org.is_some() {
-        return Ok(select_version_target(same_org, None));
+    let same_org_visible = same_org.as_ref().is_some_and(|row| {
+        can_view(
+            Sharing::from_tier(&row.tier),
+            row.user_id.as_deref(),
+            viewer,
+        )
+    });
+    if same_org_visible {
+        return Ok(select_version_target(same_org, None, viewer));
     }
     let other_org = database
         .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<LiveArtifactRow>(None)
         .await?;
-    Ok(select_version_target(None, other_org))
+    Ok(select_version_target(None, other_org, viewer))
 }
 
 const VERSION_COLUMNS: &str = "id, version, created_at, created_by, agent, repo_url, commit_sha, title, description, content_hash, manifest, entrypoint, provenance, restored_from, expires_at";
@@ -495,6 +569,13 @@ async fn create_version(
             Ok(credential) => credential,
             Err(refusal) => return Ok(refusal),
         };
+    if !check_and_increment_rate_limit(env, &credential.token_id).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for this token.",
+            429,
+        );
+    }
     let raw = match req.json::<Value>().await {
         Ok(payload) => payload,
         Err(_) => {
@@ -518,10 +599,12 @@ async fn create_version(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
+    let viewer = Viewer::from_credential(&credential);
     // Org first: the artifact's own org wins, then a live Public + edit
     // artifact of another org (same_org = false). A non-public artifact of
     // another org is indistinguishable from a missing one (404).
-    let Some((artifact, same_org)) = version_target(&storage.database, &org, artifact_id).await?
+    let Some((artifact, same_org)) =
+        version_target(&storage.database, &org, artifact_id, &viewer).await?
     else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
@@ -529,7 +612,6 @@ async fn create_version(
     let sharing = Sharing::from_tier(&artifact.tier);
     let tier = tier_from_database(&artifact.tier);
     let edit_access = EditAccess::from_stored(&artifact.edit_access);
-    let viewer = Viewer::from_credential(&credential);
     if !decide_version_publish(
         sharing,
         edit_access,
@@ -653,6 +735,15 @@ async fn create_version(
                     expires_value.clone(),
                 ])?,
         ];
+        // F3: a cross-org write re-checks at write time that the target is
+        // still public + edit. The conditional insert aborts the whole batch
+        // when it is not, before any part of the write lands.
+        if let Some(condition) = cross_org_write_guard(same_org) {
+            statements.insert(
+                0,
+                cross_org_guard_statement(&storage.database, &artifact.row_id, &now, condition)?,
+            );
+        }
         for (file, is_present) in manifest.files.iter().zip(present.iter().copied()) {
             statements.push(
                 storage
@@ -694,10 +785,14 @@ async fn create_version(
                 version,
                 artifact.current_version.max(1) as u32,
                 &now,
+                !same_org,
             )?);
         }
         if let Err(error) = storage.execute_batch(statements).await {
             let message = error.to_string();
+            if is_cross_org_guard_violation(&message) {
+                return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+            }
             if is_version_conflict(&message) {
                 return json_error(
                     ErrorCode::VersionConflict,
@@ -745,10 +840,19 @@ async fn restore_version(
             Ok(credential) => credential,
             Err(refusal) => return Ok(refusal),
         };
+    if !check_and_increment_rate_limit(env, &credential.token_id).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for this token.",
+            429,
+        );
+    }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
-    let Some((artifact, same_org)) = version_target(&storage.database, &org, artifact_id).await?
+    let viewer = Viewer::from_credential(&credential);
+    let Some((artifact, same_org)) =
+        version_target(&storage.database, &org, artifact_id, &viewer).await?
     else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
@@ -756,7 +860,6 @@ async fn restore_version(
     let sharing = Sharing::from_tier(&artifact.tier);
     let tier = tier_from_database(&artifact.tier);
     let edit_access = EditAccess::from_stored(&artifact.edit_access);
-    let viewer = Viewer::from_credential(&credential);
     if !decide_version_publish(
         sharing,
         edit_access,
@@ -857,6 +960,12 @@ async fn restore_version(
                     JsValue::from_str(&source.id),
                 ])?,
         ];
+        if let Some(condition) = cross_org_write_guard(same_org) {
+            statements.insert(
+                0,
+                cross_org_guard_statement(&storage.database, &artifact.row_id, &now, condition)?,
+            );
+        }
         for file in &source_manifest.files {
             statements.push(
                 storage
@@ -872,9 +981,13 @@ async fn restore_version(
             version,
             artifact.current_version.max(1) as u32,
             &now,
+            !same_org,
         )?);
         if let Err(error) = storage.execute_batch(statements).await {
             let message = error.to_string();
+            if is_cross_org_guard_violation(&message) {
+                return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+            }
             if is_version_conflict(&message) {
                 return json_error(
                     ErrorCode::VersionConflict,
@@ -1026,20 +1139,55 @@ mod tests {
                 edit_access: edit_access.to_string(),
             }
         }
+        fn viewer<'a>(user_id: &'a str, role: &'a str) -> Viewer<'a> {
+            Viewer {
+                user_id,
+                role,
+                scope: None,
+            }
+        }
+        let owner = viewer("owner", "member");
+        let stranger = viewer("stranger", "member");
+        let admin = viewer("stranger", "admin");
 
-        // The credential's own row wins even when another org's public + edit
-        // row exists.
+        // The credential's own row wins over another org's public + edit row.
         let (chosen, same_org) = select_version_target(
-            Some(row("acme", "private", "view")),
+            Some(row("acme", "secure", "edit")),
             Some(row("other", "public", "edit")),
+            &stranger,
         )
-        .expect("same-org row is always a target");
+        .expect("a viewable same-org row is a target");
         assert!(same_org);
         assert_eq!(chosen.org_id, "acme");
 
+        // A same-org private artifact the caller cannot view is dropped, so
+        // the write answers the same 404 as a missing artifact (F1).
+        assert!(
+            select_version_target(Some(row("acme", "private", "edit")), None, &stranger,).is_none()
+        );
+        // The owner and an org admin can still see it and reach the 403 that
+        // only applies to a viewable artifact.
+        assert!(
+            select_version_target(Some(row("acme", "private", "edit")), None, &owner,).is_some()
+        );
+        assert!(
+            select_version_target(Some(row("acme", "private", "edit")), None, &admin,).is_some()
+        );
+        // Dropping the unviewable same-org row still allows the deliberate
+        // cross-org public + edit fall-through.
+        let (chosen, same_org) = select_version_target(
+            Some(row("acme", "private", "edit")),
+            Some(row("other", "public", "edit")),
+            &stranger,
+        )
+        .expect("cross-org public + edit stays reachable");
+        assert!(!same_org);
+        assert_eq!(chosen.org_id, "other");
+
         // Another org's public + edit row is usable.
-        let (chosen, same_org) = select_version_target(None, Some(row("other", "public", "edit")))
-            .expect("public + edit is cross-org writable");
+        let (chosen, same_org) =
+            select_version_target(None, Some(row("other", "public", "edit")), &stranger)
+                .expect("public + edit is cross-org writable");
         assert!(!same_org);
         assert_eq!(chosen.org_id, "other");
 
@@ -1051,11 +1199,46 @@ mod tests {
             ("bogus", "edit"),
         ] {
             assert!(
-                select_version_target(None, Some(row("other", tier, edit_access))).is_none(),
+                select_version_target(None, Some(row("other", tier, edit_access)), &stranger)
+                    .is_none(),
                 "{tier}/{edit_access}"
             );
         }
-        assert!(select_version_target(None, None).is_none());
+        assert!(select_version_target(None, None, &stranger).is_none());
+    }
+
+    #[test]
+    fn cross_org_write_guard_requires_public_edit_at_write_time() {
+        // A same-org write keeps its own permission rule.
+        assert!(cross_org_write_guard(true).is_none());
+        // A cross-org write re-checks the row in the write itself.
+        let guard = cross_org_write_guard(false).expect("cross-org writes carry a guard");
+        assert!(guard.contains("tier = 'public'"), "{guard}");
+        assert!(guard.contains("edit_access = 'edit'"), "{guard}");
+        assert!(guard.contains("revoked_at IS NULL"), "{guard}");
+        // The pure rule the guard encodes: only Public + edit is cross-org.
+        assert!(cross_org_edit_allowed(Sharing::Public, EditAccess::Edit));
+        for (sharing, edit_access) in [
+            (Sharing::Private, EditAccess::Edit),
+            (Sharing::Team, EditAccess::Edit),
+            (Sharing::Public, EditAccess::View),
+            (Sharing::Private, EditAccess::View),
+        ] {
+            assert!(!cross_org_edit_allowed(sharing, edit_access));
+        }
+    }
+
+    #[test]
+    fn cross_org_guard_violations_are_recognised() {
+        assert!(is_cross_org_guard_violation(
+            "NOT NULL constraint failed: artifact_versions.version"
+        ));
+        assert!(!is_cross_org_guard_violation(
+            "UNIQUE constraint failed: artifact_versions.artifact_row_id, artifact_versions.version"
+        ));
+        assert!(!is_cross_org_guard_violation(
+            "FOREIGN KEY constraint failed"
+        ));
     }
 
     #[test]

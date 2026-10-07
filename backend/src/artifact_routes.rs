@@ -287,6 +287,13 @@ pub(crate) async fn upload_permanent_file(
             Ok(credential) => credential,
             Err(refusal) => return Ok(refusal),
         };
+    if !check_and_increment_rate_limit(env, &credential.token_id).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for this token.",
+            429,
+        );
+    }
     let suffix = path.trim_start_matches("/v1/artifacts/");
     let Some((artifact_id, content_hash)) = suffix.split_once("/files/") else {
         return json_error(
@@ -313,8 +320,10 @@ pub(crate) async fn upload_permanent_file(
     // Resolve the artifact org-first, exactly as a version POST does. A
     // cross-org upload is only possible for a live Public + edit artifact, and
     // must still pass the one publish rule.
+    let viewer = Viewer::from_credential(&credential);
     let Some((artifact, same_org)) =
-        crate::version_routes::version_target(database, &credential.org_id, artifact_id).await?
+        crate::version_routes::version_target(database, &credential.org_id, artifact_id, &viewer)
+            .await?
     else {
         return json_error(
             ErrorCode::ArtifactNotFound,
@@ -323,7 +332,6 @@ pub(crate) async fn upload_permanent_file(
         );
     };
     let artifact_org = artifact.org_id.clone();
-    let viewer = Viewer::from_credential(&credential);
     if !can_publish_version(
         Sharing::from_tier(&artifact.tier),
         EditAccess::from_stored(&artifact.edit_access),
@@ -538,6 +546,7 @@ pub(crate) async fn upload_permanent_file(
                         version,
                         completion.current_version.max(1) as u32,
                         &now,
+                        !same_org,
                     )?;
                     storage.execute_batch(statements).await.map_err(|error| {
                         worker::Error::RustError(error.to_string())
@@ -1369,17 +1378,26 @@ async fn existing_permanent_by_content(
 
 /// Builds the response for a permanent artifact that already exists, looked up
 /// by `(org, id)`. The defensive fallback for the 0005 unique index; the
-/// content-hash dedupe uses [`existing_permanent_by_content`] instead.
+/// content-hash dedupe uses [`existing_permanent_by_content`] instead. The same
+/// visibility filter as the content dedupe applies, so this branch can never
+/// reveal a private artifact to a caller who cannot see it.
 pub(crate) async fn existing_permanent_response(
     storage: &store::D1R2ArtifactStore,
     env: &Env,
     org: &str,
     artifact_id: &str,
+    viewer: &Viewer<'_>,
 ) -> Result<Option<Response>> {
+    let reads_private = viewer.is_admin() || viewer.reads_private();
     let Some(existing) = storage
         .database
-        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
-        .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
+        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL AND (tier IN ('public', 'secure') OR user_id = ? OR ? = 1) ORDER BY row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(viewer.user_id),
+            JsValue::from_f64(if reads_private { 1.0 } else { 0.0 }),
+        ])?
         .first::<ExistingArtifactRow>(None)
         .await?
     else {
@@ -1542,17 +1560,33 @@ pub(crate) async fn update_artifact_sharing(
             403,
         );
     }
-    storage
+    let update = storage
         .database
-        .prepare("UPDATE artifacts SET tier = ?, edit_access = ? WHERE id = ? AND org_id = ?")
+        .prepare("UPDATE artifacts SET tier = ?, edit_access = ? WHERE id = ? AND org_id = ? AND (? <> 'public' OR NOT EXISTS (SELECT 1 FROM org_settings WHERE org_id = ? AND public_sharing_allowed = 0))")
         .bind(&[
             JsValue::from_str(sharing.tier()),
             JsValue::from_str(edit_access.as_str()),
             JsValue::from_str(artifact_id),
             JsValue::from_str(&credential.org_id),
+            JsValue::from_str(sharing.tier()),
+            JsValue::from_str(&credential.org_id),
         ])?
         .run()
         .await?;
+    let changed = update.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+    if changed == 0 {
+        // The row existed and the caller may see and change it, so the only
+        // reason the guarded update matched nothing is that public sharing was
+        // switched off between the check above and the write.
+        if sharing == Sharing::Public {
+            return json_error(
+                ErrorCode::PublicSharingDisabled,
+                "This team has turned off public sharing.",
+                403,
+            );
+        }
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
     if sharing != previous_sharing || edit_access != previous_edit_access {
         emit_artifact_sharing_changed(
             ctx,
@@ -1886,6 +1920,18 @@ pub(crate) async fn create_permanent_artifact(
                     );
                 }
             }
+            // F3: re-check the org setting under the bundle lock, immediately
+            // before the insert, so a downgrade between the first check and the
+            // write cannot leave a public artifact in an org that forbids it.
+            if sharing == Sharing::Public
+                && !sharing_allowed(sharing, public_sharing_allowed(database, &org).await?)
+            {
+                return json_error(
+                    ErrorCode::PublicSharingDisabled,
+                    "This team has turned off public sharing.",
+                    403,
+                );
+            }
             match storage.execute_batch(statements).await {
                 Ok(()) => {
                     let missing_files = missing_manifest_files(&manifest, &existing);
@@ -1919,9 +1965,14 @@ pub(crate) async fn create_permanent_artifact(
                         // The 0005 `(org_id, id)` index: a live row already has
                         // this id. Return it rather than failing the re-post.
                         ArtifactInsertConflict::OrgPublicId => {
-                            if let Some(response) =
-                                existing_permanent_response(&storage, env, &org, &artifact_id)
-                                    .await?
+                            if let Some(response) = existing_permanent_response(
+                                &storage,
+                                env,
+                                &org,
+                                &artifact_id,
+                                &Viewer::from_credential(&credential),
+                            )
+                            .await?
                             {
                                 created = false;
                                 return Ok(response);
