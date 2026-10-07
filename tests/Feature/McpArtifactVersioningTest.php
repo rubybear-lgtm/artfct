@@ -1,12 +1,14 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\UsageContract;
 use Illuminate\Support\Facades\Http;
@@ -308,6 +310,25 @@ test('a 13-character stable id is linkable and opens on its isolated origin', fu
 
     $viewUrl = (string) $response->json('result.structuredContent.view_url');
 
+    // The viewer resolves the artifact through the directory, so the artifact
+    // has to exist there as well as in the content source. The directory is
+    // read with the member's own token in production; the in-memory fake
+    // serves globally, which is fine with a single workspace here.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => $id,
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Stable',
+        'description' => 'Stable summary',
+        'content_hash' => md5($id),
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
     /** @var FakeArtifactContentSource $content */
     $content = app(ArtifactContentSource::class);
     $content->seed($team->slug, $id, '<h1>Stable</h1>');
@@ -315,12 +336,17 @@ test('a 13-character stable id is linkable and opens on its isolated origin', fu
     $path = (string) parse_url($viewUrl, PHP_URL_PATH);
     $query = (string) parse_url($viewUrl, PHP_URL_QUERY);
     $open = test()->actingAs($member)->get($path.($query === '' ? '' : '?'.$query));
-    $open->assertRedirect();
-    $location = (string) $open->headers->get('Location');
+    $open->assertOk();
 
-    expect($location)->toStartWith('https://rub-437-stable--'.$id.'.artfct.dev/p/'.$id.'/?token=');
+    // The viewer renders the artifact in a frame on its isolated origin, and
+    // the frame's token is the thing that makes the link open.
+    /** @var array<string, mixed> $props */
+    $props = $open->viewData('page')['props'];
+    $frameUrl = (string) ($props['frameUrl'] ?? '');
 
-    parse_str((string) parse_url($location, PHP_URL_QUERY), $params);
+    expect($frameUrl)->toStartWith('https://rub-437-stable--'.$id.'.artfct.dev/p/'.$id.'/?token=');
+
+    parse_str((string) parse_url($frameUrl, PHP_URL_QUERY), $params);
     expect(artifactTokenVerifies((string) ($params['token'] ?? ''), $id, ARTIFACT_LINK_SECRET, now()->timestamp))->toBeTrue();
 });
 
@@ -390,12 +416,12 @@ test('version-aware link builders keep the /p/{id}/v:{version}/ path', function 
         ->and(ArtifactViewLink::publicPermanentUrl($id, 2))
         ->toBe('https://artfct.dev/p/'.$id.'/v:2/')
 
-        // The open route carries the version as a query parameter; without one
-        // it is byte-for-byte what it was before versioning.
+        // The viewer route carries the version as a query parameter; without
+        // one it is byte-for-byte what it was before versioning.
         ->and(ArtifactViewLink::appOpenUrl('acme', $id, 2))
-        ->toBe(route('console.open', ['team' => 'acme', 'artifactId' => $id, 'version' => 2]))
+        ->toBe(route('artifacts.show', ['artifactId' => $id, 'version' => 2]))
         ->and(ArtifactViewLink::appOpenUrl('acme', $id))
-        ->toBe(route('console.open', ['team' => 'acme', 'artifactId' => $id]));
+        ->toBe(route('artifacts.show', ['artifactId' => $id]));
 
     $link = (new ArtifactAccessLink('fixed-secret', '.artfct.dev', 60))
         ->forArtifact('test-org', $id, now()->setTimestamp(1_700_000_000), 2);
