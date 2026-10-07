@@ -210,6 +210,13 @@ impl RetryingClient {
         }
     }
 
+    fn patch(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.patch(url),
+        }
+    }
+
     fn put(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
         RetryingRequest {
             client: self.inner.clone(),
@@ -1106,7 +1113,8 @@ async fn reposting_identical_content_keeps_one_artifact_and_one_blob() -> Result
     let (second, second_hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     assert_eq!(first, second);
     assert_eq!(hash, second_hash);
-    assert_eq!(first.len(), 32);
+    // New artifacts get a random 13-character stable id (RUB-437).
+    assert_eq!(first.len(), 13);
     assert_eq!(
         count_value(
             &context,
@@ -1378,9 +1386,16 @@ async fn create_raced_with_final_delete_keeps_live_blob() -> Result<(), Box<dyn 
     let (deleted, created) = tokio::join!(delete, create);
     assert_eq!(deleted?.status(), reqwest::StatusCode::NO_CONTENT);
     let (created_id, created_hash) = created?;
-    assert_eq!(created_id, id);
     assert_eq!(created_hash, hash);
 
+    // Ids are random since RUB-437, so the re-post either deduped onto the
+    // artifact before the delete removed it, or landed after the delete and
+    // minted a fresh id. Only the second leaves a live artifact; that is the
+    // case where the blob must survive. In the first case the blob may go.
+    if created_id == id {
+        return Ok(());
+    }
+    let id = created_id;
     assert_eq!(
         count_value(
             &context,
@@ -2358,6 +2373,635 @@ async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Err
         "only the changed index.html should be uploaded; {} files total",
         initial_files.len()
     );
+    Ok(())
+}
+
+// ── RUB-437: artifact versioning ─────────────────────────────────────────
+//
+// End-to-end coverage of the versioning contract against a live local Worker
+// (openapi/artfct.yaml; the data-model invariants live in the header of
+// migrations/0006_artifact_versions.sql). Every test uses unique bytes so a
+// shared local D1/R2 cannot make one test's artifact answer another's read.
+
+/// Whether `id` is the 13-character lowercase base36 shape a new permanent
+/// artifact gets (RUB-437).
+fn is_stable_id(id: &str) -> bool {
+    id.len() == 13
+        && id
+            .chars()
+            .all(|value| value.is_ascii_lowercase() || value.is_ascii_digit())
+}
+
+/// A new-version request body: the create body's bundle fields, without the
+/// `mode`/`tier` a version never changes.
+fn version_payload(bytes: &[u8], provenance: Value) -> Value {
+    let hash = sha256(bytes);
+    json!({
+        "title": "Storage integration version",
+        "description": "Storage integration version",
+        "thumbnail": "https://example.com/thumbnail.png",
+        "preview_blurred": false,
+        "manifest": {"entrypoint": "index.html", "external_origins": [], "files": [{
+            "path": "index.html", "content_type": "text/html; charset=utf-8", "size_bytes": bytes.len(), "sha256": hash
+        }]},
+        "provenance": provenance
+    })
+}
+
+async fn post_version(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+    bytes: &[u8],
+    provenance: Value,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    let response = client
+        .post(format!(
+            "{}/v1/artifacts/{artifact_id}/versions",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .json(&version_payload(bytes, provenance))
+        .send()
+        .await?;
+    let status = response.status();
+    let body: Value = response.json().await?;
+    Ok((status, body))
+}
+
+async fn post_restore(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+    version: u32,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    let response = client
+        .post(format!(
+            "{}/v1/artifacts/{artifact_id}/versions/{version}/restore",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    let status = response.status();
+    let body: Value = response.json().await?;
+    Ok((status, body))
+}
+
+async fn upload_version_file(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+    bytes: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let hash = sha256(bytes);
+    let upload = client
+        .put(format!(
+            "{}/v1/artifacts/{artifact_id}/files/{hash}",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .header(reqwest::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(bytes.to_vec())
+        .send()
+        .await?;
+    assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    Ok(())
+}
+
+/// Publishes `bytes` as the artifact's next version and uploads its one file,
+/// returning the create-version response body.
+async fn publish_version(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+    bytes: &[u8],
+) -> Result<Value, Box<dyn Error>> {
+    let (status, body) = post_version(context, client, artifact_id, bytes, json!({})).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "unseen bytes should create a version: {body}"
+    );
+    assert_eq!(body["missing_files"], json!([sha256(bytes)]));
+    upload_version_file(context, client, artifact_id, bytes).await?;
+    Ok(body)
+}
+
+async fn artifact_metadata(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let response = client
+        .get(format!("{}/v1/artifacts/{artifact_id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    Ok(response.json().await?)
+}
+
+async fn org_content_read(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let response = client
+        .get(format!(
+            "{}/v1/orgs/{}/artifacts/{artifact_id}/content",
+            context.base, context.org
+        ))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    Ok(response.json().await?)
+}
+
+async fn version_list(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let response = client
+        .get(format!(
+            "{}/v1/artifacts/{artifact_id}/versions",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    Ok(response.json().await?)
+}
+
+async fn get_and_read(
+    client: &RetryingClient,
+    url: String,
+) -> Result<(reqwest::StatusCode, Vec<u8>), Box<dyn Error>> {
+    let response = client.get(url).send().await?;
+    let status = response.status();
+    let bytes = response.bytes().await?;
+    Ok((status, bytes.as_ref().to_vec()))
+}
+
+/// `(rows, max ref_count)` for one blob: a released blob is either gone or at
+/// ref_count zero. `MAX` over no rows is NULL, so it coalesces to zero.
+fn blob_state(context: &Context, content_hash: &str) -> Result<(i64, i64), Box<dyn Error>> {
+    let row = d1_row(
+        context,
+        &format!(
+            "SELECT COUNT(*) AS row_count, COALESCE(MAX(ref_count), 0) AS ref_count FROM blobs WHERE content_hash = '{content_hash}'"
+        ),
+    )?;
+    Ok((
+        row["row_count"]
+            .as_i64()
+            .ok_or("row_count was not an integer")?,
+        row["ref_count"]
+            .as_i64()
+            .ok_or("ref_count was not an integer")?,
+    ))
+}
+
+fn artifact_row_id(context: &Context, artifact_id: &str) -> Result<String, Box<dyn Error>> {
+    Ok(d1_row(
+        context,
+        &format!("SELECT row_id FROM artifacts WHERE id = '{artifact_id}'"),
+    )?["row_id"]
+        .as_str()
+        .ok_or("row_id was not text")?
+        .to_string())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn new_artifacts_get_a_13_character_stable_id() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("stable-id");
+    let created = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&permanent_payload(&bytes, json!({})))
+        .send()
+        .await?;
+    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
+    let body: Value = created.json().await?;
+    let id = body["id"].as_str().ok_or("create response omitted id")?;
+    assert!(
+        is_stable_id(id),
+        "a new permanent artifact id must be 13 lowercase base36 characters, got {id}"
+    );
+    assert_eq!(body["version"], 1, "a new artifact starts at version 1");
+    // Complete the v1 upload so the artifact does not sit pending.
+    upload_version_file(&context, &client, id, &bytes).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn publishing_v2_keeps_the_id_and_serves_new_content() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("versions-alpha");
+    let v2 = unique_html("versions-beta");
+    let (id, v1_hash) = create_and_upload(&context, &client, &v1, json!({})).await?;
+
+    let published = publish_version(&context, &client, &id, &v2).await?;
+    assert_eq!(published["id"].as_str(), Some(id.as_str()));
+    assert_eq!(published["version"], 2, "a second publish is version 2");
+    assert_eq!(published["created"], true);
+    let expected_url = format!("{}/p/{id}/", context.base);
+    assert_eq!(published["url"].as_str(), Some(expected_url.as_str()));
+
+    // The unversioned path follows the current version...
+    let (status, current) = get_and_read(&client, format!("{}/p/{id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(current, v2, "/p/{id} must serve the newest version");
+
+    // ...and the version-addressed path keeps serving v1.
+    let (status, old) = get_and_read(&client, format!("{}/p/{id}/v:1/", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(old, v1, "an addressed version keeps its own bytes");
+    assert_ne!(v1_hash, sha256(&v2));
+
+    let metadata = artifact_metadata(&context, &client, &id).await?;
+    assert_eq!(metadata["version"], 2);
+    assert_eq!(metadata["version_count"], 2);
+
+    let content = org_content_read(&context, &client, &id).await?;
+    assert_eq!(
+        content["version"], 2,
+        "the content read reports the served version"
+    );
+    assert_eq!(
+        content["content"].as_str(),
+        Some(String::from_utf8(v2.clone())?.as_str())
+    );
+
+    let history = version_list(&context, &client, &id).await?;
+    assert_eq!(history["current_version"], 2);
+    let versions = history["versions"].as_array().ok_or("versions omitted")?;
+    assert_eq!(versions.len(), 2, "history lists the completed versions");
+    assert_eq!(versions[0]["version"], 2);
+    assert_eq!(versions[0]["current"], true);
+    assert_eq!(versions[1]["version"], 1);
+    assert_eq!(versions[1]["current"], false);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn reposting_identical_bytes_creates_no_new_version() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("version-noop");
+    let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    let row_id = artifact_row_id(&context, &id)?;
+    let before = count_value(
+        &context,
+        &format!(
+            "SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_row_id = '{row_id}'"
+        ),
+        "count",
+    )?;
+    assert_eq!(before, 1, "a new artifact records exactly its v1");
+
+    let (status, body) = post_version(&context, &client, &id, &bytes, json!({})).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "identical bytes must not create a version: {body}"
+    );
+    assert_eq!(body["created"], false);
+    assert_eq!(body["version"], 1);
+    assert_eq!(body["missing_files"], json!([]));
+    let after = count_value(
+        &context,
+        &format!(
+            "SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_row_id = '{row_id}'"
+        ),
+        "count",
+    )?;
+    assert_eq!(
+        after, before,
+        "a no-op repost must not add an artifact_versions row"
+    );
+
+    // Re-posting the same bytes as a *create* also names the same artifact.
+    let (same_id, same_hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    assert_eq!(same_id, id);
+    assert_eq!(same_hash, hash);
+    assert_eq!(
+        count_value(
+            &context,
+            &format!("SELECT COUNT(*) AS count FROM artifacts WHERE id = '{id}'"),
+            "count"
+        )?,
+        1,
+        "identical bytes must not add an artifacts row"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn restore_creates_a_new_version() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("restore-alpha");
+    let v2 = unique_html("restore-beta");
+    let (id, _) = create_and_upload(&context, &client, &v1, json!({})).await?;
+    publish_version(&context, &client, &id, &v2).await?;
+
+    let (status, current) = get_and_read(&client, format!("{}/p/{id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(current, v2);
+
+    let (status, restored) = post_restore(&context, &client, &id, 1).await?;
+    assert_eq!(status, reqwest::StatusCode::CREATED);
+    assert_eq!(restored["version"], 3, "restoring v1 publishes a new v3");
+    assert_eq!(restored["created"], true);
+
+    let response = client
+        .get(format!("{}/v1/artifacts/{id}/versions/3", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let version: Value = response.json().await?;
+    assert_eq!(version["restored_from"], 1);
+    assert_eq!(version["current"], true);
+
+    let (status, served) = get_and_read(&client, format!("{}/p/{id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(served, v1, "restoring v1 makes its bytes current again");
+
+    let (status, body) = post_restore(&context, &client, &id, 3).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "restoring the current version is a no-op: {body}"
+    );
+    assert_eq!(body["created"], false);
+    assert_eq!(body["version"], 3);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
+async fn old_version_blob_survives_the_orphan_sweep() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("sweep-alpha");
+    let v2 = unique_html("sweep-beta");
+    let (id, v1_hash) = create_and_upload(&context, &client, &v1, json!({})).await?;
+    publish_version(&context, &client, &id, &v2).await?;
+
+    // v1's blob is no longer the current copy's, but invariant 3 counts every
+    // version's manifest files, so it must stay positively referenced.
+    let (rows, ref_count) = blob_state(&context, &v1_hash)?;
+    assert_eq!(rows, 1, "v1's blob metadata must survive promotion");
+    assert!(
+        ref_count > 0,
+        "the old version's blob must stay referenced, ref_count={ref_count}"
+    );
+    assert!(
+        r2_object_get(&context, &v1_hash)?.status.success(),
+        "v1's R2 object exists before the sweep"
+    );
+
+    let sweep = client
+        .post(format!(
+            "{}/v1/internal/orgs/{}/governance/sweep-orphans",
+            context.base, context.org
+        ))
+        .header(
+            reqwest::header::AUTHORIZATION,
+            &format!("Bearer {}", context.governance_secret),
+        )
+        .send()
+        .await?;
+    assert_eq!(sweep.status(), reqwest::StatusCode::OK);
+
+    let (rows, ref_count) = blob_state(&context, &v1_hash)?;
+    assert_eq!(
+        rows, 1,
+        "the sweep must not delete a blob an old version still references"
+    );
+    assert!(ref_count > 0);
+    assert!(
+        r2_object_get(&context, &v1_hash)?.status.success(),
+        "v1's R2 object must survive the sweep"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn revoking_revokes_every_version() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("revoke-alpha");
+    let v2 = unique_html("revoke-beta");
+    let (id, _) = create_and_upload(&context, &client, &v1, json!({})).await?;
+    publish_version(&context, &client, &id, &v2).await?;
+
+    let revoked = client
+        .patch(format!(
+            "{}/v1/orgs/{}/artifacts/{id}",
+            context.base, context.org
+        ))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(revoked.status(), reqwest::StatusCode::OK);
+    let body: Value = revoked.json().await?;
+    assert_eq!(body["id"].as_str(), Some(id.as_str()));
+    assert!(
+        body["revoked_at"].is_string(),
+        "revocation stamps revoked_at: {body}"
+    );
+
+    // Revocation is a column on the single artifact row, so it covers every
+    // version by construction.
+    for path in [
+        format!("/p/{id}"),
+        format!("/p/{id}/v:1/"),
+        format!("/p/{id}/v:2/"),
+    ] {
+        let response = client.get(format!("{}{path}", context.base)).send().await?;
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "a revoked artifact must not serve {path}"
+        );
+    }
+
+    let (status, _) = post_version(
+        &context,
+        &client,
+        &id,
+        &unique_html("revoke-gamma"),
+        json!({}),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::NOT_FOUND,
+        "publishing a version of a revoked artifact is 404, not 403"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn hard_delete_releases_every_version_blob() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("delete-versions-alpha");
+    let v2 = unique_html("delete-versions-beta");
+    let (id, v1_hash) = create_and_upload(&context, &client, &v1, json!({})).await?;
+    publish_version(&context, &client, &id, &v2).await?;
+    let v2_hash = sha256(&v2);
+    assert_ne!(v1_hash, v2_hash);
+    let row_id = artifact_row_id(&context, &id)?;
+
+    let delete = client
+        .delete(format!("{}/v1/artifacts/{id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert_eq!(delete.status(), reqwest::StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        count_value(
+            &context,
+            &format!(
+                "SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_row_id = '{row_id}'"
+            ),
+            "count"
+        )?,
+        0,
+        "no version row may survive a hard delete"
+    );
+    assert_eq!(
+        count_value(
+            &context,
+            &format!(
+                "SELECT COUNT(*) AS count FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id = '{row_id}')"
+            ),
+            "count"
+        )?,
+        0,
+        "no version_files row may survive a hard delete"
+    );
+
+    for hash in [&v1_hash, &v2_hash] {
+        let (rows, ref_count) = blob_state(&context, hash)?;
+        assert!(
+            rows == 0 || ref_count == 0,
+            "a hard delete must release {hash}: rows={rows} ref_count={ref_count}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn legacy_32_character_artifact_accepts_a_new_version() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("legacy-v1");
+    let v2 = unique_html("legacy-v2");
+    let (stable_id, _) = create_and_upload(&context, &client, &v1, json!({})).await?;
+
+    // A pre-versioning artifact carried a 32-character hex id. The migration's
+    // backfill makes every existing row a v1, and every dependant hangs off
+    // `row_id`, so renaming only the id column reproduces that shape without
+    // hand-building an artifact across four tables.
+    let legacy_id = sha256(&v1)[..32].to_string();
+    assert_eq!(legacy_id.len(), 32);
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET id = '{legacy_id}' WHERE id = '{stable_id}'"),
+    )?;
+
+    let (status, body) = post_version(&context, &client, &legacy_id, &v2, json!({})).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "a 32-character legacy id accepts a new version: {body}"
+    );
+    assert_eq!(body["version"], 2);
+    assert_eq!(body["id"].as_str(), Some(legacy_id.as_str()));
+    upload_version_file(&context, &client, &legacy_id, &v2).await?;
+
+    let metadata = artifact_metadata(&context, &client, &legacy_id).await?;
+    assert_eq!(metadata["version"], 2);
+    let (status, served) = get_and_read(&client, format!("{}/p/{legacy_id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(served, v2);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn pending_v2_does_not_replace_v1_until_uploaded() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let v1 = unique_html("pending-alpha");
+    let v2 = unique_html("pending-beta");
+    let (id, _) = create_and_upload(&context, &client, &v1, json!({})).await?;
+
+    let (status, body) = post_version(&context, &client, &id, &v2, json!({})).await?;
+    assert_eq!(status, reqwest::StatusCode::CREATED);
+    assert_eq!(body["version"], 2);
+    assert_eq!(body["missing_files"], json!([sha256(&v2)]));
+
+    // A pending version lives only on its artifact_versions row, so the current
+    // copy keeps serving and the pending upload is not yet history.
+    let (status, served) = get_and_read(&client, format!("{}/p/{id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(
+        served, v1,
+        "a pending v2 must not replace the current version"
+    );
+    let metadata = artifact_metadata(&context, &client, &id).await?;
+    assert_eq!(metadata["version"], 1);
+    assert_eq!(
+        metadata["version_count"], 1,
+        "a pending version is not counted in history"
+    );
+
+    upload_version_file(&context, &client, &id, &v2).await?;
+
+    let (status, served) = get_and_read(&client, format!("{}/p/{id}", context.base)).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(served, v2, "completing the upload promotes v2");
+    let metadata = artifact_metadata(&context, &client, &id).await?;
+    assert_eq!(metadata["version"], 2);
+    assert_eq!(metadata["version_count"], 2);
     Ok(())
 }
 

@@ -26,6 +26,8 @@
         "GET invitations/{invitation}": "public",
         "POST invitations/{invitation}/accept": "user",
         "POST invitations/{invitation}/join": "guest",
+        "GET llms-full.txt": "public",
+        "GET llms.txt": "public",
         "GET login": "guest",
         "POST logout": "user",
         "DELETE mcp": "token",

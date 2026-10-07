@@ -200,6 +200,16 @@ test('a_failing_directory_still_renders_the_dashboard_with_a_recent_error', func
         {
             throw new RuntimeException('not implemented');
         }
+
+        public function listVersions(string $orgSlug, string $artifactId): ?array
+        {
+            throw new RuntimeException('not implemented');
+        }
+
+        public function restoreVersion(string $orgSlug, string $artifactId, int $version): array
+        {
+            throw new RuntimeException('not implemented');
+        }
     });
 
     test()->actingAs($member)->get(route('dashboard', $team))

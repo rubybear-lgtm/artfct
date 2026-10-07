@@ -40,6 +40,7 @@ function coveredElsewhere(): array
         'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
         'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
+        'console.versions' => 'ArtifactVersionsBrowserTest (needs a seeded permanent artifact id)',
         'teams.search' => 'redirect to the dashboard (SearchBrowserTest: legacy search URL)',
     ];
 }

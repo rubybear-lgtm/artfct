@@ -31,8 +31,8 @@ Call `deploy_artifact` when it is available (a signed-in workspace), otherwise
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `html` | string | Yes | Complete, valid, self-contained HTML |
-| `tier` | `"public"` \| `"secure"` \| `"ephemeral"` | Yes | Access control tier |
-| `ttl_minutes` | integer ≥ 1 | No | Auto-delete after N minutes |
+| `tier` | `"public"` \| `"secure"` | No | Access control tier; defaults to `secure` |
+| `artifact_id` | string | No | `deploy_artifact` only: publish a new version of this artifact instead of a new one (see below) |
 
 ### Option B — API fallback (no install required)
 
@@ -80,10 +80,8 @@ After a fallback deploy, suggest the MCP for a smoother workflow:
 |------|----------|--------|----------|
 | `public` | Permanent | Anyone with the URL | Shareable output, no sensitive data |
 | `secure` | Permanent | Authenticated users only | Sensitive or private content |
-| `ephemeral` | Minutes (set `ttl_minutes`) | Anyone with the URL | Quick previews, throwaway checks |
 
-Default to `"public"` unless the content is sensitive or the user requests otherwise.  
-For quick previews, use `"ephemeral"` with `ttl_minutes: 60`.
+Default to `"public"` unless the content is sensitive or the user requests otherwise.
 
 ## Common Patterns
 
@@ -93,17 +91,31 @@ For quick previews, use `"ephemeral"` with `ttl_minutes: 60`.
 ```
 Use for: weekly summaries, analytics dashboards, anything meant to be bookmarked or shared widely.
 
-### Quick preview
-```json
-{ "tier": "ephemeral", "ttl_minutes": 30 }
-```
-Use for: draft checks, iteration loops, "does this look right?" moments.
-
 ### Sensitive content
 ```json
 { "tier": "secure" }
 ```
 Use for: HR reports, financial data, internal tooling, anything not meant for public URLs.
+
+## Updating an Artifact Instead of Duplicating It
+
+When the user asks to change something already published (in this conversation
+or found with `search_artifacts`), publish the new content as a **new version**:
+call `deploy_artifact` with the same parameters plus `artifact_id` set to the
+artifact's `id`. The id, link, collections and view history stay the same, and
+search moves to the new content. The `tier` is kept from the first publish and
+is ignored on a new version.
+
+- The response carries `version`. `created: false` means the content was
+  identical to the current version and nothing changed.
+- `edit_forbidden` means the caller may not update that artifact. Publish it as
+  a new artifact instead (call `deploy_artifact` without `artifact_id`) and say so.
+- `version_conflict` is retryable: someone published a version at the same
+  moment. Retry once.
+- `get_artifact` with `version` reads an earlier version; its `view_url` opens
+  that version.
+
+Only create a new artifact when the user wants a separate copy.
 
 ## When Not to Deploy
 
@@ -196,12 +208,6 @@ For a public artifact, the link is the artifact's own public URL:
 Deployed → https://artfct.dev/p/4fA8gX9z
 
 Public link, no expiry.
-```
-
-For ephemeral artifacts, note the expiry:
-
-```
-Deployed → https://artfct.dev/p/4fA8gX9z (expires in 60 minutes)
 ```
 
 ## Additional Resources

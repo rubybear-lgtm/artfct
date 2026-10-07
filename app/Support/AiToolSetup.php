@@ -175,8 +175,8 @@ class AiToolSetup
     {
         return [
             ['name' => 'search_artifacts', 'does' => 'Search your team’s artifacts by what they are about, who or what made them, or when. Returns summaries, short excerpts and a link to each one.', 'permission' => 'artifacts:read'],
-            ['name' => 'get_artifact', 'does' => 'Open the details of one artifact and get a fresh link to view it.', 'permission' => 'artifacts:read'],
-            ['name' => 'deploy_artifact', 'does' => 'Publish a page, report or document to your team, either as one self-contained HTML file or as a set of files. Publishing the same content again returns the same artifact.', 'permission' => 'artifacts:deploy'],
+            ['name' => 'get_artifact', 'does' => 'Open the details of one artifact, or one of its earlier versions, and get a fresh link to view it.', 'permission' => 'artifacts:read'],
+            ['name' => 'deploy_artifact', 'does' => 'Publish a page, report or document to your team, either as one self-contained HTML file or as a set of files. To update something you published before, pass its id: the new version keeps the same link. Publishing the same content again returns the same artifact.', 'permission' => 'artifacts:deploy'],
             ['name' => 'delete_artifact', 'does' => 'Permanently remove an artifact, unless it is on legal hold.', 'permission' => 'artifacts:delete'],
             ['name' => 'list_collections', 'does' => 'List your team’s collections.', 'permission' => 'collections:read'],
             ['name' => 'create_collection', 'does' => 'Create a collection.', 'permission' => 'collections:write'],
@@ -238,6 +238,7 @@ class AiToolSetup
 
             - Before starting research, a report or an analysis, search Artfct with `search_artifacts` for related work, and say which artifacts you used.
             - When you make something worth keeping (a report, dashboard, table, document or mockup), publish it with `deploy_artifact` and share the link it returns instead of pasting the raw code.
+            - When you change something you published before, publish it again with its `artifact_id` so the team keeps one link and its history.
             - Full setup and tool reference: {$this->baseUrl}/llms-full.txt
             MD;
     }
