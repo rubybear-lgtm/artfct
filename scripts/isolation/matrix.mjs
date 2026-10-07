@@ -239,6 +239,29 @@ export async function matrix(world) {
         }
     }
 
+    // The artifact viewer (RUB-438) is a user route that names an artifact
+    // without a team: bob, signed in to his own team, must get the same 404 a
+    // missing artifact gets for the victim's id, and never its content.
+    for (const [method, path] of [
+        ['GET', `/a/${idV}`],
+        ['GET', `/a/${idV}/download`],
+        ['PATCH', `/a/${idV}/sharing`],
+    ]) {
+        const response = await bob.request(path, {
+            method,
+            json: method === 'GET' ? undefined : { sharing: 'public' },
+            headers: {
+                Accept: method === 'GET' ? 'text/html' : 'application/json',
+            },
+        });
+        const body = (await response.text()).slice(0, 4000);
+        check(
+            `viewer: bob cannot reach the victim's artifact ${method} ${path}`,
+            response.status === 404 && !body.includes(slugV + '-secret'),
+            `got ${response.status}`,
+        );
+    }
+
     // Token routes that take another team's id: bob's token, the victim's id.
     const foreignCollection = await plain(
         'POST',

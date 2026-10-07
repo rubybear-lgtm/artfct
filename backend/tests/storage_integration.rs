@@ -909,6 +909,14 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
     let other_bytes = unique_html("isolated-origin-other");
     let (other_id, _) = create_and_upload(&context, &client, &other_bytes, json!({})).await?;
+    // Public artifacts open on their own isolated origin without a token
+    // (RUB-438), so the token checks below run against team-shared ones.
+    for team_id in [&id, &other_id] {
+        d1_execute(
+            &context,
+            &format!("UPDATE artifacts SET tier = 'secure' WHERE id = '{team_id}'"),
+        )?;
+    }
     let expires_at_unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64
@@ -995,7 +1003,12 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
     //    check must not have tightened. `artfct.dev` is no artifact's origin,
     //    so the isolated branch never runs: a public artifact is still served
     //    with no credential at all, under the policy it had before isolated
-    //    origins existed.
+    //    origins existed. (Back to public: the token checks above needed it
+    //    team-shared.)
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET tier = 'public' WHERE id = '{id}'"),
+    )?;
     let shared = client
         .get(&path)
         .header(reqwest::header::HOST, "artfct.dev")
@@ -1065,6 +1078,12 @@ async fn signed_entrypoint_cookie_authorizes_bundle_subresources() -> Result<(),
         "index.html",
     )
     .await?;
+    // Team-shared, so the cookie is what authorizes the subresources (a
+    // public artifact would open on its isolated origin without one).
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET tier = 'secure' WHERE id = '{id}'"),
+    )?;
     let expires_at_unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64
