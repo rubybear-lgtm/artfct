@@ -197,13 +197,16 @@ Never reference local paths — they will 404 once hosted. For the full HTML tem
 link as **`view_url`** — never reconstruct a `/p/{id}` URL from an artifact id
 yourself. What it points at depends on the sharing level:
 
-- **`team` and `private`** — the app's artifact viewer
-  (`https://artfct.dev/a/<id>`), which shows the artifact under a header with
-  its title, versions and a Share control. The viewer checks who is signed in
-  each time it is opened, so the same link works for every colleague allowed
-  to see it and for nobody else. No credential travels in it.
-- **`public`** — the artifact's public URL. Anyone can open it and no token is
-  minted for it.
+- Every level uses the same short link, `https://artfct.dev/a/<id>`: the
+  app's artifact viewer, which shows the artifact under a header with its
+  title, versions and (for people who may change it) a Share control.
+- **`public`**: anyone with the link can open it, signed in or not.
+- **`team` and `private`**: the viewer checks who is signed in each time it is
+  opened. A signed-out visitor is asked to sign in and then lands back on the
+  artifact; someone not allowed to see it gets "not found".
+- A specific version is `https://artfct.dev/a/<id>/v/<n>`.
+
+No credential travels in the link, so there is nothing to strip before sharing.
 
 **`deploy_to_canvas` is the exception.** It publishes anonymous, expiring
 artifacts that have no workspace row, so *no* tier of one is addressable through
