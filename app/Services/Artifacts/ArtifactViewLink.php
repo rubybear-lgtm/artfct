@@ -11,14 +11,16 @@ namespace App\Services\Artifacts;
  * permanent artifact, or the anonymous `ephemeral` preview `deploy_to_canvas`
  * publishes — is handed out as the Worker's own `/p/{id}` URL, and no token is
  * minted for it. Every other artifact (secure, or a tier the caller could not
- * read) is handed out as the app's session-authenticated open route, which
- * authorizes the viewer, resolves the tier, and only then mints. A link an
- * agent returns therefore works when a member clicks it while signed in, and an
- * unreadable tier fails toward the authenticated route rather than toward a
- * credential-less URL that can only 403 in a browser.
+ * read) is handed out as the app's session-authenticated viewer route —
+ * `/a/{id}` — which authorizes the viewer, resolves the sharing level, and only
+ * then mints. A link an agent returns therefore works when a member clicks it
+ * while signed in, and an unreadable tier fails toward the authenticated route
+ * rather than toward a credential-less URL that can only 403 in a browser. The
+ * viewer itself mints for a non-public artifact; the console's older open route
+ * still exists for its open-in-new-tab control.
  *
- * The open route is addressed relative to the request the link is minted in,
- * so it works for the hosted MCP endpoint and for the console alike.
+ * The route is addressed relative to the request the link is minted in, so it
+ * works for the hosted MCP endpoint and for the console alike.
  *
  * `deploy_to_canvas` is the exception that proves the rule: its artifacts are
  * anonymous KV records with no D1 row, so the open route can only 404 for
@@ -56,20 +58,21 @@ final class ArtifactViewLink
     }
 
     /**
-     * The app's open route for one artifact in `$teamSlug`. Session
-     * authentication lives here, never in the URL. A `$version` names which
-     * published version the viewer should be sent to once the route resolves
-     * the tier and mints a link.
+     * The app's viewer route for one artifact. Session authentication lives
+     * here, never in the URL. A `$version` names which published version the
+     * viewer should show. The owning team is resolved from the signed-in
+     * member's memberships, so the route carries no team slug: an artifact id
+     * is not a handle anyone can use to probe whether a team exists.
      */
     public static function appOpenUrl(string $teamSlug, string $artifactId, ?int $version = null): string
     {
-        $parameters = ['team' => $teamSlug, 'artifactId' => $artifactId];
+        $parameters = ['artifactId' => $artifactId];
 
         if ($version !== null) {
             $parameters['version'] = $version;
         }
 
-        return route('console.open', $parameters);
+        return route('artifacts.show', $parameters);
     }
 
     /**

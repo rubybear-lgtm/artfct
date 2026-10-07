@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property int $schema_version
  * @property string|null $region
  * @property int|null $owner_user_id
+ * @property bool $public_sharing_allowed
  * @property string|null $billing_email
  * @property int|null $retention_days
  * @property Plan $plan
@@ -49,7 +50,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, User> $members
  * @property-read Collection<int, TeamDomain> $domains
  */
-#[Fillable(['name', 'slug', 'is_personal', 'auth_mode', 'retention_days', 'custom_hostname'])]
+#[Fillable(['name', 'slug', 'is_personal', 'auth_mode', 'retention_days', 'custom_hostname', 'public_sharing_allowed'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
@@ -202,6 +203,7 @@ class Team extends Model
             'payment_status' => PaymentStatus::class,
             'cancel_at_period_end' => 'boolean',
             'current_period_end' => 'datetime',
+            'public_sharing_allowed' => 'boolean',
         ];
     }
 

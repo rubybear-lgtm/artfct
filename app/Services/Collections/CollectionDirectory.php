@@ -13,7 +13,8 @@ final class CollectionDirectory
      *
      * The cursor is opaque to clients, but contains only the stable
      * `(name, id)` ordering key. No artifact IDs or creator identity are
-     * exposed by this directory.
+     * exposed by this directory. `artifact_count` counts every member of the
+     * collection, private artifacts included; it is a count, never an id or title.
      *
      * @return array{collections: list<array{id: int, name: string, description: string|null, canonical: bool, artifact_count: int, created_at: string|null, updated_at: string|null}>, next_cursor: string|null}
      */

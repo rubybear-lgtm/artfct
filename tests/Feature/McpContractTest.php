@@ -157,10 +157,10 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
 
     // The template in the fixture is the template the route actually has, so
     // the local server cannot address a path this app does not serve.
-    expect(route('console.open', ['team' => 'acme', 'artifactId' => 'abc'], absolute: false))
-        ->toBe(str_replace(['{team}', '{artifactId}'], ['acme', 'abc'], $contract['app_open_path_template']));
+    expect(route('artifacts.show', ['artifactId' => 'abc'], absolute: false))
+        ->toBe(str_replace('{artifactId}', 'abc', $contract['app_open_path_template']));
 
-    $appOpenUrl = route('console.open', ['team' => 'acme', 'artifactId' => 'abc']);
+    $appOpenUrl = route('artifacts.show', ['artifactId' => 'abc']);
 
     // An artifact the Worker serves without a credential — public, or the
     // anonymous ephemeral preview deploy_to_canvas publishes — gets the raw URL.

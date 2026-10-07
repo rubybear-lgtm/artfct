@@ -14,9 +14,11 @@ enum AuditEventType: string
     case ArtifactDeployed = 'artifact.deployed';
     case ArtifactViewed = 'artifact.viewed';
     case ArtifactShared = 'artifact.shared';
+    case ArtifactSharingChanged = 'artifact.sharing_changed';
     case ArtifactRevoked = 'artifact.revoked';
     case ArtifactLinkMinted = 'artifact.link_minted';
     case ArtifactDeleted = 'artifact.deleted';
+    case ArtifactVersionPublished = 'artifact.version_published';
     case ArtifactVersionRestored = 'artifact.version_restored';
     case ShareCreated = 'share.created';
     case ShareRevoked = 'share.revoked';
@@ -38,6 +40,7 @@ enum AuditEventType: string
     case TeamRenamed = 'team.renamed';
     case TeamDeleted = 'team.deleted';
     case MemberLeft = 'member.left';
+    case PublicSharingChanged = 'public_sharing.changed';
     case SubscriptionCancelled = 'billing.subscription_cancelled';
     case SubscriptionResumed = 'billing.subscription_resumed';
     case McpConnectionCreated = 'mcp.connection_created';
@@ -57,9 +60,11 @@ enum AuditEventType: string
             self::ArtifactDeployed => 'Artifact deployed',
             self::ArtifactViewed => 'Artifact viewed',
             self::ArtifactShared => 'Artifact shared',
+            self::ArtifactSharingChanged => 'Artifact sharing changed',
             self::ArtifactRevoked => 'Artifact revoked',
             self::ArtifactLinkMinted => 'Open link created',
             self::ArtifactDeleted => 'Artifact deleted',
+            self::ArtifactVersionPublished => 'Artifact version published',
             self::ArtifactVersionRestored => 'Artifact version restored',
             self::ShareCreated => 'Share created',
             self::ShareRevoked => 'Share revoked',
@@ -81,6 +86,7 @@ enum AuditEventType: string
             self::TeamRenamed => 'Team renamed',
             self::TeamDeleted => 'Team deleted',
             self::MemberLeft => 'Member left',
+            self::PublicSharingChanged => 'Public links changed',
             self::SubscriptionCancelled => 'Subscription cancelled',
             self::SubscriptionResumed => 'Subscription resumed',
             self::McpConnectionCreated => 'AI tool connected',

@@ -68,6 +68,7 @@ interface Props {
         authMode: string;
         plan: string;
         ownerId: number | null;
+        publicSharingAllowed: boolean;
     };
     viewer: {
         id: number;
@@ -104,6 +105,10 @@ export default function TeamEdit({
 }: Props) {
     const inviteForm = useForm({ email: '', role: 'member' });
     const renameForm = useForm({ name: team.name });
+    const sharingForm = useForm({
+        name: team.name,
+        public_sharing_allowed: team.publicSharingAllowed,
+    });
     const domainForm = useForm({ domain: '' });
     const authModeForm = useForm({ auth_mode: team.authMode });
     const deleteForm = useForm({ name: '' });
@@ -220,6 +225,51 @@ export default function TeamEdit({
                         )}
                     </CardContent>
                 </Card>
+
+                {permissions.canUpdateTeam && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Public links</CardTitle>
+                            <CardDescription>
+                                When this is off, nobody on the team can share
+                                an artifact with people outside it, and
+                                artifacts that are public now become visible to
+                                the team only.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <label className="flex items-center gap-3">
+                                <input
+                                    type="checkbox"
+                                    role="switch"
+                                    aria-checked={team.publicSharingAllowed}
+                                    checked={team.publicSharingAllowed}
+                                    disabled={sharingForm.processing}
+                                    onChange={(e) => {
+                                        // The switch reads from the server prop,
+                                        // not local form state: a push the
+                                        // Worker rejects must not leave it
+                                        // showing a state the Worker refused.
+                                        sharingForm.setData('name', team.name);
+                                        sharingForm.setData(
+                                            'public_sharing_allowed',
+                                            e.target.checked,
+                                        );
+                                        sharingForm.patch(
+                                            TeamController.update.url({
+                                                team: team.slug,
+                                            }),
+                                            { preserveScroll: true },
+                                        );
+                                    }}
+                                />
+                                <span className="text-sm font-medium">
+                                    Allow public links
+                                </span>
+                            </label>
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card>
                     <CardHeader>

@@ -8,15 +8,25 @@ use RuntimeException;
 
 /**
  * Mints the short-lived signed link that opens one artifact on its isolated
- * origin (spec 05). The token is
- * `<artifact_id>.<expires_at_unix>.<hmac_sha256_hex>` over
- * `<artifact_id>.<expires_at_unix>`, signed with the secret the Worker reads
- * from `ARTFCT_ARTIFACT_TOKEN_SECRET`, and travels as `?token=` because a
- * top-level browser navigation cannot carry an `Authorization` header.
+ * origin (spec 05). Two wire forms travel as `?token=`, because a top-level
+ * browser navigation cannot carry an `Authorization` header:
  *
- * The token is a bearer credential for the artifact: it belongs in the
- * redirect response and nowhere else. Do not log it, persist it, or put it in
- * page props.
+ * - The viewer form
+ *   `<artifact_id>.<expires_at_unix>.<viewer>.<scope>.<hmac_sha256_hex>`,
+ *   minted when the caller names the Laravel user the link is for (`$viewer`)
+ *   and whether that viewer may see private artifacts in the team (`p` for a
+ *   team admin or the server-side `system` renderer, `m` otherwise). The
+ *   Worker accepts it for a private artifact only when the scope is `p` or the
+ *   viewer is the artifact's owner, so a link minted while an artifact was
+ *   team-visible stops opening it as soon as the owner makes it private.
+ * - The legacy `<artifact_id>.<expires_at_unix>.<hmac_sha256_hex>`, kept for
+ *   callers that cannot name a viewer. The Worker accepts it for non-private
+ *   artifacts only.
+ *
+ * Either way the HMAC is over every field before it, signed with the secret the
+ * Worker reads from `ARTFCT_ARTIFACT_TOKEN_SECRET`. The token is a bearer
+ * credential for the artifact: it belongs in the redirect response and nowhere
+ * else. Do not log it, persist it, or put it in page props.
  */
 final class ArtifactAccessLink
 {
@@ -82,9 +92,19 @@ final class ArtifactAccessLink
      * `isolated_artifact_hostname` — `<tenant-slug>--<artifact-id><suffix>` —
      * which is also what binds the link to the org that owns the artifact:
      * the Worker only authorizes a token presented on the owning org's host.
+     *
+     * Passing `$viewer` mints the viewer-bound token; omitting it mints the
+     * legacy token the Worker accepts only for non-private artifacts. The
+     * scope bit is only meaningful with a viewer.
      */
-    public function forArtifact(string $tenantSlug, string $artifactId, ?CarbonInterface $expiresAt = null, ?int $version = null): ?string
-    {
+    public function forArtifact(
+        string $tenantSlug,
+        string $artifactId,
+        ?CarbonInterface $expiresAt = null,
+        ?int $version = null,
+        ?string $viewer = null,
+        bool $viewerSeesPrivate = false,
+    ): ?string {
         if (! $this->configured()) {
             return null;
         }
@@ -94,16 +114,53 @@ final class ArtifactAccessLink
 
         $path = $version === null ? "/p/{$artifactId}/" : "/p/{$artifactId}/v:{$version}/";
 
-        return "https://{$hostname}{$path}?token={$this->mintToken($artifactId, $expiresAtUnix)}";
+        $token = $viewer === null
+            ? $this->mintToken($artifactId, $expiresAtUnix)
+            : $this->mintViewerToken($artifactId, $expiresAtUnix, $viewer, $viewerSeesPrivate);
+
+        return "https://{$hostname}{$path}?token={$token}";
     }
 
     /**
-     * `<artifact_id>.<expires_at_unix>.<hmac_hex>` — the exact wire form
-     * `verify_access_token` parses and re-derives the signature over.
+     * The same isolated-origin URL without a token. A `public` artifact is
+     * served by the Worker to anyone, so it needs no credential and no
+     * signing secret is required to build this. The hostname rules are the
+     * same as `forArtifact`, so the tokened and untokened links for one
+     * artifact can never point at different hosts.
+     */
+    public function publicArtifactUrl(string $tenantSlug, string $artifactId, ?int $version = null): string
+    {
+        $hostname = $this->isolatedHostname($tenantSlug, $artifactId);
+        $path = $version === null ? "/p/{$artifactId}/" : "/p/{$artifactId}/v:{$version}/";
+
+        return "https://{$hostname}{$path}";
+    }
+
+    /**
+     * `<artifact_id>.<expires_at_unix>.<hmac_hex>` — the legacy wire form
+     * `verify_access_token` parses and re-derives the signature over. The
+     * Worker accepts it for non-private artifacts only.
      */
     private function mintToken(string $artifactId, int $expiresAtUnix): string
     {
         $message = "{$artifactId}.{$expiresAtUnix}";
+
+        return $message.'.'.hash_hmac('sha256', $message, (string) $this->secret);
+    }
+
+    /**
+     * `<artifact_id>.<expires_at_unix>.<viewer>.<scope>.<hmac_hex>` — the
+     * viewer-bound form. `$viewerSeesPrivate` becomes scope `p` (a team admin
+     * or the `system` renderer) or `m`; the HMAC is over every field before it.
+     */
+    private function mintViewerToken(string $artifactId, int $expiresAtUnix, string $viewer, bool $viewerSeesPrivate): string
+    {
+        if (preg_match('/^[A-Za-z0-9_-]{1,64}$/', $viewer) !== 1) {
+            throw new RuntimeException("Viewer [{$viewer}] is not a valid access-token viewer.");
+        }
+
+        $scope = $viewerSeesPrivate ? 'p' : 'm';
+        $message = "{$artifactId}.{$expiresAtUnix}.{$viewer}.{$scope}";
 
         return $message.'.'.hash_hmac('sha256', $message, (string) $this->secret);
     }

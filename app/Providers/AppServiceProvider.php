@@ -42,6 +42,7 @@ use App\Services\Indexing\VectorIndexContract;
 use App\Services\Polis\FakePolisClient;
 use App\Services\Polis\PolisClientContract;
 use App\Services\Polis\RealPolisClient;
+use App\Services\Sharing\OrgSettingsWriter;
 use App\Services\Slack\ArtifactSharingContract;
 use App\Services\Slack\FakeArtifactSharing;
 use App\Services\Slack\FakeSlackPost;
@@ -53,6 +54,7 @@ use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
 use App\Services\WorkerEvents\ArtifactCreatedHandler;
 use App\Services\WorkerEvents\ArtifactDeletedHandler;
+use App\Services\WorkerEvents\ArtifactSharingChangedHandler;
 use App\Services\WorkerEvents\ArtifactVersionCreatedHandler;
 use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
@@ -90,6 +92,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(WorkerEventHandlers::class);
         $this->app->bind(OrgLimitsWriter::class, fn (): OrgLimitsWriter => OrgLimitsWriter::default());
+        $this->app->bind(OrgSettingsWriter::class, fn (): OrgSettingsWriter => OrgSettingsWriter::default());
 
         $workosConfigured = ! app()->environment('testing')
             && config('services.workos.client_id')
@@ -275,6 +278,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(WorkerEventHandlers::class)->register(
             'artifact.deleted',
             fn (array $event) => $this->app->make(ArtifactDeletedHandler::class)->handle($event),
+        );
+        $this->app->make(WorkerEventHandlers::class)->register(
+            'artifact.sharing_changed',
+            fn (array $event) => $this->app->make(ArtifactSharingChangedHandler::class)->handle($event),
         );
         $this->app->make(WorkerEventHandlers::class)->register(
             'artifact.viewed',

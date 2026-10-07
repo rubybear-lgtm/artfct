@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Teams;
 use App\Contracts\ArtifactContentSource;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Throwable;
@@ -71,9 +72,10 @@ class ArtifactPreviewController extends Controller
 
     public function __invoke(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): Response
     {
+        $user = $request->user();
         $team = $this->memberTeam($request, $teamSlug);
 
-        if ($team === null) {
+        if ($user === null || $team === null) {
             return $this->unavailable();
         }
 
@@ -88,6 +90,14 @@ class ArtifactPreviewController extends Controller
         }
 
         if ($artifact === null) {
+            return $this->unavailable();
+        }
+
+        // The content read uses a system credential that can see private
+        // artifacts, so it can never be the thing that decides what this
+        // member may view: apply the Private rule itself. A non-owner member
+        // gets the same generic 404 as a missing artifact.
+        if (! ArtifactVisibility::canView($artifact['sharing'] ?? null, $artifact['owner_user_id'] ?? null, $user, $team)) {
             return $this->unavailable();
         }
 

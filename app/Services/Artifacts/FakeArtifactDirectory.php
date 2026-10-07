@@ -36,6 +36,12 @@ class FakeArtifactDirectory implements ArtifactDirectory
      */
     private array $restoreOutcomes = [];
 
+    /**
+     * @var array<string, 'forbidden'|'public_disabled'|'not_found'> Test hook:
+     *                                                               answer a sharing update for this artifact with this status.
+     */
+    private array $sharingOutcomes = [];
+
     public function __construct()
     {
         // Initialize with some demo data
@@ -96,6 +102,75 @@ class FakeArtifactDirectory implements ArtifactDirectory
             'artifacts' => $paginated,
             'next_cursor' => $hasMore ? (string) (($cursor ?: 0) + $limit) : null,
         ];
+    }
+
+    public function getArtifact(string $orgSlug, string $artifactId): ?array
+    {
+        foreach ($this->artifacts as $artifact) {
+            if ($artifact['id'] !== $artifactId) {
+                continue;
+            }
+
+            // Test hook: the Worker answers 404 for a private artifact the
+            // caller may not view, so a hidden row reads as absent here too.
+            if (($artifact['hidden'] ?? false) === true) {
+                return null;
+            }
+
+            return $this->metadataFor($artifact);
+        }
+
+        return null;
+    }
+
+    public function updateSharing(string $orgSlug, string $artifactId, array $changes): array
+    {
+        if (isset($this->sharingOutcomes[$artifactId])) {
+            return ['status' => $this->sharingOutcomes[$artifactId], 'sharing' => null, 'edit_access' => null];
+        }
+
+        foreach ($this->artifacts as &$artifact) {
+            if ($artifact['id'] !== $artifactId) {
+                continue;
+            }
+
+            // The Worker lets only the owner or a team admin change sharing.
+            // The fake is told so by the seeded metadata: it has no request to
+            // read the caller from.
+            if (($artifact['can_change_sharing'] ?? false) === false) {
+                return ['status' => 'forbidden', 'sharing' => null, 'edit_access' => null];
+            }
+
+            if (($changes['sharing'] ?? null) === 'public' && ($artifact['public_sharing_allowed'] ?? true) === false) {
+                return ['status' => 'public_disabled', 'sharing' => null, 'edit_access' => null];
+            }
+
+            if (isset($changes['sharing'])) {
+                $artifact['sharing'] = $changes['sharing'];
+            }
+
+            if (isset($changes['edit_access'])) {
+                $artifact['edit_access'] = $changes['edit_access'];
+            }
+
+            return [
+                'status' => 'updated',
+                'sharing' => $artifact['sharing'] ?? null,
+                'edit_access' => $artifact['edit_access'] ?? null,
+            ];
+        }
+
+        return ['status' => 'not_found', 'sharing' => null, 'edit_access' => null];
+    }
+
+    /**
+     * Test hook: make the next sharing update for `$artifactId` answer
+     * `forbidden`, `public_disabled` or `not_found` instead of touching the
+     * seeded artifact.
+     */
+    public function failSharing(string $artifactId, string $status = 'forbidden'): void
+    {
+        $this->sharingOutcomes[$artifactId] = $status;
     }
 
     public function revokeArtifact(string $orgSlug, string $artifactId): array
@@ -222,6 +297,40 @@ class FakeArtifactDirectory implements ArtifactDirectory
         $this->versions[$artifactId] = $history;
 
         return ['status' => 'restored', 'version' => $next];
+    }
+
+    /**
+     * The Worker's `ArtifactMetadata` shape, built from a seeded artifact row.
+     * Anything the row does not spell out fails closed: private sharing reads
+     * as the team default would over-share, so the defaults here are the ones
+     * the Worker applies when a publish omits both fields.
+     *
+     * @param  array<string, mixed>  $artifact
+     * @return array<string, mixed>
+     */
+    private function metadataFor(array $artifact): array
+    {
+        $artifactId = (string) $artifact['id'];
+        $history = $this->versions[$artifactId] ?? null;
+        $sharing = $artifact['sharing'] ?? 'team';
+
+        return [
+            'id' => $artifactId,
+            'title' => $artifact['title'] ?? null,
+            'description' => $artifact['description'] ?? null,
+            'sharing' => $sharing,
+            'edit_access' => $artifact['edit_access'] ?? 'view',
+            'owner_user_id' => $artifact['owner_user_id'] ?? (isset($artifact['user_id']) ? (string) $artifact['user_id'] : null),
+            'can_edit' => (bool) ($artifact['can_edit'] ?? false),
+            'can_change_sharing' => (bool) ($artifact['can_change_sharing'] ?? false),
+            'version' => (int) ($history['current_version'] ?? $artifact['version'] ?? 1),
+            'version_count' => $history !== null ? count($history['versions']) : 1,
+            'updated_at' => $artifact['updated_at'] ?? $artifact['created_at'] ?? now()->toIso8601String(),
+            'tier' => $sharing === 'public' ? 'public' : 'secure',
+            'entrypoint' => $artifact['entrypoint'] ?? 'index.html',
+            'created_at' => $artifact['created_at'] ?? now()->toIso8601String(),
+            'expires_at' => null,
+        ];
     }
 
     /**

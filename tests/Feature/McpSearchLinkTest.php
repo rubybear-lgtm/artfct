@@ -59,7 +59,7 @@ test('search_artifacts returns a view_url on the apps open route and no raw url'
 
     expect($results)->toHaveCount(1)
         ->and($results[0]['view_url'])->toBe(
-            route('console.open', ['team' => $team->slug, 'artifactId' => 'billing-dash']),
+            route('artifacts.show', ['artifactId' => 'billing-dash']),
         )
         // One field name for one meaning: no second `url` spelling of the same
         // link, and certainly not the Worker's credential-less one.
@@ -96,7 +96,7 @@ test('the search page links each row the same way the tool does', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('home.results.0.id', 'billing-dash')
-            ->where('home.results.0.openUrl', route('console.open', ['team' => $team->slug, 'artifactId' => 'billing-dash']))
+            ->where('home.results.0.openUrl', route('artifacts.show', ['artifactId' => 'billing-dash']))
             ->missing('home.results.0.url'));
 });
 

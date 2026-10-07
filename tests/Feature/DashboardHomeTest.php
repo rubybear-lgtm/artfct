@@ -186,6 +186,16 @@ test('a_failing_directory_still_renders_the_dashboard_with_a_recent_error', func
             throw new RuntimeException('directory down');
         }
 
+        public function getArtifact(string $orgSlug, string $artifactId): ?array
+        {
+            throw new RuntimeException('not implemented');
+        }
+
+        public function updateSharing(string $orgSlug, string $artifactId, array $changes): array
+        {
+            throw new RuntimeException('not implemented');
+        }
+
         public function revokeArtifact(string $orgSlug, string $artifactId): array
         {
             throw new RuntimeException('not implemented');

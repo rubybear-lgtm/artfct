@@ -3,7 +3,7 @@
   "field": "view_url",
   "public_path_template": "/p/{artifact}",
   "versioned_public_path_template": "/p/{artifact}/v:{version}/",
-  "app_open_path_template": "/settings/teams/{team}/console/artifacts/{artifactId}/open",
+  "app_open_path_template": "/a/{artifactId}",
   "app_open_version_query": "version",
   "tiers": {
     "public": "worker_public_url",

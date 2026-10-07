@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ArtifactViewerController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LegalController;
@@ -137,6 +138,19 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
     return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
         ->header('Content-Type', 'text/xml');
 })->name('sitemap');
+
+// ── artifact viewer (RUB-438) ────────────────────────────────────────────────
+//
+// The viewer is addressed by artifact id alone: the owning team is resolved
+// from the signed-in member's own memberships, so a team the visitor is not in
+// is never named and an id that resolves nowhere is the same 404 as a missing
+// artifact. Laravel's normal auth redirect returns the visitor here after
+// sign-in.
+Route::middleware('auth')->group(function () {
+    Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('artifacts.show');
+    Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
+    Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
+});
 
 // ── identity (spec 06) ──────────────────────────────────────────────────────
 

@@ -19,6 +19,7 @@ class SaveTeamRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255', new TeamName],
+            'public_sharing_allowed' => ['sometimes', 'boolean'],
             'slug' => [
                 'nullable',
                 'string',

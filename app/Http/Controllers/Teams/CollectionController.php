@@ -26,11 +26,15 @@ class CollectionController extends Controller
     {
         $this->authorizeMember($request, $team);
 
+        // The directory is read with this member's own token, so the Worker
+        // has already filtered out private artifacts they do not own. That one
+        // read drives both the picker and the collection rows: an id the
+        // directory does not list is not shown, so a collection that holds a
+        // private artifact leaks neither its title nor a link to it.
+        ['options' => $artifactOptions, 'visible' => $visibleArtifactIds] = $this->directoryArtifacts($artifacts, $team);
+
         return Inertia::render('teams/collections', [
-            // The picker offers the team's own artifacts by title, so a
-            // curator never has to paste an id. Revoked artifacts are left
-            // out; the directory returns the most recent page first.
-            'artifactOptions' => $this->artifactOptions($artifacts, $team),
+            'artifactOptions' => $artifactOptions,
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'canEdit' => $this->canEdit($request, $team),
             'canPin' => $request->user()->can('pinCanonicalCollection', $team),
@@ -42,29 +46,35 @@ class CollectionController extends Controller
                 ->with('artifacts')
                 ->orderBy('name')
                 ->get()
-                ->map(fn (Collection $collection): array => [
-                    'id' => $collection->id,
-                    'name' => $collection->name,
-                    'description' => $collection->description,
-                    'canonical' => $collection->canonical,
-                    'artifactIds' => $collection->artifacts->pluck('artifact_id')->values(),
-                    // Rows link the same way the console does: the app's own
-                    // open route, which authorizes the viewer and is the only
-                    // link that works for a secure artifact.
-                    'openUrls' => $collection->artifacts->mapWithKeys(fn ($artifact): array => [
-                        $artifact->artifact_id => ArtifactViewLink::forArtifact($team->slug, $artifact->artifact_id, null),
-                    ])->all(),
-                    // Inert previews go through the app's session-authenticated
-                    // preview route: it authorizes the viewer and reads the
-                    // content server-side, so the page never needs the signing
-                    // secret and the URL never becomes a shareable credential.
-                    'previewUrls' => $collection->artifacts->mapWithKeys(fn ($artifact): array => [
-                        $artifact->artifact_id => route('teams.artifacts.preview', [
-                            'team' => $team->slug,
-                            'artifactId' => $artifact->artifact_id,
-                        ]),
-                    ])->all(),
-                ]),
+                ->map(function (Collection $collection) use ($team, $visibleArtifactIds): array {
+                    $visibleArtifacts = $collection->artifacts
+                        ->filter(fn ($artifact): bool => isset($visibleArtifactIds[(string) $artifact->artifact_id]))
+                        ->values();
+
+                    return [
+                        'id' => $collection->id,
+                        'name' => $collection->name,
+                        'description' => $collection->description,
+                        'canonical' => $collection->canonical,
+                        'artifactIds' => $visibleArtifacts->pluck('artifact_id')->values(),
+                        // Rows link the same way the console does: the app's own
+                        // open route, which authorizes the viewer and is the only
+                        // link that works for a secure artifact.
+                        'openUrls' => $visibleArtifacts->mapWithKeys(fn ($artifact): array => [
+                            $artifact->artifact_id => ArtifactViewLink::forArtifact($team->slug, $artifact->artifact_id, null),
+                        ])->all(),
+                        // Inert previews go through the app's session-authenticated
+                        // preview route: it authorizes the viewer and reads the
+                        // content server-side, so the page never needs the signing
+                        // secret and the URL never becomes a shareable credential.
+                        'previewUrls' => $visibleArtifacts->mapWithKeys(fn ($artifact): array => [
+                            $artifact->artifact_id => route('teams.artifacts.preview', [
+                                'team' => $team->slug,
+                                'artifactId' => $artifact->artifact_id,
+                            ]),
+                        ])->all(),
+                    ];
+                }),
         ]);
     }
 
@@ -148,30 +158,49 @@ class CollectionController extends Controller
     }
 
     /**
-     * The team's recent artifacts by title for the picker, so a curator never
-     * has to paste an id. A directory outage leaves the picker empty instead
-     * of breaking the page.
+     * Every artifact this member may see, plus the picker's first hundred
+     * options. The directory is called with the member's own token, so the
+     * Worker has already filtered out private artifacts they do not own;
+     * revoked artifacts are left out. A directory outage fails closed
+     * (nothing visible) rather than showing whatever a stale page held.
      *
-     * @return list<array{id: string, title: string}>
+     * @return array{options: list<array{id: string, title: string}>, visible: array<string, true>}
      */
-    private function artifactOptions(ArtifactDirectory $artifacts, Team $team): array
+    private function directoryArtifacts(ArtifactDirectory $artifacts, Team $team): array
     {
+        $options = [];
+        $visible = [];
+        $cursor = null;
+
         try {
-            $listed = $artifacts->listArtifacts($team->slug, [], null, 100)['artifacts'];
+            do {
+                $page = $artifacts->listArtifacts($team->slug, [], $cursor, 200);
+
+                foreach ($page['artifacts'] as $artifact) {
+                    if (($artifact['revoked_at'] ?? null) !== null) {
+                        continue;
+                    }
+
+                    $id = (string) $artifact['id'];
+                    $visible[$id] = true;
+
+                    if (count($options) < 100) {
+                        $options[] = [
+                            'id' => $id,
+                            'title' => ($artifact['title'] ?? '') !== '' ? $artifact['title'] : substr($id, 0, 8),
+                        ];
+                    }
+                }
+
+                $cursor = $page['next_cursor'];
+            } while ($cursor !== null);
         } catch (\Throwable $exception) {
             report($exception);
 
-            return [];
+            return ['options' => [], 'visible' => []];
         }
 
-        return collect($listed)
-            ->reject(fn (array $artifact): bool => ($artifact['revoked_at'] ?? null) !== null)
-            ->map(fn (array $artifact): array => [
-                'id' => $artifact['id'],
-                'title' => ($artifact['title'] ?? '') !== '' ? $artifact['title'] : substr($artifact['id'], 0, 8),
-            ])
-            ->values()
-            ->all();
+        return ['options' => $options, 'visible' => $visible];
     }
 
     private function authorizeMember(Request $request, Team $team): void

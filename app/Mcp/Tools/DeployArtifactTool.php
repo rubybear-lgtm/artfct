@@ -48,7 +48,7 @@ final class DeployArtifactTool extends Tool
             'compatibility' => 'stable',
             'examples' => [[
                 'description' => 'Publish a generated report to the team so it can be found and reused.',
-                'arguments' => ['html' => '<!doctype html><title>Q3 report</title><p>Summary</p>', 'tier' => 'secure'],
+                'arguments' => ['html' => '<!doctype html><title>Q3 report</title><p>Summary</p>', 'sharing' => 'team'],
             ]],
         ],
     ];
@@ -90,6 +90,8 @@ final class DeployArtifactTool extends Tool
             'files.*.content_type' => ['nullable', 'string', 'max:100'],
             'entrypoint' => ['nullable', 'string', 'max:255'],
             'artifact_id' => ['nullable', 'string', 'max:128'],
+            'sharing' => ['nullable', 'string', 'in:private,team,public'],
+            'edit_access' => ['nullable', 'string', 'in:view,edit'],
             'tier' => ['nullable', 'string', 'in:public,secure'],
             'title' => ['nullable', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
@@ -176,10 +178,22 @@ final class DeployArtifactTool extends Tool
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ];
 
-            // A new version keeps the artifact's existing mode and tier, so
-            // those fields are deliberately absent from a version request.
+            // A new version keeps the artifact's existing sharing, so those
+            // fields are deliberately absent from a version request.
             if (! $versionPublish) {
-                $payload = ['mode' => 'permanent', 'tier' => $validated['tier'] ?? 'secure'] + $payload;
+                $sharing = $validated['sharing']
+                    ?? $this->sharingForTier($validated['tier'] ?? null)
+                    ?? 'team';
+
+                $payload = [
+                    'mode' => 'permanent',
+                    // `tier` is the deprecated alias: `sharing` wins when both
+                    // are given, and the tier sent always matches the sharing
+                    // so an older Worker that only knows `tier` still accepts it.
+                    'tier' => $this->tierForSharing($sharing),
+                    'sharing' => $sharing,
+                    'edit_access' => $validated['edit_access'] ?? 'view',
+                ] + $payload;
             }
 
             $created = Http::withToken($token)->post(
@@ -226,7 +240,13 @@ final class DeployArtifactTool extends Tool
             return McpErrorResponse::error('This workspace is over its plan limits. Use get_usage to inspect them.', 'quota_exceeded', false, 'get_usage');
         }
 
-        if ($versionPublish && $created->status() === 403) {
+        if ($created->status() === 403 && $created->json('error.code') === 'public_sharing_disabled') {
+            app(McpTelemetry::class)->record('deploy_artifact', 'public_sharing_disabled', $startedAt);
+
+            return McpErrorResponse::error('Your team has turned off public links. Publish it with sharing set to team or private instead.', 'public_sharing_disabled');
+        }
+
+        if ($versionPublish && $created->status() === 403 && $created->json('error.code') === 'forbidden') {
             app(McpTelemetry::class)->record('deploy_artifact', 'edit_forbidden', $startedAt);
 
             return McpErrorResponse::error('You can only publish new versions of artifacts you own or that are shared with you for editing. Publish it as a new artifact instead by calling deploy_artifact without artifact_id.', 'edit_forbidden');
@@ -259,20 +279,28 @@ final class DeployArtifactTool extends Tool
             return $link;
         }
 
+        $tier = $created->json('tier');
+        $version = (int) $created->json('version');
+
         app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
         $this->audit->recordForRequest(
             McpContext::httpRequest(),
             AuditEventType::ArtifactDeployed,
             $team,
             McpContext::actor(),
-            "artifact:{$artifactId}",
+            // A version publish is audited against the version, so the log
+            // records which publish happened rather than only the artifact.
+            $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
 
         $result = [
             'id' => $artifactId,
             'view_url' => $link,
-            'tier' => $created->json('tier'),
-            'version' => (int) $created->json('version'),
+            // `tier` is the deprecated alias, kept for one release; `sharing`
+            // is the name to use.
+            'tier' => $tier,
+            'sharing' => $this->sharingFromResponse($created->json('sharing'), is_string($tier) ? $tier : null),
+            'version' => $version,
             'title' => $title,
             'organization' => $team->slug,
         ];
@@ -301,7 +329,9 @@ final class DeployArtifactTool extends Tool
             ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
             'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
             'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact.')->nullable(),
-            'tier' => $schema->string()->enum(['public', 'secure'])->description('Who can open the link: secure (default, signed-in workspace members) or public. Ignored when publishing a new version with `artifact_id`; a new version keeps the artifact\'s existing tier.')->nullable(),
+            'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Who can open it: team (default, everyone on your team), private (only you and team admins) or public (anyone with the link). A version published with `artifact_id` never changes sharing.')->nullable(),
+            'edit_access' => $schema->string()->enum(['view', 'edit'])->description('Whether the people it is shared with can publish new versions. Defaults to view. A version published with `artifact_id` never changes it.')->nullable(),
+            'tier' => $schema->string()->enum(['public', 'secure'])->description('Deprecated, use sharing.')->nullable(),
             'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title.')->nullable(),
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
@@ -377,6 +407,36 @@ final class DeployArtifactTool extends Tool
     private function contentTypeFor(string $path): string
     {
         return self::CONTENT_TYPES[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+    }
+
+    /** The sharing a deprecated `tier` alias names, or null when it names none. */
+    private function sharingForTier(?string $tier): ?string
+    {
+        return match ($tier) {
+            'secure' => 'team',
+            'public' => 'public',
+            'private' => 'private',
+            default => null,
+        };
+    }
+
+    /** The `tier` an older Worker still understands, derived from `sharing`. */
+    private function tierForSharing(string $sharing): string
+    {
+        return match ($sharing) {
+            'public' => 'public',
+            'private' => 'private',
+            default => 'secure',
+        };
+    }
+
+    /**
+     * The sharing to report: the Worker's own value when it returned one, else
+     * the tier mapped to its sharing name (`secure` = `team`).
+     */
+    private function sharingFromResponse(mixed $sharing, ?string $tier): ?string
+    {
+        return is_string($sharing) && $sharing !== '' ? $sharing : $this->sharingForTier($tier);
     }
 
     private function extractTitle(string $html): string

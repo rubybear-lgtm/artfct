@@ -17,6 +17,7 @@ use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\IndexingService;
+use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -133,6 +134,14 @@ class ConsoleController extends Controller
             try {
                 $artifact = $content->fetch($team->slug, $artifactId);
                 abort_if($artifact === null, 404);
+
+                // The system token sees private artifacts; a member who is not
+                // the owner and not an admin must not, and reads as a 404
+                // exactly like a missing artifact.
+                abort_unless(
+                    ArtifactVisibility::canView($artifact['sharing'] ?? null, $artifact['owner_user_id'] ?? null, $user, $team),
+                    404,
+                );
 
                 IndexArtifactJob::dispatch($team->id, $artifactId, $artifact['html'], $artifact['provenance'], $artifact['version'] ?? null)->onQueue('indexing');
             } catch (Throwable $exception) {
@@ -261,13 +270,22 @@ class ConsoleController extends Controller
 
         abort_if($artifact === null, 404);
 
+        // The Worker refuses a private artifact to a caller without the
+        // `artifacts:read_private` scope, but this system token carries it and
+        // so sees every level: apply the Private rule here. A member who is not
+        // the owner and not an admin gets the same 404 as a missing artifact.
+        abort_unless(
+            ArtifactVisibility::canView($artifact['sharing'] ?? null, $artifact['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
+
         if (ArtifactViewLink::isAnonymous($artifact['tier'] ?? null)) {
             return redirect()->away(ArtifactViewLink::publicPermanentUrl($artifactId, $version));
         }
 
         $links = ArtifactAccessLink::default();
         $expiresAt = now()->addMinutes($links->ttlMinutes());
-        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version);
+        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version, (string) $user->id, $user->isAdminOf($team));
 
         abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
 

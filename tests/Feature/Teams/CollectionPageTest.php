@@ -96,7 +96,24 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
     $collection->artifacts()->create(['artifact_id' => ARTIFACT_LINK_ID, 'added_at' => now()]);
 
-    $openUrl = route('console.open', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
+    // The page only lists collection artifacts the member's own directory read
+    // returns (private ones the member cannot see drop out), so the artifact
+    // has to be visible in the directory for its row to render.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => ARTIFACT_LINK_ID,
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Linked artifact',
+        'description' => null,
+        'content_hash' => 'aaaabbbbcccc',
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => ['agent' => null, 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    $openUrl = route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]);
     $previewUrl = route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
 
     test()->actingAs($member)->get(route('teams.collections.index', $team))

@@ -112,6 +112,15 @@ final class GetArtifactTool extends Tool
 
         $artifactId = (string) $response->json('id');
         $tier = $response->json('tier');
+        $access = [
+            'sharing' => $this->sharingFromResponse($response->json('sharing'), is_string($tier) ? $tier : null),
+            'edit_access' => $response->json('edit_access'),
+            'can_edit' => $response->json('can_edit'),
+            'can_change_sharing' => $response->json('can_change_sharing'),
+            // Whether the artifact is owned by the MCP caller, without exposing
+            // the owner's raw user id.
+            'owner_is_you' => $this->ownerIsCaller($response->json('owner_user_id')),
+        ];
         // The metadata endpoint returns no URL, so an anonymous artifact's link
         // is built from this environment's public base.
         $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null, null, $version);
@@ -139,7 +148,7 @@ final class GetArtifactTool extends Tool
                 'agent' => $versionResponse->json('agent'),
                 'current' => $versionResponse->json('current'),
                 'restored_from' => $versionResponse->json('restored_from'),
-            ]);
+            ] + $access);
         }
 
         return Response::structured([
@@ -154,7 +163,7 @@ final class GetArtifactTool extends Tool
             'version' => $response->json('version'),
             'version_count' => $response->json('version_count'),
             'updated_at' => $response->json('updated_at'),
-        ]);
+        ] + $access);
     }
 
     /**
@@ -172,5 +181,29 @@ final class GetArtifactTool extends Tool
                 ->required(),
             'version' => $schema->integer()->min(1)->description('Optional published version to read; omitted reads the artifact and its current version.')->nullable(),
         ];
+    }
+
+    /**
+     * The sharing to report: the Worker's own value when it returned one, else
+     * the tier mapped to its sharing name (`secure` = `team`).
+     */
+    private function sharingFromResponse(mixed $sharing, ?string $tier): ?string
+    {
+        if (is_string($sharing) && $sharing !== '') {
+            return $sharing;
+        }
+
+        return match ($tier) {
+            'secure' => 'team',
+            'public' => 'public',
+            'private' => 'private',
+            default => null,
+        };
+    }
+
+    /** True only when the Worker named an owner and it is the calling credential. */
+    private function ownerIsCaller(mixed $ownerUserId): bool
+    {
+        return is_string($ownerUserId) && $ownerUserId !== '' && $ownerUserId === McpContext::actor();
     }
 }
