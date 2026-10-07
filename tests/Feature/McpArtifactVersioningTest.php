@@ -1,7 +1,9 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
@@ -34,6 +36,7 @@ test('deploy_artifact with artifact_id publishes a new version through the versi
     Http::fake([
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
             'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [$sha],
+            'tier' => 'secure', 'sharing' => 'team',
         ], 201),
         'worker.test/v1/artifacts/'.$id.'/files/*' => Http::response('', 204),
     ]);
@@ -47,19 +50,33 @@ test('deploy_artifact with artifact_id publishes a new version through the versi
     expect($response->json('result.isError'))->toBeFalse()
         ->and($response->json('result.structuredContent.id'))->toBe($id)
         ->and($response->json('result.structuredContent.version'))->toBe(2)
-        ->and($response->json('result.structuredContent.created'))->toBeTrue();
+        ->and($response->json('result.structuredContent.created'))->toBeTrue()
+        // The tier comes from the version response; a new version never
+        // changes sharing, so the response's sharing is what is reported.
+        ->and($response->json('result.structuredContent.tier'))->toBe('secure')
+        ->and($response->json('result.structuredContent.sharing'))->toBe('team');
 
-    // A new version keeps the artifact's existing mode and tier, so neither
-    // field is sent to the versions endpoint.
+    // A new version keeps the artifact's existing mode and tier, so none of
+    // the sharing fields is sent to the versions endpoint.
     Http::assertSent(fn ($request): bool => $request->method() === 'POST'
         && str_ends_with((string) $request->url(), '/v1/artifacts/'.$id.'/versions')
         && ! isset($request['mode'])
         && ! isset($request['tier'])
+        && ! isset($request['sharing'])
+        && ! isset($request['edit_access'])
         && $request['title'] === 'Q3 report v2'
         && $request['manifest']['files'][0]['sha256'] === $sha);
     Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
         && str_ends_with((string) $request->url(), '/v1/artifacts/'.$id."/files/{$sha}")
         && $request->body() === $html);
+
+    // The audit names the version that was published, not only the artifact.
+    expect(AuditEvent::query()
+        ->where('team_id', $team->id)
+        ->where('event_type', AuditEventType::ArtifactDeployed)
+        ->where('target', "artifact:{$id} version:2")
+        ->where('outcome', 'success')
+        ->exists())->toBeTrue();
 });
 
 test('deploy_artifact reports created false when the bytes match the current version', function () {
