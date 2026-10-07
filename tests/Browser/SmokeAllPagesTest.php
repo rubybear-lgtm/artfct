@@ -20,7 +20,7 @@ function signedInPages(): array
     return [
         'dashboard', 'account.show', 'teams.index', 'teams.edit', 'teams.audit.index',
         'teams.authentication.show', 'teams.billing.show', 'teams.collections.index',
-        'console.index', 'teams.governance.show', 'teams.search', 'teams.tokens.index',
+        'console.index', 'teams.governance.show', 'teams.tokens.index',
         'teams.mcp-connections.index',
     ];
 }
@@ -40,6 +40,7 @@ function coveredElsewhere(): array
         'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
         'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
+        'teams.search' => 'redirect to the dashboard (SearchBrowserTest: legacy search URL)',
     ];
 }
 

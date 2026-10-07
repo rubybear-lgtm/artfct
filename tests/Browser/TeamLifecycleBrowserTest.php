@@ -21,7 +21,7 @@ test('new_user_signs_up_becomes_owner_and_invites_a_teammate', function () {
         ->click('Continue with Google')
         ->assertSee('Create your first team')
         ->click('Create team')
-        ->assertSee('What your AI makes')
+        ->assertSee('What are you looking for?')
         ->assertNoJavaScriptErrors();
 
     $page->navigate('/settings/teams')
@@ -89,7 +89,9 @@ test('account_and_audit_pages_render_without_errors', function () {
         ->assertNoJavaScriptErrors();
 
     visit(route('dashboard', $team))
-        ->assertSee('Get your team set up')
+        ->assertSee('of 3 setup steps done')
+        ->click('Show steps')
+        ->wait(0.5)
         ->assertSee('Invite your teammates')
         ->assertNoJavaScriptErrors();
 });
@@ -122,8 +124,9 @@ test('search_and_collections_pages_render_without_errors', function () {
 
     test()->actingAs($owner);
 
-    visit(route('teams.search', $team))
-        ->assertSee('Search indexing is turned off')
+    visit(route('dashboard', $team))
+        ->assertSee('What are you looking for?')
+        ->assertSee('Search is turned off for this workspace right now.')
         ->assertNoJavaScriptErrors();
 
     visit(route('teams.collections.index', $team))
@@ -180,10 +183,10 @@ test('search_and_open_result', function () {
 
     test()->actingAs($owner);
 
-    $page = visit(route('teams.search', $team))
+    $page = visit(route('dashboard', $team))
         ->assertNoJavaScriptErrors()
         ->fill('input[aria-label="Search query"]', $query)
-        ->click('button[type="submit"]')
+        ->keys('input[aria-label="Search query"]', 'Enter')
         ->wait(1)
         ->assertSee('Billing dashboard')
         ->assertSee('billing dashboard revenue')
@@ -219,7 +222,7 @@ test('a_new_user_must_accept_the_terms_before_the_app', function () {
         ->check('accepted')
         ->click('Accept and continue')
         ->wait(2)
-        ->assertSee('Get your team set up')
+        ->assertSee('What are you looking for?')
         ->assertNoJavaScriptErrors();
 
     expect($owner->fresh()->terms_version)->toBe('browser-v1');

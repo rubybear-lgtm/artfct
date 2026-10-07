@@ -35,7 +35,6 @@ function responsivePages($team): array
         'teams' => route('teams.index'),
         'team settings' => route('teams.edit', $team),
         'console' => route('console.index', ['team' => $team->slug]),
-        'search' => route('teams.search', $team),
         'tokens' => route('teams.tokens.index', $team),
         'connections' => route('teams.mcp-connections.index', $team),
         'billing' => route('teams.billing.show', $team),
@@ -151,7 +150,7 @@ test('mobile_menu_reaches_every_admin_destination_and_closes_on_navigation', fun
 
     openMobileMenu($page);
 
-    foreach (['dashboard', 'artifacts', 'search', 'collections', 'team', 'tokens', 'connections', 'billing', 'authentication', 'governance', 'audit'] as $destination) {
+    foreach (['dashboard', 'artifacts', 'collections', 'team', 'tokens', 'connections', 'billing', 'authentication', 'governance', 'audit'] as $destination) {
         $page->assertVisible("@mobile-nav-{$destination}");
     }
 
@@ -175,7 +174,7 @@ test('mobile_menu_hides_admin_destinations_from_members', function () {
 
     openMobileMenu($page);
 
-    foreach (['dashboard', 'artifacts', 'search', 'team', 'billing'] as $destination) {
+    foreach (['dashboard', 'artifacts', 'team', 'billing'] as $destination) {
         $page->assertVisible("@mobile-nav-{$destination}");
     }
 
