@@ -989,7 +989,8 @@ export default function Docs({ contract, setup }: DocsProps) {
                         <Prose>
                             Skills give an AI tool that supports them (such as
                             Claude Code, Codex or OpenCode) built-in guidance
-                            for a kind of task. Install the ones you want:
+                            for a kind of task. The Artfct skill teaches your
+                            tool when and how to publish:
                         </Prose>
                         {setup.skills.map((skill) => (
                             <div
@@ -1016,7 +1017,7 @@ export default function Docs({ contract, setup }: DocsProps) {
                                 skills.sh
                             </a>{' '}
                             format and are resolved from the{' '}
-                            <Code>skills/</Code> directory in the{' '}
+                            <Code>skills/artfct/</Code> directory in the{' '}
                             <a
                                 href={GITHUB}
                                 target="_blank"

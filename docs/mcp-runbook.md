@@ -34,11 +34,13 @@ Add the hosted URL (`https://staging.artfct.dev/mcp` for staging) to the AI
 tool and complete OAuth in the browser. The tool lists the artfct tools after
 the consent screen. Nothing is installed and no token is pasted anywhere.
 
-The user-facing steps live on the `/docs` page (`#mcp`), with one tab per
-verified client: Claude Code, Codex, OpenCode and Antigravity, plus an
-"Other tools" tab for unverified clients such as Cursor. Only add a client tab
-once its run is recorded under "Client compatibility" below; the docs copy is
-pinned by `tests/Feature/DocsTest.php`.
+The user-facing steps live in `App\Support\AiToolSetup`, rendered on the
+`/docs` page (`#mcp`) and in `/llms-full.txt`. Every client has a tab. Only
+Claude Code, Codex, OpenCode and Antigravity are `verified`; the Claude app,
+ChatGPT, Cursor, VS Code, Windsurf, Zed and "Other tools" follow each vendor's
+own instructions and are labelled "Not yet tested by us". Set `verified` only
+once a client's run is recorded under "Client compatibility" below; the guides
+are pinned by `tests/Feature/DocsTest.php`.
 
 For CI or other non-interactive environments, mint an organization token on
 **Settings → Tokens** and inject it through the CI secret store. Organization

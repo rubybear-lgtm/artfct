@@ -47,7 +47,8 @@ function coveredElsewhere(): array
 function notPages(): array
 {
     return [
-        'jwks' => 'JSON', 'sitemap' => 'XML', 'authenticate' => 'sign-in callback (redirect)',
+        'jwks' => 'JSON', 'sitemap' => 'XML',
+        'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
         'oauth.metadata' => 'OAuth discovery JSON',
         'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',
         'mcp.oauth.protected-resource.nested' => 'OAuth protected-resource discovery JSON',

@@ -91,22 +91,24 @@ class AiToolSetup
                 'id' => 'connect-claude',
                 'label' => 'Claude app',
                 'verified' => false,
-                'intro' => 'For Claude on the web, desktop and mobile. A connector added on the web also appears in the desktop and mobile apps.',
+                'intro' => 'For Claude on the web and the desktop app. A connector added once is available everywhere you use Claude. On Team and Enterprise plans, an owner adds it first: Organization settings, then Connectors, then Add, then Custom, then Web, using the same details. Members then find it under Customize, then Connectors, and select Connect.',
                 'steps' => [
-                    ['text' => 'In Claude, open Settings, then Connectors, and select Add custom connector.'],
-                    ['text' => 'Name it `artfct`, paste this address and select Add:', 'code' => $url],
-                    ['text' => 'Select Connect next to artfct and approve the sign-in that opens. On Team and Enterprise plans, an owner may need to add the connector for the organization first.'],
+                    ['text' => 'In Claude, open Customize, then Connectors. Select Add, then Add custom connector.'],
+                    ['text' => 'Name it `artfct`, paste this address and select Continue:', 'code' => $url],
+                    ['text' => 'Under Authentication choose Sign in now, and under OAuth client choose Register automatically. Select Add.'],
+                    ['text' => 'Approve the sign-in that opens in your browser.'],
                 ],
             ],
             [
                 'id' => 'connect-chatgpt',
                 'label' => 'ChatGPT',
                 'verified' => false,
-                'intro' => 'ChatGPT adds custom connectors in developer mode. Which plans can use it, and whether an administrator must turn it on, is set by OpenAI.',
+                'intro' => 'ChatGPT adds custom connectors in developer mode, on paid plans. On business plans an administrator may need to allow it first.',
                 'steps' => [
-                    ['text' => 'In ChatGPT, open Settings, then Apps & Connectors, then Advanced settings, and turn on Developer mode.'],
+                    ['text' => 'In ChatGPT, open Settings, then Apps & Connectors (called Connectors on some plans), then Advanced settings, and turn on Developer mode.'],
                     ['text' => 'Back in Apps & Connectors, select Create. Name it `artfct`, choose OAuth for authentication and paste this address:', 'code' => $url],
-                    ['text' => 'Confirm, then approve the sign-in that opens. Turn on artfct from the tools menu in a chat to use it.'],
+                    ['text' => 'Tick the box saying you trust this connector, select Create, then approve the sign-in that opens.'],
+                    ['text' => 'In a chat, select the + button, then More, and turn on artfct.'],
                 ],
             ],
             [
@@ -220,8 +222,6 @@ class AiToolSetup
     {
         return [
             ['name' => 'artfct', 'install' => 'npx skills add rubybear-lgtm/artfct@artfct', 'note' => 'When and how to publish: writing self-contained HTML, choosing who can see it and handling errors.'],
-            ['name' => 'presentation', 'install' => 'npx skills add rubybear-lgtm/artfct@presentation', 'note' => 'Turns content into a fullscreen HTML slide deck and shares it.'],
-            ['name' => 'developer-tools', 'install' => 'npx skills add rubybear-lgtm/artfct@developer-tools', 'note' => 'Compare JSON or settings files, test patterns and view data as a table.'],
         ];
     }
 
