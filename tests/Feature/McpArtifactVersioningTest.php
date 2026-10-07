@@ -253,7 +253,7 @@ test('get_artifact returns the named version with a version-aware view_url', fun
 
     // The link names the version, so following it opens that version rather
     // than the current one.
-    expect((string) $response->json('result.structuredContent.view_url'))->toContain('version=2');
+    expect((string) $response->json('result.structuredContent.view_url'))->toContain('/v/2');
 });
 
 test('get_artifact maps a missing version to version_not_found', function () {
@@ -350,7 +350,7 @@ test('a 13-character stable id is linkable and opens on its isolated origin', fu
     expect(artifactTokenVerifies((string) ($params['token'] ?? ''), $id, ARTIFACT_LINK_SECRET, now()->timestamp))->toBeTrue();
 });
 
-test('a legacy 32-character id keeps its unversioned isolated link', function () {
+test('a legacy 32-character id keeps its unversioned short link', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-437-legacy']);
@@ -361,11 +361,13 @@ test('a legacy 32-character id keeps its unversioned isolated link', function ()
     $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Legacy</h1>');
 
     $response = test()->actingAs($member)->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
-    $response->assertRedirect();
+
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+
     $location = (string) $response->headers->get('Location');
 
-    expect($location)->toStartWith('https://rub-437-legacy--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=')
-        ->and($location)->not->toContain('/v:');
+    expect($location)->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]))
+        ->and($location)->not->toContain('/v');
 });
 
 test('the console open route redirects to the requested version', function () {
@@ -378,17 +380,9 @@ test('the console open route redirects to the requested version', function () {
     $content = app(ArtifactContentSource::class);
     $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Versioned</h1>');
 
-    $response = test()->actingAs($member)
-        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open?version=2');
-    $response->assertRedirect();
-    $location = (string) $response->headers->get('Location');
-
-    expect($location)->toStartWith('https://rub-437-versioned--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/v:2/?token=');
-
-    // The token is still per artifact id, not per version: the same wire form
-    // verifies, and the version travels in the path.
-    parse_str((string) parse_url($location, PHP_URL_QUERY), $params);
-    expect(artifactTokenVerifies((string) ($params['token'] ?? ''), ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, now()->timestamp))->toBeTrue();
+    test()->actingAs($member)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open?version=2')
+        ->assertRedirect(route('artifacts.version', ['artifactId' => ARTIFACT_LINK_ID, 'version' => 2]));
 });
 
 test('the console open route refuses a malformed version with 422', function () {
@@ -416,10 +410,10 @@ test('version-aware link builders keep the /p/{id}/v:{version}/ path', function 
         ->and(ArtifactViewLink::publicPermanentUrl($id, 2))
         ->toBe('https://artfct.dev/p/'.$id.'/v:2/')
 
-        // The viewer route carries the version as a query parameter; without
-        // one it is byte-for-byte what it was before versioning.
+        // The viewer route carries the version in the path; without one it is
+        // byte-for-byte what it was before versioning.
         ->and(ArtifactViewLink::appOpenUrl('acme', $id, 2))
-        ->toBe(route('artifacts.show', ['artifactId' => $id, 'version' => 2]))
+        ->toBe(route('artifacts.version', ['artifactId' => $id, 'version' => 2]))
         ->and(ArtifactViewLink::appOpenUrl('acme', $id))
         ->toBe(route('artifacts.show', ['artifactId' => $id]));
 

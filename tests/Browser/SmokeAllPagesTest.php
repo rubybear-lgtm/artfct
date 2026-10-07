@@ -42,6 +42,7 @@ function coveredElsewhere(): array
         'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
         'console.versions' => 'ArtifactVersionsBrowserTest (needs a seeded permanent artifact id)',
         'artifacts.show' => 'ArtifactViewerBrowserTest (needs a seeded artifact id)',
+        'artifacts.version' => 'ArtifactViewerBrowserTest / ShortLinksTest (needs a seeded artifact id)',
         'teams.search' => 'redirect to the dashboard (SearchBrowserTest: legacy search URL)',
     ];
 }

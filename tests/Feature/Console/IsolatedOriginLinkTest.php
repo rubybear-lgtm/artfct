@@ -7,25 +7,23 @@ use Illuminate\Support\Facades\Http;
 /**
  * RUB-365, the link half: the console's own `Location`, followed to a response.
  *
- * Two existing tests prove the ends. `ConsoleTest` asserts the redirect the
- * console emits and that its token verifies under an independent re-derivation
- * of the Worker's wire format;
+ * Two existing tests prove the ends. `ConsoleTest` asserts the console's open
+ * route hands out the one short link; `AccessTokenViewerTest` asserts the
+ * viewer's minted token wire format under an independent re-derivation;
  * `storage_integration.rs::signed_link_opens_the_artifact_on_its_isolated_origin`
  * asserts the Worker's isolated-origin predicate against a live Worker, but
- * with a token it mints itself. Neither follows the link the console actually
+ * with a token it mints itself. Neither follows the link the app actually
  * emitted to a 200, which is the gap the re-audit named.
  *
- * This drives the real console route for a real team, takes the `Location` it
- * emits, and uses that URL's host and token unchanged against the live Worker.
- * The per-artifact CSP is asserted as well as the bytes: bytes alone do not
+ * This drives the real console route for a real team, follows its redirect to
+ * the short link, takes the isolated-origin `frameUrl` the viewer minted, and
+ * uses that URL's host and token unchanged against the live Worker. The
+ * per-artifact CSP is asserted as well as the bytes: bytes alone do not
  * say which branch answered, so the policy is what proves the isolated check
  * ran rather than the shared-origin one.
  *
- * The artifact is created `secure`. The console hands a public artifact the
- * Worker's direct `/p/{id}` URL with no token (`ArtifactViewLink::isAnonymous`,
- * RUB-367), so the mint this test follows only happens for a tier the Worker
- * does not serve anonymously. Creating it public made the console redirect to
- * the public origin and this assertion fail on the host.
+ * The artifact is created `secure`, so the viewer mints for it. A public
+ * artifact is framed untokened by the viewer, which is a different assertion.
  *
  * Only runs inside `scripts/mcp-e2e-stack.sh link`, which points this process
  * at the stack's Worker and Postgres; skipped everywhere else, like the Rust
@@ -87,14 +85,19 @@ test('the console link opens the artifact on its isolated origin', function () {
     $team = Team::factory()->create(['slug' => $org]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
-    // The app's own path: the real route, the real controller, the real mint.
+    // The app's own path: the real console route, which redirects to the one
+    // short link, then the real viewer, which mints the isolated-origin frame
+    // URL this test follows.
     $response = $this->actingAs($admin)->get(
         "/settings/teams/{$team->slug}/console/artifacts/{$artifactId}/open"
     );
 
-    $response->assertRedirect();
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => $artifactId]));
 
-    $location = (string) $response->headers->get('Location');
+    $viewer = $this->actingAs($admin)->get(route('artifacts.show', ['artifactId' => $artifactId]));
+    $viewer->assertOk();
+
+    $location = (string) ($viewer->viewData('page')['props']['frameUrl'] ?? '');
     $url = parse_url($location);
     expect($url)->toBeArray();
 
@@ -104,10 +107,10 @@ test('the console link opens the artifact on its isolated origin', function () {
         ->and($url['query'] ?? '')->toStartWith('token=');
 
     // The isolated hostname resolves nowhere and terminates no TLS from this
-    // machine, so the Location is consumed verbatim instead of followed by a
+    // machine, so the frame URL is consumed verbatim instead of followed by a
     // client: the same path, the same query token, and the same `Host` header,
     // aimed at the local Worker's address. The Worker decides on those values
-    // alone, so nothing the console emitted is substituted here.
+    // alone, so nothing the app emitted is substituted here.
     $opened = Http::withHeaders(['Host' => $url['host']])
         ->get($worker.$url['path'].'?'.$url['query']);
 

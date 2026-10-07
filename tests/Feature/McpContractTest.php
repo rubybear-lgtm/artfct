@@ -159,24 +159,25 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
 
     expect($contract['field'])->toBe('view_url')
         ->and($contract['public_path_template'])->toBe('/p/{artifact}')
-        ->and($contract['tiers']['public'])->toBe('worker_public_url')
+        ->and($contract['tiers']['public'])->toBe('app_open_route')
         ->and($contract['tiers']['ephemeral'])->toBe('worker_public_url')
         ->and($contract['tiers']['secure'])->toBe('app_open_route')
         ->and($contract['tiers']['unreadable'])->toBe('app_open_route');
 
-    // The template in the fixture is the template the route actually has, so
-    // the local server cannot address a path this app does not serve.
+    // The templates in the fixture are the templates the routes actually have,
+    // so the local server cannot address a path this app does not serve.
     expect(route('artifacts.show', ['artifactId' => 'abc'], absolute: false))
-        ->toBe(str_replace('{artifactId}', 'abc', $contract['app_open_path_template']));
+        ->toBe(str_replace('{artifactId}', 'abc', $contract['app_open_path_template']))
+        ->and(route('artifacts.version', ['artifactId' => 'abc', 'version' => 2], absolute: false))
+        ->toBe(str_replace(['{artifactId}', '{version}'], ['abc', '2'], $contract['app_open_version_path_template']));
 
     $appOpenUrl = route('artifacts.show', ['artifactId' => 'abc']);
 
-    // An artifact the Worker serves without a credential — public, or the
-    // anonymous ephemeral preview deploy_to_canvas publishes — gets the raw URL.
-    // Secure — and any tier a caller could not read — opens through the app's
-    // own route, which is what makes a link from an agent work when a member
-    // clicks it while signed in.
-    expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->toBe('https://artfct.dev/p/abc')
+    // Every permanent artifact — public included — opens through the app's own
+    // short route, which authorizes the visitor and mints only where it must.
+    // The anonymous ephemeral KV preview is the one tier with no app route, so
+    // it keeps the Worker's own URL.
+    expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->toBe($appOpenUrl)
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'ephemeral'))->toBe('https://artfct.dev/p/abc')
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'secure'))->toBe($appOpenUrl)
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', null))->toBe($appOpenUrl)
@@ -187,14 +188,12 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
     expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->not->toContain('token');
 });
 
-test('public permanent links keep relative bundle assets under the artifact path', function () {
+test('the anonymous ephemeral preview keeps the workers own url', function () {
     $id = str_repeat('a', 32);
-    $published = ArtifactViewLink::forArtifact('acme', $id, 'public', "https://worker.test/p/{$id}");
-    $fallback = ArtifactViewLink::forArtifact('acme', $id, 'public');
 
-    expect($published)->toBe("https://worker.test/p/{$id}/")
-        ->and($fallback)->toBe("https://artfct.dev/p/{$id}/")
-        ->and(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}");
+    expect(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral', "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'public'))->toBe(route('artifacts.show', ['artifactId' => $id]));
 });
 
 test('deploy_artifact advertises bundle input and does not require html', function () {

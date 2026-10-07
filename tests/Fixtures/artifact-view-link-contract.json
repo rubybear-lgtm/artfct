@@ -1,12 +1,12 @@
 {
-  "_comment": "The artifact view-link shape the hosted MCP server is tested against. Read by tests/Feature/McpContractTest.php (App\\Services\\Artifacts\\ArtifactViewLink) so the field name and which link a tier gets cannot drift. `ephemeral` is the anonymous expiring tier deploy_to_canvas publishes: the Worker serves it to anyone, so it is the raw URL like public.",
+  "_comment": "The artifact view-link shape the hosted MCP server is tested against. Read by tests/Feature/McpContractTest.php (App\\Services\\Artifacts\\ArtifactViewLink) so the field name and which link a tier gets cannot drift. Every permanent artifact — public included — gets the app's short link (`app_open_route`); `ephemeral` is the anonymous expiring KV tier deploy_to_canvas publishes, the one tier the Worker serves and no app route can resolve, so it keeps the raw URL.",
   "field": "view_url",
   "public_path_template": "/p/{artifact}",
   "versioned_public_path_template": "/p/{artifact}/v:{version}/",
   "app_open_path_template": "/a/{artifactId}",
-  "app_open_version_query": "version",
+  "app_open_version_path_template": "/a/{artifactId}/v/{version}",
   "tiers": {
-    "public": "worker_public_url",
+    "public": "app_open_route",
     "ephemeral": "worker_public_url",
     "secure": "app_open_route",
     "unreadable": "app_open_route"

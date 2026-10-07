@@ -12,13 +12,13 @@ use RuntimeException;
  * error saying this environment cannot offer an openable one.
  *
  * Every tool that returns a link comes through here, and this defers to
- * `ArtifactViewLink` — the same rule `ConsoleController::open` applies — so an
- * agent's link and the console's link cannot drift apart. For a `secure`
- * artifact that link is the app's session-authenticated open route, which is
- * what makes a link from an agent work when a member clicks it while signed
- * in; the token is minted there, per click, and never handed to the agent. For
- * a `public` artifact it is the Worker's own `/p/{id}` URL, which needs no
- * credential and so needs no token minted for it.
+ * `ArtifactViewLink` — the same rule the console's open route now redirects
+ * to — so an agent's link and the console's link cannot drift apart. Every
+ * permanent artifact, `public` included, gets the app's short link: a public
+ * one renders for anyone and needs no credential; a secure one is authorized
+ * and its token minted there, per click, never handed to the agent. Only the
+ * anonymous `ephemeral` preview `deploy_to_canvas` publishes gets the Worker's
+ * own `/p/{id}` URL, because no app route can resolve a KV record.
  *
  * A secure artifact is still refused here, before any link is handed out, in
  * the two cases the app's route could only turn into a dead end:
@@ -62,6 +62,10 @@ final class McpArtifactLink
      */
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null, ?int $version = null): string|Response
     {
+        // Public and ephemeral are the tiers the Worker can serve without a
+        // credential, so no signing secret is required to hand out a link for
+        // one: `forArtifact` gives a public artifact the app's short route and
+        // the ephemeral preview the Worker's own URL.
         if (ArtifactViewLink::isAnonymous($tier)) {
             return ArtifactViewLink::forArtifact($teamSlug, $artifactId, $tier, $workerUrl, $version);
         }

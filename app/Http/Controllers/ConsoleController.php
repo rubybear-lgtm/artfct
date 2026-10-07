@@ -13,7 +13,6 @@ use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
-use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\IndexingService;
@@ -227,20 +226,17 @@ class ConsoleController extends Controller
     }
 
     /**
-     * Mint a short-lived signed link for one artifact and send the browser
-     * (typically a new tab) to it at its isolated origin (spec 05).
+     * Send the browser (typically a new tab) to the artifact's one short link
+     * (RUB-439). This route stays as the console's open control and as a
+     * permanent redirect for old links.
      *
-     * Any member who can see the artifact may open it. The link is bound to
-     * this team's slug, so a member of another team is refused before anything
-     * is minted, and an artifact that is not in this team's org is a 404
-     * indistinguishable from a missing one — never an existence oracle for
-     * another org's ids.
-     *
-     * A `public` artifact needs none of that: the Worker serves its `/p/{id}`
-     * URL to anyone, so the browser is sent straight there and no token is
-     * minted (and so no mint is audited). Only a secure artifact is minted
-     * for, and that mint is audited with the actor, the artifact and the
-     * expiry — never the token itself.
+     * Any member who can see the artifact may open it. The checks are
+     * unchanged: an artifact that is not in this team's org, or that the
+     * member may not view, is a 404 indistinguishable from a missing one —
+     * never an existence oracle for another org's ids. The short link then
+     * authorizes the viewer and mints there, so this route no longer mints a
+     * token and no mint is audited here; the viewer audits it exactly once,
+     * for artifacts that need one.
      */
     public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): RedirectResponse
     {
@@ -251,8 +247,8 @@ class ConsoleController extends Controller
 
         // `version` names one published version to open; omitted, the "current"
         // version is opened exactly as before. A non-positive or non-integer
-        // value is a malformed link, refused as 422 rather than minted into a
-        // URL the Worker can only 404. Validation is explicit because the
+        // value is a malformed link, refused as 422 rather than redirected to
+        // a version that can only 404. Validation is explicit because the
         // app's exception handler renders validation failures as a redirect
         // for non-API routes.
         $versionValidator = Validator::make($request->query(), [
@@ -279,29 +275,9 @@ class ConsoleController extends Controller
             404,
         );
 
-        if (ArtifactViewLink::isAnonymous($artifact['tier'] ?? null)) {
-            return redirect()->away(ArtifactViewLink::publicPermanentUrl($artifactId, $version));
-        }
-
-        $links = ArtifactAccessLink::default();
-        $expiresAt = now()->addMinutes($links->ttlMinutes());
-        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version, (string) $user->id, $user->isAdminOf($team));
-
-        abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
-
-        // `target` carries the artifact and the expiry and nothing else: the
-        // token is a bearer credential for the artifact, so it belongs in the
-        // redirect and nowhere near an append-only row that is read back on
-        // the audit page and exported to SIEM.
-        $this->auditLogger->recordForRequest(
-            $request,
-            AuditEventType::ArtifactLinkMinted,
-            $team,
-            (string) $user->id,
-            "artifact:{$artifactId} expires:".$expiresAt->toIso8601String(),
-        );
-
-        return redirect()->away($url);
+        return redirect()->to($version === null
+            ? route('artifacts.show', ['artifactId' => $artifactId])
+            : route('artifacts.version', ['artifactId' => $artifactId, 'version' => $version]));
     }
 
     /**

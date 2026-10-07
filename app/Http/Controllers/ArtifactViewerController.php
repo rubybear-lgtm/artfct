@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Contracts\PublicArtifactSource;
 use App\Enums\AuditEventType;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
@@ -21,20 +23,25 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * The artifact viewer (RUB-438): a thin header above one artifact running in a
- * sandboxed iframe on its isolated origin, with the sharing control.
+ * The artifact viewer (RUB-438), addressed by one short route for every sharing
+ * level (RUB-439): a thin header above one artifact running in a sandboxed
+ * iframe on its isolated origin.
  *
- * The route carries only an artifact id, so the owning team is resolved from
- * the signed-in member's own memberships — current team first. A team the
- * caller is not in is never asked about, and an artifact that resolves in no
- * team is the same 404 as one that does not exist, so the page is never an
- * existence oracle.
+ * The route carries only an artifact id, so a signed-in member's artifact is
+ * resolved from their own memberships — current team first. A team the caller
+ * is not in is never asked about. An artifact that resolves in no team of
+ * theirs is then offered to the Worker's unauthenticated public read: a live
+ * public artifact renders for anyone, and everything else is the one answer
+ * each visitor gets — a sign-in redirect for a signed-out one, the same 404 as
+ * a missing artifact for a signed-in one — so the page is never an existence
+ * oracle.
  *
  * The header is rendered by the app around the frame and is never injected
  * into the artifact's HTML. A non-public artifact needs a short-lived signed
- * link to be framed, and the mint is audited exactly as `ConsoleController::open`
- * does. A public artifact is served by the Worker to anyone, so it is framed
- * untokened and nothing is minted.
+ * link to be framed, and the mint is audited here. A public artifact is served
+ * by the Worker to anyone, so it is framed untokened and nothing is minted;
+ * a visitor with no session gets a quiet "Sign in to edit" prompt when the
+ * artifact's edit access says so, never edit controls.
  */
 final class ArtifactViewerController extends Controller
 {
@@ -43,22 +50,72 @@ final class ArtifactViewerController extends Controller
     public function __construct(private readonly AuditLogger $auditLogger) {}
 
     /**
-     * Show one artifact's viewer.
+     * Show one artifact's viewer. A signed-in member's artifact renders exactly
+     * as it always has. A visitor who resolves no artifact in their own teams
+     * is then offered the Worker's public read; a public artifact renders in
+     * public mode, and everything else sends a signed-out visitor to sign in
+     * and 404s a signed-in one.
      */
-    public function show(Request $request, string $artifactId, ArtifactDirectory $artifacts): InertiaResponse
-    {
+    public function show(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        PublicArtifactSource $publicArtifacts,
+        ?int $version = null,
+    ): InertiaResponse|RedirectResponse {
         abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
 
-        $user = $request->user();
-        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+        // The version route names the version in the path; `?version=` on
+        // `artifacts.show` stays supported, and the path wins when both exist.
+        $selectedVersion = $version ?? $this->selectedVersion($request);
 
+        $user = $request->user();
+
+        if ($user !== null) {
+            $resolved = $this->findArtifact($user, $artifactId, $artifacts);
+
+            if ($resolved !== null) {
+                [$team, $artifact] = $resolved;
+
+                return $this->memberViewer($request, $user, $team, $artifact, $artifactId, $artifacts, $selectedVersion);
+            }
+        }
+
+        $public = $publicArtifacts->find($artifactId);
+
+        if ($public !== null) {
+            return $this->publicViewer($request, $artifactId, $public, $selectedVersion);
+        }
+
+        // A visitor with no session comes back after sign-in; a signed-in
+        // visitor gets the same 404 a missing artifact gets, so neither can
+        // tell a team/private artifact from an id that does not exist.
+        if ($user === null) {
+            return redirect()->guest(route('login'));
+        }
+
+        abort(404);
+    }
+
+    /**
+     * The signed-in member's viewer. A `public` artifact is served by the
+     * Worker to anyone, so no token is minted for it and nothing is audited;
+     * every other artifact needs a short-lived signed link to be framed, and
+     * that mint is audited exactly as `ConsoleController::open` used to do.
+     *
+     * @param  array<string, mixed>  $artifact
+     */
+    private function memberViewer(
+        Request $request,
+        User $user,
+        Team $team,
+        array $artifact,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        ?int $selectedVersion,
+    ): InertiaResponse {
         Gate::authorize('view', $team);
 
-        $selectedVersion = $this->selectedVersion($request);
-
-        // A `public` artifact is served by the Worker to anyone, so no token
-        // is minted for it and nothing is audited. Every other artifact needs a
-        // short-lived signed link to be framed.
         $sharing = $artifact['sharing'] ?? null;
         $links = ArtifactAccessLink::default();
 
@@ -93,6 +150,8 @@ final class ArtifactViewerController extends Controller
         $versionCount = (int) ($artifact['version_count'] ?? 1);
 
         $props = [
+            'publicView' => false,
+            'canSignInToEdit' => false,
             'team' => [
                 'slug' => $team->slug,
                 'name' => $team->name,
@@ -113,7 +172,7 @@ final class ArtifactViewerController extends Controller
             ],
             'selectedVersion' => $selectedVersion,
             'frameUrl' => $frameUrl,
-            'viewerUrl' => route('artifacts.show', ['artifactId' => $artifactId]),
+            'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
         ];
@@ -128,6 +187,86 @@ final class ArtifactViewerController extends Controller
                     'number' => (int) ($version['version'] ?? 0),
                     'created_at' => $version['created_at'] ?? null,
                     'current' => (bool) ($version['current'] ?? false),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return Inertia::render('artifacts/show', $props);
+    }
+
+    /**
+     * The public viewer, for a signed-out visitor or one from a team the
+     * artifact does not belong to: the same thin header, owning org and
+     * version, framed untokened on the isolated origin. The owner's name and
+     * the sharing control are not shown, and no Download is offered. When the
+     * artifact's edit access says so, a signed-out visitor is offered a quiet
+     * sign-in prompt with this page as the intended destination; publishing a
+     * version always happens through the signed-in MCP path.
+     *
+     * @param  array<string, mixed>  $artifact
+     */
+    private function publicViewer(
+        Request $request,
+        string $artifactId,
+        array $artifact,
+        ?int $selectedVersion,
+    ): InertiaResponse {
+        $org = (string) $artifact['org'];
+        $frameUrl = ArtifactAccessLink::default()->publicArtifactUrl($org, $artifactId, $selectedVersion);
+
+        $viewerUrl = $selectedVersion === null
+            ? route('artifacts.show', ['artifactId' => $artifactId])
+            : route('artifacts.version', ['artifactId' => $artifactId, 'version' => $selectedVersion]);
+
+        $editAccess = $artifact['edit_access'] ?? null;
+        $canSignInToEdit = $editAccess === 'edit' && $request->user() === null;
+
+        if ($canSignInToEdit) {
+            $request->session()->put('url.intended', $viewerUrl);
+        }
+
+        $versionCount = (int) ($artifact['version_count'] ?? 1);
+        $version = (int) ($artifact['version'] ?? 1);
+
+        $props = [
+            'publicView' => true,
+            'canSignInToEdit' => $canSignInToEdit,
+            'team' => [
+                'slug' => $org,
+                'name' => $org,
+                'publicSharingAllowed' => false,
+            ],
+            'artifact' => [
+                'id' => $artifactId,
+                'title' => $artifact['title'] ?? null,
+                'description' => $artifact['description'] ?? null,
+                'sharing' => 'public',
+                'editAccess' => $editAccess,
+                'canEdit' => false,
+                'canChangeSharing' => false,
+                'ownerName' => null,
+                'updatedAt' => $artifact['updated_at'] ?? null,
+                'version' => $version,
+                'versionCount' => $versionCount,
+            ],
+            'selectedVersion' => $selectedVersion,
+            'frameUrl' => $frameUrl,
+            'viewerUrl' => $viewerUrl,
+            'openUrl' => $frameUrl,
+            'downloadUrl' => null,
+        ];
+
+        // The public read names no per-version history, only how many there
+        // are, so the picker offers that many numbers and links straight at
+        // `/a/{id}/v/{n}`.
+        if ($versionCount > 1) {
+            $props['versions'] = collect(range(1, $versionCount))
+                ->sortDesc()
+                ->map(fn (int $number): array => [
+                    'number' => $number,
+                    'created_at' => null,
+                    'current' => $number === $version,
                 ])
                 ->values()
                 ->all();
@@ -208,13 +347,31 @@ final class ArtifactViewerController extends Controller
 
     /**
      * The first of the caller's teams that has this artifact, current team
-     * first. The Worker answers 404 for an artifact the caller cannot see,
-     * including a private one, so a null from every team is the same 404 as a
-     * missing artifact and the caller cannot tell the two apart.
+     * first, or a 404 when no team of theirs owns it. The Worker answers 404
+     * for an artifact the caller cannot see, including a private one, so a
+     * null from every team is the same 404 as a missing artifact and the
+     * caller cannot tell the two apart.
      *
      * @return array{0: Team, 1: array<string, mixed>}
      */
     private function resolveArtifact(User $user, string $artifactId, ArtifactDirectory $artifacts): array
+    {
+        $found = $this->findArtifact($user, $artifactId, $artifacts);
+
+        abort_if($found === null, 404);
+
+        return $found;
+    }
+
+    /**
+     * The artifact when one of the caller's own teams owns it, or null. The
+     * viewer uses this to decide whether to fall through to the Worker's
+     * public read instead of aborting, so a foreign or missing artifact is not
+     * a dead end for a public one.
+     *
+     * @return array{0: Team, 1: array<string, mixed>}|null
+     */
+    private function findArtifact(User $user, string $artifactId, ArtifactDirectory $artifacts): ?array
     {
         $teams = $user->teams()->orderBy('teams.id')->get();
 
@@ -231,7 +388,7 @@ final class ArtifactViewerController extends Controller
             }
         }
 
-        abort(404);
+        return null;
     }
 
     /**

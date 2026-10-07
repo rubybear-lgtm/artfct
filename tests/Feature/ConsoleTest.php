@@ -12,7 +12,6 @@ use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\IndexingService;
 use App\Services\Indexing\VectorIndexContract;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 
@@ -320,7 +319,7 @@ test('viewer_can_list_artifacts_but_no_admin_controls', function () {
     );
 });
 
-test('member_opens_artifact_at_its_isolated_origin_with_a_token_bound_to_it', function () {
+test('member_opens_artifact_through_the_one_short_link', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'test-org']);
@@ -335,36 +334,15 @@ test('member_opens_artifact_at_its_isolated_origin_with_a_token_bound_to_it', fu
         ->actingAs($viewer)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
 
-    $response->assertRedirect();
+    // One short link for every sharing level: the viewer authorizes the member
+    // and mints only for an artifact that needs it.
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 
-    $location = (string) $response->headers->get('Location');
-
-    expect($location)->toStartWith(
-        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=',
-    );
-
-    parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
-    $token = $query['token'] ?? '';
-    $now = now()->timestamp;
-
-    expect($token)->toBeString()->not->toBe('')
-        // The token is a credential for this artifact...
-        ->and(artifactTokenVerifies($token, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, $now))->toBeTrue()
-        // ...and not for another artifact id, nor under another secret.
-        ->and(artifactTokenVerifies($token, 'ffffffffffffffffffffffffffffffff', ARTIFACT_LINK_SECRET, $now))->toBeFalse()
-        ->and(artifactTokenVerifies($token, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
-
-    // The token belongs to the redirect and nowhere else. The redirect's own
-    // body is Symfony's no-JS fallback, which mirrors the Location URL, so the
-    // check that matters is that the console page — props and all — carries
-    // neither the token nor the signing secret.
-    expect($location)->toContain($token);
+    expect((string) $response->headers->get('Location'))->not->toContain('token');
 
     $console = test()->actingAs($viewer)->get("/settings/teams/{$team->slug}/console");
 
-    expect($console->getContent())
-        ->not->toContain($token)
-        ->not->toContain(ARTIFACT_LINK_SECRET);
+    expect($console->getContent())->not->toContain(ARTIFACT_LINK_SECRET);
 });
 
 test('minted_link_pins_the_workers_token_wire_format', function () {
@@ -430,10 +408,11 @@ test('open_fails_closed_and_hides_the_control_without_a_signing_secret', functio
     test()->actingAs($admin)->get("/settings/teams/{$team->slug}/console")
         ->assertInertia(fn ($page) => $page->where('canOpenArtifacts', false));
 
+    // The console open route no longer mints, so it no longer 503s: the viewer
+    // the short link points at is where an unconfigured secret fails closed.
     test()->actingAs($admin)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
-        ->assertStatus(503)
-        ->assertHeaderMissing('Location');
+        ->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 
     configureArtifactLinks();
 
@@ -469,9 +448,10 @@ test('opening_a_public_artifact_goes_straight_to_its_public_url_without_minting'
     $response = test()->actingAs($viewer)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
 
-    $response->assertRedirect('https://artfct.dev/p/'.ARTIFACT_LINK_ID.'/');
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 
     expect((string) $response->headers->get('Location'))
+        ->not->toContain('/p/')
         ->not->toContain('token')
         ->and(AuditEvent::query()
             ->where('event_type', AuditEventType::ArtifactLinkMinted)
@@ -491,9 +471,11 @@ test('opening_a_public_artifact_uses_the_staging_worker_host_without_an_app_publ
     $content = app(ArtifactContentSource::class);
     $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', tier: 'public');
 
+    // Public artifacts now go through the app's short link too, so the Worker's
+    // public base never appears in what the console hands the browser.
     $this->actingAs($viewer)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
-        ->assertRedirect('https://staging-worker.example.test/p/'.ARTIFACT_LINK_ID.'/');
+        ->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
 /**
@@ -502,7 +484,7 @@ test('opening_a_public_artifact_uses_the_staging_worker_host_without_an_app_publ
  * expiry inside the minted token, so the two cannot drift apart, and the whole
  * row is checked against the token rather than the token being spot-checked.
  */
-test('opening_a_secure_artifact_audits_the_mint_and_never_the_token', function () {
+test('the console open route no longer mints or audits, it hands out the short link', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'test-org']);
@@ -515,35 +497,11 @@ test('opening_a_secure_artifact_audits_the_mint_and_never_the_token', function (
     $response = test()->actingAs($admin)
         ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
 
-    $response->assertRedirect();
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 
-    parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
-    $token = (string) ($query['token'] ?? '');
-    $expiresAtUnix = (int) explode('.', $token)[1];
-
-    $event = AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->sole();
-
-    expect($event->team_id)->toBe($team->id)
-        ->and($event->actor)->toBe((string) $admin->id)
-        ->and($event->outcome)->toBe('success')
-        ->and($event->target)->toBe(
-            'artifact:'.ARTIFACT_LINK_ID.' expires:'.Carbon::createFromTimestamp($expiresAtUnix)->toIso8601String(),
-        )
-        // The token and the signing secret belong to the redirect and nowhere
-        // else — not this append-only row, and not the page that renders it.
-        ->and($event->target)->not->toContain($token)
-        ->and($event->target)->not->toContain(ARTIFACT_LINK_SECRET)
-        ->and($token)->not->toBe('');
-
-    $auditPage = test()->actingAs($admin)->get("/settings/teams/{$team->slug}/audit");
-
-    $auditPage->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->component('teams/audit')
-            ->where('events.data.0.type', AuditEventType::ArtifactLinkMinted->value)
-            ->where('events.data.0.target', $event->target));
-
-    expect($auditPage->getContent())
-        ->not->toContain($token)
-        ->not->toContain(ARTIFACT_LINK_SECRET);
+    expect((string) $response->headers->get('Location'))
+        ->not->toContain('token')
+        // The viewer audits the mint once, when it actually mints; the console
+        // route mints nothing, so it records nothing.
+        ->and(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
 });

@@ -39,11 +39,27 @@ export async function originLink(world) {
         `/settings/teams/${slugA}/console/artifacts/${idA}/open`,
         { headers: { Accept: 'text/html' } },
     );
-    const location = open.headers.get('Location');
+    const shortLink = open.headers.get('Location');
     check(
-        'alice is sent to an isolated link for her own artifact',
-        open.status === 302 && Boolean(location),
+        'alice is sent to the one short link for her own artifact',
+        open.status === 302 &&
+            Boolean(shortLink) &&
+            shortLink.includes(`/a/${idA}`),
         `status ${open.status}`,
+    );
+
+    if (!shortLink) {
+        return;
+    }
+
+    // Follow the short link as alice: the viewer resolves her artifact and
+    // mints the isolated-origin frame URL this test then attacks.
+    const viewer = await alice.pageProps(new URL(shortLink).pathname);
+    const location = viewer.props?.frameUrl ?? '';
+    check(
+        'the viewer mints an isolated-origin link for the artifact',
+        viewer.status === 200 && Boolean(location),
+        `status ${viewer.status}`,
     );
 
     if (!location) {

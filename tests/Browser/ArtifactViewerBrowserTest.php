@@ -2,9 +2,11 @@
 
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
+use App\Contracts\PublicArtifactSource;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Artifacts\FakePublicArtifactSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -177,5 +179,38 @@ test('the_header_wraps_at_375px_with_no_horizontal_scroll', function () {
         ->assertNoJavaScriptErrors()
         ->assertSee('An exceptionally long artifact title')
         ->assertVisible('@share-control')
+        ->assertScript('document.documentElement.scrollWidth <= window.innerWidth');
+});
+
+test('a public artifact renders the thin header with no share or download and a quiet sign in to edit', function () {
+    configureViewerBrowserLinks();
+
+    /** @var FakePublicArtifactSource $public */
+    $public = app(PublicArtifactSource::class);
+    $public->seed(VIEWER_BROWSER_ARTIFACT_ID, 'viewer-public-org', [
+        'title' => 'A public browser report',
+        'description' => 'Anyone with the link.',
+        'version' => 1,
+        'version_count' => 1,
+        'edit_access' => 'edit',
+    ]);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('A public browser report')
+        ->assertMissing('@share-control')
+        ->assertMissing('@download-artifact')
+        ->assertVisible('@open-artifact')
+        ->assertVisible('@sign-in-to-edit')
+        ->assertVisible('@artifact-frame');
+
+    // A public artifact is framed untokened on its isolated origin.
+    expect($page->attribute('@artifact-frame', 'src'))
+        ->toContain('viewer-public-org--'.VIEWER_BROWSER_ARTIFACT_ID.'.localhost/p/'.VIEWER_BROWSER_ARTIFACT_ID.'/')
+        ->not->toContain('token');
+
+    visit(viewerBrowserArtifactUrl())
+        ->resize(375, 812)
+        ->assertNoJavaScriptErrors()
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth');
 });

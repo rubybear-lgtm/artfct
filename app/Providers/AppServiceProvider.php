@@ -4,13 +4,16 @@ namespace App\Providers;
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Contracts\PublicArtifactSource;
 use App\Listeners\CreatePersonalTeam;
 use App\Mail\CloudflareEmailTransport;
 use App\Models\McpConnection;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Artifacts\FakePublicArtifactSource;
 use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Artifacts\HttpArtifactDirectory;
+use App\Services\Artifacts\HttpPublicArtifactSource;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\AuthKit\RealAuthKitClient;
@@ -114,6 +117,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             ArtifactContentSource::class,
             app()->environment('testing') ? FakeArtifactContentSource::class : fn (): HttpArtifactContentSource => HttpArtifactContentSource::default(),
+        );
+        $this->app->singleton(
+            PublicArtifactSource::class,
+            app()->environment('testing') ? FakePublicArtifactSource::class : fn (): HttpPublicArtifactSource => HttpPublicArtifactSource::default(),
         );
         $this->app->singleton(
             TenantProvisionerContract::class,

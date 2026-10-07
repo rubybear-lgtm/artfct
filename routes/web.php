@@ -139,15 +139,26 @@ Route::get('/sitemap.xml', function () use ($blogPosts) {
         ->header('Content-Type', 'text/xml');
 })->name('sitemap');
 
-// ── artifact viewer (RUB-438) ────────────────────────────────────────────────
+// ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //
-// The viewer is addressed by artifact id alone: the owning team is resolved
-// from the signed-in member's own memberships, so a team the visitor is not in
-// is never named and an id that resolves nowhere is the same 404 as a missing
-// artifact. Laravel's normal auth redirect returns the visitor here after
-// sign-in.
+// One short route for every sharing level. The viewer is addressed by artifact
+// id alone: a signed-in member's artifact is resolved from their own
+// memberships, and an artifact no team of theirs owns is resolved through the
+// Worker's public read. A team the visitor is not in is never named; an id
+// that is neither the visitor's nor public is one and the same page, or one and
+// the same sign-in redirect, so the route is never an existence oracle.
+//
+// `artifacts.show` and `artifacts.version` are deliberately outside `auth`: a
+// public artifact renders for anyone, and a team/private one sends a signed-out
+// visitor to sign in and back. A version is named in the path as
+// `/a/{id}/v/{n}`; `?version=` on `artifacts.show` stays supported for older
+// links. Sharing and download stay authenticated.
+Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('artifacts.show');
+Route::get('a/{artifactId}/v/{version}', [ArtifactViewerController::class, 'show'])
+    ->whereNumber('version')
+    ->name('artifacts.version');
+
 Route::middleware('auth')->group(function () {
-    Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('artifacts.show');
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
 });

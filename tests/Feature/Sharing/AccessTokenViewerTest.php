@@ -104,7 +104,7 @@ test('no_viewer_keeps_the_legacy_three_part_token', function () {
         ->and($token)->toBe($message.'.'.hash_hmac('sha256', $message, 'fixed-secret'));
 });
 
-test('the_console_open_url_mints_a_viewer_bound_token_naming_the_member', function () {
+test('the_console_open_url_redirects_to_the_short_link_which_mints_for_the_member', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'test-org']);
@@ -114,12 +114,31 @@ test('the_console_open_url_mints_a_viewer_bound_token_naming_the_member', functi
     $content = app(ArtifactContentSource::class);
     $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', sharing: 'team');
 
-    $response = test()->actingAs($member)
-        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => ARTIFACT_LINK_ID,
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Quarterly report',
+        'description' => null,
+        'content_hash' => md5(ARTIFACT_LINK_ID),
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
 
-    $response->assertRedirect();
+    // The console's open control now hands out the one short link; the mint
+    // happens on the viewer route it points at, for the member who follows it.
+    test()->actingAs($member)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 
-    $parts = explode('.', sharingAccessTokenFromUrl((string) $response->headers->get('Location')));
+    $viewer = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID);
+    $viewer->assertOk();
+
+    $parts = explode('.', sharingAccessTokenFromUrl((string) $viewer->viewData('page')['props']['frameUrl']));
 
     expect($parts)->toHaveCount(5)
         ->and($parts[2])->toBe((string) $member->id)

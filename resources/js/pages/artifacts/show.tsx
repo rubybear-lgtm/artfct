@@ -1,7 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { ExternalLink } from 'lucide-react';
 
-import ArtifactViewerController from '@/actions/App/Http/Controllers/ArtifactViewerController';
 import ArtifactShareControl from '@/components/artifact-share-control';
 import type {
     ArtifactEditAccess,
@@ -9,6 +8,8 @@ import type {
 } from '@/components/artifact-share-control';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import { login } from '@/routes';
+import artifacts from '@/routes/artifacts';
 
 interface VersionRow {
     number: number;
@@ -17,6 +18,10 @@ interface VersionRow {
 }
 
 interface Props {
+    /** True when the page is the Worker's public read, not a signed-in member's own artifact. */
+    publicView: boolean;
+    /** True when a signed-out visitor may ask to sign in and edit a public artifact. */
+    canSignInToEdit: boolean;
     team: { slug: string; name: string; publicSharingAllowed: boolean };
     artifact: {
         id: string;
@@ -36,7 +41,8 @@ interface Props {
     frameUrl: string;
     viewerUrl: string;
     openUrl: string;
-    downloadUrl: string;
+    /** Null when no download is offered — the public viewer. */
+    downloadUrl: string | null;
 }
 
 /** The name a person reads: the title, or a short id when it has none. */
@@ -61,6 +67,8 @@ function versionLabel(version: number, count: number): string {
 }
 
 export default function ArtifactShow({
+    publicView,
+    canSignInToEdit,
     team,
     artifact,
     selectedVersion,
@@ -84,10 +92,10 @@ export default function ArtifactShow({
 
     const selectVersion = (version: number) => {
         router.get(
-            ArtifactViewerController.show.url(
-                { artifactId: artifact.id },
-                { query: { version } },
-            ),
+            artifacts.version.url({
+                artifactId: artifact.id,
+                version,
+            }),
             {},
             { preserveScroll: true },
         );
@@ -159,14 +167,18 @@ export default function ArtifactShow({
                                 </label>
                             )}
 
-                            <ArtifactShareControl
-                                artifactId={artifact.id}
-                                sharing={artifact.sharing}
-                                editAccess={artifact.editAccess}
-                                publicSharingAllowed={team.publicSharingAllowed}
-                                canChangeSharing={artifact.canChangeSharing}
-                                viewerUrl={viewerUrl}
-                            />
+                            {!publicView && (
+                                <ArtifactShareControl
+                                    artifactId={artifact.id}
+                                    sharing={artifact.sharing}
+                                    editAccess={artifact.editAccess}
+                                    publicSharingAllowed={
+                                        team.publicSharingAllowed
+                                    }
+                                    canChangeSharing={artifact.canChangeSharing}
+                                    viewerUrl={viewerUrl}
+                                />
+                            )}
 
                             <Button asChild variant="outline" size="sm">
                                 <a
@@ -179,14 +191,26 @@ export default function ArtifactShow({
                                 </a>
                             </Button>
 
-                            <Button asChild variant="outline" size="sm">
+                            {downloadUrl && (
+                                <Button asChild variant="outline" size="sm">
+                                    <a
+                                        href={downloadUrl}
+                                        data-testid="download-artifact"
+                                    >
+                                        Download
+                                    </a>
+                                </Button>
+                            )}
+
+                            {canSignInToEdit && (
                                 <a
-                                    href={downloadUrl}
-                                    data-testid="download-artifact"
+                                    href={login.url()}
+                                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                                    data-testid="sign-in-to-edit"
                                 >
-                                    Download
+                                    Sign in to edit
                                 </a>
-                            </Button>
+                            )}
                         </div>
                     </div>
                 </header>

@@ -1325,7 +1325,7 @@ test('deploy_artifact hands a secure artifact the apps own open route', function
         ->exists())->toBeTrue();
 });
 
-test('deploy_artifact hands a public artifact the workspaces public url without a token', function () {
+test('deploy_artifact hands a public artifact the one short link without a token', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-367-public']);
@@ -1350,12 +1350,13 @@ test('deploy_artifact hands a public artifact the workspaces public url without 
         'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html, 'tier' => 'public']],
     ])->assertOk();
 
-    // A public artifact is served by the Worker to anyone, so the URL the
-    // Worker itself published is the whole link: no token is minted for it, no
-    // app round trip is asked of the reader, and no host is guessed.
+    // A public artifact opens through the app's one short link, which renders
+    // it for anyone without a credential: the Worker's own public base is not
+    // guessed and no token is minted for the agent.
     expect($response->json('result.structuredContent.view_url'))
-        ->toBe('https://staging.artfct.dev/p/'.ARTIFACT_LINK_ID.'/')
+        ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]))
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('worker.test')
+        ->and($response->json('result.structuredContent.view_url'))->not->toContain('staging.artfct.dev')
         ->and($response->getContent())->not->toContain('token=')
         ->and($response->json('result.structuredContent.tier'))->toBe('public');
 });
@@ -1511,7 +1512,7 @@ test('a secure view_url from the workspace tools opens for a member and is refus
         ->and(artifactTokenVerifies($minted, ARTIFACT_LINK_ID, 'some-other-secret', $now))->toBeFalse();
 })->with(['deploy_artifact', 'get_artifact']);
 
-test('get_artifact hands a public artifact the workspaces public url without a token', function () {
+test('get_artifact hands a public artifact the one short link without a token', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-367-fetch-public']);
@@ -1538,7 +1539,7 @@ test('get_artifact hands a public artifact the workspaces public url without a t
     ])->assertOk();
 
     expect($response->json('result.structuredContent.view_url'))
-        ->toBe('https://artfct.dev/p/'.ARTIFACT_LINK_ID.'/');
+        ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
 test('artifact links fail closed when no signing secret is configured', function () {
@@ -1583,6 +1584,32 @@ test('artifact links fail closed when no signing secret is configured', function
         ->and($retrieval->getContent())->not->toContain('worker.test')
         ->and($deploy->json('result.content.0.text'))->toContain('not configured')
         ->and(McpActivity::query()->where('team_id', $team->id)->where('outcome', 'signed_link_unavailable')->count())->toBe(2);
+});
+
+test('a public artifact still gets the short link with no signing secret configured', function () {
+    config(['services.artifact_access.token_secret' => null]);
+
+    $team = Team::factory()->create(['slug' => 'rub-367-public-no-secret']);
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>Public no secret</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'public', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html, 'tier' => 'public']],
+    ])->assertOk();
+
+    // A public artifact renders for anyone, so it needs no signing secret to
+    // be linked: it gets the app's short route, not the fail-closed error.
+    expect($response->json('result.isError'))->toBeFalse()
+        ->and($response->json('result.structuredContent.view_url'))
+        ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
 test('an artifact whose id cannot form an isolated hostname is refused rather than linked', function () {

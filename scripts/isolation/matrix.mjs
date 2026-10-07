@@ -239,9 +239,11 @@ export async function matrix(world) {
         }
     }
 
-    // The artifact viewer (RUB-438) is a user route that names an artifact
-    // without a team: bob, signed in to his own team, must get the same 404 a
-    // missing artifact gets for the victim's id, and never its content.
+    // The artifact viewer (RUB-438 / RUB-439) names an artifact without a
+    // team: bob, signed in to his own team, must get the same 404 a missing
+    // artifact gets for the victim's id, and never its content. A signed-out
+    // visitor gets the sign-in redirect instead, with the same non-oracle
+    // body.
     for (const [method, path] of [
         ['GET', `/a/${idV}`],
         ['GET', `/a/${idV}/download`],
@@ -261,6 +263,21 @@ export async function matrix(world) {
             `got ${response.status}`,
         );
     }
+
+    const anonymousViewer = await plain('GET', `${laravel}/a/${idV}`, {
+        headers: { Accept: 'text/html' },
+    });
+    const anonymousViewerBody = (await anonymousViewer.text()).slice(0, 4000);
+    check(
+        "viewer: a signed-out visitor is sent to sign in, never shown the victim's artifact",
+        [302, 303].includes(anonymousViewer.status) &&
+            (anonymousViewer.headers.get('location') ?? '').includes(
+                '/login',
+            ) &&
+            !anonymousViewerBody.includes('isolation probe') &&
+            !anonymousViewerBody.includes(idV),
+        `got ${anonymousViewer.status}`,
+    );
 
     // Token routes that take another team's id: bob's token, the victim's id.
     const foreignCollection = await plain(
@@ -309,6 +326,11 @@ export async function matrix(world) {
         } else if (op.path.startsWith('/v1/artifacts/{id}')) {
             rule = 'artifact';
             expected = [403, 404];
+        } else if (op.path.startsWith('/v1/public/artifacts/')) {
+            // Unauthenticated public read: an id that is not a live public
+            // permanent artifact is the same 404 here as everywhere else.
+            rule = 'public-read';
+            expected = [404];
         } else if (op.path.startsWith('/v1/blobs/{sha256}')) {
             rule = 'blob';
             expected = [403, 404];

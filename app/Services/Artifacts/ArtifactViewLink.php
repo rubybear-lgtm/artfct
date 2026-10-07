@@ -7,20 +7,13 @@ namespace App\Services\Artifacts;
  * so the console, the search page, the collections page and every MCP tool
  * cannot drift apart about it.
  *
- * The rule: an artifact the Worker serves without a credential — a `public`
- * permanent artifact, or the anonymous `ephemeral` preview `deploy_to_canvas`
- * publishes — is handed out as the Worker's own `/p/{id}` URL, and no token is
- * minted for it. Every other artifact (secure, or a tier the caller could not
- * read) is handed out as the app's session-authenticated viewer route —
- * `/a/{id}` — which authorizes the viewer, resolves the sharing level, and only
- * then mints. A link an agent returns therefore works when a member clicks it
- * while signed in, and an unreadable tier fails toward the authenticated route
- * rather than toward a credential-less URL that can only 403 in a browser. The
- * viewer itself mints for a non-public artifact; the console's older open route
- * still exists for its open-in-new-tab control.
- *
- * The route is addressed relative to the request the link is minted in, so it
- * works for the hosted MCP endpoint and for the console alike.
+ * The rule: every permanent artifact — `public`, `team`, `private` or a tier
+ * the caller could not read — is handed out as the app's session-aware short
+ * link, `/a/{id}` (or `/a/{id}/v/{n}` for one version). The viewer authorizes
+ * the visitor, resolves the sharing level, and only then mints for an artifact
+ * that needs it; a public one is framed untokened. The app's own open route is
+ * what makes a link an agent returns work when a member clicks it while signed
+ * in, and it is the link that is correct for a public artifact either way.
  *
  * `deploy_to_canvas` is the exception that proves the rule: its artifacts are
  * anonymous KV records with no D1 row, so the open route can only 404 for
@@ -60,19 +53,28 @@ final class ArtifactViewLink
     /**
      * The app's viewer route for one artifact. Session authentication lives
      * here, never in the URL. A `$version` names which published version the
-     * viewer should show. The owning team is resolved from the signed-in
-     * member's memberships, so the route carries no team slug: an artifact id
-     * is not a handle anyone can use to probe whether a team exists.
+     * viewer should show, in the path as `/a/{id}/v/{n}`. The owning team is
+     * resolved from the signed-in member's memberships (or the Worker's public
+     * read for a public artifact), so the route carries no team slug: an
+     * artifact id is not a handle anyone can use to probe whether a team
+     * exists. The slug parameter is kept for callers that already hold one.
      */
     public static function appOpenUrl(string $teamSlug, string $artifactId, ?int $version = null): string
     {
-        $parameters = ['artifactId' => $artifactId];
-
         if ($version !== null) {
-            $parameters['version'] = $version;
+            return route('artifacts.version', ['artifactId' => $artifactId, 'version' => $version]);
         }
 
-        return route('artifacts.show', $parameters);
+        return route('artifacts.show', ['artifactId' => $artifactId]);
+    }
+
+    /**
+     * Whether `$tier` is the anonymous KV preview `deploy_to_canvas` publishes:
+     * the only Worker-served tier no app route can resolve from D1.
+     */
+    public static function isEphemeral(?string $tier): bool
+    {
+        return is_string($tier) && strtolower($tier) === 'ephemeral';
     }
 
     /**
@@ -97,11 +99,10 @@ final class ArtifactViewLink
      */
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null, ?int $version = null): string
     {
-        if (is_string($tier) && strtolower($tier) === 'public') {
-            return self::withPermanentEntrypointSlash($artifactId, $workerUrl ?: self::publicUrl($artifactId), $version);
-        }
-
-        if (self::isAnonymous($tier)) {
+        // Only the anonymous KV preview has no D1 row and so no app route that
+        // could resolve it: every permanent artifact, public included, is
+        // handed out as the one short link and resolved there.
+        if (self::isEphemeral($tier)) {
             return self::forAnonymousArtifact($artifactId, $workerUrl);
         }
 
