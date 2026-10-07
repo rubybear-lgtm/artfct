@@ -6,10 +6,8 @@ use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpConnection;
-use App\Models\OrgToken;
 use App\Models\Team;
 use App\Services\Billing\PlanGate;
-use App\Services\Billing\QuotaService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,28 +20,10 @@ use Inertia\Response;
  */
 class AdminOverviewController extends Controller
 {
-    public function __invoke(Request $request, Team $team, QuotaService $quota): Response
+    public function __invoke(Request $request, Team $team): Response
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
         abort_unless($request->user()->isAdminOf($team), 403);
-
-        try {
-            $status = $quota->status($team);
-            $usage = [
-                'storageBytes' => $status->storageBytes,
-                'storageLimitBytes' => $status->storageLimitBytes,
-                'artifactsThisPeriod' => $status->artifactsThisPeriod,
-                'artifactsLimit' => $status->artifactsLimit,
-                'storagePercent' => round($status->storagePercent * 100, 1),
-                'artifactsPercent' => round($status->artifactsPercent * 100, 1),
-                'storageWarning' => $status->storageWarning,
-                'artifactsWarning' => $status->artifactsWarning,
-                'storageExceeded' => $status->storageExceeded,
-                'artifactsExceeded' => $status->artifactsExceeded,
-            ];
-        } catch (\Throwable) {
-            $usage = null;
-        }
 
         return Inertia::render('teams/admin', [
             'team' => [
@@ -60,8 +40,6 @@ class AdminOverviewController extends Controller
             'connections' => [
                 'active' => McpConnection::query()->where('team_id', $team->id)->active()->count(),
             ],
-            'tokens' => OrgToken::query()->where('team_id', $team->id)->count(),
-            'usage' => $usage,
         ]);
     }
 }

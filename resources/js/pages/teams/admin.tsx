@@ -5,19 +5,6 @@ import teamRoutes from '@/routes/teams';
 
 type PlanName = 'free' | 'team' | 'enterprise';
 
-interface UsageSummary {
-    storageBytes: number;
-    storageLimitBytes: number;
-    artifactsThisPeriod: number;
-    artifactsLimit: number;
-    storagePercent: number;
-    artifactsPercent: number;
-    storageWarning: boolean;
-    artifactsWarning: boolean;
-    storageExceeded: boolean;
-    artifactsExceeded: boolean;
-}
-
 interface Props {
     team: {
         slug: string;
@@ -28,8 +15,6 @@ interface Props {
     members: { total: number; admins: number };
     pendingInvitations: number;
     connections: { active: number };
-    tokens: number;
-    usage: UsageSummary | null;
 }
 
 const PLAN_LABELS: Record<PlanName, string> = {
