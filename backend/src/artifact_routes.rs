@@ -697,7 +697,7 @@ pub(crate) async fn delete_artifact(
     ctx: &worker::Context,
 ) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
-    if artifact_id.len() == store::PUBLIC_ID_LENGTH {
+    if store::is_permanent_id(artifact_id) {
         return delete_permanent_artifact(artifact_id, req, env, ctx).await;
     }
     if !is_valid_artifact_id(artifact_id) {

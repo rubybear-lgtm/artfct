@@ -266,11 +266,7 @@ pub(crate) async fn resolve_artifact(
         suffix.split_once('/').map_or((suffix, None), |(id, file)| {
             (id, (!file.is_empty()).then_some(file))
         });
-    if artifact_id.len() == store::PUBLIC_ID_LENGTH
-        && artifact_id
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
+    if store::is_permanent_id(artifact_id) {
         return resolve_permanent_artifact(artifact_id, requested_path, req, env, ctx).await;
     }
     if !is_valid_artifact_id(artifact_id) {

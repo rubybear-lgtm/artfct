@@ -9,6 +9,7 @@ use std::{
 };
 
 use chrono::Utc;
+use getrandom::getrandom;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -18,6 +19,14 @@ use crate::governance::GovernanceError;
 
 pub const MAX_TENANT_SLUG_LENGTH: usize = 24;
 pub const PUBLIC_ID_LENGTH: usize = 32;
+/// Length of a stable artifact id. The three id shapes ([`STABLE_ID_LENGTH`]
+/// base36, [`PUBLIC_ID_LENGTH`] hex, and the 10-character ephemeral shape)
+/// never overlap, so a length alone is enough to tell them apart.
+pub const STABLE_ID_LENGTH: usize = 13;
+/// The lowercase base36 alphabet (`0-9a-z`) a stable artifact id is drawn
+/// from. Lowercase because the id becomes a hostname label in an isolated
+/// origin and browsers lowercase hostnames.
+const STABLE_ID_ALPHABET: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ArtifactId(pub String);
@@ -1293,6 +1302,56 @@ pub fn public_id(org: &str, hash: &str) -> String {
         .collect()
 }
 
+/// Mints a new stable artifact id: [`STABLE_ID_LENGTH`] characters of
+/// lowercase base36, giving about 67 bits of entropy. Rejection sampling
+/// keeps every character uniform instead of folding a biased modulo, and the
+/// id is random rather than derived from content so that publishing a new
+/// version of an artifact keeps its id.
+pub fn mint_stable_id() -> String {
+    // Largest multiple of 36 that fits a byte (36 * 7 = 252): values in
+    // 252..=255 are rejected so every accepted byte maps uniformly.
+    const BYTE_LIMIT: u16 = 36 * (256 / 36);
+    let mut id = String::with_capacity(STABLE_ID_LENGTH);
+    let mut buffer = [0u8; 16];
+    while id.len() < STABLE_ID_LENGTH {
+        getrandom(&mut buffer).expect("getrandom failed");
+        for byte in buffer {
+            if id.len() == STABLE_ID_LENGTH {
+                break;
+            }
+            let value = u16::from(byte);
+            if value < BYTE_LIMIT {
+                id.push(STABLE_ID_ALPHABET[(value % 36) as usize] as char);
+            }
+        }
+    }
+    id
+}
+
+/// Whether `id` is a stable artifact id: exactly [`STABLE_ID_LENGTH`]
+/// lowercase base36 characters.
+pub fn is_stable_id(id: &str) -> bool {
+    id.len() == STABLE_ID_LENGTH
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+}
+
+/// Whether `id` is a pre-versioning permanent artifact id: exactly
+/// [`PUBLIC_ID_LENGTH`] lowercase hex characters.
+pub fn is_legacy_public_id(id: &str) -> bool {
+    id.len() == PUBLIC_ID_LENGTH
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+/// Whether `id` names a permanent artifact, whichever id shape it was minted
+/// with. Ephemeral (KV) ids are deliberately excluded.
+pub fn is_permanent_id(id: &str) -> bool {
+    is_stable_id(id) || is_legacy_public_id(id)
+}
+
 // `as_chunks` (clippy's suggested replacement) landed after this crate's
 // pinned toolchain; keeping `chunks_exact` here so this still builds on
 // older stable Rust rather than picking up a newer MSRV for a hash
@@ -1447,6 +1506,58 @@ mod tests {
         let slug = "a".repeat(MAX_TENANT_SLUG_LENGTH);
         let label = hostname_label(&slug, &ArtifactId("a".repeat(PUBLIC_ID_LENGTH))).unwrap();
         assert!(label.len() <= 63);
+    }
+
+    #[test]
+    fn hostname_label_fits_63_chars_at_max_slug_with_stable_id() {
+        let slug = "a".repeat(MAX_TENANT_SLUG_LENGTH);
+        let label = hostname_label(&slug, &ArtifactId(mint_stable_id())).unwrap();
+        assert!(label.len() <= 63);
+    }
+
+    #[test]
+    fn mint_stable_id_is_13_lowercase_base36_chars() {
+        let id = mint_stable_id();
+        assert_eq!(id.len(), STABLE_ID_LENGTH);
+        assert!(id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()));
+    }
+
+    #[test]
+    fn mint_stable_id_mints_distinct_ids() {
+        let ids: HashSet<String> = (0..1000).map(|_| mint_stable_id()).collect();
+        assert_eq!(ids.len(), 1000);
+    }
+
+    #[test]
+    fn is_stable_id_accepts_only_13_lowercase_base36() {
+        assert!(is_stable_id(&"a".repeat(STABLE_ID_LENGTH)));
+        assert!(is_stable_id("0123456789abc"));
+        assert!(!is_stable_id(&"A".repeat(STABLE_ID_LENGTH)));
+        assert!(!is_stable_id(&"a".repeat(STABLE_ID_LENGTH - 1)));
+        assert!(!is_stable_id(&"a".repeat(STABLE_ID_LENGTH + 1)));
+        assert!(!is_stable_id("abcdefghijkl!"));
+    }
+
+    #[test]
+    fn is_legacy_public_id_accepts_only_32_lowercase_hex() {
+        assert!(is_legacy_public_id(&"0".repeat(PUBLIC_ID_LENGTH)));
+        assert!(is_legacy_public_id("0123456789abcdef0123456789abcdef"));
+        assert!(!is_legacy_public_id(&"F".repeat(PUBLIC_ID_LENGTH)));
+        assert!(!is_legacy_public_id(&"a".repeat(PUBLIC_ID_LENGTH - 1)));
+        assert!(!is_legacy_public_id(&"a".repeat(PUBLIC_ID_LENGTH + 1)));
+        assert!(!is_legacy_public_id(&"g".repeat(PUBLIC_ID_LENGTH)));
+    }
+
+    #[test]
+    fn is_permanent_id_covers_both_shapes_but_not_ephemeral() {
+        assert!(is_permanent_id(&mint_stable_id()));
+        assert!(is_permanent_id(&"a".repeat(PUBLIC_ID_LENGTH)));
+        // A 10-character ephemeral id is not a permanent artifact id.
+        assert!(!is_permanent_id(&"a".repeat(10)));
+        assert!(!is_permanent_id(&"A".repeat(STABLE_ID_LENGTH)));
+        assert!(!is_permanent_id(""));
     }
 
     #[test]

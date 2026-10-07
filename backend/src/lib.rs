@@ -239,11 +239,16 @@ enum ErrorCode {
     RateLimited,
     /// The org is at a storage or artifact-count limit, or past due (spec 14).
     QuotaExceeded,
+    /// A write lost a compare-and-set race on the artifact version: the
+    /// caller read one version but another writer committed first.
+    VersionConflict,
+    /// A version was named that does not exist for this artifact.
+    VersionNotFound,
 }
 
 impl ErrorCode {
     #[allow(dead_code, reason = "used by native contract tests")]
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 20] = [
         Self::InvalidJson,
         Self::ValidationFailed,
         Self::InvalidArtifactId,
@@ -262,6 +267,8 @@ impl ErrorCode {
         Self::AuthenticationRequired,
         Self::RateLimited,
         Self::QuotaExceeded,
+        Self::VersionConflict,
+        Self::VersionNotFound,
     ];
 }
 
@@ -483,10 +490,7 @@ fn json_error(code: ErrorCode, message: &str, status: u16) -> Result<Response> {
 }
 fn is_valid_artifact_id(id: &str) -> bool {
     (id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-        || (id.len() == store::PUBLIC_ID_LENGTH
-            && id
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+        || store::is_permanent_id(id)
 }
 
 fn random_artifact_id(length: usize) -> String {
@@ -877,15 +881,12 @@ mod tests {
                         .chars()
                         .all(|character| character.is_ascii_alphanumeric())
             }
-            "^(?:[A-Za-z0-9]{10}|[a-f0-9]{32})$" => {
+            "^(?:[A-Za-z0-9]{10}|[a-z0-9]{13}|[a-f0-9]{32})$" => {
                 (value.len() == 10
                     && value
                         .chars()
                         .all(|character| character.is_ascii_alphanumeric()))
-                    || (value.len() == store::PUBLIC_ID_LENGTH
-                        && value.chars().all(|character| {
-                            character.is_ascii_hexdigit() && !character.is_ascii_uppercase()
-                        }))
+                    || store::is_permanent_id(value)
             }
             "^[a-f0-9]{64}$" => {
                 value.len() == 64
