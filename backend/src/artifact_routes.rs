@@ -287,13 +287,9 @@ pub(crate) async fn upload_permanent_file(
             Ok(credential) => credential,
             Err(refusal) => return Ok(refusal),
         };
-    if !check_and_increment_rate_limit(env, &credential.token_id).await? {
-        return json_error(
-            ErrorCode::RateLimited,
-            "Rate limit exceeded for this token.",
-            429,
-        );
-    }
+    // Not rate limited here: a bundle uploads up to 500 files under one
+    // token, and every upload is already bounded by the manifest of a create
+    // or version publish, which are rate limited themselves.
     let suffix = path.trim_start_matches("/v1/artifacts/");
     let Some((artifact_id, content_hash)) = suffix.split_once("/files/") else {
         return json_error(

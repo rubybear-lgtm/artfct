@@ -180,16 +180,30 @@ async fn backoff(attempt: u32) {
 }
 
 /// Sends `request` until it answers or `TRANSPORT_ATTEMPTS` is exhausted.
+/// How many times a request that hit the per-token rate limit is re-sent.
+const RATE_LIMIT_RETRIES: u32 = 2;
+
 async fn execute_with_retry(
     client: &reqwest::Client,
     request: &reqwest::Request,
 ) -> Result<reqwest::Response, reqwest::Error> {
     let mut attempt = 1;
+    let mut rate_limited = 0;
     loop {
         let clone = request
             .try_clone()
             .expect("every body in this suite is buffered and therefore cloneable");
         match client.execute(clone).await {
+            // The Worker allows 60 creates and version publishes per token per
+            // minute, and this whole suite shares one token. A 429 here is the
+            // limit working, not a failure: wait out the window and re-send.
+            Ok(response)
+                if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+                    && rate_limited < RATE_LIMIT_RETRIES =>
+            {
+                rate_limited += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(61)).await;
+            }
             Ok(response) => return Ok(response),
             Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transport_failure(&error) => {
                 backoff(attempt).await;
