@@ -45,6 +45,7 @@ const supportedTools = new Set([
     'deploy_artifact',
     'deploy_to_canvas',
     'search_artifacts',
+    'list_artifacts',
     'get_connection',
     'get_usage',
     'get_artifact',
@@ -211,6 +212,25 @@ async function assertTenantIsolation(
     assert(
         foreignRead.result?.isError === true,
         'Organization B could read organization A artifact metadata',
+    );
+
+    // list_artifacts (RUB-440) reads the same org-scoped Worker list: the
+    // foreign organization's listing must never include organization A's id.
+    const foreignList = await rpc(foreignToken, foreignSession, 'tools/call', {
+        name: 'list_artifacts',
+        arguments: { limit: 50 },
+    });
+    const foreignIds = (
+        foreignList.result?.structuredContent?.artifacts ?? []
+    ).map((artifact) => artifact.id);
+    assert(
+        foreignList.result?.isError !== true,
+        'Organization B could not list its own artifacts: ' +
+            describeResult(foreignList),
+    );
+    assert(
+        !foreignIds.includes(artifactId),
+        'Organization B listed organization A artifact',
     );
 
     // The DoD says "cannot see or mutate", so the read denial is only half of it:
