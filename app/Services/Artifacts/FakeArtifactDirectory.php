@@ -59,7 +59,7 @@ class FakeArtifactDirectory implements ArtifactDirectory
         }
 
         if (! empty($filters['user_id'])) {
-            $items = array_filter($items, fn ($a) => ($a['user_id'] ?? null) === $filters['user_id']);
+            $items = array_filter($items, fn ($a) => (string) ($a['user_id'] ?? '') === (string) $filters['user_id']);
         }
 
         if (! empty($filters['q'])) {

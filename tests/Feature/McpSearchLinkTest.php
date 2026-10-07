@@ -92,12 +92,12 @@ test('the search page links each row the same way the tool does', function () {
     seedSearchableArtifact($team->slug, 'billing-dash', 'billing dashboard revenue overview');
 
     test()->actingAs($member)
-        ->get(route('teams.search', [$team, 'q' => 'billing dashboard revenue overview']))
+        ->get(route('dashboard', [$team, 'q' => 'billing dashboard revenue overview']))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('results.0.id', 'billing-dash')
-            ->where('results.0.openUrl', route('console.open', ['team' => $team->slug, 'artifactId' => 'billing-dash']))
-            ->missing('results.0.url'));
+            ->where('home.results.0.id', 'billing-dash')
+            ->where('home.results.0.openUrl', route('console.open', ['team' => $team->slug, 'artifactId' => 'billing-dash']))
+            ->missing('home.results.0.url'));
 });
 
 test('a search row carries no open link when the environment cannot mint one', function () {
@@ -108,9 +108,9 @@ test('a search row carries no open link when the environment cannot mint one', f
     seedSearchableArtifact($team->slug, 'billing-dash', 'billing dashboard revenue overview');
 
     test()->actingAs($member)
-        ->get(route('teams.search', [$team, 'q' => 'billing dashboard revenue overview']))
+        ->get(route('dashboard', [$team, 'q' => 'billing dashboard revenue overview']))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('canOpenArtifacts', false)
-            ->where('results.0.id', 'billing-dash'));
+            ->where('home.canOpenArtifacts', false)
+            ->where('home.results.0.id', 'billing-dash'));
 });

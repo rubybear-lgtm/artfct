@@ -18,13 +18,14 @@ test('the_search_page_explains_when_indexing_is_off', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
 
-    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => 'billing']))
+    test()->actingAs($member)->get(route('dashboard', [$team, 'q' => 'billing']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('teams/search')
-            ->where('indexingEnabled', false)
-            ->where('searched', false)
-            ->where('results', []));
+            ->component('dashboard')
+            ->where('home.indexingEnabled', false)
+            ->where('home.searched', false)
+            ->where('home.results', [])
+            ->where('home.recent', []));
 });
 
 test('a_member_search_runs_and_lists_the_teams_collections', function () {
@@ -33,12 +34,12 @@ test('a_member_search_runs_and_lists_the_teams_collections', function () {
     $member = memberOfTeam($team, TeamRole::Member);
     Collection::create(['team_id' => $team->id, 'name' => 'reporting', 'created_by_user_id' => $member->id]);
 
-    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => 'billing']))
+    test()->actingAs($member)->get(route('dashboard', [$team, 'q' => 'billing']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('indexingEnabled', true)
-            ->where('searched', true)
-            ->where('collections.0.name', 'reporting'));
+            ->where('home.indexingEnabled', true)
+            ->where('home.searched', true)
+            ->where('home.filterCollections.0.name', 'reporting'));
 });
 
 test('another_teams_collections_never_appear', function () {
@@ -47,14 +48,31 @@ test('another_teams_collections_never_appear', function () {
     $other = Team::factory()->create();
     Collection::create(['team_id' => $other->id, 'name' => 'secret', 'created_by_user_id' => $member->id]);
 
-    test()->actingAs($member)->get(route('teams.search', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('collections', []));
+    test()->actingAs($member)->get(route('dashboard', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('home.collections', [])
+            ->where('home.filterCollections', [])
+            ->where('home.collectionCount', 0));
 });
 
 test('non_members_get_a_404_for_the_search_page', function () {
     $team = Team::factory()->create();
 
     test()->actingAs(User::factory()->create())->get(route('teams.search', $team))->assertNotFound();
+});
+
+test('the_search_page_redirects_to_the_dashboard_with_the_query_preserved', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)
+        ->get(route('teams.search', [$team, 'q' => 'billing', 'collection' => 'reporting', 'since' => now()->subDays(3)->toDateString()]))
+        ->assertRedirect(route('dashboard', [
+            $team,
+            'q' => 'billing',
+            'collection' => 'reporting',
+            'since' => now()->subDays(3)->toDateString(),
+        ]));
 });
 
 test('the_search_page_returns_the_teams_matches_and_flags_canonical_ones', function () {
@@ -81,12 +99,12 @@ test('the_search_page_returns_the_teams_matches_and_flags_canonical_ones', funct
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'canon', 'canonical' => true, 'created_by_user_id' => $member->id]);
     CollectionArtifact::create(['collection_id' => $collection->id, 'artifact_id' => 'billing-dash', 'added_at' => now()]);
 
-    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => 'billing dashboard revenue overview']))
+    test()->actingAs($member)->get(route('dashboard', [$team, 'q' => 'billing dashboard revenue overview']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('searched', true)
-            ->where('results.0.id', 'billing-dash')
-            ->where('results.0.canonical', true));
+            ->where('home.searched', true)
+            ->where('home.results.0.id', 'billing-dash')
+            ->where('home.results.0.canonical', true));
 });
 
 test('provenance_and_date_filters_narrow_the_results', function () {
@@ -112,9 +130,11 @@ test('provenance_and_date_filters_narrow_the_results', function () {
         )]);
     }
 
-    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => $text, 'agent' => 'claude']))
-        ->assertInertia(fn (Assert $page) => $page->has('results', 1)->where('results.0.id', 'new-claude'));
+    // The dashboard dropped the developer-only agent filter, so an `agent`
+    // query parameter narrows nothing.
+    test()->actingAs($member)->get(route('dashboard', [$team, 'q' => $text, 'agent' => 'claude']))
+        ->assertInertia(fn (Assert $page) => $page->has('home.results', 2));
 
-    test()->actingAs($member)->get(route('teams.search', [$team, 'q' => $text, 'since' => now()->subDays(3)->toDateString()]))
-        ->assertInertia(fn (Assert $page) => $page->has('results', 1)->where('results.0.id', 'new-claude')->where('filters.since', now()->subDays(3)->toDateString()));
+    test()->actingAs($member)->get(route('dashboard', [$team, 'q' => $text, 'since' => now()->subDays(3)->toDateString()]))
+        ->assertInertia(fn (Assert $page) => $page->has('home.results', 1)->where('home.results.0.id', 'new-claude')->where('home.filters.since', now()->subDays(3)->toDateString()));
 });
