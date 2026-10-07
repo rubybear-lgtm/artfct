@@ -95,23 +95,35 @@ final class OrgJwtService
      * calls made on behalf of a signed-in user (`$userId` is their id) or the
      * system (`'system'`). The Worker takes the org from this claim only.
      *
+     * @param  list<string>  $scopes  Optional least-privilege scope restriction.
+     *                                A server-side read that must see private
+     *                                artifacts has to ask for
+     *                                `artifacts:read_private` explicitly — the
+     *                                Worker's private tier is not implied by the
+     *                                org credential.
      * @return array{token: string, jti: string, expires_at: Carbon}
      */
-    public function mintFor(string $orgSlug, string $userId, TeamRole $role, int $ttlSeconds = 300): array
+    public function mintFor(string $orgSlug, string $userId, TeamRole $role, int $ttlSeconds = 300, array $scopes = []): array
     {
         $jti = (string) Str::uuid();
         $expiresAt = Carbon::now()->addSeconds($ttlSeconds);
 
+        $claims = [
+            'iss' => $this->issuer(),
+            'aud' => $this->audience(),
+            'org_id' => $orgSlug,
+            'user_id' => $userId,
+            'role' => $role->value,
+            'exp' => $expiresAt->timestamp,
+            'jti' => $jti,
+        ];
+
+        if ($scopes !== []) {
+            $claims['scope'] = implode(' ', $scopes);
+        }
+
         $token = JWT::encode(
-            [
-                'iss' => $this->issuer(),
-                'aud' => $this->audience(),
-                'org_id' => $orgSlug,
-                'user_id' => $userId,
-                'role' => $role->value,
-                'exp' => $expiresAt->timestamp,
-                'jti' => $jti,
-            ],
+            $claims,
             $this->privateKeyPem,
             'RS256',
             $this->kid,

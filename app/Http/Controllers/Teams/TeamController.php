@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
+use App\Services\Sharing\OrgSettingsWriter;
 use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,6 +71,7 @@ class TeamController extends Controller
                 'authMode' => $team->auth_mode->value,
                 'plan' => ($team->plan ?? Plan::Free)->value,
                 'ownerId' => $team->owner_user_id,
+                'publicSharingAllowed' => (bool) $team->public_sharing_allowed,
             ],
             'viewer' => [
                 'id' => $user->id,
@@ -123,7 +125,7 @@ class TeamController extends Controller
     /**
      * Update the specified team.
      */
-    public function update(SaveTeamRequest $request, Team $team, AuditLogger $auditLogger): RedirectResponse
+    public function update(SaveTeamRequest $request, Team $team, AuditLogger $auditLogger, OrgSettingsWriter $settingsWriter): RedirectResponse
     {
         Gate::authorize('update', $team);
 
@@ -141,9 +143,65 @@ class TeamController extends Controller
             $auditLogger->recordForRequest($request, AuditEventType::TeamRenamed, $team, (string) $request->user()->id, "{$previousName} -> {$team->name}");
         }
 
+        if ($request->has('public_sharing_allowed') && ! $this->updatePublicSharing($request, $team, $settingsWriter, $auditLogger)) {
+            return to_route('teams.edit', ['team' => $team->slug]);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team updated.')]);
 
         return to_route('teams.edit', ['team' => $team->slug]);
+    }
+
+    /**
+     * Push the team's public-sharing setting to the Worker and, only once the
+     * Worker has accepted it, mirror it locally and audit the change. Failing
+     * closed matters here: the Worker is what serves or refuses a public link,
+     * so a dropped push must leave the local setting as it was rather than
+     * claim public links are off while they still resolve.
+     */
+    private function updatePublicSharing(SaveTeamRequest $request, Team $team, OrgSettingsWriter $settingsWriter, AuditLogger $auditLogger): bool
+    {
+        $allowed = $request->boolean('public_sharing_allowed');
+        $previous = (bool) $team->public_sharing_allowed;
+
+        if ($allowed === $previous) {
+            return true;
+        }
+
+        $downgraded = $settingsWriter->pushPublicSharing($team, $allowed);
+
+        if ($downgraded === null) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't update public links. Try again.")]);
+
+            return false;
+        }
+
+        $team->forceFill(['public_sharing_allowed' => $allowed])->save();
+
+        // Turning public sharing off downgrades every public artifact to team.
+        // Each of those is a sharing change the admin caused, so each gets its
+        // own row rather than one aggregate nobody can trace to an artifact.
+        if (! $allowed) {
+            foreach ($downgraded as $artifactId) {
+                $auditLogger->recordForRequest(
+                    $request,
+                    AuditEventType::ArtifactSharingChanged,
+                    $team,
+                    (string) $request->user()->id,
+                    "artifact:{$artifactId} public->team (public sharing turned off)",
+                );
+            }
+        }
+
+        $auditLogger->recordForRequest(
+            $request,
+            AuditEventType::PublicSharingChanged,
+            $team,
+            (string) $request->user()->id,
+            'public_sharing_allowed '.($previous ? 'on' : 'off').' -> '.($allowed ? 'on' : 'off'),
+        );
+
+        return true;
     }
 
     /**
