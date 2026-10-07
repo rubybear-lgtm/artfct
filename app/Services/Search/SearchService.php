@@ -117,7 +117,7 @@ final class SearchService
         $top = array_slice($ranked, 0, $limit);
 
         $results = array_map(
-            fn (VectorMatch $match): SearchResult => $this->toResult($match, $directory[$match->chunk->artifactId]),
+            fn (VectorMatch $match): SearchResult => $this->toResult($team, $match, $directory[$match->chunk->artifactId]),
             $top,
         );
 
@@ -224,13 +224,15 @@ final class SearchService
     /**
      * @param  array<string, mixed>  $artifact
      */
-    private function toResult(VectorMatch $match, array $artifact): SearchResult
+    private function toResult(Team $team, VectorMatch $match, array $artifact): SearchResult
     {
         return new SearchResult(
             id: $match->chunk->artifactId,
             title: $artifact['title'] ?? $match->chunk->artifactId,
             description: $artifact['description'] ?? null,
-            url: ArtifactViewLink::publicPermanentUrl($match->chunk->artifactId),
+            // The short viewer link (RUB-439), the same link every other
+            // surface hands out, whatever the artifact's sharing level.
+            url: ArtifactViewLink::forArtifact($team->slug, $match->chunk->artifactId, $artifact['tier'] ?? null),
             snippet: $this->snippet($match->chunk->text),
             agent: $match->chunk->agent,
             repoUrl: $match->chunk->repoUrl,

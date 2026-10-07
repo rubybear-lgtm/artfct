@@ -83,7 +83,7 @@ test('semantic_query_finds_relevant_artifact', function () {
     expect($results[0]->id)->toBe('billing-dash');
 });
 
-test('search_results_use_the_worker_public_host_for_permanent_artifacts', function () {
+test('search_results_link_to_the_short_viewer_link', function () {
     config([
         'app.public_base_url' => null,
         'services.worker.base_url' => 'https://staging-worker.example.test',
@@ -96,7 +96,7 @@ test('search_results_use_the_worker_public_host_for_permanent_artifacts', functi
 
     $results = app(SearchService::class)->search($team, 'staging worker host', [], 5, 'tester');
 
-    expect($results[0]->url)->toBe("https://staging-worker.example.test/p/{$artifactId}/");
+    expect($results[0]->url)->toBe(route('artifacts.show', ['artifactId' => $artifactId]));
 });
 
 test('api_search_explains_when_indexing_is_disabled', function () {
