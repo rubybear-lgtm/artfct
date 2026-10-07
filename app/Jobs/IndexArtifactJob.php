@@ -37,6 +37,7 @@ class IndexArtifactJob implements ShouldQueue
         public readonly string $artifactId,
         public readonly string $html,
         public readonly array $provenance,
+        public readonly ?int $version = null,
     ) {}
 
     /**
@@ -55,7 +56,7 @@ class IndexArtifactJob implements ShouldQueue
     public function handle(IndexingService $indexer): void
     {
         $team = Team::query()->findOrFail($this->teamId);
-        $indexer->indexArtifact($team, $this->artifactId, $this->html, $this->provenance);
+        $indexer->indexArtifact($team, $this->artifactId, $this->html, $this->provenance, $this->version);
         ArtifactIndexingFailure::query()->where('team_id', $this->teamId)->where('artifact_id', $this->artifactId)->delete();
         Cache::forget(self::reindexCacheKey($this->teamId, $this->artifactId));
     }

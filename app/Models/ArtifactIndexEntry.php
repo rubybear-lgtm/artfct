@@ -13,13 +13,14 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $team_id
  * @property string $artifact_id
+ * @property int|null $version
  * @property bool $rendered
  * @property string $extracted_text
  * @property string|null $title
  * @property array<int, string>|null $headings
  * @property Carbon $extracted_at
  */
-#[Fillable(['team_id', 'artifact_id', 'rendered', 'extracted_text', 'title', 'headings', 'extracted_at'])]
+#[Fillable(['team_id', 'artifact_id', 'version', 'rendered', 'extracted_text', 'title', 'headings', 'extracted_at'])]
 class ArtifactIndexEntry extends Model
 {
     /** @use HasFactory<ArtifactIndexEntryFactory> */
@@ -27,6 +28,7 @@ class ArtifactIndexEntry extends Model
 
     protected $casts = [
         'rendered' => 'boolean',
+        'version' => 'integer',
         'headings' => 'array',
         'extracted_at' => 'datetime',
     ];

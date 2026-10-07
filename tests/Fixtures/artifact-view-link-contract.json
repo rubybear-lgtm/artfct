@@ -2,7 +2,9 @@
   "_comment": "The artifact view-link shape the hosted MCP server is tested against. Read by tests/Feature/McpContractTest.php (App\\Services\\Artifacts\\ArtifactViewLink) so the field name and which link a tier gets cannot drift. `ephemeral` is the anonymous expiring tier deploy_to_canvas publishes: the Worker serves it to anyone, so it is the raw URL like public.",
   "field": "view_url",
   "public_path_template": "/p/{artifact}",
+  "versioned_public_path_template": "/p/{artifact}/v:{version}/",
   "app_open_path_template": "/settings/teams/{team}/console/artifacts/{artifactId}/open",
+  "app_open_version_query": "version",
   "tiers": {
     "public": "worker_public_url",
     "ephemeral": "worker_public_url",

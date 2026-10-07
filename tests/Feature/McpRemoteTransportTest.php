@@ -530,7 +530,7 @@ test('remote tool failures expose stable safe error metadata', function () {
         'method' => 'tools/call',
         'params' => [
             'name' => 'get_artifact',
-            'arguments' => ['id' => 'artifact123'],
+            'arguments' => ['id' => ARTIFACT_LINK_ID],
         ],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
@@ -1566,14 +1566,14 @@ test('an artifact whose id cannot form an isolated hostname is refused rather th
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
-        'worker.test/v1/artifacts/artifact123' => Http::response([
+        'worker.test/v1/artifacts/abcdefghij' => Http::response([
             'id' => 'artifact-123', 'tier' => 'permanent', 'entrypoint' => 'index.html',
         ], 200),
     ]);
 
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'artifact123']],
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'abcdefghij']],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')

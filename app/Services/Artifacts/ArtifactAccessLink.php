@@ -83,7 +83,7 @@ final class ArtifactAccessLink
      * which is also what binds the link to the org that owns the artifact:
      * the Worker only authorizes a token presented on the owning org's host.
      */
-    public function forArtifact(string $tenantSlug, string $artifactId, ?CarbonInterface $expiresAt = null): ?string
+    public function forArtifact(string $tenantSlug, string $artifactId, ?CarbonInterface $expiresAt = null, ?int $version = null): ?string
     {
         if (! $this->configured()) {
             return null;
@@ -92,7 +92,9 @@ final class ArtifactAccessLink
         $hostname = $this->isolatedHostname($tenantSlug, $artifactId);
         $expiresAtUnix = ($expiresAt ?? now()->addMinutes($this->ttlMinutes))->getTimestamp();
 
-        return "https://{$hostname}/p/{$artifactId}/?token={$this->mintToken($artifactId, $expiresAtUnix)}";
+        $path = $version === null ? "/p/{$artifactId}/" : "/p/{$artifactId}/v:{$version}/";
+
+        return "https://{$hostname}{$path}?token={$this->mintToken($artifactId, $expiresAtUnix)}";
     }
 
     /**
@@ -107,7 +109,7 @@ final class ArtifactAccessLink
     }
 
     /**
-     * Mirrors `store::hostname_label`: a slug the Worker accepts, a public
+     * Mirrors `store::hostname_label`: a slug the Worker accepts, a permanent
      * artifact id, and a label that fits one DNS label. Anything else is a
      * boundary error rather than a link to hand a browser — a link built
      * anyway would only ever 403 at the artifact origin.
@@ -118,8 +120,8 @@ final class ArtifactAccessLink
             throw new RuntimeException("Team slug [{$tenantSlug}] cannot form an artifact hostname.");
         }
 
-        if (preg_match('/^[0-9a-f]{32}$/', $artifactId) !== 1) {
-            throw new RuntimeException("Artifact id [{$artifactId}] is not a public artifact id.");
+        if (! ArtifactIdShape::isPermanent($artifactId)) {
+            throw new RuntimeException("Artifact id [{$artifactId}] is not a permanent artifact id.");
         }
 
         $label = "{$tenantSlug}--{$artifactId}";

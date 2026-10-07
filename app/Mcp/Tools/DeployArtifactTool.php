@@ -7,6 +7,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
@@ -88,11 +89,18 @@ final class DeployArtifactTool extends Tool
             'files.*.encoding' => ['nullable', 'string', 'in:utf8,base64'],
             'files.*.content_type' => ['nullable', 'string', 'max:100'],
             'entrypoint' => ['nullable', 'string', 'max:255'],
+            'artifact_id' => ['nullable', 'string', 'max:128'],
             'tier' => ['nullable', 'string', 'in:public,secure'],
             'title' => ['nullable', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
         ]);
+
+        $artifactIdInput = $validated['artifact_id'] ?? null;
+        if ($artifactIdInput !== null && ! ArtifactIdShape::isPermanent($artifactIdInput)) {
+            return McpErrorResponse::error('`artifact_id` must be the permanent artifact id deploy_artifact returned: 13 lowercase base36 characters or 32 hexadecimal characters.', 'invalid_request');
+        }
+        $versionPublish = $artifactIdInput !== null;
 
         $hasHtml = isset($validated['html']) && trim($validated['html']) !== '';
         $hasFiles = ! empty($validated['files']);
@@ -150,9 +158,7 @@ final class DeployArtifactTool extends Tool
         $description = $validated['description'] ?? $title;
 
         try {
-            $created = Http::withToken($token)->post($baseUrl.'/v1/artifacts', [
-                'mode' => 'permanent',
-                'tier' => $validated['tier'] ?? 'secure',
+            $payload = [
                 'title' => $title,
                 'description' => $description,
                 'thumbnail' => 'https://artfct.dev/og-image.svg',
@@ -168,7 +174,18 @@ final class DeployArtifactTool extends Tool
                     'external_origins' => [],
                 ],
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
-            ]);
+            ];
+
+            // A new version keeps the artifact's existing mode and tier, so
+            // those fields are deliberately absent from a version request.
+            if (! $versionPublish) {
+                $payload = ['mode' => 'permanent', 'tier' => $validated['tier'] ?? 'secure'] + $payload;
+            }
+
+            $created = Http::withToken($token)->post(
+                $versionPublish ? $baseUrl.'/v1/artifacts/'.$artifactIdInput.'/versions' : $baseUrl.'/v1/artifacts',
+                $payload,
+            );
 
             if ($created->successful()) {
                 $uploaded = [];
@@ -209,6 +226,24 @@ final class DeployArtifactTool extends Tool
             return McpErrorResponse::error('This workspace is over its plan limits. Use get_usage to inspect them.', 'quota_exceeded', false, 'get_usage');
         }
 
+        if ($versionPublish && $created->status() === 403) {
+            app(McpTelemetry::class)->record('deploy_artifact', 'edit_forbidden', $startedAt);
+
+            return McpErrorResponse::error('You can only publish new versions of artifacts you own or that are shared with you for editing. Publish it as a new artifact instead by calling deploy_artifact without artifact_id.', 'edit_forbidden');
+        }
+
+        if ($versionPublish && $created->status() === 404) {
+            app(McpTelemetry::class)->record('deploy_artifact', 'artifact_not_found', $startedAt);
+
+            return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
+        }
+
+        if ($versionPublish && $created->status() === 409) {
+            app(McpTelemetry::class)->record('deploy_artifact', 'version_conflict', $startedAt);
+
+            return McpErrorResponse::error('Another version was being published at the same time. Retry the deployment.', 'version_conflict', true);
+        }
+
         if (! $created->successful()) {
             app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
 
@@ -233,13 +268,20 @@ final class DeployArtifactTool extends Tool
             "artifact:{$artifactId}",
         );
 
-        return Response::structured([
+        $result = [
             'id' => $artifactId,
             'view_url' => $link,
             'tier' => $created->json('tier'),
+            'version' => (int) $created->json('version'),
             'title' => $title,
             'organization' => $team->slug,
-        ]);
+        ];
+
+        if ($versionPublish) {
+            $result['created'] = (bool) $created->json('created');
+        }
+
+        return Response::structured($result);
     }
 
     /**
@@ -258,7 +300,8 @@ final class DeployArtifactTool extends Tool
                 'content_type' => $schema->string()->max(100)->description('Optional media type; inferred from the file extension when omitted.')->nullable(),
             ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
             'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
-            'tier' => $schema->string()->enum(['public', 'secure'])->description('Who can open the link: secure (default, signed-in workspace members) or public.')->nullable(),
+            'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact.')->nullable(),
+            'tier' => $schema->string()->enum(['public', 'secure'])->description('Who can open the link: secure (default, signed-in workspace members) or public. Ignored when publishing a new version with `artifact_id`; a new version keeps the artifact\'s existing tier.')->nullable(),
             'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title.')->nullable(),
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),

@@ -6,6 +6,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Services\Artifacts\ArtifactIdShape;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
@@ -51,8 +52,15 @@ final class GetArtifactTool extends Tool
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'get_artifact');
         $validated = $request->validate([
-            'id' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9]+$/'],
+            'id' => ['required', 'string', 'max:128', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! is_string($value) || (! ArtifactIdShape::isPermanent($value) && ! ArtifactIdShape::isEphemeral($value))) {
+                    $fail('The :attribute field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters) or a 10-character ephemeral artifact id.');
+                }
+            }],
+            'version' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        $version = isset($validated['version']) ? (int) $validated['version'] : null;
 
         $workerBaseUrl = config('services.worker.base_url');
         if (! is_string($workerBaseUrl) || $workerBaseUrl === '') {
@@ -61,9 +69,16 @@ final class GetArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service is not configured.', 'configuration_error');
         }
 
+        $artifactUrl = rtrim($workerBaseUrl, '/').'/v1/artifacts/'.$validated['id'];
+
         try {
             $response = Http::withToken(McpContext::httpRequest()->bearerToken())
-                ->get(rtrim($workerBaseUrl, '/').'/v1/artifacts/'.$validated['id']);
+                ->get($artifactUrl);
+
+            $versionResponse = $version === null
+                ? null
+                : Http::withToken(McpContext::httpRequest()->bearerToken())
+                    ->get($artifactUrl.'/versions/'.$version);
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('get_artifact', 'error', $startedAt);
@@ -83,11 +98,23 @@ final class GetArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service could not retrieve that artifact.', 'artifact_retrieval_failed', true);
         }
 
+        if ($versionResponse !== null && $versionResponse->status() === 404) {
+            app(McpTelemetry::class)->record('get_artifact', 'version_not_found', $startedAt);
+
+            return McpErrorResponse::error('That version of the artifact was not found.', 'version_not_found');
+        }
+
+        if ($versionResponse !== null && ! $versionResponse->successful()) {
+            app(McpTelemetry::class)->record('get_artifact', 'error', $startedAt);
+
+            return McpErrorResponse::error('The artifact service could not retrieve that version.', 'artifact_retrieval_failed', true);
+        }
+
         $artifactId = (string) $response->json('id');
         $tier = $response->json('tier');
         // The metadata endpoint returns no URL, so an anonymous artifact's link
         // is built from this environment's public base.
-        $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null);
+        $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null, null, $version);
 
         if ($link instanceof Response) {
             app(McpTelemetry::class)->record('get_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $validated['id']);
@@ -96,6 +123,24 @@ final class GetArtifactTool extends Tool
         }
 
         app(McpTelemetry::class)->record('get_artifact', 'success', $startedAt, $validated['id']);
+
+        if ($versionResponse !== null) {
+            return Response::structured([
+                'id' => $artifactId,
+                'view_url' => $link,
+                'tier' => $tier,
+                'version' => (int) $versionResponse->json('version'),
+                'version_count' => $response->json('version_count'),
+                'updated_at' => $response->json('updated_at'),
+                'title' => $versionResponse->json('title'),
+                'description' => $versionResponse->json('description'),
+                'created_at' => $versionResponse->json('created_at'),
+                'created_by' => $versionResponse->json('created_by'),
+                'agent' => $versionResponse->json('agent'),
+                'current' => $versionResponse->json('current'),
+                'restored_from' => $versionResponse->json('restored_from'),
+            ]);
+        }
 
         return Response::structured([
             'id' => $artifactId,
@@ -106,6 +151,9 @@ final class GetArtifactTool extends Tool
             'expires_at' => $response->json('expires_at'),
             'title' => $response->json('title'),
             'description' => $response->json('description'),
+            'version' => $response->json('version'),
+            'version_count' => $response->json('version_count'),
+            'updated_at' => $response->json('updated_at'),
         ]);
     }
 
@@ -122,6 +170,7 @@ final class GetArtifactTool extends Tool
                 ->max(128)
                 ->description('The artifact ID returned by deploy_artifact or search_artifacts.')
                 ->required(),
+            'version' => $schema->integer()->min(1)->description('Optional published version to read; omitted reads the artifact and its current version.')->nullable(),
         ];
     }
 }
