@@ -1,10 +1,12 @@
 <?php
 
 use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Artifacts\FakeArtifactDirectory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 
@@ -44,7 +46,27 @@ test('hostile preview content cannot run scripts or load network resources even 
 
     /** @var FakeArtifactContentSource $source */
     $source = app(ArtifactContentSource::class);
-    $source->seed($team->slug, 'hostile-preview', $html);
+    // The preview applies the Private rule itself, so a seed that omits the
+    // sharing level fails closed now; `team` keeps the hostile payload shown.
+    $source->seed($team->slug, 'hostile-preview', $html, sharing: 'team');
+
+    // The collections page renders only artifacts the directory says this
+    // member may see, so the stack has to be seeded there too for the embedded
+    // preview to be exercised.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => 'hostile-preview',
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Hostile preview',
+        'description' => null,
+        'content_hash' => md5('hostile-preview'),
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'provenance' => ['agent' => null, 'repo_url' => null, 'commit_sha' => null],
+    ]);
 
     // The same payload without the preview headers proves the probes detect
     // script execution and outbound loads rather than passing vacuously.

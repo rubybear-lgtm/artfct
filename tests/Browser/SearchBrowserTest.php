@@ -57,7 +57,7 @@ test('search_and_open_result', function () {
         ->assertSee('Billing dashboard')
         ->assertSee('Cursor')
         ->assertAttribute('@search-result-link', 'target', '_blank')
-        ->assertAttributeContains('@search-result-link', 'href', '/open')
+        ->assertAttributeContains('@search-result-link', 'href', '/a/')
         ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')
         ->assertNoJavaScriptErrors();
 
@@ -108,7 +108,7 @@ test('legacy_search_url_lands_on_the_dashboard_with_results', function () {
         ->assertValue('input[aria-label="Search query"]', $text)
         ->assertSee('Billing dashboard')
         ->assertAttribute('@search-result-link', 'target', '_blank')
-        ->assertAttributeContains('@search-result-link', 'href', '/open')
+        ->assertAttributeContains('@search-result-link', 'href', '/a/')
         ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')
         ->assertNoJavaScriptErrors();
 });

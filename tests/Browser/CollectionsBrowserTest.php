@@ -88,8 +88,10 @@ test('a_stack_opens_in_a_modal_and_closes_with_its_close_button', function () {
     [$team, $owner] = stacksTeam('Tap Users', 'tap-user@example.com');
     seedStackArtifact($team, 'tap-report-1', 'Tap report');
 
-    // 'tap-unknown-1' is deliberately absent from the directory: the panel
-    // must still list it by short id, the way the page has always fallen back.
+    // The collections page lists only artifacts the directory says this member
+    // may see, so the second member of the stack has to be seeded to appear.
+    seedStackArtifact($team, 'tap-unknown-1', 'Tap unknown report');
+
     $collection = seedStackCollection($team, $owner->id, 'Tappable', ['tap-report-1', 'tap-unknown-1']);
     test()->actingAs($owner);
 
@@ -100,7 +102,7 @@ test('a_stack_opens_in_a_modal_and_closes_with_its_close_button', function () {
         ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
         ->assertPresent("@collection-panel-{$collection->id}")
         ->assertSee('Tap report')
-        ->assertSee('tap-unkn')
+        ->assertSee('Tap unknown report')
         ->assertNoJavaScriptErrors();
 
     $page->click("@collection-close-{$collection->id}")
@@ -270,11 +272,12 @@ test('rename_add_and_remove_keep_the_stack_modal_open', function () {
         ->assertNoJavaScriptErrors();
 });
 
-test('collection_open_links_use_the_apps_open_route_in_a_new_tab', function () {
+test('collection_open_links_use_the_apps_viewer_route_in_a_new_tab', function () {
     config(['services.artifact_access.token_secret' => 'browser-artifact-secret']);
 
     [$team, $owner] = stacksTeam('Stack Open Users', 'stack-open-user@example.com');
 
+    seedStackArtifact($team, ARTIFACT_LINK_ID, 'Stack open report');
     $collection = seedStackCollection($team, $owner->id, 'Openable', [ARTIFACT_LINK_ID]);
     test()->actingAs($owner);
 
@@ -286,15 +289,15 @@ test('collection_open_links_use_the_apps_open_route_in_a_new_tab', function () {
     $page->click("@collection-toggle-{$collection->id}")
         ->wait(0.5)
         ->assertPresent("@collection-panel-{$collection->id}")
-        // The title links through the open action, and the row offers an
-        // explicit Open control with the same target: both point at the open
+        // The title links through the viewer action, and the row offers an
+        // explicit Open control with the same target: both point at the viewer
         // action, never at a token.
         ->assertAttribute("@{$openTitleTestId}", 'target', '_blank')
-        ->assertAttributeContains("@{$openTitleTestId}", 'href', '/open')
+        ->assertAttributeContains("@{$openTitleTestId}", 'href', '/a/'.ARTIFACT_LINK_ID)
         ->assertAttributeDoesntContain("@{$openTitleTestId}", 'href', 'token=')
         ->assertAttribute("@{$openTestId}", 'target', '_blank')
         ->assertAttribute("@{$openTestId}", 'rel', 'noreferrer')
-        ->assertAttributeContains("@{$openTestId}", 'href', '/open')
+        ->assertAttributeContains("@{$openTestId}", 'href', '/a/'.ARTIFACT_LINK_ID)
         ->assertAttributeDoesntContain("@{$openTestId}", 'href', 'token=')
         ->assertScript(<<<JS
             (() => {

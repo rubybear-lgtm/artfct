@@ -194,7 +194,7 @@ test('search_and_open_result', function () {
         ->assertNoJavaScriptErrors();
 
     $page
-        ->assertAttributeContains('@search-result-link', 'href', '/open')
+        ->assertAttributeContains('@search-result-link', 'href', '/a/')
         ->assertAttributeDoesntContain('@search-result-link', 'href', 'token=')
         ->assertAttribute('@search-result-link', 'target', '_blank');
 });
