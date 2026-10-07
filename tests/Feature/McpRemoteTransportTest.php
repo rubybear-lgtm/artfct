@@ -1497,8 +1497,9 @@ test('a secure view_url from the workspace tools opens for a member and is refus
         ->and($followed['location'])->toBeNull();
 
     // Inertia serialises the page props as JSON, so the frame URL's slashes
-    // are escaped; the token charset is not, so it can be read directly.
-    preg_match('#token=([0-9a-f.]+)#', $followed['body'], $matches);
+    // are escaped; the token's own charset (hex, base36 viewer, `p`/`m` scope,
+    // dots) is not, so it can be read directly.
+    preg_match('#token=([0-9A-Za-z._-]+)#', $followed['body'], $matches);
     $minted = (string) ($matches[1] ?? '');
     $now = now()->timestamp;
 

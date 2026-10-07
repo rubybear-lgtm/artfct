@@ -11,7 +11,9 @@ final class RealRenderer implements RendererContract
 
     public function render(string $orgId, string $artifactId, string $html): RenderResult
     {
-        $url = ArtifactAccessLink::default()->forArtifact($orgId, $artifactId);
+        // Indexing renders private artifacts too, so it mints as the
+        // server-side `system` viewer with the private-seeing scope.
+        $url = ArtifactAccessLink::default()->forArtifact($orgId, $artifactId, viewer: 'system', viewerSeesPrivate: true);
         if ($url === null) {
             throw new RuntimeException('Artifact access signing must be configured to render artifacts.');
         }

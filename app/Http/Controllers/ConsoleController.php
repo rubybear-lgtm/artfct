@@ -285,7 +285,7 @@ class ConsoleController extends Controller
 
         $links = ArtifactAccessLink::default();
         $expiresAt = now()->addMinutes($links->ttlMinutes());
-        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version);
+        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $version, (string) $user->id, $user->isAdminOf($team));
 
         abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
 

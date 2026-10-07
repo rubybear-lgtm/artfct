@@ -67,7 +67,7 @@ final class ArtifactViewerController extends Controller
             $openUrl = $frameUrl;
         } else {
             $expiresAt = now()->addMinutes($links->ttlMinutes());
-            $frameUrl = $links->forArtifact($team->slug, $artifactId, $expiresAt, $selectedVersion);
+            $frameUrl = $links->forArtifact($team->slug, $artifactId, $expiresAt, $selectedVersion, (string) $user->id, $user->isAdminOf($team));
 
             abort_if($frameUrl === null, 503, 'Signed artifact links are not configured on this environment.');
 

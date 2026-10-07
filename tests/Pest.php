@@ -228,26 +228,32 @@ function configureArtifactLinks(string $secret = ARTIFACT_LINK_SECRET, string $s
 
 /**
  * Stands in for the Worker's `verify_access_token` (`backend/src/lib.rs`),
- * re-deriving the HMAC from the documented wire form
- * `<artifact_id>.<expires_at_unix>.<hmac_hex>` instead of trusting the
+ * re-deriving the HMAC from the documented wire form instead of trusting the
  * minter — a disagreement about the token has to fail here, not pass because
- * one side asserted its own output.
+ * one side asserted its own output. Both the legacy
+ * `<artifact_id>.<expires_at_unix>.<hmac_hex>` and the viewer-bound
+ * `<artifact_id>.<expires_at_unix>.<viewer>.<scope>.<hmac_hex>` are accepted,
+ * exactly as the Worker accepts them.
  */
 function artifactTokenVerifies(string $token, string $artifactId, string $secret, int $now): bool
 {
-    $parts = explode('.', $token, 3);
+    $parts = explode('.', $token);
 
-    if (count($parts) !== 3 || ! hash_equals($parts[0], $artifactId)) {
+    if (count($parts) === 3) {
+        [$id, $expiresAt, $mac] = $parts;
+        $message = "{$id}.{$expiresAt}";
+    } elseif (count($parts) === 5) {
+        [$id, $expiresAt, $viewer, $scope, $mac] = $parts;
+        $message = "{$id}.{$expiresAt}.{$viewer}.{$scope}";
+    } else {
         return false;
     }
 
-    $expiresAt = $parts[1];
-
-    if (! ctype_digit($expiresAt) || $now >= (int) $expiresAt) {
+    if (! hash_equals($id, $artifactId) || ! ctype_digit($expiresAt) || $now >= (int) $expiresAt) {
         return false;
     }
 
-    return hash_equals($parts[2], hash_hmac('sha256', "{$parts[0]}.{$expiresAt}", $secret));
+    return hash_equals($mac, hash_hmac('sha256', $message, $secret));
 }
 
 /*
