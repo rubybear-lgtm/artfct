@@ -278,7 +278,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     dashboard.url({ current_team: team.slug }),
                                 )}
                             >
-                                Dashboard
+                                Home
                             </Link>
                             <Link
                                 href={consoleRoutes.index.url({
@@ -291,16 +291,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 )}
                             >
                                 Artifacts
-                            </Link>
-                            <Link
-                                href={teamRoutes.search.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    teamRoutes.search.url({ team: team.slug }),
-                                )}
-                            >
-                                Search
                             </Link>
                             <Link
                                 href={teamRoutes.collections.index.url({
@@ -444,7 +434,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                     current_team: team.slug,
                                                 }),
                                                 key: 'dashboard',
-                                                label: 'Dashboard',
+                                                label: 'Home',
                                             },
                                             {
                                                 href: consoleRoutes.index.url({
@@ -452,13 +442,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                 }),
                                                 key: 'artifacts',
                                                 label: 'Artifacts',
-                                            },
-                                            {
-                                                href: teamRoutes.search.url({
-                                                    team: team.slug,
-                                                }),
-                                                key: 'search',
-                                                label: 'Search',
                                             },
                                             {
                                                 href: teamRoutes.collections.index.url(

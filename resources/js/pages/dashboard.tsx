@@ -1,36 +1,33 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowRight, Check } from 'lucide-react';
 import { useState } from 'react';
 
+import { CollectionList } from '@/components/home/collection-list';
+import { RecentArtifacts } from '@/components/home/recent-artifacts';
+import { SearchBlock } from '@/components/home/search-block';
+import { SearchResults } from '@/components/home/search-results';
+import { SetupStrip } from '@/components/home/setup-strip';
+import type {
+    DashboardProps,
+    HomeFilters,
+    PendingInvitation,
+} from '@/components/home/types';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import AppLayout from '@/layouts/app-layout';
+import { dashboard } from '@/routes';
 import invitations from '@/routes/invitations';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
-interface PendingInvitation {
-    code: string;
-    inviterName: string;
-    team: { name: string; slug: string };
-}
-
-interface SetupProgress {
-    invitedTeammates: boolean;
-    createdToken: boolean;
-    connectedMcp: boolean;
-    choseAPlan: boolean;
-}
-
 export default function Dashboard({
     pendingInvitations,
     setup,
-}: {
-    pendingInvitations: PendingInvitation[];
-    setup: SetupProgress | null;
-}) {
+    home,
+}: DashboardProps) {
     const { currentTeam } = usePage<SharedProps>().props;
     const [declining, setDeclining] = useState<PendingInvitation | null>(null);
+    const [busy, setBusy] = useState(false);
+
     const steps = [
         {
             done: setup?.invitedTeammates ?? false,
@@ -59,33 +56,46 @@ export default function Dashboard({
             detail: 'Start with the free team trial.',
         },
     ];
+    const setupComplete =
+        setup !== null &&
+        setup.invitedTeammates &&
+        setup.connectedMcp &&
+        setup.choseAPlan;
+
+    const changeScope = (scope: HomeFilters['scope']) => {
+        if (!home || scope === home.filters.scope) {
+            return;
+        }
+
+        const params: Record<string, string> = {};
+
+        if (home.filters.q !== '') {
+            params.q = home.filters.q;
+        }
+
+        if (home.filters.collection !== '') {
+            params.collection = home.filters.collection;
+        }
+
+        if (home.filters.since !== '') {
+            params.since = home.filters.since;
+        }
+
+        if (scope === 'mine') {
+            params.scope = 'mine';
+        }
+
+        setBusy(true);
+        router.get(dashboard.url({ current_team: home.team.slug }), params, {
+            preserveScroll: true,
+            only: ['home'],
+            onFinish: () => setBusy(false),
+        });
+    };
 
     return (
         <>
-            <Head title="Dashboard" />
-            <header className="mb-10 border-b border-border pb-8">
-                <p className="eyebrow mb-3 min-w-0 break-words">
-                    {currentTeam ? currentTeam.name : 'Welcome'}
-                </p>
-                <h1 className="font-serif text-4xl leading-tight tracking-tight md:text-5xl">
-                    {setup === null ? (
-                        <>
-                            Start with a <em className="text-primary">team</em>
-                        </>
-                    ) : (
-                        <>
-                            What your AI makes,{' '}
-                            <em className="text-primary">remembered</em>
-                        </>
-                    )}
-                </h1>
-                <p className="mt-3 max-w-xl text-muted-foreground">
-                    {setup === null
-                        ? 'A team is where shared work lives. You become its owner.'
-                        : 'Share the work worth keeping, and every AI tool on your team can read it, with sources.'}
-                </p>
-            </header>
-
+            <Head title="Home" />
             <div className="flex flex-col gap-12">
                 {pendingInvitations.length > 0 && (
                     <section aria-labelledby="invitations">
@@ -134,65 +144,80 @@ export default function Dashboard({
                     </section>
                 )}
 
-                {setup === null ? (
-                    <section>
-                        <Button asChild>
-                            <Link href={teamRoutes.index.url()}>
-                                Create a team
-                            </Link>
-                        </Button>
-                    </section>
+                {home === null ? (
+                    <>
+                        <header className="mb-10 border-b border-border pb-8">
+                            <p className="eyebrow mb-3 min-w-0 break-words">
+                                {currentTeam ? currentTeam.name : 'Welcome'}
+                            </p>
+                            <h1 className="font-serif text-4xl leading-tight tracking-tight md:text-5xl">
+                                Start with a{' '}
+                                <em className="text-primary">team</em>
+                            </h1>
+                            <p className="mt-3 max-w-xl text-muted-foreground">
+                                A team is where shared work lives. You become
+                                its owner.
+                            </p>
+                        </header>
+                        <section>
+                            <Button asChild>
+                                <Link href={teamRoutes.index.url()}>
+                                    Create a team
+                                </Link>
+                            </Button>
+                        </section>
+                    </>
                 ) : (
-                    <section aria-labelledby="setup">
-                        <h2 id="setup" className="eyebrow mb-3">
-                            Get your team set up
-                        </h2>
-                        <ol className="divide-y divide-border border-y border-border">
-                            {steps.map((step, index) => (
-                                <li key={step.label}>
-                                    <Link
-                                        href={step.href}
-                                        className="group flex items-center gap-4 py-5"
-                                    >
-                                        <span
-                                            aria-hidden="true"
-                                            className={`flex size-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold ${
-                                                step.done
-                                                    ? 'bg-success text-primary-foreground'
-                                                    : 'bg-muted text-muted-foreground'
-                                            }`}
-                                        >
-                                            {step.done ? (
-                                                <Check className="size-4" />
-                                            ) : (
-                                                index + 1
-                                            )}
-                                        </span>
-                                        <span className="flex min-w-0 flex-1 flex-col">
-                                            <span
-                                                className={`font-semibold break-words ${
-                                                    step.done
-                                                        ? 'text-muted-foreground line-through'
-                                                        : ''
-                                                }`}
-                                            >
-                                                {step.label}
-                                            </span>
-                                            <span className="text-sm text-muted-foreground">
-                                                {step.detail}
-                                            </span>
-                                        </span>
-                                        <span className="sr-only">
-                                            {step.done
-                                                ? 'Done'
-                                                : 'Not done yet'}
-                                        </span>
-                                        <ArrowRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                                    </Link>
-                                </li>
-                            ))}
-                        </ol>
-                    </section>
+                    <>
+                        <SearchBlock
+                            key={JSON.stringify(home.filters)}
+                            team={home.team}
+                            filters={home.filters}
+                            indexingEnabled={home.indexingEnabled}
+                            filterCollections={home.filterCollections}
+                            onBusyChange={setBusy}
+                        />
+
+                        {setup !== null && !setupComplete && (
+                            <SetupStrip steps={steps} />
+                        )}
+
+                        <div
+                            aria-busy={busy}
+                            className={`motion-safe:transition-opacity motion-safe:duration-200 ${
+                                busy ? 'opacity-60' : ''
+                            }`}
+                        >
+                            {home.filters.q !== '' ? (
+                                <SearchResults
+                                    teamSlug={home.team.slug}
+                                    filters={home.filters}
+                                    searched={home.searched}
+                                    results={home.results}
+                                    searchError={home.searchError}
+                                    canOpenArtifacts={home.canOpenArtifacts}
+                                    busy={busy}
+                                    onBusyChange={setBusy}
+                                />
+                            ) : (
+                                <div className="grid grid-cols-1 gap-12 min-[800px]:grid-cols-[1.6fr_1fr] min-[800px]:gap-10">
+                                    <RecentArtifacts
+                                        teamSlug={home.team.slug}
+                                        scope={home.filters.scope}
+                                        recent={home.recent}
+                                        recentError={home.recentError}
+                                        canOpenArtifacts={home.canOpenArtifacts}
+                                        busy={busy}
+                                        onScopeChange={changeScope}
+                                    />
+                                    <CollectionList
+                                        teamSlug={home.team.slug}
+                                        collections={home.collections}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
             </div>
             <ConfirmDialog
