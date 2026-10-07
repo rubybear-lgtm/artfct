@@ -195,6 +195,44 @@
         }
       }
     },
+    "/v1/public/artifacts/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ArtifactId" }
+      ],
+      "get": {
+        "tags": ["Previews"],
+        "summary": "Read a public artifact's metadata",
+        "description": "Unauthenticated. Returns metadata only for a live, complete, public permanent artifact; everything else (missing, team, private, revoked, pending, ephemeral) is the same 404, so the endpoint never confirms that a non-public id exists. Used by the app's /a/{id} viewer for signed-out visitors and for visitors from other teams.",
+        "operationId": "getPublicArtifactMetadata",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Public artifact metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "org", "title", "description", "version", "version_count", "updated_at", "sharing", "edit_access"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "org": { "type": "string", "description": "The owning org's slug (needed to build the isolated origin)." },
+                    "title": { "type": ["string", "null"] },
+                    "description": { "type": ["string", "null"] },
+                    "version": { "type": "integer", "minimum": 1 },
+                    "version_count": { "type": "integer", "minimum": 0 },
+                    "updated_at": { "type": "string", "format": "date-time" },
+                    "sharing": { "type": "string", "const": "public" },
+                    "edit_access": { "$ref": "#/components/schemas/EditAccess" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/p/{id}": {
       "parameters": [
         { "$ref": "#/components/parameters/ArtifactId" }
@@ -206,7 +244,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "HTML preview shell or permanent artifact entrypoint.",
+            "description": "HTML preview shell (ephemeral) or permanent artifact entrypoint on its isolated origin.",
             "headers": {
               "Content-Security-Policy": {
                 "schema": { "type": "string" }
@@ -219,6 +257,12 @@
               "text/html": {
                 "schema": { "type": "string" }
               }
+            }
+          },
+          "302": {
+            "description": "On the shared origin, the entrypoint of a live public permanent artifact redirects to the app's viewer (`{app}/a/{id}`, or `{app}/a/{id}/v/{n}` for `/p/{id}/v:{n}/`). Bundle subresources (`/p/{id}/{path}`) and ephemeral artifacts are served as before; isolated origins never redirect.",
+            "headers": {
+              "Location": { "schema": { "type": "string", "format": "uri" } }
             }
           },
           "404": {
