@@ -477,6 +477,15 @@
           { "name": "agent", "in": "query", "required": false, "schema": { "type": "string" } },
           { "name": "created_after", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
           { "name": "created_before", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" } },
+          { "name": "updated_after", "in": "query", "required": false, "description": "Inclusive lower bound on when the current version was published.", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "updated_before", "in": "query", "required": false, "description": "Inclusive upper bound on when the current version was published.", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "owner_user_id", "in": "query", "required": false, "description": "Only artifacts owned by this user.", "schema": { "type": "string", "minLength": 1, "maxLength": 64 } },
+          { "name": "sharing", "in": "query", "required": false, "description": "Only artifacts at this sharing level. Private returns only what the caller may see (their own, or every private one for a team admin).", "schema": { "$ref": "#/components/schemas/Sharing" } },
+          { "name": "title_contains", "in": "query", "required": false, "description": "Case-insensitive substring of the title.", "schema": { "type": "string", "minLength": 1, "maxLength": 200 } },
+          { "name": "kind", "in": "query", "required": false, "description": "By the entrypoint's file type: html (.html/.htm), markdown (.md/.markdown), table (.csv/.tsv/.json).", "schema": { "type": "string", "enum": ["html", "markdown", "table"] } },
+          { "name": "ids", "in": "query", "required": false, "description": "Comma-separated artifact ids (at most 200) to restrict the list to, e.g. a collection's members.", "schema": { "type": "string", "maxLength": 3000 } },
+          { "name": "live", "in": "query", "required": false, "description": "When true, revoked artifacts and artifacts whose first upload is still pending are excluded. Defaults to false (the admin console lists revoked rows).", "schema": { "type": "boolean" } },
+          { "name": "sort", "in": "query", "required": false, "description": "created_asc (default, oldest first), created_desc, updated_desc (newest version first) or title_asc. The cursor is bound to the sort it was issued for; a cursor from another sort is ignored.", "schema": { "type": "string", "enum": ["created_asc", "created_desc", "updated_desc", "title_asc"] } },
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200 } }
         ],
@@ -1801,7 +1810,10 @@
           "edit_access": { "$ref": "#/components/schemas/EditAccess" },
           "owner_user_id": { "type": ["string", "null"], "description": "Null only for artifacts published before owners were recorded and not yet backfilled." },
           "can_edit": { "type": "boolean", "description": "The caller may publish a new version." },
-          "can_change_sharing": { "type": "boolean", "description": "The caller may change sharing (the owner or a team admin)." }
+          "can_change_sharing": { "type": "boolean", "description": "The caller may change sharing (the owner or a team admin)." },
+          "updated_at": { "type": "string", "format": "date-time", "description": "When the current version was published (org list items)." },
+          "version": { "type": "integer", "minimum": 1, "description": "Current version (org list items)." },
+          "kind": { "type": ["string", "null"], "enum": ["html", "markdown", "table", null], "description": "Entrypoint file type (org list items); null when it is none of the known kinds." }
         }
       },
       "ArtifactSharingRequest": {
