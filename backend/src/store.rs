@@ -98,6 +98,19 @@ pub struct ArtifactListItem {
     pub owner_user_id: Option<String>,
     /// The stored edit access (`view`/`edit`).
     pub edit_access: String,
+    /// `COALESCE(updated_at, created_at)`: when the current version was
+    /// published. A row whose first upload is still pending carries its
+    /// `created_at`.
+    pub updated_at: String,
+    /// `artifacts.current_version`: the served and indexed version number.
+    pub version: i64,
+    /// The entrypoint's file type ([`entrypoint_kind`]), `None` for an
+    /// extension the list doesn't classify.
+    pub kind: Option<String>,
+    /// Upload deadline of a pending first upload; `None` once the first
+    /// version completed. Carried so [`artifact_matches_filter`] can express
+    /// the `live` filter in pure logic exactly as the SQL does.
+    pub expires_at: Option<String>,
 }
 
 /// Filter predicate for the admin console list (spec 8: "filters that
@@ -120,51 +133,159 @@ pub struct ArtifactListFilter {
     /// True when the viewer may see every private artifact in the org (a team
     /// admin, or a server-side read carrying the private scope).
     pub viewer_reads_private: bool,
+    /// Inclusive lower bound on `COALESCE(updated_at, created_at)`.
+    pub updated_after: Option<String>,
+    /// Inclusive upper bound on `COALESCE(updated_at, created_at)`.
+    pub updated_before: Option<String>,
+    /// Only artifacts owned by this user id.
+    pub owner_user_id: Option<String>,
+    /// Only artifacts at this stored tier (`private`/`secure`/`public`). The
+    /// API name `team` is mapped to `secure` before it reaches the filter.
+    pub sharing: Option<String>,
+    /// Case-insensitive substring of the title. A `None` or absent title never
+    /// matches.
+    pub title_contains: Option<String>,
+    /// Only artifacts whose entrypoint is this kind ([`entrypoint_kind`]).
+    pub kind: Option<String>,
+    /// Restrict to this exact set of permanent artifact ids. An empty list
+    /// matches nothing.
+    pub ids: Option<Vec<String>>,
+    /// When true, revoked artifacts and artifacts whose first upload is still
+    /// pending are excluded. Defaults to false (the admin console lists
+    /// revoked rows).
+    pub live: bool,
+    /// The requested order. The cursor is bound to the sort it was issued for.
+    pub sort: ListSort,
 }
 
-/// A cursor pagination position, spec 8: "cursor pagination on
-/// `(created_at, id)`". Opaque to callers — see
-/// [`encode_list_cursor`]/[`decode_list_cursor`].
+/// The orderings the org artifact list accepts. The cursor is bound to the
+/// sort it was issued for; a cursor decoded for another sort is ignored so
+/// paging restarts from the beginning.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ListSort {
+    /// Oldest first, `(created_at, id)` ascending. The historical default.
+    #[default]
+    CreatedAsc,
+    /// Newest first, `(created_at, id)` descending.
+    CreatedDesc,
+    /// Newest version first, `(COALESCE(updated_at, created_at), id)`
+    /// descending.
+    UpdatedDesc,
+    /// Title A–Z, `(COALESCE(lower(title), sentinel), id)` ascending, with
+    /// untitled rows last.
+    TitleAsc,
+}
+
+impl ListSort {
+    /// Parses the API value (`created_asc`, `created_desc`, `updated_desc`,
+    /// `title_asc`). Unknown values return `None` so the route answers 422.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "created_asc" => Some(Self::CreatedAsc),
+            "created_desc" => Some(Self::CreatedDesc),
+            "updated_desc" => Some(Self::UpdatedDesc),
+            "title_asc" => Some(Self::TitleAsc),
+            _ => None,
+        }
+    }
+
+    /// The API value, also used as the sort tag inside an encoded cursor.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CreatedAsc => "created_asc",
+            Self::CreatedDesc => "created_desc",
+            Self::UpdatedDesc => "updated_desc",
+            Self::TitleAsc => "title_asc",
+        }
+    }
+
+    /// Whether the `(key, id)` total order runs descending. Keeps the keyset
+    /// comparison and the `ORDER BY` in agreement about direction.
+    fn is_descending(self) -> bool {
+        matches!(self, Self::CreatedDesc | Self::UpdatedDesc)
+    }
+}
+
+/// Sort key for an artifact with no title, chosen so untitled rows sort after
+/// every real title. U+10FFFF is the highest Unicode scalar value, so its
+/// UTF-8 encoding compares greater than any other string under SQLite's
+/// BINARY collation; the SQL `ORDER BY`/keyset use the same literal. A title
+/// that itself begins with U+10FFFF ties and falls through to the `id`
+/// tiebreaker.
+pub const NULL_TITLE_SORT_KEY: &str = "\u{10ffff}";
+
+/// A cursor pagination position. Opaque to callers — see
+/// [`encode_list_cursor`]/[`decode_list_cursor`]. `sort` binds the cursor to
+/// the ordering it was issued for, `key` is that ordering's first key
+/// (`created_at`, `COALESCE(updated_at, created_at)`, or the lowercased
+/// title, with the sentinel standing in for a missing title), and `id` is the
+/// tiebreaker.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListCursor {
-    pub created_at: String,
+    pub sort: ListSort,
+    pub key: String,
     pub id: String,
 }
 
 /// Field separator used inside an encoded cursor. Neither an RFC 3339
-/// timestamp nor a hex artifact id can contain this byte, so the split in
-/// `decode_list_cursor` is unambiguous.
+/// timestamp, an artifact id nor the title sentinel can contain this byte, so
+/// the split in `decode_list_cursor` is unambiguous.
 const LIST_CURSOR_SEPARATOR: char = '\u{1f}';
 
-/// Encodes a cursor as base64url (no padding) of `created_at<US>id`, the
+/// Encodes a cursor as base64url (no padding) of `sort<US>key<US>id`, the
 /// same encoding family the rest of this module already uses for opaque
 /// tokens. Deliberately pure — no `Env`, no I/O — so it and its inverse are
 /// unit-testable without a live Worker.
 pub fn encode_list_cursor(cursor: &ListCursor) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
-        "{}{LIST_CURSOR_SEPARATOR}{}",
-        cursor.created_at, cursor.id
+        "{}{LIST_CURSOR_SEPARATOR}{}{LIST_CURSOR_SEPARATOR}{}",
+        cursor.sort.as_str(),
+        cursor.key,
+        cursor.id
     ))
 }
 
 /// Inverse of [`encode_list_cursor`]. Returns `None` for anything that
-/// isn't a validly-encoded cursor (wrong base64, missing separator) rather
-/// than panicking — a malformed `cursor` query parameter is caller input.
+/// isn't a validly-encoded cursor (wrong base64, unknown sort, missing
+/// separator) rather than panicking — a malformed `cursor` query parameter
+/// is caller input.
 pub fn decode_list_cursor(raw: &str) -> Option<ListCursor> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(raw)
         .ok()?;
     let text = String::from_utf8(bytes).ok()?;
-    let (created_at, id) = text.split_once(LIST_CURSOR_SEPARATOR)?;
-    if created_at.is_empty() || id.is_empty() {
+    let mut parts = text.split(LIST_CURSOR_SEPARATOR);
+    let sort = ListSort::parse(parts.next()?)?;
+    let key = parts.next()?;
+    let id = parts.next()?;
+    if parts.next().is_some() || key.is_empty() || id.is_empty() {
         return None;
     }
     Some(ListCursor {
-        created_at: created_at.to_string(),
+        sort,
+        key: key.to_string(),
         id: id.to_string(),
     })
+}
+
+/// The list's classification of an artifact by its entrypoint's file type,
+/// case-insensitively: `html` (`.html`, `.htm`), `markdown` (`.md`,
+/// `.markdown`) or `table` (`.csv`, `.tsv`, `.json`). `None` for any other
+/// extension. Pure so the SQL `.kind` filter and the response field are held
+/// to one definition.
+pub fn entrypoint_kind(entrypoint: &str) -> Option<&'static str> {
+    let lower = entrypoint.to_ascii_lowercase();
+    if lower.ends_with(".html") || lower.ends_with(".htm") {
+        Some("html")
+    } else if lower.ends_with(".md") || lower.ends_with(".markdown") {
+        Some("markdown")
+    } else if lower.ends_with(".csv") || lower.ends_with(".tsv") || lower.ends_with(".json") {
+        Some("table")
+    } else {
+        None
+    }
 }
 
 /// Pure filter-predicate matching, factored out of SQL `WHERE`-clause
@@ -211,6 +332,54 @@ pub fn artifact_matches_filter(item: &ArtifactListItem, filter: &ArtifactListFil
             return false;
         }
     }
+    if let Some(after) = &filter.updated_after {
+        if item.updated_at.as_str() < after.as_str() {
+            return false;
+        }
+    }
+    if let Some(before) = &filter.updated_before {
+        if item.updated_at.as_str() > before.as_str() {
+            return false;
+        }
+    }
+    if let Some(owner) = &filter.owner_user_id {
+        if item.owner_user_id.as_deref() != Some(owner.as_str()) {
+            return false;
+        }
+    }
+    if let Some(sharing) = &filter.sharing {
+        // The stored tier, compared literally: the route has already mapped the
+        // API name `team` to `secure`.
+        if item.tier != *sharing {
+            return false;
+        }
+    }
+    if let Some(needle) = &filter.title_contains {
+        // ASCII-only lowercasing, matching SQLite's built-in `lower()` that
+        // the SQL filter uses.
+        let needle = needle.to_ascii_lowercase();
+        let found = item
+            .title
+            .as_deref()
+            .map(|title| title.to_ascii_lowercase().contains(&needle))
+            .unwrap_or(false);
+        if !found {
+            return false;
+        }
+    }
+    if let Some(kind) = &filter.kind {
+        if item.kind.as_deref() != Some(kind.as_str()) {
+            return false;
+        }
+    }
+    if let Some(ids) = &filter.ids {
+        if !ids.iter().any(|id| id == &item.id.0) {
+            return false;
+        }
+    }
+    if filter.live && (item.revoked_at.is_some() || item.expires_at.is_some()) {
+        return false;
+    }
     true
 }
 
@@ -222,46 +391,108 @@ pub fn artifact_is_revoked(revoked_at: Option<&str>) -> bool {
     revoked_at.is_some()
 }
 
-/// Total order used for cursor pagination: `(created_at, id)` ascending.
-/// Ties on `created_at` (same-timestamp writes, which happen at
-/// second-granularity RFC 3339 precision) are broken by `id` so the
-/// ordering is total and a cursor position is always unambiguous.
-fn list_cursor_key(item: &ArtifactListItem) -> (&str, &str) {
-    (item.created_at.as_str(), item.id.0.as_str())
+/// The first sort key of `item` for `sort`, matching the SQL `ORDER BY`
+/// expression exactly. Titles are lowercased ASCII-only because SQLite's
+/// `lower()` is, and an untitled row uses [`NULL_TITLE_SORT_KEY`].
+fn list_sort_key(item: &ArtifactListItem, sort: ListSort) -> String {
+    match sort {
+        ListSort::CreatedAsc | ListSort::CreatedDesc => item.created_at.clone(),
+        ListSort::UpdatedDesc => item.updated_at.clone(),
+        ListSort::TitleAsc => item
+            .title
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_else(|| NULL_TITLE_SORT_KEY.to_string()),
+    }
 }
 
-fn cursor_key(cursor: &ListCursor) -> (&str, &str) {
-    (cursor.created_at.as_str(), cursor.id.as_str())
+/// Total order used for cursor pagination, matching the SQL `ORDER BY` for
+/// `sort` including the direction of the `id` tiebreaker.
+fn compare_list_items(
+    left: &ArtifactListItem,
+    right: &ArtifactListItem,
+    sort: ListSort,
+) -> std::cmp::Ordering {
+    let order = list_sort_key(left, sort).cmp(&list_sort_key(right, sort));
+    let order = if sort.is_descending() {
+        order.reverse()
+    } else {
+        order
+    };
+    let id_order = left.id.0.cmp(&right.id.0);
+    let id_order = if sort.is_descending() {
+        id_order.reverse()
+    } else {
+        id_order
+    };
+    order.then(id_order)
 }
 
-/// Slices an already-sorted-by-`(created_at, id)` set of items into the
-/// page starting just after `cursor` (or the first page, if `cursor` is
-/// `None`), returning that page plus the cursor for the next page (`None`
-/// once the last page is reached). This is the page-boundary arithmetic
-/// `cursor_pagination_has_no_gaps_or_duplicates` exercises directly against
-/// a synthetic multi-thousand-row fixture — no D1 needed to prove pages
-/// neither skip nor repeat rows. `D1R2ArtifactStore::list_org_artifacts`
-/// performs the equivalent slice in SQL (`ORDER BY ... LIMIT`) for the live
-/// path; this is the specification it's built against.
+/// Whether `item` sorts strictly after `cursor` under the cursor's own sort.
+/// The keyset comparison mirrors the SQL `WHERE` clause bound to the cursor,
+/// including the direction of both the key and the `id` tiebreaker.
+fn list_item_after_cursor(item: &ArtifactListItem, cursor: &ListCursor) -> bool {
+    use std::cmp::Ordering;
+    let order = list_sort_key(item, cursor.sort)
+        .as_str()
+        .cmp(cursor.key.as_str());
+    let order = if cursor.sort.is_descending() {
+        order.reverse()
+    } else {
+        order
+    };
+    match order {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        Ordering::Equal => {
+            let id_order = item.id.0.as_str().cmp(cursor.id.as_str());
+            let id_order = if cursor.sort.is_descending() {
+                id_order.reverse()
+            } else {
+                id_order
+            };
+            id_order == Ordering::Greater
+        }
+    }
+}
+
+/// The next-page cursor for the last item of a page under `sort`.
+pub fn cursor_for_item(item: &ArtifactListItem, sort: ListSort) -> ListCursor {
+    ListCursor {
+        sort,
+        key: list_sort_key(item, sort),
+        id: item.id.0.clone(),
+    }
+}
+
+/// Sorts `items` by `sort` and returns the page starting just after `cursor`
+/// (or the first page, if `cursor` is `None` or was issued for another sort),
+/// plus the cursor for the next page (`None` once the last page is reached).
+/// This is the page-boundary arithmetic the cursor tests exercise directly
+/// against synthetic fixtures — no D1 needed to prove pages neither skip nor
+/// repeat rows. `D1R2ArtifactStore::list_org_artifacts` performs the
+/// equivalent sort and slice in SQL for the live path; this is the
+/// specification it's built against.
 pub fn paginate_sorted(
     items: &[ArtifactListItem],
+    sort: ListSort,
     cursor: Option<&ListCursor>,
     page_size: usize,
 ) -> (Vec<ArtifactListItem>, Option<ListCursor>) {
+    let mut sorted = items.to_vec();
+    sorted.sort_by(|left, right| compare_list_items(left, right, sort));
     let start = match cursor {
-        Some(cursor) => items
+        // A cursor from another sort is ignored: restart from the beginning.
+        Some(cursor) if cursor.sort == sort => sorted
             .iter()
-            .position(|item| list_cursor_key(item) > cursor_key(cursor))
-            .unwrap_or(items.len()),
-        None => 0,
+            .position(|item| list_item_after_cursor(item, cursor))
+            .unwrap_or(sorted.len()),
+        _ => 0,
     };
-    let end = items.len().min(start.saturating_add(page_size));
-    let page = items[start..end].to_vec();
-    let next_cursor = if end < items.len() {
-        page.last().map(|item| ListCursor {
-            created_at: item.created_at.clone(),
-            id: item.id.0.clone(),
-        })
+    let end = sorted.len().min(start.saturating_add(page_size));
+    let page = sorted[start..end].to_vec();
+    let next_cursor = if end < sorted.len() {
+        page.last().map(|item| cursor_for_item(item, sort))
     } else {
         None
     };
@@ -601,27 +832,119 @@ impl D1R2ArtifactStore {
             binds.push(worker::wasm_bindgen::JsValue::from_str(&pattern));
             binds.push(worker::wasm_bindgen::JsValue::from_str(&pattern));
         }
-        if let Some(cursor) = cursor {
-            clauses.push("(a.created_at > ? OR (a.created_at = ? AND a.id > ?))".to_string());
-            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.created_at));
-            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.created_at));
+        if let Some(after) = &filter.updated_after {
+            clauses.push("COALESCE(a.updated_at, a.created_at) >= ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(after));
+        }
+        if let Some(before) = &filter.updated_before {
+            clauses.push("COALESCE(a.updated_at, a.created_at) <= ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(before));
+        }
+        if let Some(owner) = &filter.owner_user_id {
+            clauses.push("a.user_id = ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(owner));
+        }
+        if let Some(sharing) = &filter.sharing {
+            clauses.push("a.tier = ?".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(sharing));
+        }
+        if let Some(needle) = &filter.title_contains {
+            // ASCII-only lowercasing matches SQLite's built-in `lower()`,
+            // which `entrypoint_kind` and the pure filter also mirror.
+            clauses.push("lower(a.title) LIKE ? ESCAPE '\\'".to_string());
+            let pattern = like_pattern(&needle.to_ascii_lowercase());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&pattern));
+        }
+        if let Some(kind) = &filter.kind {
+            let patterns = kind_like_patterns(kind);
+            if patterns.is_empty() {
+                // An unknown kind matches nothing rather than producing an
+                // empty `()` clause; the route rejects it with 422 first.
+                clauses.push("0".to_string());
+            } else {
+                let comparisons = patterns
+                    .iter()
+                    .map(|_| "lower(a.entrypoint) LIKE ? ESCAPE '\\'")
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                clauses.push(format!("({comparisons})"));
+                for pattern in patterns {
+                    binds.push(worker::wasm_bindgen::JsValue::from_str(pattern));
+                }
+            }
+        }
+        if let Some(ids) = &filter.ids {
+            // A JSON array through `json_each` keeps the bind count fixed at
+            // one regardless of how many of the (at most 200) ids are given.
+            clauses.push("a.id IN (SELECT value FROM json_each(?))".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(
+                &serde_json::Value::from(ids.clone()).to_string(),
+            ));
+        }
+        if filter.live {
+            clauses.push("(a.revoked_at IS NULL AND a.expires_at IS NULL)".to_string());
+        }
+        // A cursor is only meaningful for the sort it was issued for. A
+        // cursor from another sort is ignored so paging restarts, matching
+        // `paginate_sorted`.
+        if let Some(cursor) = cursor.filter(|cursor| cursor.sort == filter.sort) {
+            match filter.sort {
+                ListSort::CreatedAsc => {
+                    clauses
+                        .push("(a.created_at > ? OR (a.created_at = ? AND a.id > ?))".to_string());
+                }
+                ListSort::CreatedDesc => {
+                    clauses
+                        .push("(a.created_at < ? OR (a.created_at = ? AND a.id < ?))".to_string());
+                }
+                ListSort::UpdatedDesc => {
+                    clauses.push(
+                        "(COALESCE(a.updated_at, a.created_at) < ? OR \
+                         (COALESCE(a.updated_at, a.created_at) = ? AND a.id < ?))"
+                            .to_string(),
+                    );
+                }
+                ListSort::TitleAsc => {
+                    clauses.push(format!(
+                        "(COALESCE(lower(a.title), '{NULL_TITLE_SORT_KEY}') > ? OR \
+                         (COALESCE(lower(a.title), '{NULL_TITLE_SORT_KEY}') = ? AND a.id > ?))"
+                    ));
+                }
+            }
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.key));
+            binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.key));
             binds.push(worker::wasm_bindgen::JsValue::from_str(&cursor.id));
         }
         // Fetch one extra row so presence of a next page is known without a
         // second COUNT query.
         let fetch_limit = page_size as f64 + 1.0;
+        let order_by = match filter.sort {
+            ListSort::CreatedAsc => "a.created_at ASC, a.id ASC".to_string(),
+            ListSort::CreatedDesc => "a.created_at DESC, a.id DESC".to_string(),
+            ListSort::UpdatedDesc => {
+                "COALESCE(a.updated_at, a.created_at) DESC, a.id DESC".to_string()
+            }
+            // The sentinel is a compile-time constant with no caller input,
+            // so embedding it in the SQL text is safe; the keyset clause
+            // above uses the same literal.
+            ListSort::TitleAsc => {
+                format!("COALESCE(lower(a.title), '{NULL_TITLE_SORT_KEY}') ASC, a.id ASC")
+            }
+        };
         let query = format!(
             "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
              p.agent, p.repo_url, p.commit_sha, a.title, a.description, \
-             a.tier, a.user_id, a.edit_access, \
+             a.tier, a.user_id, a.edit_access, a.entrypoint, a.expires_at, \
+             a.current_version, COALESCE(a.updated_at, a.created_at) AS updated_at, \
              (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
              FROM artifacts a \
              JOIN orgs o ON o.id = a.org_id \
              LEFT JOIN provenance p ON p.artifact_row_id = a.row_id \
              WHERE {} \
-             ORDER BY a.created_at ASC, a.id ASC \
+             ORDER BY {} \
              LIMIT ?",
-            clauses.join(" AND ")
+            clauses.join(" AND "),
+            order_by
         );
         binds.push(worker::wasm_bindgen::JsValue::from_f64(fetch_limit));
         let mut items = self
@@ -639,10 +962,7 @@ impl D1R2ArtifactStore {
             .collect::<Vec<_>>();
         let next_cursor = if items.len() > page_size {
             items.truncate(page_size);
-            items.last().map(|item| ListCursor {
-                created_at: item.created_at.clone(),
-                id: item.id.0.clone(),
-            })
+            items.last().map(|item| cursor_for_item(item, filter.sort))
         } else {
             None
         };
@@ -682,6 +1002,8 @@ impl D1R2ArtifactStore {
             .prepare(
                 "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
                  p.agent, p.repo_url, p.commit_sha, a.tier, a.user_id, a.edit_access, \
+                 a.entrypoint, a.expires_at, a.current_version, \
+                 COALESCE(a.updated_at, a.created_at) AS updated_at, \
                  (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
                  FROM artifacts a \
                  JOIN orgs o ON o.id = a.org_id \
@@ -994,6 +1316,20 @@ struct D1ListRow {
     user_id: Option<String>,
     #[serde(default)]
     edit_access: String,
+    #[serde(default)]
+    entrypoint: String,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default = "default_current_version")]
+    current_version: i64,
+    #[serde(default)]
+    updated_at: String,
+}
+
+/// A row written before versioning has no `current_version`; the migration
+/// backfills 1, and this keeps deserialization tolerant of a NULL column.
+fn default_current_version() -> i64 {
+    1
 }
 
 impl From<D1ListRow> for ArtifactListItem {
@@ -1013,7 +1349,24 @@ impl From<D1ListRow> for ArtifactListItem {
             tier: row.tier,
             owner_user_id: row.user_id,
             edit_access: row.edit_access,
+            updated_at: row.updated_at,
+            version: row.current_version.max(1),
+            kind: entrypoint_kind(&row.entrypoint).map(str::to_string),
+            expires_at: row.expires_at,
         }
+    }
+}
+
+/// The `LIKE` patterns (against `lower(a.entrypoint)`) that select a kind's
+/// extensions, mirroring [`entrypoint_kind`]. The API validates `kind`, so an
+/// unknown value is only reachable from a directly-constructed filter and
+/// matches nothing.
+fn kind_like_patterns(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "html" => &["%.html", "%.htm"],
+        "markdown" => &["%.md", "%.markdown"],
+        "table" => &["%.csv", "%.tsv", "%.json"],
+        _ => &[],
     }
 }
 
@@ -1671,5 +2024,307 @@ mod tests {
             block_on(store.list(ListFilter::default())),
             Err(StoreError::Unsupported("list"))
         ));
+    }
+
+    fn list_item(
+        id: &str,
+        created_at: &str,
+        updated_at: &str,
+        title: Option<&str>,
+    ) -> ArtifactListItem {
+        ArtifactListItem {
+            id: ArtifactId(id.to_string()),
+            org: "acme".to_string(),
+            content_hash: "a".repeat(64),
+            size_bytes: 1,
+            agent: None,
+            repo_url: None,
+            commit_sha: None,
+            title: title.map(str::to_string),
+            description: None,
+            created_at: created_at.to_string(),
+            revoked_at: None,
+            tier: "secure".to_string(),
+            owner_user_id: None,
+            edit_access: "view".to_string(),
+            updated_at: updated_at.to_string(),
+            version: 1,
+            kind: Some("html".to_string()),
+            expires_at: None,
+        }
+    }
+
+    /// 40 items with distinct ids, timestamps and titles, ordered by index.
+    fn sample_items(count: usize) -> Vec<ArtifactListItem> {
+        (0..count)
+            .map(|index| {
+                let stamp = format!("2026-01-01T00:00:{:02}Z", index);
+                list_item(
+                    &format!("id{index:03}"),
+                    &stamp,
+                    &stamp,
+                    Some(&format!("Title {index:03}")),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn entrypoint_kind_recognises_known_extensions_case_insensitively() {
+        assert_eq!(entrypoint_kind("index.html"), Some("html"));
+        assert_eq!(entrypoint_kind("dir/page.HTM"), Some("html"));
+        assert_eq!(entrypoint_kind("notes.md"), Some("markdown"));
+        assert_eq!(entrypoint_kind("notes.MarkDown"), Some("markdown"));
+        assert_eq!(entrypoint_kind("data.csv"), Some("table"));
+        assert_eq!(entrypoint_kind("data.tsv"), Some("table"));
+        assert_eq!(entrypoint_kind("sheet.JSON"), Some("table"));
+        assert_eq!(entrypoint_kind("index"), None);
+        assert_eq!(entrypoint_kind("archive.txt"), None);
+        assert_eq!(entrypoint_kind(""), None);
+        // `htm` must not match the wider `html` suffix.
+        assert_eq!(entrypoint_kind("index.htms"), None);
+    }
+
+    #[test]
+    fn kind_like_patterns_only_cover_validated_kinds() {
+        assert_eq!(kind_like_patterns("html"), &["%.html", "%.htm"]);
+        assert_eq!(kind_like_patterns("markdown"), &["%.md", "%.markdown"]);
+        assert_eq!(kind_like_patterns("table"), &["%.csv", "%.tsv", "%.json"]);
+        assert!(kind_like_patterns("bogus").is_empty());
+    }
+
+    #[test]
+    fn list_cursor_round_trips_for_every_sort() {
+        for sort in [
+            ListSort::CreatedAsc,
+            ListSort::CreatedDesc,
+            ListSort::UpdatedDesc,
+            ListSort::TitleAsc,
+        ] {
+            let cursor = ListCursor {
+                sort,
+                key: "2026-01-01T00:00:00Z".to_string(),
+                id: "abcdefghijklm".to_string(),
+            };
+            let encoded = encode_list_cursor(&cursor);
+            assert!(
+                !encoded.contains(['=', '+', '/']),
+                "cursor must be base64url without padding: {encoded}"
+            );
+            assert_eq!(decode_list_cursor(&encoded), Some(cursor));
+        }
+    }
+
+    #[test]
+    fn decode_list_cursor_rejects_malformed_input() {
+        use base64::Engine;
+        let encode =
+            |text: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(text.as_bytes());
+        assert_eq!(decode_list_cursor("not base64!"), None);
+        // Too few fields.
+        assert_eq!(decode_list_cursor(&encode("created_asc\u{1f}key")), None);
+        // Unknown sort.
+        assert_eq!(
+            decode_list_cursor(&encode("sideways\u{1f}key\u{1f}id")),
+            None
+        );
+        // Empty key and empty id.
+        assert_eq!(
+            decode_list_cursor(&encode("created_asc\u{1f}\u{1f}id")),
+            None
+        );
+        assert_eq!(
+            decode_list_cursor(&encode("created_asc\u{1f}key\u{1f}")),
+            None
+        );
+        // Extra fields.
+        assert_eq!(
+            decode_list_cursor(&encode("created_asc\u{1f}key\u{1f}id\u{1f}extra")),
+            None
+        );
+    }
+
+    #[test]
+    fn paginate_sorted_follows_each_sort_and_puts_untitled_last() {
+        let items = vec![
+            list_item(
+                "b",
+                "2026-01-01T00:00:02Z",
+                "2026-01-01T00:00:01Z",
+                Some("Beta"),
+            ),
+            list_item(
+                "a",
+                "2026-01-01T00:00:01Z",
+                "2026-01-01T00:00:02Z",
+                Some("Alpha"),
+            ),
+            list_item("c", "2026-01-01T00:00:03Z", "2026-01-01T00:00:03Z", None),
+        ];
+        let ids = |sort| {
+            paginate_sorted(&items, sort, None, 10)
+                .0
+                .into_iter()
+                .map(|item| item.id.0)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(ListSort::CreatedAsc), vec!["a", "b", "c"]);
+        assert_eq!(ids(ListSort::CreatedDesc), vec!["c", "b", "a"]);
+        // updated_at: b (00:01), a (00:02), c (00:03) -> desc: c, a, b.
+        assert_eq!(ids(ListSort::UpdatedDesc), vec!["c", "a", "b"]);
+        // Title asc: Alpha, Beta, then the untitled row last.
+        assert_eq!(ids(ListSort::TitleAsc), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn paginate_sorted_ignores_a_cursor_from_another_sort() {
+        let items = sample_items(30);
+        let first = paginate_sorted(&items, ListSort::CreatedAsc, None, 5).0;
+        let cursor = cursor_for_item(
+            first.last().expect("a non-empty page"),
+            ListSort::CreatedAsc,
+        );
+        let (restarted, _) = paginate_sorted(&items, ListSort::CreatedDesc, Some(&cursor), 5);
+        let (expected, _) = paginate_sorted(&items, ListSort::CreatedDesc, None, 5);
+        assert_eq!(restarted, expected);
+        assert_ne!(first, restarted);
+    }
+
+    #[test]
+    fn paginate_sorted_has_no_gaps_or_duplicates_for_every_sort() {
+        for sort in [
+            ListSort::CreatedAsc,
+            ListSort::CreatedDesc,
+            ListSort::UpdatedDesc,
+            ListSort::TitleAsc,
+        ] {
+            let items = sample_items(1000);
+            let page_size = 37; // deliberately not a divisor of the total
+            let mut cursor = None;
+            let mut seen: HashMap<String, usize> = HashMap::new();
+            loop {
+                let (page, next) = paginate_sorted(&items, sort, cursor.as_ref(), page_size);
+                if page.is_empty() {
+                    assert!(next.is_none(), "an empty page must be the last page");
+                    break;
+                }
+                for item in page {
+                    *seen.entry(item.id.0).or_insert(0) += 1;
+                }
+                match next {
+                    Some(next) => cursor = Some(next),
+                    None => break,
+                }
+            }
+            assert_eq!(seen.len(), items.len(), "{sort:?} skipped rows");
+            assert!(
+                seen.values().all(|count| *count == 1),
+                "{sort:?} returned a row more than once"
+            );
+        }
+    }
+
+    #[test]
+    fn created_and_title_sorts_stay_stable_when_a_row_is_inserted_between_pages() {
+        for sort in [
+            ListSort::CreatedAsc,
+            ListSort::CreatedDesc,
+            ListSort::TitleAsc,
+        ] {
+            let items = sample_items(40);
+            let page_size = 6;
+            let mut seen: HashMap<String, usize> = HashMap::new();
+            let mut cursor = None;
+            for _ in 0..3 {
+                let (page, next) = paginate_sorted(&items, sort, cursor.as_ref(), page_size);
+                for item in page {
+                    *seen.entry(item.id.0).or_insert(0) += 1;
+                }
+                cursor = next;
+            }
+            // A row created after paging started. Depending on the sort it
+            // may land before or after the cursor; either way it must not
+            // disturb the rows already in or still ahead of the page window.
+            let mut with_insert = items.clone();
+            with_insert.push(list_item(
+                "inserted",
+                "2026-01-01T00:00:20Z",
+                "2026-01-01T00:00:20Z",
+                Some("Zzz inserted"),
+            ));
+            loop {
+                let (page, next) = paginate_sorted(&with_insert, sort, cursor.as_ref(), page_size);
+                if page.is_empty() {
+                    break;
+                }
+                for item in page {
+                    *seen.entry(item.id.0).or_insert(0) += 1;
+                }
+                match next {
+                    Some(next) => cursor = Some(next),
+                    None => break,
+                }
+            }
+            for item in &items {
+                assert_eq!(
+                    seen.get(&item.id.0).copied().unwrap_or(0),
+                    1,
+                    "{sort:?} duplicated or skipped {}",
+                    item.id.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn updated_desc_never_duplicates_or_skips_untouched_rows_across_an_update() {
+        let sort = ListSort::UpdatedDesc;
+        let items = sample_items(40);
+        let page_size = 6;
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut cursor = None;
+        for _ in 0..3 {
+            let (page, next) = paginate_sorted(&items, sort, cursor.as_ref(), page_size);
+            for item in page {
+                *seen.entry(item.id.0).or_insert(0) += 1;
+            }
+            cursor = next;
+        }
+        // Bump a not-yet-seen row to the front. That row may be skipped, but
+        // every other row must still be returned exactly once.
+        let moved_id = items
+            .iter()
+            .find(|item| !seen.contains_key(&item.id.0))
+            .expect("a row beyond the cursor")
+            .id
+            .0
+            .clone();
+        let mut updated = items.clone();
+        for item in &mut updated {
+            if item.id.0 == moved_id {
+                item.updated_at = "2999-01-01T00:00:00Z".to_string();
+            }
+        }
+        loop {
+            let (page, next) = paginate_sorted(&updated, sort, cursor.as_ref(), page_size);
+            if page.is_empty() {
+                break;
+            }
+            for item in page {
+                *seen.entry(item.id.0).or_insert(0) += 1;
+            }
+            match next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        for item in &items {
+            let count = seen.get(&item.id.0).copied().unwrap_or(0);
+            if item.id.0 == moved_id {
+                assert!(count <= 1, "the moved row must not be returned twice");
+            } else {
+                assert_eq!(count, 1, "updated_desc skipped or duplicated {}", item.id.0);
+            }
+        }
     }
 }

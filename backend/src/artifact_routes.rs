@@ -1138,6 +1138,85 @@ pub(crate) async fn delete_artifact(
     build_delete_response().into_worker_response()
 }
 
+/// The validated query parameters for the org artifact list. Date bounds are
+/// passed through unchanged as text; every other field is checked here so the
+/// handler can answer a single 422 `validation_failed`.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ListQueryParams {
+    pub(crate) sort: store::ListSort,
+    pub(crate) sharing: Option<String>,
+    pub(crate) kind: Option<String>,
+    pub(crate) live: bool,
+    pub(crate) ids: Option<Vec<String>>,
+    pub(crate) updated_after: Option<String>,
+    pub(crate) updated_before: Option<String>,
+    pub(crate) owner_user_id: Option<String>,
+    pub(crate) title_contains: Option<String>,
+}
+
+/// Pure validation of the list query parameters, so every rejection (`sort`,
+/// `sharing`, `kind`, `live`, `ids`) is unit-testable without a live D1.
+/// `sharing` is mapped from its API name (`team`) to the stored tier
+/// (`secure`).
+pub(crate) fn parse_list_query_params(
+    params: &std::collections::HashMap<String, String>,
+) -> Result<ListQueryParams, &'static str> {
+    let sort = match params.get("sort") {
+        None => store::ListSort::CreatedAsc,
+        Some(raw) => store::ListSort::parse(raw).ok_or(
+            "The sort field must be created_asc, created_desc, updated_desc or title_asc.",
+        )?,
+    };
+    let sharing = match params.get("sharing") {
+        None => None,
+        Some(raw) => Some(
+            Sharing::parse(raw)
+                .ok_or("The sharing field must be private, team or public.")?
+                .tier()
+                .to_string(),
+        ),
+    };
+    let kind = match params.get("kind") {
+        None => None,
+        Some(raw) => match raw.as_str() {
+            "html" | "markdown" | "table" => Some(raw.clone()),
+            _ => return Err("The kind field must be html, markdown or table."),
+        },
+    };
+    let live = match params.get("live") {
+        None => false,
+        Some(raw) => match raw.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => return Err("The live field must be true or false."),
+        },
+    };
+    let ids = match params.get("ids") {
+        None => None,
+        Some(raw) => {
+            let values: Vec<String> = raw.split(',').map(str::to_string).collect();
+            if values.len() > 200 {
+                return Err("The ids field accepts at most 200 artifact ids.");
+            }
+            if values.iter().any(|id| !store::is_permanent_id(id)) {
+                return Err("Every id in the ids field must be a permanent artifact id.");
+            }
+            Some(values)
+        }
+    };
+    Ok(ListQueryParams {
+        sort,
+        sharing,
+        kind,
+        live,
+        ids,
+        updated_after: params.get("updated_after").cloned(),
+        updated_before: params.get("updated_before").cloned(),
+        owner_user_id: params.get("owner_user_id").cloned(),
+        title_contains: params.get("title_contains").cloned(),
+    })
+}
+
 /// Admin console listing (spec 8): `GET /v1/orgs/{org}/artifacts`. Same
 /// bearer-token gate as export/delete. Sharing is enforced here as well as in
 /// Laravel: a private artifact is listed only for its owner and team admins
@@ -1164,6 +1243,10 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
     let params: std::collections::HashMap<String, String> =
         query.query_pairs().into_owned().collect();
     let viewer = Viewer::from_credential(&credential);
+    let parsed = match parse_list_query_params(&params) {
+        Ok(parsed) => parsed,
+        Err(message) => return json_error(ErrorCode::ValidationFailed, message, 422),
+    };
     let filter = store::ArtifactListFilter {
         org: org.to_string(),
         repo_url: params.get("repo_url").cloned(),
@@ -1173,6 +1256,15 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
         query: params.get("q").filter(|value| !value.is_empty()).cloned(),
         viewer_user_id: Some(credential.user_id.clone()),
         viewer_reads_private: viewer.is_admin() || viewer.reads_private(),
+        updated_after: parsed.updated_after,
+        updated_before: parsed.updated_before,
+        owner_user_id: parsed.owner_user_id,
+        sharing: parsed.sharing,
+        title_contains: parsed.title_contains,
+        kind: parsed.kind,
+        ids: parsed.ids,
+        live: parsed.live,
+        sort: parsed.sort,
     };
     let cursor = params
         .get("cursor")
@@ -1217,6 +1309,9 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
                     "repo_url": item.repo_url,
                     "commit_sha": item.commit_sha,
                 },
+                "updated_at": item.updated_at,
+                "version": item.version,
+                "kind": item.kind,
             })
         })
         .collect();
@@ -2086,5 +2181,99 @@ mod tests {
                 "{unknown}"
             );
         }
+    }
+
+    fn list_params(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn parse_list_query_params_defaults_preserve_the_old_behaviour() {
+        let parsed = parse_list_query_params(&list_params(&[])).expect("defaults are valid");
+        assert_eq!(parsed.sort, store::ListSort::CreatedAsc);
+        assert_eq!(parsed.sharing, None);
+        assert_eq!(parsed.kind, None);
+        assert!(!parsed.live);
+        assert_eq!(parsed.ids, None);
+        assert_eq!(parsed.updated_after, None);
+        assert_eq!(parsed.title_contains, None);
+    }
+
+    #[test]
+    fn parse_list_query_params_maps_sharing_to_the_stored_tier() {
+        let tier = |raw: &str| {
+            parse_list_query_params(&list_params(&[("sharing", raw)]))
+                .expect("a known sharing value")
+                .sharing
+        };
+        assert_eq!(tier("private"), Some("private".to_string()));
+        assert_eq!(tier("team"), Some("secure".to_string()));
+        assert_eq!(tier("public"), Some("public".to_string()));
+    }
+
+    #[test]
+    fn parse_list_query_params_accepts_every_sort_and_kind() {
+        for (raw, expected) in [
+            ("created_asc", store::ListSort::CreatedAsc),
+            ("created_desc", store::ListSort::CreatedDesc),
+            ("updated_desc", store::ListSort::UpdatedDesc),
+            ("title_asc", store::ListSort::TitleAsc),
+        ] {
+            let parsed = parse_list_query_params(&list_params(&[("sort", raw)])).unwrap();
+            assert_eq!(parsed.sort, expected, "{raw}");
+        }
+        for kind in ["html", "markdown", "table"] {
+            let parsed = parse_list_query_params(&list_params(&[("kind", kind)])).unwrap();
+            assert_eq!(parsed.kind, Some(kind.to_string()));
+        }
+        assert!(
+            parse_list_query_params(&list_params(&[("live", "true")]))
+                .unwrap()
+                .live
+        );
+        assert!(
+            !parse_list_query_params(&list_params(&[("live", "false")]))
+                .unwrap()
+                .live
+        );
+    }
+
+    #[test]
+    fn parse_list_query_params_rejects_unknown_values() {
+        for (key, value) in [
+            ("sort", "sideways"),
+            ("sharing", "friends"),
+            ("kind", "pdf"),
+            ("live", "yes"),
+            ("live", "1"),
+        ] {
+            assert!(
+                parse_list_query_params(&list_params(&[(key, value)])).is_err(),
+                "{key}={value} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_list_query_params_validates_ids() {
+        let legacy = "a".repeat(32);
+        let parsed = parse_list_query_params(&list_params(&[("ids", "abcdefghijklm")]))
+            .expect("a stable id is valid");
+        assert_eq!(parsed.ids, Some(vec!["abcdefghijklm".to_string()]));
+        let parsed =
+            parse_list_query_params(&list_params(&[("ids", &format!("abcdefghijklm,{legacy}"))]))
+                .expect("a mixed id list is valid");
+        assert_eq!(parsed.ids, Some(vec!["abcdefghijklm".to_string(), legacy]));
+
+        assert!(parse_list_query_params(&list_params(&[("ids", "not-an-id")])).is_err());
+        assert!(parse_list_query_params(&list_params(&[("ids", "")])).is_err());
+
+        let exactly_200: Vec<String> = (0..200).map(|index| format!("{index:013}")).collect();
+        assert!(parse_list_query_params(&list_params(&[("ids", &exactly_200.join(","))])).is_ok());
+        let over_200: Vec<String> = (0..201).map(|index| format!("{index:013}")).collect();
+        assert!(parse_list_query_params(&list_params(&[("ids", &over_200.join(","))])).is_err());
     }
 }

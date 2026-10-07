@@ -175,6 +175,7 @@ class AiToolSetup
     {
         return [
             ['name' => 'search_artifacts', 'does' => 'Search your team’s artifacts by what they are about, who or what made them, or when. Returns summaries, short excerpts and a link to each one.', 'permission' => 'artifacts:read'],
+            ['name' => 'list_artifacts', 'does' => 'List your team’s artifacts by who made them, when they were published, how they are shared or how often they were opened.', 'permission' => 'artifacts:read'],
             ['name' => 'get_artifact', 'does' => 'Open the details of one artifact, or one of its earlier versions, and get a fresh link to view it.', 'permission' => 'artifacts:read'],
             ['name' => 'deploy_artifact', 'does' => 'Publish a page, report or document to your team, either as one self-contained HTML file or as a set of files. Choose who can open it: your whole team, only you, or anyone with the link. To update something you published before, pass its id: the new version keeps the same link. Publishing the same content again returns the same artifact.', 'permission' => 'artifacts:deploy'],
             ['name' => 'delete_artifact', 'does' => 'Permanently remove an artifact, unless it is on legal hold.', 'permission' => 'artifacts:delete'],

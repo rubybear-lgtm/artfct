@@ -3187,6 +3187,10 @@ mod tests {
             tier: "secure".to_string(),
             owner_user_id: None,
             edit_access: "view".to_string(),
+            updated_at: created_at.to_string(),
+            version: 1,
+            kind: Some("html".to_string()),
+            expires_at: None,
         }
     }
 
@@ -3206,6 +3210,10 @@ mod tests {
             tier: "private".to_string(),
             owner_user_id: owner_user_id.map(str::to_string),
             edit_access: "view".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            version: 1,
+            kind: Some("html".to_string()),
+            expires_at: None,
         }
     }
 
@@ -3282,6 +3290,248 @@ mod tests {
     }
 
     #[test]
+    fn list_filters_by_updated_range() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        items[0].updated_at = "2026-01-05T00:00:00Z".to_string();
+        items[1].updated_at = "2026-01-15T00:00:00Z".to_string();
+        items[2].updated_at = "2026-01-25T00:00:00Z".to_string();
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            updated_after: Some("2026-01-10T00:00:00Z".to_string()),
+            updated_before: Some("2026-01-20T00:00:00Z".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["2"]);
+    }
+
+    #[test]
+    fn list_filters_by_owner() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-02T00:00:00Z"),
+        ];
+        items[0].owner_user_id = Some("7".to_string());
+        items[1].owner_user_id = Some("8".to_string());
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            owner_user_id: Some("7".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1"]);
+    }
+
+    #[test]
+    fn list_filters_by_sharing_tier() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+            list_item("4", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        items[0].tier = "public".to_string();
+        items[1].tier = "secure".to_string();
+        items[2].tier = "private".to_string();
+        items[3].tier = "unrecognised".to_string();
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            sharing: Some("secure".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["2"]);
+
+        // The filter matches the stored tier literally, so an unrecognised
+        // tier is neither private nor team nor public.
+        let private = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            sharing: Some("private".to_string()),
+            viewer_reads_private: true,
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &private))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["3"]);
+    }
+
+    #[test]
+    fn list_filters_by_title_contains_case_insensitively() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        items[0].title = Some("Quarterly REPORT".to_string());
+        items[1].title = Some("notes".to_string());
+        items[2].title = None;
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            title_contains: Some("report".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1"]);
+    }
+
+    #[test]
+    fn list_filters_by_kind() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+            list_item("4", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        items[0].kind = Some("html".to_string());
+        items[1].kind = Some("markdown".to_string());
+        items[2].kind = Some("table".to_string());
+        items[3].kind = None;
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            kind: Some("markdown".to_string()),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["2"]);
+    }
+
+    #[test]
+    fn list_filters_by_ids() {
+        let items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            ids: Some(vec!["1".to_string(), "3".to_string()]),
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1", "3"]);
+
+        // An explicitly empty id set matches nothing.
+        let empty = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            ids: Some(Vec::new()),
+            ..Default::default()
+        };
+        assert!(items
+            .iter()
+            .all(|item| !store::artifact_matches_filter(item, &empty)));
+    }
+
+    #[test]
+    fn list_live_filter_excludes_revoked_and_pending_rows() {
+        let mut items = [
+            list_item("1", None, None, "2026-01-01T00:00:00Z"),
+            list_item("2", None, None, "2026-01-01T00:00:00Z"),
+            list_item("3", None, None, "2026-01-01T00:00:00Z"),
+        ];
+        items[0].revoked_at = Some("2026-01-02T00:00:00Z".to_string());
+        items[1].expires_at = Some("2026-01-02T00:00:00Z".to_string());
+        // Default: revoked and pending rows are listed (admin console view).
+        let all = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            items
+                .iter()
+                .filter(|item| store::artifact_matches_filter(item, &all))
+                .count(),
+            3
+        );
+        let live = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            live: true,
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &live))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["3"]);
+    }
+
+    #[test]
+    fn list_filters_combine_with_and_semantics() {
+        let mut items = [
+            list_item(
+                "1",
+                Some("https://github.com/acme/one"),
+                Some("cursor"),
+                "2026-01-01T00:00:00Z",
+            ),
+            list_item(
+                "2",
+                Some("https://github.com/acme/one"),
+                Some("cursor"),
+                "2026-01-01T00:00:00Z",
+            ),
+            list_item(
+                "3",
+                Some("https://github.com/acme/two"),
+                Some("cursor"),
+                "2026-01-01T00:00:00Z",
+            ),
+        ];
+        items[0].kind = Some("html".to_string());
+        items[0].updated_at = "2026-01-15T00:00:00Z".to_string();
+        items[1].kind = Some("markdown".to_string());
+        items[1].updated_at = "2026-01-15T00:00:00Z".to_string();
+        items[2].kind = Some("html".to_string());
+        items[2].updated_at = "2026-01-15T00:00:00Z".to_string();
+        let filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            repo_url: Some("https://github.com/acme/one".to_string()),
+            agent: Some("cursor".to_string()),
+            updated_after: Some("2026-01-10T00:00:00Z".to_string()),
+            kind: Some("html".to_string()),
+            live: true,
+            ..Default::default()
+        };
+        let matched: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(matched, vec!["1"]);
+    }
+
+    #[test]
     fn list_hides_other_members_private_artifacts_from_a_member() {
         let items = [
             private_list_item("private-mine", Some("7")),
@@ -3340,7 +3590,12 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         let mut collected = Vec::new();
         loop {
-            let (page, next_cursor) = store::paginate_sorted(&items, cursor.as_ref(), page_size);
+            let (page, next_cursor) = store::paginate_sorted(
+                &items,
+                store::ListSort::CreatedAsc,
+                cursor.as_ref(),
+                page_size,
+            );
             if page.is_empty() {
                 assert!(next_cursor.is_none(), "an empty page must be the last page");
                 break;

@@ -10,6 +10,7 @@ use App\Mcp\Tools\DeployToCanvasTool;
 use App\Mcp\Tools\GetArtifactTool;
 use App\Mcp\Tools\GetConnectionTool;
 use App\Mcp\Tools\GetUsageTool;
+use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
 use App\Mcp\Tools\SearchArtifactsTool;
 use Laravel\Mcp\Server;
@@ -36,6 +37,7 @@ final class ArtfctServer extends Server
         DeployToCanvasTool::class,
         SearchArtifactsTool::class,
         GetConnectionTool::class,
+        ListArtifactsTool::class,
         GetUsageTool::class,
         GetArtifactTool::class,
         ListCollectionsTool::class,
