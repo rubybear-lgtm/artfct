@@ -274,6 +274,42 @@ test('hosted MCP refuses a session from another connection in the same organizat
         ->assertJsonPath('error.data.artfct.errorCode', 'session_expired');
 });
 
+test('remote MCP sessions stay valid for 14 days after initialize', function () {
+    $team = Team::factory()->create();
+    configureSigning(testSigningKey());
+    $user = memberOfTeam($team, TeamRole::Admin);
+    // One credential for the whole test. A real client refreshes its access
+    // token, and the refresh moves the same connection onto the new jti, so
+    // the connection (and with it the session) is what has to last.
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin, 16 * 24 * 60 * 60)['token'];
+    $freshToken = fn (): string => $token;
+
+    $initialize = $this->withToken($freshToken())->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+    $sessionId = (string) $initialize->headers->get('MCP-Session-Id');
+
+    $listTools = fn () => $this->withHeaders([
+        'Authorization' => 'Bearer '.$freshToken(),
+        'MCP-Session-Id' => $sessionId,
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'tools/list',
+        'params' => [],
+    ]);
+
+    $this->travel(13)->days();
+    $listTools()->assertOk();
+
+    $this->travel(2)->days();
+    $listTools()->assertStatus(400)
+        ->assertJsonPath('error.data.artfct.errorCode', 'session_expired');
+});
+
 test('remote MCP refuses an expired session with stable reinitialization guidance', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);

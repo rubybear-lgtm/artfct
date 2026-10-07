@@ -270,7 +270,7 @@ class AppServiceProvider extends ServiceProvider
                     'org_id' => $claims['org_id'],
                     'protocol_version' => $event->protocolVersion,
                 ],
-                now()->addMinutes((int) config('auth.mcp_session_ttl_minutes', 30)),
+                now()->addMinutes((int) config('auth.mcp_session_ttl_minutes', 20160)),
             );
         });
 
