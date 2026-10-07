@@ -72,14 +72,15 @@ pub(crate) struct VersionRow {
 /// cover every version of the artifact. `revoked_at IS NULL` is also why a
 /// revoked artifact's versions can be neither published nor restored: the row
 /// is not found, and both paths map that to 404 (never 403).
-#[derive(Debug, Deserialize)]
-struct LiveArtifactRow {
-    row_id: String,
-    content_hash: String,
-    current_version: i64,
-    user_id: Option<String>,
-    tier: String,
-    edit_access: String,
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct LiveArtifactRow {
+    pub(crate) row_id: String,
+    pub(crate) org_id: String,
+    pub(crate) content_hash: String,
+    pub(crate) current_version: i64,
+    pub(crate) user_id: Option<String>,
+    pub(crate) tier: String,
+    pub(crate) edit_access: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -290,10 +291,61 @@ async fn live_artifact(
     artifact_id: &str,
 ) -> Result<Option<LiveArtifactRow>> {
     database
-        .prepare("SELECT row_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<LiveArtifactRow>(None)
         .await
+}
+
+/// Whether a version write from another org may target this artifact. Only
+/// Public + edit; every other combination is invisible cross-org, so its row
+/// is never even returned to a caller from a different org.
+pub(crate) fn cross_org_edit_allowed(sharing: Sharing, edit_access: EditAccess) -> bool {
+    sharing == Sharing::Public && edit_access == EditAccess::Edit
+}
+
+/// Picks the live artifact a version write targets, and whether it is in the
+/// credential's own org. Pure: the caller fetches the two candidate rows and
+/// this decides between them. The credential's own row always wins; another
+/// org's row is usable only when it is public + edit, so a team/public-view
+/// artifact of another org is `None` (404) exactly like a missing one and its
+/// existence is never revealed.
+pub(crate) fn select_version_target(
+    same_org_row: Option<LiveArtifactRow>,
+    other_org_row: Option<LiveArtifactRow>,
+) -> Option<(LiveArtifactRow, bool)> {
+    if let Some(row) = same_org_row {
+        return Some((row, true));
+    }
+    let other = other_org_row?;
+    cross_org_edit_allowed(
+        Sharing::from_tier(&other.tier),
+        EditAccess::from_stored(&other.edit_access),
+    )
+    .then_some((other, false))
+}
+
+/// The live artifact a version write targets, resolved org-first.
+///
+/// The artifact's own org is tried first. If it is not there, the id is looked
+/// up alone but restricted to a live Public + edit artifact, so a version write
+/// from another org can only ever reach an artifact that deliberately allows
+/// it. The cross-org lookup never matches a non-public row.
+pub(crate) async fn version_target(
+    database: &worker::D1Database,
+    org: &str,
+    artifact_id: &str,
+) -> Result<Option<(LiveArtifactRow, bool)>> {
+    let same_org = live_artifact(database, org, artifact_id).await?;
+    if same_org.is_some() {
+        return Ok(select_version_target(same_org, None));
+    }
+    let other_org = database
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .bind(&[JsValue::from_str(artifact_id)])?
+        .first::<LiveArtifactRow>(None)
+        .await?;
+    Ok(select_version_target(None, other_org))
 }
 
 const VERSION_COLUMNS: &str = "id, version, created_at, created_by, agent, repo_url, commit_sha, title, description, content_hash, manifest, entrypoint, provenance, restored_from, expires_at";
@@ -466,21 +518,24 @@ async fn create_version(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
-    let Some(artifact) = live_artifact(&storage.database, &org, artifact_id).await? else {
+    // Org first: the artifact's own org wins, then a live Public + edit
+    // artifact of another org (same_org = false). A non-public artifact of
+    // another org is indistinguishable from a missing one (404).
+    let Some((artifact, same_org)) = version_target(&storage.database, &org, artifact_id).await?
+    else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
+    let artifact_org = artifact.org_id.clone();
     let sharing = Sharing::from_tier(&artifact.tier);
     let tier = tier_from_database(&artifact.tier);
     let edit_access = EditAccess::from_stored(&artifact.edit_access);
     let viewer = Viewer::from_credential(&credential);
-    // Same org only for now: the public + edit cross-org write path is a later
-    // slice.
     if !decide_version_publish(
         sharing,
         edit_access,
         artifact.user_id.as_deref(),
         &viewer,
-        true,
+        same_org,
     ) {
         return json_error(
             ErrorCode::Forbidden,
@@ -489,10 +544,12 @@ async fn create_version(
         );
     }
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
+    // The quota gate is the artifact's org, not the editor's: the bytes land in
+    // the owning org's storage.
     if let Some(refusal) = quota_refusal(
         &storage.database,
         env,
-        &org,
+        &artifact_org,
         declared,
         quota::AddKind::Create,
     )
@@ -504,7 +561,7 @@ async fn create_version(
     // serialises version-numbering and promotion for this artifact.
     let lock_keys = vec![
         artifact_lock_key(&artifact.row_id),
-        bundle_lock_key(&org, content_hash),
+        bundle_lock_key(&artifact_org, content_hash),
     ];
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
@@ -651,7 +708,16 @@ async fn create_version(
             return Err(worker::Error::RustError(message));
         }
         if missing_files.is_empty() {
-            emit_artifact_version_created(ctx, env, &org, artifact_id, version, tier);
+            emit_artifact_version_created(
+                ctx,
+                env,
+                &artifact_org,
+                artifact_id,
+                version,
+                tier,
+                &credential.org_id,
+                &credential.user_id,
+            );
         }
         JsonResponseDefinition::json(
             build_version_response(artifact_id, &base_url, version, true, missing_files, tier, sharing),
@@ -682,9 +748,11 @@ async fn restore_version(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
-    let Some(artifact) = live_artifact(&storage.database, &org, artifact_id).await? else {
+    let Some((artifact, same_org)) = version_target(&storage.database, &org, artifact_id).await?
+    else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
+    let artifact_org = artifact.org_id.clone();
     let sharing = Sharing::from_tier(&artifact.tier);
     let tier = tier_from_database(&artifact.tier);
     let edit_access = EditAccess::from_stored(&artifact.edit_access);
@@ -694,7 +762,7 @@ async fn restore_version(
         edit_access,
         artifact.user_id.as_deref(),
         &viewer,
-        true,
+        same_org,
     ) {
         return json_error(
             ErrorCode::Forbidden,
@@ -816,7 +884,16 @@ async fn restore_version(
             }
             return Err(worker::Error::RustError(message));
         }
-        emit_artifact_version_created(ctx, env, &org, artifact_id, version, tier);
+        emit_artifact_version_created(
+            ctx,
+            env,
+            &artifact_org,
+            artifact_id,
+            version,
+            tier,
+            &credential.org_id,
+            &credential.user_id,
+        );
         JsonResponseDefinition::json(
             build_version_response(artifact_id, &base_url, version, true, Vec::new(), tier, sharing),
             201,
@@ -934,6 +1011,51 @@ mod tests {
                 "{unknown}"
             );
         }
+    }
+
+    #[test]
+    fn version_target_prefers_same_org_and_gates_cross_org() {
+        fn row(org: &str, tier: &str, edit_access: &str) -> LiveArtifactRow {
+            LiveArtifactRow {
+                row_id: "row-1".to_string(),
+                org_id: org.to_string(),
+                content_hash: "a".repeat(64),
+                current_version: 1,
+                user_id: Some("owner".to_string()),
+                tier: tier.to_string(),
+                edit_access: edit_access.to_string(),
+            }
+        }
+
+        // The credential's own row wins even when another org's public + edit
+        // row exists.
+        let (chosen, same_org) = select_version_target(
+            Some(row("acme", "private", "view")),
+            Some(row("other", "public", "edit")),
+        )
+        .expect("same-org row is always a target");
+        assert!(same_org);
+        assert_eq!(chosen.org_id, "acme");
+
+        // Another org's public + edit row is usable.
+        let (chosen, same_org) = select_version_target(None, Some(row("other", "public", "edit")))
+            .expect("public + edit is cross-org writable");
+        assert!(!same_org);
+        assert_eq!(chosen.org_id, "other");
+
+        // Any other combination is invisible, never a distinguishable refusal.
+        for (tier, edit_access) in [
+            ("secure", "edit"),
+            ("public", "view"),
+            ("private", "edit"),
+            ("bogus", "edit"),
+        ] {
+            assert!(
+                select_version_target(None, Some(row("other", tier, edit_access))).is_none(),
+                "{tier}/{edit_access}"
+            );
+        }
+        assert!(select_version_target(None, None).is_none());
     }
 
     #[test]

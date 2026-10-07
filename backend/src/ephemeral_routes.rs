@@ -184,7 +184,13 @@ pub(crate) fn emit_artifact_created(
 /// Queues `artifact.version_created` after a version has been promoted to
 /// current. Emitted only on promotion, never when a version is still pending
 /// its uploads. Best effort: the send runs in `waitUntil` and can never change
-/// the response. `org` is the verified credential's org.
+/// the response. `org` is the artifact's owning org and `editor_org` the
+/// credential's org, so Laravel can audit a cross-org Public + edit write;
+/// `created_by` is the publisher's user id.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one named event builder; every field is part of the audit payload"
+)]
 pub(crate) fn emit_artifact_version_created(
     ctx: &worker::Context,
     env: &Env,
@@ -192,6 +198,8 @@ pub(crate) fn emit_artifact_version_created(
     artifact_id: &str,
     version: u32,
     tier: ArtifactTier,
+    editor_org: &str,
+    created_by: &str,
 ) {
     let (Ok(secret), Ok(url)) = (
         env.var(events::EVENT_SECRET_ENV),
@@ -212,7 +220,58 @@ pub(crate) fn emit_artifact_version_created(
         org,
         &now.to_rfc3339_opts(SecondsFormat::Secs, true),
         now.timestamp(),
-        serde_json::json!({"artifact_id": artifact_id, "version": version, "tier": tier}),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "version": version,
+            "tier": tier,
+            "editor_org": editor_org,
+            "created_by": created_by,
+        }),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+/// Queues `artifact.sharing_changed` after the sharing update is committed.
+/// Best effort, in `waitUntil`, so it never changes the response. `org` is the
+/// artifact's owning org; `actor_user_id` is the credential that changed it.
+/// `from`/`to` use the API sharing names (`private`/`team`/`public`).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one named event builder; every field is part of the audit payload"
+)]
+pub(crate) fn emit_artifact_sharing_changed(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    from: &str,
+    to: &str,
+    from_edit_access: &str,
+    to_edit_access: &str,
+    actor_user_id: &str,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.sharing_changed",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "from": from,
+            "to": to,
+            "from_edit_access": from_edit_access,
+            "to_edit_access": to_edit_access,
+            "actor_user_id": actor_user_id,
+        }),
     );
     let url = url.to_string();
     ctx.wait_until(async move { events::send(&url, event).await });

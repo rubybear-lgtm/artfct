@@ -46,10 +46,6 @@ impl Sharing {
     }
 
     /// Parses the API name (`private`, `team`, `public`).
-    #[allow(
-        dead_code,
-        reason = "reserved for the sharing update request parsing in a later slice"
-    )]
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "private" => Some(Self::Private),
@@ -60,10 +56,6 @@ impl Sharing {
     }
 
     /// The value stored in `artifacts.tier`.
-    #[allow(
-        dead_code,
-        reason = "reserved for the sharing update response in a later slice"
-    )]
     pub(crate) fn tier(self) -> &'static str {
         match self {
             Self::Private => "private",
@@ -73,10 +65,6 @@ impl Sharing {
     }
 
     /// The API name.
-    #[allow(
-        dead_code,
-        reason = "reserved for the sharing update response in a later slice"
-    )]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Private => "private",
@@ -109,10 +97,6 @@ impl EditAccess {
         }
     }
 
-    #[allow(
-        dead_code,
-        reason = "reserved for the sharing update request parsing in a later slice"
-    )]
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "view" => Some(Self::View),
@@ -121,10 +105,6 @@ impl EditAccess {
         }
     }
 
-    #[allow(
-        dead_code,
-        reason = "reserved for the sharing update response in a later slice"
-    )]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::View => "view",
@@ -285,10 +265,6 @@ pub(crate) fn artifact_access(
 
 /// Whether choosing `sharing` is allowed by the org's settings. Only public can
 /// be switched off.
-#[allow(
-    dead_code,
-    reason = "reserved for the sharing update endpoint in a later slice"
-)]
 pub(crate) fn sharing_allowed(sharing: Sharing, public_sharing_allowed: bool) -> bool {
     sharing != Sharing::Public || public_sharing_allowed
 }

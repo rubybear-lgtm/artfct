@@ -3,7 +3,10 @@ use crate::artifact_origin::{
     access_token_cookie, access_token_from_cookie, app_frame_ancestor, parse_isolated_hostname,
     verify_access_token,
 };
-use crate::sharing::{self, can_view, EditAccess, Sharing, Viewer};
+use crate::sharing::{
+    self, can_change_sharing, can_publish_version, can_view, sharing_allowed, EditAccess, Sharing,
+    Viewer,
+};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
@@ -307,24 +310,51 @@ pub(crate) async fn upload_permanent_file(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let database = &storage.database;
-    let org = credential.org_id.clone();
-    // Target selection: a pending v2+ version that names this sha wins over
-    // the current version, because completing it is the point of the upload.
-    // An expired pending version is still selected here so it can be cleaned
-    // up rather than uploaded to.
-    let Some(row) = find_upload_target(database, &org, artifact_id, content_hash).await? else {
+    // Resolve the artifact org-first, exactly as a version POST does. A
+    // cross-org upload is only possible for a live Public + edit artifact, and
+    // must still pass the one publish rule.
+    let Some((artifact, same_org)) =
+        crate::version_routes::version_target(database, &credential.org_id, artifact_id).await?
+    else {
         return json_error(
             ErrorCode::ArtifactNotFound,
             "Artifact not found or already uploaded.",
             404,
         );
     };
-    // Quota gate (spec 14): the file's declared size against the org's
+    let artifact_org = artifact.org_id.clone();
+    let viewer = Viewer::from_credential(&credential);
+    if !can_publish_version(
+        Sharing::from_tier(&artifact.tier),
+        EditAccess::from_stored(&artifact.edit_access),
+        artifact.user_id.as_deref(),
+        &viewer,
+        same_org,
+    ) {
+        return json_error(
+            ErrorCode::Forbidden,
+            "You may not publish a new version of this artifact.",
+            403,
+        );
+    }
+    // Target selection: a pending v2+ version that names this sha wins over
+    // the current version, because completing it is the point of the upload.
+    // An expired pending version is still selected here so it can be cleaned
+    // up rather than uploaded to.
+    let Some(row) = find_upload_target(database, &artifact_org, artifact_id, content_hash).await?
+    else {
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or already uploaded.",
+            404,
+        );
+    };
+    // Quota gate (spec 14): the file's declared size against the owning org's
     // storage, before its bytes are read or written.
     if let Some(refusal) = quota_refusal(
         database,
         env,
-        &org,
+        &artifact_org,
         row.expected_size.max(0) as u64,
         quota::AddKind::Upload,
     )
@@ -351,7 +381,8 @@ pub(crate) async fn upload_permanent_file(
     let expiring_v1 =
         row.version_id.is_none() && upload_expired(row.expires_at.as_deref(), Utc::now());
     if expiring_v1 {
-        lock_keys = org_admin::artifact_version_hashes(database, artifact_id, &org).await?;
+        lock_keys =
+            org_admin::artifact_version_hashes(database, artifact_id, &artifact_org).await?;
     }
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
@@ -514,10 +545,12 @@ pub(crate) async fn upload_permanent_file(
                     emit_artifact_version_created(
                         ctx,
                         env,
-                        &org,
+                        &artifact_org,
                         &completion.artifact_id,
                         version,
                         permanent_tier_from_database(&completion.tier),
+                        &credential.org_id,
+                        &credential.user_id,
                     );
                 }
             }
@@ -542,7 +575,7 @@ pub(crate) async fn upload_permanent_file(
         .bind(&[
             JsValue::from_str(content_hash),
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_org),
             JsValue::from_str(content_hash),
             JsValue::from_str(&now),
         ]) {
@@ -557,7 +590,7 @@ pub(crate) async fn upload_permanent_file(
         .bind(&[
             JsValue::from_str(content_hash),
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_org),
             JsValue::from_str(content_hash),
             JsValue::from_str(&now),
         ]) {
@@ -577,7 +610,7 @@ pub(crate) async fn upload_permanent_file(
         .prepare("UPDATE artifacts SET expires_at = NULL WHERE id = ? AND org_id = ? AND (expires_at IS NULL OR expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.artifact_row_id = artifacts.row_id AND f.path = json_extract(mf.value, '$.path')))" )
         .bind(&[
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_org),
             JsValue::from_str(&now),
         ]) {
         Ok(statement) => statement,
@@ -590,10 +623,10 @@ pub(crate) async fn upload_permanent_file(
         .prepare("UPDATE artifact_versions SET expires_at = NULL WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = ? AND (expires_at IS NULL OR expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(artifacts.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.artifact_row_id = artifacts.row_id AND f.path = json_extract(mf.value, '$.path')))) AND version = (SELECT current_version FROM artifacts WHERE id = ? AND org_id = ?)")
         .bind(&[
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_org),
             JsValue::from_str(&now),
             JsValue::from_str(artifact_id),
-            JsValue::from_str(&org),
+            JsValue::from_str(&artifact_org),
         ]) {
         Ok(statement) => statement,
         Err(error) => {
@@ -1187,7 +1220,59 @@ struct ExistingArtifactRow {
     id: String,
     manifest: String,
     tier: String,
+    edit_access: String,
     current_version: i64,
+}
+
+/// The sharing a create asks for. `sharing` wins over the deprecated `tier`;
+/// neither given means team. An unrecognised value is an error the caller maps
+/// to 422.
+pub(crate) fn requested_sharing(raw: &Value) -> std::result::Result<Sharing, &'static str> {
+    if let Some(value) = raw.get("sharing") {
+        return value
+            .as_str()
+            .and_then(Sharing::parse)
+            .ok_or("The sharing field must be private, team or public.");
+    }
+    match raw.get("tier").and_then(Value::as_str) {
+        None => Ok(Sharing::Team),
+        Some("public") => Ok(Sharing::Public),
+        Some("secure") => Ok(Sharing::Team),
+        Some("private") => Ok(Sharing::Private),
+        Some(_) => Err("The tier field must be public, secure or private."),
+    }
+}
+
+/// The edit access a create asks for; a missing field means view.
+pub(crate) fn requested_edit_access(raw: &Value) -> std::result::Result<EditAccess, &'static str> {
+    match raw.get("edit_access") {
+        None => Ok(EditAccess::View),
+        Some(value) => value
+            .as_str()
+            .and_then(EditAccess::parse)
+            .ok_or("The edit_access field must be view or edit."),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgSettingsRow {
+    public_sharing_allowed: i64,
+}
+
+/// Whether `org` allows public sharing. A missing row means allowed, matching
+/// the 0007 migration's team default.
+pub(crate) async fn public_sharing_allowed(
+    database: &worker::D1Database,
+    org: &str,
+) -> Result<bool> {
+    let row = database
+        .prepare("SELECT public_sharing_allowed FROM org_settings WHERE org_id = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgSettingsRow>(None)
+        .await?;
+    Ok(row
+        .map(|row| row.public_sharing_allowed != 0)
+        .unwrap_or(true))
 }
 
 /// The stored tier string back to its enum. Permanent rows only ever carry
@@ -1233,9 +1318,7 @@ async fn existing_artifact_response(
             url: format!("{}/p/{}/", base_url.trim_end_matches('/'), row.id),
             tier: permanent_tier_from_database(&row.tier),
             sharing: Sharing::from_tier(&row.tier),
-            // Edit access comes from storage once the sharing endpoint exists;
-            // migration 0007 defaults every row to view.
-            edit_access: EditAccess::View,
+            edit_access: EditAccess::from_stored(&row.edit_access),
             version: row.current_version.max(1) as u32,
             missing_files: missing_manifest_files(&existing_manifest, &present),
         },
@@ -1258,7 +1341,7 @@ async fn existing_permanent_by_content(
 ) -> Result<Option<ExistingArtifactRow>> {
     storage
         .database
-        .prepare("SELECT id, manifest, tier, current_version FROM artifacts WHERE org_id = ? AND content_hash = ? AND revoked_at IS NULL ORDER BY created_at, row_id LIMIT 1")
+        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND content_hash = ? AND revoked_at IS NULL ORDER BY created_at, row_id LIMIT 1")
         .bind(&[JsValue::from_str(org), JsValue::from_str(bundle_hash)])?
         .first::<ExistingArtifactRow>(None)
         .await
@@ -1275,7 +1358,7 @@ pub(crate) async fn existing_permanent_response(
 ) -> Result<Option<Response>> {
     let Some(existing) = storage
         .database
-        .prepare("SELECT id, manifest, tier, current_version FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT id, manifest, tier, edit_access, current_version FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
         .first::<ExistingArtifactRow>(None)
         .await?
@@ -1286,6 +1369,194 @@ pub(crate) async fn existing_permanent_response(
     Ok(Some(
         existing_artifact_response(storage, env, &existing).await?,
     ))
+}
+
+/// Splits `/v1/artifacts/{id}/sharing` into `id`. Pure, so the dispatch guard
+/// and its tests share one definition. Shape-only: the handler answers a
+/// non-permanent id with 404 rather than letting the generic PATCH arm treat it
+/// as an ephemeral update.
+pub(crate) fn parse_sharing_path(path: &str) -> Option<&str> {
+    let id = path
+        .strip_prefix("/v1/artifacts/")?
+        .strip_suffix("/sharing")?;
+    (!id.is_empty() && !id.contains('/')).then_some(id)
+}
+
+#[derive(Debug, Deserialize)]
+struct SharingUpdateRow {
+    tier: String,
+    user_id: Option<String>,
+    edit_access: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct ArtifactSharingRequest {
+    sharing: Option<String>,
+    edit_access: Option<String>,
+}
+
+/// The `PATCH /v1/artifacts/{id}/sharing` body. `tier` is the storage name of
+/// the new sharing level (`secure` for team), kept for compatibility.
+#[derive(Debug, Serialize)]
+pub(crate) struct ArtifactSharingResponse {
+    pub(crate) id: String,
+    pub(crate) sharing: Sharing,
+    pub(crate) edit_access: EditAccess,
+    pub(crate) tier: &'static str,
+    pub(crate) previous_sharing: Sharing,
+    pub(crate) previous_edit_access: EditAccess,
+}
+
+pub(crate) fn build_sharing_response(
+    id: &str,
+    sharing: Sharing,
+    edit_access: EditAccess,
+    previous_sharing: Sharing,
+    previous_edit_access: EditAccess,
+) -> ArtifactSharingResponse {
+    ArtifactSharingResponse {
+        id: id.to_string(),
+        sharing,
+        edit_access,
+        tier: sharing.tier(),
+        previous_sharing,
+        previous_edit_access,
+    }
+}
+
+/// `PATCH /v1/artifacts/{id}/sharing` (RUB-438). The owner or a team admin
+/// changes sharing and edit access. Another org's artifact, or a private one
+/// the caller cannot see, is the same 404 as a missing artifact.
+pub(crate) async fn update_artifact_sharing(
+    path: &str,
+    req: &mut Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
+    let Some(artifact_id) = parse_sharing_path(path) else {
+        return not_found_response();
+    };
+    if !store::is_permanent_id(artifact_id) {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:deploy").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let request = match req.json::<ArtifactSharingRequest>().await {
+        Ok(request) => request,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    if request.sharing.is_none() && request.edit_access.is_none() {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "At least one of sharing or edit_access is required.",
+            422,
+        );
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let row = storage
+        .database
+        .prepare("SELECT a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&credential.org_id),
+        ])?
+        .first::<SharingUpdateRow>(None)
+        .await?;
+    let Some(row) = row else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let viewer = Viewer::from_credential(&credential);
+    let previous_sharing = Sharing::from_tier(&row.tier);
+    let previous_edit_access = EditAccess::from_stored(&row.edit_access);
+    // Org first (the lookup above), then visibility: a private artifact this
+    // member cannot see is the same 404.
+    if !can_view(previous_sharing, row.user_id.as_deref(), &viewer) {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    if !can_change_sharing(row.user_id.as_deref(), &viewer, true) {
+        return json_error(
+            ErrorCode::Forbidden,
+            "You may not change sharing for this artifact.",
+            403,
+        );
+    }
+    let sharing = match &request.sharing {
+        Some(value) => match Sharing::parse(value) {
+            Some(sharing) => sharing,
+            None => {
+                return json_error(
+                    ErrorCode::ValidationFailed,
+                    "The sharing field must be private, team or public.",
+                    422,
+                )
+            }
+        },
+        None => previous_sharing,
+    };
+    let edit_access = match &request.edit_access {
+        Some(value) => match EditAccess::parse(value) {
+            Some(edit_access) => edit_access,
+            None => {
+                return json_error(
+                    ErrorCode::ValidationFailed,
+                    "The edit_access field must be view or edit.",
+                    422,
+                )
+            }
+        },
+        None => previous_edit_access,
+    };
+    if !sharing_allowed(
+        sharing,
+        public_sharing_allowed(&storage.database, &credential.org_id).await?,
+    ) {
+        return json_error(
+            ErrorCode::PublicSharingDisabled,
+            "This team has turned off public sharing.",
+            403,
+        );
+    }
+    storage
+        .database
+        .prepare("UPDATE artifacts SET tier = ?, edit_access = ? WHERE id = ? AND org_id = ?")
+        .bind(&[
+            JsValue::from_str(sharing.tier()),
+            JsValue::from_str(edit_access.as_str()),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&credential.org_id),
+        ])?
+        .run()
+        .await?;
+    if sharing != previous_sharing || edit_access != previous_edit_access {
+        emit_artifact_sharing_changed(
+            ctx,
+            env,
+            &credential.org_id,
+            artifact_id,
+            previous_sharing.as_str(),
+            sharing.as_str(),
+            previous_edit_access.as_str(),
+            edit_access.as_str(),
+            &credential.user_id,
+        );
+    }
+    JsonResponseDefinition::json(
+        build_sharing_response(
+            artifact_id,
+            sharing,
+            edit_access,
+            previous_sharing,
+            previous_edit_access,
+        ),
+        200,
+    )
+    .into_worker_response()
 }
 
 pub(crate) async fn create_permanent_artifact(
@@ -1322,16 +1593,13 @@ pub(crate) async fn create_permanent_artifact(
         }
     }
 
-    let tier = match raw.get("tier").and_then(Value::as_str) {
-        Some("public") => ArtifactTier::Public,
-        Some("secure") => ArtifactTier::Secure,
-        _ => {
-            return json_error(
-                ErrorCode::ValidationFailed,
-                "Permanent artifacts must use the public or secure tier.",
-                422,
-            );
-        }
+    let sharing = match requested_sharing(raw) {
+        Ok(sharing) => sharing,
+        Err(message) => return json_error(ErrorCode::ValidationFailed, message, 422),
+    };
+    let edit_access = match requested_edit_access(raw) {
+        Ok(edit_access) => edit_access,
+        Err(message) => return json_error(ErrorCode::ValidationFailed, message, 422),
     };
     let (manifest, bundle_hash) = match validate_permanent_manifest(raw) {
         Ok(value) => value,
@@ -1375,6 +1643,18 @@ pub(crate) async fn create_permanent_artifact(
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // Public sharing can be switched off per org. A missing row means allowed
+    // (the 0007 default). Checked before any row is written.
+    if !sharing_allowed(
+        sharing,
+        public_sharing_allowed(&storage.database, &org).await?,
+    ) {
+        return json_error(
+            ErrorCode::PublicSharingDisabled,
+            "This team has turned off public sharing.",
+            403,
+        );
+    }
     // Quota gate (spec 14): decided from the manifest's declared sizes,
     // before any lock, row or blob is written.
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
@@ -1472,12 +1752,6 @@ pub(crate) async fn create_permanent_artifact(
         };
         let manifest_json = serde_json::to_string(&manifest)?;
         let provenance_json = provenance.to_string();
-        let tier_value = match tier {
-            ArtifactTier::Public => "public",
-            ArtifactTier::Secure => "secure",
-            ArtifactTier::Private => "private",
-            ArtifactTier::Ephemeral => "ephemeral",
-        };
         // At most three attempts. A conflict on the global stable-id index is
         // retried with a fresh id; the bundle lock means a same-content create
         // cannot race, so the (org_id, id) branch is only defensive.
@@ -1499,7 +1773,7 @@ pub(crate) async fn create_permanent_artifact(
                         JsValue::from_str(&now),
                     ])?,
                 database
-                    .prepare("INSERT INTO artifacts (row_id, id, org_id, user_id, content_hash, entrypoint, created_at, updated_at, expires_at, tier, manifest, title, description, current_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)")
+                    .prepare("INSERT INTO artifacts (row_id, id, org_id, user_id, content_hash, entrypoint, created_at, updated_at, expires_at, tier, edit_access, manifest, title, description, current_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)")
                     .bind(&[
                         JsValue::from_str(&row_id),
                         JsValue::from_str(&artifact_id),
@@ -1510,7 +1784,8 @@ pub(crate) async fn create_permanent_artifact(
                         JsValue::from_str(&now),
                         JsValue::from_str(&now),
                         expires_value.clone(),
-                        JsValue::from_str(tier_value),
+                        JsValue::from_str(sharing.tier()),
+                        JsValue::from_str(edit_access.as_str()),
                         JsValue::from_str(&manifest_json),
                         artifact_title.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
                         artifact_description.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
@@ -1592,9 +1867,9 @@ pub(crate) async fn create_permanent_artifact(
                         PermanentCreateArtifactResponse {
                             id: artifact_id.clone(),
                             url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
-                            tier,
-                            sharing: Sharing::from_tier(tier_value),
-                            edit_access: EditAccess::View,
+                            tier: permanent_tier_from_database(sharing.tier()),
+                            sharing,
+                            edit_access,
                             version: 1,
                             missing_files,
                         },
@@ -1643,7 +1918,13 @@ pub(crate) async fn create_permanent_artifact(
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     bundle_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
     if created && response.status_code() == 201 {
-        emit_artifact_created(ctx, env, &org, &artifact_id, tier);
+        emit_artifact_created(
+            ctx,
+            env,
+            &org,
+            &artifact_id,
+            permanent_tier_from_database(sharing.tier()),
+        );
     }
     Ok(response)
 }
@@ -1651,6 +1932,68 @@ pub(crate) async fn create_permanent_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_sharing_path_matches_only_the_sharing_shape() {
+        let id = "abcdefghijklm";
+        assert_eq!(
+            parse_sharing_path(&format!("/v1/artifacts/{id}/sharing")),
+            Some(id)
+        );
+        for path in [
+            "/v1/artifacts/abcdefghijklm",
+            "/v1/artifacts/abcdefghijklm/versions",
+            "/v1/artifacts//sharing",
+            "/v1/artifacts/a/b/sharing",
+            "/v1/artifacts/abcdefghijklm/sharing/extra",
+        ] {
+            assert_eq!(parse_sharing_path(path), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn requested_sharing_prefers_sharing_over_tier_and_defaults_to_team() {
+        let value = |raw: Value| requested_sharing(&raw);
+        assert_eq!(value(serde_json::json!({})), Ok(Sharing::Team));
+        assert_eq!(
+            value(serde_json::json!({"tier": "public"})),
+            Ok(Sharing::Public)
+        );
+        assert_eq!(
+            value(serde_json::json!({"tier": "secure"})),
+            Ok(Sharing::Team)
+        );
+        assert_eq!(
+            value(serde_json::json!({"tier": "private"})),
+            Ok(Sharing::Private)
+        );
+        // An explicit sharing field wins over the deprecated tier.
+        assert_eq!(
+            value(serde_json::json!({"tier": "public", "sharing": "private"})),
+            Ok(Sharing::Private)
+        );
+        for bad in [
+            serde_json::json!({"sharing": "banana"}),
+            serde_json::json!({"sharing": 5}),
+            serde_json::json!({"tier": "ephemeral"}),
+        ] {
+            assert!(value(bad.clone()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn requested_edit_access_defaults_to_view() {
+        assert_eq!(
+            requested_edit_access(&serde_json::json!({})),
+            Ok(EditAccess::View)
+        );
+        assert_eq!(
+            requested_edit_access(&serde_json::json!({"edit_access": "edit"})),
+            Ok(EditAccess::Edit)
+        );
+        assert!(requested_edit_access(&serde_json::json!({"edit_access": "write"})).is_err());
+        assert!(requested_edit_access(&serde_json::json!({"edit_access": 1})).is_err());
+    }
 
     #[test]
     fn permanent_tier_from_database_fails_closed_to_private() {

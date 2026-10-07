@@ -1,5 +1,5 @@
 use super::*;
-use crate::sharing::Viewer;
+use crate::sharing::{can_view, Sharing, Viewer};
 
 const LIMITS_WRITE_SECRET_ENV: &str = "ARTFCT_LIMITS_WRITE_SECRET";
 const DEFAULT_STORAGE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -174,6 +174,199 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
         .into_worker_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct OrgSettingsWriteRequest {
+    org: String,
+    public_sharing_allowed: bool,
+}
+
+/// The `POST /v1/internal/org-settings` body. `downgraded` lists the ids this
+/// request moved from public to team.
+#[derive(Debug, Serialize)]
+pub(crate) struct OrgSettingsWriteResponse {
+    pub(crate) org: String,
+    pub(crate) public_sharing_allowed: bool,
+    pub(crate) downgraded: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DowngradedRow {
+    id: String,
+}
+
+/// `POST /v1/internal/org-settings` — Laravel pushes whether the team allows
+/// public sharing (RUB-438). Turning it off downgrades every live public
+/// artifact of the org to team in the same request; the returned ids let
+/// Laravel audit each change. Own shared secret, the same one the limits write
+/// uses.
+pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let payload = match req.json::<OrgSettingsWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    if let Err(message) = store::validate_slug(&payload.org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    // Selected before the update so the response names exactly the artifacts
+    // being downgraded. The update repeats the same predicate in one batch with
+    // the settings upsert, so it can never leave a public artifact behind.
+    let downgraded = if payload.public_sharing_allowed {
+        Vec::new()
+    } else {
+        database
+            .prepare("SELECT a.id AS id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND a.tier = 'public' AND a.revoked_at IS NULL")
+            .bind(&[JsValue::from_str(&payload.org)])?
+            .all()
+            .await?
+            .results::<DowngradedRow>()?
+            .into_iter()
+            .map(|row| row.id)
+            .collect::<Vec<_>>()
+    };
+    let mut statements = vec![database
+        .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
+        .bind(&[
+            JsValue::from_str(&payload.org),
+            JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
+            JsValue::from_str(&now),
+        ])?];
+    if !payload.public_sharing_allowed {
+        statements.push(
+            database
+                .prepare("UPDATE artifacts SET tier = 'secure' WHERE org_id = (SELECT id FROM orgs WHERE slug = ?) AND tier = 'public' AND revoked_at IS NULL")
+                .bind(&[JsValue::from_str(&payload.org)])?,
+        );
+    }
+    database.batch(statements).await?;
+    JsonResponseDefinition::json(
+        OrgSettingsWriteResponse {
+            org: payload.org,
+            public_sharing_allowed: payload.public_sharing_allowed,
+            downgraded,
+        },
+        200,
+    )
+    .into_worker_response()
+}
+
+/// Splits `/v1/internal/orgs/{org}/owner-backfill` into `org`.
+pub(crate) fn parse_owner_backfill_path(path: &str) -> Option<&str> {
+    let org = path
+        .strip_prefix("/v1/internal/orgs/")?
+        .strip_suffix("/owner-backfill")?;
+    (!org.is_empty() && !org.contains('/')).then_some(org)
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OwnerBackfillRequest {
+    owner_user_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct OwnerBackfillResponse {
+    pub(crate) org: String,
+    pub(crate) updated: usize,
+}
+
+/// `POST /v1/internal/orgs/{org}/owner-backfill` — gives ownerless artifacts of
+/// the org an owner (RUB-438). Idempotent. Version history's `created_by` is
+/// deliberately not rewritten. Authenticated with the limits shared secret.
+pub(crate) async fn owner_backfill(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let Some(org) = parse_owner_backfill_path(path) else {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    };
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let payload = match req.json::<OwnerBackfillRequest>().await {
+        Ok(payload) if !payload.owner_user_id.trim().is_empty() => payload,
+        _ => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "A non-empty owner_user_id is required.",
+                422,
+            )
+        }
+    };
+    let database = env.d1("ARTIFACTS_DB")?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    database
+        .prepare("INSERT OR IGNORE INTO users (id, created_at) VALUES (?, ?)")
+        .bind(&[
+            JsValue::from_str(&payload.owner_user_id),
+            JsValue::from_str(&now),
+        ])?
+        .run()
+        .await?;
+    let update = database
+        .prepare("UPDATE artifacts SET user_id = ? WHERE org_id = ? AND (user_id IS NULL OR user_id = '')")
+        .bind(&[
+            JsValue::from_str(&payload.owner_user_id),
+            JsValue::from_str(org),
+        ])?
+        .run()
+        .await?;
+    let updated = update.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+    JsonResponseDefinition::json(
+        OwnerBackfillResponse {
+            org: org.to_string(),
+            updated,
+        },
+        200,
+    )
+    .into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactSharingRow {
+    tier: String,
+    user_id: Option<String>,
+}
+
+/// Whether the caller can see a permanent artifact in `org`. Missing, or
+/// visible-only-to-someone-else, returns false, so revoke and delete answer a
+/// private artifact the caller cannot view with the same 404 as a missing one.
+/// Revoked rows stay visible to a viewer that could see them before revocation,
+/// so a revoke-then-delete flow keeps working. The caller must have checked
+/// `org` against the credential already; this is not an org check.
+async fn artifact_visible_to(
+    database: &worker::D1Database,
+    org: &str,
+    artifact_id: &str,
+    viewer: &Viewer<'_>,
+) -> Result<bool> {
+    let row = database
+        .prepare("SELECT a.tier AS tier, a.user_id AS user_id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .first::<ArtifactSharingRow>(None)
+        .await?;
+    Ok(row.is_some_and(|row| {
+        can_view(
+            Sharing::from_tier(&row.tier),
+            row.user_id.as_deref(),
+            viewer,
+        )
+    }))
+}
+
 /// Splits `/v1/orgs/{org}/usage` into `org`.
 pub(crate) fn parse_usage_path(path: &str) -> Option<&str> {
     let org = path.strip_prefix("/v1/orgs/")?.strip_suffix("/usage")?;
@@ -299,6 +492,12 @@ pub(crate) async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) ->
     }
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // A private artifact this caller cannot see is the same 404 as a missing
+    // one (RUB-438); the org check above already scoped it to this org.
+    let viewer = Viewer::from_credential(&credential);
+    if !artifact_visible_to(&storage.database, org, artifact_id, &viewer).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
     let updated = storage
         .revoke_artifact(org, &store::ArtifactId(artifact_id.to_string()))
         .await
@@ -425,6 +624,12 @@ pub(crate) async fn delete_permanent_artifact(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
+    // A private artifact this caller cannot see is the same 404 as a missing
+    // one; the org comes from the credential, not the path.
+    let viewer = Viewer::from_credential(&credential);
+    if !artifact_visible_to(&storage.database, &org, artifact_id, &viewer).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
     match hard_delete_permanent(&storage, &org, artifact_id).await? {
         HardDeleteOutcome::Deleted => {
             emit_artifact_deleted(ctx, env, &org, artifact_id);

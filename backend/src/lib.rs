@@ -36,7 +36,8 @@ use artifact_origin::{
 use artifact_routes::{
     constant_time_equal, create_permanent_artifact, decide_org_read, delete_artifact,
     get_artifact_metadata, get_org_artifact_content, list_org_artifacts, parse_content_path,
-    resolve_permanent_artifact, upload_permanent_file, write_revocation, OrgReadDecision,
+    parse_sharing_path, resolve_permanent_artifact, update_artifact_sharing, upload_permanent_file,
+    write_revocation, OrgReadDecision,
 };
 #[cfg(test)]
 use artifact_routes::{
@@ -56,14 +57,16 @@ use auth::{
 #[cfg(test)]
 use ephemeral_routes::{build_create_artifact_response, build_update_artifact_response};
 use ephemeral_routes::{
-    create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_version_created,
-    emit_artifact_viewed, resolve_artifact, update_artifact, PermanentHashRow, PresenceRow,
+    create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_sharing_changed,
+    emit_artifact_version_created, emit_artifact_viewed, resolve_artifact, update_artifact,
+    PermanentHashRow, PresenceRow,
 };
 use governance_routes::governance_route;
 use org_admin::{
     delete_permanent_artifact, download_export_blob, export_organization, get_org_usage,
-    hard_delete_permanent, parse_usage_path, quota_refusal, release_blob_if_unreferenced,
-    revoke_org_artifact, write_jwks, write_org_limits, HardDeleteOutcome,
+    hard_delete_permanent, owner_backfill, parse_owner_backfill_path, parse_usage_path,
+    quota_refusal, release_blob_if_unreferenced, revoke_org_artifact, write_jwks, write_org_limits,
+    write_org_settings, HardDeleteOutcome,
 };
 #[cfg(test)]
 use org_admin::{
@@ -437,6 +440,10 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         }
         (Method::Post, "/v1/artifacts") => create_artifact(&mut req, &env, &ctx).await,
         (Method::Post, "/v1/internal/revocations") => write_revocation(&mut req, &env).await,
+        (Method::Post, "/v1/internal/org-settings") => write_org_settings(&mut req, &env).await,
+        (Method::Post, path) if parse_owner_backfill_path(path).is_some() => {
+            owner_backfill(path, &mut req, &env).await
+        }
         (method, path) if path.starts_with("/v1/internal/orgs/") => {
             governance_route(method, path, &mut req, &env, &ctx).await
         }
@@ -450,6 +457,9 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         }
         (Method::Delete, path) if path.starts_with("/v1/artifacts/") => {
             delete_artifact(path, &req, &env, &ctx).await
+        }
+        (Method::Patch, path) if parse_sharing_path(path).is_some() => {
+            update_artifact_sharing(path, &mut req, &env, &ctx).await
         }
         (Method::Patch, path) if path.starts_with("/v1/artifacts/") => {
             update_artifact(path, &mut req, &env).await
@@ -1515,6 +1525,70 @@ mod tests {
 
         assert_schema_matches("PermanentArtifactResponse", &response);
         assert_schema_matches("CreateArtifactResponse", &response);
+    }
+
+    #[test]
+    fn sharing_and_internal_responses_match_documented_schemas() {
+        let contract = openapi_contract();
+
+        let sharing = artifact_routes::build_sharing_response(
+            "abcdefghijklm",
+            Sharing::Team,
+            EditAccess::Edit,
+            Sharing::Private,
+            EditAccess::View,
+        );
+        let sharing_value = serde_json::to_value(&sharing).expect("sharing response serializes");
+        assert_schema_matches("ArtifactSharingResponse", &sharing_value);
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/artifacts/{id}/sharing",
+                "patch",
+                "200",
+                "application/json",
+            ),
+            &sharing_value,
+        )
+        .unwrap();
+
+        let settings = serde_json::to_value(org_admin::OrgSettingsWriteResponse {
+            org: "acme".to_string(),
+            public_sharing_allowed: false,
+            downgraded: vec!["abcdefghijklm".to_string()],
+        })
+        .expect("org settings response serializes");
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/internal/org-settings",
+                "post",
+                "200",
+                "application/json",
+            ),
+            &settings,
+        )
+        .unwrap();
+
+        let backfill = serde_json::to_value(org_admin::OwnerBackfillResponse {
+            org: "acme".to_string(),
+            updated: 2,
+        })
+        .expect("owner backfill response serializes");
+        validate_schema(
+            &contract,
+            operation_response_schema(
+                &contract,
+                "/v1/internal/orgs/{org}/owner-backfill",
+                "post",
+                "200",
+                "application/json",
+            ),
+            &backfill,
+        )
+        .unwrap();
     }
 
     fn version_row_fixture() -> version_routes::VersionRow {

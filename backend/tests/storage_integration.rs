@@ -3630,6 +3630,33 @@ async fn public_edit_allows_another_org_to_publish_a_version() -> Result<(), Box
     );
     let version = body["version"].as_u64().ok_or("version omitted")?;
 
+    // A novel file means the version starts pending; upload it as the same
+    // other-org editor (the cross-org Public + edit upload path) so it
+    // completes and history can be read back.
+    let missing = body["missing_files"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        !missing.is_empty(),
+        "a novel file must be reported missing on a new version: {body}"
+    );
+    for hash in &missing {
+        let hash = hash.as_str().ok_or("missing_files entry is not a string")?;
+        let upload = client
+            .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
+            .bearer_auth(other_org_token)
+            .header(reqwest::header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(v2.clone())
+            .send()
+            .await?;
+        assert_eq!(
+            upload.status(),
+            reqwest::StatusCode::NO_CONTENT,
+            "cross-org upload failed"
+        );
+    }
+
     // The version records the other-org user as its author. The owner reads it
     // back, because the version read path is same-org.
     let other_user = token_user_id(other_org_token)?;
