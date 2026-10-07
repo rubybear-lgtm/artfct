@@ -1,11 +1,16 @@
 use super::*;
-use crate::artifact_origin::{access_token_cookie, access_token_from_cookie, app_frame_ancestor};
+use crate::artifact_origin::{
+    access_token_cookie, access_token_from_cookie, app_frame_ancestor, parse_isolated_hostname,
+    verify_access_token,
+};
+use crate::sharing::{self, can_view, EditAccess, Sharing, Viewer};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
     pub(crate) content_hash: String,
     pub(crate) content_type: String,
     pub(crate) tier: String,
+    pub(crate) user_id: Option<String>,
     pub(crate) agent: Option<String>,
     pub(crate) repo_url: Option<String>,
     pub(crate) commit_sha: Option<String>,
@@ -24,6 +29,8 @@ pub(crate) fn build_org_content_response(
         "version": row.current_version,
         "content_type": row.content_type,
         "tier": row.tier,
+        "sharing": Sharing::from_tier(&row.tier),
+        "owner_user_id": row.user_id,
         "provenance": {
             "agent": row.agent,
             "repo_url": row.repo_url,
@@ -78,7 +85,7 @@ pub(crate) async fn get_org_artifact_content(
             Ok(credential) => credential,
             Err(refusal) => return Ok(refusal),
         };
-    let credential_org = Some(credential.org_id);
+    let credential_org = Some(credential.org_id.clone());
     match decide_org_read(credential_org.as_deref(), org) {
         OrgReadDecision::Unauthorized => {
             return json_error(
@@ -96,13 +103,24 @@ pub(crate) async fn get_org_artifact_content(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let row = storage
         .database
-        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, a.user_id AS user_id, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<ContentRow>(None)
         .await?;
     let Some(row) = row else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
+    // Org first: the query above already scoped the row to the credential's
+    // org (a mismatch is a 404). A private artifact this member cannot view is
+    // the same 404, never 403.
+    let viewer = Viewer::from_credential(&credential);
+    if !can_view(
+        Sharing::from_tier(&row.tier),
+        row.user_id.as_deref(),
+        &viewer,
+    ) {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
     let Some(object) = storage
         .bucket
         .get(format!("blobs/{}", row.content_hash))
@@ -127,6 +145,8 @@ pub(crate) struct ArtifactMetadataRow {
     pub(crate) id: String,
     pub(crate) org_id: String,
     pub(crate) tier: String,
+    pub(crate) user_id: Option<String>,
+    pub(crate) edit_access: String,
     pub(crate) entrypoint: String,
     pub(crate) created_at: String,
     pub(crate) expires_at: Option<String>,
@@ -139,11 +159,28 @@ pub(crate) struct ArtifactMetadataRow {
 
 /// The metadata read's JSON body. `version` is the served version;
 /// `version_count` counts completed versions (pending uploads are omitted).
-/// Shared by the handler and its contract test.
-pub(crate) fn build_artifact_metadata_response(row: &ArtifactMetadataRow) -> Value {
+/// The sharing/edit/permission fields are decided here from the viewer, which
+/// is always a credential of the artifact's own org (the caller checks that
+/// first). Shared by the handler and its contract test.
+pub(crate) fn build_artifact_metadata_response(
+    row: &ArtifactMetadataRow,
+    viewer: &Viewer<'_>,
+) -> Value {
+    let access = sharing::artifact_access(
+        Sharing::from_tier(&row.tier),
+        EditAccess::from_stored(&row.edit_access),
+        row.user_id.as_deref(),
+        viewer,
+        true,
+    );
     serde_json::json!({
         "id": row.id,
         "tier": row.tier,
+        "sharing": access.sharing,
+        "edit_access": access.edit_access,
+        "owner_user_id": access.owner_user_id,
+        "can_edit": access.can_edit,
+        "can_change_sharing": access.can_change_sharing,
         "version": row.current_version,
         "version_count": row.version_count,
         "updated_at": row.updated_at,
@@ -594,6 +631,7 @@ struct PermanentArtifactRow {
     content_hash: String,
     entrypoint: String,
     tier: String,
+    user_id: Option<String>,
     content_type: String,
     expires_at: Option<String>,
     manifest: String,
@@ -625,7 +663,7 @@ pub(crate) async fn get_artifact_metadata(
     let database = env.d1("ARTIFACTS_DB")?;
     let row = database
         .prepare(
-            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
+            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? ORDER BY a.row_id LIMIT 1",
         )
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<ArtifactMetadataRow>(None)
@@ -640,7 +678,17 @@ pub(crate) async fn get_artifact_metadata(
         }
         ArtifactLookupDecision::Visible => {
             let row = row.expect("Visible is only returned when a row was fetched");
-            JsonResponseDefinition::json(build_artifact_metadata_response(&row), 200)
+            let viewer = Viewer::from_credential(&credential);
+            // Org first (above), then visibility. A private artifact this
+            // member cannot view is the same 404, never 403.
+            if !can_view(
+                Sharing::from_tier(&row.tier),
+                row.user_id.as_deref(),
+                &viewer,
+            ) {
+                return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+            }
+            JsonResponseDefinition::json(build_artifact_metadata_response(&row, &viewer), 200)
                 .into_worker_response()
         }
     }
@@ -726,7 +774,7 @@ async fn permanent_artifact_row(
     match version {
         None => {
             database
-                .prepare("SELECT f.content_hash, a.entrypoint, a.tier, f.content_type, a.expires_at, a.manifest, o.slug AS org FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+                .prepare("SELECT f.content_hash, a.entrypoint, a.tier, a.user_id, f.content_type, a.expires_at, a.manifest, o.slug AS org FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND f.path = COALESCE(?, a.entrypoint) AND (a.expires_at IS NULL OR a.expires_at > ?) AND a.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
                 .bind(&[
                     JsValue::from_str(artifact_id),
                     requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
@@ -737,7 +785,7 @@ async fn permanent_artifact_row(
         }
         Some(version) => {
             database
-                .prepare("SELECT vf.content_hash, v.entrypoint, a.tier, vf.content_type, v.expires_at, v.manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN artifact_versions v ON v.artifact_row_id = a.row_id AND v.version = ? JOIN version_files vf ON vf.version_id = v.id AND vf.path = COALESCE(?, v.entrypoint) WHERE a.id = ? AND a.revoked_at IS NULL AND v.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(v.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM version_files complete WHERE complete.version_id = v.id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
+                .prepare("SELECT vf.content_hash, v.entrypoint, a.tier, a.user_id, vf.content_type, v.expires_at, v.manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN artifact_versions v ON v.artifact_row_id = a.row_id AND v.version = ? JOIN version_files vf ON vf.version_id = v.id AND vf.path = COALESCE(?, v.entrypoint) WHERE a.id = ? AND a.revoked_at IS NULL AND v.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(v.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM version_files complete WHERE complete.version_id = v.id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1")
                 .bind(&[
                     JsValue::from_f64(version as f64),
                     requested_path.map(JsValue::from_str).unwrap_or_else(JsValue::null),
@@ -747,6 +795,52 @@ async fn permanent_artifact_row(
                 .await
         }
     }
+}
+
+/// Isolated-origin access with the Public exemption (RUB-438): a public
+/// artifact served on its own `<slug>--<id>` host is framable with no token at
+/// all, so the viewer can embed it without minting one. The host must still
+/// name this exact artifact and tenant, so one artifact's origin can never
+/// serve another's. A team or private artifact without a token stays
+/// `Forbidden`, exactly as before.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mirrors isolated_access_check plus the artifact's sharing level"
+)]
+pub(crate) fn isolated_access_for_artifact(
+    host: Option<&str>,
+    token: Option<&str>,
+    artifact_id: &str,
+    artifact_org: &str,
+    sharing: Sharing,
+    secret: Option<&str>,
+    now: chrono::DateTime<Utc>,
+    origin_suffix: &str,
+) -> IsolatedAccess {
+    let access = isolated_access_check(
+        host,
+        token,
+        artifact_id,
+        artifact_org,
+        secret,
+        now,
+        origin_suffix,
+    );
+    if access == IsolatedAccess::Authorized || !sharing.is_anonymous() {
+        return access;
+    }
+    // Only an anonymous (public) artifact can skip the token, and only on its
+    // own origin. The host match is re-derived here because
+    // `isolated_access_check` collapses a missing token and a mismatched host
+    // into the same `Forbidden`.
+    if let Some(host) = host {
+        if let Some((host_org, host_artifact_id)) = parse_isolated_hostname(host, origin_suffix) {
+            if host_artifact_id == artifact_id && host_org == artifact_org {
+                return IsolatedAccess::Authorized;
+            }
+        }
+    }
+    access
 }
 
 pub(crate) async fn resolve_permanent_artifact(
@@ -784,11 +878,13 @@ pub(crate) async fn resolve_permanent_artifact(
         .or(query_token.clone())
         .or(cookie_token);
     let now = Utc::now();
-    let isolated_access = isolated_access_check(
+    let sharing = Sharing::from_tier(&row.tier);
+    let isolated_access = isolated_access_for_artifact(
         host.as_deref(),
         token.as_deref(),
         artifact_id,
         &row.org,
+        sharing,
         artifact_token_secret(env).as_deref(),
         now,
         &artifact_origin_suffix(env),
@@ -798,10 +894,18 @@ pub(crate) async fn resolve_permanent_artifact(
         IsolatedAccess::Forbidden => return isolated_forbidden_response(),
         IsolatedAccess::Authorized => {}
         IsolatedAccess::NotIsolated => {
-            if row.tier == "secure" {
+            // Only a public artifact is anonymous on the shared origin.
+            // Everything else needs a credential of the artifact's own org,
+            // and a private one the member cannot view is the same 404 as a
+            // missing artifact (never 403).
+            if !sharing.is_anonymous() {
                 match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
                     Ok(credential) if credential.org_id == row.org => {
-                        viewer_user_id = Some(credential.user_id);
+                        let viewer = Viewer::from_credential(&credential);
+                        if !can_view(sharing, row.user_id.as_deref(), &viewer) {
+                            return expired_response();
+                        }
+                        viewer_user_id = Some(credential.user_id.clone());
                     }
                     Ok(_) => {
                         return json_error(
@@ -820,8 +924,8 @@ pub(crate) async fn resolve_permanent_artifact(
     // credential): derive a pseudonymous visitor key so distinct-viewer
     // scoring (spec 16) still has something to count. This is a ranking
     // heuristic: callers can vary request headers to vary their key. It is
-    // never an authenticated or abuse-resistant viewer identity. A
-    // `secure`-tier view that resolved a credential above always has
+    // never an authenticated or abuse-resistant viewer identity. A team or
+    // private view that resolved a credential above always has
     // `viewer_user_id`, so this and that are mutually exclusive per view.
     let mut viewer_key = None;
     if viewer_user_id.is_none() {
@@ -875,8 +979,15 @@ pub(crate) async fn resolve_permanent_artifact(
     }
     if isolated_access == IsolatedAccess::Authorized && requested_path.is_none() {
         if let Some(token) = query_token.as_deref() {
-            if let Some(cookie) = access_token_cookie(token, now) {
-                response.headers_mut().set("Set-Cookie", &cookie)?;
+            // Only a query token that actually verifies mints the host-only
+            // cookie. The public exemption above can make an isolated host
+            // Authorized with no token, so the access level alone is no
+            // longer proof that this token was valid.
+            let secret = artifact_token_secret(env);
+            if verify_access_token(secret.as_deref(), token, artifact_id, now) {
+                if let Some(cookie) = access_token_cookie(token, now) {
+                    response.headers_mut().set("Set-Cookie", &cookie)?;
+                }
             }
         }
     }
@@ -980,10 +1091,10 @@ pub(crate) async fn delete_artifact(
 }
 
 /// Admin console listing (spec 8): `GET /v1/orgs/{org}/artifacts`. Same
-/// bearer-token gate as export/delete — role-based UI gating (viewer sees
-/// no controls, member can't change auth_mode) is enforced by the Laravel
-/// console, not this Worker; this endpoint trusts the credential the same
-/// way `export_organization` already does.
+/// bearer-token gate as export/delete. Sharing is enforced here as well as in
+/// Laravel: a private artifact is listed only for its owner and team admins
+/// (or a server-side read with the private scope), with the filter applied in
+/// SQL so cursor pages stay contiguous.
 pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> Result<Response> {
     let authorization = req.headers().get("Authorization")?;
     let credential =
@@ -1004,6 +1115,7 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
     let query = req.url()?;
     let params: std::collections::HashMap<String, String> =
         query.query_pairs().into_owned().collect();
+    let viewer = Viewer::from_credential(&credential);
     let filter = store::ArtifactListFilter {
         org: org.to_string(),
         repo_url: params.get("repo_url").cloned(),
@@ -1011,6 +1123,8 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
         created_after: params.get("created_after").cloned(),
         created_before: params.get("created_before").cloned(),
         query: params.get("q").filter(|value| !value.is_empty()).cloned(),
+        viewer_user_id: Some(credential.user_id.clone()),
+        viewer_reads_private: viewer.is_admin() || viewer.reads_private(),
     };
     let cursor = params
         .get("cursor")
@@ -1029,6 +1143,13 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
     let artifacts: Vec<Value> = items
         .into_iter()
         .map(|item| {
+            let access = sharing::artifact_access(
+                Sharing::from_tier(&item.tier),
+                EditAccess::from_stored(&item.edit_access),
+                item.owner_user_id.as_deref(),
+                &viewer,
+                true,
+            );
             serde_json::json!({
                 "id": item.id.0,
                 "org_id": item.org,
@@ -1038,6 +1159,11 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
                 "revoked_at": item.revoked_at,
                 "title": item.title,
                 "description": item.description,
+                "sharing": access.sharing,
+                "edit_access": access.edit_access,
+                "owner_user_id": access.owner_user_id,
+                "can_edit": access.can_edit,
+                "can_change_sharing": access.can_change_sharing,
                 "provenance": {
                     "agent": item.agent,
                     "repo_url": item.repo_url,
@@ -1065,13 +1191,13 @@ struct ExistingArtifactRow {
 }
 
 /// The stored tier string back to its enum. Permanent rows only ever carry
-/// `public` or `secure`, but the mapping is total so an unexpected value can
-/// never panic the response path.
+/// `public`, `secure` or `private`; an unrecognised value fails closed to
+/// Private, never Public.
 fn permanent_tier_from_database(value: &str) -> ArtifactTier {
     match value {
+        "public" => ArtifactTier::Public,
         "secure" => ArtifactTier::Secure,
-        "ephemeral" => ArtifactTier::Ephemeral,
-        _ => ArtifactTier::Public,
+        _ => ArtifactTier::Private,
     }
 }
 
@@ -1106,6 +1232,10 @@ async fn existing_artifact_response(
             id: row.id.clone(),
             url: format!("{}/p/{}/", base_url.trim_end_matches('/'), row.id),
             tier: permanent_tier_from_database(&row.tier),
+            sharing: Sharing::from_tier(&row.tier),
+            // Edit access comes from storage once the sharing endpoint exists;
+            // migration 0007 defaults every row to view.
+            edit_access: EditAccess::View,
             version: row.current_version.max(1) as u32,
             missing_files: missing_manifest_files(&existing_manifest, &present),
         },
@@ -1345,6 +1475,7 @@ pub(crate) async fn create_permanent_artifact(
         let tier_value = match tier {
             ArtifactTier::Public => "public",
             ArtifactTier::Secure => "secure",
+            ArtifactTier::Private => "private",
             ArtifactTier::Ephemeral => "ephemeral",
         };
         // At most three attempts. A conflict on the global stable-id index is
@@ -1462,6 +1593,8 @@ pub(crate) async fn create_permanent_artifact(
                             id: artifact_id.clone(),
                             url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
                             tier,
+                            sharing: Sharing::from_tier(tier_value),
+                            edit_access: EditAccess::View,
                             version: 1,
                             missing_files,
                         },
@@ -1513,4 +1646,28 @@ pub(crate) async fn create_permanent_artifact(
         emit_artifact_created(ctx, env, &org, &artifact_id, tier);
     }
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permanent_tier_from_database_fails_closed_to_private() {
+        assert_eq!(permanent_tier_from_database("public"), ArtifactTier::Public);
+        assert_eq!(permanent_tier_from_database("secure"), ArtifactTier::Secure);
+        assert_eq!(
+            permanent_tier_from_database("private"),
+            ArtifactTier::Private
+        );
+        // Anything unrecognised, including the ephemeral tier that never has a
+        // D1 row, is private rather than public.
+        for unknown in ["", "bogus", "Public", "ephemeral", "open"] {
+            assert_eq!(
+                permanent_tier_from_database(unknown),
+                ArtifactTier::Private,
+                "{unknown}"
+            );
+        }
+    }
 }

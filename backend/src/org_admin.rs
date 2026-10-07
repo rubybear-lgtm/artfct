@@ -1,4 +1,5 @@
 use super::*;
+use crate::sharing::Viewer;
 
 const LIMITS_WRITE_SECRET_ENV: &str = "ARTFCT_LIMITS_WRITE_SECRET";
 const DEFAULT_STORAGE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -350,11 +351,25 @@ pub(crate) async fn export_organization(path: &str, req: &Request, env: &Env) ->
         return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
     }
     let database = env.d1("ARTIFACTS_DB")?;
+    let viewer = Viewer::from_credential(&credential);
+    // A non-admin may call export, so private artifacts are excluded unless
+    // the caller owns them or carries the server-side private-read scope. The
+    // decision is made here and bound as a constant, so the SQL clause is the
+    // same one the list uses.
+    let reads_private = if viewer.is_admin() || viewer.reads_private() {
+        1.0
+    } else {
+        0.0
+    };
     // Export is current-version only in this release: the `artifacts` row and
     // its `files` are the current copy, and version history is not exported.
     let rows = database
-        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance, a.manifest FROM artifacts a LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files f ON f.artifact_row_id = a.row_id AND f.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE f.artifact_row_id IS NULL OR b.content_hash IS NULL) ORDER BY a.created_at")
-        .bind(&[JsValue::from_str(org)])?
+        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance, a.manifest FROM artifacts a LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND (a.tier IN ('public', 'secure') OR a.user_id = ? OR ? = 1) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files f ON f.artifact_row_id = a.row_id AND f.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE f.artifact_row_id IS NULL OR b.content_hash IS NULL) ORDER BY a.created_at")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(&credential.user_id),
+            JsValue::from_f64(reads_private),
+        ])?
         .all()
         .await?
         .results::<ExportRow>()?;
@@ -667,11 +682,25 @@ pub(crate) async fn download_export_blob(path: &str, req: &Request, env: &Env) -
     }
     let database = env.d1("ARTIFACTS_DB")?;
     let org = credential.org_id.clone();
+    let viewer = Viewer::from_credential(&credential);
+    // Blob download is reachable by any member, so a blob referenced only by
+    // private artifacts the caller cannot view is a 404. A blob shared with a
+    // public or otherwise-visible artifact of the org stays downloadable.
+    let reads_private = if viewer.is_admin() || viewer.reads_private() {
+        1.0
+    } else {
+        0.0
+    };
     // Export-blob download is current-version only in this release (history is
     // not exported), so presence is checked against the current `files` copy.
     if database
-        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
-        .bind(&[JsValue::from_str(hash), JsValue::from_str(&org)])?
+        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND (a.tier IN ('public', 'secure') OR a.user_id = ? OR ? = 1) AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
+        .bind(&[
+            JsValue::from_str(hash),
+            JsValue::from_str(&org),
+            JsValue::from_str(&credential.user_id),
+            JsValue::from_f64(reads_private),
+        ])?
         .first::<PresenceRow>(None)
         .await?
         .is_none()

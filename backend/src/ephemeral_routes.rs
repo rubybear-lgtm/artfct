@@ -165,6 +165,7 @@ pub(crate) fn emit_artifact_created(
     let tier = match tier {
         ArtifactTier::Public => "public",
         ArtifactTier::Secure => "secure",
+        ArtifactTier::Private => "private",
         ArtifactTier::Ephemeral => "ephemeral",
     };
     let now = Utc::now();
@@ -201,6 +202,7 @@ pub(crate) fn emit_artifact_version_created(
     let tier = match tier {
         ArtifactTier::Public => "public",
         ArtifactTier::Secure => "secure",
+        ArtifactTier::Private => "private",
         ArtifactTier::Ephemeral => "ephemeral",
     };
     let now = Utc::now();

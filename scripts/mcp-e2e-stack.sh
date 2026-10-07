@@ -194,6 +194,43 @@ up() {
     " 2>/dev/null | tail -1)
     echo "ARTFCT_INTEGRATION_READ_TOKEN=$INTEGRATION_READ_TOKEN" >> "$STATE_DIR/env"
     echo "ARTFCT_INTEGRATION_DEPLOY_TOKEN=$INTEGRATION_DEPLOY_TOKEN" >> "$STATE_DIR/env"
+    # A plain Member of ORG_A, so the sharing tests can have an owner who is
+    # not an admin, and a second plain member as the non-owner viewer.
+    INTEGRATION_MEMBER_TOKEN=$(php artisan tinker --execute "
+        \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
+        \$member = App\\Models\\User::firstOrCreate(
+            ['email' => 'e2e-member@example.test'],
+            ['name' => 'E2E Member', 'password' => bcrypt('e2e-password')]
+        );
+        if (! \$member->belongsToTeam(\$team)) {
+            \$team->memberships()->create(['user_id' => \$member->id, 'role' => App\\Enums\\TeamRole::Member]);
+        }
+        echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$member, App\\Enums\\TeamRole::Member, 3600)['token'];
+    " 2>/dev/null | tail -1)
+    echo "ARTFCT_INTEGRATION_MEMBER_TOKEN=$INTEGRATION_MEMBER_TOKEN" >> "$STATE_DIR/env"
+    INTEGRATION_MEMBER2_TOKEN=$(php artisan tinker --execute "
+        \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
+        \$member = App\\Models\\User::firstOrCreate(
+            ['email' => 'e2e-member2@example.test'],
+            ['name' => 'E2E Member Two', 'password' => bcrypt('e2e-password')]
+        );
+        if (! \$member->belongsToTeam(\$team)) {
+            \$team->memberships()->create(['user_id' => \$member->id, 'role' => App\\Enums\\TeamRole::Member]);
+        }
+        echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$member, App\\Enums\\TeamRole::Member, 3600)['token'];
+    " 2>/dev/null | tail -1)
+    echo "ARTFCT_INTEGRATION_MEMBER2_TOKEN=$INTEGRATION_MEMBER2_TOKEN" >> "$STATE_DIR/env"
+    # An admin of ORG_B (the admin above already belongs to it), for the
+    # cross-org refusals and the public + edit write.
+    INTEGRATION_OTHER_ORG_TOKEN=$(php artisan tinker --execute "
+        \$team = App\\Models\\Team::where('slug', '${ORG_B_SLUG}')->firstOrFail();
+        \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
+        echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Admin, 3600)['token'];
+    " 2>/dev/null | tail -1)
+    echo "ARTFCT_INTEGRATION_OTHER_ORG_TOKEN=$INTEGRATION_OTHER_ORG_TOKEN" >> "$STATE_DIR/env"
+    # The app origin an isolated response may be framed by (the Worker gets the
+    # same value as ARTFCT_APP_ORIGIN), for the frame-ancestors assertion.
+    echo "ARTFCT_INTEGRATION_APP_ORIGIN=http://127.0.0.1:${LARAVEL_PORT}" >> "$STATE_DIR/env"
     echo "ARTFCT_GOVERNANCE_SECRET=$ARTFCT_GOVERNANCE_SECRET" >> "$STATE_DIR/env"
     {
         echo "ARTFCT_INTEGRATION_BASE_URL=http://127.0.0.1:${WORKER_PORT}"

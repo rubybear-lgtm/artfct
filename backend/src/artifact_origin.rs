@@ -145,6 +145,7 @@ pub(crate) fn access_token_cookie(token: &str, now: chrono::DateTime<Utc>) -> Op
 /// `unsafe_eval` flag (spec 05). An artifact declaring nothing gets
 /// `default-src 'self'`; `unsafe-eval` is only ever granted when the
 /// manifest opts in.
+#[cfg(test)]
 pub(crate) fn isolated_content_security_policy(manifest: &PermanentManifest) -> String {
     isolated_content_security_policy_framed_by(manifest, None)
 }

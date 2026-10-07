@@ -10,6 +10,7 @@
 //! current one.
 
 use super::*;
+use crate::sharing::{self, can_view, EditAccess, Sharing, Viewer};
 
 /// The 201/200 body for publishing or restoring a version.
 #[derive(Debug, Serialize)]
@@ -19,6 +20,8 @@ pub(crate) struct ArtifactVersionResponse {
     pub(crate) url: String,
     pub(crate) created: bool,
     pub(crate) missing_files: Vec<String>,
+    pub(crate) tier: ArtifactTier,
+    pub(crate) sharing: Sharing,
 }
 
 /// One version in a history listing / read.
@@ -76,6 +79,7 @@ struct LiveArtifactRow {
     current_version: i64,
     user_id: Option<String>,
     tier: String,
+    edit_access: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,18 +122,19 @@ fn parse_version_number(value: &str) -> Option<u32> {
     (parsed >= 1).then_some(parsed)
 }
 
-/// Whether this credential may publish or restore a version of an artifact
-/// owned by `owner_user_id`. A `NULL` owner is a pre-owner legacy artifact
-/// that anyone in the org may publish to; otherwise only the owner may.
-///
-/// RUB-438 extends this with edit-sharing; keeping it one named function
-/// (rather than inlining the comparison) is what gives that change a single
-/// call site to audit.
+/// Whether this credential may publish or restore a version of an artifact.
+/// Delegates to the one rule set in `sharing`: the owner always may, any
+/// member of the org may version a legacy ownerless artifact, team + edit
+/// allows the org, and public + edit allows a signed-in account. Callers must
+/// have already resolved the artifact within the credential's org.
 pub(crate) fn decide_version_publish(
+    sharing: Sharing,
+    edit_access: EditAccess,
     owner_user_id: Option<&str>,
-    credential_user_id: &str,
+    viewer: &Viewer<'_>,
+    same_org: bool,
 ) -> bool {
-    owner_user_id.is_none() || owner_user_id == Some(credential_user_id)
+    sharing::can_publish_version(sharing, edit_access, owner_user_id, viewer, same_org)
 }
 
 /// Promotion guard: a completing version only replaces the current copy when
@@ -153,9 +158,9 @@ pub(crate) fn is_version_conflict(message: &str) -> bool {
 
 fn tier_from_database(value: &str) -> ArtifactTier {
     match value {
+        "public" => ArtifactTier::Public,
         "secure" => ArtifactTier::Secure,
-        "ephemeral" => ArtifactTier::Ephemeral,
-        _ => ArtifactTier::Public,
+        _ => ArtifactTier::Private,
     }
 }
 
@@ -165,6 +170,8 @@ pub(crate) fn build_version_response(
     version: u32,
     created: bool,
     missing_files: Vec<String>,
+    tier: ArtifactTier,
+    sharing: Sharing,
 ) -> ArtifactVersionResponse {
     ArtifactVersionResponse {
         id: id.to_string(),
@@ -172,6 +179,8 @@ pub(crate) fn build_version_response(
         url: format!("{}/p/{id}/", base_url.trim_end_matches('/')),
         created,
         missing_files,
+        tier,
+        sharing,
     }
 }
 
@@ -281,7 +290,7 @@ async fn live_artifact(
     artifact_id: &str,
 ) -> Result<Option<LiveArtifactRow>> {
     database
-        .prepare("SELECT row_id, content_hash, current_version, user_id, tier FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<LiveArtifactRow>(None)
         .await
@@ -308,6 +317,17 @@ pub(crate) async fn get_version(path: &str, req: &Request, env: &Env) -> Result<
     else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
+    // Org first (the lookup is scoped to the credential's org), then
+    // visibility. A private artifact this member cannot view is the same 404,
+    // never 403.
+    let viewer = Viewer::from_credential(&credential);
+    if !can_view(
+        Sharing::from_tier(&artifact.tier),
+        artifact.user_id.as_deref(),
+        &viewer,
+    ) {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
     match version {
         None => list_versions(&storage, artifact_id, &artifact).await,
         Some(number) => get_one_version(&storage, number, &artifact).await,
@@ -449,10 +469,22 @@ async fn create_version(
     let Some(artifact) = live_artifact(&storage.database, &org, artifact_id).await? else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    if !decide_version_publish(artifact.user_id.as_deref(), &credential.user_id) {
+    let sharing = Sharing::from_tier(&artifact.tier);
+    let tier = tier_from_database(&artifact.tier);
+    let edit_access = EditAccess::from_stored(&artifact.edit_access);
+    let viewer = Viewer::from_credential(&credential);
+    // Same org only for now: the public + edit cross-org write path is a later
+    // slice.
+    if !decide_version_publish(
+        sharing,
+        edit_access,
+        artifact.user_id.as_deref(),
+        &viewer,
+        true,
+    ) {
         return json_error(
             ErrorCode::Forbidden,
-            "Only the artifact owner may publish a new version.",
+            "You may not publish a new version of this artifact.",
             403,
         );
     }
@@ -492,6 +524,8 @@ async fn create_version(
                     artifact.current_version.max(1) as u32,
                     false,
                     Vec::new(),
+                    tier,
+                    sharing,
                 ),
                 200,
             )
@@ -617,17 +651,10 @@ async fn create_version(
             return Err(worker::Error::RustError(message));
         }
         if missing_files.is_empty() {
-            emit_artifact_version_created(
-                ctx,
-                env,
-                &org,
-                artifact_id,
-                version,
-                tier_from_database(&artifact.tier),
-            );
+            emit_artifact_version_created(ctx, env, &org, artifact_id, version, tier);
         }
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, missing_files),
+            build_version_response(artifact_id, &base_url, version, true, missing_files, tier, sharing),
             201,
         )
         .into_worker_response()
@@ -658,10 +685,20 @@ async fn restore_version(
     let Some(artifact) = live_artifact(&storage.database, &org, artifact_id).await? else {
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
-    if !decide_version_publish(artifact.user_id.as_deref(), &credential.user_id) {
+    let sharing = Sharing::from_tier(&artifact.tier);
+    let tier = tier_from_database(&artifact.tier);
+    let edit_access = EditAccess::from_stored(&artifact.edit_access);
+    let viewer = Viewer::from_credential(&credential);
+    if !decide_version_publish(
+        sharing,
+        edit_access,
+        artifact.user_id.as_deref(),
+        &viewer,
+        true,
+    ) {
         return json_error(
             ErrorCode::Forbidden,
-            "Only the artifact owner may restore a version.",
+            "You may not restore a version of this artifact.",
             403,
         );
     }
@@ -698,6 +735,8 @@ async fn restore_version(
                     artifact.current_version.max(1) as u32,
                     false,
                     Vec::new(),
+                    tier,
+                    sharing,
                 ),
                 200,
             )
@@ -777,16 +816,9 @@ async fn restore_version(
             }
             return Err(worker::Error::RustError(message));
         }
-        emit_artifact_version_created(
-            ctx,
-            env,
-            &org,
-            artifact_id,
-            version,
-            tier_from_database(&artifact.tier),
-        );
+        emit_artifact_version_created(ctx, env, &org, artifact_id, version, tier);
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, Vec::new()),
+            build_version_response(artifact_id, &base_url, version, true, Vec::new(), tier, sharing),
             201,
         )
         .into_worker_response()
@@ -837,12 +869,71 @@ mod tests {
     }
 
     #[test]
-    fn decide_version_publish_owner_rules() {
+    fn decide_version_publish_uses_the_sharing_rules() {
+        let owner = Some("user-a");
+        let member_a = Viewer {
+            user_id: "user-a",
+            role: "member",
+            scope: None,
+        };
+        let member_b = Viewer {
+            user_id: "user-b",
+            role: "member",
+            scope: None,
+        };
         // A pre-owner (NULL) legacy artifact: anyone in the org may publish.
-        assert!(decide_version_publish(None, "user-a"));
-        // Owned: only the owner.
-        assert!(decide_version_publish(Some("user-a"), "user-a"));
-        assert!(!decide_version_publish(Some("user-a"), "user-b"));
+        assert!(decide_version_publish(
+            Sharing::Private,
+            EditAccess::View,
+            None,
+            &member_b,
+            true
+        ));
+        // Owned: only the owner, even on a team + edit artifact for a different
+        // member until edit access is granted.
+        assert!(decide_version_publish(
+            Sharing::Private,
+            EditAccess::Edit,
+            owner,
+            &member_a,
+            true
+        ));
+        assert!(!decide_version_publish(
+            Sharing::Private,
+            EditAccess::Edit,
+            owner,
+            &member_b,
+            true
+        ));
+        // Team + edit: another member may publish; view alone does not.
+        assert!(decide_version_publish(
+            Sharing::Team,
+            EditAccess::Edit,
+            owner,
+            &member_b,
+            true
+        ));
+        assert!(!decide_version_publish(
+            Sharing::Team,
+            EditAccess::View,
+            owner,
+            &member_b,
+            true
+        ));
+    }
+
+    #[test]
+    fn stored_tiers_fail_closed_to_private() {
+        assert_eq!(tier_from_database("public"), ArtifactTier::Public);
+        assert_eq!(tier_from_database("secure"), ArtifactTier::Secure);
+        assert_eq!(tier_from_database("private"), ArtifactTier::Private);
+        for unknown in ["", "bogus", "Public", "ephemeral", "open"] {
+            assert_eq!(
+                tier_from_database(unknown),
+                ArtifactTier::Private,
+                "{unknown}"
+            );
+        }
     }
 
     #[test]

@@ -90,6 +90,14 @@ pub struct ArtifactListItem {
     pub description: Option<String>,
     pub created_at: String,
     pub revoked_at: Option<String>,
+    /// The stored sharing tier (`public`/`secure`/`private`). Kept as the raw
+    /// string so this stays a plain data row; visibility decisions go through
+    /// `sharing::Sharing::from_tier`.
+    pub tier: String,
+    /// The artifact owner, `None` for rows published before owners existed.
+    pub owner_user_id: Option<String>,
+    /// The stored edit access (`view`/`edit`).
+    pub edit_access: String,
 }
 
 /// Filter predicate for the admin console list (spec 8: "filters that
@@ -106,6 +114,12 @@ pub struct ArtifactListFilter {
     pub created_before: Option<String>,
     /// Free-text search over title and description.
     pub query: Option<String>,
+    /// The calling credential's user id, used only to decide whether a private
+    /// artifact belongs to the caller.
+    pub viewer_user_id: Option<String>,
+    /// True when the viewer may see every private artifact in the org (a team
+    /// admin, or a server-side read carrying the private scope).
+    pub viewer_reads_private: bool,
 }
 
 /// A cursor pagination position, spec 8: "cursor pagination on
@@ -163,6 +177,18 @@ pub fn decode_list_cursor(raw: &str) -> Option<ListCursor> {
 /// the SQL and the tests are held to.
 pub fn artifact_matches_filter(item: &ArtifactListItem, filter: &ArtifactListFilter) -> bool {
     if item.org != filter.org {
+        return false;
+    }
+    // Sharing is part of "matches": a private row belongs only to its owner,
+    // and to a viewer with org-wide private reads. Decided with the same
+    // `Sharing::from_tier` every other read path uses, so an unrecognised
+    // stored tier counts as private rather than leaking.
+    if !crate::sharing::can_view_listing(
+        crate::sharing::Sharing::from_tier(&item.tier),
+        item.owner_user_id.as_deref(),
+        filter.viewer_user_id.as_deref(),
+        filter.viewer_reads_private,
+    ) {
         return false;
     }
     if let Some(repo_url) = &filter.repo_url {
@@ -542,6 +568,15 @@ impl D1R2ArtifactStore {
     ) -> Result<(Vec<ArtifactListItem>, Option<ListCursor>), StoreError> {
         let mut clauses = vec!["o.slug = ?".to_string()];
         let mut binds = vec![worker::wasm_bindgen::JsValue::from_str(&filter.org)];
+        // Private rows are filtered in SQL so a cursor over the filtered set
+        // never points past a hidden row and skips visible ones. When the
+        // viewer may read every private artifact the clause is omitted.
+        if !filter.viewer_reads_private {
+            clauses.push("(a.tier IN ('public', 'secure') OR a.user_id = ?)".to_string());
+            binds.push(worker::wasm_bindgen::JsValue::from_str(
+                filter.viewer_user_id.as_deref().unwrap_or(""),
+            ));
+        }
         if let Some(repo_url) = &filter.repo_url {
             clauses.push("p.repo_url = ?".to_string());
             binds.push(worker::wasm_bindgen::JsValue::from_str(repo_url));
@@ -578,6 +613,7 @@ impl D1R2ArtifactStore {
         let query = format!(
             "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
              p.agent, p.repo_url, p.commit_sha, a.title, a.description, \
+             a.tier, a.user_id, a.edit_access, \
              (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
              FROM artifacts a \
              JOIN orgs o ON o.id = a.org_id \
@@ -645,7 +681,7 @@ impl D1R2ArtifactStore {
             .database
             .prepare(
                 "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-                 p.agent, p.repo_url, p.commit_sha, \
+                 p.agent, p.repo_url, p.commit_sha, a.tier, a.user_id, a.edit_access, \
                  (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
                  FROM artifacts a \
                  JOIN orgs o ON o.id = a.org_id \
@@ -952,6 +988,12 @@ struct D1ListRow {
     #[serde(default)]
     description: Option<String>,
     size_bytes: i64,
+    #[serde(default)]
+    tier: String,
+    #[serde(default)]
+    user_id: Option<String>,
+    #[serde(default)]
+    edit_access: String,
 }
 
 impl From<D1ListRow> for ArtifactListItem {
@@ -968,6 +1010,9 @@ impl From<D1ListRow> for ArtifactListItem {
             description: row.description,
             created_at: row.created_at,
             revoked_at: row.revoked_at,
+            tier: row.tier,
+            owner_user_id: row.user_id,
+            edit_access: row.edit_access,
         }
     }
 }

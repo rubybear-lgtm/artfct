@@ -31,6 +31,26 @@ struct Context {
     origin_suffix: String,
     /// `ARTFCT_GOVERNANCE_SECRET` configured on the isolated local Worker.
     governance_secret: String,
+    /// `ARTFCT_INTEGRATION_MEMBER_TOKEN`: a plain Member of `org`. Optional,
+    /// because a stack that predates the sharing tests does not mint one; a
+    /// test that needs it skips with `Ok(())`.
+    member_token: Option<String>,
+    /// `ARTFCT_INTEGRATION_MEMBER2_TOKEN`: a second plain Member of `org`, the
+    /// non-owner viewer in the private-visibility test.
+    member2_token: Option<String>,
+    /// `ARTFCT_INTEGRATION_OTHER_ORG_TOKEN`: an admin of the second seeded
+    /// org, for cross-org refusals and the public + edit write.
+    other_org_token: Option<String>,
+    /// `ARTFCT_LIMITS_WRITE_SECRET`: the shared secret the internal
+    /// org-settings and owner-backfill endpoints require.
+    limits_secret: Option<String>,
+    /// `ARTFCT_INTEGRATION_APP_ORIGIN`: the one origin an isolated artifact
+    /// response may be framed by.
+    app_origin: Option<String>,
+}
+
+fn optional_env(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|value| !value.is_empty())
 }
 
 fn context() -> Option<Context> {
@@ -71,6 +91,11 @@ fn context() -> Option<Context> {
             .ok()
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| ".artfct.dev".to_string()),
+        member_token: optional_env("ARTFCT_INTEGRATION_MEMBER_TOKEN"),
+        member2_token: optional_env("ARTFCT_INTEGRATION_MEMBER2_TOKEN"),
+        other_org_token: optional_env("ARTFCT_INTEGRATION_OTHER_ORG_TOKEN"),
+        limits_secret: optional_env("ARTFCT_LIMITS_WRITE_SECRET"),
+        app_origin: optional_env("ARTFCT_INTEGRATION_APP_ORIGIN"),
     })
 }
 
@@ -3023,5 +3048,726 @@ fn collect_files(
             ));
         }
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// RUB-438: sharing (private/team/public), edit access and artifact ownership,
+// driven against the live Worker with the extra credentials the stack mints.
+// Every test skips with `Ok(())` when its optional token is absent, so an old
+// state env runs the suite without failing on a stack it predates.
+// ---------------------------------------------------------------------------
+
+/// One JSON request under an explicit bearer token. The suite's own helpers all
+/// use `context.token`; these tests need several identities at once.
+async fn send_json(
+    request: RetryingRequest,
+    token: &str,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    let response = request.bearer_auth(token).send().await?;
+    let status = response.status();
+    let body: Value = response.json().await?;
+    Ok((status, body))
+}
+
+/// `GET`s `url` with `token` and returns the status and the whole body.
+async fn get_and_read_as(
+    client: &RetryingClient,
+    token: &str,
+    url: String,
+) -> Result<(reqwest::StatusCode, Vec<u8>), Box<dyn Error>> {
+    let response = client.get(url).bearer_auth(token).send().await?;
+    let status = response.status();
+    let bytes = response.bytes().await?;
+    Ok((status, bytes.as_ref().to_vec()))
+}
+
+/// A permanent create body that names sharing and edit access directly, as the
+/// new contract allows, instead of the deprecated `tier` alias.
+fn sharing_payload(bytes: &[u8], sharing: &str, edit_access: &str) -> Value {
+    json!({
+        "mode": "permanent",
+        "sharing": sharing,
+        "edit_access": edit_access,
+        "title": "Sharing integration",
+        "description": "Sharing integration",
+        "thumbnail": "https://example.com/thumbnail.png",
+        "preview_blurred": false,
+        "manifest": {"entrypoint": "index.html", "external_origins": [], "files": [{
+            "path": "index.html", "content_type": "text/html; charset=utf-8",
+            "size_bytes": bytes.len(), "sha256": sha256(bytes)
+        }]},
+        "provenance": {}
+    })
+}
+
+/// Creates a permanent artifact as `token`'s user with the given sharing, then
+/// uploads its one file with the same token. Returns the artifact id.
+async fn create_sharing_artifact(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    bytes: &[u8],
+    sharing: &str,
+    edit_access: &str,
+) -> Result<String, Box<dyn Error>> {
+    let payload = sharing_payload(bytes, sharing, edit_access);
+    let (status, body) = send_json(
+        client
+            .post(format!("{}/v1/artifacts", context.base))
+            .json(&payload),
+        token,
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "create failed: {body}"
+    );
+    let id = body["id"]
+        .as_str()
+        .ok_or("create response omitted id")?
+        .to_string();
+    let hash = sha256(bytes);
+    if body["missing_files"]
+        .as_array()
+        .is_some_and(|files| files.iter().any(|file| file == &hash))
+    {
+        let upload = client
+            .put(format!("{}/v1/artifacts/{id}/files/{hash}", context.base))
+            .bearer_auth(token)
+            .header(reqwest::header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(bytes.to_vec())
+            .send()
+            .await?;
+        assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    Ok(id)
+}
+
+async fn artifact_metadata_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    artifact_id: &str,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client.get(format!("{}/v1/artifacts/{artifact_id}", context.base)),
+        token,
+    )
+    .await
+}
+
+async fn org_list_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client.get(format!(
+            "{}/v1/orgs/{}/artifacts",
+            context.base, context.org
+        )),
+        token,
+    )
+    .await
+}
+
+async fn version_list_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    artifact_id: &str,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client.get(format!(
+            "{}/v1/artifacts/{artifact_id}/versions",
+            context.base
+        )),
+        token,
+    )
+    .await
+}
+
+async fn get_version_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    artifact_id: &str,
+    version: u64,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client.get(format!(
+            "{}/v1/artifacts/{artifact_id}/versions/{version}",
+            context.base
+        )),
+        token,
+    )
+    .await
+}
+
+async fn patch_sharing_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    artifact_id: &str,
+    body: Value,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client
+            .patch(format!(
+                "{}/v1/artifacts/{artifact_id}/sharing",
+                context.base
+            ))
+            .json(&body),
+        token,
+    )
+    .await
+}
+
+async fn post_version_as(
+    context: &Context,
+    client: &RetryingClient,
+    token: &str,
+    artifact_id: &str,
+    bytes: &[u8],
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client
+            .post(format!(
+                "{}/v1/artifacts/{artifact_id}/versions",
+                context.base
+            ))
+            .json(&version_payload(bytes, json!({}))),
+        token,
+    )
+    .await
+}
+
+/// A `POST` to an internal, limits-secret-authenticated endpoint.
+async fn internal_post(
+    context: &Context,
+    client: &RetryingClient,
+    secret: &str,
+    path: &str,
+    body: Value,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    send_json(
+        client.post(format!("{}{path}", context.base)).json(&body),
+        secret,
+    )
+    .await
+}
+
+/// The `user_id` claim of an org JWT, decoded without verifying the signature:
+/// these tests minted the token themselves and only compare identities.
+fn token_user_id(token: &str) -> Result<String, Box<dyn Error>> {
+    use base64::Engine as _;
+
+    let payload = token.split('.').nth(1).ok_or("token is not a JWT")?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
+    let claims: Value = serde_json::from_slice(&decoded)?;
+    Ok(claims["user_id"]
+        .as_str()
+        .ok_or("token has no user_id")?
+        .to_string())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn private_artifact_is_hidden_from_other_members() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    // The owner is a plain member, not the admin, so "the owner sees it" and
+    // "an admin sees it" are two different rules; the viewer is a third user.
+    let (Some(owner_token), Some(viewer_token)) = (
+        context.member_token.as_deref(),
+        context.member2_token.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("private-hiding");
+    let id =
+        create_sharing_artifact(&context, &client, owner_token, &bytes, "private", "view").await?;
+
+    // A different non-admin member is neither owner nor viewer: private is a
+    // 404 on every read path, never a 403 that would confirm it exists.
+    let (status, _) = artifact_metadata_as(&context, &client, viewer_token, &id).await?;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND);
+
+    let (status, list) = org_list_as(&context, &client, viewer_token).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert!(
+        !list["artifacts"]
+            .as_array()
+            .ok_or("list omitted artifacts")?
+            .iter()
+            .any(|artifact| artifact["id"] == id),
+        "a private artifact must not appear in another member's org list"
+    );
+
+    let (status, _) = version_list_as(&context, &client, viewer_token, &id).await?;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND);
+
+    let (status, _) =
+        get_and_read_as(&client, viewer_token, format!("{}/p/{id}/", context.base)).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::NOT_FOUND,
+        "a private artifact must not be served to a non-owner member"
+    );
+
+    // The owner and an admin both see it.
+    let (status, _) = artifact_metadata_as(&context, &client, owner_token, &id).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "the owner sees their own artifact"
+    );
+    let (status, _) = artifact_metadata_as(&context, &client, &context.token, &id).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "a team admin sees a private artifact"
+    );
+    let (status, list) = org_list_as(&context, &client, owner_token).await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert!(
+        list["artifacts"]
+            .as_array()
+            .ok_or("list omitted artifacts")?
+            .iter()
+            .any(|artifact| artifact["id"] == id),
+        "the owner's org list contains their private artifact"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn private_artifact_is_never_served_anonymously() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("private-anonymous");
+    let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "private", "view")
+        .await?;
+
+    let (status, body) = get_and_read(&client, format!("{}/p/{id}/", context.base)).await?;
+    assert_ne!(
+        status,
+        reqwest::StatusCode::OK,
+        "a private artifact must never be served with no credential: {}",
+        String::from_utf8_lossy(&body)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn sharing_change_takes_effect_on_next_request() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let Some(owner_token) = context.member_token.as_deref() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("sharing-downgrade");
+    let id =
+        create_sharing_artifact(&context, &client, owner_token, &bytes, "public", "view").await?;
+
+    // A public artifact is served with no credential, and the response is
+    // uncached, so a later downgrade cannot be outlived by a cache.
+    let served = client
+        .get(format!("{}/p/{id}/", context.base))
+        .send()
+        .await?;
+    assert_eq!(served.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response_header(&served, "cache-control"),
+        "private, no-store"
+    );
+    assert_eq!(served.bytes().await?.as_ref(), bytes.as_slice());
+
+    let (status, body) = patch_sharing_as(
+        &context,
+        &client,
+        owner_token,
+        &id,
+        json!({"sharing": "team"}),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "sharing change failed: {body}"
+    );
+    assert_eq!(body["sharing"], "team");
+    assert_eq!(body["previous_sharing"], "public");
+
+    // The downgrade is live on the very next request: no credential, no body.
+    let (status, _) = get_and_read(&client, format!("{}/p/{id}/", context.base)).await?;
+    assert_ne!(
+        status,
+        reqwest::StatusCode::OK,
+        "a downgraded artifact is no longer anonymous"
+    );
+
+    // The team artifact still serves to its member, under the same no-store
+    // policy.
+    let served = client
+        .get(format!("{}/p/{id}/", context.base))
+        .bearer_auth(owner_token)
+        .send()
+        .await?;
+    assert_eq!(served.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response_header(&served, "cache-control"),
+        "private, no-store"
+    );
+    assert_eq!(served.bytes().await?.as_ref(), bytes.as_slice());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn only_owner_or_admin_can_change_sharing() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let (Some(owner_token), Some(viewer_token), Some(other_org_token)) = (
+        context.member_token.as_deref(),
+        context.member2_token.as_deref(),
+        context.other_org_token.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("sharing-permission");
+    let id =
+        create_sharing_artifact(&context, &client, owner_token, &bytes, "team", "view").await?;
+
+    // A plain member who is not the owner may not change it.
+    let (status, _) = patch_sharing_as(
+        &context,
+        &client,
+        viewer_token,
+        &id,
+        json!({"sharing": "private"}),
+    )
+    .await?;
+    assert_eq!(status, reqwest::StatusCode::FORBIDDEN);
+
+    // Another org's admin cannot even see it: 404, not 403.
+    let (status, _) = patch_sharing_as(
+        &context,
+        &client,
+        other_org_token,
+        &id,
+        json!({"sharing": "private"}),
+    )
+    .await?;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn public_sharing_off_downgrades_and_refuses_public() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let Some(secret) = context.limits_secret.as_deref() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("public-off");
+    let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "public", "view")
+        .await?;
+
+    // Turning public off downgrades every live public artifact in the same
+    // call and names the ones it moved.
+    let (status, body) = internal_post(
+        &context,
+        &client,
+        secret,
+        "/v1/internal/org-settings",
+        json!({"org": context.org.clone(), "public_sharing_allowed": false}),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "settings write failed: {body}"
+    );
+    assert!(
+        body["downgraded"]
+            .as_array()
+            .ok_or("downgraded omitted")?
+            .iter()
+            .any(|downgraded| downgraded == &id),
+        "the live public artifact must be listed as downgraded"
+    );
+
+    // Choosing public is refused with the stable code while it is off.
+    let refused_bytes = unique_html("public-off-refused");
+    let (status, body) = send_json(
+        client
+            .post(format!("{}/v1/artifacts", context.base))
+            .json(&sharing_payload(&refused_bytes, "public", "view")),
+        &context.token,
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::FORBIDDEN,
+        "public must be refused while the team has it off: {body}"
+    );
+    assert_eq!(body["error"]["code"], "public_sharing_disabled");
+
+    // Re-enable so the rest of the suite sees the default.
+    let (status, _) = internal_post(
+        &context,
+        &client,
+        secret,
+        "/v1/internal/org-settings",
+        json!({"org": context.org.clone(), "public_sharing_allowed": true}),
+    )
+    .await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn team_edit_lets_members_publish_versions() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let (Some(owner_token), Some(publisher_token)) = (
+        context.member_token.as_deref(),
+        context.member2_token.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("team-edit-v1");
+    let id =
+        create_sharing_artifact(&context, &client, owner_token, &bytes, "team", "view").await?;
+
+    // team + view: another member may see it but not version it.
+    let (status, _) = post_version_as(
+        &context,
+        &client,
+        publisher_token,
+        &id,
+        &unique_html("team-edit-v2"),
+    )
+    .await?;
+    assert_eq!(status, reqwest::StatusCode::FORBIDDEN);
+
+    // The owner opens editing to the team.
+    let (status, body) = patch_sharing_as(
+        &context,
+        &client,
+        owner_token,
+        &id,
+        json!({"edit_access": "edit"}),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "edit_access change failed: {body}"
+    );
+    assert_eq!(body["edit_access"], "edit");
+
+    let (status, body) = post_version_as(
+        &context,
+        &client,
+        publisher_token,
+        &id,
+        &unique_html("team-edit-v2"),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "team + edit lets a member publish a version: {body}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn public_edit_allows_another_org_to_publish_a_version() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let (Some(owner_token), Some(other_org_token)) = (
+        context.member_token.as_deref(),
+        context.other_org_token.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("public-edit-v1");
+    let id =
+        create_sharing_artifact(&context, &client, owner_token, &bytes, "public", "edit").await?;
+
+    // public + edit is the one cross-org write: any signed-in account may
+    // publish a version.
+    let v2 = unique_html("public-edit-v2");
+    let (status, body) = post_version_as(&context, &client, other_org_token, &id, &v2).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "public + edit lets another org publish: {body}"
+    );
+    let version = body["version"].as_u64().ok_or("version omitted")?;
+
+    // The version records the other-org user as its author. The owner reads it
+    // back, because the version read path is same-org.
+    let other_user = token_user_id(other_org_token)?;
+    let (status, version_body) =
+        get_version_as(&context, &client, &context.token, &id, version).await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "version read failed: {version_body}"
+    );
+    assert_eq!(
+        version_body["created_by"].as_str(),
+        Some(other_user.as_str()),
+        "the version must record the cross-org publisher"
+    );
+
+    // public + view grants no such thing.
+    let view_bytes = unique_html("public-view-v1");
+    let view_id = create_sharing_artifact(
+        &context,
+        &client,
+        owner_token,
+        &view_bytes,
+        "public",
+        "view",
+    )
+    .await?;
+    let (status, _) = post_version_as(
+        &context,
+        &client,
+        other_org_token,
+        &view_id,
+        &unique_html("public-view-v2"),
+    )
+    .await?;
+    assert!(
+        status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND,
+        "public + view must not let another org publish a version: {status}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn owner_backfill_sets_owners() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let Some(secret) = context.limits_secret.as_deref() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("owner-backfill");
+    let id =
+        create_sharing_artifact(&context, &client, &context.token, &bytes, "team", "view").await?;
+
+    // Simulate an artifact published before owners were recorded.
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET user_id = NULL WHERE id = '{id}'"),
+    )?;
+
+    let owner = "e2e-backfill-owner";
+    let (status, body) = internal_post(
+        &context,
+        &client,
+        secret,
+        &format!("/v1/internal/orgs/{}/owner-backfill", context.org),
+        json!({"owner_user_id": owner}),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "owner backfill failed: {body}"
+    );
+    assert!(
+        body["updated"].as_u64().ok_or("updated omitted")? >= 1,
+        "the ownerless artifact must be counted: {body}"
+    );
+
+    let row = d1_row(
+        &context,
+        &format!("SELECT user_id FROM artifacts WHERE id = '{id}'"),
+    )?;
+    assert_eq!(row["user_id"].as_str(), Some(owner));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn isolated_origin_frames_only_for_the_app() -> Result<(), Box<dyn Error>> {
+    let Some(context) = context() else {
+        return Ok(());
+    };
+    let client = RetryingClient::new();
+    let bytes = unique_html("isolated-framing");
+    let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "public", "view")
+        .await?;
+    let expires_at_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64
+        + 3600;
+    let token = mint_access_token(&context.token_secret, &id, expires_at_unix);
+    let origin = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let path = format!("{}/p/{id}", context.base);
+
+    let framed = client
+        .get(format!("{path}?token={token}"))
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(framed.status(), reqwest::StatusCode::OK);
+    let csp = response_header(&framed, "content-security-policy");
+    assert_eq!(framed.bytes().await?.as_ref(), bytes.as_slice());
+    match context.app_origin.as_deref() {
+        Some(app_origin) => assert!(
+            csp.contains(&format!("frame-ancestors {app_origin};")),
+            "the app origin must be the one origin allowed to frame an isolated artifact: {csp}"
+        ),
+        None => assert!(
+            !csp.contains("frame-ancestors 'none'"),
+            "with a configured app origin an isolated response must not claim to be unframable: \
+             {csp}"
+        ),
+    }
+
+    // A public artifact is anonymous on its own origin, token or not.
+    let anonymous = client
+        .get(&path)
+        .header(reqwest::header::HOST, origin.as_str())
+        .send()
+        .await?;
+    assert_eq!(
+        anonymous.status(),
+        reqwest::StatusCode::OK,
+        "a public artifact is served with no token on its isolated origin"
+    );
+    assert_eq!(anonymous.bytes().await?.as_ref(), bytes.as_slice());
     Ok(())
 }

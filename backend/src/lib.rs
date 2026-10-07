@@ -69,6 +69,7 @@ use org_admin::{
 use org_admin::{
     export_artifact_entry, jwks_write_authorized, limits_write_authorized, validate_jwks, ExportRow,
 };
+use sharing::{EditAccess, Sharing};
 use validation::{
     clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path, missing_manifest_files,
     upload_expired, uploaded_file_error, validate_permanent_manifest,
@@ -177,6 +178,8 @@ struct PermanentCreateArtifactResponse {
     id: String,
     url: String,
     tier: ArtifactTier,
+    sharing: Sharing,
+    edit_access: EditAccess,
     version: u32,
     missing_files: Vec<String>,
 }
@@ -252,11 +255,13 @@ enum ErrorCode {
     VersionConflict,
     /// A version was named that does not exist for this artifact.
     VersionNotFound,
+    /// The team turned public sharing off and the caller asked for it.
+    PublicSharingDisabled,
 }
 
 impl ErrorCode {
     #[allow(dead_code, reason = "used by native contract tests")]
-    const ALL: [Self; 20] = [
+    const ALL: [Self; 21] = [
         Self::InvalidJson,
         Self::ValidationFailed,
         Self::InvalidArtifactId,
@@ -277,6 +282,7 @@ impl ErrorCode {
         Self::QuotaExceeded,
         Self::VersionConflict,
         Self::VersionNotFound,
+        Self::PublicSharingDisabled,
     ];
 }
 
@@ -390,6 +396,7 @@ impl JsonResponseDefinition {
 enum ArtifactTier {
     Public,
     Secure,
+    Private,
     Ephemeral,
 }
 
@@ -668,11 +675,13 @@ mod tests {
         mint_access_token, parse_isolated_hostname, permanent_file_response_headers,
         verify_access_token, IsolatedAccess,
     };
+    use crate::artifact_routes::isolated_access_for_artifact;
     use crate::governance_routes::{
         decode_governance_cursor, encode_governance_cursor, governance_authorized,
         parse_governance_path, GovernanceRoute,
     };
     use crate::preview::{error_html_page, escape_json_script};
+    use crate::sharing::{EditAccess, Sharing, Viewer};
     use crate::validation::{manifest_is_complete, normalized_content_type};
 
     #[test]
@@ -1033,14 +1042,17 @@ mod tests {
         }
     }
 
-    fn documented_unimplemented_permanent_response_fixture() -> serde_json::Value {
-        serde_json::json!({
-            "id": "permanent1",
-            "url": "https://permanent1.artifacts.example.artfct.dev/",
-            "tier": "secure",
-            "version": 1,
-            "missing_files": ["a".repeat(64)],
+    fn permanent_create_response_fixture() -> serde_json::Value {
+        serde_json::to_value(PermanentCreateArtifactResponse {
+            id: "permanent1".to_string(),
+            url: "https://permanent1.artifacts.example.artfct.dev/".to_string(),
+            tier: ArtifactTier::Secure,
+            sharing: Sharing::Team,
+            edit_access: EditAccess::View,
+            version: 1,
+            missing_files: vec!["a".repeat(64)],
         })
+        .expect("permanent create response serializes")
     }
 
     #[test]
@@ -1499,7 +1511,7 @@ mod tests {
 
     #[test]
     fn create_permanent_response_matches_schema() {
-        let response = documented_unimplemented_permanent_response_fixture();
+        let response = permanent_create_response_fixture();
 
         assert_schema_matches("PermanentArtifactResponse", &response);
         assert_schema_matches("CreateArtifactResponse", &response);
@@ -1528,11 +1540,18 @@ mod tests {
     #[test]
     fn metadata_and_content_responses_match_documented_schemas() {
         let contract = openapi_contract();
+        let viewer = Viewer {
+            user_id: "7",
+            role: "member",
+            scope: None,
+        };
         let metadata = artifact_routes::build_artifact_metadata_response(
             &artifact_routes::ArtifactMetadataRow {
                 id: "abcdefghijklm".to_string(),
                 org_id: "acme".to_string(),
                 tier: "public".to_string(),
+                user_id: Some("7".to_string()),
+                edit_access: "view".to_string(),
                 entrypoint: "index.html".to_string(),
                 created_at: "2026-09-02T00:00:00Z".to_string(),
                 expires_at: None,
@@ -1542,6 +1561,7 @@ mod tests {
                 version_count: 2,
                 updated_at: "2026-09-03T00:00:00Z".to_string(),
             },
+            &viewer,
         );
         assert_schema_matches("ArtifactMetadata", &metadata);
         validate_schema(
@@ -1563,6 +1583,7 @@ mod tests {
                 content_hash: "a".repeat(64),
                 content_type: "text/html".to_string(),
                 tier: "public".to_string(),
+                user_id: Some("7".to_string()),
                 agent: Some("cli".to_string()),
                 repo_url: None,
                 commit_sha: None,
@@ -1594,6 +1615,8 @@ mod tests {
             2,
             true,
             vec!["a".repeat(64)],
+            ArtifactTier::Secure,
+            Sharing::Team,
         );
         let response = serde_json::to_value(&response).expect("response serializes");
         assert_schema_matches("ArtifactVersionResponse", &response);
@@ -2447,6 +2470,77 @@ mod tests {
     }
 
     #[test]
+    fn public_artifact_on_its_own_isolated_host_needs_no_token() {
+        let secret = "s3cr3t";
+        let artifact_id = "artifact-a";
+        let host = isolated_artifact_hostname("acme", artifact_id, ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        let other_host =
+            isolated_artifact_hostname("acme", "artifact-b", ARTIFACT_ORIGIN_SUFFIX).unwrap();
+        let now = Utc::now();
+
+        // Public on its own host: framable with no token at all.
+        assert_eq!(
+            isolated_access_for_artifact(
+                Some(&host),
+                None,
+                artifact_id,
+                "acme",
+                Sharing::Public,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Authorized
+        );
+        // Team and private still require a token.
+        for sharing in [Sharing::Team, Sharing::Private] {
+            assert_eq!(
+                isolated_access_for_artifact(
+                    Some(&host),
+                    None,
+                    artifact_id,
+                    "acme",
+                    sharing,
+                    Some(secret),
+                    now,
+                    ARTIFACT_ORIGIN_SUFFIX
+                ),
+                IsolatedAccess::Forbidden,
+                "{sharing:?}"
+            );
+        }
+        // Public on another artifact's host is still forbidden.
+        assert_eq!(
+            isolated_access_for_artifact(
+                Some(&other_host),
+                None,
+                artifact_id,
+                "acme",
+                Sharing::Public,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Forbidden
+        );
+        // A valid token still authorizes as before.
+        let token = mint_access_token(secret, artifact_id, now + chrono::Duration::minutes(5));
+        assert_eq!(
+            isolated_access_for_artifact(
+                Some(&host),
+                Some(&token),
+                artifact_id,
+                "acme",
+                Sharing::Team,
+                Some(secret),
+                now,
+                ARTIFACT_ORIGIN_SUFFIX
+            ),
+            IsolatedAccess::Authorized
+        );
+    }
+
+    #[test]
     fn error_html_page_includes_og_tags() {
         let page = error_html_page(
             "Artifact unavailable — artfct",
@@ -2914,6 +3008,28 @@ mod tests {
             description: None,
             created_at: created_at.to_string(),
             revoked_at: None,
+            tier: "secure".to_string(),
+            owner_user_id: None,
+            edit_access: "view".to_string(),
+        }
+    }
+
+    fn private_list_item(id: &str, owner_user_id: Option<&str>) -> store::ArtifactListItem {
+        store::ArtifactListItem {
+            id: store::ArtifactId(id.to_string()),
+            org: "acme".to_string(),
+            content_hash: "a".repeat(64),
+            size_bytes: 100,
+            agent: None,
+            repo_url: None,
+            commit_sha: None,
+            title: None,
+            description: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            revoked_at: None,
+            tier: "private".to_string(),
+            owner_user_id: owner_user_id.map(str::to_string),
+            edit_access: "view".to_string(),
         }
     }
 
@@ -2987,6 +3103,43 @@ mod tests {
             .map(|item| item.id.0.as_str())
             .collect();
         assert_eq!(matched, vec!["2"]);
+    }
+
+    #[test]
+    fn list_hides_other_members_private_artifacts_from_a_member() {
+        let items = [
+            private_list_item("private-mine", Some("7")),
+            private_list_item("private-theirs", Some("8")),
+            private_list_item("private-ownerless", None),
+        ];
+        // A member sees only their own private row; another member's and an
+        // ownerless one are filtered out at the same point the SQL clause is.
+        let member_filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            viewer_user_id: Some("7".to_string()),
+            viewer_reads_private: false,
+            ..Default::default()
+        };
+        let visible: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &member_filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(visible, vec!["private-mine"]);
+
+        // A team admin (read-private) sees every private row.
+        let admin_filter = store::ArtifactListFilter {
+            org: "acme".to_string(),
+            viewer_user_id: Some("9".to_string()),
+            viewer_reads_private: true,
+            ..Default::default()
+        };
+        let all: Vec<&str> = items
+            .iter()
+            .filter(|item| store::artifact_matches_filter(item, &admin_filter))
+            .map(|item| item.id.0.as_str())
+            .collect();
+        assert_eq!(all.len(), 3);
     }
 
     #[test]

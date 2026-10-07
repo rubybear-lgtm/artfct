@@ -13,6 +13,10 @@
 //!   The one deliberate cross-org case, Public + edit, is [`can_publish_version`]
 //!   with `same_org = false`.
 
+use serde::Serialize;
+
+use super::auth::OrgCredential;
+
 /// The scope Laravel puts on its own server-side reads (indexing, the console
 /// open route's existence check). A credential carrying it sees private
 /// artifacts, and its caller must apply [`can_view`] for the person it acts
@@ -22,7 +26,8 @@ pub(crate) const READ_PRIVATE_SCOPE: &str = "artifacts:read_private";
 
 /// Who can open an artifact. Stored in `artifacts.tier`: `private`, `secure`
 /// (team) and `public`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Sharing {
     Private,
     Team,
@@ -41,6 +46,10 @@ impl Sharing {
     }
 
     /// Parses the API name (`private`, `team`, `public`).
+    #[allow(
+        dead_code,
+        reason = "reserved for the sharing update request parsing in a later slice"
+    )]
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "private" => Some(Self::Private),
@@ -51,6 +60,10 @@ impl Sharing {
     }
 
     /// The value stored in `artifacts.tier`.
+    #[allow(
+        dead_code,
+        reason = "reserved for the sharing update response in a later slice"
+    )]
     pub(crate) fn tier(self) -> &'static str {
         match self {
             Self::Private => "private",
@@ -60,6 +73,10 @@ impl Sharing {
     }
 
     /// The API name.
+    #[allow(
+        dead_code,
+        reason = "reserved for the sharing update response in a later slice"
+    )]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Private => "private",
@@ -75,7 +92,8 @@ impl Sharing {
 }
 
 /// Whether the people an artifact is shared with may publish new versions.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum EditAccess {
     View,
     Edit,
@@ -91,6 +109,10 @@ impl EditAccess {
         }
     }
 
+    #[allow(
+        dead_code,
+        reason = "reserved for the sharing update request parsing in a later slice"
+    )]
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "view" => Some(Self::View),
@@ -99,6 +121,10 @@ impl EditAccess {
         }
     }
 
+    #[allow(
+        dead_code,
+        reason = "reserved for the sharing update response in a later slice"
+    )]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::View => "view",
@@ -117,7 +143,18 @@ pub(crate) struct Viewer<'a> {
     pub(crate) scope: Option<&'a str>,
 }
 
-impl Viewer<'_> {
+impl<'a> Viewer<'a> {
+    /// Borrows the decision-relevant fields of a verified credential. The
+    /// credential is the only source of user id, role and scope; callers may
+    /// not pass one of these in from the request.
+    pub(crate) fn from_credential(credential: &'a OrgCredential) -> Self {
+        Self {
+            user_id: &credential.user_id,
+            role: &credential.role,
+            scope: credential.scope.as_deref(),
+        }
+    }
+
     pub(crate) fn is_admin(&self) -> bool {
         self.role == "admin"
     }
@@ -149,6 +186,27 @@ pub(crate) fn can_view(sharing: Sharing, owner_user_id: Option<&str>, viewer: &V
         Sharing::Private => {
             viewer.owns(owner_user_id) || viewer.is_admin() || viewer.reads_private()
         }
+    }
+}
+
+/// Whether an org-list row is visible to the caller. The same Private rule as
+/// [`can_view`], but the list caller supplies the viewer's user id and whether
+/// they may read every private artifact (a team admin, or a server-side read)
+/// rather than a full [`Viewer`]. The list SQL filters on the literal
+/// `private` value, which covers every tier the schema can store
+/// (`tier TEXT NOT NULL DEFAULT 'public'`).
+pub(crate) fn can_view_listing(
+    sharing: Sharing,
+    owner_user_id: Option<&str>,
+    viewer_user_id: Option<&str>,
+    viewer_reads_private: bool,
+) -> bool {
+    if viewer_reads_private {
+        return true;
+    }
+    match sharing {
+        Sharing::Private => owner_user_id.is_some_and(|owner| viewer_user_id == Some(owner)),
+        Sharing::Team | Sharing::Public => true,
     }
 }
 
@@ -194,8 +252,43 @@ pub(crate) fn can_publish_version(
     }
 }
 
+/// The sharing, edit-access and permission fields every artifact read returns
+/// about the calling credential. Built once per row so metadata, the org list,
+/// content reads and version responses agree on what the caller may do.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct ArtifactAccess {
+    pub(crate) sharing: Sharing,
+    pub(crate) edit_access: EditAccess,
+    pub(crate) owner_user_id: Option<String>,
+    pub(crate) can_edit: bool,
+    pub(crate) can_change_sharing: bool,
+}
+
+/// Computes the access fields from the stored sharing state and the calling
+/// viewer. `same_org` is true for every read path here, which resolves the
+/// artifact within the credential's own org first.
+pub(crate) fn artifact_access(
+    sharing: Sharing,
+    edit_access: EditAccess,
+    owner_user_id: Option<&str>,
+    viewer: &Viewer<'_>,
+    same_org: bool,
+) -> ArtifactAccess {
+    ArtifactAccess {
+        sharing,
+        edit_access,
+        owner_user_id: owner_user_id.map(str::to_string),
+        can_edit: can_publish_version(sharing, edit_access, owner_user_id, viewer, same_org),
+        can_change_sharing: can_change_sharing(owner_user_id, viewer, same_org),
+    }
+}
+
 /// Whether choosing `sharing` is allowed by the org's settings. Only public can
 /// be switched off.
+#[allow(
+    dead_code,
+    reason = "reserved for the sharing update endpoint in a later slice"
+)]
 pub(crate) fn sharing_allowed(sharing: Sharing, public_sharing_allowed: bool) -> bool {
     sharing != Sharing::Public || public_sharing_allowed
 }
@@ -388,10 +481,110 @@ mod tests {
     }
 
     #[test]
+    fn list_visibility_matches_can_view() {
+        // Public and team are visible to any member; private only to its owner
+        // or a viewer with org-wide private reads.
+        assert!(can_view_listing(Sharing::Public, None, Some("7"), false));
+        assert!(can_view_listing(Sharing::Team, Some("8"), Some("7"), false));
+        assert!(can_view_listing(
+            Sharing::Private,
+            Some("7"),
+            Some("7"),
+            false
+        ));
+        assert!(!can_view_listing(
+            Sharing::Private,
+            Some("8"),
+            Some("7"),
+            false
+        ));
+        assert!(!can_view_listing(Sharing::Private, None, Some("7"), false));
+        assert!(can_view_listing(
+            Sharing::Private,
+            Some("8"),
+            Some("7"),
+            true
+        ));
+    }
+
+    #[test]
     fn public_sharing_can_be_switched_off() {
         assert!(sharing_allowed(Sharing::Public, true));
         assert!(!sharing_allowed(Sharing::Public, false));
         assert!(sharing_allowed(Sharing::Team, false));
         assert!(sharing_allowed(Sharing::Private, false));
+    }
+
+    #[test]
+    fn viewer_borrows_role_scope_and_user_from_the_credential() {
+        let credential = OrgCredential {
+            org_id: "acme".to_string(),
+            user_id: "7".to_string(),
+            role: "member".to_string(),
+            scope: Some("artifacts:read artifacts:read_private".to_string()),
+            token_id: "jti".to_string(),
+        };
+        let viewer = Viewer::from_credential(&credential);
+        assert_eq!(viewer.user_id, "7");
+        assert_eq!(viewer.role, "member");
+        assert_eq!(viewer.scope, Some("artifacts:read artifacts:read_private"));
+        // The borrowed scope is the one that grants private reads; nothing is
+        // keyed on a user id string.
+        assert!(viewer.reads_private());
+        assert!(!viewer.is_admin());
+    }
+
+    #[test]
+    fn access_fields_follow_the_same_decisions_as_the_rules() {
+        let owner = Some("7");
+        let member_owner = member("7");
+        let member_other = member("8");
+        let admin_other = admin("8");
+
+        let own = artifact_access(
+            Sharing::Private,
+            EditAccess::View,
+            owner,
+            &member_owner,
+            true,
+        );
+        assert!(own.can_edit);
+        assert!(own.can_change_sharing);
+        assert_eq!(own.sharing, Sharing::Private);
+        assert_eq!(own.owner_user_id.as_deref(), owner);
+
+        // A private artifact someone else cannot see grants nothing.
+        let unseen = artifact_access(
+            Sharing::Private,
+            EditAccess::Edit,
+            owner,
+            &member_other,
+            true,
+        );
+        assert!(!unseen.can_edit);
+        assert!(!unseen.can_change_sharing);
+
+        // Team + edit: another member may edit but not change sharing.
+        let teammate = artifact_access(Sharing::Team, EditAccess::Edit, owner, &member_other, true);
+        assert!(teammate.can_edit);
+        assert!(!teammate.can_change_sharing);
+
+        // An admin of the org may change sharing even when not the owner.
+        let admin_view =
+            artifact_access(Sharing::Team, EditAccess::View, owner, &admin_other, true);
+        assert!(!admin_view.can_edit);
+        assert!(admin_view.can_change_sharing);
+
+        // Another org (same_org = false) never changes sharing, even for the
+        // owner, and only public + edit may publish.
+        let cross_org = artifact_access(
+            Sharing::Public,
+            EditAccess::Edit,
+            owner,
+            &member_owner,
+            false,
+        );
+        assert!(cross_org.can_edit);
+        assert!(!cross_org.can_change_sharing);
     }
 }
