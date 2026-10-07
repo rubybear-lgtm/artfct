@@ -221,6 +221,18 @@ pub(crate) async fn upload_permanent_file(
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
             let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest)?;
+            // Explicit deletes rather than ON DELETE CASCADE: foreign keys are
+            // a per-connection pragma that defaults to OFF.
+            database
+                .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id = ?)")
+                .bind(&[JsValue::from_str(&row.row_id)])?
+                .run()
+                .await?;
+            database
+                .prepare("DELETE FROM artifact_versions WHERE artifact_row_id = ?")
+                .bind(&[JsValue::from_str(&row.row_id)])?
+                .run()
+                .await?;
             database
                 .prepare("DELETE FROM artifacts WHERE row_id = ?")
                 .bind(&[JsValue::from_str(&row.row_id)])?
@@ -300,34 +312,82 @@ pub(crate) async fn upload_permanent_file(
         let _ = storage.release_content_locks(&locks).await;
         return Err(error);
     }
-    let file_result = match database
+    let now = Utc::now().to_rfc3339();
+    // The current copy (`files`) and the version's own file rows move together:
+    // invariant 1 says `artifacts` and `files` are a copy of the current
+    // version, and invariant 2 says `version_files` holds that version's files.
+    // Resolve the version from `current_version`; v2+ pending uploads are a
+    // later slice.
+    let files_statement = match database
         .prepare("INSERT OR REPLACE INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) SELECT a.row_id, json_extract(mf.value, '$.path'), ?, json_extract(mf.value, '$.content_type'), json_extract(mf.value, '$.size_bytes') FROM artifacts a, json_each(a.manifest, '$.files') mf JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? AND (a.expires_at IS NULL OR a.expires_at > ?)")
         .bind(&[
             JsValue::from_str(content_hash),
             JsValue::from_str(artifact_id),
             JsValue::from_str(&org),
             JsValue::from_str(content_hash),
-            JsValue::from_str(&Utc::now().to_rfc3339()),
+            JsValue::from_str(&now),
         ]) {
-        Ok(statement) => statement.run().await,
+        Ok(statement) => statement,
         Err(error) => {
             let _ = storage.release_content_locks(&locks).await;
             return Err(error);
         }
     };
-    let complete_result = match database
+    let version_files_statement = match database
+        .prepare("INSERT OR REPLACE INTO version_files (version_id, path, content_hash, content_type, size_bytes) SELECT v.id, json_extract(mf.value, '$.path'), ?, json_extract(mf.value, '$.content_type'), json_extract(mf.value, '$.size_bytes') FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN artifact_versions v ON v.artifact_row_id = a.row_id AND v.version = a.current_version, json_each(a.manifest, '$.files') mf WHERE a.id = ? AND o.slug = ? AND json_extract(mf.value, '$.sha256') = ? AND (a.expires_at IS NULL OR a.expires_at > ?)")
+        .bind(&[
+            JsValue::from_str(content_hash),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&org),
+            JsValue::from_str(content_hash),
+            JsValue::from_str(&now),
+        ]) {
+        Ok(statement) => statement,
+        Err(error) => {
+            let _ = storage.release_content_locks(&locks).await;
+            return Err(error);
+        }
+    };
+    let file_result = database
+        .batch(vec![files_statement, version_files_statement])
+        .await;
+    // Clearing the upload deadline clears it on the current version too, so a
+    // promoted v1 is not treated as a pending upload. Gated on the same
+    // "every manifest path has a file row" condition as the artifact update.
+    let artifact_complete_statement = match database
         .prepare("UPDATE artifacts SET expires_at = NULL WHERE id = ? AND org_id = ? AND (expires_at IS NULL OR expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.artifact_row_id = artifacts.row_id AND f.path = json_extract(mf.value, '$.path')))" )
         .bind(&[
             JsValue::from_str(artifact_id),
             JsValue::from_str(&org),
-            JsValue::from_str(&Utc::now().to_rfc3339()),
+            JsValue::from_str(&now),
         ]) {
-        Ok(statement) => statement.run().await,
+        Ok(statement) => statement,
         Err(error) => {
             let _ = storage.release_content_locks(&locks).await;
             return Err(error);
         }
     };
+    let version_complete_statement = match database
+        .prepare("UPDATE artifact_versions SET expires_at = NULL WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = ? AND (expires_at IS NULL OR expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(artifacts.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.artifact_row_id = artifacts.row_id AND f.path = json_extract(mf.value, '$.path')))) AND version = (SELECT current_version FROM artifacts WHERE id = ? AND org_id = ?)")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&org),
+            JsValue::from_str(&now),
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(&org),
+        ]) {
+        Ok(statement) => statement,
+        Err(error) => {
+            let _ = storage.release_content_locks(&locks).await;
+            return Err(error);
+        }
+    };
+    let complete_result = database
+        .batch(vec![
+            artifact_complete_statement,
+            version_complete_statement,
+        ])
+        .await;
     let release_result = storage.release_content_locks(&locks).await;
     file_result?;
     complete_result?;
@@ -790,35 +850,38 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
 
 #[derive(Debug, Deserialize)]
 struct ExistingArtifactRow {
+    id: String,
     manifest: String,
+    tier: String,
+    current_version: i64,
 }
 
-/// Builds the response for a permanent artifact that already exists.
+/// The stored tier string back to its enum. Permanent rows only ever carry
+/// `public` or `secure`, but the mapping is total so an unexpected value can
+/// never panic the response path.
+fn permanent_tier_from_database(value: &str) -> ArtifactTier {
+    match value {
+        "secure" => ArtifactTier::Secure,
+        "ephemeral" => ArtifactTier::Ephemeral,
+        _ => ArtifactTier::Public,
+    }
+}
+
+/// Builds the 201 response for a permanent artifact that already exists, from
+/// the row that named it. Used by both the content-hash dedupe and the
+/// defensive `(org_id, id)` conflict fallback so both look the same to the
+/// caller.
 ///
-/// Used twice: on the ordinary re-post, and when the unique index refuses an
-/// insert because a concurrent create won the race. Both must look the same to
-/// the caller, so `missing_files` is computed from blob existence rather than
-/// assumed empty — an artifact whose earlier upload was interrupted still tells
-/// the client what to send.
-///
-pub(crate) async fn existing_permanent_response(
+/// `missing_files` is computed from blob existence rather than assumed empty —
+/// an artifact whose earlier upload was interrupted still tells the client what
+/// to send. `tier` and `version` come from the stored row, never from the
+/// request: re-posting a bundle must not be able to relabel the artifact.
+async fn existing_artifact_response(
     storage: &store::D1R2ArtifactStore,
     env: &Env,
-    org: &str,
-    artifact_id: &str,
-    tier: ArtifactTier,
-) -> Result<Option<Response>> {
-    let Some(existing) = storage
-        .database
-        .prepare("SELECT manifest FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
-        .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
-        .first::<ExistingArtifactRow>(None)
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    let existing_manifest: PermanentManifest = serde_json::from_str(&existing.manifest)?;
+    row: &ExistingArtifactRow,
+) -> Result<Response> {
+    let existing_manifest: PermanentManifest = serde_json::from_str(&row.manifest)?;
     let mut present = Vec::with_capacity(existing_manifest.files.len());
     for file in &existing_manifest.files {
         present.push(
@@ -830,17 +893,60 @@ pub(crate) async fn existing_permanent_response(
     }
     let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
 
+    JsonResponseDefinition::json(
+        PermanentCreateArtifactResponse {
+            id: row.id.clone(),
+            url: format!("{}/p/{}/", base_url.trim_end_matches('/'), row.id),
+            tier: permanent_tier_from_database(&row.tier),
+            version: row.current_version.max(1) as u32,
+            missing_files: missing_manifest_files(&existing_manifest, &present),
+        },
+        201,
+    )
+    .into_worker_response()
+}
+
+/// The live artifact in `org` whose current content is `bundle_hash`.
+///
+/// Re-posting identical bytes names the artifact that already exists, whatever
+/// id shape it was minted with (13-character stable or 32-character legacy
+/// hex). Revoked rows are excluded: re-publishing after a revocation must mint
+/// a fresh row rather than resurrect the revoked one. Called while holding the
+/// bundle lock, so it cannot race a concurrent create of the same bundle.
+async fn existing_permanent_by_content(
+    storage: &store::D1R2ArtifactStore,
+    org: &str,
+    bundle_hash: &str,
+) -> Result<Option<ExistingArtifactRow>> {
+    storage
+        .database
+        .prepare("SELECT id, manifest, tier, current_version FROM artifacts WHERE org_id = ? AND content_hash = ? AND revoked_at IS NULL ORDER BY created_at, row_id LIMIT 1")
+        .bind(&[JsValue::from_str(org), JsValue::from_str(bundle_hash)])?
+        .first::<ExistingArtifactRow>(None)
+        .await
+}
+
+/// Builds the response for a permanent artifact that already exists, looked up
+/// by `(org, id)`. The defensive fallback for the 0005 unique index; the
+/// content-hash dedupe uses [`existing_permanent_by_content`] instead.
+pub(crate) async fn existing_permanent_response(
+    storage: &store::D1R2ArtifactStore,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+) -> Result<Option<Response>> {
+    let Some(existing) = storage
+        .database
+        .prepare("SELECT id, manifest, tier, current_version FROM artifacts WHERE org_id = ? AND id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
+        .first::<ExistingArtifactRow>(None)
+        .await?
+    else {
+        return Ok(None);
+    };
+
     Ok(Some(
-        JsonResponseDefinition::json(
-            PermanentCreateArtifactResponse {
-                id: artifact_id.to_string(),
-                url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
-                tier,
-                missing_files: missing_manifest_files(&existing_manifest, &present),
-            },
-            201,
-        )
-        .into_worker_response()?,
+        existing_artifact_response(storage, env, &existing).await?,
     ))
 }
 
@@ -917,7 +1023,6 @@ pub(crate) async fn create_permanent_artifact(
     if let Err(message) = store::validate_slug(&org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    let artifact_id = store::public_id(&org, content_hash);
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -951,32 +1056,64 @@ pub(crate) async fn create_permanent_artifact(
         .iter()
         .map(|file| file.sha256.clone())
         .collect::<Vec<_>>();
-    // Idempotency (RUB-371). The public id is derived from (org, content_hash),
-    // so re-posting identical bytes names the artifact that already exists.
-    // Returning it is the point: inserting again added a second row, a second
-    // file set and another refcount bump per file, which left blobs
-    // unreclaimable and let a DELETE answer 204 while a duplicate row kept
-    // serving.
+    // Idempotency (RUB-371). Re-posting bytes identical to an artifact's
+    // current content in this org names the artifact that already exists,
+    // whichever id shape it was minted with. Returning it is the point:
+    // inserting again added a second row, a second file set and another
+    // refcount bump per file, which left blobs unreclaimable and let a DELETE
+    // answer 204 while a duplicate row kept serving.
     //
     // Live rows only: a revoked artifact does not serve, so re-publishing the
     // same bytes after a revocation must create a new row rather than resurrect
     // the revoked one.
     //
-    // Checked before the content locks are taken so the early return cannot
-    // leak one.
-    if let Some(response) =
-        existing_permanent_response(&storage, env, &org, &artifact_id, tier).await?
-    {
-        return Ok(response);
+    // The lookup runs inside the bundle lock. Ids are random now, so nothing
+    // else stops two concurrent creates of one bundle from both missing the
+    // lookup and both inserting a row for the same content.
+    let bundle_key = bundle_lock_key(&org, content_hash);
+    let bundle_lock = match storage.acquire_content_lock(&bundle_key).await {
+        Ok(owner) => (bundle_key, owner),
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
+    match existing_permanent_by_content(&storage, &org, content_hash).await {
+        Ok(Some(existing)) => {
+            let response = existing_artifact_response(&storage, env, &existing).await;
+            let release = storage
+                .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            let response = response?;
+            release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+            return Ok(response);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            return Err(error);
+        }
     }
 
     let locks = match storage.acquire_content_locks(&file_hashes).await {
         Ok(locks) => locks,
-        Err(store::StoreError::Contention) => return retryable_contention_response(),
-        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+        Err(store::StoreError::Contention) => {
+            let _ = storage
+                .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            return retryable_contention_response();
+        }
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            return Err(worker::Error::RustError(error.to_string()));
+        }
     };
     let database = &storage.database;
     let row_id = Uuid::new_v4().simple().to_string();
+    let version_id = format!("{row_id}-v1");
+    let mut artifact_id = store::mint_stable_id();
     // Cleared when the insert was refused because a concurrent create won, so a
     // re-post does not announce an artifact that was not created.
     let mut created = true;
@@ -987,7 +1124,7 @@ pub(crate) async fn create_permanent_artifact(
                 storage
                     .blob_exists(&file.sha256)
                     .await
-                .map_err(|error| worker::Error::RustError(error.to_string()))?,
+                    .map_err(|error| worker::Error::RustError(error.to_string()))?,
             );
         }
         let expires_value = if existing.iter().all(|present| *present) {
@@ -995,109 +1132,175 @@ pub(crate) async fn create_permanent_artifact(
         } else {
             JsValue::from_str(&upload_expires_at)
         };
-        let mut statements = vec![
-            database
-                .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
-                .bind(&[
-                    JsValue::from_str(&org),
-                    JsValue::from_str(&org),
-                    JsValue::from_str(&now),
-                ])?,
-            database
-                .prepare("INSERT INTO artifacts (row_id, id, org_id, content_hash, entrypoint, created_at, expires_at, tier, manifest, title, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-                .bind(&[
-                    JsValue::from_str(&row_id),
-                    JsValue::from_str(&artifact_id),
-                    JsValue::from_str(&org),
-                    JsValue::from_str(content_hash),
-                    JsValue::from_str(entrypoint),
-                    JsValue::from_str(&now),
-                    expires_value,
-                    JsValue::from_str(match tier {
-                        ArtifactTier::Public => "public",
-                        ArtifactTier::Secure => "secure",
-                        ArtifactTier::Ephemeral => "ephemeral",
-                    }),
-                    JsValue::from_str(&serde_json::to_string(&manifest)?),
-                    artifact_title.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
-                    artifact_description.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
-                ])?,
-            database
-                .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
-                .bind(&[
-                    JsValue::from_str(&row_id),
-                    agent.map(JsValue::from_str).unwrap_or_else(JsValue::null),
-                    repo_url.map(JsValue::from_str).unwrap_or_else(JsValue::null),
-                    commit_sha.map(JsValue::from_str).unwrap_or_else(JsValue::null),
-                    JsValue::from_str(&provenance.to_string()),
-                ])?,
-        ];
-        for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
-            statements.push(
+        let manifest_json = serde_json::to_string(&manifest)?;
+        let provenance_json = provenance.to_string();
+        let tier_value = match tier {
+            ArtifactTier::Public => "public",
+            ArtifactTier::Secure => "secure",
+            ArtifactTier::Ephemeral => "ephemeral",
+        };
+        // At most three attempts. A conflict on the global stable-id index is
+        // retried with a fresh id; the bundle lock means a same-content create
+        // cannot race, so the (org_id, id) branch is only defensive.
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let mut statements = vec![
                 database
-                    .prepare("INSERT OR IGNORE INTO blobs (content_hash, size_bytes, content_type, ref_count, created_at) VALUES (?, ?, ?, 0, ?)")
+                    .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
                     .bind(&[
-                        JsValue::from_str(&file.sha256),
-                        JsValue::from_f64(file.size_bytes as f64),
-                        JsValue::from_str(&file.content_type),
+                        JsValue::from_str(&org),
+                        JsValue::from_str(&org),
                         JsValue::from_str(&now),
                     ])?,
-            );
-            statements.push(
                 database
-                    .prepare("UPDATE blobs SET ref_count = ref_count + 1 WHERE content_hash = ?")
-                    .bind(&[JsValue::from_str(&file.sha256)])?,
-            );
-            if is_present {
+                    .prepare("INSERT OR IGNORE INTO users (id, created_at) VALUES (?, ?)")
+                    .bind(&[
+                        JsValue::from_str(&credential.user_id),
+                        JsValue::from_str(&now),
+                    ])?,
+                database
+                    .prepare("INSERT INTO artifacts (row_id, id, org_id, user_id, content_hash, entrypoint, created_at, updated_at, expires_at, tier, manifest, title, description, current_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)")
+                    .bind(&[
+                        JsValue::from_str(&row_id),
+                        JsValue::from_str(&artifact_id),
+                        JsValue::from_str(&org),
+                        JsValue::from_str(&credential.user_id),
+                        JsValue::from_str(content_hash),
+                        JsValue::from_str(entrypoint),
+                        JsValue::from_str(&now),
+                        JsValue::from_str(&now),
+                        expires_value.clone(),
+                        JsValue::from_str(tier_value),
+                        JsValue::from_str(&manifest_json),
+                        artifact_title.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        artifact_description.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                    ])?,
+                database
+                    .prepare("INSERT INTO artifact_versions (id, artifact_row_id, version, created_at, content_hash, entrypoint, manifest, title, description, created_by, agent, repo_url, commit_sha, provenance, expires_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                    .bind(&[
+                        JsValue::from_str(&version_id),
+                        JsValue::from_str(&row_id),
+                        JsValue::from_str(&now),
+                        JsValue::from_str(content_hash),
+                        JsValue::from_str(entrypoint),
+                        JsValue::from_str(&manifest_json),
+                        artifact_title.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        artifact_description.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        JsValue::from_str(&credential.user_id),
+                        agent.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        repo_url.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        commit_sha.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        JsValue::from_str(&provenance_json),
+                        expires_value.clone(),
+                    ])?,
+                database
+                    .prepare("INSERT INTO provenance (artifact_row_id, agent, repo_url, commit_sha, payload) VALUES (?, ?, ?, ?, ?)")
+                    .bind(&[
+                        JsValue::from_str(&row_id),
+                        agent.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        repo_url.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        commit_sha.map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                        JsValue::from_str(&provenance_json),
+                    ])?,
+            ];
+            for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
                 statements.push(
                     database
-                        .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                        .prepare("INSERT OR IGNORE INTO blobs (content_hash, size_bytes, content_type, ref_count, created_at) VALUES (?, ?, ?, 0, ?)")
                         .bind(&[
-                            JsValue::from_str(&row_id),
-                            JsValue::from_str(&file.path),
                             JsValue::from_str(&file.sha256),
-                            JsValue::from_str(&file.content_type),
                             JsValue::from_f64(file.size_bytes as f64),
+                            JsValue::from_str(&file.content_type),
+                            JsValue::from_str(&now),
                         ])?,
                 );
-            }
-        }
-        if let Err(error) = storage.execute_batch(statements).await {
-            let message = error.to_string();
-            // The partial unique index refuses a second live row for the same
-            // (org, id). That is the race the pre-flight above cannot close on
-            // its own: two concurrent creates of one bundle both pass it, one
-            // wins the insert, and the loser has to return the artifact that won
-            // -- a 500 here would mean a re-post fails depending on timing.
-            if is_artifact_id_conflict(&message) {
-                if let Some(response) =
-                    existing_permanent_response(&storage, env, &org, &artifact_id, tier).await?
-                {
-                    created = false;
-
-                    return Ok(response);
+                statements.push(
+                    database
+                        .prepare("UPDATE blobs SET ref_count = ref_count + 1 WHERE content_hash = ?")
+                        .bind(&[JsValue::from_str(&file.sha256)])?,
+                );
+                if is_present {
+                    statements.push(
+                        database
+                            .prepare("INSERT INTO files (artifact_row_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                            .bind(&[
+                                JsValue::from_str(&row_id),
+                                JsValue::from_str(&file.path),
+                                JsValue::from_str(&file.sha256),
+                                JsValue::from_str(&file.content_type),
+                                JsValue::from_f64(file.size_bytes as f64),
+                            ])?,
+                    );
+                    statements.push(
+                        database
+                            .prepare("INSERT OR REPLACE INTO version_files (version_id, path, content_hash, content_type, size_bytes) VALUES (?, ?, ?, ?, ?)")
+                            .bind(&[
+                                JsValue::from_str(&version_id),
+                                JsValue::from_str(&file.path),
+                                JsValue::from_str(&file.sha256),
+                                JsValue::from_str(&file.content_type),
+                                JsValue::from_f64(file.size_bytes as f64),
+                            ])?,
+                    );
                 }
             }
-
-            return Err(worker::Error::RustError(message));
+            match storage.execute_batch(statements).await {
+                Ok(()) => {
+                    let missing_files = missing_manifest_files(&manifest, &existing);
+                    let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+                    return JsonResponseDefinition::json(
+                        PermanentCreateArtifactResponse {
+                            id: artifact_id.clone(),
+                            url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
+                            tier,
+                            version: 1,
+                            missing_files,
+                        },
+                        201,
+                    )
+                    .into_worker_response();
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    match artifact_insert_conflict(&message) {
+                        // The 0006 global unique index over `artifacts.id`.
+                        // Mint a fresh id and retry, so a collision never
+                        // fails a create.
+                        ArtifactInsertConflict::StableId if attempt < 3 => {
+                            artifact_id = store::mint_stable_id();
+                        }
+                        ArtifactInsertConflict::StableId => {
+                            return Err(worker::Error::RustError(message));
+                        }
+                        // The 0005 `(org_id, id)` index: a live row already has
+                        // this id. Return it rather than failing the re-post.
+                        ArtifactInsertConflict::OrgPublicId => {
+                            if let Some(response) =
+                                existing_permanent_response(&storage, env, &org, &artifact_id)
+                                    .await?
+                            {
+                                created = false;
+                                return Ok(response);
+                            }
+                            return Err(worker::Error::RustError(message));
+                        }
+                        ArtifactInsertConflict::Other => {
+                            return Err(worker::Error::RustError(message));
+                        }
+                    }
+                }
+            }
         }
-        let missing_files = missing_manifest_files(&manifest, &existing);
-        let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-        JsonResponseDefinition::json(
-            PermanentCreateArtifactResponse {
-                id: artifact_id.clone(),
-                url: format!("{}/p/{artifact_id}/", base_url.trim_end_matches('/')),
-                tier,
-                missing_files,
-            },
-            201,
-        )
-        .into_worker_response()
     }
     .await;
     let release_result = storage.release_content_locks(&locks).await;
+    let bundle_release = storage
+        .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+        .await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    bundle_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
     if created && response.status_code() == 201 {
         emit_artifact_created(ctx, env, &org, &artifact_id, tier);
     }

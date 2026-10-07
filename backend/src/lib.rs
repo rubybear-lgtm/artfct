@@ -170,6 +170,7 @@ struct PermanentCreateArtifactResponse {
     id: String,
     url: String,
     tier: ArtifactTier,
+    version: u32,
     missing_files: Vec<String>,
 }
 
@@ -592,17 +593,48 @@ fn build_options_response() -> EmptyResponseDefinition {
     EmptyResponseDefinition::options()
 }
 
-/// Whether a failed batch was refused by the live-`(org_id, id)` unique index
-/// rather than failing for some other reason.
+/// Which unique index refused an `artifacts` insert, distinguished from any
+/// other failure.
 ///
 /// The message is the only signal D1 gives for a constraint violation, so this
-/// matches SQLite's wording (`UNIQUE constraint failed: artifacts.org_id,
-/// artifacts.id`) without depending on how D1 wraps it. Kept as a named
-/// predicate because the branch it guards is a race that a test cannot reliably
-/// provoke through HTTP -- the pre-flight existence check wins every time in
-/// practice -- so this is the part that is unit tested instead.
-fn is_artifact_id_conflict(message: &str) -> bool {
-    message.contains("UNIQUE constraint failed") && message.contains("artifacts")
+/// matches SQLite's wording without depending on how D1 wraps it. Kept as a
+/// named predicate because the branches it guards are races that a test cannot
+/// reliably provoke through HTTP.
+#[derive(Debug, PartialEq, Eq)]
+enum ArtifactInsertConflict {
+    /// The global unique index over `artifacts.id` added by migration 0006
+    /// refused a 13-character id already minted anywhere. The caller retries
+    /// the whole insert with a fresh id.
+    StableId,
+    /// The partial unique index over `(org_id, id)` added by migration 0005
+    /// refused a second live row for one org and id. Now that ids are random
+    /// this is a defensive fallback: it returns the row that already exists.
+    OrgPublicId,
+    /// Any other failure, which must propagate.
+    Other,
+}
+
+fn artifact_insert_conflict(message: &str) -> ArtifactInsertConflict {
+    if !message.contains("UNIQUE constraint failed") || !message.contains("artifacts") {
+        return ArtifactInsertConflict::Other;
+    }
+    // The 0006 index spans `artifacts.id` alone; the 0005 index spans
+    // `(org_id, id)`, so its message names both columns. A conflict on any
+    // other column (`artifacts.row_id`, ...) must not be mistaken for either.
+    if message.contains("artifacts.org_id") {
+        ArtifactInsertConflict::OrgPublicId
+    } else if message.contains("artifacts.id") {
+        ArtifactInsertConflict::StableId
+    } else {
+        ArtifactInsertConflict::Other
+    }
+}
+
+/// The `blob_locks` key that serialises permanent creates of one bundle within
+/// one org. Deliberately namespaced: the per-file content locks share
+/// `blob_locks`, so this key must never equal a 64-hex file hash.
+fn bundle_lock_key(org: &str, bundle_hash: &str) -> String {
+    format!("bundle:{org}:{bundle_hash}")
 }
 
 #[cfg(test)]
@@ -622,30 +654,68 @@ mod tests {
     use crate::validation::{manifest_is_complete, normalized_content_type};
 
     #[test]
-    fn artifact_id_conflicts_are_recognised_and_other_failures_are_not() {
-        // The wording SQLite produced when the constraint was exercised directly
-        // against the schema, plus the shapes a wrapper is likely to put around
-        // it. D1 gives no structured error code here, so the message is the
-        // signal -- which is exactly why it is pinned.
-        assert!(is_artifact_id_conflict(
-            "UNIQUE constraint failed: artifacts.org_id, artifacts.id"
-        ));
-        assert!(is_artifact_id_conflict(
-            "Error: UNIQUE constraint failed: artifacts.org_id, artifacts.id"
-        ));
-        assert!(is_artifact_id_conflict(
-            "D1_ERROR: UNIQUE constraint failed: artifacts.org_id, artifacts.id: SQLITE_CONSTRAINT"
-        ));
+    fn artifact_insert_conflicts_are_classified_and_other_failures_are_not() {
+        // The wording SQLite produced when each constraint was exercised
+        // directly against the schema, plus the shapes a wrapper is likely to
+        // put around it. D1 gives no structured error code here, so the message
+        // is the signal -- which is exactly why it is pinned.
+        //
+        // 0006's global stable-id index covers `artifacts.id` alone.
+        assert_eq!(
+            artifact_insert_conflict("UNIQUE constraint failed: artifacts.id"),
+            ArtifactInsertConflict::StableId
+        );
+        assert_eq!(
+            artifact_insert_conflict(
+                "D1_ERROR: UNIQUE constraint failed: artifacts.id: SQLITE_CONSTRAINT"
+            ),
+            ArtifactInsertConflict::StableId
+        );
+
+        // 0005's partial index covers `(org_id, id)`, so both columns appear.
+        assert_eq!(
+            artifact_insert_conflict("UNIQUE constraint failed: artifacts.org_id, artifacts.id"),
+            ArtifactInsertConflict::OrgPublicId
+        );
+        assert_eq!(
+            artifact_insert_conflict(
+                "Error: UNIQUE constraint failed: artifacts.org_id, artifacts.id"
+            ),
+            ArtifactInsertConflict::OrgPublicId
+        );
 
         // Everything else must propagate instead of being swallowed as an
-        // idempotent success: a conflict on another table, a different
-        // constraint, or a transport failure are all real errors.
-        assert!(!is_artifact_id_conflict(
-            "UNIQUE constraint failed: blobs.content_hash"
-        ));
-        assert!(!is_artifact_id_conflict("FOREIGN KEY constraint failed"));
-        assert!(!is_artifact_id_conflict("D1_ERROR: network unreachable"));
-        assert!(!is_artifact_id_conflict(""));
+        // idempotent success: a conflict on another table, another column, a
+        // different constraint, or a transport failure are all real errors.
+        assert_eq!(
+            artifact_insert_conflict("UNIQUE constraint failed: blobs.content_hash"),
+            ArtifactInsertConflict::Other
+        );
+        assert_eq!(
+            artifact_insert_conflict("UNIQUE constraint failed: artifacts.row_id"),
+            ArtifactInsertConflict::Other
+        );
+        assert_eq!(
+            artifact_insert_conflict("FOREIGN KEY constraint failed"),
+            ArtifactInsertConflict::Other
+        );
+        assert_eq!(
+            artifact_insert_conflict("D1_ERROR: network unreachable"),
+            ArtifactInsertConflict::Other
+        );
+        assert_eq!(artifact_insert_conflict(""), ArtifactInsertConflict::Other);
+    }
+
+    #[test]
+    fn bundle_lock_key_cannot_collide_with_a_file_hash() {
+        let org = "acme";
+        let bundle_hash = "a".repeat(64);
+        let key = bundle_lock_key(org, &bundle_hash);
+        assert_ne!(key, bundle_hash);
+        assert!(!key.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(key, format!("bundle:{org}:{bundle_hash}"));
+        // A 13-character stable id is not a lock key either.
+        assert_ne!(key, "a".repeat(13));
     }
 
     #[test]
@@ -946,6 +1016,7 @@ mod tests {
             "id": "permanent1",
             "url": "https://permanent1.artifacts.example.artfct.dev/",
             "tier": "secure",
+            "version": 1,
             "missing_files": ["a".repeat(64)],
         })
     }
