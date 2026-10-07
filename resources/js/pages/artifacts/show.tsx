@@ -51,7 +51,9 @@ function formatDate(value: string | null): string | null {
 
     const date = new Date(value);
 
-    return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString();
+    return Number.isNaN(date.getTime())
+        ? null
+        : date.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
 
 function versionLabel(version: number, count: number): string {
@@ -69,6 +71,9 @@ export default function ArtifactShow({
     downloadUrl,
 }: Props) {
     const name = artifactName(artifact.title, artifact.id);
+    const tooltip = artifact.description
+        ? `${name} — ${artifact.description}`
+        : name;
     const shownVersion = selectedVersion ?? artifact.version;
     const updated = formatDate(artifact.updatedAt);
     const meta = [
@@ -92,103 +97,108 @@ export default function ArtifactShow({
         <>
             <Head title={name} />
 
-            <div className="flex min-h-[60vh] flex-col">
-                <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border pb-3">
-                    <div className="min-w-0">
-                        <h1
-                            className="truncate text-xl font-normal md:text-2xl"
-                            title={name}
-                        >
-                            {name}
-                        </h1>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-                            {meta.map((part, index) => (
-                                <span
-                                    key={part}
-                                    className="flex items-center gap-x-2"
-                                >
-                                    {index > 0 && (
-                                        <span aria-hidden="true">·</span>
-                                    )}
-                                    {part}
-                                </span>
-                            ))}
-                        </p>
-                        {artifact.description && (
-                            <p className="mt-1 max-w-2xl text-sm break-words text-muted-foreground">
-                                {artifact.description}
+            {/*
+                The page column is sized to the viewport minus the app chrome
+                (global header + nav + main's top padding): 6rem at phone
+                width, 9.875rem once the desktop nav appears. The header takes
+                its natural height and the frame flexes to fill the rest, so a
+                wrapped header shrinks the frame instead of pushing it off
+                screen. The 420px floor keeps a usable frame on short views.
+            */}
+            <div className="flex h-[calc(100dvh-6rem)] flex-col md:h-[calc(100dvh-9.875rem)]">
+                <header className="shrink-0 border-b border-border pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+                        <div className="w-full min-w-0 md:w-auto md:flex-1">
+                            <h1
+                                className="truncate text-2xl! leading-7 font-normal"
+                                title={tooltip}
+                            >
+                                {name}
+                            </h1>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                                {meta.map((part, index) => (
+                                    <span
+                                        key={part}
+                                        className="flex items-center gap-x-2"
+                                    >
+                                        {index > 0 && (
+                                            <span aria-hidden="true">·</span>
+                                        )}
+                                        {part}
+                                    </span>
+                                ))}
                             </p>
-                        )}
-                    </div>
+                        </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        {versions && versions.length > 1 && (
-                            <label className="flex items-center gap-2 text-sm">
-                                <span className="sr-only">Version</span>
-                                <select
-                                    value={shownVersion}
-                                    onChange={(event) =>
-                                        selectVersion(
-                                            Number(event.target.value),
-                                        )
-                                    }
-                                    data-testid="version-picker"
-                                    className="h-8 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base"
+                        <div className="flex flex-wrap items-center gap-2">
+                            {versions && versions.length > 1 && (
+                                <label className="flex items-center gap-2 text-sm">
+                                    <span className="sr-only">Version</span>
+                                    <select
+                                        value={shownVersion}
+                                        onChange={(event) =>
+                                            selectVersion(
+                                                Number(event.target.value),
+                                            )
+                                        }
+                                        data-testid="version-picker"
+                                        className="h-8 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base"
+                                    >
+                                        {versions.map((version) => (
+                                            <option
+                                                key={version.number}
+                                                value={version.number}
+                                            >
+                                                Version {version.number}
+                                                {version.current
+                                                    ? ' (current)'
+                                                    : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+
+                            <ArtifactShareControl
+                                artifactId={artifact.id}
+                                sharing={artifact.sharing}
+                                editAccess={artifact.editAccess}
+                                publicSharingAllowed={team.publicSharingAllowed}
+                                canChangeSharing={artifact.canChangeSharing}
+                                viewerUrl={viewerUrl}
+                            />
+
+                            <Button asChild variant="outline" size="sm">
+                                <a
+                                    href={openUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    data-testid="open-artifact"
                                 >
-                                    {versions.map((version) => (
-                                        <option
-                                            key={version.number}
-                                            value={version.number}
-                                        >
-                                            Version {version.number}
-                                            {version.current
-                                                ? ' (current)'
-                                                : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
+                                    <ExternalLink className="size-3.5" /> Open
+                                </a>
+                            </Button>
 
-                        <ArtifactShareControl
-                            artifactId={artifact.id}
-                            sharing={artifact.sharing}
-                            editAccess={artifact.editAccess}
-                            publicSharingAllowed={team.publicSharingAllowed}
-                            canChangeSharing={artifact.canChangeSharing}
-                            viewerUrl={viewerUrl}
-                        />
-
-                        <Button asChild variant="outline" size="sm">
-                            <a
-                                href={openUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                data-testid="open-artifact"
-                            >
-                                <ExternalLink className="size-3.5" /> Open
-                            </a>
-                        </Button>
-
-                        <Button asChild variant="outline" size="sm">
-                            <a
-                                href={downloadUrl}
-                                data-testid="download-artifact"
-                            >
-                                Download
-                            </a>
-                        </Button>
+                            <Button asChild variant="outline" size="sm">
+                                <a
+                                    href={downloadUrl}
+                                    data-testid="download-artifact"
+                                >
+                                    Download
+                                </a>
+                            </Button>
+                        </div>
                     </div>
                 </header>
 
-                <div className="mt-4 min-h-0 flex-1">
+                <div className="min-h-0 flex-1 pt-4">
                     <iframe
                         src={frameUrl}
                         title={name}
                         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                         referrerPolicy="no-referrer"
                         data-testid="artifact-frame"
-                        className="h-[calc(100dvh-16rem)] min-h-[420px] w-full rounded-lg border border-border bg-paper"
+                        className="h-full min-h-[420px] w-full rounded-lg border border-border bg-paper"
                     />
                 </div>
             </div>

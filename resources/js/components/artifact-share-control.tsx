@@ -117,7 +117,7 @@ export default function ArtifactShareControl({
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" data-testid="share-control">
+                <Button size="sm" data-testid="share-control">
                     Share
                 </Button>
             </DialogTrigger>
