@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -17,36 +17,68 @@ const TITLE: Record<Theme, string> = {
     dark: 'dark theme — click for system',
 };
 
-export function useTheme(): [Theme, () => void] {
-    const [theme, setTheme] = useState<Theme>(() => {
-        try {
-            return (
-                (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? 'system'
-            );
-        } catch {
-            return 'system';
-        }
-    });
+const listeners = new Set<() => void>();
 
-    useEffect(() => {
-        const root = document.documentElement;
+function readTheme(): Theme {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
 
+        return stored === 'light' || stored === 'dark' ? stored : 'system';
+    } catch {
+        return 'system';
+    }
+}
+
+function applyTheme(theme: Theme): void {
+    const root = document.documentElement;
+
+    if (theme === 'system') {
+        root.removeAttribute('data-theme');
+    } else {
+        root.setAttribute('data-theme', theme);
+    }
+}
+
+export function setTheme(theme: Theme): void {
+    applyTheme(theme);
+
+    try {
         if (theme === 'system') {
-            root.removeAttribute('data-theme');
+            localStorage.removeItem(STORAGE_KEY);
         } else {
-            root.setAttribute('data-theme', theme);
-        }
-
-        try {
             localStorage.setItem(STORAGE_KEY, theme);
-        } catch {
-            // Ignore write errors (e.g. Safari Private Mode)
         }
-    }, [theme]);
+    } catch {
+        // Ignore write errors (e.g. Safari Private Mode)
+    }
 
-    const cycle = useCallback(() => setTheme((t) => CYCLE[t]), []);
+    listeners.forEach((listener) => listener());
+}
 
-    return [theme, cycle];
+function subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    window.addEventListener('storage', listener);
+
+    return () => {
+        listeners.delete(listener);
+        window.removeEventListener('storage', listener);
+    };
+}
+
+/**
+ * The chosen theme, shared by every component that reads it. The inline script
+ * in app.blade.php applies it before first paint; this keeps it in sync after.
+ */
+export function useTheme(): [Theme, () => void, (theme: Theme) => void] {
+    const theme = useSyncExternalStore<Theme>(
+        subscribe,
+        readTheme,
+        () => 'system',
+    );
+
+    const cycle = useCallback(() => setTheme(CYCLE[readTheme()]), []);
+
+    return [theme, cycle, setTheme];
 }
 
 export function ThemeToggle() {
@@ -63,14 +95,14 @@ export function ThemeToggle() {
                 right: '1.5rem',
                 fontFamily: MONO,
                 fontSize: '13px',
-                background: 'var(--sol-base2)',
-                border: '1px solid var(--sol-base1)',
-                color: 'var(--sol-base00)',
+                background: 'var(--surface-muted)',
+                border: '1px solid var(--ink-quiet)',
+                color: 'var(--ink)',
                 cursor: 'pointer',
                 padding: '0.4rem 0.75rem',
                 letterSpacing: '0.05em',
                 boxShadow:
-                    '0 2px 8px color-mix(in srgb, var(--sol-base00) 15%, transparent)',
+                    '0 2px 8px color-mix(in srgb, var(--ink) 15%, transparent)',
                 transition:
                     'border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
                 zIndex: 50,

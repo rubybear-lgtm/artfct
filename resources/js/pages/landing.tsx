@@ -602,7 +602,7 @@ export default function Landing() {
                                         textAnchor="middle"
                                         fontSize="11"
                                         letterSpacing="1.2"
-                                        fill="#8c8a83"
+                                        fill="#69675f"
                                         fontWeight="600"
                                     >
                                         YOUR TEAM’S AI TOOLS
@@ -733,7 +733,7 @@ export default function Landing() {
                                         y="271"
                                         textAnchor="middle"
                                         fontSize="11.5"
-                                        fill="#66655f"
+                                        fill="#55544e"
                                     >
                                         Owned by your company
                                     </text>

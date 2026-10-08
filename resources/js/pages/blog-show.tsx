@@ -57,7 +57,7 @@ export default function BlogShow({ post }: BlogShowProps) {
                         <p className="mb-4 flex flex-wrap items-center gap-3 text-xs">
                             <time
                                 dateTime={post.date}
-                                className="font-semibold tracking-[0.08em] text-[var(--sol-base1)] uppercase"
+                                className="font-semibold tracking-[0.08em] text-[var(--ink-quiet)] uppercase"
                             >
                                 {new Date(
                                     post.date + 'T00:00:00',

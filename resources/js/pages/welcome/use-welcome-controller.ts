@@ -10,14 +10,14 @@ import type { CachedLink } from '@/pages/welcome/welcome-cached-links';
 import type { WelcomePhase } from '@/pages/welcome/welcome-upload-controls';
 
 const S = {
-    yellow: 'var(--sol-yellow)',
-    orange: 'var(--sol-orange)',
-    red: 'var(--sol-red)',
-    magenta: 'var(--sol-magenta)',
-    violet: 'var(--sol-violet)',
-    blue: 'var(--sol-blue)',
-    cyan: 'var(--sol-cyan)',
-    green: 'var(--sol-green)',
+    yellow: 'var(--warning)',
+    orange: 'var(--alert)',
+    red: 'var(--danger)',
+    magenta: 'var(--hue-magenta)',
+    violet: 'var(--hue-violet)',
+    blue: 'var(--accent)',
+    cyan: 'var(--highlight)',
+    green: 'var(--success)',
 } as const;
 
 const ACCENTS = [

@@ -541,7 +541,7 @@ function Sidebar({
                                     }`}
                                 >
                                     {item.method && (
-                                        <span className="w-9 shrink-0 text-[10px] font-bold tracking-wide text-primary uppercase">
+                                        <span className="w-11 shrink-0 text-[11px] font-bold tracking-wide text-primary uppercase">
                                             {item.method}
                                         </span>
                                     )}

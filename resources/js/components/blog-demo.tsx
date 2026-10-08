@@ -324,7 +324,7 @@ function TeamDemo() {
 
             <div
                 aria-label="Illustrative terminal transcript"
-                className="mt-5 rounded-lg bg-[color:var(--sol-base0)] p-4 font-mono text-xs leading-relaxed text-paper"
+                className="mt-5 rounded-lg bg-[color:var(--ink-muted)] p-4 font-mono text-xs leading-relaxed text-paper"
             >
                 <StepItem
                     number={1}
@@ -332,7 +332,7 @@ function TeamDemo() {
                     started={state.started}
                     className="mb-2"
                 >
-                    <span className="block font-semibold text-[color:var(--sol-base1)]">
+                    <span className="block font-semibold text-[color:var(--ink-quiet)]">
                         Claude Code / finding
                     </span>
                     A timeout can follow a successful delivery. Repeating the
@@ -344,7 +344,7 @@ function TeamDemo() {
                     started={state.started}
                     className="mb-2"
                 >
-                    <span className="block font-semibold text-[color:var(--sol-base1)]">
+                    <span className="block font-semibold text-[color:var(--ink-quiet)]">
                         Claude Code / deploy_artifact
                     </span>
                     Published HTML: “Billing webhook duplicates after timeouts.”
@@ -355,7 +355,7 @@ function TeamDemo() {
                     started={state.started}
                     className="mb-2"
                 >
-                    <span className="block font-semibold text-[color:var(--sol-base1)]">
+                    <span className="block font-semibold text-[color:var(--ink-quiet)]">
                         Team library / indexing
                     </span>
                     Indexing complete. The finding can now appear in team
@@ -367,7 +367,7 @@ function TeamDemo() {
                     started={state.started}
                     className="mb-2"
                 >
-                    <span className="block font-semibold text-[color:var(--sol-base1)]">
+                    <span className="block font-semibold text-[color:var(--ink-quiet)]">
                         Codex / search_artifacts
                     </span>
                     Query: “billing webhook timeout duplicate delivery”
@@ -378,7 +378,7 @@ function TeamDemo() {
                     Source: published investigation · viewing link returned
                 </StepItem>
                 <StepItem number={5} step={step} started={state.started}>
-                    <span className="block font-semibold text-[color:var(--sol-base1)]">
+                    <span className="block font-semibold text-[color:var(--ink-quiet)]">
                         Codex / revised proposal
                     </span>
                     Deduplicate first, then apply the operation. Use the
@@ -492,7 +492,7 @@ const HANDOFF_IDLE =
 const TONE_CLASS: Record<'agent' | 'result' | 'human', string> = {
     agent: 'text-primary',
     result: 'text-muted-foreground',
-    human: 'text-[color:var(--sol-orange)]',
+    human: 'text-[color:var(--alert)]',
 };
 
 function HandoffDemo() {
@@ -531,7 +531,7 @@ function HandoffDemo() {
                 </span>
                 <span
                     aria-hidden="true"
-                    className="text-[color:var(--sol-cyan)]"
+                    className="text-[color:var(--highlight)]"
                 >
                     →
                 </span>
@@ -540,7 +540,7 @@ function HandoffDemo() {
                 </span>
                 <span
                     aria-hidden="true"
-                    className="text-[color:var(--sol-cyan)]"
+                    className="text-[color:var(--highlight)]"
                 >
                     →
                 </span>
@@ -655,7 +655,7 @@ function SearchDemo() {
                         data-active={step === index ? 'true' : 'false'}
                         className="bg-highlight rounded-lg border border-border p-4 transition-transform duration-250 data-[active=true]:-translate-y-0.5 data-[active=true]:outline-2 data-[active=true]:outline-offset-2 data-[active=true]:outline-primary motion-reduce:transition-none"
                     >
-                        <span className="block font-mono text-xs text-[color:var(--sol-orange)]">
+                        <span className="block font-mono text-xs text-[color:var(--alert)]">
                             {node.kicker}
                         </span>
                         <strong className="mt-1.5 block text-sm">
@@ -666,14 +666,14 @@ function SearchDemo() {
                         </p>
                     </li>
                 ))}
-                <li className="rounded-lg border border-[color:var(--sol-cyan)] bg-paper p-4 sm:col-span-2">
-                    <span className="block font-mono text-xs text-[color:var(--sol-orange)]">
+                <li className="rounded-lg border border-[color:var(--highlight)] bg-paper p-4 sm:col-span-2">
+                    <span className="block font-mono text-xs text-[color:var(--alert)]">
                         05 / INSPECT
                     </span>
                     <strong className="mt-1.5 block text-sm">
                         Possible match: Billing integration review
                     </strong>
-                    <blockquote className="my-3 border-l-2 border-[color:var(--sol-cyan)] pl-3 text-sm">
+                    <blockquote className="my-3 border-l-2 border-[color:var(--highlight)] pl-3 text-sm">
                         Repeated webhook deliveries can create duplicate charges
                         when an idempotency check is missing.
                     </blockquote>

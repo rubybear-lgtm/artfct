@@ -335,3 +335,23 @@ test('desktop_nav_returns_at_tablet_width_and_above', function () {
             ->assertNoJavaScriptErrors();
     }
 });
+
+test('theme_picker_moves_with_arrow_keys_and_has_touch_sized_options', function () {
+    [$team, $owner] = responsiveOwner('theme-picker@example.com');
+    test()->actingAs($owner);
+
+    $page = visit(route('account.show'))->resize(390, 844);
+
+    $checked = 'document.querySelector(\'[role="radiogroup"][aria-label="Theme"] [aria-checked="true"]\')';
+
+    $page->assertScript("{$checked}.textContent === 'System'")
+        ->assertScript('document.querySelectorAll(\'[role="radiogroup"][aria-label="Theme"] [role="radio"]:not([tabindex="-1"])\').length === 1')
+        ->assertScript('[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Theme"] [role="radio"]\')].every((radio) => radio.getBoundingClientRect().height >= 44)')
+        ->keys('[role="radio"][aria-checked="true"]', 'ArrowRight')
+        ->assertScript("{$checked}.textContent === 'Light' && document.activeElement === {$checked}")
+        ->keys('[role="radio"][aria-checked="true"]', 'End')
+        ->assertScript("{$checked}.textContent === 'Dark'")
+        ->keys('[role="radio"][aria-checked="true"]', 'ArrowRight')
+        ->assertScript("{$checked}.textContent === 'System'")
+        ->assertNoJavaScriptErrors();
+});

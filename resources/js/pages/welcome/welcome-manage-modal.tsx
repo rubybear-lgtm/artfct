@@ -69,7 +69,11 @@ export function WelcomeManageModal({
                     >
                         manage deployment
                     </h3>
-                    <Button onClick={onClose} className="welcome-manage-close">
+                    <Button
+                        onClick={onClose}
+                        className="welcome-manage-close"
+                        aria-label="Close"
+                    >
                         ✕
                     </Button>
                 </div>

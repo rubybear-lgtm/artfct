@@ -35,3 +35,35 @@ test('the free tool and landing page keep their own palette', function (string $
 
     expect(appThemeHtmlTag($response->getContent()))->not->toContain('app-theme');
 })->with(['/free', '/']);
+
+test('the saved theme choice is applied before first paint', function () {
+    $html = $this->get('/login')->assertOk()->getContent();
+
+    expect($html)
+        ->toContain("localStorage.getItem('artfct-theme')")
+        ->toContain("setAttribute('data-theme'");
+});
+
+test('the app palette defines dark values for system and explicit dark', function () {
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect($css)
+        ->toContain(":root:root.app-theme:not([data-theme='light'])")
+        ->toContain(":root:root.app-theme[data-theme='dark']");
+});
+
+test('form fields use a stronger stroke than the decorative hairline', function () {
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect($css)
+        ->toContain('--field-border: color-mix(in srgb, var(--ink-quiet) 80%, transparent)')
+        ->toContain('border-color: var(--field-border)');
+});
+
+test('the app stylesheet stops animations when the viewer prefers reduced motion', function () {
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect($css)
+        ->toContain('@media (prefers-reduced-motion: reduce)')
+        ->toContain('animation: none !important');
+});

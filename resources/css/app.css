@@ -11,59 +11,59 @@
         'Noto Color Emoji';
 }
 
-/* Semantic tokens for the starter-kit components, mapped onto Solarized. */
+/* Semantic tokens for the starter-kit components, named by role. */
 @theme inline {
-    --color-background: var(--sol-base3);
-    --color-foreground: var(--sol-base00);
-    --color-muted: var(--sol-base2);
-    --color-muted-foreground: var(--sol-base0);
-    --color-border: color-mix(in srgb, var(--sol-base1) 40%, transparent);
-    --color-primary: var(--sol-blue);
-    --color-primary-foreground: var(--sol-base3);
-    --color-destructive: var(--sol-red);
-    --color-success: var(--sol-green);
-    --color-warning: var(--sol-yellow);
-    --color-ring: var(--sol-blue);
-    --color-paper: var(--sol-paper, var(--sol-base3));
-    --color-primary-deep: var(--sol-blue-deep, var(--sol-blue));
-    --color-tint: var(--sol-tint, var(--sol-base2));
+    --color-background: var(--ground);
+    --color-foreground: var(--ink);
+    --color-muted: var(--surface-muted);
+    --color-muted-foreground: var(--ink-muted);
+    --color-border: color-mix(in srgb, var(--ink-quiet) 40%, transparent);
+    --color-primary: var(--accent);
+    --color-primary-foreground: var(--ground);
+    --color-destructive: var(--danger);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-ring: var(--accent);
+    --color-paper: var(--surface, var(--ground));
+    --color-primary-deep: var(--accent-deep, var(--accent));
+    --color-tint: var(--accent-tint, var(--surface-muted));
 }
 
-/* ── Solarized palette ──────────────────────────────────────────────────── */
+/* ── Base palette (the free tool's Solarized values) ── */
 :root {
-    --sol-base3: #fdf6e3;
-    --sol-base2: #eee8d5;
-    --sol-base1: #93a1a1;
-    --sol-base0: #657b83;
-    --sol-base00: #586e75;
-    --sol-yellow: #b58900;
-    --sol-orange: #cb4b16;
-    --sol-red: #dc322f;
-    --sol-magenta: #d33682;
-    --sol-violet: #6c71c4;
-    --sol-blue: #268bd2;
-    --sol-cyan: #2aa198;
-    --sol-green: #859900;
+    --ground: #fdf6e3;
+    --surface-muted: #eee8d5;
+    --ink-quiet: #93a1a1;
+    --ink-muted: #657b83;
+    --ink: #586e75;
+    --warning: #b58900;
+    --alert: #cb4b16;
+    --danger: #dc322f;
+    --hue-magenta: #d33682;
+    --hue-violet: #6c71c4;
+    --accent: #268bd2;
+    --highlight: #2aa198;
+    --success: #859900;
 }
 
 /* System dark — skipped when an explicit theme is forced */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) {
-        --sol-base3: #002b36;
-        --sol-base2: #073642;
-        --sol-base1: #586e75;
-        --sol-base0: #839496;
-        --sol-base00: #93a1a1;
+        --ground: #002b36;
+        --surface-muted: #073642;
+        --ink-quiet: #586e75;
+        --ink-muted: #839496;
+        --ink: #93a1a1;
     }
 }
 
 /* Explicit overrides */
 :root[data-theme='dark'] {
-    --sol-base3: #002b36;
-    --sol-base2: #073642;
-    --sol-base1: #586e75;
-    --sol-base0: #839496;
-    --sol-base00: #93a1a1;
+    --ground: #002b36;
+    --surface-muted: #073642;
+    --ink-quiet: #586e75;
+    --ink-muted: #839496;
+    --ink: #93a1a1;
 }
 
 /* ── Oxblood & Bone: the signed-in app (see DESIGN.md) ─────────────────────
@@ -71,22 +71,62 @@
    marketing pages keep their current look until they are redesigned. Remaps
    the semantic tokens above; always light, whatever the system theme. */
 :root:root.app-theme {
-    --sol-base3: #f7f5f2;
-    --sol-base2: #efece6;
-    --sol-base1: #8c8a83;
-    --sol-base0: #66655f;
-    --sol-base00: #262624;
-    --sol-blue: #701a24;
-    --sol-blue-deep: #58141c;
-    --sol-paper: #fbfaf8;
-    --sol-tint: #f1e4e5;
-    --sol-green: #2f6b4f;
-    --sol-red: #a12a2a;
-    --sol-cyan: #701a24;
-    --sol-orange: #a12a2a;
+    --ground: #f7f5f2;
+    --surface-muted: #efece6;
+    --ink-quiet: #69675f;
+    --ink-muted: #55544e;
+    --ink: #262624;
+    --accent: #701a24;
+    --accent-deep: #58141c;
+    --surface: #fbfaf8;
+    --accent-tint: #f1e4e5;
+    --success: #2f6b4f;
+    --danger: #a12a2a;
+    --highlight: #701a24;
+    --alert: #a12a2a;
     --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
     --font-serif: 'Newsreader', ui-serif, Georgia, serif;
+    --field-border: color-mix(in srgb, var(--ink-quiet) 80%, transparent);
     color-scheme: light;
+}
+
+/* Dark Oxblood & Bone: follows the system unless the viewer picks a theme
+   (data-theme on <html>, set by resources/js/lib/theme.tsx). The accent
+   lightens so it keeps contrast on the dark ground. */
+@media (prefers-color-scheme: dark) {
+    :root:root.app-theme:not([data-theme='light']) {
+        --ground: #1b1a18;
+        --surface-muted: #2a2825;
+        --ink-quiet: #9a978f;
+        --ink-muted: #b4b1a9;
+        --ink: #ece9e3;
+        --accent: #d9808b;
+        --accent-deep: #e69aa3;
+        --surface: #222120;
+        --accent-tint: #3a2226;
+        --success: #6fb592;
+        --danger: #e0766f;
+        --highlight: #d9808b;
+        --alert: #e0766f;
+        color-scheme: dark;
+    }
+}
+
+:root:root.app-theme[data-theme='dark'] {
+    --ground: #1b1a18;
+    --surface-muted: #2a2825;
+    --ink-quiet: #9a978f;
+    --ink-muted: #b4b1a9;
+    --ink: #ece9e3;
+    --accent: #d9808b;
+    --accent-deep: #e69aa3;
+    --surface: #222120;
+    --accent-tint: #3a2226;
+    --success: #6fb592;
+    --danger: #e0766f;
+    --highlight: #d9808b;
+    --alert: #e0766f;
+    color-scheme: dark;
 }
 
 .app-theme main h1,
@@ -99,12 +139,29 @@
     text-wrap: balance;
 }
 
+/* Form fields need 3:1 against the page (WCAG 1.4.11); --color-border is a
+   decorative hairline. :where() keeps this below the focus rule. */
+.app-theme
+    input:where(
+        :not(
+            [type='checkbox'],
+            [type='radio'],
+            [type='file'],
+            [type='hidden'],
+            [type='range']
+        )
+    ),
+.app-theme select,
+.app-theme textarea {
+    border-color: var(--field-border);
+}
+
 .app-theme input:focus-visible,
 .app-theme textarea:focus-visible,
 .app-theme select:focus-visible {
     outline: none;
-    border-color: var(--sol-blue);
-    box-shadow: 0 0 0 3px var(--sol-tint);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .app-theme .eyebrow {
@@ -112,7 +169,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
 }
 
 html {
@@ -190,8 +247,8 @@ html {
 }
 
 .result-action-btn:not(.copied):hover {
-    background-color: var(--sol-base1) !important;
-    color: var(--sol-base3) !important;
+    background-color: var(--ink-quiet) !important;
+    color: var(--ground) !important;
 }
 
 .result-action-btn:active {
@@ -208,18 +265,18 @@ html {
     margin: 1.25em 0 0.4em;
     font-weight: 600;
     line-height: 1.3;
-    color: var(--sol-base00);
+    color: var(--ink);
 }
 
 .markdown-preview h1 {
     font-size: 1.4em;
     padding-bottom: 0.25em;
-    border-bottom: 1px solid var(--sol-base2);
+    border-bottom: 1px solid var(--surface-muted);
 }
 .markdown-preview h2 {
     font-size: 1.15em;
     padding-bottom: 0.2em;
-    border-bottom: 1px solid var(--sol-base2);
+    border-bottom: 1px solid var(--surface-muted);
 }
 .markdown-preview h3 {
     font-size: 1.05em;
@@ -233,7 +290,7 @@ html {
 }
 
 .markdown-preview a {
-    color: var(--sol-blue);
+    color: var(--accent);
     text-decoration: none;
 }
 .markdown-preview a:hover {
@@ -242,22 +299,22 @@ html {
 
 .markdown-preview strong {
     font-weight: 600;
-    color: var(--sol-base00);
+    color: var(--ink);
 }
 
 .markdown-preview hr {
     height: 1px;
     margin: 1em 0;
-    background: var(--sol-base2);
+    background: var(--surface-muted);
     border: 0;
 }
 
 .markdown-preview blockquote {
     margin: 0 0 0.8em;
     padding: 0.4em 0.9em;
-    color: var(--sol-base1);
-    border-left: 3px solid var(--sol-cyan);
-    background: var(--sol-base2);
+    color: var(--ink-quiet);
+    border-left: 3px solid var(--highlight);
+    background: var(--surface-muted);
     border-radius: 0 4px 4px 0;
 }
 .markdown-preview blockquote > :first-child {
@@ -272,16 +329,16 @@ html {
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.88em;
     padding: 0.15em 0.35em;
-    background: var(--sol-base2);
+    background: var(--surface-muted);
     border-radius: 3px;
-    color: var(--sol-base00);
+    color: var(--ink);
 }
 
 .markdown-preview pre {
     margin: 0 0 0.8em;
     padding: 0.75rem 1rem;
-    background: var(--sol-base2);
-    border: 1px solid var(--sol-base2);
+    background: var(--surface-muted);
+    border: 1px solid var(--surface-muted);
     border-radius: 4px;
     overflow-x: auto;
 }
@@ -309,15 +366,15 @@ html {
 .markdown-preview th,
 .markdown-preview td {
     padding: 0.35em 0.6em;
-    border: 1px solid var(--sol-base2);
+    border: 1px solid var(--surface-muted);
     text-align: left;
 }
 .markdown-preview th {
     font-weight: 600;
-    background: var(--sol-base2);
+    background: var(--surface-muted);
 }
 .markdown-preview tr:nth-child(even) td {
-    background: var(--sol-base2);
+    background: var(--surface-muted);
 }
 
 .markdown-preview img {
@@ -334,9 +391,9 @@ html {
         border-color 0.15s ease;
 }
 .manage-btn:hover {
-    background-color: var(--sol-base0) !important;
-    color: var(--sol-base3) !important;
-    border-color: var(--sol-base0) !important;
+    background-color: var(--ink-muted) !important;
+    color: var(--ground) !important;
+    border-color: var(--ink-muted) !important;
 }
 .manage-btn:active {
     transform: scale(0.97);
@@ -371,7 +428,7 @@ html {
 .welcome-manage-label {
     width: 90px;
     flex-shrink: 0;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
 }
 
 .welcome-manage-value,
@@ -382,12 +439,12 @@ html {
 }
 
 .welcome-manage-value {
-    color: var(--sol-base00);
+    color: var(--ink);
     font-weight: bold;
 }
 
 .welcome-manage-url {
-    color: var(--sol-blue);
+    color: var(--accent);
     text-decoration: none;
 }
 
@@ -396,11 +453,11 @@ html {
 }
 
 .welcome-manage-status.is-expired {
-    color: var(--sol-red);
+    color: var(--danger);
 }
 
 .welcome-manage-status.is-active {
-    color: var(--sol-green);
+    color: var(--success);
 }
 
 .welcome-manage-duration {
@@ -413,7 +470,7 @@ html {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
@@ -428,9 +485,9 @@ html {
 .welcome-manage-duration-select {
     box-sizing: border-box;
     padding: 0.5rem;
-    background-color: var(--sol-base2);
-    border: 1px solid var(--sol-base1);
-    color: var(--sol-base0);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--ink-quiet);
+    color: var(--ink-muted);
     font-size: 13px;
     outline: none;
 }
@@ -453,13 +510,13 @@ html {
 }
 
 .welcome-manage-update {
-    background-color: var(--sol-blue);
-    color: var(--sol-base3);
+    background-color: var(--accent);
+    color: var(--ground);
 }
 
 .welcome-manage-delete {
-    background-color: var(--sol-red);
-    color: var(--sol-base3);
+    background-color: var(--danger);
+    color: var(--ground);
 }
 
 .welcome-manage-danger {
@@ -467,11 +524,11 @@ html {
     flex-direction: column;
     gap: 0.6rem;
     padding-top: 1.2rem;
-    border-top: 1px solid var(--sol-base2);
+    border-top: 1px solid var(--surface-muted);
 }
 
 .welcome-manage-danger-copy {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-size: 11px;
 }
 
@@ -480,7 +537,7 @@ html {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
@@ -490,7 +547,7 @@ html {
 .welcome-preview-checkbox {
     width: 14px;
     height: 14px;
-    accent-color: var(--sol-blue);
+    accent-color: var(--accent);
 }
 
 .welcome-file-dropzone-wrapper {
@@ -503,8 +560,8 @@ html {
 
 .welcome-file-dropzone {
     padding: 2.2rem 2rem;
-    border: 1px solid var(--sol-base1);
-    color: var(--sol-base0);
+    border: 1px solid var(--ink-quiet);
+    color: var(--ink-muted);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 16px;
@@ -517,30 +574,30 @@ html {
 }
 
 .welcome-file-dropzone:focus-visible {
-    outline: 2px solid var(--sol-base00);
+    outline: 2px solid var(--ink);
     outline-offset: 3px;
 }
 
 .welcome-file-dropzone.is-dragging {
     border-style: double;
-    border-color: var(--sol-blue);
-    background-color: color-mix(in srgb, var(--sol-blue) 7%, transparent);
+    border-color: var(--accent);
+    background-color: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 
 .welcome-file-name {
     margin-bottom: 0.35rem;
-    color: var(--sol-cyan);
+    color: var(--highlight);
     letter-spacing: 0.02em;
 }
 
 .welcome-file-type {
     margin-left: 0.5rem;
-    color: var(--sol-violet);
+    color: var(--hue-violet);
     font-size: 13px;
 }
 
 .welcome-file-status {
-    color: var(--sol-base00);
+    color: var(--ink);
     font-size: 14px;
 }
 
@@ -549,13 +606,13 @@ html {
 }
 
 .welcome-file-extension {
-    color: var(--sol-base00);
+    color: var(--ink);
     font-weight: 600;
 }
 
 .welcome-upload-error {
     margin: -1.25rem 0 0;
-    color: var(--sol-red);
+    color: var(--danger);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 14px;
@@ -563,7 +620,7 @@ html {
 
 .welcome-upload-retry {
     padding: 0;
-    color: var(--sol-red);
+    color: var(--danger);
     font-family: inherit;
     font-size: inherit;
     text-decoration: underline;
@@ -574,14 +631,14 @@ html {
 
 .welcome-deploy-button {
     padding: 0.625rem 2.8rem;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 16px;
     letter-spacing: 0.06em;
     cursor: not-allowed;
     background-color: transparent;
-    border: 1px solid var(--sol-base2);
+    border: 1px solid var(--surface-muted);
     transition:
         background-color 0.15s ease,
         border-color 0.15s ease,
@@ -589,10 +646,10 @@ html {
 }
 
 .welcome-deploy-button.is-active {
-    color: var(--sol-base3);
+    color: var(--ground);
     cursor: pointer;
-    background-color: var(--sol-red);
-    border-color: var(--sol-red);
+    background-color: var(--danger);
+    border-color: var(--danger);
 }
 
 /* Welcome result and cached deployments */
@@ -614,7 +671,7 @@ html {
 
 .welcome-result-link-row {
     align-items: stretch;
-    border: 1px solid var(--sol-green);
+    border: 1px solid var(--success);
 }
 
 .welcome-result-url {
@@ -622,33 +679,33 @@ html {
     min-width: 0;
     overflow: hidden;
     padding: 0.75rem 0.9rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 15px;
     text-overflow: ellipsis;
     white-space: nowrap;
-    background-color: color-mix(in srgb, var(--sol-green) 8%, transparent);
+    background-color: color-mix(in srgb, var(--success) 8%, transparent);
 }
 
 .welcome-result-action {
     flex-shrink: 0;
     min-width: 7rem;
     padding: 0 1.25rem;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 14px;
     letter-spacing: 0.04em;
     cursor: pointer;
-    background-color: var(--sol-base2);
+    background-color: var(--surface-muted);
     border: none;
-    border-left: 1px solid var(--sol-green);
+    border-left: 1px solid var(--success);
 }
 
 .welcome-result-action.copied {
-    color: var(--sol-base3);
-    background-color: var(--sol-green);
+    color: var(--ground);
+    background-color: var(--success);
 }
 
 .welcome-result-open {
@@ -664,7 +721,7 @@ html {
 
 .welcome-result-expiration,
 .welcome-result-reset {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 14px;
@@ -680,13 +737,13 @@ html {
 
 .welcome-result-team {
     margin: 0;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
     font-size: 13px;
 }
 
 .welcome-result-team-link {
-    color: var(--sol-blue);
+    color: var(--accent);
     text-decoration: underline;
 }
 
@@ -703,15 +760,15 @@ html {
     justify-content: space-between;
     padding-bottom: 0.5rem;
     margin: 0;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 13px;
-    border-bottom: 1px solid var(--sol-base2);
+    border-bottom: 1px solid var(--surface-muted);
 }
 
 .welcome-cached-links-clear {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family: inherit;
     font-size: 11px;
     text-decoration: underline;
@@ -734,12 +791,12 @@ html {
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 13px;
-    background-color: var(--sol-base2);
-    border: 1px solid var(--sol-base2);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--surface-muted);
 }
 
 .welcome-cached-link-row.is-expired {
-    border-color: var(--sol-red);
+    border-color: var(--danger);
 }
 
 .welcome-cached-link-details {
@@ -762,17 +819,17 @@ html {
 }
 
 .welcome-cached-link-filename {
-    color: var(--sol-cyan);
+    color: var(--highlight);
     font-weight: bold;
 }
 
 .welcome-cached-link-url {
-    color: var(--sol-blue);
+    color: var(--accent);
     text-decoration: none;
 }
 
 .welcome-cached-link-row.is-expired .welcome-cached-link-url {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
 }
 
 .welcome-cached-link-actions {
@@ -782,48 +839,48 @@ html {
 }
 
 .welcome-cached-link-status {
-    color: var(--sol-green);
+    color: var(--success);
     font-size: 11px;
 }
 
 .welcome-cached-link-row.is-expired .welcome-cached-link-status {
-    color: var(--sol-red);
+    color: var(--danger);
 }
 
 .welcome-cached-link-manage {
     padding: 0.25rem 0.6rem;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     letter-spacing: 0.04em;
     cursor: pointer;
     background-color: transparent;
-    border: 1px solid var(--sol-base1);
+    border: 1px solid var(--ink-quiet);
 }
 
 .welcome-cached-link-copy {
     padding: 0.25rem 0.6rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     letter-spacing: 0.04em;
     cursor: pointer;
     background-color: transparent;
-    border: 1px solid var(--sol-base1);
+    border: 1px solid var(--ink-quiet);
 }
 
 .welcome-cached-link-copy.is-copied {
-    color: var(--sol-base3);
-    background-color: var(--sol-green);
-    border-color: var(--sol-green);
+    color: var(--ground);
+    background-color: var(--success);
+    border-color: var(--success);
 }
 
 .welcome-cached-link-copy.is-failed {
-    color: var(--sol-base3);
-    background-color: var(--sol-red);
-    border-color: var(--sol-red);
+    color: var(--ground);
+    background-color: var(--danger);
+    border-color: var(--danger);
 }
 
 /* Welcome CLI, MCP, and skills callout */
@@ -833,7 +890,7 @@ html {
     gap: 0.75rem;
     width: 100%;
     padding-top: 1.5rem;
-    border-top: 1px solid var(--sol-base2);
+    border-top: 1px solid var(--surface-muted);
 }
 
 .welcome-cli-heading,
@@ -851,12 +908,12 @@ html {
 }
 
 .welcome-cli-heading {
-    color: var(--sol-base00);
+    color: var(--ink);
     font-size: 12px;
 }
 
 .welcome-cli-description {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-size: 12px;
 }
 
@@ -869,7 +926,7 @@ html {
 
 .welcome-cli-docs-link {
     margin-top: 0.25rem;
-    color: var(--sol-blue);
+    color: var(--accent);
     font-size: 12px;
     text-decoration: none;
 }
@@ -885,20 +942,20 @@ html {
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.8rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     letter-spacing: 0.04em;
     cursor: pointer;
-    background-color: var(--sol-base2);
-    border: 1px solid var(--sol-base1);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--ink-quiet);
     border-radius: 3px;
 }
 
 .welcome-agent-toggle.is-expanded {
-    color: var(--sol-base3);
-    background-color: var(--sol-base1);
+    color: var(--ground);
+    background-color: var(--ink-quiet);
 }
 
 .welcome-agent-toggle-icon {
@@ -907,7 +964,7 @@ html {
 }
 
 .welcome-agent-copied {
-    color: var(--sol-green);
+    color: var(--success);
     font-size: 11px;
 }
 
@@ -916,13 +973,13 @@ html {
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.9rem 1rem;
-    background-color: var(--sol-base2);
-    border: 1px solid var(--sol-base1);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--ink-quiet);
     border-radius: 3px;
 }
 
 .welcome-agent-description {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-size: 11px;
 }
 
@@ -930,12 +987,12 @@ html {
     padding: 0.75rem;
     margin: 0;
     overflow-wrap: anywhere;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-size: 11px;
     line-height: 1.5;
     white-space: pre-wrap;
-    background-color: var(--sol-base3);
-    border: 1px solid var(--sol-base2);
+    background-color: var(--ground);
+    border: 1px solid var(--surface-muted);
     border-radius: 2px;
 }
 
@@ -947,14 +1004,14 @@ html {
 }
 
 .welcome-install-description {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-size: 11px;
 }
 
 .welcome-install-command {
     display: flex;
-    background-color: var(--sol-base3);
-    border: 1px solid var(--sol-base1);
+    background-color: var(--ground);
+    border: 1px solid var(--ink-quiet);
     border-radius: 2px;
 }
 
@@ -963,29 +1020,29 @@ html {
     padding: 0.6rem 0.8rem;
     margin: 0;
     overflow-x: auto;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-size: 11px;
 }
 
 .welcome-install-prompt {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
 }
 
 .welcome-install-copy {
     padding: 0 0.8rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     cursor: pointer;
-    background-color: var(--sol-base2);
+    background-color: var(--surface-muted);
     border: none;
-    border-left: 1px solid var(--sol-base1);
+    border-left: 1px solid var(--ink-quiet);
 }
 
 .welcome-install-copy.is-copied {
-    color: var(--sol-base3);
-    background-color: var(--sol-green);
+    color: var(--ground);
+    background-color: var(--success);
 }
 
 /* Welcome information, FAQ, and footer */
@@ -993,7 +1050,7 @@ html {
 .welcome-faq,
 .welcome-footer {
     width: 100%;
-    border-top: 1px solid var(--sol-base2);
+    border-top: 1px solid var(--surface-muted);
 }
 
 .welcome-information,
@@ -1008,7 +1065,7 @@ html {
 }
 
 .welcome-information-copy {
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
     font-size: 14px;
     line-height: 1.7;
@@ -1016,7 +1073,7 @@ html {
 
 .welcome-section-heading {
     margin: 0 0 1rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
@@ -1035,11 +1092,11 @@ html {
 
 .welcome-information-emphasis,
 .welcome-accent-text {
-    color: var(--sol-cyan);
+    color: var(--highlight);
 }
 
 .welcome-information-emphasis {
-    color: var(--sol-base00);
+    color: var(--ink);
 }
 
 .welcome-faq {
@@ -1053,7 +1110,7 @@ html {
 
 .welcome-faq-question {
     margin-bottom: 0.35rem;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 13px;
@@ -1065,21 +1122,21 @@ html {
 .welcome-faq-answer {
     padding-left: 0.5rem;
     margin-bottom: 0.5rem;
-    border-left: 2px solid var(--sol-base2);
+    border-left: 2px solid var(--surface-muted);
 }
 
 .welcome-inline-code {
     padding: 0.1em 0.3em;
-    color: var(--sol-base00);
+    color: var(--ink);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
-    background-color: var(--sol-base2);
+    background-color: var(--surface-muted);
 }
 
 .welcome-information-link,
 .welcome-footer a {
-    color: var(--sol-blue);
+    color: var(--accent);
     text-decoration: none;
 }
 
@@ -1088,7 +1145,7 @@ html {
     align-items: center;
     justify-content: space-between;
     padding-top: 1.25rem;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 14px;
@@ -1100,7 +1157,7 @@ html {
 }
 
 .welcome-footer a {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
 }
 
 /* Modal animation */
@@ -1126,8 +1183,8 @@ html {
     width: 100%;
     max-width: 460px;
     padding: 1.8rem;
-    background-color: var(--sol-base3);
-    border: 1px solid var(--sol-base1);
+    background-color: var(--ground);
+    border: 1px solid var(--ink-quiet);
 }
 
 .welcome-manage-header {
@@ -1135,12 +1192,12 @@ html {
     align-items: center;
     justify-content: space-between;
     padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--sol-base2);
+    border-bottom: 1px solid var(--surface-muted);
 }
 
 .welcome-manage-title {
     margin: 0;
-    color: var(--sol-cyan);
+    color: var(--highlight);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 15px;
@@ -1148,7 +1205,7 @@ html {
 }
 
 .welcome-manage-close {
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 18px;
@@ -1164,11 +1221,11 @@ html {
 }
 
 .welcome-manage-message.is-error {
-    color: var(--sol-red);
+    color: var(--danger);
 }
 
 .welcome-manage-message.is-success {
-    color: var(--sol-green);
+    color: var(--success);
 }
 
 @keyframes modalScaleIn {
@@ -1303,7 +1360,7 @@ html {
         flex: 1 1 100%;
         white-space: normal;
         overflow-wrap: anywhere;
-        border-bottom: 1px solid var(--sol-green);
+        border-bottom: 1px solid var(--success);
     }
 
     .welcome-result-action {
@@ -1422,8 +1479,8 @@ html {
     }
     62%,
     92% {
-        border-left-color: var(--sol-blue);
-        background-color: var(--sol-tint);
+        border-left-color: var(--accent);
+        background-color: var(--accent-tint);
     }
     100% {
         border-left-color: transparent;
@@ -1437,8 +1494,8 @@ html {
     }
     50%,
     70% {
-        box-shadow: 0 0 0 3px var(--sol-tint);
-        border-color: var(--sol-blue);
+        box-shadow: 0 0 0 3px var(--accent-tint);
+        border-color: var(--accent);
     }
     80%,
     100% {
@@ -1455,17 +1512,17 @@ html {
 @keyframes figure-src {
     0%,
     68% {
-        background-color: var(--sol-base2);
-        color: var(--sol-base00);
+        background-color: var(--surface-muted);
+        color: var(--ink);
     }
     74%,
     92% {
-        background-color: var(--sol-tint);
-        color: var(--sol-blue);
+        background-color: var(--accent-tint);
+        color: var(--accent);
     }
     100% {
-        background-color: var(--sol-base2);
-        color: var(--sol-base00);
+        background-color: var(--surface-muted);
+        color: var(--ink);
     }
 }
 
@@ -1504,4 +1561,19 @@ html {
 
 .figure-source-chip {
     animation: figure-src 6s ease-in-out infinite;
+}
+
+/* Honour the viewer's motion preference: the resting state of every animated
+   element is its finished state, so nothing is lost by stopping them. */
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
 }

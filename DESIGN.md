@@ -23,8 +23,8 @@ Warm, editorial and calm. Think of a well-set page in a quiet reading room: bone
 | Paper | `#FBFAF8` | Raised surfaces: the demo panel, plan and comparison containers |
 | Hairline | `#DEDAD2` | Every divider and border |
 | Charcoal Ink | `#262624` | Headlines, body text, secondary buttons |
-| Muted Ink | `#66655F` | Supporting body copy |
-| Quiet Ink | `#8C8A83` | Captions, labels, metadata |
+| Muted Ink | `#55544E` | Supporting body copy |
+| Quiet Ink | `#69675F` | Captions, labels, metadata |
 | Oxblood | `#701A24` | The one accent: primary buttons, the italic word in a headline, selected and matching states, small eyebrow labels |
 | Deep Oxblood | `#58141C` | Primary button hover and pressed |
 | Oxblood Tint | `#F1E4E5` | Matching rows, the highlighted plan, the "Artfct" side of a comparison |

@@ -9,16 +9,16 @@ import { show as blogShow } from '@/routes/blog';
 // ── design tokens ──────────────────────────────────────────────────────────────
 
 export const S = {
-    base3: 'var(--sol-base3)',
-    base2: 'var(--sol-base2)',
-    base1: 'var(--sol-base1)',
-    base0: 'var(--sol-base0)',
-    base00: 'var(--sol-base00)',
-    yellow: 'var(--sol-yellow)',
-    orange: 'var(--sol-orange)',
-    blue: 'var(--sol-blue)',
-    cyan: 'var(--sol-cyan)',
-    green: 'var(--sol-green)',
+    base3: 'var(--ground)',
+    base2: 'var(--surface-muted)',
+    base1: 'var(--ink-quiet)',
+    base0: 'var(--ink-muted)',
+    base00: 'var(--ink)',
+    yellow: 'var(--warning)',
+    orange: 'var(--alert)',
+    blue: 'var(--accent)',
+    cyan: 'var(--highlight)',
+    green: 'var(--success)',
 } as const;
 
 export const MONO =

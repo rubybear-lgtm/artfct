@@ -1,6 +1,6 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
-import type { FormEvent } from 'react';
+import { useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
+import { useTheme } from '@/lib/theme';
+import type { Theme } from '@/lib/theme';
 import accountRoutes from '@/routes/account';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
@@ -31,7 +33,15 @@ interface Props {
     blockingTeams: string[];
 }
 
+const THEME_OPTIONS: [Theme, string][] = [
+    ['system', 'System'],
+    ['light', 'Light'],
+    ['dark', 'Dark'],
+];
+
 export default function Account({ teams, identities, blockingTeams }: Props) {
+    const [theme, , setTheme] = useTheme();
+    const themeButtons = useRef<(HTMLButtonElement | null)[]>([]);
     const [confirmation, setConfirmation] = useState('');
     const [leavingTeam, setLeavingTeam] = useState<{
         slug: string;
@@ -51,6 +61,29 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
 
     const deleteAccount = () =>
         router.delete(accountRoutes.destroy.url(), { data: { confirmation } });
+
+    const moveThemeSelection = (
+        event: KeyboardEvent<HTMLButtonElement>,
+        index: number,
+    ): void => {
+        const last = THEME_OPTIONS.length - 1;
+        const target = {
+            ArrowRight: index === last ? 0 : index + 1,
+            ArrowDown: index === last ? 0 : index + 1,
+            ArrowLeft: index === 0 ? last : index - 1,
+            ArrowUp: index === 0 ? last : index - 1,
+            Home: 0,
+            End: last,
+        }[event.key];
+
+        if (target === undefined) {
+            return;
+        }
+
+        event.preventDefault();
+        setTheme(THEME_OPTIONS[target][0]);
+        themeButtons.current[target]?.focus();
+    };
 
     return (
         <>
@@ -97,6 +130,46 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
                                 Save
                             </Button>
                         </form>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Appearance</CardTitle>
+                        <CardDescription>
+                            System follows your device setting.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div
+                            role="radiogroup"
+                            aria-label="Theme"
+                            className="inline-flex rounded-md border border-border p-0.5"
+                        >
+                            {THEME_OPTIONS.map(([value, label], index) => (
+                                <button
+                                    key={value}
+                                    ref={(element) => {
+                                        themeButtons.current[index] = element;
+                                    }}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={theme === value}
+                                    tabIndex={theme === value ? 0 : -1}
+                                    onClick={() => setTheme(value)}
+                                    onKeyDown={(event) =>
+                                        moveThemeSelection(event, index)
+                                    }
+                                    className={`rounded px-3 py-1.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:min-h-11 max-md:px-4 ${
+                                        theme === value
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                     </CardContent>
                 </Card>
 

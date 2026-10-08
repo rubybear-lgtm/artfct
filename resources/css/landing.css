@@ -9,20 +9,20 @@
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 13px;
-    color: var(--sol-base1);
+    color: var(--ink-quiet);
     text-decoration: none;
 }
 
 .welcome-shell {
     min-height: 100dvh;
-    background-color: var(--sol-base3);
+    background-color: var(--ground);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 3rem 1.5rem;
     font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
-    color: var(--sol-base0);
+    color: var(--ink-muted);
     box-sizing: border-box;
 }
 
@@ -40,7 +40,7 @@
     font-family:
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 15px;
-    color: var(--sol-base00);
+    color: var(--ink);
     letter-spacing: 0.04em;
     min-height: 1em;
 }
@@ -74,8 +74,8 @@
     --paper: #fbfaf8;
     --line: #dedad2;
     --ink: #262624;
-    --ink-2: #66655f;
-    --ink-3: #8c8a83;
+    --ink-2: #55544e;
+    --ink-3: #69675f;
     --ox: #701a24;
     --ox-deep: #58141c;
     --ox-tint: #f1e4e5;

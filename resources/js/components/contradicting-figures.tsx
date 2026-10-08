@@ -267,7 +267,7 @@ export function LoopFigure() {
                                     Shared from Claude Desktop · Messaging
                                 </span>
                             </div>
-                            <span className="rounded bg-[var(--sol-green)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--sol-green)]">
+                            <span className="rounded bg-[var(--success)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--success)]">
                                 Shared
                             </span>
                         </div>
