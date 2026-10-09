@@ -14,52 +14,10 @@ use Inertia\Inertia;
 $blogPosts = [
     [
         'slug' => 'stop-ai-tools-contradicting-each-other',
-        'title' => 'How we stopped our AI tools from contradicting each other',
+        'title' => 'Stopping Claude and Cursor from contradicting each other',
         'date' => '2026-10-05',
         'tag' => 'workflows',
-        'description' => "Claude knew we'd dropped a phrase. Cursor didn't. How a shared team library lets every AI tool find your latest decisions, with sources, before it writes.",
-    ],
-    [
-        'slug' => 'share-ai-agent-knowledge-team',
-        'title' => 'Share AI Agent Knowledge Across Your Team With artfct',
-        'date' => '2026-10-04',
-        'tag' => 'workflows',
-        'description' => "Publish an agent's findings to your team's artfct library so other connected agents can find them and use them to guide their next task.",
-    ],
-    [
-        'slug' => 'share-context-claude-code-codex-mcp',
-        'title' => 'Share Context Between Claude Code and Codex With MCP',
-        'date' => '2026-10-04',
-        'tag' => 'workflows',
-        'description' => "Save an investigation from Claude Code, find it in Codex, and carry verified findings forward with artfct's hosted MCP server.",
-    ],
-    [
-        'slug' => 'semantic-search-ai-generated-reports',
-        'title' => 'Find AI-generated reports when you forget the title',
-        'date' => '2026-10-04',
-        'tag' => 'workflows',
-        'description' => 'Use semantic search to find published AI reports by the problem they describe, with snippets, provenance and links to inspect the source.',
-    ],
-    [
-        'slug' => 'developer-tools',
-        'title' => 'Four developer tools, one skill install',
-        'date' => '2026-06-04',
-        'tag' => 'skills',
-        'description' => 'A walkthrough of the artfct developer-tools skill and the four utilities it deploys.',
-    ],
-    [
-        'slug' => 'ai-presentations',
-        'title' => 'AI-generated slide decks, deployed in one step',
-        'date' => '2026-06-04',
-        'tag' => 'skills',
-        'description' => 'How the artfct presentation skill turns a prompt into a shareable HTML deck.',
-    ],
-    [
-        'slug' => 'mermaid-diagrams',
-        'title' => 'Share Mermaid diagrams as live links — no screenshots needed',
-        'date' => '2026-06-06',
-        'tag' => 'skills',
-        'description' => 'Why the artfct Mermaid skill exists and how it helps people share diagrams faster.',
+        'description' => 'You drop a phrase in Claude. Cursor brings it back hours later. Here is how a shared library keeps AI tools from repeating decisions you already killed.',
     ],
 ];
 

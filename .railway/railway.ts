@@ -11,8 +11,8 @@ export default defineRailway(() => {
   const postgresVolume = volume("postgres-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "us-west2", sizeMB: 5000 });
   const stagingWeb = service("staging-web", {
     source: artfct,
-    build: "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm install --no-audit --no-fund && npm run build",
-    start: "php artisan optimize && php artisan serve --host=0.0.0.0 --port=${PORT}",
+    build: "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm install --no-audit --no-fund && npm run build:ssr",
+    start: "php artisan optimize && (php artisan inertia:start-ssr &) && php artisan serve --host=0.0.0.0 --port=${PORT}",
     healthcheck: "/up",
     healthcheckTimeout: 300,
     preDeploy: "sh -c 'php artisan migrate --force && php artisan auth:publish-jwks'",

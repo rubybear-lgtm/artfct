@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 
 import { SitePage } from '@/components/site-chrome';
 import { getPostBySlug } from '@/lib/posts';
@@ -14,8 +14,6 @@ interface BlogShowProps {
     };
 }
 
-const BASE_URL = 'https://artfct.dev';
-
 export default function BlogShow({ post }: BlogShowProps) {
     const fullPost = getPostBySlug(post.slug);
 
@@ -23,21 +21,8 @@ export default function BlogShow({ post }: BlogShowProps) {
         return null;
     }
 
-    const postUrl = `${BASE_URL}/blog/${post.slug}`;
-
     return (
         <SitePage active="blog">
-            <Head title={`${post.title} — Artfct`}>
-                <meta name="description" content={post.description} />
-                <meta property="og:title" content={`${post.title} — Artfct`} />
-                <meta property="og:description" content={post.description} />
-                <meta property="og:url" content={postUrl} />
-                <meta property="og:type" content="article" />
-                <meta name="twitter:title" content={`${post.title} — Artfct`} />
-                <meta name="twitter:description" content={post.description} />
-                <link rel="canonical" href={postUrl} />
-            </Head>
-
             <main className="mx-auto max-w-[680px] px-5 py-14">
                 <Link
                     href={blog.url()}

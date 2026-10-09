@@ -40,16 +40,19 @@
             $meta = $page['props']['meta'] ?? [];
             $pageTitle = $meta['title'] ?? 'artfct';
             $pageDescription = $meta['description'] ?? 'Share self-contained HTML files instantly. Drop a file, get a link. No sign-up required.';
+            $blogPost = ($page['component'] ?? null) === 'blog-show' ? ($page['props']['post'] ?? null) : null;
         @endphp
 
-        <title>{{ $pageTitle }}</title>
-        <meta name="description" content="{{ $pageDescription }}" />
-        <meta property="og:title" content="{{ $pageTitle }}" />
-        <meta property="og:description" content="{{ $pageDescription }}" />
+        <x-inertia::head>
+            <title>{{ $pageTitle }}</title>
+            <meta name="description" content="{{ $pageDescription }}" />
+            <meta property="og:title" content="{{ $pageTitle }}" />
+            <meta property="og:description" content="{{ $pageDescription }}" />
+            <meta name="twitter:title" content="{{ $pageTitle }}" />
+            <meta name="twitter:description" content="{{ $pageDescription }}" />
+        </x-inertia::head>
         <meta property="og:url" content="{{ url()->current() }}" />
-        <meta property="og:type" content="website" />
-        <meta name="twitter:title" content="{{ $pageTitle }}" />
-        <meta name="twitter:description" content="{{ $pageDescription }}" />
+        <meta property="og:type" content="{{ $blogPost ? 'article' : 'website' }}" />
 
         {{-- structured data --}}
         <script type="application/ld+json">
@@ -64,11 +67,27 @@
         }
         </script>
 
+        @if ($blogPost)
+            @php
+                $blogPostingJson = json_encode([
+                    '@context' => 'https://schema.org',
+                    '@type' => 'BlogPosting',
+                    'headline' => $blogPost['title'],
+                    'description' => $blogPost['description'],
+                    'datePublished' => $blogPost['date'],
+                    'image' => asset('og-image.png'),
+                    'mainEntityOfPage' => url()->current(),
+                    'author' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
+                    'publisher' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
+                ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+            @endphp
+            <script type="application/ld+json">{!! $blogPostingJson !!}</script>
+        @endif
+
         @fonts
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
-        <x-inertia::head />
     </head>
     <body class="font-sans antialiased">
         <x-inertia::app />

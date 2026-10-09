@@ -769,6 +769,7 @@ export default function Docs({ contract, setup }: DocsProps) {
         <SitePage active="docs">
             <Head title="Documentation">
                 <meta
+                    head-key="description"
                     name="description"
                     content="Connect Claude, ChatGPT, Cursor, Codex and other AI tools to Artfct in about a minute, then use skills and the REST API."
                 />

@@ -86,16 +86,17 @@ export default function Welcome() {
         <>
             <Head title="artfct — share HTML & markdown privately">
                 <meta
+                    head-key="og:title"
                     property="og:title"
                     content="artfct — share HTML & markdown privately"
                 />
                 <meta
+                    head-key="og:description"
                     property="og:description"
                     content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
                 />
-                <meta property="og:url" content="https://artfct.dev" />
-                <meta property="og:type" content="website" />
                 <meta
+                    head-key="description"
                     name="description"
                     content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
                 />
