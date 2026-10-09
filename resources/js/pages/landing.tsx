@@ -1,222 +1,301 @@
 import { Link } from '@inertiajs/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
 
-const QUERY = 'churn retry policy';
-const ANSWER =
-    'Maya Chen’s analysis shows churn was concentrated in early-month onboarding drop-offs. Dev Patel’s payments plan recommends a longer retry grace period to reduce payment-related churn.';
-const CAPTION_SAVE = 'You choose what to share.';
-const CAPTION_FIND = 'Found by search, or by any assistant.';
+const FLOW_ALT =
+    'Animated example in four steps. Maya asks Claude for a pricing report and shares it with the team. It is saved and searchable by every AI tool. Priya, in a new chat in a different tool, finds it and uses it, with the source. Sample content.';
 
-const wait = (ms: number) =>
-    new Promise<void>((resolve) => setTimeout(resolve, ms));
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
+const subscribeReducedMotion = (onChange: () => void) => {
+    const query = window.matchMedia(REDUCED_MOTION);
+    query.addEventListener('change', onChange);
+
+    return () => query.removeEventListener('change', onChange);
+};
+
+const prefersReducedMotion = () => window.matchMedia(REDUCED_MOTION).matches;
+
+/** A frame near the end of the loop, where the finished story is on screen. */
+const FINISHED_FRAME_SECONDS = 14.6;
 
 /**
- * Drives the hero demo: a new artifact is offered and shared, a search is
- * typed, matching rows highlight, an assistant answer streams in and its
- * source chips pulse the rows they came from. The markup renders in its
- * finished state, so with reduced motion (or before this runs) it is static
- * and fully readable.
+ * Keeps the hero headline and the demo on one screen: the demo takes whatever
+ * height the headline leaves.
  */
-function useHeroDemo(demo: React.RefObject<HTMLDivElement | null>) {
+function useHeroHeight(
+    page: React.RefObject<HTMLDivElement | null>,
+    hero: React.RefObject<HTMLElement | null>,
+) {
     useEffect(() => {
-        const root = demo.current;
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const root = page.current;
+        const el = hero.current;
 
-        if (!root || reduce.matches) {
+        if (!root || !el) {
             return;
         }
 
-        const find = <T extends HTMLElement>(selector: string) =>
-            root.querySelector<T>(selector)!;
-        const q = find('[data-q]');
-        const caret = find('[data-caret]');
-        const search = find('[data-search]');
-        const fresh = find('[data-fresh]');
-        const freshTag = find('[data-fresh-tag]');
-        const count = find('[data-count]');
-        const bubble = find('[data-bubble]');
-        const caption = find('[data-caption]');
-        const words = [...root.querySelectorAll<HTMLElement>('[data-w]')];
-        const chips = [...root.querySelectorAll<HTMLElement>('.chip')];
-        const rows = [...root.querySelectorAll<HTMLElement>('.row')];
-        const isMatch = (row: HTMLElement) =>
-            row.dataset.k === 'churn' || row.dataset.k === 'rfc';
+        const set = () =>
+            root.style.setProperty('--hh', `${el.offsetHeight}px`);
+        set();
 
-        let visible = false;
-        let running = false;
-        let stopped = false;
+        const observer = new ResizeObserver(set);
+        observer.observe(el);
 
-        const play = async () => {
-            if (running) {
-                return;
-            }
+        return () => observer.disconnect();
+    }, [page, hero]);
+}
 
-            running = true;
+/**
+ * The product animation. It starts muted (browsers require it), plays only
+ * while visible, and with reduced motion shows a finished frame instead.
+ */
+function FlowDemo() {
+    const video = useRef<HTMLVideoElement>(null);
+    const [muted, setMuted] = useState(true);
+    const reduced = useSyncExternalStore(
+        subscribeReducedMotion,
+        prefersReducedMotion,
+        () => false,
+    );
+    const animated = !reduced;
 
-            while (visible && !stopped) {
-                await wait(3600);
+    useEffect(() => {
+        const el = video.current;
 
-                if (!visible || stopped) {
-                    break;
-                }
+        if (!el) {
+            return;
+        }
 
-                q.textContent = '';
-                caret.hidden = true;
-                search.classList.remove('active');
-                rows.forEach((row) => row.classList.remove('match', 'dim'));
-                fresh.classList.add('entering');
-                freshTag.textContent = 'Share with team?';
-                count.textContent = '3 shared';
-                words.forEach((word) => (word.style.opacity = '0'));
-                chips.forEach((chip) => {
-                    chip.style.opacity = '0';
-                    chip.style.transform = 'translateY(6px)';
-                    chip.classList.remove('on');
-                });
-                bubble.style.opacity = '0';
-                bubble.style.transform = 'translateY(6px)';
-                caption.textContent = CAPTION_SAVE;
-                await wait(700);
+        if (reduced) {
+            el.pause();
 
-                fresh.classList.remove('entering');
-                await wait(900);
-                freshTag.textContent = 'Shared';
-                count.textContent = '4 shared';
-                await wait(1100);
+            const seek = () => {
+                el.currentTime = FINISHED_FRAME_SECONDS;
+            };
+            el.addEventListener('loadedmetadata', seek);
 
-                caption.textContent = CAPTION_FIND;
-                caret.hidden = false;
-                search.classList.add('active');
-
-                for (let i = 1; i <= QUERY.length; i++) {
-                    q.textContent = QUERY.slice(0, i);
-                    await wait(46 + Math.random() * 40);
-                }
-
-                await wait(350);
-                rows.forEach((row) => {
-                    const hit = isMatch(row);
-                    row.classList.toggle('match', hit);
-                    row.classList.toggle('dim', !hit);
-                });
-                caret.hidden = true;
-                search.classList.remove('active');
-                await wait(600);
-
-                bubble.style.opacity = '1';
-                bubble.style.transform = 'none';
-                await wait(600);
-
-                for (const word of words) {
-                    word.style.opacity = '1';
-                    await wait(46);
-                }
-
-                await wait(250);
-
-                for (const chip of chips) {
-                    chip.style.opacity = '1';
-                    chip.style.transform = 'none';
-                    chip.classList.add('on');
-                    const row = rows.find(
-                        (r) => r.dataset.k === chip.dataset.k,
-                    );
-
-                    if (row) {
-                        row.classList.remove('pulse');
-                        void row.offsetWidth;
-                        row.classList.add('pulse');
-                    }
-
-                    await wait(500);
-                }
-
-                await wait(4200);
-                rows.forEach((row) => row.classList.remove('dim'));
-            }
-
-            running = false;
-        };
+            return () => el.removeEventListener('loadedmetadata', seek);
+        }
 
         const observer = new IntersectionObserver(
             ([entry]) => {
-                visible = entry.isIntersecting;
-
-                if (visible) {
-                    void play();
+                if (entry.isIntersecting) {
+                    void el.play().catch(() => undefined);
+                } else {
+                    el.pause();
                 }
             },
             { threshold: 0.25 },
         );
-        observer.observe(root);
+        observer.observe(el);
 
-        return () => {
-            stopped = true;
-            observer.disconnect();
-        };
-    }, [demo]);
-}
+        return () => observer.disconnect();
+    }, [reduced]);
 
-/** Sections settle in as they scroll into view (movement only, never hidden). */
-function useSettleOnScroll(page: React.RefObject<HTMLDivElement | null>) {
-    useEffect(() => {
-        const root = page.current;
+    const toggleSound = () => {
+        const el = video.current;
 
-        if (
-            !root ||
-            window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ) {
+        if (!el) {
             return;
         }
 
-        const observer = new IntersectionObserver(
-            (entries) =>
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('in');
-                        observer.unobserve(entry.target);
-                    }
-                }),
-            { threshold: 0.12 },
-        );
-        root.querySelectorAll('.rv').forEach((el) => observer.observe(el));
+        el.muted = !el.muted;
+        setMuted(el.muted);
+        void el.play().catch(() => undefined);
+    };
 
-        return () => observer.disconnect();
-    }, [page]);
+    return (
+        <div className="demo" id="how">
+            <video
+                ref={video}
+                src="/landing-flow.mp4"
+                poster="/landing-flow-poster.jpg"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                aria-label={FLOW_ALT}
+                data-testid="landing-flow"
+            />
+            {animated && (
+                <button
+                    type="button"
+                    className="sound"
+                    onClick={toggleSound}
+                    aria-pressed={!muted}
+                    data-testid="landing-sound"
+                >
+                    {muted ? 'Sound on' : 'Sound off'}
+                </button>
+            )}
+            <span className="sample">Sample content for illustration</span>
+        </div>
+    );
 }
 
-const icon = {
-    props: {
-        width: 16,
-        height: 16,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-    },
+type MiniRowProps = {
+    icon: string;
+    title: string;
+    meta: string;
+    match?: boolean;
 };
+
+function MiniRow({ icon, title, meta, match }: MiniRowProps) {
+    return (
+        <div className={match ? 'mrow m' : 'mrow'}>
+            <span className="ic">{icon}</span>
+            <span>
+                <b>{title}</b>
+                <small>{meta}</small>
+            </span>
+            {match && <span className="tag">Match</span>}
+        </div>
+    );
+}
+
+const USE_CASES: {
+    role: string;
+    title: string;
+    text: string;
+    rows: MiniRowProps[];
+    open?: boolean;
+}[] = [
+    {
+        role: 'Product',
+        title: 'Briefs and research stay findable.',
+        text: 'A product manager drafts a brief in one AI tool. A teammate asks a different tool what was decided last quarter, and gets the brief back with a link.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Q3 product brief',
+                meta: 'Doc · Maya',
+                match: true,
+            },
+            {
+                icon: 'D',
+                title: 'Customer interview notes',
+                meta: 'Doc · Priya',
+            },
+        ],
+        open: true,
+    },
+    {
+        role: 'Analysis',
+        title: 'Tables and charts don’t get rebuilt.',
+        text: 'An analyst shares a table once. Anyone asking about the numbers gets the table and its source, instead of a fresh guess.',
+        rows: [
+            {
+                icon: 'T',
+                title: 'Renewals by plan',
+                meta: 'Table · Jo',
+                match: true,
+            },
+            { icon: 'C', title: 'Churn chart', meta: 'Chart · Jo' },
+        ],
+    },
+    {
+        role: 'Design',
+        title: 'Mockups travel with their context.',
+        text: 'A designer shares a mockup. The people and AI tools working on the launch can find it and see who made it and when.',
+        rows: [
+            {
+                icon: 'M',
+                title: 'Launch page mockup',
+                meta: 'Mockup · Sam',
+                match: true,
+            },
+        ],
+    },
+    {
+        role: 'Marketing',
+        title: 'Copy and campaigns build on each other.',
+        text: 'A new campaign starts from what the team already wrote, not a blank chat.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Spring campaign copy',
+                meta: 'Doc · Lena',
+                match: true,
+            },
+        ],
+    },
+    {
+        role: 'Operations',
+        title: 'Processes are written down once.',
+        text: 'A process doc written with AI is shared and found by the next person who needs it.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Vendor onboarding steps',
+                meta: 'Doc · Omar',
+                match: true,
+            },
+        ],
+    },
+];
+
+const FOUR: { title: string; text: string; icon: React.ReactNode }[] = [
+    {
+        title: 'Share',
+        text: 'One click shares a report, table or mockup with your team. Nothing is shared automatically.',
+        icon: <path d="M12 15V4M7 9l5-5 5 5M5 20h14" />,
+    },
+    {
+        title: 'Find',
+        text: 'One search across everything the team has made, whichever AI tool made it.',
+        icon: (
+            <>
+                <circle cx="11" cy="11" r="6" />
+                <path d="M20 20l-4.5-4.5" />
+            </>
+        ),
+    },
+    {
+        title: 'Connect',
+        text: 'Connect your AI tools once. They can then read the team’s shared work.',
+        icon: (
+            <>
+                <circle cx="5" cy="12" r="2" />
+                <circle cx="19" cy="6" r="2" />
+                <circle cx="19" cy="18" r="2" />
+                <path d="M7 12h5l5-5M12 12l5 5" />
+            </>
+        ),
+    },
+    {
+        title: 'Cite',
+        text: 'Every answer lists the shared work it used, so people can check it.',
+        icon: (
+            <>
+                <path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z" />
+                <path d="M9 12l2 2 4-4" />
+            </>
+        ),
+    },
+];
 
 export default function Landing() {
     const page = useRef<HTMLDivElement>(null);
-    const demo = useRef<HTMLDivElement>(null);
+    const hero = useRef<HTMLElement>(null);
     const navMenu = useRef<HTMLDetailsElement>(null);
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
-    useHeroDemo(demo);
-    useSettleOnScroll(page);
+    useHeroHeight(page, hero);
 
     return (
         <div ref={page} className="landing">
-            <div className="wrap">
-                <nav>
+            <div className="frame">
+                <nav className="pad">
                     <Link href={home.url()} className="logo">
                         Artfct
                     </Link>
                     <div className="navlinks">
                         <a href="#how">How it works</a>
+                        <a href="#use">Use cases</a>
                         <a href="#plans">Pricing</a>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
@@ -232,6 +311,7 @@ export default function Landing() {
                             }}
                         >
                             <a href="#how">How it works</a>
+                            <a href="#use">Use cases</a>
                             <a href="#plans">Pricing</a>
                             <Link href={docs.url()}>Docs</Link>
                             <Link href={blog.url()}>Blog</Link>
@@ -258,19 +338,18 @@ export default function Landing() {
                 </nav>
 
                 <main>
-                    <header className="hero">
-                        <h1>
-                            Your AI makes things. Artfct <em>remembers</em>{' '}
-                            them.
+                    <header ref={hero} className="hero pad">
+                        <div className="eyebrow">
+                            The shared library for your team’s AI
+                        </div>
+                        <h1 className="two">
+                            Every AI on your team,{' '}
+                            <span>working from the same memory.</span>
                         </h1>
-                        <p className="sub">
-                            Your AI makes reports, tables and documents. Share
-                            the ones worth keeping, and every AI tool on your
-                            team can read them, so nobody starts from scratch.
-                        </p>
-                        <p className="def">
-                            <b>Artifact:</b> any report, table, document or
-                            mockup your AI makes.
+                        <p className="lede">
+                            What your team’s AI tools create is shared in one
+                            place. Every AI tool you use can find it and build
+                            on it, and shows where each answer came from.
                         </p>
                         <div className="cta">
                             <Button asChild className="btn btn-primary">
@@ -282,497 +361,198 @@ export default function Landing() {
                                     <span className="arrow">→</span>
                                 </Link>
                             </Button>
-                            <a className="link" href="#how">
+                            <a className="btn btn-ghost" href="#how">
                                 See how it works{' '}
                                 <span className="arrow">→</span>
                             </a>
                         </div>
-
-                        <div
-                            ref={demo}
-                            className="demo"
-                            aria-label="Example: a new artifact is shared to the team, then found by search and by an assistant"
-                        >
-                            <div className="cols">
-                                <div>
-                                    <div className="search" data-search>
-                                        <svg
-                                            width="18"
-                                            height="18"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                        >
-                                            <circle cx="11" cy="11" r="7" />
-                                            <path d="m20 20-3.5-3.5" />
-                                        </svg>
-                                        <div className="query">
-                                            <span data-q>{QUERY}</span>
-                                            <span
-                                                className="caret"
-                                                data-caret
-                                                hidden
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="label">
-                                        <span>Your team’s artifacts</span>
-                                        <span data-count>4 shared</span>
-                                    </div>
-                                    <div className="rows">
-                                        <div className="row fresh" data-fresh>
-                                            <span className="ico">
-                                                <svg {...icon.props}>
-                                                    <path d="M5 20V10M12 20V4M19 20v-7" />
-                                                </svg>
-                                            </span>
-                                            <div>
-                                                <div className="t">
-                                                    Weekly signups report
-                                                </div>
-                                                <div className="m">
-                                                    Made by your AI · just now
-                                                </div>
-                                            </div>
-                                            <span
-                                                className="tag"
-                                                data-fresh-tag
-                                            >
-                                                Shared
-                                            </span>
-                                        </div>
-                                        <div
-                                            className="row match"
-                                            data-k="churn"
-                                        >
-                                            <span className="ico">
-                                                <svg {...icon.props}>
-                                                    <rect
-                                                        x="3"
-                                                        y="4"
-                                                        width="18"
-                                                        height="16"
-                                                        rx="2"
-                                                    />
-                                                    <path d="M3 10h18M9 4v16" />
-                                                </svg>
-                                            </span>
-                                            <div>
-                                                <div className="t">
-                                                    Q3 churn analysis
-                                                </div>
-                                                <div className="m">
-                                                    Maya Chen · 2 days ago
-                                                </div>
-                                            </div>
-                                            <span className="tag">
-                                                Analysis
-                                            </span>
-                                        </div>
-                                        <div className="row match" data-k="rfc">
-                                            <span className="ico">
-                                                <svg {...icon.props}>
-                                                    <path d="M6 3h9l4 4v14H6z" />
-                                                    <path d="M9 12h7M9 16h7" />
-                                                </svg>
-                                            </span>
-                                            <div>
-                                                <div className="t">
-                                                    Payments plan: retry policy
-                                                </div>
-                                                <div className="m">
-                                                    Dev Patel · last week
-                                                </div>
-                                            </div>
-                                            <span className="tag">
-                                                Document
-                                            </span>
-                                        </div>
-                                        <div className="row" data-k="mock">
-                                            <span className="ico">
-                                                <svg {...icon.props}>
-                                                    <rect
-                                                        x="3"
-                                                        y="4"
-                                                        width="18"
-                                                        height="16"
-                                                        rx="2"
-                                                    />
-                                                    <circle
-                                                        cx="9"
-                                                        cy="10"
-                                                        r="1.5"
-                                                    />
-                                                    <path d="m21 16-5-5-8 8" />
-                                                </svg>
-                                            </span>
-                                            <div>
-                                                <div className="t">
-                                                    Checkout redesign mockups
-                                                </div>
-                                                <div className="m">
-                                                    Lena Ortiz · yesterday
-                                                </div>
-                                            </div>
-                                            <span className="tag">Design</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="assistant">
-                                    <div className="ahead">
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="currentColor"
-                                        >
-                                            <path d="M12 2l2.2 6.3L21 10l-6.8 1.7L12 18l-2.2-6.3L3 10l6.8-1.7z" />
-                                        </svg>
-                                        Ask any assistant on your team
-                                    </div>
-                                    <div className="bubble" data-bubble>
-                                        What did we conclude about Q3 churn?
-                                    </div>
-                                    <div className="answer">
-                                        <div>
-                                            {ANSWER.split(' ').map(
-                                                (word, index) => (
-                                                    <span key={index}>
-                                                        <span
-                                                            className="w"
-                                                            data-w
-                                                        >
-                                                            {word}
-                                                        </span>{' '}
-                                                    </span>
-                                                ),
-                                            )}
-                                        </div>
-                                        <div className="sources">
-                                            <div className="label">Sources</div>
-                                            <div className="chips">
-                                                <span
-                                                    className="chip"
-                                                    data-k="churn"
-                                                >
-                                                    Q3 churn analysis
-                                                </span>
-                                                <span
-                                                    className="chip"
-                                                    data-k="rfc"
-                                                >
-                                                    Payments plan: retry policy
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="caption" data-caption>
-                                {CAPTION_SAVE} {CAPTION_FIND}
-                            </div>
-                        </div>
                     </header>
 
-                    <section className="rv block" id="how">
-                        <div className="kicker">How it works</div>
-                        <h2>Set it up once. Then just share.</h2>
-                        <div className="steps">
-                            <div>
-                                <span className="n">Step 1</span>
-                                <h3>Set up once</h3>
-                                <p>
-                                    Sign up, invite your team, and add Artfct to
-                                    your AI tool. That’s the whole setup, and
-                                    most teams don’t need IT.
-                                </p>
-                            </div>
-                            <div>
-                                <span className="n">Step 2</span>
-                                <h3>Tell your AI to share it</h3>
-                                <p>
-                                    When it makes something worth keeping, ask
-                                    it to share it with your team, or say yes
-                                    when it offers. It happens in the tool
-                                    you’re already using. Nothing to download or
-                                    upload.
-                                </p>
-                            </div>
-                            <div>
-                                <span className="n">Step 3</span>
-                                <h3>
-                                    Every AI starts with what your team knows
-                                </h3>
-                                <p>
-                                    Your team’s AI tools read what’s been
-                                    shared, so they start from what your team
-                                    already knows, not from scratch. Answers
-                                    cite their sources. You can search it too.
-                                </p>
-                            </div>
-                        </div>
-                    </section>
+                    <FlowDemo />
 
-                    <section className="rv block">
-                        <div className="kicker">
-                            Like Drive, Notion or Slack
+                    <div className="strip rule">
+                        <div className="lab">
+                            Works with the AI tools your team already uses.
                         </div>
-                        <h2>
-                            Team knowledge is available to everyone as soon as
-                            it’s shared.
+                        <div className="names">
+                            <span>Claude</span>
+                            <span>ChatGPT</span>
+                            <span>Copilot</span>
+                            <span>Cursor</span>
+                            <span className="more">
+                                and other major AI tools
+                            </span>
+                        </div>
+                    </div>
+
+                    <section className="statement pad rule">
+                        <div className="eyebrow">The problem</div>
+                        <h2 className="two">
+                            Your team uses many AI tools.{' '}
+                            <span>
+                                What each one makes stays locked inside it.
+                            </span>{' '}
+                            Artfct brings it together.
                         </h2>
-                        <div className="compare">
-                            <div className="cmp">
-                                <div>
-                                    <h4>Drive, Notion, Slack</h4>
-                                    <ul>
-                                        <li>
-                                            Someone has to save the file, name
-                                            it and find the right folder
-                                        </li>
-                                        <li>
-                                            Your AI’s work stays in chat history
-                                        </li>
-                                        <li>Search finds names and keywords</li>
-                                        <li>
-                                            Each AI tool sees only its own
-                                            conversations
-                                        </li>
-                                    </ul>
-                                </div>
-                                <div>
-                                    <h4>Artfct</h4>
-                                    <ul>
-                                        <li>
-                                            Every AI tool on your team can read
-                                            it, and cites its sources
-                                        </li>
-                                        <li>
-                                            Your AI shares it to your team in
-                                            one step
-                                        </li>
-                                        <li>
-                                            So nobody rebuilds what already
-                                            exists
-                                        </li>
-                                        <li>
-                                            People can find it too, by
-                                            describing it
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                        <p className="fine">
-                            A shared library that your team’s AI fills for you.
-                            Drive holds files. Artfct is built for your AI to
-                            share to, and for every AI tool to read from, with
-                            sources.
+                        <p className="def">
+                            <b>Artifact:</b> any report, table, document or
+                            mockup your AI makes.
                         </p>
+                        <div className="cmp">
+                            <div className="a">
+                                <div className="eyebrow">Without Artfct</div>
+                                <h3>Work scattered across chats</h3>
+                                <ul>
+                                    <li>
+                                        A good report lives in one person’s chat
+                                        history
+                                    </li>
+                                    <li>
+                                        Each AI tool starts from zero every time
+                                    </li>
+                                    <li>
+                                        No one can tell where an answer came
+                                        from
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="b">
+                                <div className="eyebrow">With Artfct</div>
+                                <h3>One library every AI can read</h3>
+                                <ul>
+                                    <li>
+                                        Reports, tables and docs are shared
+                                        once, by choice
+                                    </li>
+                                    <li>
+                                        Every AI tool can find and build on them
+                                    </li>
+                                    <li>
+                                        Each answer points back to its sources
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </section>
 
-                    <section className="rv block">
-                        <div className="split">
-                            <div>
-                                <div className="kicker">
-                                    Works with your tools
-                                </div>
-                                <h2>Every AI tool. The same team knowledge.</h2>
-                                <p className="lead">
-                                    Your team uses different AI tools. With
-                                    Artfct they all start from the same shared
-                                    knowledge, and your company owns it.
-                                </p>
-                                <p className="fine">
-                                    Works with Claude, ChatGPT, Copilot, Cursor
-                                    and other major AI tools.
-                                </p>
-                            </div>
-                            <div className="diagram">
+                    <section className="four rule">
+                        {FOUR.map((item) => (
+                            <div key={item.title}>
                                 <svg
-                                    viewBox="0 0 520 300"
-                                    role="img"
-                                    aria-label="Claude, ChatGPT, Copilot, Cursor and other AI tools all sharing the same knowledge, owned by your company"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
                                 >
-                                    <text
-                                        x="260"
-                                        y="20"
-                                        textAnchor="middle"
-                                        fontSize="11"
-                                        letterSpacing="1.2"
-                                        fill="#69675f"
-                                        fontWeight="600"
-                                    >
-                                        YOUR TEAM’S AI TOOLS
-                                    </text>
-                                    <g
-                                        fontSize="12"
-                                        fontWeight="600"
-                                        textAnchor="middle"
-                                        fill="#262624"
-                                    >
-                                        {[
-                                            { x: 12, label: 'Claude' },
-                                            { x: 140, label: 'ChatGPT' },
-                                            { x: 268, label: 'Copilot' },
-                                            { x: 396, label: 'Cursor' },
-                                        ].map((tool) => (
-                                            <g key={tool.label}>
-                                                <rect
-                                                    x={tool.x}
-                                                    y="36"
-                                                    width="112"
-                                                    height="52"
-                                                    rx="8"
-                                                    fill="#f7f5f2"
-                                                    stroke="#dedad2"
-                                                />
-                                                <circle
-                                                    cx={tool.x + 56}
-                                                    cy="52"
-                                                    r="4"
-                                                    fill="none"
-                                                    stroke="#701a24"
-                                                    strokeWidth="1.6"
-                                                />
-                                                <text x={tool.x + 56} y="78">
-                                                    {tool.label}
-                                                </text>
-                                            </g>
-                                        ))}
-                                    </g>
-                                    <g
-                                        fill="none"
-                                        stroke="#c9c4ba"
-                                        strokeWidth="1.4"
-                                    >
-                                        <path
-                                            id="p1"
-                                            d="M68 88 C68 150 200 150 260 196"
-                                        />
-                                        <path
-                                            id="p2"
-                                            d="M196 88 C196 150 240 150 260 196"
-                                        />
-                                        <path
-                                            id="p3"
-                                            d="M324 88 C324 150 280 150 260 196"
-                                        />
-                                        <path
-                                            id="p4"
-                                            d="M452 88 C452 150 320 150 260 196"
-                                        />
-                                    </g>
-                                    <g className="dotset" fill="#701a24">
-                                        {['p1', 'p2', 'p3', 'p4'].map(
-                                            (path, index) => (
-                                                <circle
-                                                    key={path}
-                                                    r="3.5"
-                                                    opacity="0"
-                                                >
-                                                    <animate
-                                                        attributeName="opacity"
-                                                        from="1"
-                                                        to="1"
-                                                        dur="3.2s"
-                                                        repeatCount="indefinite"
-                                                        begin={`${index * 0.8}s`}
-                                                    />
-                                                    <animateMotion
-                                                        dur="3.2s"
-                                                        repeatCount="indefinite"
-                                                        begin={`${index * 0.8}s`}
-                                                    >
-                                                        <mpath
-                                                            href={`#${path}`}
-                                                        />
-                                                    </animateMotion>
-                                                </circle>
-                                            ),
-                                        )}
-                                    </g>
-                                    <rect
-                                        x="130"
-                                        y="196"
-                                        width="260"
-                                        height="84"
-                                        rx="10"
-                                        fill="#f1e4e5"
-                                        stroke="#701a24"
-                                    />
-                                    <circle
-                                        cx="222"
-                                        cy="226"
-                                        r="4"
-                                        fill="#701a24"
-                                    />
-                                    <text
-                                        x="234"
-                                        y="231"
-                                        fontFamily="Newsreader, Georgia, serif"
-                                        fontSize="20"
-                                        fill="#262624"
-                                    >
-                                        Artfct
-                                    </text>
-                                    <text
-                                        x="260"
-                                        y="254"
-                                        textAnchor="middle"
-                                        fontSize="13"
-                                        fontWeight="700"
-                                        fill="#701a24"
-                                    >
-                                        Shared knowledge for every AI tool
-                                    </text>
-                                    <text
-                                        x="260"
-                                        y="271"
-                                        textAnchor="middle"
-                                        fontSize="11.5"
-                                        fill="#55544e"
-                                    >
-                                        Owned by your company
-                                    </text>
+                                    {item.icon}
                                 </svg>
+                                <h3>{item.title}</h3>
+                                <p>{item.text}</p>
                             </div>
+                        ))}
+                    </section>
+
+                    <section className="use pad rule" id="use">
+                        <div className="head">
+                            <div>
+                                <div className="eyebrow">
+                                    One library. Every team.
+                                </div>
+                                <h2 className="two">
+                                    Made for whoever makes things with AI.{' '}
+                                    <span>Not just engineers.</span>
+                                </h2>
+                            </div>
+                            <p className="lede">
+                                From a product brief to a budget table to a
+                                campaign mockup, the same shared library holds
+                                it.
+                            </p>
+                        </div>
+                        <div className="acc">
+                            {USE_CASES.map((useCase) => (
+                                <details key={useCase.role} open={useCase.open}>
+                                    <summary>
+                                        <span className="plus">+</span>
+                                        <span className="role">
+                                            {useCase.role}
+                                        </span>
+                                        <h3>{useCase.title}</h3>
+                                    </summary>
+                                    <div className="body">
+                                        <p>{useCase.text}</p>
+                                        <div className="mini">
+                                            {useCase.rows.map((row) => (
+                                                <MiniRow
+                                                    key={row.title}
+                                                    {...row}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </details>
+                            ))}
                         </div>
                     </section>
 
-                    <section className="rv block">
-                        <div className="kicker">Yours</div>
-                        <h2>Your work stays yours.</h2>
-                        <div className="trust">
-                            <div>
-                                <h3>Never used to train AI</h3>
-                                <p>
-                                    Your artifacts are never used to train any
-                                    model.
-                                </p>
-                            </div>
-                            <div>
-                                <h3>You choose who sees it</h3>
-                                <p>
-                                    Nothing is shared until you say so. Share
-                                    with your team, or only with the people you
-                                    pick.
-                                </p>
-                            </div>
-                            <div>
-                                <h3>Take it with you</h3>
-                                <p>
-                                    Export everything your company has shared,
-                                    any time.
-                                </p>
-                            </div>
+                    <section className="control rule" id="control">
+                        <div>
+                            <div className="eyebrow">You stay in control</div>
+                            <h2 className="two">
+                                Your library belongs to your company.{' '}
+                                <span>Not to any one AI tool.</span>
+                            </h2>
+                            <p className="lede">
+                                Teams can use whichever AI tools they like.
+                                Where the work is kept and who can see it is up
+                                to you.
+                            </p>
+                        </div>
+                        <div className="r">
+                            <ul>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z" />
+                                    </svg>
+                                    <div>
+                                        <b>Sharing is your choice</b>
+                                        <span>
+                                            Nothing goes into the library unless
+                                            someone shares it.
+                                        </span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <circle cx="9" cy="8" r="3" />
+                                        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6M21 20c0-2.5-1.5-4.6-3.6-5.5" />
+                                    </svg>
+                                    <div>
+                                        <b>Admins manage access</b>
+                                        <span>
+                                            Team admins decide who is on the
+                                            team.
+                                        </span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M4 12h16M4 6h16M4 18h10" />
+                                    </svg>
+                                    <div>
+                                        <b>Answers show their sources</b>
+                                        <span>
+                                            Anyone can open the work an answer
+                                            came from.
+                                        </span>
+                                    </div>
+                                </li>
+                            </ul>
                         </div>
                     </section>
 
-                    <section className="rv block" id="plans">
-                        <div className="kicker">Pricing</div>
+                    <section className="plansec pad rule" id="plans">
+                        <div className="eyebrow">Pricing</div>
                         <h2>Start free. Add your team when you’re ready.</h2>
                         <div className="plans">
                             <div className="plan">
@@ -808,7 +588,7 @@ export default function Landing() {
                                     <li>Find things by describing them</li>
                                     <li>Your own web address</li>
                                 </ul>
-                                <p className="fine no-margin">
+                                <p className="fine">
                                     Try Team free: everything except finding by
                                     description and your own web address. Your
                                     assistants can still open any shared
@@ -840,13 +620,15 @@ export default function Landing() {
                         </div>
                     </section>
 
-                    <section className="closing rv">
-                        <h2>Stop losing what your AI makes.</h2>
-                        <p>
+                    <section className="close pad rule">
+                        <h2 className="two">
+                            Give your team’s AI a <em>shared</em> memory.
+                        </h2>
+                        <p className="lede">
                             Sign up, add Artfct to your AI tool, and share
                             what’s worth keeping.
                         </p>
-                        <div className="cta no-top-margin">
+                        <div className="cta">
                             <Button asChild className="btn btn-primary">
                                 <Link
                                     href={accountUrl}
@@ -860,7 +642,7 @@ export default function Landing() {
                     </section>
                 </main>
 
-                <footer>
+                <footer className="pad">
                     <div className="l">
                         <span className="logo">Artfct</span>
                         <span>© {new Date().getFullYear()} Artfct</span>
