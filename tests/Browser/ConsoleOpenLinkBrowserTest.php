@@ -119,7 +119,13 @@ test('console_open_control_opens_the_signed_link_route_in_a_new_tab', function (
 });
 
 test('following_the_console_open_link_reaches_the_public_artifact_url_without_a_token', function () {
-    config(['services.artifact_access.token_secret' => 'browser-artifact-secret']);
+    // The viewer this link lands on frames the artifact's isolated origin.
+    // `.localhost` fails that connection at once instead of the page load
+    // hanging on a real DNS lookup for `.artfct.dev`.
+    config([
+        'services.artifact_access.token_secret' => 'browser-artifact-secret',
+        'services.artifact_access.origin_suffix' => '.localhost',
+    ]);
 
     [$team, $owner] = consoleOpenUser('Public Users', 'public-user@example.com');
     seedConsoleArtifact($team, tier: 'public');
