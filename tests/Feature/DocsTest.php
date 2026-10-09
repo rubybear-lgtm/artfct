@@ -145,7 +145,7 @@ test('team wording replaces workspace everywhere outside AI tool terminology', f
         ->and($page)->toContain('your AI tool may also call it a workspace')
         ->and($page)->toContain('Which Artfct workspace am I connected to?')
         ->and($landing)->not->toContain('shared workspace')
-        ->and($landing)->toContain('A shared library that your team’s AI fills for you.')
+        ->and($landing)->toContain('The shared library for your team’s AI')
         ->and($callout)->not->toContain('WelcomeInstallOptions')
         ->and($welcome)->not->toContain('npx skills add')
         ->and($welcome)->not->toContain('<pre')
