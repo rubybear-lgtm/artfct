@@ -39,7 +39,7 @@ Rules:
 
 ## 3. Typography Rules
 
-- **Headlines: Newsreader** (editorial serif), weight 400, tight tracking (about -0.02em), balanced wrapping. One word in the main headline may be set in italic Oxblood for emphasis. Subheads use weight 500.
+- **Headlines: Newsreader** (editorial serif), weight 400, tight tracking (about -0.02em), balanced wrapping. One word in the main headline may be set in italic Oxblood for emphasis. Headlines and section titles may set a second clause in Quiet Ink (`#69675F`) as a two-tone device, never lighter. The hero headline is two sentences, one per line. Subheads use weight 500.
 - **Interface and body: Manrope**, weights 400 to 700. Buttons and labels are 600.
 - **Eyebrow labels:** small uppercase Manrope, 11 to 12px, wide letter-spacing (about 0.08em), Oxblood or Quiet Ink.
 - **Scale:** H1 fluid 40 to 68px (line-height 1.04); H2 fluid 30 to 42px (1.1); H3 25px serif; body 16px (1.55); supporting copy 17 to 18px; captions 13 to 14px.
@@ -56,7 +56,7 @@ Deliberately not used: Inter, Space Grotesk, Geist, Roboto, and monospace for an
 * **Chips and tags:** small, 4 to 5px corners, Row Neutral fill. Citation chips turn Oxblood Tint on hover or when highlighted.
 * **Comparison block:** two columns, one Paper, one Oxblood Tint (Artfct). The neutral side uses dashes; the Artfct side uses oxblood check marks.
 * **Plans:** three columns inside one hairline frame. The Team plan is tinted; its button is primary. Free and Enterprise use outlined buttons.
-* **Diagrams:** simple inline drawings with Hairline strokes and small Oxblood accents. Tool boxes are labeled with plain tool names, never logos.
+* **Diagrams:** simple inline drawings with Hairline strokes and small Oxblood accents. Tool names appear with their product marks in the "works with" strip and the hero demo, because naming real tools is the claim; elsewhere tool boxes use plain names.
 
 ## 5. Layout Principles
 
@@ -76,7 +76,7 @@ Purposeful and small; it should clarify what the product does, not decorate.
 
 ## 7. Voice & Content Rules
 
-- Plain language for a non-technical reader. Say "AI tool", never "harness", "agent runtime" or "MCP" in body copy.
+- Plain language for a non-technical reader. Say "AI tool" in body copy; never "harness", "agent runtime" or "MCP". The hero headline may say "agent" (owner decision, 2026-10-10: "Unsilo your knowledge. Feed every agent."). The place is called the team's "knowledge base"; never "library", "memory" or "brain".
 - Never show a terminal, CLI command, JSON, DOM selector, file path or code block on a marketing surface.
 - Define "artifact" once, plainly: any report, table, document or mockup your AI makes.
 - The core promise: what your AI makes is shared to your team and every AI tool on the team can read it, with sources. Sharing is the user's choice, not automatic.

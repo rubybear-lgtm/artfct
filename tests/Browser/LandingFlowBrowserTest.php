@@ -4,7 +4,6 @@ test('the landing page hero stage plays the whole story', function () {
     visit('/')
         ->assertNoJavaScriptErrors()
         ->assertPresent('@landing-flow')
-        ->assertPresent('@landing-flow-replay')
         ->assertScript('document.querySelectorAll(\'[data-testid="landing-flow"] img\').length', 4)
         ->assertScript('document.querySelectorAll(\'[data-testid="landing-flow"] .fs-win\').length', 1);
 });
@@ -12,17 +11,28 @@ test('the landing page hero stage plays the whole story', function () {
 test('the headline and the whole hero stage fit one laptop screen', function () {
     visit('/')
         ->resize(1440, 800)
+        ->assertScript('document.querySelector(".strip").getBoundingClientRect().bottom <= window.innerHeight + 1', true)
         ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().bottom <= window.innerHeight + 1', true)
         ->assertScript('document.querySelector(\'[data-testid="landing-hero-cta"]\').getBoundingClientRect().bottom <= window.innerHeight', true)
         ->assertNoJavaScriptErrors();
 });
 
-test('the four steps are separate sections that each pin to the full screen', function () {
+test('the four steps are separate sections under a sticky index', function () {
     visit('/')
         ->resize(1440, 800)
         ->assertScript('document.querySelectorAll(\'[data-testid^="landing-step-"]\').length', 4)
-        ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"]\')).every((el) => getComputedStyle(el).position === "sticky" && Math.round(el.getBoundingClientRect().height) === window.innerHeight - 68)', true)
         ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"] h2\')).map((el) => el.textContent).join(",")', 'Ask,Share,Find,Use')
+        ->assertScript('getComputedStyle(document.querySelector(".story-index")).position', 'sticky')
+        ->assertScript('document.querySelectorAll(".story-index a").length', 4)
+        ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"]\')).every((el) => getComputedStyle(el).position !== "sticky" && el.getBoundingClientRect().height >= window.innerHeight * 0.7)', true)
+        ->assertNoJavaScriptErrors();
+});
+
+test('every window is finished before it plays', function () {
+    visit('/')
+        ->resize(1440, 800)
+        ->assertScript('document.querySelector(\'[data-testid="landing-step-use"]\').textContent.includes("Source: Pricing teardown")', true)
+        ->assertScript('document.querySelector(\'[data-testid="landing-step-ask"]\').textContent.includes("Pricing teardown")', true)
         ->assertNoJavaScriptErrors();
 });
 

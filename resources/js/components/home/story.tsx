@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
@@ -7,9 +7,11 @@ import { caption, CONTENT } from '../../../remotion/timeline';
 
 /**
  * The landing story. A hero stage plays the whole animation (ask, share, find,
- * use) once the page loads. Four pinned sections then replay one step each as
- * they arrive, and again whenever they are re-entered. Windows are plain DOM
- * so the copy stays readable text and the layout stays responsive.
+ * use) once the page loads. Four sections then replay one step each as they
+ * come into view, and again whenever they are re-entered. Every window starts
+ * at its finished state, so a page that is printed, previewed or read with
+ * motion off still shows the whole story. Windows are plain DOM so the copy
+ * stays readable text and the layout stays responsive.
  */
 const STEPS = [
     { key: 'ask', label: 'Ask', image: '/images/landing/ask.jpg' },
@@ -142,18 +144,39 @@ function Chrome({
 function Composer({
     placeholder,
     chips,
+    typed = '',
+    typing = false,
 }: {
     placeholder: string;
     chips: ReactNode;
+    typed?: string;
+    typing?: boolean;
 }) {
+    const hasText = typed.length > 0 || typing;
+
     return (
         <div className="fs-composer">
-            <span className="fs-composer-text">{placeholder}</span>
+            <span
+                className={
+                    hasText ? 'fs-composer-text typed' : 'fs-composer-text'
+                }
+            >
+                {hasText ? typed : placeholder}
+                {typing && <Caret />}
+            </span>
             <span className="fs-composer-row">
                 <span className="fs-plus">+</span>
                 {chips}
-                <span className="fs-send">↑</span>
+                <span className={hasText ? 'fs-send ready' : 'fs-send'}>↑</span>
             </span>
+        </div>
+    );
+}
+
+function Who({ tool, name }: { tool: 'claude' | 'cursor'; name: string }) {
+    return (
+        <div className="fs-who">
+            <AiToolIcon tool={tool} size={20} /> {name}
         </div>
     );
 }
@@ -170,7 +193,7 @@ function ArtifactCard({
     style?: CSSProperties;
 }) {
     return (
-        <div className={`fs-artifact${hot ? 'hot' : ''}`} style={style}>
+        <div className={hot ? 'fs-artifact hot' : 'fs-artifact'} style={style}>
             <span className="fs-art-ico">
                 <Doc />
             </span>
@@ -187,10 +210,10 @@ function ArtifactCard({
 
 function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
     const ask = step === 'ask';
-    const typed = ask
-        ? Math.floor(lin(p, 0.04, 0.3) * PROMPT.length)
-        : PROMPT.length;
-    const typing = ask && p > 0.04 && p < 0.32;
+    const typedChars = Math.floor(lin(p, 0.04, 0.28) * PROMPT.length);
+    const typing = ask && p > 0.04 && p < 0.3;
+    const sent = !ask || p >= 0.3;
+    const composerTyped = !sent ? PROMPT.slice(0, typedChars) : '';
     const thinking = ask && p >= 0.32 && p < 0.38;
     const words = ask
         ? Math.floor(lin(p, 0.38, 0.7) * ASSISTANT.length)
@@ -210,7 +233,7 @@ function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
                 title="Pricing report"
                 right={
                     <span
-                        className={`fs-sharebtn${hot ? 'hot' : ''}`}
+                        className={hot ? 'fs-sharebtn hot' : 'fs-sharebtn'}
                         style={{ opacity: ask ? 0.5 : 1 }}
                     >
                         Share
@@ -218,10 +241,7 @@ function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
                 }
             />
             <div className="fs-body">
-                <div className="fs-msg-user">
-                    {PROMPT.slice(0, typed)}
-                    {typing && <Caret />}
-                </div>
+                {sent && <div className="fs-msg-user">{PROMPT}</div>}
                 {thinking && (
                     <div className="fs-thinking">
                         <i />
@@ -230,9 +250,12 @@ function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
                     </div>
                 )}
                 {words > 0 && (
-                    <p className="fs-msg-ai">
-                        {ASSISTANT.slice(0, words).join(' ')}
-                    </p>
+                    <div className="fs-turn">
+                        <Who tool="claude" name="Claude" />
+                        <p className="fs-msg-ai">
+                            {ASSISTANT.slice(0, words).join(' ')}
+                        </p>
+                    </div>
                 )}
                 {artifact > 0.01 && (
                     <ArtifactCard
@@ -256,6 +279,8 @@ function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
             </div>
             <Composer
                 placeholder="Reply to Claude…"
+                typed={composerTyped}
+                typing={typing}
                 chips={
                     <span className="fs-chipbtn">
                         <AiToolIcon tool="claude" size={22} /> Claude
@@ -321,10 +346,10 @@ function LibraryWindow({ p }: { p: number }) {
 
     return (
         <>
-            <Chrome title="Team library" />
+            <Chrome title="Team knowledge base" />
             <div className="fs-lib">
                 <aside className="fs-side">
-                    <div className="fs-side-h">Library</div>
+                    <div className="fs-side-h">Knowledge base</div>
                     <div className="fs-side-i on">All files</div>
                     {TOOLS.slice(0, 3).map((t) => (
                         <div key={t.id} className="fs-side-i">
@@ -339,7 +364,7 @@ function LibraryWindow({ p }: { p: number }) {
                         <span>
                             {typed === 0 && !typing ? (
                                 <span className="fs-ph">
-                                    Search your team's AI work
+                                    Search your team’s AI work
                                 </span>
                             ) : (
                                 SEARCH.slice(0, typed)
@@ -433,8 +458,10 @@ function LibraryWindow({ p }: { p: number }) {
 }
 
 function CursorWindow({ p }: { p: number }) {
-    const typed = Math.floor(lin(p, 0.04, 0.2) * READER_PROMPT.length);
+    const typedChars = Math.floor(lin(p, 0.04, 0.2) * READER_PROMPT.length);
     const typing = p > 0.04 && p < 0.22;
+    const sent = p >= 0.22;
+    const composerTyped = !sent ? READER_PROMPT.slice(0, typedChars) : '';
     const s1 = ramp(p, 0.24, 0.3);
     const s1done = p >= 0.4;
     const s2 = ramp(p, 0.42, 0.48);
@@ -455,10 +482,7 @@ function CursorWindow({ p }: { p: number }) {
                 right={<span className="fs-new">New chat</span>}
             />
             <div className="fs-body">
-                <div className="fs-msg-user">
-                    {READER_PROMPT.slice(0, typed)}
-                    {typing && <Caret />}
-                </div>
+                {sent && <div className="fs-msg-user">{READER_PROMPT}</div>}
                 <div className="fs-steps-list">
                     <div
                         className="fs-step-row"
@@ -471,8 +495,8 @@ function CursorWindow({ p }: { p: number }) {
                             {s1done ? <Check /> : <i className="fs-spin" />}
                         </span>
                         {s1done
-                            ? 'Searched your team library'
-                            : 'Searching your team library…'}
+                            ? 'Searched your team’s knowledge base'
+                            : 'Searching your team’s knowledge base…'}
                     </div>
                     <div
                         className="fs-step-row"
@@ -501,9 +525,12 @@ function CursorWindow({ p }: { p: number }) {
                     />
                 )}
                 {words > 0 && (
-                    <p className="fs-msg-ai plain">
-                        {REPLY.slice(0, words).join(' ')}
-                    </p>
+                    <div className="fs-turn">
+                        <Who tool="cursor" name="Cursor" />
+                        <p className="fs-msg-ai plain">
+                            {REPLY.slice(0, words).join(' ')}
+                        </p>
+                    </div>
                 )}
                 {source > 0.01 && (
                     <span
@@ -519,6 +546,8 @@ function CursorWindow({ p }: { p: number }) {
             </div>
             <Composer
                 placeholder="Plan, search, build anything"
+                typed={composerTyped}
+                typing={typing}
                 chips={
                     <>
                         <span className="fs-chipbtn">Agent</span>
@@ -530,11 +559,12 @@ function CursorWindow({ p }: { p: number }) {
     );
 }
 
-const STEP_MS = [8000, 8000, 9000, 9000];
+const STEP_MS = [6000, 6000, 6500, 6500];
 const HERO_MS = 18000;
-const LAYOUTS = ['right', 'left', 'middle', 'right'] as const;
+const LAYOUTS = ['right', 'left', 'right', 'left'] as const;
 /** Index 0 is the hero stage; 1 to 4 are the Ask, Share, Find and Use sections. */
 const DURATIONS = [HERO_MS, ...STEP_MS];
+
 const HERO_ART = {
     burst: '/images/landing/hero-burst.jpg',
     clay: '/images/landing/hero-clay.jpg',
@@ -549,23 +579,28 @@ export type Story = {
     reduced: boolean;
     progress: number[];
     register: (index: number) => (el: HTMLElement | null) => void;
-    replay: () => void;
+    /** Plays one stage again: 0 is the hero, 1 to 4 are the sections. */
+    replay: (index: number) => void;
+    /** The last section that has reached the reading line, or -1. */
+    active: number;
 };
 
 /**
- * Time-driven playback for the hero stage and the four sections. The hero
- * plays while mostly on screen. A section plays once it has arrived and is not
- * yet covered by the next one, and resets when it is scrolled away.
+ * Time-driven playback for the hero stage and the four sections. Each plays
+ * while it is mostly on screen and returns to its finished state when it is
+ * scrolled away.
  */
 export function useStory(): Story {
     const reduced = useMedia(REDUCED_QUERY);
     const els = useRef<Array<HTMLElement | null>>([]);
     const playing = useRef<boolean[]>(DURATIONS.map(() => false));
     const startedAt = useRef<number[]>(DURATIONS.map(() => 0));
-    const progRef = useRef<number[]>(DURATIONS.map(() => 0));
+    const progRef = useRef<number[]>(DURATIONS.map(() => 1));
     const [progress, setProgress] = useState<number[]>(() =>
-        DURATIONS.map(() => 0),
+        DURATIONS.map(() => 1),
     );
+    const [active, setActive] = useState(-1);
+    const activeRef = useRef(-1);
 
     const start = (i: number) => {
         playing.current[i] = true;
@@ -588,24 +623,14 @@ export function useStory(): Story {
                     return;
                 }
 
-                let on: boolean;
-                let off: boolean;
-
-                if (i === 0) {
-                    const visible =
-                        clamp(
-                            Math.min(rect.bottom, vh) - Math.max(rect.top, 0),
-                            0,
-                            rect.height,
-                        ) / Math.max(rect.height, 1);
-                    on = visible >= 0.55;
-                    off = visible < 0.15;
-                } else {
-                    const nextTop = rects[i + 1]?.top ?? vh * 2;
-                    const covered = clamp(1 - nextTop / vh, 0, 1);
-                    on = rect.top <= vh * 0.45 && covered < 0.55;
-                    off = rect.top > vh * 0.8 || covered > 0.75;
-                }
+                const visible =
+                    clamp(
+                        Math.min(rect.bottom, vh) - Math.max(rect.top, 0),
+                        0,
+                        rect.height,
+                    ) / Math.max(Math.min(rect.height, vh), 1);
+                const on = visible >= 0.55;
+                const off = visible < 0.15;
 
                 if (on && !playing.current[i]) {
                     start(i);
@@ -618,9 +643,22 @@ export function useStory(): Story {
                 }
             });
 
+            let reached = -1;
+
+            rects.forEach((rect, i) => {
+                if (i > 0 && rect && rect.top <= vh * 0.5) {
+                    reached = i - 1;
+                }
+            });
+
+            if (reached !== activeRef.current) {
+                activeRef.current = reached;
+                setActive(reached);
+            }
+
             const next = progRef.current.map((v, i) => {
                 if (resets.includes(i)) {
-                    return 0;
+                    return 1;
                 }
 
                 if (!playing.current[i]) {
@@ -646,7 +684,7 @@ export function useStory(): Story {
         els.current[index] = el;
     };
 
-    return { reduced, progress, register, replay: () => start(0) };
+    return { reduced, progress, register, replay: start, active };
 }
 
 const view = (i: number, p: number) => {
@@ -675,85 +713,98 @@ export function StoryStage({ story }: { story: Story }) {
         <div
             className="story-stage"
             ref={story.register(0)}
-            role="img"
-            aria-label={STORY_ALT}
             data-testid="landing-flow"
         >
-            <img className="a-sage" src={HERO_ART.sage} alt="" />
-            <img className="a-burst" src={HERO_ART.burst} alt="" />
-            <img className="a-clay" src={HERO_ART.clay} alt="" />
-            <img className="a-ox" src={HERO_ART.ox} alt="" />
-            <div className="story-win">
-                <div className="fs-win">
-                    <div
-                        key={chapter}
-                        className={`fs-view${chapter > 0 ? 'fs-swap' : ''}`}
-                    >
-                        {view(chapter, local)}
+            <div className="story-art" role="img" aria-label={STORY_ALT}>
+                <img className="a-sage" src={HERO_ART.sage} alt="" />
+                <img className="a-burst" src={HERO_ART.burst} alt="" />
+                <img className="a-clay" src={HERO_ART.clay} alt="" />
+                <img className="a-ox" src={HERO_ART.ox} alt="" />
+                <div className="story-win">
+                    <div className="fs-win">
+                        <div
+                            key={chapter}
+                            className={
+                                chapter > 0 ? 'fs-view fs-swap' : 'fs-view'
+                            }
+                        >
+                            {view(chapter, local)}
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div className="story-prog">
-                {STEPS.map((s, i) => (
-                    <span key={s.key} className={i === chapter ? 'on' : ''}>
-                        {s.label}
-                    </span>
-                ))}
-                <button
-                    type="button"
-                    className="story-replay"
-                    onClick={story.replay}
-                    data-testid="landing-flow-replay"
-                >
-                    Replay
-                </button>
             </div>
         </div>
     );
 }
 
-/** Ask, Share, Find and Use: one pinned section each, stacked as you scroll. */
+/** Ask, Share, Find and Use: one section each, with an index that tracks you. */
 export function StorySteps({ story }: { story: Story }) {
     return (
         <div className="story-steps" id="how">
+            <nav className="story-index" aria-label="The four steps">
+                {STEPS.map((s, i) => {
+                    const fill = story.reduced
+                        ? 0
+                        : i < story.active
+                          ? 1
+                          : i === story.active
+                            ? story.progress[i + 1]
+                            : 0;
+
+                    return (
+                        <a
+                            key={s.key}
+                            href={`#step-${s.key}`}
+                            className={i === story.active ? 'on' : ''}
+                            aria-current={
+                                i === story.active ? 'step' : undefined
+                            }
+                        >
+                            {s.label}
+                            <i style={{ width: `${fill * 100}%` }} />
+                        </a>
+                    );
+                })}
+            </nav>
             {STEPS.map((s, i) => {
                 const p = story.reduced ? 1 : story.progress[i + 1];
                 const layout = LAYOUTS[i];
-                const cls =
-                    layout === 'left'
-                        ? ' left'
-                        : layout === 'middle'
-                          ? ' mid'
-                          : '';
+                const cls = layout === 'left' ? ' left' : '';
 
                 return (
-                    <Fragment key={s.key}>
-                        <section
-                            className="fs-sec"
-                            ref={story.register(i + 1)}
-                            data-testid={`landing-step-${s.key}`}
-                        >
-                            <div className={`fs-in${cls}`}>
-                                <div className="fs-text">
-                                    <h2>{s.label}</h2>
-                                    <p>{caption[i]}</p>
-                                </div>
-                                <div
-                                    className="fs-frame"
-                                    style={{
-                                        backgroundImage: `url(${s.image})`,
-                                    }}
-                                >
-                                    <div className="fs-win">
-                                        <div className="fs-view">
-                                            {view(i, p)}
-                                        </div>
-                                    </div>
+                    <section
+                        key={s.key}
+                        id={`step-${s.key}`}
+                        className="fs-sec"
+                        ref={story.register(i + 1)}
+                        data-testid={`landing-step-${s.key}`}
+                    >
+                        <div className={cls ? 'fs-in left' : 'fs-in'}>
+                            <div className="fs-text">
+                                <h2>{s.label}</h2>
+                                <p>{caption[i]}</p>
+                                {!story.reduced && (
+                                    <button
+                                        type="button"
+                                        className="story-replay"
+                                        onClick={() => story.replay(i + 1)}
+                                        aria-label={`Replay the ${s.label} step`}
+                                    >
+                                        Replay
+                                    </button>
+                                )}
+                            </div>
+                            <div
+                                className="fs-frame"
+                                style={{ backgroundImage: `url(${s.image})` }}
+                                aria-hidden="true"
+                            >
+                                <div className="fs-win">
+                                    <div className="fs-view">{view(i, p)}</div>
                                 </div>
                             </div>
-                        </section>
-                        <div className="fs-spacer" />
-                    </Fragment>
+                        </div>
+                    </section>
                 );
             })}
         </div>

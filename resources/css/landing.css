@@ -157,7 +157,7 @@
     }
 
     & .two span {
-        color: var(--ink-ghost);
+        color: var(--ink-3);
     }
 
     & .lede {
@@ -217,7 +217,7 @@
     }
 
     /* navigation */
-    & nav {
+    & .frame > nav {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -302,122 +302,97 @@
         padding: 8px 16px;
     }
 
-    /* hero: headline and the demo share one screen on laptops */
-    & .hero {
+    /* hero: a vertical split, headline on the left and the demo on the right */
+    & {
+        overflow-x: clip;
+    }
+
+    & .herosplit {
         display: grid;
-        grid-template-columns: 1.7fr 1fr;
-        column-gap: 40px;
-        align-items: end;
-        padding-block: 26px 22px;
+        grid-template-columns: minmax(0, 4.6fr) minmax(0, 7.4fr);
+        height: calc(100svh - 68px - var(--strip-h, 52px));
+        min-height: 440px;
+    }
+
+    & .hero {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: clamp(14px, 2.4vh, 22px);
+        padding-block: 24px;
+        padding-right: 28px;
     }
 
     & .hero .eyebrow {
-        grid-column: 1 / -1;
-        margin-bottom: 8px;
+        margin: 0;
     }
 
     & .hero h1 {
-        grid-column: 1;
-        grid-row: 2 / 4;
         max-width: none;
+        font-size: clamp(36px, min(5vw, 8.4vh), 72px);
+        line-height: 1;
+    }
+
+    & .hero h1 span {
+        display: block;
     }
 
     & .hero .lede {
-        grid-column: 2;
-        grid-row: 2;
-        font-size: 16px;
-        margin-bottom: 14px;
-        align-self: end;
+        font-size: 18px;
+        max-width: 36ch;
+        margin: 0;
     }
 
     & .hero .cta {
-        grid-column: 2;
-        grid-row: 3;
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
     }
 
-    & .demo {
-        height: calc(100svh - 68px - var(--hh, 200px));
-        min-height: 480px;
-        border-top: 1px solid var(--line);
-        position: relative;
-        background: var(--bone);
-        overflow: hidden;
-    }
-
-    & .demo video {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-    }
-
-    & .sound {
-        position: absolute;
-        right: 16px;
-        top: 14px;
-        z-index: 2;
-        min-height: 36px;
-        background: var(--ink);
-        color: #fff;
-        border: 0;
-        border-radius: 6px;
-        padding: 8px 14px;
-        font: 600 13px var(--sans);
-        cursor: pointer;
-        opacity: 0.88;
-        transition: 0.15s;
-    }
-
-    & .sound:hover {
-        background: var(--ox);
-        opacity: 1;
-    }
-
-    /* tool strip */
+    /* tool strip: one slim line */
     & .strip {
-        display: grid;
-        grid-template-columns: minmax(220px, 300px) 1fr;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px clamp(20px, 3vw, 40px);
+        padding: 14px clamp(20px, 5vw, 64px);
     }
 
     & .strip .lab {
-        padding: 28px clamp(20px, 5vw, 64px);
-        border-right: 1px solid var(--line);
-        font: 500 20px/1.2 var(--serif);
+        font: 500 14px var(--sans);
+        color: var(--ink-3);
     }
 
     & .strip .names {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 10px clamp(18px, 4vw, 52px);
-        padding: 20px 32px;
-        font: 500 22px var(--serif);
-        color: #6f6d66;
-        letter-spacing: -0.01em;
+        gap: 4px clamp(16px, 2.4vw, 32px);
+        font: 500 16px var(--sans);
+        color: var(--ink-2);
     }
 
     & .strip .names > span:not(.more) {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
     }
 
     & .strip .names > span:not(.more) svg {
         flex: none;
+        width: 20px;
+        height: 20px;
     }
 
     & .strip .names .more {
-        font: 400 16px var(--sans);
+        font: 400 14px var(--sans);
+        color: var(--ink-3);
     }
 
     /* statement and comparison */
     & .statement {
-        padding-block: 96px;
+        padding-block: 72px 28px;
     }
 
     & .statement h2 {
@@ -429,102 +404,6 @@
         margin: 18px 0 0;
         color: var(--ink-2);
         max-width: 60ch;
-    }
-
-    & .cmp {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        margin-top: 48px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        overflow: hidden;
-    }
-
-    & .cmp > div {
-        padding: 28px;
-    }
-
-    & .cmp .a {
-        background: var(--paper);
-    }
-
-    & .cmp .b {
-        background: var(--ox-tint);
-        border-left: 1px solid var(--line);
-    }
-
-    & .cmp .a .eyebrow {
-        color: var(--ink-3);
-    }
-
-    & .cmp h3 {
-        font-size: 24px;
-        margin: 8px 0 14px;
-    }
-
-    & .cmp ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-
-    & .cmp li {
-        padding: 9px 0 9px 26px;
-        position: relative;
-        border-top: 1px solid var(--line);
-        font-size: 15px;
-        color: var(--ink-2);
-    }
-
-    & .cmp .a li::before {
-        content: '\2013';
-        position: absolute;
-        left: 4px;
-        color: var(--ink-3);
-    }
-
-    & .cmp .b li::before {
-        content: '\2713';
-        position: absolute;
-        left: 3px;
-        color: var(--ox);
-        font-weight: 700;
-    }
-
-    /* four-part row */
-    & .four {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-    }
-
-    & .four > div {
-        padding: 32px clamp(18px, 2.4vw, 32px) 40px;
-        border-left: 1px solid var(--line);
-    }
-
-    & .four > div:first-child {
-        border-left: 0;
-    }
-
-    & .four svg {
-        width: 26px;
-        height: 26px;
-        stroke: var(--ink);
-        fill: none;
-        stroke-width: 1.5;
-        margin-bottom: 56px;
-        display: block;
-    }
-
-    & .four h3 {
-        font-size: 24px;
-        margin-bottom: 8px;
-    }
-
-    & .four p {
-        margin: 0;
-        color: var(--ink-2);
-        font-size: 15px;
     }
 
     /* use cases */
@@ -542,6 +421,7 @@
 
     & .use .head h2 {
         margin-top: 14px;
+        font-size: clamp(28px, 3.4vw, 40px);
     }
 
     & .acc {
@@ -666,7 +546,7 @@
 
     & .mrow .tag {
         margin-left: auto;
-        font-size: 11px;
+        font-size: 12px;
         background: #fff;
         border-radius: 4px;
         padding: 3px 7px;
@@ -690,6 +570,37 @@
 
     & .control h2 {
         margin-top: 16px;
+        font-size: clamp(34px, 4.6vw, 64px);
+        line-height: 1.04;
+    }
+
+    /* the one dark band: the ownership claim */
+    & .control.band {
+        background: var(--ink);
+        color: var(--bone);
+        border-top: 0;
+    }
+
+    & .control.band .r {
+        background: transparent;
+        border-left: 1px solid rgba(247, 245, 242, 0.16);
+    }
+
+    & .control.band h2 span {
+        color: #b9b5ab;
+    }
+
+    & .control.band .lede,
+    & .control.band li span {
+        color: #cfcbc2;
+    }
+
+    & .control.band li {
+        border-top-color: rgba(247, 245, 242, 0.16);
+    }
+
+    & .control.band li svg {
+        stroke: #f1e4e5;
     }
 
     & .control .lede {
@@ -736,6 +647,7 @@
     & .plansec h2 {
         margin-top: 14px;
         max-width: 22ch;
+        font-size: clamp(28px, 3.4vw, 40px);
     }
 
     & .plans {
@@ -839,8 +751,14 @@
     & footer .r {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px 22px;
+        gap: 0 22px;
         align-items: center;
+    }
+
+    & footer .r a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
     }
 
     @media (max-width: 900px) {
@@ -852,8 +770,19 @@
             display: block;
         }
 
+        & .herosplit {
+            display: block;
+            min-height: 0;
+        }
+
         & .hero {
             display: block;
+            padding-right: 0;
+            padding-block: 40px 32px;
+        }
+
+        & .hero h1 {
+            font-size: clamp(40px, 11vw, 56px);
         }
 
         & .hero .lede {
@@ -861,26 +790,8 @@
             font-size: 17px;
         }
 
-        & .demo {
-            height: auto;
-            min-height: 0;
-        }
-
-        & .demo video {
-            position: static;
-            height: auto;
-            aspect-ratio: 4 / 5;
-        }
-
-        & .sound {
-            top: auto;
-            bottom: 12px;
-            right: 12px;
-        }
-
         & .strip,
         & .control,
-        & .cmp,
         & .use .head,
         & .body,
         & .plans {
@@ -892,19 +803,6 @@
             border-bottom: 1px solid var(--line);
         }
 
-        & .four {
-            grid-template-columns: 1fr 1fr;
-        }
-
-        & .four > div {
-            border-top: 1px solid var(--line);
-        }
-
-        & .four > div:nth-child(odd) {
-            border-left: 0;
-        }
-
-        & .cmp .b,
         & .control .r,
         & .plan {
             border-left: 0;
@@ -937,18 +835,6 @@
     }
 
     @media (max-width: 560px) {
-        & .four {
-            grid-template-columns: 1fr;
-        }
-
-        & .four > div {
-            border-left: 0;
-        }
-
-        & .four svg {
-            margin-bottom: 28px;
-        }
-
         & .cta .btn {
             width: 100%;
         }

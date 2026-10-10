@@ -14,7 +14,7 @@
 }
 .landing .fs-text h2 {
     margin: 0;
-    font: 400 clamp(48px, 5.4vw, 88px)/0.98 var(--serif);
+    font: 400 clamp(56px, 7.4vw, 120px)/0.96 var(--serif);
     letter-spacing: -0.03em;
 }
 .landing .fs-text p {
@@ -25,8 +25,8 @@
 }
 .landing .fs-frame {
     position: relative;
-    height: min(80vh, 760px);
-    border-radius: 28px;
+    height: clamp(400px, calc(100svh - 116px - 80px), 780px);
+    border-radius: 16px;
     overflow: hidden;
     background-size: cover;
     background-position: center;
@@ -68,6 +68,15 @@
     border-radius: 50%;
     background: #d9d6cf;
     display: block;
+}
+.landing .fs-dots i:nth-child(1) {
+    background: #ff5f57;
+}
+.landing .fs-dots i:nth-child(2) {
+    background: #febc2e;
+}
+.landing .fs-dots i:nth-child(3) {
+    background: #28c840;
 }
 .landing .fs-title {
     flex: 1;
@@ -122,11 +131,25 @@
     min-height: 0;
     overflow: hidden;
 }
+.landing .fs-turn {
+    display: flex;
+    flex-direction: column;
+    gap: calc(10 * var(--s));
+}
+.landing .fs-who {
+    display: flex;
+    align-items: center;
+    gap: calc(10 * var(--s));
+    font-size: calc(20 * var(--s));
+    font-weight: 700;
+    color: #55544e;
+}
 .landing .fs-msg-user {
     align-self: flex-end;
     max-width: 78%;
     background: #efece6;
-    border-radius: calc(22 * var(--s));
+    border-radius: calc(22 * var(--s)) calc(22 * var(--s)) calc(6 * var(--s))
+        calc(22 * var(--s));
     padding: calc(18 * var(--s)) calc(26 * var(--s));
     font-size: calc(27 * var(--s));
     line-height: 1.35;
@@ -227,8 +250,16 @@
 .landing .fs-composer-text {
     display: block;
     font-size: calc(23 * var(--s));
-    color: #9a9892;
+    height: calc(31 * var(--s));
+    line-height: calc(31 * var(--s));
+    color: #69675f;
     margin-bottom: calc(26 * var(--s));
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.landing .fs-composer-text.typed {
+    color: #262624;
 }
 .landing .fs-composer-row {
     display: flex;
@@ -261,7 +292,7 @@
     width: calc(40 * var(--s));
     height: calc(40 * var(--s));
     border-radius: 50%;
-    background: #701a24;
+    background: #cfcbc2;
     color: #fff;
     display: grid;
     place-items: center;
@@ -504,32 +535,51 @@
     .fs-caret {
         animation: none;
     }
-    .fs-sec,
-    .fs-hero {
-        position: relative;
-        height: auto;
-        min-height: 100svh;
-        box-shadow: none;
-    }
-    .fs-spacer {
+    .landing .story-index a i {
         display: none;
     }
+    .landing .fs-swap {
+        animation: none;
+    }
 }
 .landing .fs-sec {
-    position: sticky;
-    top: 68px;
-    height: calc(100svh - 68px);
     display: flex;
     align-items: center;
-    overflow: hidden;
+    min-height: calc(100svh - 116px);
+    padding-block: 40px;
+    scroll-margin-top: 116px;
     background: var(--bone);
 }
-.landing .fs-sec {
-    border-radius: 28px 28px 0 0;
-    box-shadow: 0 -14px 44px rgba(38, 38, 36, 0.1);
+.landing .fs-sec + .fs-sec {
+    border-top: 1px solid var(--line);
 }
-.landing .fs-spacer {
-    height: 70svh;
+.landing .story-index {
+    height: auto;
+    position: sticky;
+    top: 68px;
+    z-index: 5;
+    display: flex;
+    gap: clamp(20px, 3vw, 40px);
+    padding-inline: clamp(20px, 5vw, 64px);
+    background: var(--bone);
+}
+.landing .story-index a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    font: 600 14px var(--sans);
+    color: var(--ink-3);
+}
+.landing .story-index a.on {
+    color: var(--ink);
+}
+.landing .story-index a i {
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--ox);
 }
 .landing .fs-view {
     position: relative;
@@ -561,42 +611,9 @@
     left: 0;
     width: 93%;
 }
-.landing .fs-in.mid {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: 28px;
-}
-.landing .fs-in.mid .fs-text {
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-.landing .fs-in.mid .fs-text h2 {
-    font-size: clamp(48px, 5vw, 80px);
-}
-.landing .fs-in.mid .fs-text p {
-    margin-top: 14px;
-    max-width: 34em;
-}
-.landing .fs-in.mid .fs-frame {
-    width: min(1180px, 100%);
-    height: min(66vh, 680px);
-}
-.landing .fs-in.mid .fs-win {
-    left: 4%;
-    width: 92%;
-}
 @media (max-width: 900px) {
-    .landing .fs-spacer {
-        height: 50svh;
-    }
-    .landing .fs-sec {
-        border-radius: 20px 20px 0 0;
-    }
     .landing .fs-in,
-    .landing .fs-in.left,
-    .landing .fs-in.mid {
+    .landing .fs-in.left {
         grid-template-columns: 1fr;
         gap: 16px;
         padding: 64px 20px 0;
@@ -606,20 +623,14 @@
     .landing .fs-in.left .fs-text {
         order: 0;
     }
-    .landing .fs-in.mid .fs-text {
-        text-align: left;
-        align-items: flex-start;
-    }
-    .landing .fs-text h2,
-    .landing .fs-in.mid .fs-text h2 {
+    .landing .fs-text h2 {
         font-size: 48px;
     }
     .landing .fs-text p {
         margin-top: 10px;
         font-size: 17px;
     }
-    .landing .fs-frame,
-    .landing .fs-in.mid .fs-frame {
+    .landing .fs-frame {
         width: 100%;
         height: calc(100svh - 300px);
         min-height: 360px;
@@ -658,85 +669,13 @@
     }
 }
 
-.landing .story-stage {
-    position: relative;
-    height: calc(100svh - 68px - var(--hh, 200px));
-    min-height: 480px;
-    border-top: 1px solid var(--line);
-    overflow: hidden;
-    background: var(--bone);
-}
-.landing .story-stage img {
-    position: absolute;
-    object-fit: cover;
-    border-radius: 22px;
-    display: block;
-}
-.landing .story-stage .a-burst {
-    right: 3%;
-    top: 5%;
-    width: 46%;
-    height: 56%;
-}
-.landing .story-stage .a-clay {
-    left: 3%;
-    bottom: 6%;
-    width: 26%;
-    height: 56%;
-}
-.landing .story-stage .a-ox {
-    right: 5%;
-    bottom: 4%;
-    width: 24%;
-    height: 30%;
-}
-.landing .story-stage .a-sage {
-    left: 9%;
-    top: 6%;
-    width: 18%;
-    height: 26%;
-}
-.landing .story-win {
-    position: absolute;
-    left: 12%;
-    top: 9%;
-    width: 76%;
-    height: 82%;
-    z-index: 2;
-}
-.landing .story-win .fs-win {
-    position: absolute;
-    inset: 0;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-}
-.landing .story-prog {
-    position: absolute;
-    left: 12%;
-    bottom: 12px;
-    z-index: 3;
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-.landing .story-prog span {
-    font: 600 12px var(--sans);
-    color: var(--ink-3);
-    padding: 5px 12px;
-    border-radius: 999px;
-    background: rgba(251, 250, 248, 0.92);
-    border: 1px solid var(--line);
-}
-.landing .story-prog span.on {
-    background: var(--ox);
-    border-color: var(--ox);
-    color: #fff;
+.landing .fs-text .story-replay {
+    margin-top: 18px;
 }
 .landing .story-replay {
     background: none;
     border: 0;
+    min-height: 44px;
     padding: 4px 6px;
     font: 500 13px var(--sans);
     color: var(--ink-3);
@@ -749,8 +688,151 @@
 }
 
 @media (max-width: 900px) {
+}
+
+/* No hairline borders: separation comes from space and soft fills. */
+.landing.landing .frame,
+.landing.landing .rule,
+.landing.landing .frame > nav,
+.landing.landing .navmenu-links,
+.landing.landing .strip .lab,
+.landing.landing .acc,
+.landing.landing .acc details,
+.landing.landing .mini,
+.landing.landing .control .r,
+.landing.landing .control li,
+.landing.landing .plans,
+.landing.landing .plan,
+.landing.landing footer,
+.landing.landing .story-steps,
+.landing.landing .story-index,
+.landing.landing .fs-sec + .fs-sec,
+.landing.landing .fs-win,
+.landing.landing .fs-pop,
+.landing.landing .fs-pop-row,
+.landing.landing .fs-side,
+.landing.landing .fs-side-i.on,
+.landing.landing .fs-new,
+.landing.landing .fs-sharebtn,
+.landing.landing .fs-pillbtn,
+.landing.landing .fs-artifact,
+.landing.landing .fs-composer,
+.landing.landing .fs-plus,
+.landing.landing .fs-search,
+.landing.landing .fs-lrow,
+.landing.landing .fs-tool,
+.landing.landing .plus,
+.landing.landing .btn-ghost {
+    border: 0;
+}
+.landing.landing .plans {
+    gap: 12px;
+    background: transparent;
+}
+.landing.landing .plan {
+    background: var(--paper);
+    border-radius: 10px;
+}
+.landing.landing .plan.hl {
+    background: #f1e4e5;
+}
+.landing.landing .btn-ghost,
+.landing.landing .plus {
+    background: #efece6;
+}
+.landing.landing .btn-ghost:hover {
+    background: #e7e3db;
+}
+.landing.landing .story-index {
+    background: var(--bone);
+}
+.landing.landing .fs-sharebtn,
+.landing.landing .fs-pillbtn,
+.landing.landing .fs-artifact,
+.landing.landing .fs-composer,
+.landing.landing .fs-search,
+.landing.landing .fs-lrow {
+    background: #f1eee8;
+}
+.landing.landing .fs-plus {
+    background: #e7e3db;
+}
+.landing.landing .fs-new,
+.landing.landing .fs-sharebtn.hot,
+.landing.landing .fs-artifact.hot,
+.landing.landing .fs-lrow.ours {
+    background: #f1e4e5;
+}
+.landing.landing .fs-lrow.ours,
+.landing.landing .mrow.m {
+    box-shadow: none;
+}
+
+/* hero demo stage */
+.landing .story-stage {
+    position: relative;
+    min-height: 0;
+    margin-right: min(0px, calc((1200px - 100vw) / 2));
+    overflow: hidden;
+    background: var(--bone);
+}
+.landing .story-art {
+    position: absolute;
+    inset: 0;
+}
+.landing .story-stage img {
+    position: absolute;
+    object-fit: cover;
+    border-radius: 22px;
+    display: block;
+}
+.landing .story-stage .a-burst {
+    right: 0;
+    top: 0;
+    width: 66%;
+    height: 60%;
+    border-radius: 0 0 0 22px;
+}
+.landing .story-stage .a-clay {
+    left: 0;
+    bottom: 2%;
+    width: 36%;
+    height: 56%;
+    border-radius: 0 22px 22px 0;
+}
+.landing .story-stage .a-ox {
+    right: 3%;
+    bottom: 0;
+    width: 30%;
+    height: 26%;
+    border-radius: 22px 22px 0 0;
+}
+.landing .story-stage .a-sage {
+    left: 10%;
+    top: 2%;
+    width: 22%;
+    height: 20%;
+}
+.landing .story-win {
+    position: absolute;
+    left: 12%;
+    top: 13%;
+    width: 86%;
+    height: 76%;
+    z-index: 2;
+}
+.landing .story-win .fs-win {
+    position: absolute;
+    inset: 0;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+@media (max-width: 900px) {
     .landing .story-stage {
         height: auto;
+        margin-right: 0;
         min-height: 0;
         aspect-ratio: 4 / 5;
         max-height: 78svh;
@@ -761,8 +843,6 @@
     .landing .story-stage .a-burst {
         width: 78%;
         height: 42%;
-        right: 3%;
-        top: 3%;
     }
     .landing .story-stage .a-clay {
         width: 40%;
@@ -785,7 +865,57 @@
     .landing .story-win .fs-win {
         --s: min(100cqw / 560, 100cqh / 860);
     }
-    .landing .story-prog {
-        display: none;
+}
+.landing .fs-send.ready {
+    background: #701a24;
+}
+
+/* phones */
+@media (max-width: 900px) {
+    .landing.landing .hero .eyebrow {
+        margin-bottom: 14px;
+    }
+    .landing.landing .herosplit {
+        height: auto;
+    }
+    .landing.landing .strip {
+        padding-block: 18px;
+    }
+    .landing.landing .statement {
+        padding-block: 48px 20px;
+    }
+    .landing.landing .fs-sec {
+        min-height: 0;
+        padding-block: 28px 36px;
+    }
+    .landing.landing .fs-in,
+    .landing.landing .fs-in.left {
+        padding-top: 0;
+        gap: 18px;
+    }
+    .landing.landing .fs-text .story-replay {
+        margin-top: 8px;
+    }
+    .landing.landing .fs-frame {
+        height: min(calc(100svh - 280px), 560px);
+    }
+    .landing.landing .fs-artifact {
+        flex-wrap: wrap;
+    }
+    .landing.landing .fs-badge {
+        margin-left: calc(84 * var(--s));
+    }
+    .landing.landing .control > div {
+        padding: 44px 20px;
+    }
+    .landing.landing .control .r {
+        padding-top: 8px;
+    }
+    .landing.landing .use,
+    .landing.landing .plansec {
+        padding-block: 56px;
+    }
+    .landing.landing .close {
+        padding-block: 56px;
     }
 }

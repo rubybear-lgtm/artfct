@@ -1,38 +1,11 @@
 import { Link } from '@inertiajs/react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
 import { StorySteps, StoryStage, useStory } from '@/components/home/story';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
-
-/**
- * Keeps the hero headline and the demo on one screen: the demo takes whatever
- * height the headline leaves.
- */
-function useHeroHeight(
-    page: React.RefObject<HTMLDivElement | null>,
-    hero: React.RefObject<HTMLElement | null>,
-) {
-    useEffect(() => {
-        const root = page.current;
-        const el = hero.current;
-
-        if (!root || !el) {
-            return;
-        }
-
-        const set = () =>
-            root.style.setProperty('--hh', `${el.offsetHeight}px`);
-        set();
-
-        const observer = new ResizeObserver(set);
-        observer.observe(el);
-
-        return () => observer.disconnect();
-    }, [page, hero]);
-}
 
 type MiniRowProps = {
     icon: string;
@@ -135,56 +108,13 @@ const USE_CASES: {
     },
 ];
 
-const FOUR: { title: string; text: string; icon: React.ReactNode }[] = [
-    {
-        title: 'Share',
-        text: 'One click shares a report, table or mockup with your team. Nothing is shared automatically.',
-        icon: <path d="M12 15V4M7 9l5-5 5 5M5 20h14" />,
-    },
-    {
-        title: 'Find',
-        text: 'One search across everything the team has made, whichever AI tool made it.',
-        icon: (
-            <>
-                <circle cx="11" cy="11" r="6" />
-                <path d="M20 20l-4.5-4.5" />
-            </>
-        ),
-    },
-    {
-        title: 'Connect',
-        text: 'Connect your AI tools once. They can then read the team’s shared work.',
-        icon: (
-            <>
-                <circle cx="5" cy="12" r="2" />
-                <circle cx="19" cy="6" r="2" />
-                <circle cx="19" cy="18" r="2" />
-                <path d="M7 12h5l5-5M12 12l5 5" />
-            </>
-        ),
-    },
-    {
-        title: 'Cite',
-        text: 'Every answer lists the shared work it used, so people can check it.',
-        icon: (
-            <>
-                <path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z" />
-                <path d="M9 12l2 2 4-4" />
-            </>
-        ),
-    },
-];
-
 export default function Landing() {
     const story = useStory();
-    const page = useRef<HTMLDivElement>(null);
-    const hero = useRef<HTMLElement>(null);
     const navMenu = useRef<HTMLDetailsElement>(null);
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
-    useHeroHeight(page, hero);
 
     return (
-        <div ref={page} className="landing">
+        <div className="landing">
             <div className="frame">
                 <nav className="pad">
                     <Link href={home.url()} className="logo">
@@ -235,37 +165,39 @@ export default function Landing() {
                 </nav>
 
                 <main>
-                    <header ref={hero} className="hero pad">
-                        <div className="eyebrow">
-                            The shared library for your team’s AI
-                        </div>
-                        <h1 className="two">
-                            Every AI on your team,{' '}
-                            <span>working from the same memory.</span>
-                        </h1>
-                        <p className="lede">
-                            What your team’s AI tools create is shared in one
-                            place. Every AI tool you use can find it and build
-                            on it, and shows where each answer came from.
-                        </p>
-                        <div className="cta">
-                            <Button asChild className="btn btn-primary">
-                                <Link
-                                    href={accountUrl}
-                                    data-testid="landing-hero-cta"
-                                >
-                                    {accountLabel}{' '}
+                    <div className="herosplit">
+                        <header className="hero pad">
+                            <div className="eyebrow">
+                                The team knowledge base for every AI tool
+                            </div>
+                            <h1 className="two">
+                                Unsilo your knowledge.{' '}
+                                <span>Feed every agent.</span>
+                            </h1>
+                            <p className="lede">
+                                Share a report, table or mockup from Claude,
+                                ChatGPT, Cursor or Copilot. Every AI tool on
+                                your team can find it, open it and show where it
+                                came from.
+                            </p>
+                            <div className="cta">
+                                <Button asChild className="btn btn-primary">
+                                    <Link
+                                        href={accountUrl}
+                                        data-testid="landing-hero-cta"
+                                    >
+                                        {accountLabel}{' '}
+                                        <span className="arrow">→</span>
+                                    </Link>
+                                </Button>
+                                <a className="btn btn-ghost" href="#how">
+                                    See how it works{' '}
                                     <span className="arrow">→</span>
-                                </Link>
-                            </Button>
-                            <a className="btn btn-ghost" href="#how">
-                                See how it works{' '}
-                                <span className="arrow">→</span>
-                            </a>
-                        </div>
-                    </header>
-
-                    <StoryStage story={story} />
+                                </a>
+                            </div>
+                        </header>
+                        <StoryStage story={story} />
+                    </div>
 
                     <div className="strip rule">
                         <div className="lab">
@@ -288,135 +220,37 @@ export default function Landing() {
                                 <AiToolIcon tool="cursor" size={26} />
                                 Cursor
                             </span>
-                            <span className="more">
-                                and other major AI tools
-                            </span>
+                            <span className="more">and other AI tools</span>
                         </div>
                     </div>
 
-                    <StorySteps story={story} />
-
                     <section className="statement pad rule">
-                        <div className="eyebrow">The problem</div>
                         <h2 className="two">
                             Your team uses many AI tools.{' '}
                             <span>
                                 What each one makes stays locked inside it.
-                            </span>{' '}
-                            Artfct brings it together.
+                            </span>
                         </h2>
                         <p className="def">
                             <b>Artifact:</b> any report, table, document or
-                            mockup your AI makes.
+                            mockup your AI makes. Artfct brings them together
+                            and puts them in reach of every tool.
                         </p>
-                        <div className="cmp">
-                            <div className="a">
-                                <div className="eyebrow">Without Artfct</div>
-                                <h3>Work scattered across chats</h3>
-                                <ul>
-                                    <li>
-                                        A good report lives in one person’s chat
-                                        history
-                                    </li>
-                                    <li>
-                                        Each AI tool starts from zero every time
-                                    </li>
-                                    <li>
-                                        No one can tell where an answer came
-                                        from
-                                    </li>
-                                </ul>
-                            </div>
-                            <div className="b">
-                                <div className="eyebrow">With Artfct</div>
-                                <h3>One library every AI can read</h3>
-                                <ul>
-                                    <li>
-                                        Reports, tables and docs are shared
-                                        once, by choice
-                                    </li>
-                                    <li>
-                                        Every AI tool can find and build on them
-                                    </li>
-                                    <li>
-                                        Each answer points back to its sources
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
                     </section>
 
-                    <section className="four rule">
-                        {FOUR.map((item) => (
-                            <div key={item.title}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    aria-hidden="true"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                >
-                                    {item.icon}
-                                </svg>
-                                <h3>{item.title}</h3>
-                                <p>{item.text}</p>
-                            </div>
-                        ))}
-                    </section>
+                    <StorySteps story={story} />
 
-                    <section className="use pad rule" id="use">
-                        <div className="head">
-                            <div>
-                                <div className="eyebrow">
-                                    One library. Every team.
-                                </div>
-                                <h2 className="two">
-                                    Made for whoever makes things with AI.{' '}
-                                    <span>Not just engineers.</span>
-                                </h2>
-                            </div>
-                            <p className="lede">
-                                From a product brief to a budget table to a
-                                campaign mockup, the same shared library holds
-                                it.
-                            </p>
-                        </div>
-                        <div className="acc">
-                            {USE_CASES.map((useCase) => (
-                                <details key={useCase.role} open={useCase.open}>
-                                    <summary>
-                                        <span className="plus">+</span>
-                                        <span className="role">
-                                            {useCase.role}
-                                        </span>
-                                        <h3>{useCase.title}</h3>
-                                    </summary>
-                                    <div className="body">
-                                        <p>{useCase.text}</p>
-                                        <div className="mini">
-                                            {useCase.rows.map((row) => (
-                                                <MiniRow
-                                                    key={row.title}
-                                                    {...row}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </details>
-                            ))}
-                        </div>
-                    </section>
-
-                    <section className="control rule" id="control">
+                    <section className="control band rule" id="control">
                         <div>
-                            <div className="eyebrow">You stay in control</div>
                             <h2 className="two">
-                                Your library belongs to your company.{' '}
-                                <span>Not to any one AI tool.</span>
+                                Change AI tools.{' '}
+                                <span>Keep everything they made.</span>
                             </h2>
                             <p className="lede">
-                                Teams can use whichever AI tools they like.
-                                Where the work is kept and who can see it is up
-                                to you.
+                                Your team’s knowledge base belongs to your
+                                company, not to any one vendor. Use whichever AI
+                                tools you like; where the work is kept and who
+                                can see it is up to you.
                             </p>
                         </div>
                         <div className="r">
@@ -428,8 +262,8 @@ export default function Landing() {
                                     <div>
                                         <b>Sharing is your choice</b>
                                         <span>
-                                            Nothing goes into the library unless
-                                            someone shares it.
+                                            Nothing goes into the knowledge base
+                                            unless someone shares it.
                                         </span>
                                     </div>
                                 </li>
@@ -462,6 +296,46 @@ export default function Landing() {
                         </div>
                     </section>
 
+                    <section className="use pad rule" id="use">
+                        <div className="head">
+                            <div>
+                                <h2 className="two">
+                                    Made for whoever makes things with AI.{' '}
+                                    <span>Not just engineers.</span>
+                                </h2>
+                            </div>
+                            <p className="lede">
+                                From a product brief to a budget table to a
+                                campaign mockup, the same knowledge base holds
+                                it.
+                            </p>
+                        </div>
+                        <div className="acc">
+                            {USE_CASES.map((useCase) => (
+                                <details key={useCase.role} open={useCase.open}>
+                                    <summary>
+                                        <span className="plus">+</span>
+                                        <span className="role">
+                                            {useCase.role}
+                                        </span>
+                                        <h3>{useCase.title}</h3>
+                                    </summary>
+                                    <div className="body">
+                                        <p>{useCase.text}</p>
+                                        <div className="mini">
+                                            {useCase.rows.map((row) => (
+                                                <MiniRow
+                                                    key={row.title}
+                                                    {...row}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </details>
+                            ))}
+                        </div>
+                    </section>
+
                     <section className="plansec pad rule" id="plans">
                         <div className="eyebrow">Pricing</div>
                         <h2>Start free. Add your team when you’re ready.</h2>
@@ -485,8 +359,9 @@ export default function Landing() {
                             <div className="plan hl">
                                 <div className="nm">Team</div>
                                 <div className="for">
-                                    Everything above, for the whole team. Priced
-                                    per person.
+                                    Everything in Free, for the whole team.
+                                    Billed per person; Team pricing isn’t
+                                    published yet.
                                 </div>
                                 <ul>
                                     <li>
@@ -496,13 +371,19 @@ export default function Landing() {
                                     <li>
                                         Share from your AI tool to your team
                                     </li>
-                                    <li>Find things by describing them</li>
-                                    <li>Your own web address</li>
+                                    <li>
+                                        Search by describing what you need, in
+                                        plain words
+                                    </li>
+                                    <li>
+                                        Your company’s own web address for your
+                                        knowledge base
+                                    </li>
                                 </ul>
                                 <p className="fine">
-                                    Try Team free: everything except finding by
-                                    description and your own web address. Your
-                                    assistants can still open any shared
+                                    Try Team free with everything except search
+                                    by description and your own web address.
+                                    Your AI tools can still open any shared
                                     document in full.
                                 </p>
                                 <Button asChild className="btn btn-primary">
@@ -533,10 +414,11 @@ export default function Landing() {
 
                     <section className="close pad rule">
                         <h2 className="two">
-                            Give your team’s AI a <em>shared</em> memory.
+                            Start sharing{' '}
+                            <span>what your team’s AI makes.</span>
                         </h2>
                         <p className="lede">
-                            Sign up, add Artfct to your AI tool, and share
+                            Sign up, connect your AI tools once, and share
                             what’s worth keeping.
                         </p>
                         <div className="cta">
