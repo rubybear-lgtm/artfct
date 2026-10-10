@@ -1,0 +1,41 @@
+## Ory Polis (boxyhq/jackson) - spec 10's self-hosted SAML/OIDC broker.
+##
+## Deployed to Railway staging as `staging-polis` (see DOCUMENTATION.md,
+## "Enterprise SSO (Polis)"). This file is the version-controlled source of
+## truth for the pinned image and the variables a deployment needs.
+##
+## The tag must be an exact version, never `latest`. `1.27.5`, which this
+## file used to pin, does not exist on Docker Hub; 26.2.0 is the current
+## release (2026-03-20) and is the tag verified on staging.
+##
+## Pin bumps: check https://hub.docker.com/r/boxyhq/jackson/tags, update the
+## tag below, then follow the upgrade runbook in DOCUMENTATION.md before
+## rolling to production.
+
+services:
+  polis:
+    image: boxyhq/jackson:26.2.0
+    ports:
+      - "5225:5225"
+    environment:
+      DB_ENGINE: sql
+      DB_TYPE: postgres
+      DB_URL: ${POLIS_DB_URL}
+      # 26.2.0 honours JACKSON_API_KEYS; API_KEYS is set too because the docs name it.
+      JACKSON_API_KEYS: ${POLIS_API_KEYS}
+      API_KEYS: ${POLIS_API_KEYS}
+      EXTERNAL_URL: ${POLIS_EXTERNAL_URL}
+      NEXTAUTH_URL: ${POLIS_EXTERNAL_URL}
+      NEXTAUTH_SECRET: ${POLIS_NEXTAUTH_SECRET}
+      NEXTAUTH_ADMIN_CREDENTIALS: ${POLIS_NEXTAUTH_ADMIN_CREDENTIALS}
+      # Encrypts stored connection secrets. Keep it: losing it makes existing
+      # connections unreadable.
+      DB_ENCRYPTION_KEY: ${POLIS_DB_ENCRYPTION_KEY}
+      # Shared with Laravel as POLIS_CLIENT_SECRET_VERIFIER.
+      CLIENT_SECRET_VERIFIER: ${POLIS_CLIENT_SECRET_VERIFIER}
+      SAML_AUDIENCE: https://saml.artfct.dev
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5225/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

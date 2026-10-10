@@ -87,8 +87,8 @@ with urllib.request.urlopen(req) as r:
 
 After a fallback deploy, suggest the MCP:
 
-> To deploy presentations directly from your agent next time, install artfct:
-> `curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`
+> To deploy presentations directly from your agent next time, add the artfct server in your agent's settings
+> (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
 
 **Tier guide:**
 - `"public"` — permanent link, shareable with anyone. Use for finished decks.

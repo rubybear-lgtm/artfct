@@ -1,5 +1,11 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html
+    lang="{{ str_replace('_', '-', app()->getLocale()) }}"
+    @class([
+        'app-theme' => ! in_array($page['component'] ?? null, ['welcome', 'landing'], true),
+        'dark' => ($appearance ?? 'system') == 'dark',
+    ])
+>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,11 +27,11 @@
 
         {{-- OG / social meta --}}
         <meta property="og:site_name" content="artfct" />
-        <meta property="og:image" content="{{ asset('og-image.svg') }}" />
+        <meta property="og:image" content="{{ asset('og-image.png') }}" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content="{{ asset('og-image.svg') }}" />
+        <meta name="twitter:image" content="{{ asset('og-image.png') }}" />
 
         {{-- canonical --}}
         <link rel="canonical" href="{{ url()->current() }}" />
@@ -34,16 +40,19 @@
             $meta = $page['props']['meta'] ?? [];
             $pageTitle = $meta['title'] ?? 'artfct';
             $pageDescription = $meta['description'] ?? 'Share self-contained HTML files instantly. Drop a file, get a link. No sign-up required.';
+            $blogPost = ($page['component'] ?? null) === 'blog-show' ? ($page['props']['post'] ?? null) : null;
         @endphp
 
-        <title>{{ $pageTitle }}</title>
-        <meta name="description" content="{{ $pageDescription }}" />
-        <meta property="og:title" content="{{ $pageTitle }}" />
-        <meta property="og:description" content="{{ $pageDescription }}" />
+        <x-inertia::head>
+            <title>{{ $pageTitle }}</title>
+            <meta name="description" content="{{ $pageDescription }}" />
+            <meta property="og:title" content="{{ $pageTitle }}" />
+            <meta property="og:description" content="{{ $pageDescription }}" />
+            <meta name="twitter:title" content="{{ $pageTitle }}" />
+            <meta name="twitter:description" content="{{ $pageDescription }}" />
+        </x-inertia::head>
         <meta property="og:url" content="{{ url()->current() }}" />
-        <meta property="og:type" content="website" />
-        <meta name="twitter:title" content="{{ $pageTitle }}" />
-        <meta name="twitter:description" content="{{ $pageDescription }}" />
+        <meta property="og:type" content="{{ $blogPost ? 'article' : 'website' }}" />
 
         {{-- structured data --}}
         <script type="application/ld+json">
@@ -53,21 +62,32 @@
             "name": "artfct",
             "url": "https://artfct.dev",
             "description": "{{ $pageDescription }}",
-            "applicationCategory": "DeveloperApplication",
-            "operatingSystem": "Web, macOS, Linux",
-            "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-            }
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web"
         }
         </script>
+
+        @if ($blogPost)
+            @php
+                $blogPostingJson = json_encode([
+                    '@context' => 'https://schema.org',
+                    '@type' => 'BlogPosting',
+                    'headline' => $blogPost['title'],
+                    'description' => $blogPost['description'],
+                    'datePublished' => $blogPost['date'],
+                    'image' => asset('og-image.png'),
+                    'mainEntityOfPage' => url()->current(),
+                    'author' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
+                    'publisher' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
+                ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+            @endphp
+            <script type="application/ld+json">{!! $blogPostingJson !!}</script>
+        @endif
 
         @fonts
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
-        <x-inertia::head />
     </head>
     <body class="font-sans antialiased">
         <x-inertia::app />
@@ -81,18 +101,24 @@
             @endphp
 
             @switch($page['component'] ?? '')
+                @case('landing')
+                    <h1>Every AI on your team, working from the same memory.</h1>
+                    <p>{{ $pageDescription }}</p>
+                    <p>Share the reports, tables, documents and mockups your AI makes. Everything shared is stored and indexed for your team, and every AI tool on the team can read it and cite its sources. You choose what to share. Your artifacts are never used to train AI, and you can export everything any time.</p>
+                    <p>Set up once: sign up, invite your team and add Artfct to your AI tool. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools. Start with Free, try Team free, or talk about Enterprise.</p>
+                    @break
+
                 @case('welcome')
                     <h1>{{ $fallbackTitle }}</h1>
                     <p>{{ $pageDescription }}</p>
-                    <p>artfct is an instant encrypted HTML sharing tool for developers. Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get a shareable link in seconds. No sign-up, no accounts, no configuration. Every artifact is encrypted in the browser with AES-GCM before it ever reaches the server. Three tiers determine access: public (open URLs, shareable with anyone), secure (high-entropy fragment keys, previews blurred by default), or ephemeral (intentionally short-lived). All artifacts use sliding expiration — each access resets the clock. Default TTL is 5 days, configurable up to 1 year.</p>
-                    <p>Install the artfct skill in Claude Code, Cursor, Codex, or Gemini and deploy artifacts directly from your agent. The artfct MCP server handles authentication, deployment, and link management automatically — your agent builds, artfct serves. Supports CLI piping from stdin, REST API integration, and one-click drag-and-drop in the browser.</p>
-                    <p>Perfect for sharing UI prototypes, dashboard previews, AI-generated visual outputs, HTML demos, slide decks, markdown documents, Mermaid diagrams, JSON tables, API diffs, env-diffs, regex testers, and any other self-contained web content. No accounts required.</p>
+                    <p>artfct turns a self-contained HTML or Markdown file into a private, shareable link in seconds. No sign-up, no accounts. Every free link is encrypted in your browser before upload, and the preview is blurred by default, so only someone with the full link can read it. Links expire 5 days after the last visit, and you can change that from Recent deployments.</p>
+                    <p>Perfect for sharing UI prototypes, dashboard previews, AI-generated visual outputs, HTML demos, slide decks, markdown documents, Mermaid diagrams, JSON tables, API diffs, env-diffs, regex testers, and any other self-contained web content. No accounts required. Works in the browser, and with AI tools that support adding a remote connection.</p>
                     @break
 
                 @case('docs')
                     <h1>{{ $fallbackTitle }}</h1>
                     <p>{{ $pageDescription }}</p>
-                    <p>Full REST API reference for creating, serving, listing, and managing HTML artifacts programmatically. Includes CLI documentation, MCP server setup, and skills installation guides.</p>
+                    <p>Full REST API reference for creating, serving, listing, and managing HTML artifacts programmatically. Includes setup guides for connecting your AI tool and installing the artfct skill.</p>
                     @break
 
                 @case('blog')

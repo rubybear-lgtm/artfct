@@ -114,4 +114,17 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'throttle_per_minute' => env('AUTH_THROTTLE_PER_MINUTE', 20),
+    'mcp_throttle_per_minute' => env('MCP_THROTTLE_PER_MINUTE', 120),
+    'mcp_idempotency_ttl_seconds' => env('MCP_IDEMPOTENCY_TTL_SECONDS', 600),
+    // How long a hosted MCP session stays valid after `initialize`. Clients
+    // such as Claude Code do not re-initialize on their own, so a short TTL
+    // forces people to reconnect by hand. 20160 minutes = 14 days.
+    'mcp_session_ttl_minutes' => env('MCP_SESSION_TTL_MINUTES', 20160),
+
+    'oauth_registration_per_hour' => env('OAUTH_REGISTRATION_PER_HOUR', 60),
+    'oauth_registration_per_minute' => env('OAUTH_REGISTRATION_PER_MINUTE', 120),
+
+    'mcp_activity_retention_days' => env('MCP_ACTIVITY_RETENTION_DAYS', 90),
+
 ];

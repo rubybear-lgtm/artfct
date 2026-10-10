@@ -1,0 +1,507 @@
+<?php
+
+use App\Contracts\ArtifactContentSource;
+use App\Contracts\ArtifactDirectory;
+use App\Enums\AuditEventType;
+use App\Enums\TeamRole;
+use App\Models\AuditEvent;
+use App\Models\Team;
+use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Indexing\FakeVectorIndex;
+use App\Services\Indexing\IndexingService;
+use App\Services\Indexing\VectorIndexContract;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
+
+test('viewer_cannot_revoke', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/*' => Http::response([], 200),
+    ]);
+
+    $team = Team::factory()->create();
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+    $artifact = [
+        'id' => '1234567890',
+        'org_id' => $team->slug,
+        'user_id' => 1,
+        'title' => 'Test',
+        'revoked_at' => null,
+    ];
+
+    $response = test()
+        ->actingAs($viewer)
+        ->patch(
+            "/settings/teams/{$team->slug}/console/artifacts/{$artifact['id']}/revoke",
+            ['revoked_at' => now()->toIso8601String()]
+        );
+
+    $response->assertForbidden();
+    // Verify the API was never called (the guard fired, preventing the call)
+    Http::assertNothingSent();
+});
+
+test('revoking_an_artifact_removes_its_index_chunks', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $artifactId = '1234567890';
+    $html = '<html><body><p>'.str_repeat('A revoked artifact must leave the search index. ', 3).'</p></body></html>';
+    app(IndexingService::class)->indexArtifact($team, $artifactId, $html, []);
+
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeTrue();
+
+    test()->actingAs($admin)
+        ->patch("/settings/teams/{$team->slug}/console/artifacts/{$artifactId}/revoke")
+        ->assertRedirect()
+        ->assertSessionHas('inertia.flash_data.toast', [
+            'type' => 'success',
+            'message' => 'Artifact revoked.',
+        ]);
+
+    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeFalse();
+});
+
+test('reindex_flashes_a_success_toast', function () {
+    config(['indexing.enabled' => true]);
+    Bus::fake();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, '1234567890', '<h1>Hello</h1>');
+
+    test()->actingAs($admin)
+        ->post("/settings/teams/{$team->slug}/console/artifacts/1234567890/reindex")
+        ->assertRedirect()
+        ->assertSessionHas('inertia.flash_data.toast', [
+            'type' => 'success',
+            'message' => 'Indexing queued.',
+        ]);
+});
+
+test('member_cannot_read_other_org_list', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/*' => Http::response([], 200),
+    ]);
+
+    $team1 = Team::factory()->create(['slug' => 'team-1']);
+    $team2 = Team::factory()->create(['slug' => 'team-2']);
+
+    $member = memberOfTeam($team1, TeamRole::Member);
+
+    $response = test()
+        ->actingAs($member)
+        ->get("/settings/teams/{$team2->slug}/console");
+
+    $response->assertNotFound();
+    // Verify the API was never called (the guard fired at the route resolution level)
+    Http::assertNothingSent();
+});
+
+test('cross_org_list_returns_404_not_403', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/*' => Http::response([], 200),
+    ]);
+
+    $team1 = Team::factory()->create(['slug' => 'team-1']);
+    $team2 = Team::factory()->create(['slug' => 'team-2']);
+
+    $admin = memberOfTeam($team1, TeamRole::Admin);
+
+    // Admin of team1 tries to access team2's console
+    $response = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team2->slug}/console");
+
+    $response->assertNotFound();
+    // Verify the API was never called
+    Http::assertNothingSent();
+});
+
+test('token_value_shown_once_only_on_reload', function () {
+    configureOrgJwt();
+
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    // Create a token (this is from spec 07, just verifying behavior on reload)
+    $response = test()
+        ->actingAs($admin)
+        ->postJson("/settings/teams/{$team->slug}/tokens", [
+            'name' => 'Test token',
+            'role' => 'admin',
+        ]);
+
+    $response->assertCreated();
+    $rawToken = $response->json('token');
+    expect($rawToken)->toBeString()->not->toBeEmpty();
+
+    // Now reload the settings page and verify the raw token is NOT in the response
+    $settingsResponse = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}");
+
+    $settingsResponse->assertOk();
+    // The response should not contain the raw token value anywhere
+    expect($settingsResponse->getContent())->not->toContain($rawToken);
+});
+
+test('export_requires_admin', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/*' => Http::response(['artifacts' => [], 'blobs' => []], 200),
+    ]);
+
+    $team = Team::factory()->create();
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    // Viewer cannot export
+    $response = test()
+        ->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/export");
+
+    $response->assertForbidden();
+    Http::assertNothingSent();
+
+    // Member cannot export
+    $response = test()
+        ->actingAs($member)
+        ->get("/settings/teams/{$team->slug}/console/export");
+
+    $response->assertForbidden();
+    Http::assertNothingSent();
+});
+
+test('admin_export_is_a_zip_with_metadata_and_byte_identical_blobs', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    $response = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/export");
+
+    $response->assertOk()->assertDownload();
+    expect($response->headers->get('Content-Disposition'))->toContain('test-org-artifacts-');
+
+    $zip = new ZipArchive;
+    expect($zip->open($response->baseResponse->getFile()->getPathname()))->toBeTrue();
+
+    $metadata = json_decode($zip->getFromName('artifacts.json'), true);
+    expect($metadata['artifacts'])->toHaveCount(2);
+
+    $body = '<!doctype html><title>abcdef123456</title>';
+    expect($zip->getFromName('blobs/'.hash('sha256', $body)))->toBe($body);
+    expect($zip->numFiles)->toBe(3);
+    $zip->close();
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ExportPerformed)->count())->toBe(1);
+});
+
+test('export_refuses_a_blob_that_does_not_match_its_hash', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    $directory = new class extends FakeArtifactDirectory
+    {
+        public function fetchBlob(string $orgSlug, string $sha256): ?string
+        {
+            return 'tampered';
+        }
+    };
+    app()->instance(ArtifactDirectory::class, $directory);
+
+    test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/export")
+        ->assertServerError();
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ExportPerformed)->count())->toBe(0);
+});
+
+test('export_is_rate_limited', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/*' => Http::response(['artifacts' => [], 'blobs' => []], 200),
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    // First 3 exports should succeed
+    for ($i = 0; $i < 3; $i++) {
+        $response = test()
+            ->actingAs($admin)
+            ->get("/settings/teams/{$team->slug}/console/export");
+
+        $response->assertOk();
+    }
+
+    // Fourth export should be rate limited (429)
+    $response = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/export");
+
+    $response->assertStatus(429);
+});
+
+test('admin_can_list_artifacts', function () {
+    // In the testing environment, ArtifactDirectory resolves to
+    // FakeArtifactDirectory (an in-memory double), not an HTTP client — see
+    // AppServiceProvider. Assert against its seeded demo data, not a mocked
+    // HTTP call the app never actually makes here.
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    $response = test()
+        ->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('console/index')
+        ->where('artifacts.0.id', '1234567890')
+        ->where('isAdmin', true)
+    );
+});
+
+test('the_ai_tool_filter_is_built_from_the_artifacts_it_lists', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    // A tool no code constant lists: the dropdown must name whatever the
+    // org's artifacts actually carry, not a list compiled into the view.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => 'windsurf-made',
+        'org_id' => $team->slug,
+        'user_id' => 3,
+        'title' => 'Windsurf artifact',
+        'description' => 'Built by Windsurf',
+        'content_hash' => 'aaaabbbbcccc',
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'provenance' => ['agent' => 'windsurf', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('console/index')
+            ->where('agents', ['claude-code', 'cursor', 'windsurf'])
+        );
+});
+
+test('viewer_can_list_artifacts_but_no_admin_controls', function () {
+    Http::fake([
+        'https://worker.test/v1/orgs/test-org/artifacts' => Http::response([
+            'artifacts' => [],
+            'next_cursor' => null,
+        ], 200),
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    $response = test()
+        ->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('console/index')
+        ->where('isAdmin', false)
+    );
+});
+
+test('member_opens_artifact_through_the_one_short_link', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    // A viewer, not an admin: opening what the console lists is a read.
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>');
+
+    $response = test()
+        ->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+
+    // One short link for every sharing level: the viewer authorizes the member
+    // and mints only for an artifact that needs it.
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+
+    expect((string) $response->headers->get('Location'))->not->toContain('token');
+
+    $console = test()->actingAs($viewer)->get("/settings/teams/{$team->slug}/console");
+
+    expect($console->getContent())->not->toContain(ARTIFACT_LINK_SECRET);
+});
+
+test('minted_link_pins_the_workers_token_wire_format', function () {
+    // Independent vector: `printf '%s' '<id>.1700000000' | openssl dgst -sha256
+    // -hmac 'fixed-secret' -r`. Pinned so the Laravel minter and the Worker's
+    // `verify_access_token` cannot drift apart silently.
+    $link = (new ArtifactAccessLink('fixed-secret', '.artfct.dev', 60))
+        ->forArtifact('test-org', ARTIFACT_LINK_ID, now()->setTimestamp(1_700_000_000));
+
+    expect($link)->toBe(
+        'https://test-org--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token='.ARTIFACT_LINK_ID.'.1700000000.'
+        .'e22334c0bc1f712b85eff0011dcb6979239521c4d2fa6ff7e9d598d55130911d'
+    );
+
+    // The primitive itself matches the vector the Rust implementation asserts
+    // (`hmac_sha256_matches_known_test_vector`): RFC 4231 test case 1.
+    expect(hash_hmac('sha256', 'Hi There', str_repeat(chr(0x0B), 20)))
+        ->toBe('b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7');
+});
+
+test('open_is_refused_across_teams_without_revealing_whether_the_artifact_exists', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'team-1']);
+    $otherTeam = Team::factory()->create(['slug' => 'team-2']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    // The artifact does exist — in the other team's org.
+    $content->seed($otherTeam->slug, ARTIFACT_LINK_ID, '<h1>Not yours</h1>');
+
+    // A member of team-1 has no business in team-2's console at all.
+    test()->actingAs($member)
+        ->get("/settings/teams/{$otherTeam->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertNotFound();
+
+    // Asking for an id that lives in another org is the same 404 as asking for
+    // an id that exists nowhere, with no token minted.
+    $foreign = test()->actingAs($member)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+    $unknown = test()->actingAs($member)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/ffffffffffffffffffffffffffffffff/open");
+
+    $foreign->assertNotFound();
+    $unknown->assertNotFound();
+
+    expect($foreign->headers->get('Location'))->toBeNull()
+        ->and($foreign->getContent())->not->toContain(ARTIFACT_LINK_ID)
+        ->and($foreign->getContent())->toBe($unknown->getContent());
+});
+
+test('open_fails_closed_and_hides_the_control_without_a_signing_secret', function () {
+    config(['services.artifact_access.token_secret' => null]);
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>');
+
+    test()->actingAs($admin)->get("/settings/teams/{$team->slug}/console")
+        ->assertInertia(fn ($page) => $page->where('canOpenArtifacts', false));
+
+    // The console open route no longer mints, so it no longer 503s: the viewer
+    // the short link points at is where an unconfigured secret fails closed.
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+
+    configureArtifactLinks();
+
+    test()->actingAs($admin)->get("/settings/teams/{$team->slug}/console")
+        ->assertInertia(fn ($page) => $page->where('canOpenArtifacts', true));
+});
+
+test('guest_cannot_open_artifact', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+
+    test()->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertRedirect(route('login'));
+});
+
+/**
+ * A public artifact is served by the Worker to anyone, so there is no token to
+ * mint for it and no mint to audit: the browser is sent straight to the public
+ * URL. Minting one anyway would put a credential in the browser for an artifact
+ * that never needed one.
+ */
+test('opening_a_public_artifact_goes_straight_to_its_public_url_without_minting', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', tier: 'public');
+
+    $response = test()->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+
+    expect((string) $response->headers->get('Location'))
+        ->not->toContain('/p/')
+        ->not->toContain('token')
+        ->and(AuditEvent::query()
+            ->where('event_type', AuditEventType::ArtifactLinkMinted)
+            ->exists())->toBeFalse();
+});
+
+test('opening_a_public_artifact_uses_the_staging_worker_host_without_an_app_public_base', function () {
+    config([
+        'app.public_base_url' => null,
+        'services.worker.base_url' => 'https://staging-worker.example.test',
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>', tier: 'public');
+
+    // Public artifacts now go through the app's short link too, so the Worker's
+    // public base never appears in what the console hands the browser.
+    $this->actingAs($viewer)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open')
+        ->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+});
+
+/**
+ * The mint audit row: who, which artifact, and when the link they were handed
+ * expires — and never the token. The audited expiry is compared against the
+ * expiry inside the minted token, so the two cannot drift apart, and the whole
+ * row is checked against the token rather than the token being spot-checked.
+ */
+test('the console open route no longer mints or audits, it hands out the short link', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>Hello</h1>');
+
+    $response = test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console/artifacts/".ARTIFACT_LINK_ID.'/open');
+
+    $response->assertRedirect(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
+
+    expect((string) $response->headers->get('Location'))
+        ->not->toContain('token')
+        // The viewer audits the mint once, when it actually mints; the console
+        // route mints nothing, so it records nothing.
+        ->and(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
+});

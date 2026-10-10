@@ -2,7 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\PaymentStatus;
+use App\Enums\Plan;
+use App\Services\Billing\QuotaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -41,6 +45,61 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'teams' => fn () => $request->user()?->toUserTeams(includeCurrent: true) ?? [],
+            // A cached read of the current team's quota so every page can show a
+            // warning or over-quota banner; null when the Worker is unreachable.
+            'quota' => function () use ($request): ?array {
+                $team = $request->user()?->currentTeam;
+
+                if ($team === null) {
+                    return null;
+                }
+
+                try {
+                    // Versioned because the cached payload gained the storage
+                    // and artifacts dimensions: the database store keeps
+                    // entries written by a previous deploy for up to a minute,
+                    // and the layout reads quota.storage.used without a
+                    // fallback.
+                    return Cache::remember("quota-banner:v2:{$team->id}", 60, function () use ($team): array {
+                        $status = app(QuotaService::class)->status($team);
+
+                        return [
+                            'warning' => $status->anyWarning(),
+                            'exceeded' => $status->anyExceeded(),
+                            'storage' => [
+                                'used' => $status->storageBytes,
+                                'limit' => $status->storageLimitBytes,
+                                'percent' => $status->storagePercent,
+                                'warning' => $status->storageWarning,
+                                'exceeded' => $status->storageExceeded,
+                            ],
+                            'artifacts' => [
+                                'used' => $status->artifactsThisPeriod,
+                                'limit' => $status->artifactsLimit,
+                                'percent' => $status->artifactsPercent,
+                                'warning' => $status->artifactsWarning,
+                                'exceeded' => $status->artifactsExceeded,
+                            ],
+                        ];
+                    });
+                } catch (\Throwable) {
+                    return null;
+                }
+            },
+            'currentTeam' => function () use ($request) {
+                $team = $request->user()?->currentTeam;
+
+                return $team === null ? null : [
+                    'slug' => $team->slug,
+                    'name' => $team->name,
+                    'plan' => ($team->plan ?? Plan::Free)->value,
+                    'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
+                    'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
+                    'role' => $request->user()->teamRole($team)?->value,
+                    'isAdmin' => $request->user()->isAdminOf($team),
+                ];
+            },
         ];
     }
 }

@@ -1,0 +1,941 @@
+use super::*;
+use crate::sharing::{can_view, Sharing, Viewer};
+
+const LIMITS_WRITE_SECRET_ENV: &str = "ARTFCT_LIMITS_WRITE_SECRET";
+const DEFAULT_STORAGE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+const DEFAULT_ARTIFACTS_PER_MONTH: u64 = 1000;
+const DEFAULT_BUNDLE_CEILING_BYTES: u64 = 10 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OrgLimitsRow {
+    storage_bytes: i64,
+    artifacts_per_month: i64,
+    bundle_ceiling_bytes: i64,
+    read_only: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CountRow {
+    value: i64,
+}
+
+/// Limits for `org`: the pushed `org_limits` row, else defaults mirroring
+/// Laravel's `QuotaLimits::default()` (overridable through Worker vars).
+pub(crate) async fn load_org_limits(
+    database: &worker::D1Database,
+    env: &Env,
+    org: &str,
+) -> Result<quota::OrgLimits> {
+    let row = database
+        .prepare("SELECT storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only FROM org_limits WHERE org_id = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgLimitsRow>(None)
+        .await?;
+    Ok(match row {
+        Some(row) => quota::OrgLimits {
+            storage_bytes: row.storage_bytes.max(0) as u64,
+            artifacts_per_month: row.artifacts_per_month.max(0) as u64,
+            bundle_ceiling_bytes: row.bundle_ceiling_bytes.max(0) as u64,
+            read_only: row.read_only != 0,
+        },
+        None => quota::OrgLimits {
+            storage_bytes: env_u64(env, "ARTFCT_DEFAULT_STORAGE_BYTES", DEFAULT_STORAGE_BYTES),
+            artifacts_per_month: env_u64(
+                env,
+                "ARTFCT_DEFAULT_ARTIFACTS_PER_MONTH",
+                DEFAULT_ARTIFACTS_PER_MONTH,
+            ),
+            bundle_ceiling_bytes: env_u64(
+                env,
+                "ARTFCT_DEFAULT_BUNDLE_CEILING_BYTES",
+                DEFAULT_BUNDLE_CEILING_BYTES,
+            ),
+            read_only: false,
+        },
+    })
+}
+
+/// D1 is the source of truth: storage counts each distinct `content_hash`
+/// once per org across *every* version (`version_files`, invariant 3 — old
+/// versions are still stored), not just the current copy in `files`; the
+/// period count is artifacts created this UTC month (a soft-deleted artifact
+/// still counts; a hard delete would drop it).
+pub(crate) async fn load_org_usage(
+    database: &worker::D1Database,
+    org: &str,
+) -> Result<quota::OrgUsage> {
+    let storage = database
+        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? GROUP BY vf.content_hash)")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<CountRow>(None)
+        .await?;
+    let artifacts = database
+        .prepare("SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ?")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(&quota::month_start(Utc::now())),
+        ])?
+        .first::<CountRow>(None)
+        .await?;
+    Ok(quota::OrgUsage {
+        storage_bytes: storage.map_or(0, |row| row.value.max(0) as u64),
+        artifacts_this_period: artifacts.map_or(0, |row| row.value.max(0) as u64),
+    })
+}
+
+/// `Ok(None)` when the add is allowed, else the refusal response.
+pub(crate) async fn quota_refusal(
+    database: &worker::D1Database,
+    env: &Env,
+    org: &str,
+    incoming_bytes: u64,
+    kind: quota::AddKind,
+) -> Result<Option<Response>> {
+    let limits = load_org_limits(database, env, org).await?;
+    let usage = load_org_usage(database, org).await?;
+    match quota::assert_can_add(&limits, &usage, incoming_bytes, kind) {
+        quota::QuotaDecision::Allowed => Ok(None),
+        quota::QuotaDecision::QuotaExceeded(reason) => quota_error_response(
+            ErrorCode::QuotaExceeded,
+            403,
+            serde_json::json!({"reason": reason.as_str()}),
+        )
+        .map(Some),
+        quota::QuotaDecision::BundleTooLarge { limit_bytes } => quota_error_response(
+            ErrorCode::BundleTooLarge,
+            413,
+            serde_json::json!({"limit_bytes": limit_bytes}),
+        )
+        .map(Some),
+    }
+}
+
+pub(crate) fn quota_error_response(
+    code: ErrorCode,
+    status: u16,
+    details: Value,
+) -> Result<Response> {
+    let message = match code {
+        ErrorCode::BundleTooLarge => "The bundle exceeds this organization's per-artifact limit.",
+        _ => "This organization has reached a usage limit for new artifacts.",
+    };
+    let mut definition = build_error_response(code, message, status);
+    definition.body["error"]["details"] = details;
+    definition.into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OrgLimitsWriteRequest {
+    org: String,
+    storage_bytes: u64,
+    artifacts_per_month: u64,
+    bundle_ceiling_bytes: u64,
+    read_only: bool,
+}
+
+/// An unset secret fails closed.
+pub(crate) fn limits_write_authorized(secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(secret, authorization)
+}
+
+/// `POST /v1/internal/org-limits` — Laravel pushes each org's limits and
+/// payment state here (spec 14). Own shared secret, same shape as the
+/// revocation write; a wrong secret changes nothing.
+pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let payload = match req.json::<OrgLimitsWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    if let Err(message) = store::validate_slug(&payload.org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    database
+        .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+        .bind(&[
+            JsValue::from_str(&payload.org),
+            JsValue::from_f64(payload.storage_bytes as f64),
+            JsValue::from_f64(payload.artifacts_per_month as f64),
+            JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
+            JsValue::from_f64(f64::from(u8::from(payload.read_only))),
+            JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
+        ])?
+        .run()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"org": payload.org}), 200)
+        .into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OrgSettingsWriteRequest {
+    org: String,
+    public_sharing_allowed: bool,
+}
+
+/// The `POST /v1/internal/org-settings` body. `downgraded` lists the ids this
+/// request moved from public to team.
+#[derive(Debug, Serialize)]
+pub(crate) struct OrgSettingsWriteResponse {
+    pub(crate) org: String,
+    pub(crate) public_sharing_allowed: bool,
+    pub(crate) downgraded: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DowngradedRow {
+    id: String,
+}
+
+/// `POST /v1/internal/org-settings` — Laravel pushes whether the team allows
+/// public sharing (RUB-438). Turning it off downgrades every live public
+/// artifact of the org to team in the same request; the returned ids let
+/// Laravel audit each change. Own shared secret, the same one the limits write
+/// uses.
+pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let payload = match req.json::<OrgSettingsWriteRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400),
+    };
+    if let Err(message) = store::validate_slug(&payload.org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    // Selected before the update so the response names exactly the artifacts
+    // being downgraded. The update repeats the same predicate in one batch with
+    // the settings upsert, so it can never leave a public artifact behind.
+    let downgraded = if payload.public_sharing_allowed {
+        Vec::new()
+    } else {
+        database
+            .prepare("SELECT a.id AS id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND a.tier = 'public' AND a.revoked_at IS NULL")
+            .bind(&[JsValue::from_str(&payload.org)])?
+            .all()
+            .await?
+            .results::<DowngradedRow>()?
+            .into_iter()
+            .map(|row| row.id)
+            .collect::<Vec<_>>()
+    };
+    let mut statements = vec![database
+        .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
+        .bind(&[
+            JsValue::from_str(&payload.org),
+            JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
+            JsValue::from_str(&now),
+        ])?];
+    if !payload.public_sharing_allowed {
+        statements.push(
+            database
+                .prepare("UPDATE artifacts SET tier = 'secure' WHERE org_id = (SELECT id FROM orgs WHERE slug = ?) AND tier = 'public' AND revoked_at IS NULL")
+                .bind(&[JsValue::from_str(&payload.org)])?,
+        );
+    }
+    database.batch(statements).await?;
+    JsonResponseDefinition::json(
+        OrgSettingsWriteResponse {
+            org: payload.org,
+            public_sharing_allowed: payload.public_sharing_allowed,
+            downgraded,
+        },
+        200,
+    )
+    .into_worker_response()
+}
+
+/// Splits `/v1/internal/orgs/{org}/owner-backfill` into `org`.
+pub(crate) fn parse_owner_backfill_path(path: &str) -> Option<&str> {
+    let org = path
+        .strip_prefix("/v1/internal/orgs/")?
+        .strip_suffix("/owner-backfill")?;
+    (!org.is_empty() && !org.contains('/')).then_some(org)
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OwnerBackfillRequest {
+    owner_user_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct OwnerBackfillResponse {
+    pub(crate) org: String,
+    pub(crate) updated: usize,
+}
+
+/// `POST /v1/internal/orgs/{org}/owner-backfill` — gives ownerless artifacts of
+/// the org an owner (RUB-438). Idempotent. Version history's `created_by` is
+/// deliberately not rewritten. Authenticated with the limits shared secret.
+pub(crate) async fn owner_backfill(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(LIMITS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !limits_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid limits credential.", 401);
+    }
+    let Some(org) = parse_owner_backfill_path(path) else {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    };
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    let payload = match req.json::<OwnerBackfillRequest>().await {
+        Ok(payload) if !payload.owner_user_id.trim().is_empty() => payload,
+        _ => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "A non-empty owner_user_id is required.",
+                422,
+            )
+        }
+    };
+    let database = env.d1("ARTIFACTS_DB")?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    database
+        .prepare("INSERT OR IGNORE INTO users (id, created_at) VALUES (?, ?)")
+        .bind(&[
+            JsValue::from_str(&payload.owner_user_id),
+            JsValue::from_str(&now),
+        ])?
+        .run()
+        .await?;
+    let update = database
+        .prepare("UPDATE artifacts SET user_id = ? WHERE org_id = ? AND (user_id IS NULL OR user_id = '')")
+        .bind(&[
+            JsValue::from_str(&payload.owner_user_id),
+            JsValue::from_str(org),
+        ])?
+        .run()
+        .await?;
+    let updated = update.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+    JsonResponseDefinition::json(
+        OwnerBackfillResponse {
+            org: org.to_string(),
+            updated,
+        },
+        200,
+    )
+    .into_worker_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactSharingRow {
+    tier: String,
+    user_id: Option<String>,
+}
+
+/// Whether the caller can see a permanent artifact in `org`. Missing, or
+/// visible-only-to-someone-else, returns false, so revoke and delete answer a
+/// private artifact the caller cannot view with the same 404 as a missing one.
+/// Revoked rows stay visible to a viewer that could see them before revocation,
+/// so a revoke-then-delete flow keeps working. The caller must have checked
+/// `org` against the credential already; this is not an org check.
+async fn artifact_visible_to(
+    database: &worker::D1Database,
+    org: &str,
+    artifact_id: &str,
+    viewer: &Viewer<'_>,
+) -> Result<bool> {
+    let row = database
+        .prepare("SELECT a.tier AS tier, a.user_id AS user_id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1")
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .first::<ArtifactSharingRow>(None)
+        .await?;
+    Ok(row.is_some_and(|row| {
+        can_view(
+            Sharing::from_tier(&row.tier),
+            row.user_id.as_deref(),
+            viewer,
+        )
+    }))
+}
+
+/// Splits `/v1/orgs/{org}/usage` into `org`.
+pub(crate) fn parse_usage_path(path: &str) -> Option<&str> {
+    let org = path.strip_prefix("/v1/orgs/")?.strip_suffix("/usage")?;
+    (!org.is_empty() && !org.contains('/')).then_some(org)
+}
+
+/// `GET /v1/orgs/{org}/usage` — the numbers the create gate enforces.
+pub(crate) async fn get_org_usage(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let org = parse_usage_path(path).unwrap_or_default();
+    let credential = match require_org_scope(authorization.as_deref(), env, "usage:read").await? {
+        Ok(credential) => credential,
+        Err(refusal) => return Ok(refusal),
+    };
+    let credential_org = Some(credential.org_id);
+    match decide_org_read(credential_org.as_deref(), org) {
+        OrgReadDecision::Unauthorized => {
+            return json_error(
+                ErrorCode::Unauthorized,
+                "An organization token is required.",
+                401,
+            );
+        }
+        OrgReadDecision::NotFound => {
+            return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+        }
+        OrgReadDecision::Allowed => {}
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let usage = load_org_usage(&database, org).await?;
+    // The limits the create gate actually enforces, so a meter never
+    // disagrees with the Worker about how full an org is.
+    let limits = load_org_limits(&database, env, org).await?;
+    let now = Utc::now();
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "storage_bytes": usage.storage_bytes,
+            "artifacts_this_period": usage.artifacts_this_period,
+            "period_start": quota::month_start(now),
+            "period_end": quota::next_month_start(now),
+            "limits": {
+                "storage_bytes": limits.storage_bytes,
+                "artifacts_per_month": limits.artifacts_per_month,
+                "bundle_ceiling_bytes": limits.bundle_ceiling_bytes,
+                "read_only": limits.read_only,
+            },
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
+const JWKS_WRITE_SECRET_ENV: &str = "ARTFCT_JWKS_WRITE_SECRET";
+
+/// An unset secret fails closed.
+pub(crate) fn jwks_write_authorized(secret: Option<&str>, authorization: Option<&str>) -> bool {
+    authorization_matches(secret, authorization)
+}
+
+/// A publishable JWKS has at least one key and every key has a kid, n and e.
+pub(crate) fn validate_jwks(jwks: &Jwks) -> bool {
+    !jwks.keys.is_empty()
+        && jwks
+            .keys
+            .iter()
+            .all(|key| !key.kid.is_empty() && !key.n.is_empty() && !key.e.is_empty())
+}
+
+/// `POST /v1/internal/jwks` — Laravel publishes the org-token public key(s)
+/// here (RUB-343); the Worker verifies credentials against `auth:jwks` in KV.
+/// Own shared secret, same shape as the limits and revocation writes.
+pub(crate) async fn write_jwks(req: &mut Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let secret = env
+        .var(JWKS_WRITE_SECRET_ENV)
+        .ok()
+        .map(|value| value.to_string());
+    if !jwks_write_authorized(secret.as_deref(), authorization.as_deref()) {
+        return json_error(ErrorCode::Unauthorized, "Invalid JWKS credential.", 401);
+    }
+    let jwks = match req.json::<Jwks>().await {
+        Ok(jwks) if validate_jwks(&jwks) => jwks,
+        _ => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "A JWKS with at least one complete key is required.",
+                422,
+            );
+        }
+    };
+    env.kv(KV_BINDING)?
+        .put(JWKS_KV_KEY, serde_json::to_string(&jwks)?)?
+        .execute()
+        .await?;
+    JsonResponseDefinition::json(serde_json::json!({"keys": jwks.keys.len()}), 200)
+        .into_worker_response()
+}
+
+/// Admin console revocation (spec 8): `PATCH /v1/orgs/{org}/artifacts/{id}`.
+/// A soft delete — sets `revoked_at`, retains the row and blob (spec 8's
+/// "Revocation" section; reference counting from spec 3 still governs
+/// whether a hard-deleted artifact's blob goes, unaffected by this path).
+pub(crate) async fn revoke_org_artifact(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:delete").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let rest = path.trim_start_matches("/v1/orgs/");
+    let Some((org, tail)) = rest.split_once("/artifacts/") else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    let artifact_id = tail.trim_end_matches('/');
+    if !is_valid_artifact_id(artifact_id) {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
+    }
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // A private artifact this caller cannot see is the same 404 as a missing
+    // one (RUB-438); the org check above already scoped it to this org.
+    let viewer = Viewer::from_credential(&credential);
+    if !artifact_visible_to(&storage.database, org, artifact_id, &viewer).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    let updated = storage
+        .revoke_artifact(org, &store::ArtifactId(artifact_id.to_string()))
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let Some(item) = updated else {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    };
+    JsonResponseDefinition::json(
+        serde_json::json!({
+            "id": item.id.0,
+            "org_id": item.org,
+            "revoked_at": item.revoked_at,
+        }),
+        200,
+    )
+    .into_worker_response()
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ExportPayload {
+    artifacts: Vec<Value>,
+    blobs: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ExportRow {
+    pub(crate) id: String,
+    pub(crate) content_hash: String,
+    pub(crate) entrypoint: String,
+    pub(crate) created_at: String,
+    pub(crate) provenance: Option<String>,
+    pub(crate) manifest: String,
+}
+
+pub(crate) async fn export_organization(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let org = path
+        .trim_start_matches("/v1/orgs/")
+        .trim_end_matches("/export")
+        .trim_end_matches('/');
+    if let Err(message) = store::validate_slug(org) {
+        return json_error(ErrorCode::ValidationFailed, &message, 422);
+    }
+    if org != credential.org_id {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let viewer = Viewer::from_credential(&credential);
+    // A non-admin may call export, so private artifacts are excluded unless
+    // the caller owns them or carries the server-side private-read scope. The
+    // decision is made here and bound as a constant, so the SQL clause is the
+    // same one the list uses.
+    let reads_private = if viewer.is_admin() || viewer.reads_private() {
+        1.0
+    } else {
+        0.0
+    };
+    // Export is current-version only in this release: the `artifacts` row and
+    // its `files` are the current copy, and version history is not exported.
+    let rows = database
+        .prepare("SELECT a.id, a.content_hash, a.entrypoint, a.created_at, p.payload AS provenance, a.manifest FROM artifacts a LEFT JOIN provenance p ON p.artifact_row_id = a.row_id JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND (a.tier IN ('public', 'secure') OR a.user_id = ? OR ? = 1) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files f ON f.artifact_row_id = a.row_id AND f.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE f.artifact_row_id IS NULL OR b.content_hash IS NULL) ORDER BY a.created_at")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(&credential.user_id),
+            JsValue::from_f64(reads_private),
+        ])?
+        .all()
+        .await?
+        .results::<ExportRow>()?;
+    let mut blobs = std::collections::HashMap::new();
+    let mut artifacts = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Ok(manifest) = serde_json::from_str::<PermanentManifest>(&row.manifest) {
+            for file in manifest.files {
+                blobs.entry(file.sha256.clone()).or_insert_with(|| {
+                    format!(
+                        "{}/v1/blobs/{}",
+                        env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL)
+                            .trim_end_matches('/'),
+                        file.sha256
+                    )
+                });
+            }
+        }
+        artifacts.push(export_artifact_entry(&row));
+    }
+    JsonResponseDefinition::json(ExportPayload { artifacts, blobs }, 200).into_worker_response()
+}
+
+/// Builds one artifact's metadata JSON entry for the export payload,
+/// factored out of `export_organization` so provenance round-tripping
+/// (spec 8 DoD: exported metadata "includes `sources` for every provenance
+/// field") is unit-testable without D1 — `row.provenance` is the exact
+/// JSON string stored by spec 2's provenance capture, parsed and
+/// re-serialized verbatim, never reconstructed field-by-field, so nothing
+/// here can drop a `sources` entry spec 2 populated.
+pub(crate) fn export_artifact_entry(row: &ExportRow) -> Value {
+    serde_json::json!({
+        "id": row.id,
+        "content_hash": row.content_hash,
+        "entrypoint": row.entrypoint,
+        "created_at": row.created_at,
+        "provenance": row.provenance.as_deref().and_then(|value| serde_json::from_str::<Value>(value).ok()),
+    })
+}
+
+pub(crate) async fn delete_permanent_artifact(
+    artifact_id: &str,
+    req: &Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:delete").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let org = credential.org_id.clone();
+    // A private artifact this caller cannot see is the same 404 as a missing
+    // one; the org comes from the credential, not the path.
+    let viewer = Viewer::from_credential(&credential);
+    if !artifact_visible_to(&storage.database, &org, artifact_id, &viewer).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
+    }
+    match hard_delete_permanent(&storage, &org, artifact_id).await? {
+        HardDeleteOutcome::Deleted => {
+            emit_artifact_deleted(ctx, env, &org, artifact_id);
+            build_delete_response().into_worker_response()
+        }
+        HardDeleteOutcome::NotFound => {
+            json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404)
+        }
+        HardDeleteOutcome::LegalHold => legal_hold_response(),
+        HardDeleteOutcome::Contention => retryable_contention_response(),
+    }
+}
+
+pub(crate) fn legal_hold_response() -> Result<Response> {
+    let mut definition = build_error_response(
+        ErrorCode::Forbidden,
+        "The artifact is under legal hold and cannot be deleted.",
+        409,
+    );
+    definition.body["error"]["details"] = serde_json::json!({"reason": "legal_hold"});
+    definition.into_worker_response()
+}
+
+pub(crate) enum HardDeleteOutcome {
+    Deleted,
+    NotFound,
+    LegalHold,
+    Contention,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestRow {
+    manifest: String,
+}
+
+/// The sorted, de-duplicated union of every version's manifest hashes for one
+/// artifact — what a delete that removes every version must lock before it can
+/// release any blob.
+pub(crate) async fn artifact_version_hashes(
+    database: &worker::D1Database,
+    artifact_id: &str,
+    org: &str,
+) -> Result<Vec<String>> {
+    let rows = database
+        .prepare("SELECT v.manifest AS manifest FROM artifact_versions v JOIN artifacts a ON a.row_id = v.artifact_row_id JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ?")
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .all()
+        .await?
+        .results::<ManifestRow>()?;
+    let mut hashes = std::collections::BTreeSet::new();
+    for row in rows {
+        if let Ok(manifest) = serde_json::from_str::<PermanentManifest>(&row.manifest) {
+            for file in manifest.files {
+                hashes.insert(file.sha256);
+            }
+        }
+    }
+    Ok(hashes.into_iter().collect())
+}
+
+/// The one hard-delete path (public `DELETE` and the governance route):
+/// refuses a held artifact before any write; in one D1 batch deletes the row
+/// and its explicit dependants (`version_files`, `artifact_versions`, `files`,
+/// `provenance`), recomputes `ref_count` on the migration's every-version
+/// basis and writes the audit row; then, under the content locks, removes
+/// blobs whose refcount reached zero. A failed R2 delete leaves an object and
+/// its zero-ref D1 row for `sweep-orphans` to retry.
+pub(crate) async fn hard_delete_permanent(
+    storage: &store::D1R2ArtifactStore,
+    org: &str,
+    artifact_id: &str,
+) -> Result<HardDeleteOutcome> {
+    let database = &storage.database;
+    let select = "SELECT (SELECT MAX(legal_hold) FROM artifacts held WHERE held.id = a.id AND held.org_id = a.org_id) AS legal_hold FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND o.slug = ? ORDER BY a.row_id LIMIT 1";
+    let lock_row = database
+        .prepare(select)
+        .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+        .first::<PermanentHashRow>(None)
+        .await?;
+    let Some(lock_row) = lock_row else {
+        return Ok(HardDeleteOutcome::NotFound);
+    };
+    if governance::decide_hard_delete(lock_row.legal_hold != 0)
+        == governance::HardDeleteDecision::RefuseLegalHold
+    {
+        return Ok(HardDeleteOutcome::LegalHold);
+    }
+    // Lock the union of every version's manifest hashes: the delete removes
+    // all of them, so any of them can drop to zero and be released.
+    let lock_hashes = artifact_version_hashes(database, artifact_id, org).await?;
+    let locks = match storage.acquire_content_locks(&lock_hashes).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return Ok(HardDeleteOutcome::Contention),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
+    let operation: Result<HardDeleteOutcome> = async {
+        let row = database
+            .prepare(select)
+            .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
+            .first::<PermanentHashRow>(None)
+            .await?;
+        let Some(row) = row else {
+            return Ok(HardDeleteOutcome::NotFound);
+        };
+        // Re-checked under the lock: a hold placed while waiting still wins.
+        if governance::decide_hard_delete(row.legal_hold != 0)
+            == governance::HardDeleteDecision::RefuseLegalHold
+        {
+            return Ok(HardDeleteOutcome::LegalHold);
+        }
+        // Delete every row for this (org, id), not only the one the pre-flight
+        // resolution happened to return. Before RUB-371 a single-row delete
+        // reported 204 while a duplicate kept serving the artifact from
+        // `/p/{id}` — a revocation that silently did not revoke, which is what
+        // matters for the abuse and legal-hold paths.
+        //
+        // Dependants are deleted explicitly (invariant 3, migration 0005's
+        // no-cascade rule), then `ref_count` is *recomputed* on the migration's
+        // every-version basis rather than decremented. Decrementing once per
+        // manifest file of every version here would be redundant — and, for the
+        // pre-RUB-371 duplicates this cleanup also removes, wrong — because
+        // after the deletes the surviving `artifact_versions` rows are the only
+        // source of truth.
+        let mut statements = vec![
+            database
+                .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM artifact_versions WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM files WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM provenance WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?))")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            database
+                .prepare("DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)")
+                .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+        ];
+        for hash in &lock_hashes {
+            statements.push(
+                database
+                    .prepare("UPDATE blobs SET ref_count = (SELECT COUNT(*) FROM artifact_versions v, json_each(v.manifest, '$.files') mf WHERE json_extract(mf.value, '$.sha256') = blobs.content_hash) WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(hash)])?,
+            );
+        }
+        statements.push(governance_audit_statement(
+            database,
+            org,
+            governance::AuditEventType::ArtifactHardDeleted,
+            artifact_id,
+        )?);
+        storage
+            .execute_batch(statements)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+        for hash in &lock_hashes {
+            release_blob_if_unreferenced(storage, hash).await?;
+        }
+        Ok(HardDeleteOutcome::Deleted)
+    }
+    .await;
+    let release_result = storage.release_content_locks(&locks).await;
+    let outcome = operation?;
+    release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(outcome)
+}
+
+/// Deletes the blob row and R2 object when nothing references the hash.
+/// Callers hold the content lock for `content_hash`.
+pub(crate) async fn release_blob_if_unreferenced(
+    storage: &store::D1R2ArtifactStore,
+    content_hash: &str,
+) -> Result<()> {
+    let count = storage
+        .database
+        .prepare("SELECT ref_count AS count FROM blobs WHERE content_hash = ?")
+        .bind(&[JsValue::from_str(content_hash)])?
+        .first::<BlobReferenceRow>(None)
+        .await?
+        .map(|value| value.count)
+        .unwrap_or(0);
+    if count == 0 {
+        delete_object_then_metadata(
+            || storage.bucket.delete(format!("blobs/{content_hash}")),
+            || async {
+                storage
+                    .database
+                    .prepare("DELETE FROM blobs WHERE content_hash = ?")
+                    .bind(&[JsValue::from_str(content_hash)])?
+                    .run()
+                    .await?;
+                Ok(())
+            },
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Keeps D1's retry key until the object store confirms deletion. Both
+/// callbacks run under the caller's content lock.
+pub(crate) async fn delete_object_then_metadata<
+    DeleteObject,
+    DeleteObjectFuture,
+    DeleteMetadata,
+    DeleteMetadataFuture,
+>(
+    delete_object: DeleteObject,
+    delete_metadata: DeleteMetadata,
+) -> Result<()>
+where
+    DeleteObject: FnOnce() -> DeleteObjectFuture,
+    DeleteObjectFuture: std::future::Future<Output = Result<()>>,
+    DeleteMetadata: FnOnce() -> DeleteMetadataFuture,
+    DeleteMetadataFuture: std::future::Future<Output = Result<()>>,
+{
+    delete_object().await?;
+    delete_metadata().await?;
+    Ok(())
+}
+
+pub(crate) fn governance_audit_statement(
+    database: &worker::D1Database,
+    org: &str,
+    event_type: governance::AuditEventType,
+    artifact_id: &str,
+) -> Result<worker::d1::D1PreparedStatement> {
+    database
+        .prepare("INSERT INTO audit_events (id, org_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(&[
+            JsValue::from_str(&Uuid::new_v4().simple().to_string()),
+            JsValue::from_str(org),
+            JsValue::from_str(event_type.wire_name()),
+            JsValue::from_str(&serde_json::json!({"org": org, "artifact_id": artifact_id}).to_string()),
+            JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
+        ])
+}
+
+pub(crate) async fn download_export_blob(path: &str, req: &Request, env: &Env) -> Result<Response> {
+    let authorization = req.headers().get("Authorization")?;
+    let credential =
+        match require_org_scope(authorization.as_deref(), env, "artifacts:read").await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let hash = path.trim_start_matches("/v1/blobs/");
+    if hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid blob hash.", 400);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let org = credential.org_id.clone();
+    let viewer = Viewer::from_credential(&credential);
+    // Blob download is reachable by any member, so a blob referenced only by
+    // private artifacts the caller cannot view is a 404. A blob shared with a
+    // public or otherwise-visible artifact of the org stays downloadable.
+    let reads_private = if viewer.is_admin() || viewer.reads_private() {
+        1.0
+    } else {
+        0.0
+    };
+    // Export-blob download is current-version only in this release (history is
+    // not exported), so presence is checked against the current `files` copy.
+    if database
+        .prepare("SELECT 1 AS present FROM artifacts a JOIN orgs o ON o.id = a.org_id JOIN files requested ON requested.artifact_row_id = a.row_id AND requested.content_hash = ? WHERE o.slug = ? AND (a.tier IN ('public', 'secure') OR a.user_id = ? OR ? = 1) AND a.expires_at IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf LEFT JOIN files complete ON complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path') LEFT JOIN blobs b ON b.content_hash = json_extract(mf.value, '$.sha256') WHERE complete.artifact_row_id IS NULL OR b.content_hash IS NULL) LIMIT 1")
+        .bind(&[
+            JsValue::from_str(hash),
+            JsValue::from_str(&org),
+            JsValue::from_str(&credential.user_id),
+            JsValue::from_f64(reads_private),
+        ])?
+        .first::<PresenceRow>(None)
+        .await?
+        .is_none()
+    {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    }
+    let object = env
+        .bucket("ARTIFACTS_BUCKET")?
+        .get(format!("blobs/{hash}"))
+        .execute()
+        .await?;
+    let Some(object) = object else {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    };
+    let Some(body) = object.body() else {
+        return json_error(ErrorCode::ArtifactNotFound, "Blob not found.", 404);
+    };
+    let bytes = body.bytes().await?;
+    let mut response = Response::from_bytes(bytes)?.with_status(200);
+    response.headers_mut().set(
+        "Content-Type",
+        &object
+            .http_metadata()
+            .content_type
+            .unwrap_or_else(|| "application/octet-stream".to_string()),
+    )?;
+    Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct BlobReferenceRow {
+    pub(crate) count: i64,
+}

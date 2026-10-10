@@ -1,0 +1,455 @@
+import { Link } from '@inertiajs/react';
+import { useRef } from 'react';
+
+import { AiToolIcon } from '@/components/ai-tool-icon';
+import { StorySteps, StoryStage, useStory } from '@/components/home/story';
+import { useAccountNav } from '@/components/site-chrome';
+import { Button } from '@/components/ui/button';
+import { blog, docs, free, home, login, privacy, terms } from '@/routes';
+
+type MiniRowProps = {
+    icon: string;
+    title: string;
+    meta: string;
+    match?: boolean;
+};
+
+function MiniRow({ icon, title, meta, match }: MiniRowProps) {
+    return (
+        <div className={match ? 'mrow m' : 'mrow'}>
+            <span className="ic">{icon}</span>
+            <span>
+                <b>{title}</b>
+                <small>{meta}</small>
+            </span>
+            {match && <span className="tag">Match</span>}
+        </div>
+    );
+}
+
+const USE_CASES: {
+    role: string;
+    title: string;
+    text: string;
+    rows: MiniRowProps[];
+    open?: boolean;
+}[] = [
+    {
+        role: 'Product',
+        title: 'Briefs and research stay findable.',
+        text: 'A product manager drafts a brief in one AI tool. A teammate asks a different tool what was decided last quarter, and gets the brief back with a link.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Q3 product brief',
+                meta: 'Doc · Marketing',
+                match: true,
+            },
+            {
+                icon: 'D',
+                title: 'Customer interview notes',
+                meta: 'Doc · Product',
+            },
+        ],
+        open: true,
+    },
+    {
+        role: 'Analysis',
+        title: 'Tables and charts don’t get rebuilt.',
+        text: 'An analyst shares a table once. Anyone asking about the numbers gets the table and its source, instead of a fresh guess.',
+        rows: [
+            {
+                icon: 'T',
+                title: 'Renewals by plan',
+                meta: 'Table · Jo',
+                match: true,
+            },
+            { icon: 'C', title: 'Churn chart', meta: 'Chart · Jo' },
+        ],
+    },
+    {
+        role: 'Design',
+        title: 'Mockups travel with their context.',
+        text: 'A designer shares a mockup. The people and AI tools working on the launch can find it and see who made it and when.',
+        rows: [
+            {
+                icon: 'M',
+                title: 'Launch page mockup',
+                meta: 'Mockup · Engineering',
+                match: true,
+            },
+        ],
+    },
+    {
+        role: 'Marketing',
+        title: 'Copy and campaigns build on each other.',
+        text: 'A new campaign starts from what the team already wrote, not a blank chat.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Spring campaign copy',
+                meta: 'Doc · Lena',
+                match: true,
+            },
+        ],
+    },
+    {
+        role: 'Operations',
+        title: 'Processes are written down once.',
+        text: 'A process doc written with AI is shared and found by the next person who needs it.',
+        rows: [
+            {
+                icon: 'D',
+                title: 'Vendor onboarding steps',
+                meta: 'Doc · Design',
+                match: true,
+            },
+        ],
+    },
+];
+
+export default function Landing() {
+    const story = useStory();
+    const navMenu = useRef<HTMLDetailsElement>(null);
+    const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
+
+    return (
+        <div className="landing">
+            <div className="frame">
+                <nav className="pad">
+                    <Link href={home.url()} className="logo">
+                        Artfct
+                    </Link>
+                    <div className="navlinks">
+                        <a href="#how">How it works</a>
+                        <a href="#use">Use cases</a>
+                        <a href="#plans">Pricing</a>
+                        <Link href={docs.url()}>Docs</Link>
+                        <Link href={blog.url()}>Blog</Link>
+                    </div>
+                    <details ref={navMenu} className="navmenu">
+                        <summary>Menu</summary>
+                        <div
+                            className="navmenu-links"
+                            onClick={() => {
+                                if (navMenu.current) {
+                                    navMenu.current.open = false;
+                                }
+                            }}
+                        >
+                            <a href="#how">How it works</a>
+                            <a href="#use">Use cases</a>
+                            <a href="#plans">Pricing</a>
+                            <Link href={docs.url()}>Docs</Link>
+                            <Link href={blog.url()}>Blog</Link>
+                        </div>
+                    </details>
+                    <div className="navright" data-testid="landing-account">
+                        {!isAuthenticated && (
+                            <Link
+                                href={login.url()}
+                                data-testid="landing-signin"
+                            >
+                                Sign in
+                            </Link>
+                        )}
+                        <Button asChild className="btn btn-primary sm">
+                            <Link
+                                href={accountUrl}
+                                data-testid="landing-account-cta"
+                            >
+                                {accountLabel}
+                            </Link>
+                        </Button>
+                    </div>
+                </nav>
+
+                <main>
+                    <div className="herosplit">
+                        <header className="hero pad">
+                            <div className="eyebrow">
+                                The team knowledge base for every AI tool
+                            </div>
+                            <h1 className="two">
+                                Unsilo your knowledge.{' '}
+                                <span>Feed every agent.</span>
+                            </h1>
+                            <p className="lede">
+                                Share a report, table or mockup from Claude,
+                                ChatGPT, Cursor or Copilot. Every AI tool on
+                                your team can find it, open it and show where it
+                                came from.
+                            </p>
+                            <div className="cta">
+                                <Button asChild className="btn btn-primary">
+                                    <Link
+                                        href={accountUrl}
+                                        data-testid="landing-hero-cta"
+                                    >
+                                        {accountLabel}{' '}
+                                        <span className="arrow">→</span>
+                                    </Link>
+                                </Button>
+                                <a className="btn btn-ghost" href="#how">
+                                    See how it works{' '}
+                                    <span className="arrow">→</span>
+                                </a>
+                            </div>
+                        </header>
+                        <StoryStage story={story} />
+                    </div>
+
+                    <div className="strip rule">
+                        <div className="lab">
+                            Works with the AI tools your team already uses.
+                        </div>
+                        <div className="names">
+                            <span>
+                                <AiToolIcon tool="claude" size={26} />
+                                Claude
+                            </span>
+                            <span>
+                                <AiToolIcon tool="chatgpt" size={26} />
+                                ChatGPT
+                            </span>
+                            <span>
+                                <AiToolIcon tool="copilot" size={26} />
+                                Copilot
+                            </span>
+                            <span>
+                                <AiToolIcon tool="cursor" size={26} />
+                                Cursor
+                            </span>
+                            <span className="more">and other AI tools</span>
+                        </div>
+                    </div>
+
+                    <section className="statement pad rule">
+                        <h2 className="two">
+                            Your team uses many AI tools.{' '}
+                            <span>
+                                What each one makes stays locked inside it.
+                            </span>
+                        </h2>
+                        <p className="def">
+                            <b>Artifact:</b> any report, table, document or
+                            mockup your AI makes. Artfct brings them together
+                            and puts them in reach of every tool.
+                        </p>
+                    </section>
+
+                    <StorySteps story={story} />
+
+                    <section className="control band rule" id="control">
+                        <div>
+                            <h2 className="two">
+                                Change AI tools.{' '}
+                                <span>Keep everything they made.</span>
+                            </h2>
+                            <p className="lede">
+                                Your team’s knowledge base belongs to your
+                                company, not to any one vendor. Use whichever AI
+                                tools you like; where the work is kept and who
+                                can see it is up to you.
+                            </p>
+                        </div>
+                        <div className="r">
+                            <ul>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z" />
+                                    </svg>
+                                    <div>
+                                        <b>Sharing is your choice</b>
+                                        <span>
+                                            Nothing goes into the knowledge base
+                                            unless someone shares it.
+                                        </span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <circle cx="9" cy="8" r="3" />
+                                        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6M21 20c0-2.5-1.5-4.6-3.6-5.5" />
+                                    </svg>
+                                    <div>
+                                        <b>Admins manage access</b>
+                                        <span>
+                                            Team admins decide who is on the
+                                            team.
+                                        </span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M4 12h16M4 6h16M4 18h10" />
+                                    </svg>
+                                    <div>
+                                        <b>Answers show their sources</b>
+                                        <span>
+                                            Anyone can open the work an answer
+                                            came from.
+                                        </span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    <section className="use pad rule" id="use">
+                        <div className="head">
+                            <div>
+                                <h2 className="two">
+                                    Made for whoever makes things with AI.{' '}
+                                    <span>Not just engineers.</span>
+                                </h2>
+                            </div>
+                            <p className="lede">
+                                From a product brief to a budget table to a
+                                campaign mockup, the same knowledge base holds
+                                it.
+                            </p>
+                        </div>
+                        <div className="acc">
+                            {USE_CASES.map((useCase) => (
+                                <details key={useCase.role} open={useCase.open}>
+                                    <summary>
+                                        <span className="plus">+</span>
+                                        <span className="role">
+                                            {useCase.role}
+                                        </span>
+                                        <h3>{useCase.title}</h3>
+                                    </summary>
+                                    <div className="body">
+                                        <p>{useCase.text}</p>
+                                        <div className="mini">
+                                            {useCase.rows.map((row) => (
+                                                <MiniRow
+                                                    key={row.title}
+                                                    {...row}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </details>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="plansec pad rule" id="plans">
+                        <div className="eyebrow">Pricing</div>
+                        <h2>Start free. Add your team when you’re ready.</h2>
+                        <div className="plans">
+                            <div className="plan">
+                                <div className="nm">Free</div>
+                                <div className="for">
+                                    Share a page as a link. A good way to try
+                                    it.
+                                </div>
+                                <ul>
+                                    <li>Share a page with anyone</li>
+                                    <li>
+                                        Private link, no account needed to view
+                                    </li>
+                                </ul>
+                                <Button asChild className="btn btn-ghost">
+                                    <Link href={free.url()}>Use Free</Link>
+                                </Button>
+                            </div>
+                            <div className="plan hl">
+                                <div className="nm">Team</div>
+                                <div className="for">
+                                    Everything in Free, for the whole team.
+                                    Billed per person; Team pricing isn’t
+                                    published yet.
+                                </div>
+                                <ul>
+                                    <li>
+                                        Every AI tool on your team can use
+                                        what’s shared, with sources
+                                    </li>
+                                    <li>
+                                        Share from your AI tool to your team
+                                    </li>
+                                    <li>
+                                        Search by describing what you need, in
+                                        plain words
+                                    </li>
+                                    <li>
+                                        Your company’s own web address for your
+                                        knowledge base
+                                    </li>
+                                </ul>
+                                <p className="fine">
+                                    Try Team free with everything except search
+                                    by description and your own web address.
+                                    Your AI tools can still open any shared
+                                    document in full.
+                                </p>
+                                <Button asChild className="btn btn-primary">
+                                    <Link
+                                        href={accountUrl}
+                                        data-testid="landing-pricing-cta"
+                                    >
+                                        {accountLabel}
+                                    </Link>
+                                </Button>
+                            </div>
+                            <div className="plan">
+                                <div className="nm">Enterprise</div>
+                                <div className="for">
+                                    For companies with security and compliance
+                                    needs.
+                                </div>
+                                <ul>
+                                    <li>
+                                        Single sign-on with your company login
+                                    </li>
+                                    <li>A full record of who did what</li>
+                                    <li>Rules for how long work is kept</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="close pad rule">
+                        <h2 className="two">
+                            Start sharing{' '}
+                            <span>what your team’s AI makes.</span>
+                        </h2>
+                        <p className="lede">
+                            Sign up, connect your AI tools once, and share
+                            what’s worth keeping.
+                        </p>
+                        <div className="cta">
+                            <Button asChild className="btn btn-primary">
+                                <Link
+                                    href={accountUrl}
+                                    data-testid="landing-closing-cta"
+                                >
+                                    {accountLabel}{' '}
+                                    <span className="arrow">→</span>
+                                </Link>
+                            </Button>
+                        </div>
+                    </section>
+                </main>
+
+                <footer className="pad">
+                    <div className="l">
+                        <span className="logo">Artfct</span>
+                        <span>© {new Date().getFullYear()} Artfct</span>
+                    </div>
+                    <div className="r">
+                        <a href="#how">How it works</a>
+                        <a href="#plans">Pricing</a>
+                        <Link href={docs.url()}>Docs</Link>
+                        <Link href={blog.url()}>Blog</Link>
+                        <Link href={privacy.url()}>Privacy</Link>
+                        <Link href={terms.url()}>Terms</Link>
+                    </div>
+                </footer>
+            </div>
+        </div>
+    );
+}

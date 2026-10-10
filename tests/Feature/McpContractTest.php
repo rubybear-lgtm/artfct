@@ -1,0 +1,211 @@
+<?php
+
+use App\Mcp\Servers\ArtfctServer;
+use App\Services\Artifacts\ArtifactViewLink;
+use Laravel\Mcp\Server\Transport\FakeTransporter;
+
+test('the hosted MCP catalog exposes the stable cross-transport contract', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+
+    $tools = $server->createContext()->tools()->mapWithKeys(
+        fn ($tool): array => [$tool->name() => $tool->toArray()]
+    );
+
+    $expectedContracts = [
+        'deploy_artifact' => [
+            'scopes' => ['artifacts:deploy'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => true,
+            ],
+        ],
+        'deploy_to_canvas' => [
+            'scopes' => ['artifacts:deploy'],
+            'compatibility' => 'deprecated',
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => false,
+                'destructiveHint' => false,
+                'openWorldHint' => true,
+            ],
+        ],
+        'search_artifacts' => [
+            'scopes' => ['artifacts:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'get_connection' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'list_artifacts' => [
+            'scopes' => ['artifacts:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'get_usage' => [
+            'scopes' => ['usage:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'get_artifact' => [
+            'scopes' => ['artifacts:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'list_collections' => [
+            'scopes' => ['collections:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'create_collection' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => false,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'add_collection_artifact' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'delete_artifact' => [
+            'scopes' => ['artifacts:delete'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => true,
+                'openWorldHint' => true,
+            ],
+        ],
+    ];
+
+    expect($tools->keys()->all())->toBe(array_keys($expectedContracts));
+
+    expect($tools->keys()->all())->toEqualCanonicalizing(array_keys($expectedContracts));
+
+    foreach ($expectedContracts as $name => $contract) {
+        $tool = $tools->get($name);
+        $annotations = $tool['annotations'];
+        $metadata = $tool['_meta']['artfct'];
+
+        expect($tool['description'])->not->toBeEmpty()
+            ->and($tool['inputSchema']['type'])->toBe('object')
+            ->and($tool['inputSchema'])->toHaveKey('properties')
+            ->and($annotations)->toBe($contract['annotations'])
+            ->and($metadata)->toMatchArray([
+                'contractVersion' => '1.0.0',
+                'toolVersion' => '1.0.0',
+                'owner' => 'artfct-mcp',
+                'requiredScopes' => $contract['scopes'],
+                'compatibility' => $contract['compatibility'] ?? 'stable',
+            ])
+            ->and($metadata['examples'])->not->toBeEmpty();
+
+        if (in_array($name, ['get_connection', 'get_usage'], true)) {
+            expect($metadata['examples'][0]['arguments'])->toBeObject();
+        }
+    }
+});
+
+/**
+ * The artifact view-link contract, asserted on the hosted server against a
+ * checked-in fixture, so a change to the field name or to which link a tier
+ * gets fails here instead of drifting silently.
+ */
+test('the hosted server keeps the shared cross-server view_url contract', function () {
+    $contract = json_decode(
+        (string) file_get_contents(base_path('tests/Fixtures/artifact-view-link-contract.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+
+    config(['app.public_base_url' => 'https://artfct.dev']);
+
+    expect($contract['field'])->toBe('view_url')
+        ->and($contract['public_path_template'])->toBe('/p/{artifact}')
+        ->and($contract['tiers']['public'])->toBe('app_open_route')
+        ->and($contract['tiers']['ephemeral'])->toBe('worker_public_url')
+        ->and($contract['tiers']['secure'])->toBe('app_open_route')
+        ->and($contract['tiers']['unreadable'])->toBe('app_open_route');
+
+    // The templates in the fixture are the templates the routes actually have,
+    // so the local server cannot address a path this app does not serve.
+    expect(route('artifacts.show', ['artifactId' => 'abc'], absolute: false))
+        ->toBe(str_replace('{artifactId}', 'abc', $contract['app_open_path_template']))
+        ->and(route('artifacts.version', ['artifactId' => 'abc', 'version' => 2], absolute: false))
+        ->toBe(str_replace(['{artifactId}', '{version}'], ['abc', '2'], $contract['app_open_version_path_template']));
+
+    $appOpenUrl = route('artifacts.show', ['artifactId' => 'abc']);
+
+    // Every permanent artifact — public included — opens through the app's own
+    // short route, which authorizes the visitor and mints only where it must.
+    // The anonymous ephemeral KV preview is the one tier with no app route, so
+    // it keeps the Worker's own URL.
+    expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->toBe($appOpenUrl)
+        ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'ephemeral'))->toBe('https://artfct.dev/p/abc')
+        ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'secure'))->toBe($appOpenUrl)
+        ->and(ArtifactViewLink::forArtifact('acme', 'abc', null))->toBe($appOpenUrl)
+        ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'permanent'))->toBe($appOpenUrl);
+
+    // A caller that cannot read a tier still never mints: the app route mints
+    // per click, and only for a secure artifact.
+    expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->not->toContain('token');
+});
+
+test('the anonymous ephemeral preview keeps the workers own url', function () {
+    $id = str_repeat('a', 32);
+
+    expect(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral', "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'public'))->toBe(route('artifacts.show', ['artifactId' => $id]));
+});
+
+test('deploy_artifact advertises bundle input and does not require html', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+
+    $schema = $server->createContext()->tools()
+        ->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')
+        ->toArray()['inputSchema'];
+
+    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint'])
+        ->and($schema['properties']['files']['type'])->toContain('array')
+        ->and($schema['properties']['files']['items']['required'])->toBe(['path', 'content'])
+        ->and($schema['required'] ?? [])->not->toContain('html');
+});

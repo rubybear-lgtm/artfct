@@ -1,0 +1,140 @@
+<?php
+
+use App\Actions\Teams\CreateTeam;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
+
+uses(RefreshDatabase::class);
+
+/**
+ * Every page a person can open, by route name. When you add a page, add it to
+ * `signedInPages()` or `publicPages()` (it is then smoke-tested for JavaScript
+ * errors), or to `coveredElsewhere()`/`notPages()` with a reason. The
+ * `every_page_route_is_accounted_for` test fails until you do.
+ *
+ * @return list<string>
+ */
+function signedInPages(): array
+{
+    return [
+        'dashboard', 'account.show', 'teams.index', 'teams.edit', 'teams.audit.index',
+        'teams.authentication.show', 'teams.billing.show', 'teams.collections.index',
+        'console.index', 'teams.governance.show', 'teams.tokens.index',
+        'teams.mcp-connections.index', 'teams.admin.show',
+    ];
+}
+
+/** @return list<string> */
+function publicPages(): array
+{
+    return ['home', 'free', 'blog', 'docs', 'terms', 'privacy', 'login'];
+}
+
+/** @return array<string, string> route name => where it is covered */
+function coveredElsewhere(): array
+{
+    return [
+        'blog.show' => 'BlogPermalinksTest',
+        'invitations.show' => 'InvitationBrowserTest',
+        'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
+        'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
+        'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
+        'console.versions' => 'ArtifactVersionsBrowserTest (needs a seeded permanent artifact id)',
+        'artifacts.show' => 'ArtifactViewerBrowserTest (needs a seeded artifact id)',
+        'artifacts.version' => 'ArtifactViewerBrowserTest / ShortLinksTest (needs a seeded artifact id)',
+        'teams.search' => 'redirect to the dashboard (SearchBrowserTest: legacy search URL)',
+    ];
+}
+
+/** @return array<string, string> route name => why it is not a page */
+function notPages(): array
+{
+    return [
+        'jwks' => 'JSON', 'sitemap' => 'XML',
+        'landing.media' => 'landing animation files (LandingFlowAssetsTest)',
+        'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
+        'oauth.metadata' => 'OAuth discovery JSON',
+        'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',
+        'mcp.oauth.protected-resource.nested' => 'OAuth protected-resource discovery JSON',
+        'oauth.metadata.nested' => 'OAuth discovery JSON (path-inserted)',
+        'oauth.organizations' => 'OAuth organization context JSON',
+        'api.collections.index' => 'organization-scoped collection directory JSON',
+        'oauth.authorize' => 'OAuth authorization handshake and consent flow',
+        'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
+        'teams.audit.export' => 'file download', 'console.export' => 'zip download',
+        'artifacts.download' => 'file download',
+        'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
+    ];
+}
+
+test('signed_in_pages_have_no_javascript_errors', function () {
+    $owner = User::factory()->create(['email' => 'smoke@example.com']);
+    $team = app(CreateTeam::class)->handle($owner, 'Smoke Co');
+    test()->actingAs($owner);
+
+    foreach (signedInPages() as $name) {
+        $url = match ($name) {
+            'dashboard' => route($name, $team),
+            'account.show', 'teams.index' => route($name),
+            'console.index' => route($name, ['team' => $team->slug]),
+            default => route($name, $team),
+        };
+
+        visit($url)->assertNoJavaScriptErrors();
+    }
+});
+
+test('public_pages_have_no_javascript_errors', function () {
+    foreach (publicPages() as $name) {
+        visit(route($name))->assertNoJavaScriptErrors();
+    }
+});
+
+test('public docs expose the MCP onboarding path', function () {
+    $baseUrl = rtrim((string) config('app.url'), '/');
+
+    visit(route('docs'))
+        ->assertSee('Connect your AI tool')
+        ->assertSee('Teams and sign-in')
+        ->assertSee($baseUrl.'/mcp')
+        ->assertSee('claude mcp add --transport http artfct '.$baseUrl.'/mcp')
+        ->assertSee('Base URL '.$baseUrl)
+        ->assertSee('artifacts:read')
+        ->click('#connect-codex')
+        ->assertSee('codex mcp login artfct')
+        ->click('#connect-opencode')
+        ->assertSee('opencode mcp auth artfct')
+        ->assertScript("getComputedStyle(document.querySelector('[role=tabpanel] ol li')).display", 'list-item')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a docs link to one AI tool opens that tool\'s setup steps', function () {
+    $baseUrl = rtrim((string) config('app.url'), '/');
+
+    visit(route('docs').'#connect-antigravity')
+        ->assertSee('agy mcp add artfct '.$baseUrl.'/mcp')
+        ->assertNoJavaScriptErrors();
+});
+
+test('every_page_route_is_accounted_for', function () {
+    $known = array_merge(signedInPages(), publicPages(), array_keys(coveredElsewhere()), array_keys(notPages()));
+
+    $unlisted = collect(Route::getRoutes()->getRoutes())
+        ->filter(fn ($route) => in_array('GET', $route->methods(), true))
+        ->map(fn ($route) => $route->getName())
+        ->filter(fn ($name) => $name !== null && ! str_starts_with($name, 'generated::') && ! str_starts_with($name, 'boost.') && ! in_array($name, ['storage.local', 'storage.local.upload', 'up', 'livewire.update']))
+        ->reject(fn ($name) => in_array($name, $known, true))
+        ->values()
+        ->all();
+
+    expect($unlisted)->toBe([], 'These GET routes are not in the smoke list: '.implode(', ', $unlisted));
+});
+
+// Proves the smoke assertion works: a page that throws must make it fail, so this
+// test is expected to fail (and is reported as passing when it does).
+test('a_page_with_a_javascript_error_fails_the_smoke_assertion', function () {
+    Route::get('/__broken-page', fn () => response('<html><body><script>throw new Error("boom");</script>hi</body></html>'));
+
+    visit('/__broken-page')->assertNoJavaScriptErrors();
+})->fails();
