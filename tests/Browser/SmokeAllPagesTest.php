@@ -52,6 +52,7 @@ function notPages(): array
 {
     return [
         'jwks' => 'JSON', 'sitemap' => 'XML',
+        'landing.media' => 'landing animation files (LandingFlowAssetsTest)',
         'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
         'oauth.metadata' => 'OAuth discovery JSON',
         'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',

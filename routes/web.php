@@ -3,6 +3,7 @@
 use App\Http\Controllers\ArtifactViewerController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
+use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
@@ -21,12 +22,17 @@ $blogPosts = [
     ],
 ];
 
-Route::inertia('/', 'landing', [
+Route::get('/', fn () => Inertia::render('landing', [
     'meta' => [
         'title' => 'Artfct — what your AI makes, remembered',
         'description' => 'Share the reports, tables and documents your AI makes, and every AI tool on your team can read them, with sources. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools.',
     ],
-])->name('home');
+    'flow' => LandingMedia::forPage(),
+]))->name('home');
+
+Route::get('/media/landing/{file}', LandingMediaController::class)
+    ->withoutMiddleware('web')
+    ->name('landing.media');
 
 Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [

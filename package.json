@@ -24,13 +24,20 @@
         "worker:deploy:triggers": "cd backend && ../node_modules/.bin/wrangler triggers deploy",
         "waf:rate-limits": "node cloudflare-rate-limits.mjs",
         "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs",
-        "mcp:live": "node scripts/mcp-live-smoke.mjs"
+        "mcp:live": "node scripts/mcp-live-smoke.mjs",
+        "video:wide": "node scripts/render-landing-flow.mjs",
+        "video:mobile": "node scripts/render-landing-mobile.mjs",
+        "video:landing": "npm run video:wide && npm run video:mobile"
     },
     "devDependencies": {
         "@emnapi/core": "^1.10.0",
         "@emnapi/runtime": "^1.10.0",
         "@eslint/js": "^9.19.0",
         "@laravel/vite-plugin-wayfinder": "^0.1.3",
+        "@remotion/bundler": "^4.0.534",
+        "@remotion/cli": "^4.0.534",
+        "@remotion/fonts": "^4.0.534",
+        "@remotion/renderer": "^4.0.534",
         "@stylistic/eslint-plugin": "^5.10.0",
         "@types/node": "^22.13.5",
         "babel-plugin-react-compiler": "^1.0.0",
@@ -44,6 +51,7 @@
         "prettier": "^3.4.2",
         "prettier-plugin-tailwindcss": "^0.6.11",
         "railway": "^3.12.0",
+        "remotion": "^4.0.534",
         "typescript-eslint": "^8.23.0",
         "wrangler": "^4.116.0"
     },

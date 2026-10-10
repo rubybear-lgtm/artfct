@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 
+import { AiToolIcon } from '@/components/ai-tool-icon';
 import type {
     HomeRecentArtifact,
     HomeSearchResult,
@@ -132,7 +133,8 @@ export function SearchResultRow({
                     </span>
                 )}
                 {result.agent && (
-                    <span className="mt-0.5 min-w-0 text-sm break-words text-muted-foreground">
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm break-words text-muted-foreground">
+                        <AiToolIcon tool={result.agent} size={14} />
                         {aiToolName(result.agent)}
                     </span>
                 )}
