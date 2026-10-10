@@ -59,3 +59,13 @@ test('the tool strip shows a product mark beside each AI tool name', function ()
         ->assertScript('document.querySelectorAll(".strip .names > span:not(.more) svg").length', 4)
         ->assertNoJavaScriptErrors();
 });
+
+test('on a phone the headline, the demo and the tools strip fit one screen', function () {
+    visit('/')
+        ->resize(390, 844)
+        ->assertScript('document.querySelector(".strip").getBoundingClientRect().bottom <= window.innerHeight + 1', true)
+        ->assertScript('document.querySelector(\'[data-testid="landing-hero-cta"]\').getBoundingClientRect().bottom <= window.innerHeight', true)
+        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().height >= 260', true)
+        ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)
+        ->assertNoJavaScriptErrors();
+});

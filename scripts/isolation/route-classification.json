@@ -37,6 +37,7 @@
         "DELETE mcp": "token",
         "GET mcp": "token",
         "POST mcp": "token",
+        "GET media/landing/{file}": "public",
         "GET oauth/authorize": "guest",
         "POST oauth/authorize": "user",
         "GET oauth/organizations": "token",

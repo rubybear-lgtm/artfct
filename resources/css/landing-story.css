@@ -876,10 +876,72 @@
         margin-bottom: 14px;
     }
     .landing.landing .herosplit {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        height: calc(100svh - 68px - var(--strip-h, 76px));
+        min-height: 520px;
+    }
+    .landing.landing .hero {
+        display: block;
+        padding: 14px 20px 14px;
+    }
+    .landing.landing .hero h1 {
+        font-size: clamp(30px, 9.2vw, 40px);
+        line-height: 1.02;
+    }
+    .landing.landing .hero .eyebrow {
+        font-size: 11px;
+        margin-bottom: 8px;
+    }
+    .landing.landing .hero .lede {
+        margin: 10px 0 14px;
+        font-size: 15px;
+        line-height: 1.4;
+    }
+    .landing.landing .hero .cta {
+        flex-wrap: nowrap;
+        gap: 10px;
+        margin: 0;
+    }
+    .landing.landing .hero .cta .btn {
+        flex: 1;
+        justify-content: center;
+        white-space: nowrap;
+        padding-inline: 10px;
+        font-size: 14px;
+    }
+    .landing.landing .story-stage {
+        aspect-ratio: auto;
+        max-height: none;
+        min-height: 0;
         height: auto;
     }
+    .landing.landing .story-win .fs-win {
+        --s: min(100cqw / 560, 100cqh / 640);
+    }
     .landing.landing .strip {
-        padding-block: 18px;
+        padding-block: 10px;
+        gap: 4px 14px;
+    }
+    .landing.landing .strip .lab {
+        font-size: 12px;
+        flex-basis: 100%;
+    }
+    .landing.landing .strip .names {
+        flex-wrap: nowrap;
+        gap: 12px;
+        font-size: 14px;
+    }
+    .landing.landing .strip .names > span:not(.more) {
+        gap: 6px;
+    }
+    .landing.landing .strip .names > span:not(.more) svg {
+        width: 18px;
+        height: 18px;
+    }
+    .landing.landing .strip .names .more {
+        display: none;
     }
     .landing.landing .statement {
         padding-block: 48px 20px;
@@ -917,5 +979,91 @@
     }
     .landing.landing .close {
         padding-block: 56px;
+    }
+}
+
+/* a short, wide window (the phone hero): tighter elements so everything fits */
+@container (max-height: 420px) {
+    .landing .fs-tools {
+        grid-template-columns: repeat(4, 1fr);
+        gap: calc(8 * var(--s));
+    }
+    .landing .fs-tool {
+        flex-direction: column;
+        gap: calc(6 * var(--s));
+        padding: calc(10 * var(--s)) calc(6 * var(--s));
+        font-size: calc(17 * var(--s));
+    }
+    .landing .fs-tool-ok {
+        display: none;
+    }
+    .landing .fs-body > * {
+        flex-shrink: 0;
+    }
+    .landing .fs-chrome {
+        padding: 0 calc(18 * var(--s));
+        gap: calc(10 * var(--s));
+        height: calc(54 * var(--s));
+    }
+    .landing .fs-right {
+        margin-left: auto;
+    }
+    .landing .fs-body {
+        padding: calc(14 * var(--s)) calc(20 * var(--s)) 0;
+        gap: calc(16 * var(--s));
+    }
+    .landing .fs-msg-user {
+        max-width: 94%;
+        padding: calc(14 * var(--s)) calc(18 * var(--s));
+    }
+    .landing .fs-msg-ai {
+        max-width: 100%;
+    }
+    .landing .fs-artifact {
+        width: 100%;
+        padding: calc(14 * var(--s)) calc(16 * var(--s));
+        gap: calc(14 * var(--s));
+    }
+    .landing .fs-art-ico {
+        width: calc(46 * var(--s));
+        height: calc(46 * var(--s));
+    }
+    .landing .fs-composer {
+        margin: calc(12 * var(--s)) calc(16 * var(--s)) calc(18 * var(--s));
+        padding: calc(14 * var(--s)) calc(16 * var(--s));
+    }
+    .landing .fs-composer-text {
+        margin-bottom: calc(16 * var(--s));
+    }
+    .landing .fs-lib {
+        grid-template-columns: 1fr;
+    }
+    .landing .fs-side {
+        display: none;
+    }
+    .landing .fs-lib-main {
+        padding: calc(14 * var(--s)) calc(18 * var(--s));
+    }
+    .landing .fs-pop {
+        width: calc(300 * var(--s));
+        right: calc(14 * var(--s));
+    }
+}
+@media (max-width: 900px) {
+    .landing.landing .story-win {
+        left: 4%;
+        top: 5%;
+        width: 92%;
+        height: 90%;
+    }
+    .landing.landing .story-win .fs-win {
+        --s: min(100cqw / 900, 100cqh / 700);
+    }
+}
+
+/* very short windows (small phones): the library keeps only the matching row */
+@container (max-height: 300px) {
+    .landing .fs-lrow:not(.ours) {
+        display: none;
     }
 }
