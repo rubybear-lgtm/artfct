@@ -1,20 +1,15 @@
 <?php
 
-test('the landing page shows the flow animation with a sound control that starts muted', function () {
+test('the landing page hero stage plays the whole story', function () {
     visit('/')
         ->assertNoJavaScriptErrors()
         ->assertPresent('@landing-flow')
-        ->assertSeeIn('@landing-sound', 'Sound on')
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').muted', true)
-        ->click('@landing-sound')
-        ->assertSeeIn('@landing-sound', 'Sound off')
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').muted', false)
-        ->click('@landing-sound')
-        ->assertSeeIn('@landing-sound', 'Sound on')
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').muted', true);
+        ->assertPresent('@landing-flow-replay')
+        ->assertScript('document.querySelectorAll(\'[data-testid="landing-flow"] img\').length', 4)
+        ->assertScript('document.querySelectorAll(\'[data-testid="landing-flow"] .fs-win\').length', 1);
 });
 
-test('the headline and the whole animation fit one laptop screen', function () {
+test('the headline and the whole hero stage fit one laptop screen', function () {
     visit('/')
         ->resize(1440, 800)
         ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().bottom <= window.innerHeight + 1', true)
@@ -22,18 +17,30 @@ test('the headline and the whole animation fit one laptop screen', function () {
         ->assertNoJavaScriptErrors();
 });
 
-test('a phone gets the portrait cut and it fits the screen width', function () {
+test('the four steps are separate sections that each pin to the full screen', function () {
     visit('/')
-        ->resize(390, 844)
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').currentSrc.includes("landing-flow-phone-")', true)
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().width <= window.innerWidth', true)
+        ->resize(1440, 800)
+        ->assertScript('document.querySelectorAll(\'[data-testid^="landing-step-"]\').length', 4)
+        ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"]\')).every((el) => getComputedStyle(el).position === "sticky" && Math.round(el.getBoundingClientRect().height) === window.innerHeight - 68)', true)
+        ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"] h2\')).map((el) => el.textContent).join(",")', 'Ask,Share,Find,Use')
         ->assertNoJavaScriptErrors();
 });
 
-test('the animation starts on a quality tier that suits the screen', function () {
+test('a step plays on arrival and shows its finished state', function () {
+    $page = visit('/')->resize(1440, 800);
+
+    $page->script('document.querySelector(\'[data-testid="landing-step-ask"]\').scrollIntoView()');
+    $page->wait(9)
+        ->assertSeeIn('@landing-step-ask', 'Pricing teardown')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a phone gets the story in one column and it fits the screen width', function () {
     visit('/')
-        ->assertScript('["high", "medium", "low"].includes(document.querySelector(\'[data-testid="landing-flow"]\').dataset.quality)', true)
-        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').currentSrc.includes("landing-flow-wide-")', true)
+        ->resize(390, 844)
+        ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().width <= window.innerWidth', true)
+        ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)
+        ->assertScript('Array.from(document.querySelectorAll(\'[data-testid^="landing-step-"] .fs-in\')).every((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length === 1)', true)
         ->assertNoJavaScriptErrors();
 });
 

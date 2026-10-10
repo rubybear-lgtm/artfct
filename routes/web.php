@@ -9,6 +9,7 @@ use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
+use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 

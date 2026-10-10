@@ -1,56 +1,11 @@
-import { Link, usePage } from '@inertiajs/react';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Link } from '@inertiajs/react';
+import { useEffect, useRef } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { StorySteps, StoryStage, useStory } from '@/components/home/story';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
-import { lowerTier, pickTier } from '@/lib/flow-quality';
-import type {
-    FlowConnection,
-    FlowCut,
-    FlowMedia,
-    FlowTier,
-} from '@/lib/flow-quality';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
-
-const FLOW_ALT =
-    'Animated example in four steps. A marketer asks Claude for a pricing report and shares it with the team. It is saved and searchable by every AI tool. A product manager, in a new chat in a different tool, finds it and uses it, with the source.';
-
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
-
-const subscribeReducedMotion = (onChange: () => void) => {
-    const query = window.matchMedia(REDUCED_MOTION);
-    query.addEventListener('change', onChange);
-
-    return () => query.removeEventListener('change', onChange);
-};
-
-const prefersReducedMotion = () => window.matchMedia(REDUCED_MOTION).matches;
-
-/** Matches the width where the landing stylesheet switches to the stacked layout. */
-const PHONE_WIDTH = '(max-width: 900px)';
-
-const subscribePhoneWidth = (onChange: () => void) => {
-    const query = window.matchMedia(PHONE_WIDTH);
-    query.addEventListener('change', onChange);
-
-    return () => query.removeEventListener('change', onChange);
-};
-
-const isPhoneWidth = () => window.matchMedia(PHONE_WIDTH).matches;
-
-/** A frame near the end of the loop, where the finished story is on screen. */
-const FINISHED_FRAME_SECONDS = 15.4;
-
-/** Stalls in playback before the page moves to a lighter render. */
-const STALLS_BEFORE_STEPPING_DOWN = 2;
-
-type NavigatorWithConnection = Navigator & {
-    connection?: FlowConnection & EventTarget;
-};
-
-const networkConnection = () =>
-    (navigator as NavigatorWithConnection).connection;
 
 /**
  * Keeps the hero headline and the demo on one screen: the demo takes whatever
@@ -77,190 +32,6 @@ function useHeroHeight(
 
         return () => observer.disconnect();
     }, [page, hero]);
-}
-
-/**
- * The product animation. It starts muted (browsers require it), plays only
- * while visible, and with reduced motion shows a finished frame instead.
- */
-function FlowDemo({ cut }: { cut: FlowCut }) {
-    const video = useRef<HTMLVideoElement>(null);
-    const resumeAt = useRef(0);
-    const stalls = useRef(0);
-    const [muted, setMuted] = useState(true);
-    const [tier, setTier] = useState<FlowTier | null>(null);
-    const reduced = useSyncExternalStore(
-        subscribeReducedMotion,
-        prefersReducedMotion,
-        () => false,
-    );
-    const animated = !reduced;
-
-    /** Moves to a lighter render and carries on from the same moment. */
-    const stepDown = (from: FlowTier) => {
-        const lighter = lowerTier(cut.tiers, from.name);
-
-        if (!lighter) {
-            return;
-        }
-
-        resumeAt.current = video.current?.currentTime ?? 0;
-        stalls.current = 0;
-        setTier(lighter);
-    };
-
-    /** Chooses the first render once the screen size and connection are known. */
-    useEffect(() => {
-        const el = video.current;
-        const width =
-            (el?.getBoundingClientRect().width ?? 0) * window.devicePixelRatio;
-
-        setTier(pickTier(cut.tiers, width, networkConnection()));
-    }, [cut]);
-
-    /** A connection that gets worse mid-visit drops to a lighter render. */
-    useEffect(() => {
-        const connection = networkConnection();
-
-        if (!connection || !tier) {
-            return;
-        }
-
-        const onChange = () => {
-            const wanted = pickTier(cut.tiers, 0, connection);
-
-            if (wanted && wanted.width < tier.width) {
-                stepDown(tier);
-            }
-        };
-
-        connection.addEventListener('change', onChange);
-
-        return () => connection.removeEventListener('change', onChange);
-    });
-
-    /** Repeated stalls mean the render is too heavy for the link. */
-    useEffect(() => {
-        const el = video.current;
-
-        if (!el || !tier) {
-            return;
-        }
-
-        const onWaiting = () => {
-            if (el.currentTime < 0.5) {
-                return;
-            }
-
-            stalls.current += 1;
-
-            if (stalls.current >= STALLS_BEFORE_STEPPING_DOWN) {
-                stepDown(tier);
-            }
-        };
-
-        el.addEventListener('waiting', onWaiting);
-
-        return () => el.removeEventListener('waiting', onWaiting);
-    });
-
-    /** A new render picks up where the last one stopped, with the same sound. */
-    useEffect(() => {
-        const el = video.current;
-
-        if (!el || !tier) {
-            return;
-        }
-
-        const onLoaded = () => {
-            el.muted = muted;
-
-            if (resumeAt.current > 0 && !reduced) {
-                el.currentTime = resumeAt.current;
-                resumeAt.current = 0;
-            }
-        };
-
-        el.addEventListener('loadedmetadata', onLoaded);
-
-        return () => el.removeEventListener('loadedmetadata', onLoaded);
-        // `muted` is read when a render loads, not a reason to reload one.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tier, reduced]);
-
-    useEffect(() => {
-        const el = video.current;
-
-        if (!el || !tier) {
-            return;
-        }
-
-        if (reduced) {
-            el.pause();
-
-            const seek = () => {
-                el.currentTime = FINISHED_FRAME_SECONDS;
-            };
-            el.addEventListener('loadedmetadata', seek);
-
-            return () => el.removeEventListener('loadedmetadata', seek);
-        }
-
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    void el.play().catch(() => undefined);
-                } else {
-                    el.pause();
-                }
-            },
-            { threshold: 0.25 },
-        );
-        observer.observe(el);
-
-        return () => observer.disconnect();
-    }, [reduced, tier]);
-
-    const toggleSound = () => {
-        const el = video.current;
-
-        if (!el) {
-            return;
-        }
-
-        el.muted = !el.muted;
-        setMuted(el.muted);
-        void el.play().catch(() => undefined);
-    };
-
-    return (
-        <div className="demo" id="how">
-            <video
-                ref={video}
-                src={tier?.src}
-                poster={cut.poster}
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-                aria-label={FLOW_ALT}
-                data-testid="landing-flow"
-                data-quality={tier?.name}
-            />
-            {animated && (
-                <button
-                    type="button"
-                    className="sound"
-                    onClick={toggleSound}
-                    aria-pressed={!muted}
-                    data-testid="landing-sound"
-                >
-                    {muted ? 'Sound on' : 'Sound off'}
-                </button>
-            )}
-        </div>
-    );
 }
 
 type MiniRowProps = {
@@ -405,13 +176,7 @@ const FOUR: { title: string; text: string; icon: React.ReactNode }[] = [
 ];
 
 export default function Landing() {
-    const { flow } = usePage<{ flow: FlowMedia }>().props;
-    const phone = useSyncExternalStore(
-        subscribePhoneWidth,
-        isPhoneWidth,
-        () => false,
-    );
-    const flowCut = phone ? flow.phone : flow.wide;
+    const story = useStory();
     const page = useRef<HTMLDivElement>(null);
     const hero = useRef<HTMLElement>(null);
     const navMenu = useRef<HTMLDetailsElement>(null);
@@ -500,12 +265,7 @@ export default function Landing() {
                         </div>
                     </header>
 
-                    {flowCut && (
-                        <FlowDemo
-                            key={phone ? 'phone' : 'wide'}
-                            cut={flowCut}
-                        />
-                    )}
+                    <StoryStage story={story} />
 
                     <div className="strip rule">
                         <div className="lab">
@@ -533,6 +293,8 @@ export default function Landing() {
                             </span>
                         </div>
                     </div>
+
+                    <StorySteps story={story} />
 
                     <section className="statement pad rule">
                         <div className="eyebrow">The problem</div>
