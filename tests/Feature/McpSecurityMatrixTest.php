@@ -291,6 +291,8 @@ test('tool arguments of the wrong type return a tool error, not a crash', functi
 })->with([
     'artifact id as array' => ['get_artifact', ['id' => ['x']]],
     'artifact id path traversal' => ['get_artifact', ['id' => '../../admin']],
+    'read artifact id as array' => ['read_artifact', ['id' => ['x']]],
+    'read artifact id path traversal' => ['read_artifact', ['id' => '../../admin']],
     'search query as object' => ['search_artifacts', ['query' => ['a' => 'b']]],
     'collection name as array' => ['create_collection', ['name' => ['x']]],
 ]);

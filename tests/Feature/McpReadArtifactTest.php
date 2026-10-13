@@ -2,6 +2,7 @@
 
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Models\ArtifactIndexEntry;
+use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -28,9 +29,9 @@ function callReadArtifact(string $token, array $arguments): TestResponse
 }
 
 /** Index text for an artifact in a team and fake the Worker's metadata answer. */
-function readArtifactFixture(Team $team, string $text, array $entry = [], int $workerStatus = 200): void
+function readArtifactFixture(Team $team, string $text, array $entry = [], int $workerStatus = 200, array $worker = []): void
 {
-    config(['services.worker.base_url' => 'https://worker.test']);
+    config(['services.worker.base_url' => 'https://worker.test', 'indexing.enabled' => true]);
     ArtifactIndexEntry::factory()->create(array_merge([
         'team_id' => $team->id,
         'artifact_id' => READ_ARTIFACT_ID,
@@ -44,6 +45,8 @@ function readArtifactFixture(Team $team, string $text, array $entry = [], int $w
         'title' => 'Migration plan',
         'version' => 3,
         'provenance' => ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null],
+        'revoked_at' => null,
+        ...$worker,
     ], $workerStatus)]);
 }
 
@@ -60,7 +63,9 @@ test('read_artifact returns untrusted-marked text with a locator', function () {
     expect($content['content']['untrusted'])->toBeTrue()
         ->and($content['content']['text'])->toBe('The cutover happens on Friday.')
         ->and($content['content']['notice'])->not->toBeEmpty()
-        ->and($content['version'])->toBe(3)
+        ->and($content['indexed_version'])->toBe(3)
+        ->and($content['current_version'])->toBe(3)
+        ->and($content['stale'])->toBeFalse()
         ->and($content['title'])->toBe('Migration plan')
         ->and($content['locator'])->toBe(['offset' => 0, 'end_offset' => 30, 'total_characters' => 30])
         ->and($content['next_offset'])->toBeNull();
@@ -144,4 +149,73 @@ test('read_artifact forwards the caller token to the Worker', function () {
 
     Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer '.$token)
         && str_ends_with($request->url(), '/v1/artifacts/'.READ_ARTIFACT_ID));
+});
+
+test('read_artifact reports stale text when the index lags the live version', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-stale']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 3]);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['indexed_version'])->toBe(1)
+        ->and($content['current_version'])->toBe(3)
+        ->and($content['stale'])->toBeTrue();
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 3])->assertOk();
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('version_not_indexed');
+});
+
+test('read_artifact refuses a version request when the indexed version is unknown', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-unknown-version']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'text', ['version' => null]);
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 3])->assertOk();
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('version_not_indexed');
+});
+
+test('read_artifact treats a revoked artifact and a forbidden one as not found', function (int $status, array $worker) {
+    $team = Team::factory()->create(['slug' => 'rub-443-revoked-'.$status]);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'revoked text', workerStatus: $status, worker: $worker);
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found')
+        ->and($response->getContent())->not->toContain('revoked text');
+})->with([
+    'revoked' => [200, ['revoked_at' => '2026-10-01T00:00:00Z']],
+    'forbidden' => [403, []],
+]);
+
+test('read_artifact does not invite a retry for a dead-lettered artifact', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-dead']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test', 'indexing.enabled' => true]);
+    Http::fake(['worker.test/v1/artifacts/*' => Http::response(['id' => READ_ARTIFACT_ID, 'version' => 1])]);
+    ArtifactIndexingFailure::query()->create([
+        'team_id' => $team->id,
+        'artifact_id' => READ_ARTIFACT_ID,
+        'attempts' => 3,
+        'reason' => 'render timeout',
+        'failed_at' => now(),
+    ]);
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('content_not_available')
+        ->and($response->json('result.content.0._meta.artfct.retryable'))->toBeFalse();
+});
+
+test('read_artifact says reading is not enabled when indexing is off', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-off']);
+    $token = remoteMcpToken($team);
+    config(['indexing.enabled' => false]);
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('search_not_configured');
 });

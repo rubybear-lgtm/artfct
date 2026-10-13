@@ -6,6 +6,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Models\ArtifactIndexEntry;
+use App\Models\ArtifactIndexingFailure;
 use App\Services\Artifacts\ArtifactIdShape;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
@@ -68,6 +69,12 @@ final class ReadArtifactTool extends Tool
             'limit' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_LIMIT],
         ]);
 
+        if (! config('indexing.enabled')) {
+            app(McpTelemetry::class)->record('read_artifact', 'search_not_configured', $startedAt);
+
+            return McpErrorResponse::error('Reading artifact text is not enabled for this workspace yet.', 'search_not_configured', false, 'enable_indexing');
+        }
+
         $workerBaseUrl = config('services.worker.base_url');
         if (! is_string($workerBaseUrl) || $workerBaseUrl === '') {
             app(McpTelemetry::class)->record('read_artifact', 'error', $startedAt);
@@ -88,7 +95,7 @@ final class ReadArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
-        if ($response->status() === 404) {
+        if (in_array($response->status(), [403, 404], true) || $response->json('revoked_at') !== null) {
             app(McpTelemetry::class)->record('read_artifact', 'not_found', $startedAt);
 
             return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
@@ -106,16 +113,30 @@ final class ReadArtifactTool extends Tool
             ->first();
 
         if ($entry === null) {
+            $failed = ArtifactIndexingFailure::query()
+                ->where('team_id', McpContext::team()->id)
+                ->where('artifact_id', $validated['id'])
+                ->exists();
             app(McpTelemetry::class)->record('read_artifact', 'content_not_indexed', $startedAt, $validated['id']);
 
-            return McpErrorResponse::error('The text of this artifact has not been indexed yet. Try again shortly.', 'content_not_indexed', true);
+            return $failed
+                ? McpErrorResponse::error('The text of this artifact could not be indexed, so it cannot be read here.', 'content_not_available')
+                : McpErrorResponse::error('The text of this artifact has not been indexed yet. Try again shortly.', 'content_not_indexed', true);
         }
 
+        $indexedVersion = $entry->version;
+        $currentVersion = $response->json('version');
+        $currentVersion = is_numeric($currentVersion) ? (int) $currentVersion : null;
         $requestedVersion = isset($validated['version']) ? (int) $validated['version'] : null;
-        if ($requestedVersion !== null && $entry->version !== null && $entry->version !== $requestedVersion) {
+        if ($requestedVersion !== null && $indexedVersion !== $requestedVersion) {
             app(McpTelemetry::class)->record('read_artifact', 'version_not_indexed', $startedAt, $validated['id']);
 
-            return McpErrorResponse::error('Only the version that was last indexed (version '.$entry->version.') can be read.', 'version_not_indexed');
+            return McpErrorResponse::error(
+                $indexedVersion === null
+                    ? 'The indexed text is not tied to a known version, so a specific version cannot be read.'
+                    : 'Only the version that was last indexed (version '.$indexedVersion.') can be read.',
+                'version_not_indexed',
+            );
         }
 
         $text = $entry->extracted_text;
@@ -129,7 +150,11 @@ final class ReadArtifactTool extends Tool
 
         return Response::structured([
             'id' => $validated['id'],
-            'version' => $entry->version ?? $response->json('version'),
+            // The version the text came from, never the live one: after a
+            // republish the index can lag, and a caller must cite what it read.
+            'indexed_version' => $indexedVersion,
+            'current_version' => $currentVersion,
+            'stale' => $indexedVersion === null || $currentVersion === null || $indexedVersion !== $currentVersion,
             'title' => $entry->title ?? $response->json('title'),
             'headings' => $entry->headings ?? [],
             'provenance' => $response->json('provenance'),
