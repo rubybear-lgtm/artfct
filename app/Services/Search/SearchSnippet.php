@@ -5,7 +5,7 @@ namespace App\Services\Search;
 /** Query-focused, word-bounded excerpts from the selected source passage. */
 final class SearchSnippet
 {
-    public static function make(string $text, string $query, ?string $title, int $maxLength = 200): string
+    public static function make(string $text, string $query, ?string $title, int $maxLength = 200, bool $displayExcerpt = true): string
     {
         $text = trim(preg_replace('/\s+/u', ' ', str_replace(['\\r\\n', '\\n', '\\t'], ' ', $text)) ?? $text);
         $title = trim((string) $title);
@@ -25,13 +25,22 @@ final class SearchSnippet
         foreach ($boundaries[0] as [$boundary, $byteOffset]) {
             $starts[] = mb_strlen(substr($text, 0, $byteOffset + strlen($boundary)));
         }
+        $titleTerms = self::terms($title);
+        if ($displayExcerpt && $titleTerms !== [] && count(array_intersect($terms, $titleTerms)) / count($titleTerms) >= 0.7) {
+            // A title query asks for the document's introduction, not for its best-matching later sentence.
+            $starts = [0];
+        }
         $bestStart = 0;
         $bestScore = -1;
-        foreach ($starts as $start) {
+        foreach ($starts as $index => $start) {
             $window = mb_strtolower(mb_substr($text, $start, $maxLength));
             preg_match_all('/[\p{L}\p{N}_]+/u', $window, $windowWords);
-            $stems = array_map(self::stem(...), $windowWords[0]);
-            $score = count(array_intersect($terms, array_unique($stems)));
+            $stems = array_unique(array_map(self::stem(...), $windowWords[0]));
+            $lead = mb_strtolower(mb_substr($text, $start, ($starts[$index + 1] ?? mb_strlen($text)) - $start));
+            preg_match_all('/[\p{L}\p{N}_]+/u', $lead, $leadWords);
+            $leadStems = array_unique(array_map(self::stem(...), $leadWords[0]));
+            // The sentence the excerpt opens with counts double, so the answer sentence leads rather than trails.
+            $score = count(array_intersect($terms, $stems)) + ($displayExcerpt ? 2 : 0) * count(array_intersect($terms, $leadStems));
             if ($score > $bestScore) {
                 $bestScore = $score;
                 $bestStart = $start;

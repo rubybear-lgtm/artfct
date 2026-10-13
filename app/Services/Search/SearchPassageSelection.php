@@ -31,7 +31,7 @@ final class SearchPassageSelection
                 // The retrieved representative chunk is always compared unmodified, so focusing can only add evidence.
                 $context = $query === '' || $chunk === $artifact->chunk
                     ? $chunk->text
-                    : trim($title."\n".SearchSnippet::make($chunk->text, $query, $title, 400));
+                    : trim($title."\n".SearchSnippet::make($chunk->text, $query, $title, 400, displayExcerpt: false));
                 $hash = hash('sha256', $context);
                 $source = hash('sha256', $chunk->text);
                 if (isset($seen[$hash]) || isset($seen[$source])) {

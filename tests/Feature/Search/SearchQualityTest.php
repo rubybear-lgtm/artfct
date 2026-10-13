@@ -84,6 +84,17 @@ test('passage selection always reranks the unmodified representative chunk and d
         ->and(count(array_filter($texts, fn (string $text) => str_contains($text, $answer))))->toBeGreaterThanOrEqual(1);
 });
 
+test('display excerpts open on the answer sentence and title queries open on the introduction', function () {
+    $title = 'Vendor onboarding control matrix';
+    $text = 'Vendor onboarding requires a signed agreement before records move. '.str_repeat('Unrelated operating record text. ', 8)
+        .'A missing stage identifier pauses that opening rather than assigning a default. '.str_repeat('More unrelated closing text. ', 8);
+    $answer = SearchSnippet::make($text, 'What happens when a stage identifier is missing?', $title);
+    $intro = SearchSnippet::make($text, $title, $title);
+    expect($answer)->toStartWith('… A missing stage identifier pauses')
+        ->and($intro)->toStartWith('Vendor onboarding requires a signed agreement')
+        ->and(SearchSnippet::make($text, 'What happens when a stage identifier is missing?', $title, 200, displayExcerpt: false))->not->toBe('');
+});
+
 test('relevance bands prevent popularity and canonical boosts displacing direct matches', function () {
     $exact = qualityMatch('exact', 'One design language.', 0.8735);
     $noise = qualityMatch('noise', 'Unrelated software.', 0.00657);
