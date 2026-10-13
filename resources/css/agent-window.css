@@ -1,0 +1,537 @@
+/* Agent windows: Claude, Cursor and ChatGPT/Codex as desktop apps, and the
+   terminal version for engineering work. Type and spacing scale from the
+   window's own width (`--s`), so one window reads the same at any size. */
+
+/* Theme tokens, each declared once with light-dark(). The colour-scheme
+   comes from the page (system, or the viewer's choice on <html>). */
+.aw,
+.aw-cell {
+    --cap-bg: light-dark(#fbfaf8, #2b2a28);
+    --cap-ink: light-dark(#262624, #f0eee6);
+    --cap-line: light-dark(#dedad2, #4a4843);
+    --aw-accent: light-dark(#701a24, #f3a3ad);
+    --aw-ok: light-dark(#2f6b4f, #7fc39c);
+    --aw-ok-solid: light-dark(#2f6b4f, #3f8a64);
+    --aw-shadow: 0 18px 50px light-dark(rgb(38 38 36 / 0.22), rgb(0 0 0 / 0.5));
+    --aw-lift: 0 2px 10px light-dark(rgb(38 38 36 / 0.06), transparent);
+    --aw-bar: transparent;
+}
+
+.aw-claude {
+    --aw-bg: light-dark(#faf9f5, #262624);
+    --aw-ink: light-dark(#262624, #f0eee6);
+    --aw-muted: light-dark(#69675f, #a8a69d);
+    --aw-line: light-dark(#e5e2d9, #3d3b37);
+    --aw-bubble: light-dark(#f0eee6, #30302e);
+    --aw-surface: light-dark(#fff, #30302e);
+    --aw-chip-bg: light-dark(#f0eee6, #3a3936);
+    --aw-send-bg: #d97757;
+    --aw-send-ink: #fff;
+}
+
+.aw-codex {
+    --aw-bg: light-dark(#fff, #212121);
+    --aw-ink: light-dark(#1a1a1a, #ececec);
+    --aw-muted: light-dark(#6b6b6b, #a1a1a1);
+    --aw-line: light-dark(#e6e6e6, #3a3a3a);
+    --aw-bubble: light-dark(#f4f4f4, #2f2f2f);
+    --aw-surface: light-dark(#fff, #2a2a2a);
+    --aw-chip-bg: light-dark(#f4f4f4, #2f2f2f);
+    --aw-send-bg: light-dark(#111, #fff);
+    --aw-send-ink: light-dark(#fff, #111);
+}
+
+.aw-cursor {
+    --aw-bg: light-dark(#fff, #181818);
+    --aw-ink: light-dark(#1f1f1f, #e8e8e8);
+    --aw-muted: light-dark(#6b6b6b, #8a8a8a);
+    --aw-line: light-dark(#e0e0e0, #333);
+    --aw-bubble: light-dark(#f3f3f3, #262626);
+    --aw-surface: light-dark(#f7f7f7, #1f1f1f);
+    --aw-chip-bg: light-dark(#ececec, #262626);
+    --aw-send-bg: light-dark(#cfcfcf, #3a3a3a);
+    --aw-send-ink: light-dark(#fff, #e8e8e8);
+}
+
+.aw-terminal {
+    --aw-bg: light-dark(#fbfaf8, #161615);
+    --aw-ink: light-dark(#1f1e1c, #ecebe6);
+    --aw-muted: light-dark(#6b6962, #8d8b84);
+    --aw-line: light-dark(#dedad2, #34332f);
+    --aw-bubble: light-dark(#efece6, #232220);
+    --aw-surface: light-dark(#fff, #1f1e1c);
+    --aw-chip-bg: light-dark(#efece6, #232220);
+    --aw-bar: light-dark(#f1efea, #1f1e1c);
+    --aw-send-bg: light-dark(#1f1e1c, #ecebe6);
+    --aw-send-ink: light-dark(#fff, #161615);
+}
+
+/* Wallpaper frames: one image per theme. */
+.aw-frame {
+    background-image: var(--frame-light);
+}
+
+:root[data-theme='dark'] .aw-frame {
+    background-image:
+        linear-gradient(rgb(0 0 0 / 0.38), rgb(0 0 0 / 0.38)),
+        var(--frame-dark, var(--frame-light));
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .aw-frame {
+        background-image:
+            linear-gradient(rgb(0 0 0 / 0.38), rgb(0 0 0 / 0.38)),
+            var(--frame-dark, var(--frame-light));
+    }
+}
+
+.aw-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+}
+
+.aw-cell:last-of-type {
+    margin-top: clamp(14px, 2.4vw, 32px);
+}
+
+.aw-cap {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cap-ink);
+    background: var(--cap-bg);
+    border: 1px solid var(--cap-line);
+    border-radius: 999px;
+    padding: 5px 12px 5px 9px;
+}
+
+/* Each window is drawn in its agent's own look. Type and spacing scale
+   from the window's width, like the story windows. */
+
+.aw {
+    container-type: inline-size;
+    flex: 1;
+    min-height: 0;
+    background: var(--aw-bg);
+    color: var(--aw-ink);
+    border: 1px solid var(--aw-line);
+    border-radius: 14px;
+    box-shadow: var(--aw-shadow);
+    overflow: hidden;
+}
+
+.aw-in {
+    --s: calc(100cqw / 760);
+
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    font-size: calc(26 * var(--s));
+    line-height: 1.4;
+}
+
+.aw-bar,
+.aw-subbar {
+    display: flex;
+    align-items: center;
+    gap: calc(18 * var(--s));
+    height: calc(58 * var(--s));
+    padding: 0 calc(24 * var(--s));
+    flex: none;
+    border-bottom: 1px solid var(--aw-line);
+    color: var(--aw-muted);
+}
+
+.aw-spacer {
+    flex: 1;
+}
+
+.aw-ico {
+    width: calc(26 * var(--s));
+    height: calc(26 * var(--s));
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.aw-dots {
+    display: flex;
+    gap: calc(9 * var(--s));
+}
+
+.aw-dots i {
+    width: calc(14 * var(--s));
+    height: calc(14 * var(--s));
+    border-radius: 50%;
+    background: #ff5f57;
+    display: block;
+}
+
+.aw-dots i:nth-child(2) {
+    background: #febc2e;
+}
+
+.aw-dots i:nth-child(3) {
+    background: #28c840;
+}
+
+.aw-dots.claude i {
+    background: #e8855a;
+}
+
+.aw-dots.claude i:nth-child(3) {
+    background: #6b6a68;
+}
+
+.aw-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: calc(30 * var(--s)) calc(40 * var(--s)) 0;
+    display: flex;
+    flex-direction: column;
+    gap: calc(22 * var(--s));
+}
+
+.aw-composer {
+    flex: none;
+    margin: calc(14 * var(--s)) calc(26 * var(--s)) calc(26 * var(--s));
+    padding: calc(18 * var(--s)) calc(20 * var(--s));
+    display: grid;
+    gap: calc(22 * var(--s));
+    background: var(--aw-surface);
+    border: 1px solid var(--aw-line);
+    border-radius: calc(20 * var(--s));
+    box-shadow: var(--aw-lift);
+}
+
+.aw-ph {
+    color: var(--aw-muted);
+}
+
+.aw-crow {
+    display: flex;
+    align-items: center;
+    gap: calc(12 * var(--s));
+    color: var(--aw-muted);
+}
+
+.aw-btn {
+    width: calc(46 * var(--s));
+    height: calc(46 * var(--s));
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--aw-line);
+    border-radius: calc(12 * var(--s));
+}
+
+.aw-model {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(6 * var(--s));
+    font-size: calc(23 * var(--s));
+}
+
+.aw-send {
+    width: calc(48 * var(--s));
+    height: calc(48 * var(--s));
+    display: grid;
+    place-items: center;
+    border-radius: calc(12 * var(--s));
+    background: var(--aw-send-bg);
+    color: var(--aw-send-ink);
+}
+
+/* Claude */
+.aw-claude .aw-user {
+    align-self: flex-end;
+    max-width: 82%;
+    background: var(--aw-bubble);
+    border-radius: calc(18 * var(--s));
+    padding: calc(14 * var(--s)) calc(22 * var(--s));
+}
+
+.aw-reply {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: calc(16 * var(--s));
+    align-items: start;
+}
+
+.aw-reply p {
+    margin: 0;
+    font-family: var(--serif, 'Newsreader', 'Iowan Old Style', Georgia, serif);
+    font-size: calc(30 * var(--s));
+    line-height: 1.35;
+}
+
+/* Terminal version: monospace, dark, no composer chrome. */
+.aw-terminal {
+    font-family:
+        ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+    font-size: calc(22 * var(--s));
+    line-height: 1.45;
+}
+
+.aw-terminal .aw-body {
+    gap: calc(16 * var(--s));
+}
+
+.aw-terminal .aw-bar {
+    background: var(--aw-bar);
+}
+
+.aw-title {
+    flex: 1;
+    text-align: center;
+    font-size: calc(20 * var(--s));
+    padding-right: calc(60 * var(--s));
+}
+
+.aw-term-head {
+    display: flex;
+    gap: calc(16 * var(--s));
+    border: 1px solid var(--aw-line);
+    border-radius: calc(8 * var(--s));
+    padding: calc(14 * var(--s)) calc(18 * var(--s));
+    color: var(--aw-muted);
+    align-self: flex-start;
+}
+
+.aw-term-head b {
+    color: var(--aw-ink);
+}
+
+.aw-term-user b,
+.aw-term-line b,
+.aw-prompt b {
+    color: var(--aw-muted);
+}
+
+.aw-term-user {
+    background: var(--aw-bubble);
+    border-radius: calc(6 * var(--s));
+    padding: calc(10 * var(--s)) calc(14 * var(--s));
+}
+
+.aw-term-list {
+    display: grid;
+    gap: calc(6 * var(--s));
+    padding-left: calc(24 * var(--s));
+}
+
+.aw-term-list .done {
+    color: var(--aw-muted);
+}
+
+.aw-term-read {
+    color: var(--aw-ok);
+}
+
+.aw-term-input {
+    flex: none;
+    margin: calc(10 * var(--s)) calc(26 * var(--s)) calc(22 * var(--s));
+    display: grid;
+    gap: calc(10 * var(--s));
+}
+
+.aw-prompt {
+    border: 1px solid var(--aw-line);
+    border-radius: calc(8 * var(--s));
+    padding: calc(12 * var(--s)) calc(16 * var(--s));
+    color: var(--aw-muted);
+}
+
+.aw-hint {
+    font-size: calc(19 * var(--s));
+    color: var(--aw-muted);
+}
+
+/* Cursor */
+.aw-cursor .aw-composer {
+    box-shadow: none;
+}
+
+.aw-tab {
+    background: var(--aw-chip-bg);
+    color: var(--aw-ink);
+    font-weight: 600;
+    border-radius: calc(8 * var(--s));
+    padding: calc(6 * var(--s)) calc(16 * var(--s));
+}
+
+.aw-chip,
+.aw-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(8 * var(--s));
+    justify-self: start;
+    background: var(--aw-chip-bg);
+    border: 1px solid var(--aw-line);
+    border-radius: calc(8 * var(--s));
+    padding: calc(6 * var(--s)) calc(14 * var(--s));
+    font-size: calc(22 * var(--s));
+    color: var(--aw-muted);
+}
+
+.aw-cursor .aw-pill {
+    border-radius: 999px;
+    color: var(--aw-ink);
+    font-weight: 600;
+}
+
+.aw-cursor .aw-send {
+    border-radius: 50%;
+}
+
+/* Codex desktop */
+.aw-codex .aw-composer {
+    border-radius: calc(26 * var(--s));
+}
+
+.aw-codex .aw-send {
+    border-radius: 50%;
+}
+
+.up-card {
+    background: var(--aw-surface);
+    border: 1px solid var(--aw-line);
+    border-radius: calc(16 * var(--s));
+    padding: calc(20 * var(--s)) calc(26 * var(--s));
+    display: grid;
+    gap: calc(8 * var(--s));
+    width: 92%;
+    box-shadow: var(--aw-lift);
+}
+
+.up-card b {
+    font-family: var(--serif, 'Newsreader', 'Iowan Old Style', Georgia, serif);
+    font-weight: 500;
+    font-size: calc(32 * var(--s));
+}
+
+.up-card p {
+    margin: 0;
+    font-size: calc(27 * var(--s));
+}
+
+.up-quiet {
+    font-size: calc(21 * var(--s));
+    color: var(--aw-muted);
+}
+
+.up-del {
+    text-decoration: line-through;
+    text-decoration-color: var(--aw-accent, #701a24);
+    color: var(--aw-muted, #69675f);
+}
+
+.up-ins {
+    text-decoration: none;
+    color: var(--aw-accent, #701a24);
+    font-weight: 700;
+}
+
+/* Messages shared by the desktop skins. */
+.aw-user {
+    align-self: flex-end;
+    max-width: 82%;
+    background: var(--aw-bubble);
+    border-radius: calc(18 * var(--s));
+    padding: calc(14 * var(--s)) calc(22 * var(--s));
+}
+
+.aw-cursor .aw-user {
+    align-self: stretch;
+    max-width: none;
+    border: 1px solid var(--aw-line);
+    border-radius: calc(10 * var(--s));
+}
+
+.aw-codex .aw-reply p,
+.aw-cursor .aw-reply p {
+    font-family: inherit;
+    font-size: calc(26 * var(--s));
+}
+
+.aw-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 calc(40 * var(--s));
+    display: grid;
+    gap: calc(12 * var(--s));
+}
+
+.aw-list li {
+    display: flex;
+    align-items: center;
+    gap: calc(14 * var(--s));
+}
+
+.aw-list li.done {
+    color: var(--aw-muted);
+}
+
+.up-box {
+    width: calc(24 * var(--s));
+    height: calc(24 * var(--s));
+    flex: none;
+    border: 1.5px solid var(--aw-line);
+    border-radius: calc(6 * var(--s));
+    background: transparent;
+}
+
+.aw-list li.done .up-box {
+    background: var(--aw-ok-solid);
+    border-color: var(--aw-ok-solid);
+}
+
+.aw-read {
+    margin: 0;
+    padding-left: calc(40 * var(--s));
+    display: flex;
+    align-items: center;
+    gap: calc(10 * var(--s));
+    font-size: calc(22 * var(--s));
+    color: var(--aw-muted);
+}
+
+.aw-read svg {
+    width: calc(22 * var(--s));
+    height: calc(22 * var(--s));
+    fill: none;
+    stroke: var(--aw-ok);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.aw-term-card {
+    display: grid;
+    gap: calc(4 * var(--s));
+    border: 1px solid var(--aw-line);
+    border-radius: calc(8 * var(--s));
+    padding: calc(12 * var(--s)) calc(16 * var(--s));
+}
+
+.aw-term-card small {
+    color: var(--aw-muted);
+}
+
+.aw-cursor .up-card {
+    background: #1f1f1f;
+    border-color: #3a3a3a;
+    color: var(--aw-ink);
+}
+
+.aw-cursor .up-quiet {
+    color: var(--aw-muted);
+}

@@ -20,10 +20,11 @@
 .landing .fs-text p {
     margin: 24px 0 0;
     font: 400 clamp(18px, 1.5vw, 22px)/1.45 var(--serif);
-    color: #55544e;
+    color: var(--ink-2);
     max-width: 20em;
 }
 .landing .fs-frame {
+    background-image: var(--frame-light);
     position: relative;
     height: clamp(400px, calc(100svh - 116px - 80px), 780px);
     border-radius: 16px;
@@ -39,7 +40,7 @@
     height: 92%;
     container-type: size;
     --s: min(100cqw / 1000, 100cqh / 800);
-    background: #fbfaf8;
+    background: var(--paper);
     border: 1px solid rgba(38, 38, 36, 0.12);
     border-radius: calc(22 * var(--s));
     box-shadow: 0 20px 60px rgba(38, 38, 36, 0.18);
@@ -66,7 +67,7 @@
     width: calc(14 * var(--s));
     height: calc(14 * var(--s));
     border-radius: 50%;
-    background: #d9d6cf;
+    background: var(--line);
     display: block;
 }
 .landing .fs-dots i:nth-child(1) {
@@ -82,7 +83,7 @@
     flex: 1;
     text-align: center;
     font-size: calc(19 * var(--s));
-    color: #69675f;
+    color: var(--ink-3);
     font-weight: 500;
 }
 .landing .fs-right {
@@ -93,30 +94,31 @@
 .landing .fs-sharebtn {
     font-weight: 600;
     font-size: calc(19 * var(--s));
-    border: 1.5px solid #dedad2;
+    border: 1.5px solid var(--line);
     border-radius: calc(10 * var(--s));
     padding: calc(7 * var(--s)) calc(18 * var(--s));
-    background: #fff;
-    color: #262624;
+    background: var(--white);
+    color: var(--ink);
 }
 .landing .fs-sharebtn.hot {
-    border-color: #701a24;
-    box-shadow: 0 0 0 calc(5 * var(--s)) rgba(112, 26, 36, 0.12);
+    border-color: var(--ox);
+    box-shadow: 0 0 0 calc(5 * var(--s))
+        color-mix(in srgb, var(--ox) 12%, transparent);
 }
 .landing .fs-pillbtn {
     display: inline-flex;
     gap: calc(8 * var(--s));
     align-items: center;
-    border: 1.5px solid #dedad2;
-    background: #fff;
+    border: 1.5px solid var(--line);
+    background: var(--white);
     border-radius: calc(10 * var(--s));
     padding: calc(6 * var(--s)) calc(14 * var(--s));
     font-weight: 600;
     font-size: calc(20 * var(--s));
 }
 .landing .fs-new {
-    border: 1.5px solid #701a24;
-    color: #701a24;
+    border: 1.5px solid var(--ox);
+    color: var(--ox);
     border-radius: calc(8 * var(--s));
     padding: calc(3 * var(--s)) calc(12 * var(--s));
     font-weight: 600;
@@ -142,12 +144,12 @@
     gap: calc(10 * var(--s));
     font-size: calc(20 * var(--s));
     font-weight: 700;
-    color: #55544e;
+    color: var(--ink-2);
 }
 .landing .fs-msg-user {
     align-self: flex-end;
     max-width: 78%;
-    background: #efece6;
+    background: var(--well);
     border-radius: calc(22 * var(--s)) calc(22 * var(--s)) calc(6 * var(--s))
         calc(22 * var(--s));
     padding: calc(18 * var(--s)) calc(26 * var(--s));
@@ -158,7 +160,7 @@
 .landing .fs-msg-ai {
     margin: 0;
     font: 400 calc(31 * var(--s))/1.45 var(--serif);
-    color: #262624;
+    color: var(--ink);
     max-width: 92%;
 }
 .landing .fs-msg-ai.plain {
@@ -172,7 +174,7 @@
     width: calc(11 * var(--s));
     height: calc(11 * var(--s));
     border-radius: 50%;
-    background: #701a24;
+    background: var(--ox-fill);
     opacity: 0.5;
     display: block;
 }
@@ -180,7 +182,7 @@
     display: inline-block;
     width: 2px;
     height: 1em;
-    background: #701a24;
+    background: var(--ox-fill);
     vertical-align: -0.15em;
     margin-left: 2px;
     animation: fs-blink 1s steps(1) infinite;
@@ -194,21 +196,21 @@
     display: flex;
     align-items: center;
     gap: calc(20 * var(--s));
-    background: #fff;
-    border: 1.5px solid #dedad2;
+    background: var(--white);
+    border: 1.5px solid var(--line);
     border-radius: calc(16 * var(--s));
     padding: calc(20 * var(--s)) calc(26 * var(--s));
     width: 86%;
 }
 .landing .fs-artifact.hot {
-    border-color: #701a24;
+    border-color: var(--ox);
 }
 .landing .fs-art-ico {
     flex: none;
     width: calc(58 * var(--s));
     height: calc(58 * var(--s));
     border-radius: calc(12 * var(--s));
-    background: #efece6;
+    background: var(--well);
     display: grid;
     place-items: center;
 }
@@ -223,7 +225,7 @@
     align-items: center;
     gap: calc(7 * var(--s));
     font-size: calc(21 * var(--s));
-    color: #55544e;
+    color: var(--ink-2);
     margin-top: calc(4 * var(--s));
 }
 .landing .fs-badge {
@@ -231,8 +233,8 @@
     display: inline-flex;
     align-items: center;
     gap: calc(8 * var(--s));
-    background: #e3eee8;
-    color: #2f6b4f;
+    background: var(--ok-tint);
+    color: var(--ok);
     font-weight: 600;
     font-size: calc(19 * var(--s));
     border-radius: calc(8 * var(--s));
@@ -242,8 +244,8 @@
 .landing .fs-composer {
     flex: none;
     margin: calc(20 * var(--s)) calc(36 * var(--s)) calc(34 * var(--s));
-    border: 1.5px solid #dedad2;
-    background: #fff;
+    border: 1.5px solid var(--line);
+    background: var(--white);
     border-radius: calc(22 * var(--s));
     padding: calc(18 * var(--s)) calc(22 * var(--s));
 }
@@ -252,14 +254,14 @@
     font-size: calc(23 * var(--s));
     height: calc(31 * var(--s));
     line-height: calc(31 * var(--s));
-    color: #69675f;
+    color: var(--ink-3);
     margin-bottom: calc(26 * var(--s));
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 .landing .fs-composer-text.typed {
-    color: #262624;
+    color: var(--ink);
 }
 .landing .fs-composer-row {
     display: flex;
@@ -270,11 +272,11 @@
     width: calc(36 * var(--s));
     height: calc(36 * var(--s));
     border-radius: 50%;
-    border: 1.5px solid #dedad2;
+    border: 1.5px solid var(--line);
     display: grid;
     place-items: center;
     font-size: calc(22 * var(--s));
-    color: #69675f;
+    color: var(--ink-3);
 }
 .landing .fs-chipbtn {
     display: inline-flex;
@@ -282,8 +284,8 @@
     gap: calc(8 * var(--s));
     font-size: calc(19 * var(--s));
     font-weight: 600;
-    color: #55544e;
-    background: #efece6;
+    color: var(--ink-2);
+    background: var(--well);
     border-radius: calc(9 * var(--s));
     padding: calc(6 * var(--s)) calc(13 * var(--s));
 }
@@ -292,7 +294,7 @@
     width: calc(40 * var(--s));
     height: calc(40 * var(--s));
     border-radius: 50%;
-    background: #cfcbc2;
+    background: var(--line-strong);
     color: #fff;
     display: grid;
     place-items: center;
@@ -304,8 +306,8 @@
     right: calc(26 * var(--s));
     top: calc(66 * var(--s));
     width: calc(430 * var(--s));
-    background: #fff;
-    border: 1px solid #dedad2;
+    background: var(--white);
+    border: 1px solid var(--line);
     border-radius: calc(18 * var(--s));
     box-shadow: 0 18px 44px rgba(38, 38, 36, 0.18);
     padding: calc(24 * var(--s));
@@ -317,7 +319,7 @@
 }
 .landing .fs-pop-sub {
     font-size: calc(18 * var(--s));
-    color: #55544e;
+    color: var(--ink-2);
     margin: calc(6 * var(--s)) 0 calc(16 * var(--s));
     line-height: 1.4;
 }
@@ -326,15 +328,15 @@
     align-items: center;
     gap: calc(14 * var(--s));
     padding: calc(11 * var(--s)) 0;
-    border-top: 1px solid #dedad2;
+    border-top: 1px solid var(--line);
     font-size: calc(21 * var(--s));
 }
 .landing .fs-av {
     width: calc(36 * var(--s));
     height: calc(36 * var(--s));
     border-radius: 50%;
-    background: #f1e4e5;
-    color: #701a24;
+    background: var(--ox-tint);
+    color: var(--ox);
     display: grid;
     place-items: center;
     font-weight: 700;
@@ -342,7 +344,7 @@
 }
 .landing .fs-pop-can {
     margin-left: auto;
-    color: #69675f;
+    color: var(--ink-3);
     font-size: calc(17 * var(--s));
 }
 .landing .fs-pop-btn {
@@ -363,15 +365,15 @@
     min-height: 0;
 }
 .landing .fs-side {
-    border-right: 1px solid #dedad2;
+    border-right: 1px solid var(--line);
     padding: calc(18 * var(--s)) calc(18 * var(--s));
-    background: #f7f5f2;
+    background: var(--bone);
 }
 .landing .fs-side-h {
     font: 700 calc(15 * var(--s)) var(--sans);
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: #69675f;
+    color: var(--ink-3);
     padding: 0 calc(10 * var(--s)) calc(14 * var(--s));
 }
 .landing .fs-side-i {
@@ -381,13 +383,13 @@
     padding: calc(12 * var(--s)) calc(12 * var(--s));
     border-radius: calc(9 * var(--s));
     font-size: calc(20 * var(--s));
-    color: #55544e;
+    color: var(--ink-2);
 }
 .landing .fs-side-i.on {
-    background: #fff;
-    color: #262624;
+    background: var(--white);
+    color: var(--ink);
     font-weight: 600;
-    border: 1px solid #dedad2;
+    border: 1px solid var(--line);
 }
 .landing .fs-lib-main {
     padding: calc(26 * var(--s)) calc(34 * var(--s));
@@ -400,20 +402,20 @@
     display: flex;
     align-items: center;
     gap: calc(14 * var(--s));
-    border: 1.5px solid #701a24;
+    border: 1.5px solid var(--ox);
     border-radius: calc(14 * var(--s));
     padding: calc(15 * var(--s)) calc(20 * var(--s));
     font-size: calc(26 * var(--s));
-    background: #fff;
+    background: var(--white);
     min-height: calc(66 * var(--s));
 }
 .landing .fs-mag {
-    color: #69675f;
+    color: var(--ink-3);
     font-size: calc(30 * var(--s));
     line-height: 1;
 }
 .landing .fs-ph {
-    color: #9a9892;
+    color: var(--ink-ghost);
 }
 .landing .fs-lrow {
     position: relative;
@@ -422,13 +424,13 @@
     gap: calc(18 * var(--s));
     border-radius: calc(14 * var(--s));
     padding: calc(16 * var(--s)) calc(20 * var(--s));
-    background: #fff;
-    border: 1.5px solid #dedad2;
+    background: var(--white);
+    border: 1.5px solid var(--line);
 }
 .landing .fs-lrow.ours {
-    background: #f1e4e5;
+    background: var(--ox-tint);
     border-color: transparent;
-    box-shadow: inset 4px 0 0 #701a24;
+    box-shadow: inset 4px 0 0 var(--ox);
 }
 .landing .fs-status {
     margin-left: auto;
@@ -444,19 +446,19 @@
     bottom: calc(8 * var(--s));
     height: calc(7 * var(--s));
     border-radius: 4px;
-    background: rgba(112, 26, 36, 0.14);
+    background: color-mix(in srgb, var(--ox) 14%, transparent);
 }
 .landing .fs-read i {
     display: block;
     height: 100%;
     border-radius: 4px;
-    background: #701a24;
+    background: var(--ox-fill);
 }
 .landing .fs-tools-h {
     margin-top: calc(10 * var(--s));
     font-weight: 600;
     font-size: calc(21 * var(--s));
-    color: #55544e;
+    color: var(--ink-2);
 }
 .landing .fs-tools {
     display: grid;
@@ -467,7 +469,7 @@
     display: flex;
     align-items: center;
     gap: calc(12 * var(--s));
-    border: 1.5px solid #dedad2;
+    border: 1.5px solid var(--line);
     border-radius: calc(12 * var(--s));
     padding: calc(13 * var(--s)) calc(16 * var(--s));
     font-size: calc(21 * var(--s));
@@ -487,7 +489,7 @@
     align-items: center;
     gap: calc(14 * var(--s));
     font-size: calc(23 * var(--s));
-    color: #55544e;
+    color: var(--ink-2);
 }
 .landing .fs-step-ico {
     width: calc(26 * var(--s));
@@ -501,8 +503,8 @@
     width: calc(18 * var(--s));
     height: calc(18 * var(--s));
     border-radius: 50%;
-    border: 2px solid #dedad2;
-    border-top-color: #701a24;
+    border: 2px solid var(--line);
+    border-top-color: var(--ox);
     animation: fs-rot 0.8s linear infinite;
 }
 @keyframes fs-rot {
@@ -514,8 +516,8 @@
     display: inline-flex;
     align-items: center;
     gap: calc(7 * var(--s));
-    background: #f1e4e5;
-    color: #701a24;
+    background: var(--ox-tint);
+    color: var(--ox);
     font-weight: 600;
     border-radius: calc(8 * var(--s));
     padding: calc(4 * var(--s)) calc(11 * var(--s));
@@ -523,8 +525,8 @@
 }
 .landing .fs-source {
     align-self: flex-start;
-    background: #f1e4e5;
-    color: #701a24;
+    background: var(--ox-tint);
+    color: var(--ox);
     font-weight: 700;
     font-size: calc(21 * var(--s));
     border-radius: calc(9 * var(--s));
@@ -734,14 +736,14 @@
     border-radius: 10px;
 }
 .landing.landing .plan.hl {
-    background: #f1e4e5;
+    background: var(--ox-tint);
 }
 .landing.landing .btn-ghost,
 .landing.landing .plus {
-    background: #efece6;
+    background: var(--well);
 }
 .landing.landing .btn-ghost:hover {
-    background: #e7e3db;
+    background: var(--line-soft);
 }
 .landing.landing .story-index {
     background: var(--bone);
@@ -752,16 +754,16 @@
 .landing.landing .fs-composer,
 .landing.landing .fs-search,
 .landing.landing .fs-lrow {
-    background: #f1eee8;
+    background: var(--well);
 }
 .landing.landing .fs-plus {
-    background: #e7e3db;
+    background: var(--line-soft);
 }
 .landing.landing .fs-new,
 .landing.landing .fs-sharebtn.hot,
 .landing.landing .fs-artifact.hot,
 .landing.landing .fs-lrow.ours {
-    background: #f1e4e5;
+    background: var(--ox-tint);
 }
 .landing.landing .fs-lrow.ours,
 .landing.landing .mrow.m {
@@ -780,7 +782,8 @@
     position: absolute;
     inset: 0;
 }
-.landing .story-stage img {
+.landing .story-stage img,
+.landing .story-stage .dark-art {
     position: absolute;
     object-fit: cover;
     border-radius: 22px;
@@ -838,7 +841,7 @@
         max-height: 78svh;
     }
     .landing .story-stage .a-sage {
-        display: none;
+        display: none !important;
     }
     .landing .story-stage .a-burst {
         width: 78%;
@@ -867,7 +870,7 @@
     }
 }
 .landing .fs-send.ready {
-    background: #701a24;
+    background: var(--ox-fill);
 }
 
 /* phones */
@@ -1065,5 +1068,43 @@
 @container (max-height: 300px) {
     .landing .fs-lrow:not(.ours) {
         display: none;
+    }
+}
+
+/* Theme media. Photographs cannot follow colour tokens, so each light image
+   has a dark partner and the page swaps them with the theme. */
+.landing .story-stage .dark-art {
+    display: none;
+    background-size: cover;
+    background-position: center;
+}
+
+:root[data-theme='dark'] .landing .fs-frame {
+    background-image:
+        linear-gradient(rgb(0 0 0 / 0.38), rgb(0 0 0 / 0.38)),
+        var(--frame-dark, var(--frame-light));
+}
+
+:root[data-theme='dark'] .landing .story-stage img {
+    display: none;
+}
+
+:root[data-theme='dark'] .landing .story-stage .dark-art {
+    display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .landing .fs-frame {
+        background-image:
+            linear-gradient(rgb(0 0 0 / 0.38), rgb(0 0 0 / 0.38)),
+            var(--frame-dark, var(--frame-light));
+    }
+
+    :root:not([data-theme='light']) .landing .story-stage img {
+        display: none;
+    }
+
+    :root:not([data-theme='light']) .landing .story-stage .dark-art {
+        display: block;
     }
 }

@@ -1,115 +1,551 @@
 import { Link } from '@inertiajs/react';
-import { useRef } from 'react';
+import type { CSSProperties, RefObject } from 'react';
+import {
+    useEffect,
+    useId,
+    useLayoutEffect,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import {
+    AgentWindow,
+    AuthorMessages,
+    ReaderMessages,
+} from '@/components/home/agent-window';
+import type {
+    AgentSide,
+    AuthorContent,
+    ReaderContent,
+} from '@/components/home/agent-window';
 import { StorySteps, StoryStage, useStory } from '@/components/home/story';
+import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
+import { backgroundPair, randomBackgroundPairs } from '@/lib/backgrounds';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
 
-type MiniRowProps = {
-    icon: string;
-    title: string;
-    meta: string;
-    match?: boolean;
+type UseScene = {
+    frame: { light: string; dark: string };
+    author: AgentSide;
+    authorContent: AuthorContent;
+    reader: AgentSide;
+    readerContent: ReaderContent;
 };
 
-function MiniRow({ icon, title, meta, match }: MiniRowProps) {
+type UseCase = {
+    role: string;
+    title: string;
+    text: string;
+    scene: UseScene;
+};
+
+/* Each use case is two live agent sessions: someone changes an artifact in
+   their agent, and a teammate's agent is already working from the change. */
+const USE_CASES: UseCase[] = [
+    {
+        role: 'Product',
+        title: 'Agents work from the newest brief.',
+        text: 'A product manager moves the launch date in the brief. An engineer’s agent in the terminal is already planning around the new date. Nobody pastes it or shares it again.',
+        scene: {
+            frame: backgroundPair('light-05-dunes', 'dark-04-moon-dunes'),
+            author: {
+                skin: 'claude',
+                tool: 'claude',
+                role: 'Product manager',
+                title: 'Q3 launch',
+            },
+            authorContent: {
+                ask: 'Move the Q3 launch to May and let the team know.',
+                answer: 'Done. I changed the launch date in the Q3 product brief and shared it with the Product team.',
+                card: {
+                    title: 'Q3 product brief',
+                    label: 'Launch date',
+                    before: 'June',
+                    after: 'May',
+                    meta: 'Product team · edited just now',
+                },
+            },
+            reader: {
+                skin: 'terminal',
+                tool: 'chatgpt',
+                role: 'Engineer',
+                title: 'launch-plan — codex',
+                terminalName: 'OpenAI Codex',
+                directory: '~/launch-plan',
+            },
+            readerContent: {
+                ask: 'Plan the Q3 launch work for engineering.',
+                intro: 'Here is the plan.',
+                before: [
+                    { text: 'Confirm the scope', done: true },
+                    { text: 'Write the announcement', done: true },
+                ],
+                change: { prefix: 'Ship in', before: 'June', after: 'May' },
+                after: ['Brief support'],
+                read: 'Read the latest Q3 product brief',
+            },
+        },
+    },
+    {
+        role: 'Analysis',
+        title: 'Every agent sees the latest table.',
+        text: 'An analyst updates the renewals table in ChatGPT. A marketer’s agent in Claude is already drafting around the change, with no export and no paste.',
+        scene: {
+            frame: backgroundPair('light-02-beach', 'dark-05-black-sand'),
+            author: {
+                skin: 'codex',
+                tool: 'chatgpt',
+                role: 'Analyst',
+                title: 'Renewals',
+            },
+            authorContent: {
+                ask: 'Update the renewals table and share it with the team.',
+                answer: 'Done. Annual is now the plan that renews most, and the table is shared with the Analytics team.',
+                card: {
+                    title: 'Renewals by plan',
+                    label: 'Top plan',
+                    before: 'Monthly',
+                    after: 'Annual',
+                    meta: 'Analytics team · edited just now',
+                },
+            },
+            reader: {
+                skin: 'claude',
+                tool: 'claude',
+                role: 'Marketer',
+                title: 'Renewals email',
+            },
+            readerContent: {
+                ask: 'Draft the renewals email for customers.',
+                intro: 'Here is the outline.',
+                before: [{ text: 'Thank customers for renewing', done: true }],
+                change: {
+                    prefix: 'Lead with the',
+                    before: 'Monthly',
+                    after: 'Annual',
+                    suffix: 'plan',
+                },
+                after: ['Link the help center'],
+                read: 'Read the latest Renewals by plan',
+            },
+        },
+    },
+    {
+        role: 'Design',
+        title: 'Mockups stay current in every tool.',
+        text: 'A designer changes the headline on the launch mockup. The engineer’s agent in the terminal builds the page with the new headline.',
+        scene: {
+            frame: backgroundPair('light-06-lake', 'dark-10-fjord'),
+            author: {
+                skin: 'claude',
+                tool: 'claude',
+                role: 'Designer',
+                title: 'Launch page',
+            },
+            authorContent: {
+                ask: 'Change the headline on the launch page mockup to “Launch week is here”.',
+                answer: 'Done. The headline is updated in the Launch page mockup and shared with the Design team.',
+                card: {
+                    title: 'Launch page mockup',
+                    label: 'Headline',
+                    before: 'Coming soon',
+                    after: 'Launch week is here',
+                    meta: 'Design team · edited just now',
+                },
+            },
+            reader: {
+                skin: 'terminal',
+                tool: 'cursor',
+                role: 'Engineer',
+                title: 'launch-page — cursor-agent',
+                terminalName: 'Cursor Agent',
+                directory: '~/launch-page',
+            },
+            readerContent: {
+                ask: 'Build the launch page from the mockup.',
+                intro: 'Here is the build plan.',
+                before: [{ text: 'Add the hero section', done: true }],
+                change: {
+                    prefix: 'Set the headline to',
+                    before: 'Coming soon',
+                    after: 'Launch week is here',
+                },
+                after: ['Wire up the sign-up button'],
+                read: 'Read the latest Launch page mockup',
+            },
+        },
+    },
+    {
+        role: 'Marketing',
+        title: 'Campaign copy stays in sync.',
+        text: 'A marketer approves a new subject line in Claude. A teammate’s agent in Cursor drafts the email with it, not the old one.',
+        scene: {
+            frame: backgroundPair('light-10-ridges', 'dark-07-valley'),
+            author: {
+                skin: 'claude',
+                tool: 'claude',
+                role: 'Campaign lead',
+                title: 'Spring campaign',
+            },
+            authorContent: {
+                ask: 'Approve the new subject line for the spring email.',
+                answer: 'Done. The subject line is updated in the Spring campaign copy and shared with the Marketing team.',
+                card: {
+                    title: 'Spring campaign copy',
+                    label: 'Subject line',
+                    before: 'Spring is here',
+                    after: 'Fresh starts, one page at a time',
+                    meta: 'Marketing team · edited just now',
+                },
+            },
+            reader: {
+                skin: 'cursor',
+                tool: 'cursor',
+                role: 'Marketer',
+                title: 'Spring email',
+            },
+            readerContent: {
+                ask: 'Draft the spring launch email.',
+                intro: 'Here is the draft plan.',
+                before: [],
+                change: {
+                    prefix: 'Use the subject line',
+                    before: 'Spring is here',
+                    after: 'Fresh starts, one page at a time',
+                },
+                after: ['Add the sign-up link'],
+                read: 'Read the latest Spring campaign copy',
+            },
+        },
+    },
+    {
+        role: 'Operations',
+        title: 'Everyone’s checklist is the current one.',
+        text: 'An operations lead adds an approval step in ChatGPT. A teammate’s agent in Claude walks the new process, not the old one.',
+        scene: {
+            frame: backgroundPair('light-01-meadow', 'dark-02-pines'),
+            author: {
+                skin: 'codex',
+                tool: 'chatgpt',
+                role: 'Operations lead',
+                title: 'Vendor onboarding',
+            },
+            authorContent: {
+                ask: 'Add a manager approval step to the vendor onboarding steps.',
+                answer: 'Done. Vendor onboarding steps now include a manager approval, and the Operations team has the update.',
+                card: {
+                    title: 'Vendor onboarding steps',
+                    label: 'Step 3',
+                    before: 'Send contract',
+                    after: 'Manager approval',
+                    meta: 'Operations team · edited just now',
+                },
+            },
+            reader: {
+                skin: 'claude',
+                tool: 'claude',
+                role: 'Procurement lead',
+                title: 'New vendor',
+            },
+            readerContent: {
+                ask: 'Walk me through onboarding a new vendor.',
+                intro: 'Here are the steps.',
+                before: [
+                    { text: 'Collect the vendor details', done: true },
+                    { text: 'Check the paperwork', done: true },
+                ],
+                change: {
+                    prefix: 'Step 3:',
+                    before: 'Send contract',
+                    after: 'Manager approval',
+                },
+                after: ['Set up payment'],
+                read: 'Read the latest Vendor onboarding steps',
+            },
+        },
+    },
+];
+
+/** Re-measures the two ends of the connector, in the frame's own pixels,
+ * whenever layout or webfonts move them. */
+function useConnector(
+    frame: RefObject<HTMLElement | null>,
+    ends: [
+        RefObject<HTMLElement | null>,
+        RefObject<HTMLElement | null>,
+        RefObject<HTMLElement | null>,
+        RefObject<HTMLElement | null>,
+    ],
+): { d: string; a: [number, number]; b: [number, number] } | null {
+    const [geometry, setGeometry] = useState<{
+        d: string;
+        a: [number, number];
+        b: [number, number];
+    } | null>(null);
+    const [fromWin, fromLine, toWin, toLine] = ends;
+
+    useLayoutEffect(() => {
+        const root = frame.current;
+
+        if (!root) {
+            return;
+        }
+
+        const measure = () => {
+            const a = fromWin.current;
+            const al = fromLine.current;
+            const b = toWin.current;
+            const bl = toLine.current;
+
+            if (!a || !al || !b || !bl) {
+                return;
+            }
+
+            const origin = root.getBoundingClientRect();
+            const aw = a.getBoundingClientRect();
+            const alr = al.getBoundingClientRect();
+            const bw = b.getBoundingClientRect();
+            const blr = bl.getBoundingClientRect();
+            const ax = aw.right - origin.left;
+            const ay = alr.top + alr.height / 2 - origin.top;
+            const bx = bw.left - origin.left;
+            const by = blr.top + blr.height / 2 - origin.top;
+            const mid = (ax + bx) / 2;
+
+            setGeometry({
+                d: `M ${ax.toFixed(1)} ${ay.toFixed(1)} C ${mid.toFixed(1)} ${ay.toFixed(1)}, ${mid.toFixed(1)} ${by.toFixed(1)}, ${bx.toFixed(1)} ${by.toFixed(1)}`,
+                a: [ax, ay],
+                b: [bx, by],
+            });
+        };
+
+        measure();
+
+        const observer =
+            typeof ResizeObserver === 'undefined'
+                ? null
+                : new ResizeObserver(measure);
+
+        observer?.observe(root);
+        [fromWin, fromLine, toWin, toLine].forEach((ref) => {
+            if (ref.current) {
+                observer?.observe(ref.current);
+            }
+        });
+        document.fonts?.ready.then(measure);
+        window.addEventListener('resize', measure);
+
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener('resize', measure);
+        };
+    }, [frame, fromWin, fromLine, toWin, toLine]);
+
+    return geometry;
+}
+
+function UseSceneWindows({ scene }: { scene: UseScene }) {
+    const frame = useRef<HTMLDivElement>(null);
+    const winA = useRef<HTMLDivElement>(null);
+    const source = useRef<HTMLSpanElement>(null);
+    const winB = useRef<HTMLDivElement>(null);
+    const target = useRef<HTMLDivElement>(null);
+    const connector = useConnector(frame, [winA, source, winB, target]);
+    const fade = useId();
+
     return (
-        <div className={match ? 'mrow m' : 'mrow'}>
-            <span className="ic">{icon}</span>
-            <span>
-                <b>{title}</b>
-                <small>{meta}</small>
-            </span>
-            {match && <span className="tag">Match</span>}
+        <div
+            ref={frame}
+            className="aw-frame"
+            style={
+                {
+                    '--frame-light': `url(${scene.frame.light})`,
+                    '--frame-dark': `url(${scene.frame.dark})`,
+                } as CSSProperties
+            }
+            aria-hidden="true"
+        >
+            <AgentWindow side={scene.author} winRef={winA}>
+                <AuthorMessages
+                    side={scene.author}
+                    content={scene.authorContent}
+                    sourceRef={source}
+                />
+            </AgentWindow>
+            {connector && (
+                <svg className="up-flow" aria-hidden="true">
+                    <defs>
+                        <linearGradient
+                            id={fade}
+                            gradientUnits="userSpaceOnUse"
+                            x1={connector.a[0]}
+                            x2={connector.b[0]}
+                            y1="0"
+                            y2="0"
+                        >
+                            <stop
+                                offset="0"
+                                stopColor="#701a24"
+                                stopOpacity="0"
+                            />
+                            <stop
+                                offset="0.2"
+                                stopColor="#701a24"
+                                stopOpacity="0.85"
+                            />
+                            <stop
+                                offset="0.8"
+                                stopColor="#701a24"
+                                stopOpacity="0.85"
+                            />
+                            <stop
+                                offset="1"
+                                stopColor="#701a24"
+                                stopOpacity="0"
+                            />
+                        </linearGradient>
+                    </defs>
+                    <path className="up-wire" d={connector.d} />
+                    <path
+                        className="up-stream"
+                        d={connector.d}
+                        pathLength={1}
+                        stroke={`url(#${fade})`}
+                    />
+                    <path className="up-pulse" d={connector.d} pathLength={1} />
+                    <circle
+                        className="up-ring up-ring-a"
+                        cx={connector.a[0]}
+                        cy={connector.a[1]}
+                        r="5"
+                    />
+                    <circle
+                        className="up-ring up-ring-b"
+                        cx={connector.b[0]}
+                        cy={connector.b[1]}
+                        r="5"
+                    />
+                    <circle
+                        className="up-port up-port-a"
+                        cx={connector.a[0]}
+                        cy={connector.a[1]}
+                        r="5"
+                    />
+                    <circle
+                        className="up-port up-port-b"
+                        cx={connector.b[0]}
+                        cy={connector.b[1]}
+                        r="5"
+                    />
+                </svg>
+            )}
+            <AgentWindow side={scene.reader} winRef={winB}>
+                <ReaderMessages
+                    side={scene.reader}
+                    content={scene.readerContent}
+                    targetRef={target}
+                />
+            </AgentWindow>
         </div>
     );
 }
 
-const USE_CASES: {
-    role: string;
-    title: string;
-    text: string;
-    rows: MiniRowProps[];
-    open?: boolean;
-}[] = [
-    {
-        role: 'Product',
-        title: 'Briefs and research stay findable.',
-        text: 'A product manager drafts a brief in one AI tool. A teammate asks a different tool what was decided last quarter, and gets the brief back with a link.',
-        rows: [
-            {
-                icon: 'D',
-                title: 'Q3 product brief',
-                meta: 'Doc · Marketing',
-                match: true,
+function UseCaseRow({
+    useCase,
+    frame,
+}: {
+    useCase: UseCase;
+    frame?: { light: string; dark: string };
+}) {
+    const row = useRef<HTMLElement>(null);
+    const [armed, setArmed] = useState(false);
+    const [seen, setSeen] = useState(false);
+
+    useEffect(() => {
+        const node = row.current;
+
+        if (!node || typeof IntersectionObserver === 'undefined') {
+            return;
+        }
+
+        /* Arm early, while the row is still below the fold, so its animations
+           hold their start state before anyone can see it. Play only once the
+           row is actually in view. */
+        const arm = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    /* Only a row that is still below the fold may arm; one
+                       that first appears already in view stays finished. */
+                    if (entry.boundingClientRect.top >= window.innerHeight) {
+                        setArmed(true);
+                    }
+
+                    arm.disconnect();
+                }
             },
-            {
-                icon: 'D',
-                title: 'Customer interview notes',
-                meta: 'Doc · Product',
+            { rootMargin: '0px 0px 60% 0px' },
+        );
+        const play = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setSeen(true);
+                    play.disconnect();
+                }
             },
-        ],
-        open: true,
-    },
-    {
-        role: 'Analysis',
-        title: 'Tables and charts don’t get rebuilt.',
-        text: 'An analyst shares a table once. Anyone asking about the numbers gets the table and its source, instead of a fresh guess.',
-        rows: [
-            {
-                icon: 'T',
-                title: 'Renewals by plan',
-                meta: 'Table · Jo',
-                match: true,
-            },
-            { icon: 'C', title: 'Churn chart', meta: 'Chart · Jo' },
-        ],
-    },
-    {
-        role: 'Design',
-        title: 'Mockups travel with their context.',
-        text: 'A designer shares a mockup. The people and AI tools working on the launch can find it and see who made it and when.',
-        rows: [
-            {
-                icon: 'M',
-                title: 'Launch page mockup',
-                meta: 'Mockup · Engineering',
-                match: true,
-            },
-        ],
-    },
-    {
-        role: 'Marketing',
-        title: 'Copy and campaigns build on each other.',
-        text: 'A new campaign starts from what the team already wrote, not a blank chat.',
-        rows: [
-            {
-                icon: 'D',
-                title: 'Spring campaign copy',
-                meta: 'Doc · Lena',
-                match: true,
-            },
-        ],
-    },
-    {
-        role: 'Operations',
-        title: 'Processes are written down once.',
-        text: 'A process doc written with AI is shared and found by the next person who needs it.',
-        rows: [
-            {
-                icon: 'D',
-                title: 'Vendor onboarding steps',
-                meta: 'Doc · Design',
-                match: true,
-            },
-        ],
-    },
-];
+            { threshold: 0.4 },
+        );
+
+        arm.observe(node);
+        play.observe(node);
+
+        return () => {
+            arm.disconnect();
+            play.disconnect();
+        };
+    }, []);
+
+    return (
+        <article
+            ref={row}
+            className="usecase"
+            data-armed={armed ? 'true' : undefined}
+            data-seen={seen ? 'true' : undefined}
+        >
+            <div className="usecase-copy">
+                <span className="role">{useCase.role}</span>
+                <h3>{useCase.title}</h3>
+                <p>{useCase.text}</p>
+            </div>
+            <UseSceneWindows
+                scene={frame ? { ...useCase.scene, frame } : useCase.scene}
+            />
+        </article>
+    );
+}
+
+type FramePair = { light: string; dark: string };
+
+const subscribeNothing = () => () => {};
+let framesForThisLoad: FramePair[] | null = null;
+
+/** A different set of backgrounds on every page load. The server renders the
+ * defaults, and the browser swaps to the random set after hydrating. */
+function randomFramesOnce(): FramePair[] {
+    framesForThisLoad ??= randomBackgroundPairs(USE_CASES.length);
+
+    return framesForThisLoad;
+}
 
 export default function Landing() {
     const story = useStory();
+    const frames = useSyncExternalStore(
+        subscribeNothing,
+        randomFramesOnce,
+        () => null,
+    );
     const navMenu = useRef<HTMLDetailsElement>(null);
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
 
@@ -145,6 +581,7 @@ export default function Landing() {
                         </div>
                     </details>
                     <div className="navright" data-testid="landing-account">
+                        <ThemeSwitch />
                         {!isAuthenticated && (
                             <Link
                                 href={login.url()}
@@ -305,33 +742,17 @@ export default function Landing() {
                                 </h2>
                             </div>
                             <p className="lede">
-                                From a product brief to a budget table to a
-                                campaign mockup, the same knowledge base holds
-                                it.
+                                Whatever your team’s AI makes, every agent on
+                                the team works from the latest version.
                             </p>
                         </div>
-                        <div className="acc">
-                            {USE_CASES.map((useCase) => (
-                                <details key={useCase.role} open={useCase.open}>
-                                    <summary>
-                                        <span className="plus">+</span>
-                                        <span className="role">
-                                            {useCase.role}
-                                        </span>
-                                        <h3>{useCase.title}</h3>
-                                    </summary>
-                                    <div className="body">
-                                        <p>{useCase.text}</p>
-                                        <div className="mini">
-                                            {useCase.rows.map((row) => (
-                                                <MiniRow
-                                                    key={row.title}
-                                                    {...row}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </details>
+                        <div className="usecases">
+                            {USE_CASES.map((useCase, index) => (
+                                <UseCaseRow
+                                    key={useCase.role}
+                                    useCase={useCase}
+                                    frame={frames?.[index]}
+                                />
                             ))}
                         </div>
                     </section>

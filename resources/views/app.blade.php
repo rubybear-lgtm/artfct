@@ -4,6 +4,7 @@
     @class([
         'app-theme' => ! in_array($page['component'] ?? null, ['welcome', 'landing'], true),
         'dark' => ($appearance ?? 'system') == 'dark',
+        'landing-page' => ($page['component'] ?? null) === 'landing',
     ])
 >
     <head>

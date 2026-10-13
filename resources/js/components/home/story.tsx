@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { backgroundSrc, HERO_DARK, STORY_DARK } from '@/lib/backgrounds';
 
 import { caption, CONTENT } from '../../../remotion/timeline';
 
@@ -14,10 +15,30 @@ import { caption, CONTENT } from '../../../remotion/timeline';
  * stays readable text and the layout stays responsive.
  */
 const STEPS = [
-    { key: 'ask', label: 'Ask', image: '/images/landing/ask.jpg' },
-    { key: 'share', label: 'Share', image: '/images/landing/share.jpg' },
-    { key: 'find', label: 'Find', image: '/images/landing/find.jpg' },
-    { key: 'use', label: 'Use', image: '/images/landing/use.jpg' },
+    {
+        key: 'ask',
+        label: 'Ask',
+        image: '/images/landing/ask.jpg',
+        dark: backgroundSrc(STORY_DARK.ask),
+    },
+    {
+        key: 'share',
+        label: 'Share',
+        image: '/images/landing/share.jpg',
+        dark: backgroundSrc(STORY_DARK.share),
+    },
+    {
+        key: 'find',
+        label: 'Find',
+        image: '/images/landing/find.jpg',
+        dark: backgroundSrc(STORY_DARK.find),
+    },
+    {
+        key: 'use',
+        label: 'Use',
+        image: '/images/landing/use.jpg',
+        dark: backgroundSrc(STORY_DARK.use),
+    },
 ] as const;
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
@@ -40,18 +61,20 @@ const TOOLS = [
 ] as const;
 const TEAMS = ['Marketing', 'Product', 'Design'] as const;
 
+/* Colours come from the page's theme tokens, so the windows follow light and
+   dark without any per-colour switch. */
 const C = {
-    bone: '#F7F5F2',
-    paper: '#FBFAF8',
-    hair: '#DEDAD2',
-    ink: '#262624',
-    muted: '#55544E',
-    quiet: '#69675F',
-    ox: '#701A24',
-    tint: '#F1E4E5',
-    well: '#EFECE6',
-    green: '#2F6B4F',
-    greenTint: '#E3EEE8',
+    bone: 'var(--bone)',
+    paper: 'var(--paper)',
+    hair: 'var(--line)',
+    ink: 'var(--ink)',
+    muted: 'var(--ink-2)',
+    quiet: 'var(--ink-3)',
+    ox: 'var(--ox)',
+    tint: 'var(--ox-tint)',
+    well: 'var(--well)',
+    green: 'var(--ok)',
+    greenTint: 'var(--ok-tint)',
 };
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -317,7 +340,7 @@ function ClaudeWindow({ step, p }: { step: 'ask' | 'share'; p: number }) {
                     <span
                         className="fs-pop-btn"
                         style={{
-                            background: shared ? C.greenTint : C.ox,
+                            background: shared ? C.greenTint : 'var(--ox-fill)',
                             color: shared ? C.green : '#fff',
                             scale: String(1 - 0.06 * Math.sin(Math.PI * press)),
                         }}
@@ -393,7 +416,7 @@ function LibraryWindow({ p }: { p: number }) {
                         <span
                             className="fs-status"
                             style={{
-                                background: ready ? '#fff' : C.well,
+                                background: ready ? 'var(--white)' : C.well,
                                 color: ready ? C.ox : C.quiet,
                             }}
                         >
@@ -437,7 +460,8 @@ function LibraryWindow({ p }: { p: number }) {
                                 className="fs-tool"
                                 style={{
                                     borderColor: lit(i) > 0.5 ? C.ox : C.hair,
-                                    background: lit(i) > 0.5 ? C.tint : '#fff',
+                                    background:
+                                        lit(i) > 0.5 ? C.tint : 'var(--white)',
                                 }}
                             >
                                 <AiToolIcon tool={t.id} size={30} />
@@ -564,6 +588,13 @@ const HERO_MS = 18000;
 const LAYOUTS = ['right', 'left', 'right', 'left'] as const;
 /** Index 0 is the hero stage; 1 to 4 are the Ask, Share, Find and Use sections. */
 const DURATIONS = [HERO_MS, ...STEP_MS];
+
+const HERO_ART_DARK = {
+    burst: backgroundSrc(HERO_DARK.burst),
+    clay: backgroundSrc(HERO_DARK.clay),
+    ox: backgroundSrc(HERO_DARK.ox),
+    sage: backgroundSrc(HERO_DARK.sage),
+};
 
 const HERO_ART = {
     burst: '/images/landing/hero-burst.jpg',
@@ -720,6 +751,16 @@ export function StoryStage({ story }: { story: Story }) {
                 <img className="a-burst" src={HERO_ART.burst} alt="" />
                 <img className="a-clay" src={HERO_ART.clay} alt="" />
                 <img className="a-ox" src={HERO_ART.ox} alt="" />
+                {(['sage', 'burst', 'clay', 'ox'] as const).map((name) => (
+                    <span
+                        key={name}
+                        className={`a-${name} dark-art`}
+                        style={{
+                            backgroundImage: `url(${HERO_ART_DARK[name]})`,
+                        }}
+                        aria-hidden="true"
+                    />
+                ))}
                 <div className="story-win">
                     <div className="fs-win">
                         <div
@@ -796,7 +837,12 @@ export function StorySteps({ story }: { story: Story }) {
                             </div>
                             <div
                                 className="fs-frame"
-                                style={{ backgroundImage: `url(${s.image})` }}
+                                style={
+                                    {
+                                        '--frame-light': `url(${s.image})`,
+                                        '--frame-dark': `url(${s.dark})`,
+                                    } as CSSProperties
+                                }
                                 aria-hidden="true"
                             >
                                 <div className="fs-win">
