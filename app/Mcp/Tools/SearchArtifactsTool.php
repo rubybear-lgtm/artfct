@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Search the authenticated workspace by meaning, provenance, repository, agent, or date. Returns summaries, snippets and a view_url per result, never full artifact contents. Each view_url is the app\'s own open route, so it works when a member clicks it while signed in and mints a signed link only for a secure artifact.')]
+#[Description('Search the authenticated workspace by meaning, provenance, repository, agent, or date. Returns summaries, snippets and a view_url per result, never full artifact contents; call read_artifact with a result id to read its text when a snippet is not enough. Each view_url is the app\'s own open route, so it works when a member clicks it while signed in and mints a signed link only for a secure artifact.')]
 #[Name('search_artifacts')]
 #[IsReadOnly]
 #[IsIdempotent]

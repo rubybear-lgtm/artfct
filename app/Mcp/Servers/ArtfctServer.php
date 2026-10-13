@@ -12,6 +12,7 @@ use App\Mcp\Tools\GetConnectionTool;
 use App\Mcp\Tools\GetUsageTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
+use App\Mcp\Tools\ReadArtifactTool;
 use App\Mcp\Tools\SearchArtifactsTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
@@ -40,6 +41,7 @@ final class ArtfctServer extends Server
         ListArtifactsTool::class,
         GetUsageTool::class,
         GetArtifactTool::class,
+        ReadArtifactTool::class,
         ListCollectionsTool::class,
         CreateCollectionTool::class,
         AddCollectionArtifactTool::class,

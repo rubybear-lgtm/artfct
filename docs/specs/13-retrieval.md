@@ -33,7 +33,7 @@
 }
 ```
 
-Returns title, description, URL, provenance summary and a snippet — **never the full bundle**. An agent should decide whether to open something, not have 2 MB of HTML pushed into its context.
+Returns title, description, URL, provenance summary and a snippet — **never the full bundle**. An agent should decide whether to open something, not have 2 MB of HTML pushed into its context. When a snippet is not enough, the MCP `read_artifact` tool returns the artifact's extracted text as bounded, paged, untrusted-marked content (RUB-443), never the bundle.
 
 ### Why the tool description matters as much as the code
 
