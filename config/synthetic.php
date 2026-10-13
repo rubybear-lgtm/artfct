@@ -10,6 +10,11 @@ return [
 
     'prefix' => 'zz-',
 
+    'search_evaluation' => [
+        'endpoint' => env('SYNTHETIC_SEARCH_MCP_URL', 'https://staging.artfct.dev/mcp'),
+        'token' => env('SYNTHETIC_SEARCH_MCP_TOKEN'),
+    ],
+
     // Lets `staging:verify-usage` run at deploy time on staging only.
     'verify_usage' => (bool) env('STAGING_VERIFY_USAGE', false),
 
