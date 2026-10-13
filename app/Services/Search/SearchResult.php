@@ -19,5 +19,7 @@ final readonly class SearchResult
         public ?string $repoUrl,
         public ?string $commitSha,
         public float $score,
+        /** Longer query-focused excerpt of the selected passage, for callers that cannot open the artifact (MCP). */
+        public string $excerpt = '',
     ) {}
 }

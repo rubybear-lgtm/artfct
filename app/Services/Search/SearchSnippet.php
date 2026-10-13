@@ -5,6 +5,9 @@ namespace App\Services\Search;
 /** Query-focused, word-bounded excerpts from the selected source passage. */
 final class SearchSnippet
 {
+    /** Excerpt length for callers that only ever see results, never the artifact (the MCP tool). */
+    public const EXCERPT_LENGTH = 400;
+
     public static function make(string $text, string $query, ?string $title, int $maxLength = 200, bool $displayExcerpt = true): string
     {
         $text = trim(preg_replace('/\s+/u', ' ', str_replace(['\\r\\n', '\\n', '\\t'], ' ', $text)) ?? $text);

@@ -119,7 +119,8 @@ final class SearchArtifactsTool extends Tool
                 // artifact to its credential-less `/p/{id}` URL without
                 // minting, or mints a signed link for a secure one.
                 'view_url' => ArtifactViewLink::forArtifact($team->slug, $result->id, null),
-                'snippet' => $result->snippet,
+                // Longer than the UI snippet: an MCP caller cannot open the artifact, so the excerpt is the evidence it answers from.
+                'snippet' => $result->excerpt !== '' ? $result->excerpt : $result->snippet,
                 'provenance' => [
                     'agent' => $result->agent,
                     'repo_url' => $result->repoUrl,

@@ -8,6 +8,7 @@ use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\VectorChunk;
 use App\Services\Indexing\VectorIndexContract;
+use App\Services\Search\SearchService;
 
 /**
  * Search results are workspace artifacts, so both ways of reading them — the
@@ -113,4 +114,25 @@ test('a search row carries no open link when the environment cannot mint one', f
         ->assertInertia(fn ($page) => $page
             ->where('home.canOpenArtifacts', false)
             ->where('home.results.0.id', 'billing-dash'));
+});
+
+test('search_artifacts returns the longer evidence excerpt as its snippet while the UI snippet stays short', function () {
+    config(['indexing.enabled' => true]);
+
+    $team = Team::factory()->create(['slug' => 'excerpt-org']);
+    $token = remoteMcpToken($team);
+    $text = 'Billing exports. '.str_repeat('The nightly export reconciles invoices against ledger entries before the finance review. ', 4)
+        .'A mismatch above two dollars is routed to a reviewer rather than corrected automatically.';
+    seedSearchableArtifact($team->slug, 'billing-exports', $text);
+
+    $served = app(SearchService::class)->search($team, $text, [], 5, 'tester');
+    $results = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'search_artifacts', 'arguments' => ['query' => $text]],
+    ])->assertOk()->json('result.structuredContent.results');
+
+    expect(mb_strlen($served[0]->snippet))->toBeLessThanOrEqual(201)
+        ->and(mb_strlen($results[0]['snippet']))->toBeGreaterThan(mb_strlen($served[0]->snippet))
+        ->and(mb_strlen($results[0]['snippet']))->toBeLessThanOrEqual(401)
+        ->and($results[0]['snippet'])->toBe($served[0]->excerpt);
 });

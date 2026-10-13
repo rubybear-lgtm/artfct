@@ -219,6 +219,7 @@ final class SearchService
             repoUrl: $match->chunk->repoUrl,
             commitSha: $match->chunk->commitSha,
             score: $match->similarity,
+            excerpt: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null, SearchSnippet::EXCERPT_LENGTH),
         );
     }
 }
