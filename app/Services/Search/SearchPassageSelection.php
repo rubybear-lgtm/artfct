@@ -28,12 +28,17 @@ final class SearchPassageSelection
                     continue;
                 }
                 $title = $titles[$chunk->artifactId] ?? null;
-                $context = $query === '' ? $chunk->text : trim($title."\n".SearchSnippet::make($chunk->text, $query, $title, 400));
+                // The retrieved representative chunk is always compared unmodified, so focusing can only add evidence.
+                $context = $query === '' || $chunk === $artifact->chunk
+                    ? $chunk->text
+                    : trim($title."\n".SearchSnippet::make($chunk->text, $query, $title, 400));
                 $hash = hash('sha256', $context);
-                if (isset($seen[$hash])) {
+                $source = hash('sha256', $chunk->text);
+                if (isset($seen[$hash]) || isset($seen[$source])) {
                     continue;
                 }
                 $seen[$hash] = true;
+                $seen[$source] = true;
                 $passages[] = new VectorMatch(new VectorChunk(
                     $context, $chunk->vector, $chunk->artifactId, $chunk->orgId, $chunk->createdAt, $chunk->agent, $chunk->repoUrl, $chunk->commitSha,
                 ), $artifact->similarity);
