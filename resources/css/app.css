@@ -1,6 +1,24 @@
 @import 'tailwindcss';
+
+/* `dark:` utilities follow the same switch as the colour tokens: the viewer's
+   choice on <html data-theme>, or the system when no choice is made. */
+@custom-variant dark {
+    &:where([data-theme='dark'], [data-theme='dark'] *) {
+        @slot;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        &:where(
+            :root:not([data-theme='light']),
+            :root:not([data-theme='light']) *
+        ) {
+            @slot;
+        }
+    }
+}
 @import './landing.css';
 @import './landing-story.css';
+@import './agent-window.css';
 
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
