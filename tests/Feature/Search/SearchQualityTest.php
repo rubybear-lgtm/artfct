@@ -73,6 +73,17 @@ test('passage selection joins verified overlapping introductions so a boundary c
     expect(array_any($contexts, fn ($match) => str_contains($match->chunk->text, $answer)))->toBeTrue();
 });
 
+test('passage selection always reranks the unmodified representative chunk and does not spend slots on its duplicate', function () {
+    $answer = 'Queue visibility timeouts exceed the maximum job duration to prevent duplicate work.';
+    $chunks = Chunker::chunk(str_repeat('Earlier operational record. ', 26).$answer, 750, 100);
+    $intro = array_map(fn (string $text) => qualityMatch('a', $text, 0.1)->chunk, $chunks);
+    $contexts = SearchPassageSelection::expand([qualityMatch('a', $chunks[0], 0.1)], $intro, [], 'Why must queue visibility outlast job execution?', ['a' => 'Queue notes']);
+    $texts = array_map(fn ($match) => $match->chunk->text, $contexts);
+    expect($texts[0])->toBe($chunks[0])
+        ->and($texts)->toHaveCount(3)
+        ->and(count(array_filter($texts, fn (string $text) => str_contains($text, $answer))))->toBeGreaterThanOrEqual(1);
+});
+
 test('relevance bands prevent popularity and canonical boosts displacing direct matches', function () {
     $exact = qualityMatch('exact', 'One design language.', 0.8735);
     $noise = qualityMatch('noise', 'Unrelated software.', 0.00657);
