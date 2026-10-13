@@ -104,6 +104,57 @@ final class PgVectorIndex implements VectorIndexContract
             ->all();
     }
 
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array
+    {
+        $team = $this->team($orgId);
+        if ($team === null || $limit <= 0 || $artifactIds === []) {
+            return [];
+        }
+        $ranked = ArtifactChunk::query()
+            ->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)
+            ->select('*')->selectVectorDistance('embedding', $queryVector, as: 'distance')
+            ->selectRaw('row_number() OVER (PARTITION BY artifact_id ORDER BY embedding <=> ?::vector, id) AS position', ['['.implode(',', $queryVector).']']);
+
+        return ArtifactChunk::query()->fromSub($ranked, 'artifact_chunks')
+            ->where('position', 1)->orderBy('distance')->orderBy('id')->limit($limit)->get()
+            ->map(fn (ArtifactChunk $row): VectorMatch => new VectorMatch($this->toChunk($row, $orgId), 1.0 - (float) $row->getAttribute('distance')))->all();
+    }
+
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array
+    {
+        $team = $this->team($orgId);
+        if ($team === null || trim($query) === '' || $limit <= 0 || $artifactIds === []) {
+            return [];
+        }
+        $ranked = ArtifactChunk::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)
+            ->select('*')->whereFullText('search_text', $query, ['language' => 'simple'])
+            ->selectRaw("ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) AS lexical_score", [$query])
+            ->selectRaw("row_number() OVER (PARTITION BY artifact_id ORDER BY ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) DESC, id) AS position", [$query]);
+
+        return ArtifactChunk::query()->fromSub($ranked, 'artifact_chunks')
+            ->where('position', 1)->orderByDesc('lexical_score')->orderBy('id')->limit($limit)->get()
+            ->map(fn (ArtifactChunk $row): VectorMatch => new VectorMatch($this->toChunk($row, $orgId), (float) $row->getAttribute('lexical_score')))->all();
+    }
+
+    public function firstChunks(string $orgId, array $artifactIds, int $perArtifact): array
+    {
+        $team = $this->team($orgId);
+        if ($team === null || $artifactIds === [] || $perArtifact <= 0) {
+            return [];
+        }
+        $positions = ArtifactChunk::query()
+            ->where('team_id', $team->id)
+            ->whereIn('artifact_id', $artifactIds)
+            ->select('id')
+            ->selectRaw('row_number() OVER (PARTITION BY artifact_id ORDER BY id) AS position');
+
+        return ArtifactChunk::query()
+            ->where('team_id', $team->id)
+            ->whereIn('id', DB::query()->fromSub($positions, 'first_chunks')->select('id')->where('position', '<=', $perArtifact))
+            ->orderBy('id')->get()
+            ->map(fn (ArtifactChunk $row): VectorChunk => $this->toChunk($row, $orgId))->all();
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         $team = $this->team($orgId);

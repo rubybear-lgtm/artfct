@@ -6,12 +6,9 @@ use App\Services\Indexing\VectorMatch;
 use Illuminate\Support\Carbon;
 
 /**
- * Pure hybrid ranking (spec 13: "semantic similarity plus recency plus
- * provenance match"). No I/O, no embeddings, no vector-index calls — takes
- * candidates already fetched and orders them, so the ranking rule itself
- * (in particular "an exact repo match should outrank a semantically closer
- * artifact from an unrelated repo") is unit-testable independent of any
- * real or fake embedding model.
+ * Rank by raw reranker relevance bands before applying recency, provenance,
+ * usage or canonical signals. Existing boosts break ties among near matches;
+ * a materially less relevant document cannot win through popularity alone.
  */
 final class SearchRanking
 {
@@ -25,8 +22,8 @@ final class SearchRanking
     /**
      * "An artifact a team explicitly marked canonical should beat a
      * semantically closer artifact nobody has opened since it was made"
-     * — larger than every other boost combined, deliberately, so
-     * canonical membership dominates.
+     * — applied only within a relevance band, after calibrated
+     * no-match filtering; canonical membership cannot revive irrelevant work.
      */
     private const CANONICAL_BOOST = 2.0;
 
@@ -34,7 +31,7 @@ final class SearchRanking
      * @param  array<int, VectorMatch>  $candidates
      * @param  array<string, float>  $usageScores  artifact id => `UsageScorer::score()`
      * @param  array<string, bool>  $canonicalArtifactIds  artifact id => true, for ids in a canonical collection
-     * @return array<int, VectorMatch> sorted by combined score, descending
+     * @return array<int, VectorMatch> relevance bands first; existing boosts only order near matches within a 5% relative band
      */
     public static function rank(array $candidates, string $query, array $usageScores = [], array $canonicalArtifactIds = []): array
     {
@@ -42,11 +39,12 @@ final class SearchRanking
             fn (VectorMatch $match): array => [
                 'match' => $match,
                 'score' => self::combinedScore($match, $query, $usageScores, $canonicalArtifactIds),
+                'relevance_band' => (int) floor(log(max(0.000001, $match->similarity)) / log(1.05)),
             ],
             $candidates,
         );
 
-        usort($scored, fn (array $a, array $b): int => $b['score'] <=> $a['score']);
+        usort($scored, fn (array $a, array $b): int => ($b['relevance_band'] <=> $a['relevance_band']) ?: ($b['score'] <=> $a['score']));
 
         return array_map(fn (array $entry): VectorMatch => $entry['match'], $scored);
     }

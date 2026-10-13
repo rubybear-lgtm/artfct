@@ -12,6 +12,16 @@ final class SearchEvaluationManifest
      */
     public function __construct(public readonly string $path, public array $data) {}
 
+    public static function defaultPath(string $slug): string
+    {
+        SyntheticSeeder::assertSafe($slug);
+        if (! preg_match('/\Azz-[a-z0-9-]+\z/', $slug)) {
+            throw new RuntimeException('Invalid synthetic workspace slug.');
+        }
+
+        return storage_path('app/private/search-evaluation/'.$slug.'/manifest.json');
+    }
+
     public static function open(string $path, SearchEvaluationDataset $dataset, string $slug): self
     {
         SyntheticSeeder::assertSafe($slug);

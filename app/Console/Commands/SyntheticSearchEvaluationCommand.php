@@ -39,7 +39,7 @@ class SyntheticSearchEvaluationCommand extends Command
                 return $comparison['passed'] ? self::SUCCESS : self::FAILURE;
             }
             $slug = (string) $this->argument('org');
-            $manifest = SearchEvaluationManifest::open((string) ($this->option('manifest') ?: storage_path('app/synthetic/search-evaluation/'.$slug.'/manifest.json')), $dataset, $slug);
+            $manifest = SearchEvaluationManifest::open((string) ($this->option('manifest') ?: SearchEvaluationManifest::defaultPath($slug)), $dataset, $slug);
             $output = (string) $this->option('output');
             $runner = new SearchEvaluationRunner(new SearchEvaluationClient((string) config('synthetic.search_evaluation.endpoint'), (string) config('synthetic.search_evaluation.token')));
             switch ($operation) {

@@ -66,10 +66,11 @@ test('rendered fixture requires JavaScript and bundle publication includes sourc
 test('provider neutral import requires grounded context and explicit review', function () {
     $dataset = new SearchEvaluationDataset(searchEvaluationData());
     $row = ['question' => 'How is the mobile file chooser exposed?', 'answer' => 'A visible keyboard usable control is offered.', 'ground_truth_context' => 'Keyboard users can choose a file with the same visible control.'];
-    $case = $dataset->import($row, 'landing', 'operation', 'import-1', 'source checked');
+    $provenance = ['provider' => 'provider-neutral-fixture', 'model' => 'offline', 'prompt_version' => 'v1', 'generation_config' => [], 'seed' => null];
+    $case = $dataset->import($row, 'landing', 'operation', 'import-1', 'source checked', $provenance);
     expect($case['gold'][0]['text'])->toBe($row['ground_truth_context']);
-    expect(fn () => $dataset->import($row, 'landing', 'decision', 'bad', 'source checked'))->toThrow(InvalidArgumentException::class);
-    expect(fn () => $dataset->import($row, 'landing', 'operation', 'bad', ''))->toThrow(InvalidArgumentException::class);
+    expect(fn () => $dataset->import($row, 'landing', 'decision', 'bad', 'source checked', $provenance))->toThrow(InvalidArgumentException::class);
+    expect(fn () => $dataset->import($row, 'landing', 'operation', 'bad', '', $provenance))->toThrow(InvalidArgumentException::class);
 });
 
 test('metrics use source identity, graded discounted gains and normalized snippet evidence', function () {

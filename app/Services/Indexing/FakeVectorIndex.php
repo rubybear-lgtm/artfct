@@ -55,6 +55,45 @@ final class FakeVectorIndex implements VectorIndexContract
         return array_slice($matches, 0, $limit);
     }
 
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array
+    {
+        return $this->distinctArtifacts($this->query($orgId, $queryVector, count($this->allVectorsForOrg($orgId))), $limit, $artifactIds);
+    }
+
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array
+    {
+        return $this->distinctArtifacts($this->queryText($orgId, $query, count($this->allVectorsForOrg($orgId))), $limit, $artifactIds);
+    }
+
+    /**
+     * @param  list<VectorMatch>  $matches
+     * @param  list<string>  $artifactIds
+     * @return list<VectorMatch>
+     */
+    private function distinctArtifacts(array $matches, int $limit, array $artifactIds): array
+    {
+        $allowed = array_flip($artifactIds);
+        $seen = [];
+        foreach ($matches as $match) {
+            $id = $match->chunk->artifactId;
+            if (isset($allowed[$id]) && ! isset($seen[$id])) {
+                $seen[$id] = $match;
+            }
+        }
+
+        return array_slice(array_values($seen), 0, max(0, $limit));
+    }
+
+    public function firstChunks(string $orgId, array $artifactIds, int $perArtifact): array
+    {
+        $chunks = [];
+        foreach ($artifactIds as $id) {
+            array_push($chunks, ...array_slice($this->byOrg[$orgId][$id] ?? [], 0, max(0, $perArtifact)));
+        }
+
+        return $chunks;
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         return array_merge(...array_values($this->byOrg[$orgId] ?? [[]]));

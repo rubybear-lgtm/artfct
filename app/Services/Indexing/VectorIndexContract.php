@@ -37,6 +37,29 @@ interface VectorIndexContract
     public function queryText(string $orgId, string $query, int $limit): array;
 
     /**
+     * Nearest passage per authorized artifact, with the limit applied after deduplication.
+     *
+     * @param  array<int, float>  $queryVector
+     * @param  list<string>  $artifactIds
+     * @return list<VectorMatch>
+     */
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array;
+
+    /**
+     * @param  list<string>  $artifactIds
+     * @return list<VectorMatch>
+     */
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array;
+
+    /**
+     * Bounded introductory passages for already-authorized artifact candidates.
+     *
+     * @param  list<string>  $artifactIds
+     * @return list<VectorChunk>
+     */
+    public function firstChunks(string $orgId, array $artifactIds, int $perArtifact): array;
+
+    /**
      * Every vector currently stored for one org — direct inspection, for
      * the isolation test (`tenant_index_contains_no_foreign_vectors`) and
      * nothing else; a real Vectorize deployment wouldn't expose a "dump

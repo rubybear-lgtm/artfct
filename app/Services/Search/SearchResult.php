@@ -8,6 +8,7 @@ namespace App\Services\Search;
  */
 final readonly class SearchResult
 {
+    /** Raw query/passage reranker relevance; model-specific, not the boosted ordering score or a probability. */
     public function __construct(
         public string $id,
         public string $title,

@@ -47,17 +47,6 @@ final class SearchService
         string $ip = 'internal',
         string $userAgent = 'search',
     ): array {
-        $queryVector = $this->embeddings->embedQuery($query);
-
-        // Overfetch: revoked/inaccessible artifacts and repo/agent/since
-        // filters all reduce the candidate set after the vector query, so
-        // asking the index for exactly $limit would silently under-return.
-        $candidateLimit = max($limit * 5, 50);
-        $candidates = ReciprocalRankFusion::combine(
-            $this->vectorIndex->query($team->slug, $queryVector, $candidateLimit),
-            $this->vectorIndex->queryText($team->slug, $query, $candidateLimit),
-        );
-
         $directory = $this->artifactsBySlug($team);
 
         // spec 16: `collection: "reporting-formats"` scopes results to
@@ -69,46 +58,38 @@ final class SearchService
             $collectionArtifactIds = $collection === null ? [] : array_flip($collection->artifactIds());
         }
 
-        $filtered = array_values(array_filter(
-            $candidates,
-            function (VectorMatch $match) use ($team, $directory, $filters, $collectionArtifactIds): bool {
-                if ($match->chunk->orgId !== $team->slug) {
-                    return false;
-                }
-                $artifact = $directory[$match->chunk->artifactId] ?? null;
+        $isAllowed = function (string $id) use ($directory, $filters, $collectionArtifactIds): bool {
+            $artifact = $directory[$id] ?? null;
+            if ($artifact === null || $artifact['revoked_at'] !== null) {
+                return false;
+            }
+            if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$id])) {
+                return false;
+            }
+            if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
+                return false;
+            }
+            if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
+                return false;
+            }
+            if (! empty($filters['since']) && CarbonImmutable::parse($artifact['created_at'])->lt(CarbonImmutable::parse($filters['since']))) {
+                return false;
+            }
 
-                // Not in the directory (deleted/never existed) or revoked:
-                // both simply vanish from results — indistinguishable from
-                // never having matched at all (DoD: "its non-appearance is
-                // indistinguishable from non-existence").
-                if ($artifact === null || $artifact['revoked_at'] !== null) {
-                    return false;
-                }
+            return true;
+        };
+        $allowedIds = array_values(array_filter(array_map(strval(...), array_keys($directory)), $isAllowed));
+        $queryVector = $this->embeddings->embedQuery($query);
+        $candidateLimit = max($limit * 5, 50);
+        $vectorCandidates = $this->vectorIndex->queryArtifacts($team->slug, $queryVector, $candidateLimit, $allowedIds);
+        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $allowedIds);
+        $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
+        $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
 
-                if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$match->chunk->artifactId])) {
-                    return false;
-                }
-
-                if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
-                    return false;
-                }
-
-                if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
-                    return false;
-                }
-
-                if (! empty($filters['since'])) {
-                    $since = CarbonImmutable::parse($filters['since']);
-                    if (CarbonImmutable::parse($artifact['created_at'])->lt($since)) {
-                        return false;
-                    }
-                }
-
-                return true;
-            },
-        ));
-
-        $filtered = $this->reranker->rerank($query, array_slice($filtered, 0, max(20, $limit)));
+        $filtered = array_slice($filtered, 0, max(20, $limit));
+        $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
+        $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory));
+        $filtered = SearchPassageSelection::bestArtifacts($this->reranker->rerank($query, $passages), (float) config('indexing.minimum_search_relevance', 0.05), $query);
 
         $usageScores = $this->usageScoresFor($team, $filtered);
         $canonicalArtifactIds = $this->canonicalArtifactIdsFor($team);
@@ -117,7 +98,7 @@ final class SearchService
         $top = array_slice($ranked, 0, $limit);
 
         $results = array_map(
-            fn (VectorMatch $match): SearchResult => $this->toResult($team, $match, $directory[$match->chunk->artifactId]),
+            fn (VectorMatch $match): SearchResult => $this->toResult($team, $match, $directory[$match->chunk->artifactId], $query),
             $top,
         );
 
@@ -224,7 +205,7 @@ final class SearchService
     /**
      * @param  array<string, mixed>  $artifact
      */
-    private function toResult(Team $team, VectorMatch $match, array $artifact): SearchResult
+    private function toResult(Team $team, VectorMatch $match, array $artifact, string $query): SearchResult
     {
         return new SearchResult(
             id: $match->chunk->artifactId,
@@ -233,25 +214,11 @@ final class SearchService
             // The short viewer link (RUB-439), the same link every other
             // surface hands out, whatever the artifact's sharing level.
             url: ArtifactViewLink::forArtifact($team->slug, $match->chunk->artifactId, $artifact['tier'] ?? null),
-            snippet: $this->snippet($match->chunk->text),
+            snippet: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null),
             agent: $match->chunk->agent,
             repoUrl: $match->chunk->repoUrl,
             commitSha: $match->chunk->commitSha,
             score: $match->similarity,
         );
-    }
-
-    /**
-     * A short excerpt, never the full chunk/document text — DoD: "never
-     * the full bundle."
-     */
-    private function snippet(string $text, int $maxLength = 200): string
-    {
-        $trimmed = trim($text);
-        if (mb_strlen($trimmed) <= $maxLength) {
-            return $trimmed;
-        }
-
-        return mb_substr($trimmed, 0, $maxLength).'…';
     }
 }

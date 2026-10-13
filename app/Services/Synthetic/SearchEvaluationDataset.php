@@ -171,11 +171,13 @@ final class SearchEvaluationDataset
      * Provider-neutral SDG Hub import; all imported cases require explicit review before freezing.
      *
      * @param  array<string, mixed>  $row
+     * @param  array{provider: string, model: string, prompt_version: string, generation_config: array<string, mixed>, seed: int|null}  $provenance
      * @return array<string, mixed>
      */
-    public function import(array $row, string $sourceKey, string $locator, string $id, string $review): array
+    public function import(array $row, string $sourceKey, string $locator, string $id, string $review, array $provenance): array
     {
         Validator::make($row, ['question' => ['required', 'string'], 'answer' => ['required', 'string'], 'ground_truth_context' => ['required', 'string']])->validate();
+        Validator::make($provenance, ['provider' => ['required', 'string'], 'model' => ['required', 'string'], 'prompt_version' => ['required', 'string'], 'generation_config' => ['present', 'array'], 'seed' => ['present', 'nullable', 'integer']])->validate();
         $source = null;
         $section = null;
         foreach ($this->data['sources'] as $candidate) {
@@ -193,6 +195,6 @@ final class SearchEvaluationDataset
             throw new InvalidArgumentException('Imported context must be grounded in the specified source span and reviewed.');
         }
 
-        return ['id' => $id, 'query' => $row['question'], 'class' => 'paraphrase', 'split' => $source['split'], 'review' => $review, 'reference_answer' => $row['answer'], 'no_answer' => false, 'filters' => [], 'relevance' => [$sourceKey => 2], 'gold' => [['source' => $sourceKey, 'locator' => $locator, 'text' => $row['ground_truth_context']]], 'generator' => $row['provenance'] ?? null];
+        return ['id' => $id, 'query' => $row['question'], 'class' => 'paraphrase', 'split' => $source['split'], 'review' => $review, 'reference_answer' => $row['answer'], 'no_answer' => false, 'filters' => [], 'relevance' => [$sourceKey => 2], 'gold' => [['source' => $sourceKey, 'locator' => $locator, 'text' => $row['ground_truth_context']]], 'generator' => $provenance];
     }
 }

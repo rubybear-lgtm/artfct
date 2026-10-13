@@ -40,6 +40,23 @@ test('real_vector_index_addresses_only_the_calling_org', function () {
     expect(ArtifactChunk::query()->count())->toBe(2);
 })->group('pgsql');
 
+test('artifact candidate budgets deduplicate before limiting and scope both retrieval lists', function () {
+    Team::factory()->create(['slug' => 'org-a']);
+    Team::factory()->create(['slug' => 'org-b']);
+    $index = app(PgVectorIndex::class);
+    $index->upsertChunks('org-a', 'large', array_fill(0, 60, pgChunk('org-a', 'large', 'shared shared content')));
+    $index->upsertChunks('org-a', 'answer', [pgChunk('org-a', 'answer', dimension: 1)]);
+    $index->upsertChunks('org-b', 'answer', [pgChunk('org-b', 'answer')]);
+    foreach (['queryArtifacts', 'queryTextArtifacts'] as $method) {
+        $query = $method === 'queryArtifacts' ? pgChunk('org-a')->vector : 'shared';
+        $matches = $index->$method('org-a', $query, 2, ['large', 'answer']);
+        expect(array_map(fn ($match) => $match->chunk->artifactId, $matches))->toBe(['large', 'answer'])
+            ->and(array_unique(array_map(fn ($match) => $match->chunk->orgId, $matches)))->toBe(['org-a']);
+        expect($index->$method('org-a', $query, 1, ['answer'])[0]->chunk->artifactId)->toBe('answer');
+        expect($index->$method('org-a', $query, 2, []))->toBe([]);
+    }
+})->group('pgsql');
+
 test('real_vector_index_delete_removes_all_chunks_of_artifact', function () {
     Team::factory()->create(['slug' => 'org-a']);
     Team::factory()->create(['slug' => 'org-b']);

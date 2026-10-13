@@ -212,3 +212,22 @@ test('readiness recognizes current completed embeddings and detects missing sour
     $entry->update(['extracted_text' => 'Title only']);
     expect($readiness->inspect($dataset, $manifest)['sources']['landing']['reason'])->toBe('gold_text_missing_from_extraction');
 });
+
+test('default benchmark evidence survives cleanup of the legacy synthetic seed directory', function () {
+    $storage = sys_get_temp_dir().'/rub442-storage-'.bin2hex(random_bytes(6));
+    $original = storage_path();
+    app()->useStoragePath($storage);
+    try {
+        $path = SearchEvaluationManifest::defaultPath('zz-search-test');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, 'retained benchmark evidence');
+        File::ensureDirectoryExists(storage_path('app/synthetic'));
+        File::put(storage_path('app/synthetic/seed-map.json'), '{}');
+        File::deleteDirectory(storage_path('app/synthetic'));
+        expect(File::get($path))->toBe('retained benchmark evidence');
+        expect(fn () => SearchEvaluationManifest::defaultPath('zz-/../outside'))->toThrow(RuntimeException::class);
+    } finally {
+        app()->useStoragePath($original);
+        File::deleteDirectory($storage);
+    }
+});

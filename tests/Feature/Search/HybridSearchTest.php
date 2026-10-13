@@ -34,10 +34,12 @@ test('hybrid_search_reranks_only_accessible_candidates_in_the_calling_org', func
         ]);
     }
     $index = Mockery::mock(VectorIndexContract::class);
-    $index->shouldReceive('query')->once()->with($team->slug, Mockery::type('array'), 50)->andReturn([
+    $allowed = Mockery::on(fn (array $ids): bool => in_array('semantic', $ids, true) && in_array('lexical', $ids, true) && ! in_array('revoked', $ids, true));
+    $index->shouldReceive('queryArtifacts')->once()->with($team->slug, Mockery::type('array'), 50, $allowed)->andReturn([
         hybridMatch('semantic'), hybridMatch('revoked'), hybridMatch('foreign', 'other-org'), hybridMatch('deleted'),
     ]);
-    $index->shouldReceive('queryText')->once()->with($team->slug, 'identifier', 50)->andReturn([hybridMatch('lexical')]);
+    $index->shouldReceive('queryTextArtifacts')->once()->with($team->slug, 'identifier', 50, $allowed)->andReturn([hybridMatch('lexical')]);
+    $index->shouldReceive('firstChunks')->with($team->slug, Mockery::type('array'), 2)->once()->andReturn([]);
     app()->instance(VectorIndexContract::class, $index);
     $reranker = Mockery::mock(RerankerContract::class);
     $reranker->shouldReceive('rerank')->once()->with('identifier', Mockery::on(function ($candidates) {
