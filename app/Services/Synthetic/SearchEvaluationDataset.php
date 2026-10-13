@@ -139,7 +139,13 @@ final class SearchEvaluationDataset
         $head = '<!doctype html><html><head><meta charset="utf-8"><title>'.$title.'</title></head><body>';
         $html = $head.$body.'</body></html>';
         if ($source['presentation'] === 'rendered') {
-            $html = $head.'<div id="root"></div><script>document.getElementById("root").innerHTML='.json_encode($body, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR).';</script></body></html>';
+            return [
+                'title' => $source['title'], 'description' => $source['description'], 'sharing' => 'team', 'model' => 'rub-442-frozen-corpus-v1',
+                'entrypoint' => 'index.html', 'files' => [
+                    ['path' => 'index.html', 'content' => $head.'<div id="root"></div><script src="app.js"></script></body></html>'],
+                    ['path' => 'app.js', 'content' => 'document.getElementById("root").innerHTML='.json_encode($body, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR).';'],
+                ],
+            ];
         }
         if ($source['presentation'] === 'boilerplate') {
             $html = $head.'<nav>Home Reports Contact Subscribe</nav>'.$body.'<footer>our AI makes, remembered. Subscribe to updates. Start your free trial.</footer><script type="application/json">{"state":"ready","noise":"footer\\nSubscribe"}</script></body></html>';

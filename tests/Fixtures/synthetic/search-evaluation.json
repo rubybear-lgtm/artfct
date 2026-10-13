@@ -1,13 +1,13 @@
 {
-  "version": "rub-442-v2-draft",
+  "version": "rub-442-v3-draft",
   "seed": 442,
   "provenance": {
     "method": "offline Codex authored source/topic cases",
     "model": "GPT-6",
     "human_review": "pending",
-    "template_version": 2,
+    "template_version": 3,
     "split_method": "explicit frozen membership; 14 tuning topics and 6 held-out topics",
-    "revision_reason": "Group large bundle records into two chapters to avoid the measured staging 30-second upload timeout. No baseline or tuning has run."
+    "revision_reason": "Keep the large bundle at three files and move rendered source JavaScript into a self-origin app.js allowed by the measured artifact CSP. No baseline or tuning has run."
   },
   "sources": [
     {

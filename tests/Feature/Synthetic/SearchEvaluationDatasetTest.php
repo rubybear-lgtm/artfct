@@ -56,8 +56,9 @@ test('rendered fixture requires JavaScript and bundle publication includes sourc
     $dataset = new SearchEvaluationDataset(searchEvaluationData());
     $rendered = collect($dataset->data['sources'])->firstWhere('key', 'rendered');
     $payload = $dataset->publication($rendered);
-    expect($payload['html'])->toContain('<div id="root"></div>', '.innerHTML=');
-    expect(ExtractionHeuristics::needsRender($payload['html']))->toBeTrue();
+    expect($payload['files'][0]['content'])->toContain('<div id="root"></div>', '<script src="app.js"></script>');
+    expect($payload['files'][1]['content'])->toContain('.innerHTML=');
+    expect(ExtractionHeuristics::needsRender($payload['files'][0]['content']))->toBeTrue();
     $bundle = collect($dataset->data['sources'])->firstWhere('key', 'bundle');
     expect($dataset->publication($bundle)['files'])->toHaveCount(3);
 });
