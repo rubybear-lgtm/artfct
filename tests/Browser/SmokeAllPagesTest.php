@@ -36,6 +36,7 @@ function coveredElsewhere(): array
 {
     return [
         'blog.show' => 'BlogPermalinksTest',
+        'connect.show' => 'ConnectPagesTest',
         'invitations.show' => 'InvitationBrowserTest',
         'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',

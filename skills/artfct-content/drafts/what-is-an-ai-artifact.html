@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What is an AI artifact? — artfct</title>
+<meta name="description" content="An AI artifact is a finished work product an AI tool made and a person can open: a report, dashboard, table or document. This explainer defines the term, separates it from chat scrollback and memory notes, and says where a record of finished work fits.">
+<style>
+  :root {
+    --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
+    --base0: #839496; --base1: #93a1a1; --base2: #eee8d5; --base3: #fdf6e3;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --violet: #6c71c4; --blue: #268bd2; --cyan: #2aa198; --green: #859900;
+    --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+    --rule: #e3dcc6;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--base3); color: var(--base00);
+    font-family: var(--sans); font-size: 17px; line-height: 1.7;
+    font-synthesis-weight: none;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--cyan); }
+
+  /* ── masthead ─────────────────────────────────────────────── */
+  .mark { font-family: var(--mono); font-size: 13px; line-height: 1.05; letter-spacing: 0; margin: 0 0 2.5rem; white-space: pre; }
+  .mark span { display: inline-block; }
+  .m1 { color: var(--yellow); } .m2 { color: var(--orange); } .m3 { color: var(--red); }
+  .m4 { color: var(--magenta); } .m5 { color: var(--violet); } .m6 { color: var(--blue); }
+  .brand { font-family: var(--mono); font-size: 12px; color: var(--base1); letter-spacing: .08em; text-transform: uppercase; margin-left: .6rem; }
+
+  /* ── title block ──────────────────────────────────────────── */
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .9rem; }
+  h1 { font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.12; letter-spacing: -.02em; color: var(--base02); margin: 0 0 1rem; font-weight: 700; }
+  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--base1); border-bottom: 1px solid var(--rule); padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+  .meta b { color: var(--base00); font-weight: 500; }
+  .lead { font-size: 1.2rem; line-height: 1.6; color: var(--base01); margin: 0 0 2.5rem; }
+  .lead::first-letter { color: var(--orange); }
+
+  /* ── toc ──────────────────────────────────────────────────── */
+  nav.toc { background: var(--base2); border-left: 3px solid var(--cyan); padding: 1.1rem 1.3rem; margin: 0 0 3rem; }
+  nav.toc p { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .5rem; }
+  nav.toc ol { margin: 0; padding-left: 1.2rem; font-size: .95rem; }
+  nav.toc li { margin: .2rem 0; }
+
+  /* ── body ─────────────────────────────────────────────────── */
+  h2 { font-size: 1.42rem; line-height: 1.25; color: var(--base02); margin: 3rem 0 .9rem; padding-left: .7rem; border-left: 3px solid var(--yellow); font-weight: 650; }
+  h3 { font-size: 1.08rem; color: var(--base01); margin: 2rem 0 .6rem; font-weight: 650; }
+  p { margin: 0 0 1.15rem; }
+  ul, ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  strong { color: var(--base01); font-weight: 650; }
+  code { font-family: var(--mono); font-size: .875em; background: var(--base2); color: var(--base02); padding: .12em .38em; border-radius: 3px; }
+  pre { background: var(--base02); color: var(--base2); padding: 1rem 1.15rem; overflow-x: auto; font-size: .85rem; line-height: 1.6; border-radius: 4px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  blockquote { margin: 1.5rem 0; padding: .2rem 0 .2rem 1.1rem; border-left: 3px solid var(--violet); color: var(--base01); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 3rem 0; }
+  .callout { background: var(--base2); border-left: 3px solid var(--orange); padding: 1rem 1.2rem; margin: 1.75rem 0; font-size: .97rem; }
+  .callout p:last-child { margin-bottom: 0; }
+  table.t { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .93rem; }
+  table.t th { text-align: left; font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--base1); border-bottom: 2px solid var(--rule); padding: .5rem .7rem .5rem 0; }
+  table.t td { border-bottom: 1px solid var(--rule); padding: .6rem .7rem .6rem 0; vertical-align: top; }
+
+  /* ── limits ───────────────────────────────────────────────── */
+  section.limits { background: var(--base2); border: 1px solid var(--rule); border-top: 3px solid var(--red); padding: 1.4rem 1.5rem 1.1rem; margin: 3rem 0; }
+  section.limits h2 { border: 0; padding: 0; margin: 0 0 .8rem; font-size: 1.15rem; }
+  section.limits ul { margin-bottom: 0; }
+
+  /* ── faq ──────────────────────────────────────────────────── */
+  section.faq { margin: 3.5rem 0 0; }
+  section.faq > h2 { border-left-color: var(--green); }
+  details.q { border-bottom: 1px solid var(--rule); padding: .85rem 0; }
+  details.q summary { cursor: pointer; font-weight: 600; color: var(--base02); list-style: none; }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::before { content: "? "; font-family: var(--mono); color: var(--green); }
+  details.q[open] summary::before { content: "↓ "; }
+  details.q p { margin: .7rem 0 0; color: var(--base00); }
+
+  /* ── byline ───────────────────────────────────────────────── */
+  .byline { display: flex; gap: 1rem; align-items: flex-start; border-top: 1px solid var(--rule); margin-top: 3.5rem; padding-top: 1.5rem; }
+  .byline .av { flex: 0 0 44px; height: 44px; border-radius: 50%; background: var(--base2); border: 1px solid var(--rule); display: grid; place-items: center; font-family: var(--mono); font-size: 14px; color: var(--base1); }
+  .byline .who { font-weight: 650; color: var(--base02); }
+  .byline .bio { font-size: .93rem; color: var(--base1); margin: .15rem 0 0; }
+
+  /* ── cta ──────────────────────────────────────────────────── */
+  .cta { background: var(--base02); color: var(--base2); padding: 2rem 1.9rem; margin: 3rem 0 0; border-radius: 4px; }
+  .cta h2 { color: var(--base3); border: 0; padding: 0; margin: 0 0 .6rem; font-size: 1.3rem; }
+  .cta p { color: var(--base1); margin: 0 0 1.3rem; }
+  .cta a.btn { display: inline-block; background: var(--yellow); color: var(--base03); font-weight: 650; text-decoration: none; padding: .7rem 1.3rem; border-radius: 3px; font-size: .97rem; }
+  .cta a.btn:hover { background: var(--orange); color: var(--base3); }
+
+  footer { margin-top: 3rem; font-family: var(--mono); font-size: 11.5px; color: var(--base1); border-top: 1px solid var(--rule); padding-top: 1.2rem; }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 2rem 1.15rem 3.5rem; }
+    .mark { font-size: 10px; }
+    .lead { font-size: 1.1rem; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.toc, .cta a.btn { display: none; }
+  }
+</style>
+</head>
+<body data-surface="explainer" data-register="glean-formal">
+<div class="wrap">
+
+  <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
+
+  <header>
+    <p class="kicker">Explainers</p>
+    <h1>What is an AI artifact?</h1>
+    <p class="meta"><b>The artfct team</b> · Last updated 2026-10-01 · 10 min</p>
+    <p class="lead">An AI artifact is a finished work product that an AI tool produced and that a person can open: a report, a dashboard, a table, a document, or an interactive page. It is the output, not the conversation that produced it. That distinction matters, because most AI work today disappears into a chat window when the session ends.</p>
+  </header>
+
+  <nav class="toc">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#s1">What counts as an artifact?</a></li>
+      <li><a href="#s2">How is an artifact different from a chat transcript?</a></li>
+      <li><a href="#s3">How is an artifact different from a memory note?</a></li>
+      <li><a href="#s4">Why is artfct not an &ldquo;artifact store&rdquo;?</a></li>
+      <li><a href="#s5">What makes an artifact durable?</a></li>
+      <li><a href="#s6">How does a team find an artifact later?</a></li>
+      <li><a href="#s7">Who can see an artifact, and who can change it?</a></li>
+      <li><a href="#s8">What does a team do first?</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="s" id="s1">
+      <h2>What counts as an artifact?</h2>
+      <p>This page holds one definition and applies it throughout. An artifact is a finished work product that an AI tool made and that renders as a page a reader can open unaided. A revenue report, a dashboard of pipeline numbers, a comparison table, a short written document and an interactive page all qualify, and the form varies while the test does not.</p>
+      <p>The test is whether a colleague can use the thing without the conversation that produced it. A finished report passes, because its numbers and its reasoning arrive together and stand on their own. A half-finished outline fails, because the reader cannot separate what was decided from what was merely considered. An artifact sits at the finished end of that spectrum, which is why the word carries the weight it does.</p>
+      <p>The same word appears elsewhere in software, and those other senses cause much of the confusion this explainer addresses. In a build pipeline an artifact is a compiled file, a package or a signed manifest. In a design tool it is a mock-up handed between stages. Both senses are legitimate, and neither is the one used here.</p>
+    </section>
+
+    <section class="s" id="s2">
+      <h2>How is an artifact different from a chat transcript?</h2>
+      <p>A conversation with an AI tool is reasoning made visible. The transcript holds the question, the false starts, the corrections and the final answer, and it is genuinely valuable to the person who was present for it. It is much less valuable to anyone else, because a reader has to reconstruct which turn ended up mattering.</p>
+      <p>Scrollback is also bound to the tool that produced it. It lives inside one account, it belongs to one session, and it was never designed for a second person to open later. The unit of memory is the tool, while the unit of work is the team, and that mismatch is the reason finished work goes missing. The problem is described in more detail in <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding the report a team already wrote</a>.</p>
+      <p>A second difference matters more than tidiness. A transcript cannot be cited. A decision document can link to a report at a stable address, and a reader follows that link to the same table the decision rested on. Nobody links to a middle turn of a session, and a record that cannot be cited does not survive a review.</p>
+    </section>
+
+    <section class="s" id="s3">
+      <h2>How is an artifact different from a memory note?</h2>
+      <p>A memory note is an input. Assistants increasingly keep a small store of facts, preferences and terminology, and they read that store at the beginning of a session so that later answers fit the organisation. The note is never the deliverable itself; it shapes the deliverable, quietly and continuously.</p>
+      <p>An artifact is an output. It is the thing that was asked for, finished, and handed to a reader who may never know which tool made it. The distinction is not cosmetic, because the two stores change different behaviour in different places. Editing a memory note changes what a model generates next, while keeping an artifact changes what a team can find long afterwards.</p>
+      <p>A useful way to hold the difference is to look at the intended audience. A memory note is written to influence a future model call, while an artifact is written to inform a future reader. The first is addressed to a model and the second to a person, and those two audiences make very different demands of the same words.</p>
+      <p>Treating the two as substitutes produces a predictable disappointment. A team that relies on memory alone gets answers phrased in house language and very little it can hand to a client or an auditor. A team that keeps artifacts gets a record of the work itself, and that record outlives the session which produced it.</p>
+    </section>
+
+    <section class="s" id="s4">
+      <h2>Why is artfct not an &ldquo;artifact store&rdquo;?</h2>
+      <p>The phrase is common in platform conversations, and it is not the description this category needs. To a platform lead, an artifact store is Artifactory or Harness, not a record of what a team's agents built. That category holds build outputs, binaries, packages and signed manifests, and it sits inside a continuous integration pipeline beside the code it was compiled from.</p>
+      <p>That job is real, mature and well served by the tools built for it, and it is a different job from the one this page describes. A build artifact is consumed by a deployment process and rarely read by a person. A work artifact is read by a person, linked in a document and searched by whoever needs the same answer again.</p>
+      <p>artfct is a record of what your agents built. Publishing a page or a document produces a link, keeps the content at that address, and makes the artifact findable by any connected tool and by any colleague who has access. The category is deliberately narrower than file storage and deliberately broader than one vendor's chat history.</p>
+    </section>
+
+    <section class="s" id="s5">
+      <h2>What makes an artifact durable?</h2>
+      <p>Durability here means that a reader can open the same thing long after it was published and reach the same content. Three mechanisms carry that weight. The first is content-addressed identity: publishing identical content twice yields one artifact rather than two, so a team does not accumulate near-copies that differ only in the hour they were made.</p>
+      <p>The second is versioning under a stable address. A corrected report is published as a new version of the same artifact, and a link already pasted into a document keeps working. Earlier versions stay listed and can be restored, which turns a mistake into a reversible event rather than a lost afternoon. The mechanism is set out in <a href="https://artfct.dev/blog/one-link-that-keeps-its-history">one link that keeps its history</a>.</p>
+      <p>The third is the provenance record attached to each artifact. On the supported connection it holds the model when the caller supplies one, the session identifier, the publishing tool, and the client name and version. It does not hold the repository, the branch or the commit on that path, and the limits section below explains what that omission means for search.</p>
+      <p>Size has a shape as well. A single self-contained page is one file of up to 1 MB, while a multi-file artifact can carry up to 500 files to a total of 8 MB. Plan limits are lower still. Those bounds are generous for a report and tight enough that a shared link stays a page rather than an application.</p>
+    </section>
+
+    <section class="s" id="s6">
+      <h2>How does a team find an artifact later?</h2>
+      <p>Storage without retrieval produces a tidier version of the original problem. The retrieval difficulty is specific and worth naming: the right report and a plausible near-copy often share most of their vocabulary, and the near-copy is frequently the one nobody actually uses. Matching on text alone therefore ranks the wrong answer first, with confidence.</p>
+      <p>Search fuses two signals before it ranks anything. Semantic similarity finds work about the same subject in different words, and keyword matching finds the exact term when the exact term is the whole point. The fused result is then ordered by recency, by how often an artifact has been opened, and by whether it sits in a pinned collection. A canonical report therefore outranks a semantically closer draft that nobody reads.</p>
+      <p>People and agents reach the same index. A colleague describes what they need and receives matching artifacts with their sources attached, and a connected tool asks the same question in ordinary language and gets back summaries, short excerpts and a link. The same search runs from a console page or from a Slack command, where results return privately to the person who asked rather than to the channel. The <a href="https://artfct.dev/docs">documentation</a> lists the filters and sorts each surface accepts.</p>
+    </section>
+
+    <section class="s" id="s7">
+      <h2>Who can see an artifact, and who can change it?</h2>
+      <p>Sharing has three levels: private, team and public. A private artifact is visible to its owner, a team artifact to the members of that team, and a public artifact to anyone holding the link. Visibility and edit rights are separate grants, so a colleague can be given the ability to publish the next version of something they did not create.</p>
+      <p>One route serves every level. A signed-out visitor who opens a team artifact is sent to sign in and returned to the page, and the route never confirms whether a particular identifier exists. Each artifact is served from its own hostname with a cookieless token and a content security policy derived from what that artifact declared, so the scripts inside one artifact cannot read the scripts inside another. The access model is covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
+      <p>Administrators see the same objects through a governance surface. An audit log records creation, viewing, sharing, revocation and deletion, and it can be exported. Retention policies and legal hold sit alongside it, so a record is kept deliberately or released on a schedule rather than by habit.</p>
+    </section>
+
+    <section class="s" id="s8">
+      <h2>What does a team do first?</h2>
+      <p>The concept is separable from any product, and a team can test the concept in a single sitting. One person connects a tool once, and every member of the team then publishes and searches through the tools they already use, with nothing further to install on their own machines.</p>
+      <p>The connection is a hosted OAuth server reached over HTTP. A single command registers it, and the same setup text appears in the <a href="https://artfct.dev/docs">docs</a> and in the machine-readable reference at <a href="https://artfct.dev/llms-full.txt">llms-full.txt</a>, because both render from one source and cannot drift apart.</p>
+      <pre><code>npx add-mcp@latest &lt;mcp-url&gt; --name artfct --global</code></pre>
+      <p>Readiness varies by tool, and the distinction is worth keeping straight. Claude Code, Codex, OpenCode and Antigravity have been verified against staging. ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths rather than tested ones, and any other client that can reach a remote server can connect. A publishing skill for agents exists as well, installable with a single command.</p>
+      <p>For the sharing half alone, one page can be <a href="https://artfct.dev/free">published as a link</a> without an account, which is the shortest route to seeing what an artifact is. The same link then opens for a colleague, a client or a connected agent.</p>
+    </section>
+
+    <section class="limits">
+      <h2>What this does not do</h2>
+      <ul>
+        <li>It is not a memory layer for a model. It moves finished artifacts rather than reasoning, and it does not change what a model knows or how it writes.</li>
+        <li>It is not a wiki. There is no authoring surface and no editing surface; a record of finished work is kept and found, not written.</li>
+        <li>Notebooks, PDFs and video are not in scope, and neither are arbitrary office files or archives kept for their own sake. An artifact is something an AI made that renders as a page.</li>
+        <li>It is not static site hosting and it is not a content delivery network, and it is not offered as self-hosted or on-prem software. Pages are shared with tens of people rather than millions.</li>
+        <li>There is no per-person sharing. Access is private, team or public, plus the owner and the team's administrators.</li>
+        <li>On the hosted connection the provenance record does not include the repository, the branch or the commit, so a repository filter in search matches only the artifacts that carry one.</li>
+        <li>Indexing is not instantaneous. Re-indexing is limited to once per ten minutes for a given artifact, and an administrator can switch indexing off for a deployment.</li>
+        <li>Turning a pasted link into a preview card inside Slack is not shipped. The search command returns results privately to the person who asked; the unfurl does not follow.</li>
+      </ul>
+    </section>
+
+    <section class="faq">
+      <h2>Questions</h2>
+      <details class="q"><summary>Is a chat transcript an artifact?</summary><p>No. A transcript records the reasoning that produced an answer, and it stays inside the tool that held the session. An artifact is the finished output, published at an address that another person or another tool can open.</p></details>
+      <details class="q"><summary>Can a single table or document be an artifact?</summary><p>Yes. The test is that it renders as a page and stands on its own, so a table of results or a short report qualifies. A raw spreadsheet file or an archive does not, because nothing renders it and a reader cannot use it in place.</p></details>
+      <details class="q"><summary>Does an artifact record which repository it came from?</summary><p>On the hosted connection, no. The provenance record holds the model when the caller supplies it, the session, the publishing tool and the client, and it leaves the repository, branch and commit empty. A repository filter in search therefore matches only artifacts that carry those fields.</p></details>
+      <details class="q"><summary>Can one artifact be shared with a single named person?</summary><p>Not today. Access is private, team or public, together with the owner and the team's administrators. Edit rights are a separate grant on the same artifact, so a colleague can be allowed to publish the next version without widening who can see it.</p></details>
+      <details class="q"><summary>What happens when the same content is published twice?</summary><p>It resolves to one artifact rather than two, because identity is derived from the content itself. That keeps a team from accumulating near-identical copies that differ only in when they were made.</p></details>
+      <details class="q"><summary>Can a report be corrected without breaking a link already shared?</summary><p>Yes. The correction is published as a new version at the same address, and the earlier versions stay listed, and any of them can be opened or restored, so a document that already cites the report keeps pointing at the current one.</p></details>
+      <details class="q"><summary>Which AI tools can publish and search artifacts?</summary><p>Claude Code, Codex, OpenCode and Antigravity are verified against staging. ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths that have not been tested against staging, and any other client that can reach a remote server can connect.</p></details>
+    </section>
+  </main>
+
+  <div class="byline">
+    <div class="av">A</div>
+    <div>
+      <div class="who">The artfct team</div>
+      <p class="bio">Explainers on how finished AI work is kept, found and shared.</p>
+    </div>
+  </div>
+
+  <section class="cta">
+    <h2>Start with one page</h2>
+    <p>Publish a single page as a link, with no account needed to open it.</p>
+    <a class="btn" href="https://artfct.dev/free">Start free</a>
+  </section>
+
+  <footer>artfct — what your AI makes, remembered</footer>
+</div>
+</body>
+</html>

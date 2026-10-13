@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to organize AI-generated content your team keeps — artfct</title>
+<meta name="description" content="Organizing AI-generated content means deciding what people will look for twice. Collections hold a topic, pinning marks what is canonical, and search carries the rest.">
+<style>
+  :root {
+    --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
+    --base0: #839496; --base1: #93a1a1; --base2: #eee8d5; --base3: #fdf6e3;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --violet: #6c71c4; --blue: #268bd2; --cyan: #2aa198; --green: #859900;
+    --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+    --rule: #e3dcc6;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--base3); color: var(--base00);
+    font-family: var(--sans); font-size: 17px; line-height: 1.7;
+    font-synthesis-weight: none;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--cyan); }
+
+  /* ── masthead ─────────────────────────────────────────────── */
+  .mark { font-family: var(--mono); font-size: 13px; line-height: 1.05; letter-spacing: 0; margin: 0 0 2.5rem; white-space: pre; }
+  .mark span { display: inline-block; }
+  .m1 { color: var(--yellow); } .m2 { color: var(--orange); } .m3 { color: var(--red); }
+  .m4 { color: var(--magenta); } .m5 { color: var(--violet); } .m6 { color: var(--blue); }
+  .brand { font-family: var(--mono); font-size: 12px; color: var(--base1); letter-spacing: .08em; text-transform: uppercase; margin-left: .6rem; }
+
+  /* ── title block ──────────────────────────────────────────── */
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .9rem; }
+  h1 { font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.12; letter-spacing: -.02em; color: var(--base02); margin: 0 0 1rem; font-weight: 700; }
+  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--base1); border-bottom: 1px solid var(--rule); padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+  .meta b { color: var(--base00); font-weight: 500; }
+  .lead { font-size: 1.2rem; line-height: 1.6; color: var(--base01); margin: 0 0 2.5rem; }
+  .lead::first-letter { color: var(--orange); }
+
+  /* ── toc ──────────────────────────────────────────────────── */
+  nav.toc { background: var(--base2); border-left: 3px solid var(--cyan); padding: 1.1rem 1.3rem; margin: 0 0 3rem; }
+  nav.toc p { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .5rem; }
+  nav.toc ol { margin: 0; padding-left: 1.2rem; font-size: .95rem; }
+  nav.toc li { margin: .2rem 0; }
+
+  /* ── body ─────────────────────────────────────────────────── */
+  h2 { font-size: 1.42rem; line-height: 1.25; color: var(--base02); margin: 3rem 0 .9rem; padding-left: .7rem; border-left: 3px solid var(--yellow); font-weight: 650; }
+  h3 { font-size: 1.08rem; color: var(--base01); margin: 2rem 0 .6rem; font-weight: 650; }
+  p { margin: 0 0 1.15rem; }
+  ul, ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  strong { color: var(--base01); font-weight: 650; }
+  code { font-family: var(--mono); font-size: .875em; background: var(--base2); color: var(--base02); padding: .12em .38em; border-radius: 3px; }
+  pre { background: var(--base02); color: var(--base2); padding: 1rem 1.15rem; overflow-x: auto; font-size: .85rem; line-height: 1.6; border-radius: 4px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  blockquote { margin: 1.5rem 0; padding: .2rem 0 .2rem 1.1rem; border-left: 3px solid var(--violet); color: var(--base01); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 3rem 0; }
+  .callout { background: var(--base2); border-left: 3px solid var(--orange); padding: 1rem 1.2rem; margin: 1.75rem 0; font-size: .97rem; }
+  .callout p:last-child { margin-bottom: 0; }
+  table.t { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .93rem; }
+  table.t th { text-align: left; font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--base1); border-bottom: 2px solid var(--rule); padding: .5rem .7rem .5rem 0; }
+  table.t td { border-bottom: 1px solid var(--rule); padding: .6rem .7rem .6rem 0; vertical-align: top; }
+
+  /* ── limits ───────────────────────────────────────────────── */
+  section.limits { background: var(--base2); border: 1px solid var(--rule); border-top: 3px solid var(--red); padding: 1.4rem 1.5rem 1.1rem; margin: 3rem 0; }
+  section.limits h2 { border: 0; padding: 0; margin: 0 0 .8rem; font-size: 1.15rem; }
+  section.limits ul { margin-bottom: 0; }
+
+  /* ── faq ──────────────────────────────────────────────────── */
+  section.faq { margin: 3.5rem 0 0; }
+  section.faq > h2 { border-left-color: var(--green); }
+  details.q { border-bottom: 1px solid var(--rule); padding: .85rem 0; }
+  details.q summary { cursor: pointer; font-weight: 600; color: var(--base02); list-style: none; }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::before { content: "? "; font-family: var(--mono); color: var(--green); }
+  details.q[open] summary::before { content: "↓ "; }
+  details.q p { margin: .7rem 0 0; color: var(--base00); }
+
+  /* ── byline ───────────────────────────────────────────────── */
+  .byline { display: flex; gap: 1rem; align-items: flex-start; border-top: 1px solid var(--rule); margin-top: 3.5rem; padding-top: 1.5rem; }
+  .byline .av { flex: 0 0 44px; height: 44px; border-radius: 50%; background: var(--base2); border: 1px solid var(--rule); display: grid; place-items: center; font-family: var(--mono); font-size: 14px; color: var(--base1); }
+  .byline .who { font-weight: 650; color: var(--base02); }
+  .byline .bio { font-size: .93rem; color: var(--base1); margin: .15rem 0 0; }
+
+  /* ── cta ──────────────────────────────────────────────────── */
+  .cta { background: var(--base02); color: var(--base2); padding: 2rem 1.9rem; margin: 3rem 0 0; border-radius: 4px; }
+  .cta h2 { color: var(--base3); border: 0; padding: 0; margin: 0 0 .6rem; font-size: 1.3rem; }
+  .cta p { color: var(--base1); margin: 0 0 1.3rem; }
+  .cta a.btn { display: inline-block; background: var(--yellow); color: var(--base03); font-weight: 650; text-decoration: none; padding: .7rem 1.3rem; border-radius: 3px; font-size: .97rem; }
+  .cta a.btn:hover { background: var(--orange); color: var(--base3); }
+
+  footer { margin-top: 3rem; font-family: var(--mono); font-size: 11.5px; color: var(--base1); border-top: 1px solid var(--rule); padding-top: 1.2rem; }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 2rem 1.15rem 3.5rem; }
+    .mark { font-size: 10px; }
+    .lead { font-size: 1.1rem; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.toc, .cta a.btn { display: none; }
+  }
+</style>
+</head>
+<body data-surface="feature-showcase" data-register="glean-formal" data-published="false">
+<div class="wrap">
+
+  <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
+
+  <header>
+    <p class="kicker">Workflows</p>
+    <h1>How to organize AI-generated content your team keeps</h1>
+    <p class="meta"><b>The artfct team</b> · Last updated 2026-09-23 · 6 min</p>
+    <p class="lead">Organizing an AI-generated library is mostly a matter of deciding what deserves a place a person will look at again. The workable unit is not a folder but an artifact your team can pin, and search once indexing is enabled: collections hold a topic, pinning marks what is canonical, and search carries everything else. Most of what your agents produce needs neither.</p>
+  </header>
+
+  <nav class="toc">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#s1">What actually needs organizing in a library of AI output?</a></li>
+      <li><a href="#s2">What is a collection for?</a></li>
+      <li><a href="#s3">What should be pinned, and what should be left alone?</a></li>
+      <li><a href="#s4">How does search carry what filing used to do?</a></li>
+      <li><a href="#s5">Why does the same content published twice not create a duplicate?</a></li>
+      <li><a href="#s6">How does the structure stay current?</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="s" id="s1">
+      <h2>What actually needs organizing in a library of AI output?</h2>
+      <p>The instinct is to file an artifact at the moment it is made, and that instinct is where the trouble starts. An agent publishes a report in the middle of a task, names it after the request, and leaves it wherever the tool put it. Nobody is present to make a classification decision, and nobody will be present later either.</p>
+      <p>What a team can organize after the fact is smaller than it first appears, and the useful unit is the finished artifact rather than the request that produced it. An artifact is a page or report that renders on its own and can be found again by describing it. That is the unit worth curating, because it is the unit a colleague and a connected tool can both retrieve.</p>
+      <p>The test is not where a thing belongs, but whether anyone will look for it a second time. Most output fails that test, and leaving it uncollected costs the team nothing. Organizing everything is the failure mode; organizing the small set people return to is the work.</p>
+    </section>
+
+    <section class="s" id="s2">
+      <h2>What is a collection for?</h2>
+      <p>A collection is a list of artifacts that a team assembles after the fact. Someone creates one, renames it, adds artifacts and removes them, and a team admin pins the ones that matter. A collection carries a name and a description, and that is the whole of it.</p>
+      <p>The pattern that works is one collection per question rather than one per team or per quarter. A collection named after a question tells whoever maintains it what belongs, and it tells a newcomer where to start reading. A structure built from teams and dates asks for a decision every time something arrives, and that is exactly the decision that never gets made.</p>
+      <p>Adding an artifact to a collection does not change the artifact itself. A collection accumulates the artifacts a team wants to point at, and an artifact that belongs to no collection is still found by describing it. Nothing is lost by being left out.</p>
+    </section>
+
+    <section class="s" id="s3">
+      <h2>What should be pinned, and what should be left alone?</h2>
+      <p>Pinning is the one editorial decision that changes what a reader sees first. Search ranking reads whether an artifact is pinned in a collection. Where indexing is enabled, that lifts a settled version above a newer draft matching the same words.</p>
+      <p>The artifacts worth pinning are the ones where two answers would be worse than one. The current figure, the approved page, the reference a newcomer reads before asking — those are the ones to mark. A pinned artifact outranks a semantically closer one nobody has opened. That is how a team's judgment survives a search box.</p>
+      <p>Everything else can stay unpinned. Pinning is not a reward for good work and does not need to be applied evenly; it is a signal about which result a reader should see first, and it is worth reserving for the cases where it helps.</p>
+    </section>
+
+    <section class="s" id="s4">
+      <h2>How does search carry what filing used to do?</h2>
+      <p>Search is hybrid where indexing is enabled for the deployment. It fuses semantic similarity with keyword matching, then ranks results by recency, by how often an artifact has been opened, and by whether it sits in a pinned collection. A query returns summaries with short excerpts and a link, so a result can be judged without opening it.</p>
+      <p>For finding, a connected tool has two entry points. <code>search_artifacts</code> narrows by repository, agent, collection and date. <code>list_artifacts</code> filters by owner, sharing level, collection, agent, date window, title text and file kind. It sorts by updated, created, most viewed or title. The console shares three of those filters: repository, producing agent and collection. Its text box searches a title or a description, and there is no sort control.</p>
+      <p>This is why the filing can stay small. A collection answers the handful of questions a team keeps asking, and search answers the rest without anyone moving a file. The retrieval itself is covered in <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding the report your team already wrote</a>.</p>
+    </section>
+
+    <section class="s" id="s5">
+      <h2>Why does the same content published twice not create a duplicate?</h2>
+      <p>Cleaning up is the task that makes most organizing systems fail, and here it largely does not arise. Artifacts are content-addressed, so publishing the same page twice resolves to the artifact that already exists rather than creating a second copy.</p>
+      <p>The practical effect on a collection is that a page cannot accumulate. When the content is identical, two agents publishing it end up pointing at one artifact, and the collection holds a subject rather than every rendering of it. Identical content never becomes a second artifact. A report regenerated with one figure changed is different content, and becomes its own artifact.</p>
+      <p>A revision behaves differently from a duplicate. A change becomes a new version under the original link, so the link a colleague saved keeps working and an earlier version stays available. That mechanism has its own page in <a href="https://artfct.dev/blog/one-link-that-keeps-its-history">one link that keeps its history</a>.</p>
+    </section>
+
+    <section class="s" id="s6">
+      <h2>How does the structure stay current?</h2>
+      <p>A collection is expected to change, and editing it is an ordinary operation rather than an event. Renaming it, adding artifacts and removing the ones that no longer answer the question are routine. A collection that has outgrown its name should be renamed, not split into a hierarchy, because the hierarchy is the part nobody maintains.</p>
+      <p>Changed content is re-indexed when a new version is published. The console carries a reindex action a team admin can run, which retries an artifact whose indexing failed or was never indexed. Re-indexing is rate-limited to once per ten minutes per artifact.</p>
+      <p>An artifact whose substance appears only after the page runs is rendered before it is indexed, where indexing is enabled and a renderer is configured. That makes an interactive page searchable by the text a reader sees rather than by its markup. The structure stays current because it describes what people look for, which changes more slowly than the output does.</p>
+    </section>
+
+    <section class="limits">
+      <h2>What this does not do</h2>
+      <ul>
+        <li>A collection is a name, a description and a list of artifacts rather than a taxonomy.</li>
+        <li>Two filters on the console search page, repository and producing agent, have nothing to match on for artifacts published through the hosted connection, because that path records neither.</li>
+        <li>Search is enabled at the deployment level and is off by default. Until it is switched on, a search reports that search is not enabled for the workspace.</li>
+        <li>Re-indexing an artifact is allowed once every ten minutes.</li>
+        <li>A bundle publish caps at 500 files, and at the lower of 8 MB and the plan ceiling. That is 5 MB free, 10 MB team, 25 MB enterprise. A single-page publish caps at 1 MB.</li>
+        <li>A team admin can switch public links off, after which a publish asking for public is refused.</li>
+        <li>Deduplication covers identical content: the id comes from a content hash, so one changed figure makes a new artifact.</li>
+        <li>It does not accept arbitrary office files, images or archives. An artifact is something an AI made that renders as a page.</li>
+        <li>Organizing does not change what a model can do. Artfct stores and finds what an AI already made; it is not a place to author or edit documents.</li>
+      </ul>
+    </section>
+
+    <section class="faq">
+      <h2>Questions</h2>
+      <details class="q"><summary>Does every artifact need a collection?</summary><p>No. A collection earns its place when people keep asking the same question. Artifacts nobody returns to can stay searchable and uncollected.</p></details>
+      <details class="q"><summary>What happens when two tools publish the same page?</summary><p>When the content is identical, the second publish resolves to the artifact that already exists, so the collection does not gain a second copy.</p></details>
+      <details class="q"><summary>Do the console filters match the ones an agent gets?</summary><p>Partly. Both surfaces carry the repository, the agent and the collection. The console text box searches a title or a description, while the tool surface adds owner, sharing level, file kind, date windows and sorts.</p></details>
+      <details class="q"><summary>Why would a search return nothing?</summary><p>Indexing is off by default and switched on at the deployment level. Until then, a search answers that search is not enabled for the workspace yet.</p></details>
+      <details class="q"><summary>Does a collection change the artifacts it holds?</summary><p>No. Visibility stays with the artifact's own sharing level, which is private, team or public, and a collection does not widen it. Renaming a collection, or moving artifacts in and out of it, changes nothing about them. <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">Sharing</a> has its own page.</p></details>
+    </section>
+  </main>
+
+  <div class="byline">
+    <div class="av">AF</div>
+    <div>
+      <div class="who">The artfct team</div>
+      <p class="bio">Notes on keeping what your AI makes: publishing, finding and organizing finished work.</p>
+    </div>
+  </div>
+
+  <section class="cta">
+    <h2>Organize one topic, and leave the rest to search</h2>
+    <p>Publish a page as a link, with no account needed to open it, then put the ones that matter in a collection. Public links can be off for the team.</p>
+    <a class="btn" href="https://artfct.dev/free">Start free</a>
+  </section>
+
+  <footer>artfct — what your AI makes, remembered</footer>
+</div>
+</body>
+</html>
+

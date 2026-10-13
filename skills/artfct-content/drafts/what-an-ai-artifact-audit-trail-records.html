@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What should an AI artifact audit trail record? — artfct</title>
+<meta name="description" content="An AI audit trail should answer who made an artifact, who opened it, when its sharing changed and when access was withdrawn. What artfct's log holds, what sits outside it, and what a team still has to supply.">
+<style>
+  :root {
+    --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
+    --base0: #839496; --base1: #93a1a1; --base2: #eee8d5; --base3: #fdf6e3;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --violet: #6c71c4; --blue: #268bd2; --cyan: #2aa198; --green: #859900;
+    --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+    --rule: #e3dcc6;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--base3); color: var(--base00);
+    font-family: var(--sans); font-size: 17px; line-height: 1.7;
+    font-synthesis-weight: none;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--cyan); }
+
+  /* ── masthead ─────────────────────────────────────────────── */
+  .mark { font-family: var(--mono); font-size: 13px; line-height: 1.05; letter-spacing: 0; margin: 0 0 2.5rem; white-space: pre; }
+  .mark span { display: inline-block; }
+  .m1 { color: var(--yellow); } .m2 { color: var(--orange); } .m3 { color: var(--red); }
+  .m4 { color: var(--magenta); } .m5 { color: var(--violet); } .m6 { color: var(--blue); }
+  .brand { font-family: var(--mono); font-size: 12px; color: var(--base1); letter-spacing: .08em; text-transform: uppercase; margin-left: .6rem; }
+
+  /* ── title block ──────────────────────────────────────────── */
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .9rem; }
+  h1 { font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.12; letter-spacing: -.02em; color: var(--base02); margin: 0 0 1rem; font-weight: 700; }
+  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--base1); border-bottom: 1px solid var(--rule); padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+  .meta b { color: var(--base00); font-weight: 500; }
+  .lead { font-size: 1.2rem; line-height: 1.6; color: var(--base01); margin: 0 0 2.5rem; }
+  .lead::first-letter { color: var(--orange); }
+
+  /* ── toc ──────────────────────────────────────────────────── */
+  nav.toc { background: var(--base2); border-left: 3px solid var(--cyan); padding: 1.1rem 1.3rem; margin: 0 0 3rem; }
+  nav.toc p { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--base1); margin: 0 0 .5rem; }
+  nav.toc ol { margin: 0; padding-left: 1.2rem; font-size: .95rem; }
+  nav.toc li { margin: .2rem 0; }
+
+  /* ── body ─────────────────────────────────────────────────── */
+  h2 { font-size: 1.42rem; line-height: 1.25; color: var(--base02); margin: 3rem 0 .9rem; padding-left: .7rem; border-left: 3px solid var(--yellow); font-weight: 650; }
+  h3 { font-size: 1.08rem; color: var(--base01); margin: 2rem 0 .6rem; font-weight: 650; }
+  p { margin: 0 0 1.15rem; }
+  ul, ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  strong { color: var(--base01); font-weight: 650; }
+  code { font-family: var(--mono); font-size: .875em; background: var(--base2); color: var(--base02); padding: .12em .38em; border-radius: 3px; }
+  pre { background: var(--base02); color: var(--base2); padding: 1rem 1.15rem; overflow-x: auto; font-size: .85rem; line-height: 1.6; border-radius: 4px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  blockquote { margin: 1.5rem 0; padding: .2rem 0 .2rem 1.1rem; border-left: 3px solid var(--violet); color: var(--base01); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 3rem 0; }
+  .callout { background: var(--base2); border-left: 3px solid var(--orange); padding: 1rem 1.2rem; margin: 1.75rem 0; font-size: .97rem; }
+  .callout p:last-child { margin-bottom: 0; }
+  table.t { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .93rem; }
+  table.t th { text-align: left; font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--base1); border-bottom: 2px solid var(--rule); padding: .5rem .7rem .5rem 0; }
+  table.t td { border-bottom: 1px solid var(--rule); padding: .6rem .7rem .6rem 0; vertical-align: top; }
+
+  /* ── limits ───────────────────────────────────────────────── */
+  section.limits { background: var(--base2); border: 1px solid var(--rule); border-top: 3px solid var(--red); padding: 1.4rem 1.5rem 1.1rem; margin: 3rem 0; }
+  section.limits h2 { border: 0; padding: 0; margin: 0 0 .8rem; font-size: 1.15rem; }
+  section.limits ul { margin-bottom: 0; }
+
+  /* ── faq ──────────────────────────────────────────────────── */
+  section.faq { margin: 3.5rem 0 0; }
+  section.faq > h2 { border-left-color: var(--green); }
+  details.q { border-bottom: 1px solid var(--rule); padding: .85rem 0; }
+  details.q summary { cursor: pointer; font-weight: 600; color: var(--base02); list-style: none; }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::before { content: "? "; font-family: var(--mono); color: var(--green); }
+  details.q[open] summary::before { content: "↓ "; }
+  details.q p { margin: .7rem 0 0; color: var(--base00); }
+
+  /* ── byline ───────────────────────────────────────────────── */
+  .byline { display: flex; gap: 1rem; align-items: flex-start; border-top: 1px solid var(--rule); margin-top: 3.5rem; padding-top: 1.5rem; }
+  .byline .av { flex: 0 0 44px; height: 44px; border-radius: 50%; background: var(--base2); border: 1px solid var(--rule); display: grid; place-items: center; font-family: var(--mono); font-size: 14px; color: var(--base1); }
+  .byline .who { font-weight: 650; color: var(--base02); }
+  .byline .bio { font-size: .93rem; color: var(--base1); margin: .15rem 0 0; }
+
+  /* ── cta ──────────────────────────────────────────────────── */
+  .cta { background: var(--base02); color: var(--base2); padding: 2rem 1.9rem; margin: 3rem 0 0; border-radius: 4px; }
+  .cta h2 { color: var(--base3); border: 0; padding: 0; margin: 0 0 .6rem; font-size: 1.3rem; }
+  .cta p { color: var(--base1); margin: 0 0 1.3rem; }
+  .cta a.btn { display: inline-block; background: var(--yellow); color: var(--base03); font-weight: 650; text-decoration: none; padding: .7rem 1.3rem; border-radius: 3px; font-size: .97rem; }
+  .cta a.btn:hover { background: var(--orange); color: var(--base3); }
+
+  footer { margin-top: 3rem; font-family: var(--mono); font-size: 11.5px; color: var(--base1); border-top: 1px solid var(--rule); padding-top: 1.2rem; }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 2rem 1.15rem 3.5rem; }
+    .mark { font-size: 10px; }
+    .lead { font-size: 1.1rem; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.toc, .cta a.btn { display: none; }
+  }
+</style>
+</head>
+<body data-surface="explainer" data-register="glean-formal" data-published="false">
+<div class="wrap">
+
+  <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
+
+  <header>
+    <p class="kicker">Governance</p>
+    <h1>What should an AI artifact audit trail record?</h1>
+    <p class="meta"><b>The artfct team</b> · Last updated 2026-09-21 · 11 min</p>
+    <p class="lead">An AI audit trail is a record of four events: who produced an artifact, who opened it, when its sharing changed, and when access was withdrawn. Those four are the entries a reviewer asks for first, because each answers a question a different function owns. A trail is only as strong as its weakest entry, and only as useful as it is exportable.</p>
+  </header>
+
+  <nav class="toc">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#s1">What is an AI audit trail for?</a></li>
+      <li><a href="#s2">Who produced the artifact, and does the entry say how?</a></li>
+      <li><a href="#s3">Who opened it, and when?</a></li>
+      <li><a href="#s4">When did sharing change, and who changed it?</a></li>
+      <li><a href="#s5">When was access withdrawn?</a></li>
+      <li><a href="#s6">What does the trail look like for one artifact?</a></li>
+      <li><a href="#s7">What can an administrator export, and in what form?</a></li>
+      <li><a href="#s8">Which entries are not in the log?</a></li>
+      <li><a href="#s9">What does a team still have to supply itself?</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="s" id="s1">
+      <h2>What is an AI audit trail for?</h2>
+      <p>An organization running AI tools now produces work that nobody watched being made. A report appears, a table is cited in a planning meeting, and the person who asked for it moved on weeks ago. An audit trail exists for the reviewer who arrives after all of that.</p>
+      <p>The instinct is to treat logging as a checkbox, and that instinct is what makes a trail useless. A record that says something happened, without naming the object or the person or the time, answers none of the questions an investigation actually asks. The test is whether a reader with no context can reconstruct an event from the entries alone: an actor, an artifact, an action and a time.</p>
+      <p>That test is why export matters as much as capture. A record that can only be read inside the product is a report about the product. A record that leaves as a file is evidence a compliance, security or legal function can work with, which is the form an AI governance review tends to ask for.</p>
+    </section>
+
+    <section class="s" id="s2">
+      <h2>Who produced the artifact, and does the entry say how?</h2>
+      <p>Creation is the first entry, and the actor it names is the signed-in account whose connection published the artifact. Connections are per person: one member's connection does not authorize another, and each connected tool asks that person to sign in. The creating account is therefore the person who signed in, which is the answer a reviewer wants and the one the record can support with evidence.</p>
+      <p>What the entry does not establish is how the artifact was made. On the supported connection the model is recorded as the caller reports it rather than as something observed, and the repository, branch, commit and working-tree state are recorded as absent. The console's tool column reads an unknown tool for artifacts published that way, because the hosted connection reports the same client name for every caller.</p>
+      <p>A separate per-artifact provenance record attributes each field to its source, and it inherits the same boundary. An IT or security reader should treat which AI tool produced a page as an open question rather than a settled one.</p>
+    </section>
+
+    <section class="s" id="s3">
+      <h2>Who opened it, and when?</h2>
+      <p>Viewing is the entry read most often and audited least carefully. The log records the open, and the count of opens does a second job: how often an artifact has been opened is one of the signals that ranks search results, as <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding what your AI already made</a> sets out, so a page the team keeps returning to outranks a newer one nobody reads. That ordering holds only where indexing is switched on, which is a deployment setting and off by default. The record of attention and the ordering of results share one source.</p>
+      <p>Time is what makes a view entry meaningful. A single open says that somebody looked. Opens spread across a quarter, from different accounts, say that the artifact became part of how a decision was made, which is a different claim and the more useful one to put in front of a reviewer.</p>
+      <p>One boundary belongs here. Where access does not require an account, the entry records an open attributed to a daily-salted pseudonymous key rather than to a person, because there is no account to attribute it to. A page reachable by anyone holding the link is that case, so a report of who read a page is complete for team access and partial for public access.</p>
+    </section>
+
+    <section class="s" id="s4">
+      <h2>When did sharing change, and who changed it?</h2>
+      <p>Sharing is the entry that usually decides whether an artifact mattered, because it marks the moment a page became reachable to more people than its author. Artfct records the change. An artifact is published visible to the team or private to one account, and it can be moved to public — for anyone holding the link — unless the team has turned public links off; each move is an event with an actor and a time.</p>
+      <p>Edit access is a separate axis from visibility, so a teammate can be given the ability to publish the next version of a page without a wider grant. A reviewer can therefore read a sharing entry as a change of reach rather than a change of authorship, and the two are worth keeping apart in a report. The same distinction runs through <a href="https://artfct.dev/blog/artfct-vs-your-ai-tools-own-sharing">Artfct against your AI tool's own sharing</a>.</p>
+      <p>What the entry cannot do is name a set of people. Access is a level — private, team or public — together with the owner and the team's administrators. There is no per-person grant, so the log answers when a page became team-visible, and answers which colleague gained access only by implication. The access model is set out in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
+    </section>
+
+    <section class="s" id="s5">
+      <h2>When was access withdrawn?</h2>
+      <p>Withdrawal is the entry a security function asks about first, and it arrives through more than one door. An administrator can revoke a single artifact from the console, revoke a token that an integration uses to reach the workspace, or revoke a connected AI tool from the list the console shows. Each of those is an access decision about a different object.</p>
+      <p>People are the fourth door. Directory provisioning and de-provisioning arrive as signed webhooks, so removing somebody from the directory removes their access rather than only their convenience. Invitations, roles and ownership transfer sit alongside that. For an organization on the enterprise tier, single sign-on is the gate: the domain is verified by a DNS TXT record before it is enforced, and the configuration carries a tested path back down.</p>
+      <p>Revocation ends reachability through the workspace, not possession of a copy. The console export produces files byte-identical to what was published, and a file that has left the workspace is governed by whatever policy applies where it went.</p>
+    </section>
+
+    <section class="s" id="s6">
+      <h2>What does the trail look like for one artifact?</h2>
+      <p>Take one quarterly planning report and follow it through the four entries. The analyst publishes it from a signed-in connection, and the creation entry names that account, the artifact and the time. The model field carries whatever that connection reported, and the repository, branch and commit fields arrive empty.</p>
+      <p>The viewing entries follow. A colleague who opens the page inside the team is named by account, and the count of opens feeds the ranking described above, where indexing is switched on. An open through a link that needs no account is the exception, and it carries a daily-salted pseudonymous key rather than a name.</p>
+      <p>The sharing entry marks the change of reach. When the analyst moves the page from private to team, the entry records the actor, the new level and the time. A later move to public depends on the team's own switch, and the revocation entry closes the sequence — whether it comes from an administrator in the console or from the directory when the analyst leaves the organization.</p>
+      <p>Four entries, one object, in order. Read together they answer what was made, who saw it, when reach changed and when it ended.</p>
+    </section>
+
+    <section class="s" id="s7">
+      <h2>What can an administrator export, and in what form?</h2>
+      <p>Two exports exist and they answer different questions. The audit log leaves as its own export on Enterprise, which is what a reviewer reads for events. The console can also list, filter and search everything the organization owns and export it as a single archive: metadata alongside the files themselves, byte-identical to what was published, each verified against its hash.</p>
+      <p>The hash is the part that makes the archive usable as evidence rather than as a backup. A reviewer can show that the file in hand is the file that was published, without trusting a copy step in between. That is a stronger statement than a screenshot and a simpler one to defend.</p>
+      <p>Retention policy, legal hold and release of hold sit in the same console on Enterprise; when a team leaves retention unset, the period is 90 days, and a hold is a decision somebody makes deliberately rather than one a team inherits by default. The export itself is a file an administrator runs and takes away; moving it into another system is a step the organization performs.</p>
+    </section>
+
+    <section class="s" id="s8">
+      <h2>Which entries are not in the log?</h2>
+      <p>Deletion is the gap worth stating before a reviewer finds it. Removing an artifact through the connection records telemetry rather than an audit entry, and it is not one of the actions the log's export carries on Enterprise. The deletion entries that do exist come from governance flows such as a legal hold or an erasure, not from an ordinary removal. A question about when something was deleted cannot be answered from the trail alone.</p>
+      <p>Comparison is the second gap. Earlier versions of a page can be listed, opened and restored, and two versions cannot be placed side by side. Nothing in the record describes what changed between them, so a reviewer who needs the difference has to hold both pages and read them.</p>
+      <p>Both gaps are properties of the record rather than failures of a workflow, and a review that assumes otherwise reaches a wrong conclusion at the worst moment. Stating them here is cheaper than discovering them under time pressure.</p>
+    </section>
+
+    <section class="s" id="s9">
+      <h2>What does a team still have to supply itself?</h2>
+      <p>The record is raw material, and the review is the organization's own work. Four things stay outside it. The first is policy: how long each class of artifact is kept, which ones are frozen, who may publish, and who approves a change of reach. The log reports the events a policy governs, and it does not state the policy.</p>
+      <p>The second is classification. An entry names an actor, an artifact, an action and a time. It does not say whether the artifact held regulated data, so the sensitivity that decides how an incident is handled comes from wherever the organization keeps that judgement.</p>
+      <p>The third is adjudication. Whether an action was appropriate, approved or consistent with a control is a conclusion somebody draws, and the approvals, tickets and justifications that support it live in the systems that produced them. The fourth is identity: an entry names an account, and tying that account to a person, a role and a departure date comes from the directory the workspace is connected to.</p>
+      <p>A trail that names these four boundaries is more useful than one that implies they do not exist. An IT or security team building an AI governance program has usually met both kinds, and in most cases only the first survives a review. Where finished AI work lands in the first place is covered in <a href="https://artfct.dev/blog/where-do-ai-generated-documents-go">where AI-generated documents go</a>.</p>
+    </section>
+
+    <section class="limits">
+      <h2>What this does not do</h2>
+      <ul>
+        <li><strong>Deletion is not an audit entry.</strong> Removing an artifact through the connection records telemetry rather than an audit entry, and it is not among the actions the log's export carries on Enterprise. Deletion entries come from governance flows such as a legal hold or an erasure.</li>
+        <li><strong>There is no version comparison.</strong> Earlier versions can be listed, opened and restored, and two versions cannot be placed side by side, so the record shows that a change happened rather than what changed.</li>
+        <li><strong>No repository, branch or commit.</strong> On the supported connection those fields are recorded as absent, which also leaves the repository filter in search with nothing to match.</li>
+        <li><strong>The AI tool is not identified with confidence.</strong> The model is recorded as the caller reports it, and the console's tool column shows an unknown tool for artifacts published through the hosted connection.</li>
+        <li><strong>No per-person sharing.</strong> Access is private, team or public, together with the owner and the team's administrators, so a sharing entry records a level rather than a list of names.</li>
+        <li><strong>Public access is not attributable.</strong> A page reachable by anyone holding the link can be opened without an account, so an open of it is recorded against a daily-salted pseudonymous key rather than a named reader. An administrator can also switch public links off for the whole team, in which case a publish that asks for public is refused.</li>
+        <li><strong>Retention and hold are Enterprise-tier settings an administrator sets.</strong> A legal hold and its release are recorded as events; a change to the retention policy itself is not audited, so the log shows hold decisions rather than who set the period. Where a team leaves retention unset, the period is 90 days.</li>
+        <li><strong>The free tier is not the durable record.</strong> A page published there is passcode-protected, needs no account and carries a five-day sliding expiry, while a permanent artifact is durable and carries no expiry.</li>
+        <li><strong>Search is switched on at the deployment level and sits off by default.</strong> With it off, a search reports that it is not enabled yet, and the view counts described above order nothing.</li>
+        <li><strong>Exports are files, not a feed.</strong> The log, on Enterprise, and the archive leave as downloads an administrator runs, and loading either into a separate system is a step the organization takes.</li>
+      </ul>
+    </section>
+
+    <section class="faq">
+      <h2>Questions</h2>
+      <details class="q"><summary>What does an AI audit trail record?</summary><p>Creation, viewing, sharing and revocation, and the log is exportable on Enterprise. Deletion is not among those entries: removing an artifact through the connection records telemetry, and the deletion entries that exist come from governance flows.</p></details>
+      <details class="q"><summary>Does the log name the person who published an artifact?</summary><p>It names the signed-in account whose connection published it. Connections are per person, so that account is the person who signed in, and one member's connection does not authorize another.</p></details>
+      <details class="q"><summary>Is search on by default?</summary><p>No. Indexing is off by default and switched on at the deployment level rather than per workspace. With it off, a search reports back that indexing is not enabled yet, so the open counts that order results rank nothing.</p></details>
+      <details class="q"><summary>Does the record say which AI tool made an artifact?</summary><p>Not on the supported connection. The model is recorded as the caller reports it and the tool is not distinguished, so the console shows an unknown tool for artifacts published that way.</p></details>
+      <details class="q"><summary>How is access removed when somebody leaves?</summary><p>Through the directory. Provisioning and de-provisioning arrive as signed webhooks, so removing somebody from the directory removes their access, and roles can be changed in the console as well.</p></details>
+      <details class="q"><summary>What happens to retention when an investigation starts?</summary><p>Custom retention and legal hold are Enterprise-tier settings, so keeping a page and freezing it are deliberate decisions rather than defaults a team inherits. Where a team leaves retention unset, the period is 90 days, and releasing a hold returns the page to the policy in force.</p></details>
+      <details class="q"><summary>Is the audit log enough on its own for a review?</summary><p>No. It reports events. The policy, the classification of what was stored, the approvals behind a decision and the mapping from account to person come from the organization's own systems.</p></details>
+      <details class="q"><summary>Can a page be shared with one named colleague?</summary><p>No. Access is private, team or public, with the owner and the team's administrators. Edit rights can be granted narrowly, so a colleague may publish the next version of a page others can read.</p></details>
+    </section>
+  </main>
+
+  <div class="byline">
+    <div class="av">A</div>
+    <div>
+      <div class="who">The artfct team</div>
+      <p class="bio">Explainers on the records, controls and boundaries behind finished AI work.</p>
+    </div>
+  </div>
+
+  <section class="cta">
+    <h2>See what the console records</h2>
+    <p>The documentation sets out how a tool connects and what the API exposes.</p>
+    <a class="btn" href="https://artfct.dev/docs">Read the docs</a>
+  </section>
+
+  <footer>artfct — what your AI makes, remembered</footer>
+</div>
+</body>
+</html>
+
