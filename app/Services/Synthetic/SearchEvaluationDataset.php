@@ -147,8 +147,12 @@ final class SearchEvaluationDataset
         $payload = ['title' => $source['title'], 'description' => $source['description'], 'sharing' => 'team', 'model' => 'rub-442-frozen-corpus-v1'];
         if ($source['presentation'] === 'bundle') {
             $files = [['path' => 'index.html', 'content' => $html]];
-            foreach ($source['sections'] as $section) {
-                $files[] = ['path' => $section['locator'].'.html', 'content' => $head.'<h1>'.$escape($section['heading']).'</h1><p>'.$escape($section['text']).'</p></body></html>'];
+            foreach (array_chunk($source['sections'], (int) ceil(count($source['sections']) / 2)) as $index => $sections) {
+                $chapter = '';
+                foreach ($sections as $section) {
+                    $chapter .= '<section id="'.$escape($section['locator']).'"><h2>'.$escape($section['heading']).'</h2><p>'.$escape($section['text']).'</p></section>';
+                }
+                $files[] = ['path' => 'chapter-'.($index + 1).'.html', 'content' => $head.$chapter.'</body></html>'];
             }
 
             return $payload + ['entrypoint' => 'index.html', 'files' => $files];

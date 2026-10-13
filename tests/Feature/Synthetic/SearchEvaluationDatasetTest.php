@@ -59,7 +59,7 @@ test('rendered fixture requires JavaScript and bundle publication includes sourc
     expect($payload['html'])->toContain('<div id="root"></div>', '.innerHTML=');
     expect(ExtractionHeuristics::needsRender($payload['html']))->toBeTrue();
     $bundle = collect($dataset->data['sources'])->firstWhere('key', 'bundle');
-    expect($dataset->publication($bundle)['files'])->toHaveCount(63);
+    expect($dataset->publication($bundle)['files'])->toHaveCount(3);
 });
 
 test('provider neutral import requires grounded context and explicit review', function () {
