@@ -104,6 +104,16 @@ final class PgVectorIndex implements VectorIndexContract
             ->all();
     }
 
+    /**
+     * One bound parameter regardless of team size; whereIn binds one per id and Postgres allows 65,535.
+     *
+     * @param  list<string>  $values
+     */
+    private static function textArray(array $values): string
+    {
+        return '{'.implode(',', array_map(fn (string $value): string => '"'.addcslashes($value, '"\\').'"', $values)).'}';
+    }
+
     public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array
     {
         $team = $this->team($orgId);
@@ -111,7 +121,7 @@ final class PgVectorIndex implements VectorIndexContract
             return [];
         }
         $ranked = ArtifactChunk::query()
-            ->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)
+            ->where('team_id', $team->id)->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)])
             ->select('*')->selectVectorDistance('embedding', $queryVector, as: 'distance')
             ->selectRaw('row_number() OVER (PARTITION BY artifact_id ORDER BY embedding <=> ?::vector, id) AS position', ['['.implode(',', $queryVector).']']);
 
@@ -126,7 +136,7 @@ final class PgVectorIndex implements VectorIndexContract
         if ($team === null || trim($query) === '' || $limit <= 0 || $artifactIds === []) {
             return [];
         }
-        $ranked = ArtifactChunk::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)
+        $ranked = ArtifactChunk::query()->where('team_id', $team->id)->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)])
             ->select('*')->whereFullText('search_text', $query, ['language' => 'simple'])
             ->selectRaw("ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) AS lexical_score", [$query])
             ->selectRaw("row_number() OVER (PARTITION BY artifact_id ORDER BY ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) DESC, id) AS position", [$query]);

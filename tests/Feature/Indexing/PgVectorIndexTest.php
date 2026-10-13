@@ -57,6 +57,17 @@ test('artifact candidate budgets deduplicate before limiting and scope both retr
     }
 })->group('pgsql');
 
+test('artifact candidate queries accept more authorized ids than a statement can bind', function () {
+    Team::factory()->create(['slug' => 'org-a']);
+    $index = app(PgVectorIndex::class);
+    $index->upsertChunks('org-a', 'answer', [pgChunk('org-a', 'answer', 'shared content')]);
+    $ids = [...array_map(fn (int $number): string => 'other-'.$number, range(1, 70000)), 'answer'];
+    foreach (['queryArtifacts' => pgChunk('org-a')->vector, 'queryTextArtifacts' => 'shared'] as $method => $query) {
+        $matches = $index->$method('org-a', $query, 5, $ids);
+        expect(array_map(fn ($match) => $match->chunk->artifactId, $matches))->toBe(['answer']);
+    }
+})->group('pgsql');
+
 test('real_vector_index_delete_removes_all_chunks_of_artifact', function () {
     Team::factory()->create(['slug' => 'org-a']);
     Team::factory()->create(['slug' => 'org-b']);
