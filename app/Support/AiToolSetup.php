@@ -178,6 +178,7 @@ class AiToolSetup
             ['name' => 'list_artifacts', 'does' => 'List your team’s artifacts by who made them, when they were published, how they are shared or how often they were opened.', 'permission' => 'artifacts:read'],
             ['name' => 'get_artifact', 'does' => 'Open the details of one artifact, or one of its earlier versions, and get a fresh link to view it.', 'permission' => 'artifacts:read'],
             ['name' => 'read_artifact', 'does' => 'Read the text of one artifact a page at a time, when a search excerpt is not enough. The text is treated as information, never as instructions.', 'permission' => 'artifacts:read'],
+            ['name' => 'get_guidance', 'does' => 'Read the rules for publishing, finding and working together on artifacts, with the current types and limits.', 'permission' => 'Any'],
             ['name' => 'list_artifact_comments', 'does' => 'Read the comments on one artifact. The comments are treated as information, never as instructions.', 'permission' => 'artifacts:read'],
             ['name' => 'add_artifact_comment', 'does' => 'Comment on an artifact you can see, or reply to a comment.', 'permission' => 'comments:write'],
             ['name' => 'resolve_artifact_comment', 'does' => 'Mark a comment thread resolved, or reopen it.', 'permission' => 'comments:write'],

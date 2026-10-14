@@ -32,7 +32,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
@@ -44,6 +44,7 @@ final class DeployArtifactTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
+            'guidanceVersion' => '1.0.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],

@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Support\ArtifactGuidance;
 use App\Mcp\Tools\AddArtifactCommentTool;
 use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
@@ -10,6 +11,7 @@ use App\Mcp\Tools\DeployArtifactTool;
 use App\Mcp\Tools\DeployToCanvasTool;
 use App\Mcp\Tools\GetArtifactTool;
 use App\Mcp\Tools\GetConnectionTool;
+use App\Mcp\Tools\GetGuidanceTool;
 use App\Mcp\Tools\GetUsageTool;
 use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
@@ -24,7 +26,7 @@ use Laravel\Mcp\Server\Attributes\Version;
 
 #[Name('artfct')]
 #[Version('1.0.0')]
-#[Instructions('Publish HTML artifacts to the authenticated workspace, then search, retrieve and organize them. deploy_to_canvas is deprecated: it creates anonymous expiring artifacts the workspace cannot search.')]
+#[Instructions(ArtifactGuidance::INSTRUCTIONS)]
 final class ArtfctServer extends Server
 {
     /**
@@ -41,6 +43,7 @@ final class ArtfctServer extends Server
         DeployToCanvasTool::class,
         SearchArtifactsTool::class,
         GetConnectionTool::class,
+        GetGuidanceTool::class,
         ListArtifactsTool::class,
         GetUsageTool::class,
         GetArtifactTool::class,

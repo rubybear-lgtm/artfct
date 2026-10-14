@@ -50,6 +50,15 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'get_guidance' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
         'list_artifacts' => [
             'scopes' => ['artifacts:read'],
             'annotations' => [
