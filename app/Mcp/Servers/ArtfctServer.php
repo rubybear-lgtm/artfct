@@ -38,6 +38,12 @@ final class ArtfctServer extends Server
         ],
     ];
 
+    /**
+     * One page holds the whole catalog: clients that ignore nextCursor would
+     * otherwise silently lose the tools past the default 15.
+     */
+    public int $defaultPaginationLength = 50;
+
     protected array $tools = [
         DeployArtifactTool::class,
         DeployToCanvasTool::class,

@@ -53,6 +53,11 @@ const supportedTools = new Set([
     'create_collection',
     'add_collection_artifact',
     'delete_artifact',
+    'read_artifact',
+    'get_guidance',
+    'list_artifact_comments',
+    'add_artifact_comment',
+    'resolve_artifact_comment',
 ]);
 
 const client = {

@@ -78,7 +78,7 @@ final class SearchSnippet
         if (mb_strlen($word) <= 5) {
             return $word;
         }
-        $word = preg_replace('/(?<=(?:ch|sh|ss|x|z))es$/u', '', $word) ?? $word;
+        $word = preg_replace('/(ch|sh|ss|x|z)es$/u', '$1', $word) ?? $word;
         $word = preg_replace('/(?:ing|ed|s)$/u', '', $word) ?? $word;
 
         return mb_strlen($word) > 4 ? preg_replace('/e$/u', '', $word) ?? $word : $word;
