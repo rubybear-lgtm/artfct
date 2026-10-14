@@ -4,6 +4,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Mcp\Support\ArtifactGuidance;
 use App\Models\AuditEvent;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
@@ -129,7 +130,7 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.serverInfo.name', 'artfct')
         ->assertJsonPath('result.serverInfo.version', '1.0.0')
         ->assertJsonPath('result.capabilities.tools.listChanged', false)
-        ->assertJsonPath('result.instructions', 'Publish HTML artifacts to the authenticated workspace, then search, retrieve and organize them. deploy_to_canvas is deprecated: it creates anonymous expiring artifacts the workspace cannot search.')
+        ->assertJsonPath('result.instructions', ArtifactGuidance::INSTRUCTIONS)
         ->assertJsonMissingPath('result.capabilities.resources');
 
     expect(McpConnection::query()
