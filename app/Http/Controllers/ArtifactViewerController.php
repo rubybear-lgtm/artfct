@@ -179,10 +179,11 @@ final class ArtifactViewerController extends Controller
             'comments' => ArtifactComment::query()
                 ->where('team_id', $team->id)
                 ->where('artifact_id', $artifactId)
-                ->orderBy('created_at')
-                ->orderBy('id')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->limit(200)
                 ->get()
+                ->reverse()
                 ->map(fn (ArtifactComment $comment): array => $comment->toThreadItem())
                 ->values()
                 ->all(),
@@ -379,7 +380,7 @@ final class ArtifactViewerController extends Controller
             ->where('team_id', $team->id)
             ->where('artifact_id', $artifactId)
             ->findOrFail($commentId);
-        $root = $comment->parent_id !== null ? ArtifactComment::query()->find($comment->parent_id) ?? $comment : $comment;
+        $root = $comment->parent_id !== null ? ArtifactComment::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->find($comment->parent_id) ?? $comment : $comment;
         $resolve = $request->boolean('resolved', true);
 
         $root->forceFill([

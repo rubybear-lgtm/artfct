@@ -28,7 +28,7 @@ function callCommentTool(string $token, string $tool, array $arguments): TestRes
 function fakeCommentedArtifact(int $status = 200, array $body = []): void
 {
     config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake(['worker.test/v1/artifacts/*' => Http::response($body + ['id' => COMMENTED_ARTIFACT_ID, 'version' => 1, 'revoked_at' => null], $status)]);
+    Http::fake(['worker.test/v1/artifacts/*' => Http::response($body + ['id' => COMMENTED_ARTIFACT_ID, 'version' => 1], $status)]);
 }
 
 test('a member adds a comment and a reply, and lists them as one untrusted thread', function () {
@@ -131,4 +131,20 @@ test('comment length is bounded and the Worker is called with the caller token',
 
     callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID])->assertOk();
     Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer '.$token));
+});
+
+test('a long thread lists the newest comments in order and says it was cut', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-comments-long']);
+    $token = remoteMcpToken($team);
+    fakeCommentedArtifact();
+    foreach (range(1, 201) as $n) {
+        ArtifactComment::factory()->create(['team_id' => $team->id, 'artifact_id' => COMMENTED_ARTIFACT_ID, 'body' => "comment {$n}", 'created_at' => now()->subSeconds(300 - $n)]);
+    }
+
+    $list = callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($list['truncated'])->toBeTrue()
+        ->and($list['comments'])->toHaveCount(200)
+        ->and($list['comments'][0]['body'])->toBe('comment 2')
+        ->and($list['comments'][199]['body'])->toBe('comment 201');
 });

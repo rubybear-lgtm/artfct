@@ -37,7 +37,7 @@ final class McpArtifactAccess
             return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
-        if (in_array($response->status(), [403, 404], true) || $response->json('revoked_at') !== null) {
+        if (in_array($response->status(), [403, 404], true)) {
             app(McpTelemetry::class)->record($tool, 'not_found', $startedAt);
 
             return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');

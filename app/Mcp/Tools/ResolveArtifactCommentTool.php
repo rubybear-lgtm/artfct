@@ -69,7 +69,7 @@ final class ResolveArtifactCommentTool extends Tool
         }
 
         // Resolving applies to the whole thread, so replies close with the root.
-        $root = $comment->parent_id !== null ? ArtifactComment::query()->find($comment->parent_id) ?? $comment : $comment;
+        $root = $comment->parent_id !== null ? ArtifactComment::query()->where('team_id', McpContext::team()->id)->where('artifact_id', $validated['id'])->find($comment->parent_id) ?? $comment : $comment;
         $resolved = $validated['resolved'] ?? true;
         $root->forceFill([
             'resolved_at' => $resolved ? now() : null,

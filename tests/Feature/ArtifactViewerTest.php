@@ -430,3 +430,17 @@ test('a_comment_on_an_artifact_the_member_cannot_see_is_a_404_and_stores_nothing
 
     expect(ArtifactComment::query()->count())->toBe(0);
 });
+
+test('the_comment_routes_are_throttled', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('comment-throttle-team', 'Comment Throttle Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID);
+
+    foreach (range(1, 30) as $n) {
+        test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => "c{$n}"])->assertRedirect();
+    }
+
+    test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => 'one too many'])->assertStatus(429);
+});

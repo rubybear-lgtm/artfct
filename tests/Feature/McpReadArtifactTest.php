@@ -45,7 +45,6 @@ function readArtifactFixture(Team $team, string $text, array $entry = [], int $w
         'title' => 'Migration plan',
         'version' => 3,
         'provenance' => ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null],
-        'revoked_at' => null,
         ...$worker,
     ], $workerStatus)]);
 }
@@ -187,7 +186,7 @@ test('read_artifact treats a revoked artifact and a forbidden one as not found',
         ->and($response->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found')
         ->and($response->getContent())->not->toContain('revoked text');
 })->with([
-    'revoked' => [200, ['revoked_at' => '2026-10-01T00:00:00Z']],
+    'revoked (the Worker answers 404)' => [404, []],
     'forbidden' => [403, []],
 ]);
 

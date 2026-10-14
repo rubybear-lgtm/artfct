@@ -4,6 +4,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\ArtifactIndexEntry;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
@@ -52,6 +53,7 @@ test('revoking_an_artifact_removes_its_index_chunks', function () {
     /** @var FakeVectorIndex $index */
     $index = app(VectorIndexContract::class);
     expect($index->artifactHasVectors($team->slug, $artifactId))->toBeTrue();
+    expect(ArtifactIndexEntry::query()->where('artifact_id', $artifactId)->exists())->toBeTrue();
 
     test()->actingAs($admin)
         ->patch("/settings/teams/{$team->slug}/console/artifacts/{$artifactId}/revoke")
@@ -61,7 +63,8 @@ test('revoking_an_artifact_removes_its_index_chunks', function () {
             'message' => 'Artifact revoked.',
         ]);
 
-    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeFalse();
+    expect($index->artifactHasVectors($team->slug, $artifactId))->toBeFalse()
+        ->and(ArtifactIndexEntry::query()->where('artifact_id', $artifactId)->exists())->toBeFalse();
 });
 
 test('reindex_flashes_a_success_toast', function () {
