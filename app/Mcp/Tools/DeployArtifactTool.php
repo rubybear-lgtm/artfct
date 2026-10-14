@@ -2,12 +2,14 @@
 
 namespace App\Mcp\Tools;
 
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
@@ -91,6 +93,7 @@ final class DeployArtifactTool extends Tool
             'entrypoint' => ['nullable', 'string', 'max:255'],
             'artifact_id' => ['nullable', 'string', 'max:128'],
             'base_version' => ['nullable', 'integer', 'min:1'],
+            'artifact_type' => ['nullable', 'string', 'in:'.implode(',', ArtifactType::values())],
             'sharing' => ['nullable', 'string', 'in:private,team,public'],
             'edit_access' => ['nullable', 'string', 'in:view,edit'],
             'tier' => ['nullable', 'string', 'in:public,secure'],
@@ -336,8 +339,16 @@ final class DeployArtifactTool extends Tool
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
 
+        $artifactType = app(ArtifactTypeResolver::class)->record(
+            $team,
+            $artifactId,
+            $entryBytes,
+            isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
+        );
+
         $result = [
             'id' => $artifactId,
+            'artifact_type' => $artifactType->value,
             'view_url' => $link,
             // `tier` is the deprecated alias, kept for one release; `sharing`
             // is the name to use.
@@ -373,6 +384,7 @@ final class DeployArtifactTool extends Tool
             ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
             'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
             'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('What this is: report, table, document, mockup, slide_deck, dashboard or other. Optional; inferred from the content when omitted, and a later version keeps a type you declared.')->nullable(),
             'base_version' => $schema->integer()->min(1)->description('With `artifact_id`: the version your change is built on (from get_artifact or read_artifact). If the artifact has moved on, nothing is published and a stale_base error returns the live version so you can read it, merge and publish again.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Who can open it: team (default, everyone on your team), private (only you and team admins) or public (anyone with the link). A version published with `artifact_id` never changes sharing.')->nullable(),
             'edit_access' => $schema->string()->enum(['view', 'edit'])->description('Whether the people it is shared with can publish new versions. Defaults to view. A version published with `artifact_id` never changes it.')->nullable(),

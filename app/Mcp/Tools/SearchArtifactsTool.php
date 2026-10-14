@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Enums\ArtifactType;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
@@ -58,6 +59,8 @@ final class SearchArtifactsTool extends Tool
             'agent' => ['nullable', 'string', 'max:100'],
             'since' => ['nullable', 'date'],
             'collection' => ['nullable', 'string', 'max:100'],
+            'artifact_type' => ['nullable', 'string', 'in:'.implode(',', ArtifactType::values())],
+            'changed_since' => ['nullable', 'date'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
@@ -84,6 +87,8 @@ final class SearchArtifactsTool extends Tool
                     'agent' => $validated['agent'] ?? null,
                     'since' => $validated['since'] ?? null,
                     'collection' => $validated['collection'] ?? null,
+                    'artifact_type' => $validated['artifact_type'] ?? null,
+                    'changed_since' => $validated['changed_since'] ?? null,
                 ],
                 (int) ($validated['limit'] ?? 10),
                 actor: McpContext::actor(),
@@ -111,6 +116,9 @@ final class SearchArtifactsTool extends Tool
             'results' => array_map(fn (SearchResult $result): array => [
                 'id' => $result->id,
                 'title' => $result->title,
+                'artifact_type' => $result->artifactType,
+                'version' => $result->version,
+                'updated_at' => $result->updatedAt,
                 'description' => $result->description,
                 // Search results are workspace artifacts; the index carries no
                 // tier, so every one of them links through the app's open
@@ -149,6 +157,8 @@ final class SearchArtifactsTool extends Tool
             'agent' => $schema->string()->max(100)->description('Optional agent identity filter.')->nullable(),
             'since' => $schema->string()->description('Optional ISO-8601 date/time lower bound.')->nullable(),
             'collection' => $schema->string()->max(100)->description('Optional collection name.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Optional type filter: report, table, document, mockup, slide_deck, dashboard or other.')->nullable(),
+            'changed_since' => $schema->string()->description('Optional ISO-8601 time: only artifacts updated at or after it, to find sources that changed since you last read them.')->nullable(),
             'limit' => $schema->integer()->description('Maximum number of results, from 1 to 50.')->nullable(),
         ];
     }

@@ -21,5 +21,9 @@ final readonly class SearchResult
         public float $score,
         /** Longer query-focused excerpt of the selected passage, for callers that cannot open the artifact (MCP). */
         public string $excerpt = '',
+        /** The version and update time of the artifact at search time, so a caller can tell later whether a cited source was republished. */
+        public ?int $version = null,
+        public ?string $updatedAt = null,
+        public ?string $artifactType = null,
     ) {}
 }

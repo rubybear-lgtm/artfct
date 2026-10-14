@@ -3,11 +3,13 @@
 namespace App\Services\Search;
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\SearchResultServed;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
@@ -35,7 +37,7 @@ final class SearchService
     ) {}
 
     /**
-     * @param  array{repo?: ?string, agent?: ?string, since?: ?string, collection?: ?string}  $filters
+     * @param  array{repo?: ?string, agent?: ?string, since?: ?string, collection?: ?string, changed_since?: ?string, artifact_type?: ?string}  $filters
      * @return array<int, SearchResult>
      */
     public function search(
@@ -58,12 +60,23 @@ final class SearchService
             $collectionArtifactIds = $collection === null ? [] : array_flip($collection->artifactIds());
         }
 
-        $isAllowed = function (string $id) use ($directory, $filters, $collectionArtifactIds): bool {
+        $typeIds = null;
+        if (! empty($filters['artifact_type'])) {
+            $typeIds = array_flip(app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($filters['artifact_type'])));
+        }
+
+        $isAllowed = function (string $id) use ($directory, $filters, $collectionArtifactIds, $typeIds): bool {
             $artifact = $directory[$id] ?? null;
             if ($artifact === null || $artifact['revoked_at'] !== null) {
                 return false;
             }
             if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$id])) {
+                return false;
+            }
+            if ($typeIds !== null && ! isset($typeIds[$id])) {
+                return false;
+            }
+            if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
                 return false;
             }
             if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
@@ -97,8 +110,9 @@ final class SearchService
         $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds);
         $top = array_slice($ranked, 0, $limit);
 
+        $types = app(ArtifactTypeResolver::class)->typesFor($team, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $top));
         $results = array_map(
-            fn (VectorMatch $match): SearchResult => $this->toResult($team, $match, $directory[$match->chunk->artifactId], $query),
+            fn (VectorMatch $match): SearchResult => $this->toResult($team, $match, $directory[$match->chunk->artifactId], $query, $types[$match->chunk->artifactId] ?? null),
             $top,
         );
 
@@ -205,7 +219,7 @@ final class SearchService
     /**
      * @param  array<string, mixed>  $artifact
      */
-    private function toResult(Team $team, VectorMatch $match, array $artifact, string $query): SearchResult
+    private function toResult(Team $team, VectorMatch $match, array $artifact, string $query, ?string $artifactType = null): SearchResult
     {
         return new SearchResult(
             id: $match->chunk->artifactId,
@@ -220,6 +234,9 @@ final class SearchService
             commitSha: $match->chunk->commitSha,
             score: $match->similarity,
             excerpt: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null, SearchSnippet::EXCERPT_LENGTH),
+            version: isset($artifact['version']) ? (int) $artifact['version'] : null,
+            updatedAt: $artifact['updated_at'] ?? $artifact['created_at'] ?? null,
+            artifactType: $artifactType,
         );
     }
 }

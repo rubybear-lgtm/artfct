@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Enums\ArtifactType;
 use App\Enums\UsageEventType;
 use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
@@ -10,6 +11,7 @@ use App\Mcp\Support\McpTelemetry;
 use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\JsonSchema\Types\Type;
@@ -69,6 +71,7 @@ final class ListArtifactsTool extends Tool
             'owner' => ['nullable', 'string', 'max:255'],
             'sharing' => ['nullable', 'string', 'in:private,team,public'],
             'collection' => ['nullable', 'string', 'max:255'],
+            'artifact_type' => ['nullable', 'string', 'in:'.implode(',', ArtifactType::values())],
             'agent' => ['nullable', 'string', 'max:100'],
             'created_after' => ['nullable', 'date'],
             'created_before' => ['nullable', 'date'],
@@ -141,6 +144,27 @@ final class ListArtifactsTool extends Tool
             }
 
             $baseParams['ids'] = implode(',', $ids);
+        }
+
+        $typeFilter = $validated['artifact_type'] ?? null;
+        if (is_string($typeFilter) && $typeFilter !== '') {
+            $typeIds = app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($typeFilter));
+            if (isset($baseParams['ids'])) {
+                $typeIds = array_values(array_intersect($typeIds, explode(',', $baseParams['ids'])));
+            }
+
+            if ($typeIds === []) {
+                app(McpTelemetry::class)->record('list_artifacts', 'success', $startedAt);
+
+                return Response::structured(['artifacts' => [], 'next_cursor' => null]);
+            }
+
+            if (count($typeIds) > self::MAX_IDS) {
+                $typeIds = array_slice($typeIds, 0, self::MAX_IDS);
+                $notes[] = 'More than '.self::MAX_IDS.' artifacts have that type, so only the '.self::MAX_IDS.' most recent are listed.';
+            }
+
+            $baseParams['ids'] = implode(',', $typeIds);
         }
 
         $url = rtrim($workerBaseUrl, '/')."/v1/orgs/{$team->slug}/artifacts";
@@ -449,6 +473,7 @@ final class ListArtifactsTool extends Tool
     {
         $ownerNames = $this->ownerNames($team, $rows);
         $actor = McpContext::actor();
+        $types = app(ArtifactTypeResolver::class)->typesFor($team, array_values(array_filter(array_map(fn (array $row): string => (string) ($row['artifact']['id'] ?? ''), $rows))));
 
         $items = [];
         foreach ($rows as $row) {
@@ -480,6 +505,7 @@ final class ListArtifactsTool extends Tool
                 'agent' => data_get($artifact, 'provenance.agent'),
                 'version' => $artifact['version'] ?? null,
                 'kind' => $artifact['kind'] ?? null,
+                'artifact_type' => $types[$id] ?? null,
                 'created_at' => $artifact['created_at'] ?? null,
                 'updated_at' => $artifact['updated_at'] ?? null,
                 'view_count' => $row['view_count'],
@@ -656,6 +682,7 @@ final class ListArtifactsTool extends Tool
         return [
             'owner' => $schema->string()->max(255)->description('Filter by owner: `me`, `anyone` or a team member\'s email address.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Only artifacts with this sharing level.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Only artifacts of this type: report, table, document, mockup, slide_deck, dashboard or other.')->nullable(),
             'collection' => $schema->string()->max(255)->description('Only artifacts in this collection, named by id or name.')->nullable(),
             'agent' => $schema->string()->max(100)->description('Only artifacts published by this agent identity.')->nullable(),
             'created_after' => $schema->string()->description('Only artifacts created at or after this ISO 8601 time.')->nullable(),

@@ -7,6 +7,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
@@ -112,7 +113,9 @@ final class GetArtifactTool extends Tool
 
         $artifactId = (string) $response->json('id');
         $tier = $response->json('tier');
+        $artifactType = app(ArtifactTypeResolver::class)->typesFor(McpContext::team(), [$artifactId])[$artifactId] ?? null;
         $access = [
+            'artifact_type' => $artifactType,
             'sharing' => $this->sharingFromResponse($response->json('sharing'), is_string($tier) ? $tier : null),
             'edit_access' => $response->json('edit_access'),
             'can_edit' => $response->json('can_edit'),
