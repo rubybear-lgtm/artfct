@@ -70,3 +70,11 @@ test('tool descriptions and the server instructions point at the guidance at its
         ->toContain('untrusted')
         ->toContain('base_version');
 });
+
+test('the Agent Skills files carry exactly the served guidance', function (string $topic) {
+    $skill = file_get_contents(base_path("skills/artfct-{$topic}/SKILL.md"));
+    $guidance = ArtifactGuidance::topic($topic)['text'];
+
+    expect($skill)->toStartWith("---\nname: artfct-{$topic}\n")
+        ->and(str_ends_with($skill, $guidance))->toBeTrue();
+})->with(ArtifactGuidance::TOPICS);

@@ -169,6 +169,18 @@ Unsupported versions must continue to return the structured
 `unsupported_protocol_version` error with the supported list rather than a
 500 or an ambiguous transport failure.
 
+### RUB-443 additions (contract 1.0.0 unchanged)
+
+Every change in RUB-443 is additive, so per the rule above no tool or schema
+version moved: new tools `read_artifact`, `list_artifact_comments`,
+`add_artifact_comment`, `resolve_artifact_comment` and `get_guidance`; new
+optional inputs `base_version`, `artifact_type` and `changed_since`; new output
+fields `artifact_type`, `version`, `updated_at` and `base_version_checked`; the
+new `comments:write` scope. Agent guidance is served by `get_guidance` and
+mirrored in `skills/artfct-*`; its version is `ArtifactGuidance::VERSION` and
+each guided tool names it in `_meta.artfct.guidanceVersion`. Bump that constant
+whenever a guidance rule or a guided tool description changes.
+
 ## Opening an artifact
 
 Tools that publish or describe an artifact return it as `view_url`. Which URL
