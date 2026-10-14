@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Governance\AuditLogger;
+use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
 use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -168,9 +169,13 @@ class ConsoleController extends Controller
 
         try {
             $artifact = $this->artifacts->revokeArtifact($team->slug, $artifactId);
-            $this->indexer->removeFromIndex($team, $artifactId);
-            ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
-            ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
+            ArtifactTextPurger::purgeIndexText($team, $artifactId);
+
+            try {
+                $this->indexer->removeFromIndex($team, $artifactId);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
 
             $this->auditLogger->recordForRequest($request, AuditEventType::ArtifactRevoked, $team, (string) $user->id, "artifact:{$artifactId}");
 

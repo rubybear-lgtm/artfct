@@ -2,9 +2,8 @@
 
 namespace App\Services\WorkerEvents;
 
-use App\Models\ArtifactIndexEntry;
-use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
+use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
 use Illuminate\Support\Facades\Log;
 
@@ -25,7 +24,6 @@ final class ArtifactDeletedHandler
         }
 
         $this->indexer->removeFromIndex($team, $artifactId);
-        ArtifactIndexEntry::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
-        ArtifactIndexingFailure::query()->where('team_id', $team->id)->where('artifact_id', $artifactId)->delete();
+        ArtifactTextPurger::purgeEverything($team, $artifactId);
     }
 }

@@ -681,6 +681,10 @@ struct PermanentArtifactRow {
 /// `decide_artifact_visibility` — that keeps the org-scoping predicate a
 /// single, independently mutation-testable check rather than folded into
 /// SQL where a mutation test could pass vacuously.
+/// The metadata read must never answer for a revoked artifact: Laravel's
+/// read_artifact and comment surfaces rely on this 404 to hide revoked work.
+const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
+
 pub(crate) async fn get_artifact_metadata(
     path: &str,
     req: &Request,
@@ -700,9 +704,7 @@ pub(crate) async fn get_artifact_metadata(
     }
     let database = env.d1("ARTIFACTS_DB")?;
     let row = database
-        .prepare(
-            "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1",
-        )
+        .prepare(METADATA_BY_ID_SQL)
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<ArtifactMetadataRow>(None)
         .await?;
@@ -2121,6 +2123,11 @@ pub(crate) async fn create_permanent_artifact(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn metadata_read_excludes_revoked_artifacts() {
+        assert!(super::METADATA_BY_ID_SQL.contains("a.revoked_at IS NULL"));
+    }
+
     use super::*;
 
     #[test]

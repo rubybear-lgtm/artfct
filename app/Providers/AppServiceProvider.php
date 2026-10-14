@@ -358,6 +358,8 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute($perMinute)->by('oauth-registration-burst:'.ClientIp::for($request));
         });
+        RateLimiter::for('artifact-comment-store', fn (Request $request): Limit => Limit::perMinute(30)->by('comment-store:'.($request->user()?->id ?? ClientIp::for($request))));
+        RateLimiter::for('artifact-comment-resolve', fn (Request $request): Limit => Limit::perMinute(60)->by('comment-resolve:'.($request->user()?->id ?? ClientIp::for($request))));
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);
             $claims = $request->attributes->get('org_jwt_claims');

@@ -6,6 +6,7 @@ use App\Enums\AuditEventType;
 use App\Models\ArtifactUsageEvent;
 use App\Models\SearchResultServed;
 use App\Models\Team;
+use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
 
 /**
@@ -50,6 +51,7 @@ final class ErasureService
             foreach ($ids as $artifactId) {
                 $this->governance->hardDeleteArtifact($team->slug, $artifactId);
                 $this->indexer?->removeFromIndex($team, $artifactId);
+                ArtifactTextPurger::purgeEverything($team, $artifactId);
                 // RUB-314: erasure must also cover usage-signal rows —
                 // viewer_key/actor_user_id plus timestamps are exactly the
                 // kind of per-artifact usage data erasure exists for.
