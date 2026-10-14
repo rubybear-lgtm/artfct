@@ -90,6 +90,7 @@ final class DeployArtifactTool extends Tool
             'files.*.content_type' => ['nullable', 'string', 'max:100'],
             'entrypoint' => ['nullable', 'string', 'max:255'],
             'artifact_id' => ['nullable', 'string', 'max:128'],
+            'base_version' => ['nullable', 'integer', 'min:1'],
             'sharing' => ['nullable', 'string', 'in:private,team,public'],
             'edit_access' => ['nullable', 'string', 'in:view,edit'],
             'tier' => ['nullable', 'string', 'in:public,secure'],
@@ -103,6 +104,10 @@ final class DeployArtifactTool extends Tool
             return McpErrorResponse::error('`artifact_id` must be the permanent artifact id deploy_artifact returned: 13 lowercase base36 characters or 32 hexadecimal characters.', 'invalid_request');
         }
         $versionPublish = $artifactIdInput !== null;
+        $baseVersion = isset($validated['base_version']) ? (int) $validated['base_version'] : null;
+        if ($baseVersion !== null && ! $versionPublish) {
+            return McpErrorResponse::error('`base_version` only applies when `artifact_id` is given.', 'invalid_request');
+        }
 
         $hasHtml = isset($validated['html']) && trim($validated['html']) !== '';
         $hasFiles = ! empty($validated['files']);
@@ -158,6 +163,44 @@ final class DeployArtifactTool extends Tool
         $token = McpContext::httpRequest()->bearerToken();
         $title = $validated['title'] ?? $this->extractTitle($entryBytes);
         $description = $validated['description'] ?? $title;
+
+        if ($baseVersion !== null) {
+            // Read-before-write: refuse when the live version moved on since the
+            // caller read it, so a stale copy cannot silently replace newer work.
+            try {
+                $live = Http::withToken($token)->get($baseUrl.'/v1/artifacts/'.$artifactIdInput);
+            } catch (\Throwable $exception) {
+                report($exception);
+                app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
+
+                return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
+            }
+
+            if (in_array($live->status(), [403, 404], true)) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'artifact_not_found', $startedAt);
+
+                return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
+            }
+
+            if (! $live->successful()) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
+
+                return McpErrorResponse::error('The artifact service could not check the current version.', 'deployment_rejected', true);
+            }
+
+            $liveVersion = (int) $live->json('version');
+            if ($liveVersion !== $baseVersion) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'stale_base', $startedAt, $artifactIdInput);
+
+                return McpErrorResponse::error(
+                    "This artifact is now at version {$liveVersion}, but your change was built on version {$baseVersion}. Read the live version with read_artifact, merge your changes into it, then publish again with base_version {$liveVersion}.",
+                    'stale_base',
+                    false,
+                    'read_artifact',
+                    ['artifact_id' => $artifactIdInput, 'base_version' => $baseVersion, 'current_version' => $liveVersion, 'updated_at' => $live->json('updated_at')],
+                );
+            }
+        }
 
         try {
             $payload = [
@@ -307,6 +350,7 @@ final class DeployArtifactTool extends Tool
 
         if ($versionPublish) {
             $result['created'] = (bool) $created->json('created');
+            $result['base_version_checked'] = $baseVersion !== null;
         }
 
         return Response::structured($result);
@@ -329,6 +373,7 @@ final class DeployArtifactTool extends Tool
             ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
             'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
             'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact.')->nullable(),
+            'base_version' => $schema->integer()->min(1)->description('With `artifact_id`: the version your change is built on (from get_artifact or read_artifact). If the artifact has moved on, nothing is published and a stale_base error returns the live version so you can read it, merge and publish again.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Who can open it: team (default, everyone on your team), private (only you and team admins) or public (anyone with the link). A version published with `artifact_id` never changes sharing.')->nullable(),
             'edit_access' => $schema->string()->enum(['view', 'edit'])->description('Whether the people it is shared with can publish new versions. Defaults to view. A version published with `artifact_id` never changes it.')->nullable(),
             'tier' => $schema->string()->enum(['public', 'secure'])->description('Deprecated, use sharing.')->nullable(),

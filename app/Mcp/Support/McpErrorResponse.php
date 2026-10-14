@@ -9,12 +9,15 @@ final class McpErrorResponse
 {
     /**
      * Build a customer-safe MCP error with stable machine-readable metadata.
+     *
+     * @param  array<string, mixed>  $details  extra machine-readable fields, such as the live version on a conflict
      */
     public static function error(
         string $message,
         string $errorCode,
         bool $retryable = false,
         ?string $nextAction = null,
+        array $details = [],
     ): Response {
         $meta = [
             'errorCode' => $errorCode,
@@ -23,6 +26,10 @@ final class McpErrorResponse
 
         if ($nextAction !== null) {
             $meta['nextAction'] = $nextAction;
+        }
+
+        if ($details !== []) {
+            $meta['details'] = $details;
         }
 
         $connection = request()->attributes->get('mcp_connection');

@@ -11,7 +11,9 @@ use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\UsageContract;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 
 /*
  * RUB-437: a permanent artifact is now versioned under a stable id, so every
@@ -424,4 +426,98 @@ test('version-aware link builders keep the /p/{id}/v:{version}/ path', function 
         'https://test-org--'.$id.'.artfct.dev/p/'.$id.'/v:2/?token='.$id.'.1700000000.'
         .hash_hmac('sha256', $id.'.1700000000', 'fixed-secret')
     );
+});
+
+/** Call deploy_artifact for RUB-443's base-version tests. */
+function deployWithBase(string $token, array $arguments): TestResponse
+{
+    return test()->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ]);
+}
+
+test('deploy_artifact refuses a stale base_version and returns the live version without publishing', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-443-stale-base']);
+    $token = remoteMcpToken($team);
+    $id = STABLE_ARTIFACT_ID;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id => Http::response(['id' => $id, 'version' => 4, 'updated_at' => '2026-10-13T10:00:00Z'], 200),
+        'worker.test/v1/artifacts/'.$id.'/versions' => Http::response(['id' => $id, 'version' => 5], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = deployWithBase($token, ['html' => '<p>mine</p>', 'artifact_id' => $id, 'base_version' => 3])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.content.0._meta.artfct.errorCode'))->toBe('stale_base')
+        ->and($response->json('result.content.0._meta.artfct.retryable'))->toBeFalse()
+        ->and($response->json('result.content.0._meta.artfct.nextAction'))->toBe('read_artifact')
+        ->and($response->json('result.content.0._meta.artfct.details.current_version'))->toBe(4)
+        ->and($response->json('result.content.0._meta.artfct.details.base_version'))->toBe(3);
+
+    Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/versions'));
+});
+
+test('deploy_artifact publishes when base_version matches the live version', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-443-fresh-base']);
+    $token = remoteMcpToken($team);
+    $id = STABLE_ARTIFACT_ID;
+    $html = '<!doctype html><title>Report</title><p>v5</p>';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id => Http::response(['id' => $id, 'version' => 4], 200),
+        'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
+            'id' => $id, 'version' => 5, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'tier' => 'secure', 'sharing' => 'team',
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = deployWithBase($token, ['html' => $html, 'artifact_id' => $id, 'base_version' => 4])->assertOk();
+
+    expect($response->json('result.isError'))->toBeFalse()
+        ->and($response->json('result.structuredContent.version'))->toBe(5)
+        ->and($response->json('result.structuredContent.base_version_checked'))->toBeTrue();
+});
+
+test('deploy_artifact without base_version still publishes and says the base was not checked', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-443-no-base']);
+    $token = remoteMcpToken($team);
+    $id = STABLE_ARTIFACT_ID;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
+            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'tier' => 'secure', 'sharing' => 'team',
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = deployWithBase($token, ['html' => '<p>x</p>', 'artifact_id' => $id])->assertOk();
+
+    expect($response->json('result.structuredContent.base_version_checked'))->toBeFalse();
+    Http::assertNotSent(fn (Request $request): bool => $request->method() === 'GET');
+});
+
+test('deploy_artifact rejects base_version without artifact_id and hides a forbidden artifact as not found', function () {
+    $team = Team::factory()->create(['slug' => 'rub-443-base-misuse']);
+    $token = remoteMcpToken($team);
+    $id = STABLE_ARTIFACT_ID;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/v1/artifacts/'.$id => Http::response([], 403)]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $misuse = deployWithBase($token, ['html' => '<p>x</p>', 'base_version' => 2])->assertOk();
+    expect($misuse->json('result.content.0._meta.artfct.errorCode'))->toBe('invalid_request');
+
+    $hidden = deployWithBase($token, ['html' => '<p>x</p>', 'artifact_id' => $id, 'base_version' => 2])->assertOk();
+    expect($hidden->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found');
 });
