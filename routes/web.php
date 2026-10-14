@@ -125,6 +125,8 @@ Route::get('a/{artifactId}/v/{version}', [ArtifactViewerController::class, 'show
 
 Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
+    Route::post('a/{artifactId}/comments', [ArtifactViewerController::class, 'storeComment'])->name('artifacts.comments.store');
+    Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->name('artifacts.comments.resolve');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
 });
 

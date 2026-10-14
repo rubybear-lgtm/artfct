@@ -6,6 +6,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
 use App\Enums\AuditEventType;
+use App\Models\ArtifactComment;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
@@ -175,6 +176,16 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
+            'comments' => ArtifactComment::query()
+                ->where('team_id', $team->id)
+                ->where('artifact_id', $artifactId)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->limit(200)
+                ->get()
+                ->map(fn (ArtifactComment $comment): array => $comment->toThreadItem())
+                ->values()
+                ->all(),
         ];
 
         // The picker is only offered when there is more than one version to
@@ -313,6 +324,68 @@ final class ArtifactViewerController extends Controller
         };
 
         Inertia::flash('toast', ['type' => $type, 'message' => __($message)]);
+
+        return redirect()->route('artifacts.show', ['artifactId' => $artifactId]);
+    }
+
+    /**
+     * Add a comment, or a reply with `parent_id`, as the signed-in member. The
+     * member must be able to see the artifact, the same rule the viewer uses.
+     */
+    public function storeComment(Request $request, string $artifactId, ArtifactDirectory $artifacts): RedirectResponse
+    {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'max:'.ArtifactComment::MAX_BODY_LENGTH],
+            'parent_id' => ['nullable', 'integer'],
+        ]);
+
+        $parentId = null;
+        if (isset($validated['parent_id'])) {
+            $parent = ArtifactComment::query()
+                ->where('team_id', $team->id)
+                ->where('artifact_id', $artifactId)
+                ->findOrFail($validated['parent_id']);
+            $parentId = $parent->parent_id ?? $parent->id;
+        }
+
+        ArtifactComment::query()->create([
+            'team_id' => $team->id,
+            'artifact_id' => $artifactId,
+            'parent_id' => $parentId,
+            'author_user_id' => (string) $user->id,
+            'author_name' => $user->name,
+            'body' => trim($validated['body']),
+        ]);
+
+        return redirect()->route('artifacts.show', ['artifactId' => $artifactId]);
+    }
+
+    /**
+     * Resolve or reopen a comment thread.
+     */
+    public function resolveComment(Request $request, string $artifactId, int $commentId, ArtifactDirectory $artifacts): RedirectResponse
+    {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        $comment = ArtifactComment::query()
+            ->where('team_id', $team->id)
+            ->where('artifact_id', $artifactId)
+            ->findOrFail($commentId);
+        $root = $comment->parent_id !== null ? ArtifactComment::query()->find($comment->parent_id) ?? $comment : $comment;
+        $resolve = $request->boolean('resolved', true);
+
+        $root->forceFill([
+            'resolved_at' => $resolve ? now() : null,
+            'resolved_by' => $resolve ? (string) $user->id : null,
+        ])->save();
 
         return redirect()->route('artifacts.show', ['artifactId' => $artifactId]);
     }

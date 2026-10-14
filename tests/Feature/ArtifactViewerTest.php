@@ -4,6 +4,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\ArtifactComment;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
@@ -394,4 +395,38 @@ test('download_is_refused_for_an_artifact_the_caller_cannot_see', function () {
     seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'private', 'hidden' => true]);
 
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/download')->assertNotFound();
+});
+
+test('a_member_comments_replies_and_resolves_on_the_viewer', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('comment-team', 'Comment Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID);
+
+    test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => 'Is this current?'])
+        ->assertRedirect('/a/'.ARTIFACT_LINK_ID);
+    $root = ArtifactComment::query()->firstOrFail();
+
+    test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => 'Yes.', 'parent_id' => $root->id])
+        ->assertRedirect('/a/'.ARTIFACT_LINK_ID);
+
+    $props = viewerProps(test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID));
+    expect(array_column($props['comments'], 'body'))->toBe(['Is this current?', 'Yes.'])
+        ->and($props['comments'][1]['parent_id'])->toBe($root->id);
+
+    test()->actingAs($member)->patch('/a/'.ARTIFACT_LINK_ID.'/comments/'.$root->id, ['resolved' => true])
+        ->assertRedirect('/a/'.ARTIFACT_LINK_ID);
+    expect($root->fresh()->resolved_at)->not->toBeNull();
+});
+
+test('a_comment_on_an_artifact_the_member_cannot_see_is_a_404_and_stores_nothing', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('comment-hidden-team', 'Comment Hidden Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => 'hello'])->assertNotFound();
+
+    expect(ArtifactComment::query()->count())->toBe(0);
 });

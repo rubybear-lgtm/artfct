@@ -1,6 +1,8 @@
 import { Head, router } from '@inertiajs/react';
 import { ExternalLink } from 'lucide-react';
 
+import ArtifactComments from '@/components/artifact-comments';
+import type { ArtifactComment } from '@/components/artifact-comments';
 import ArtifactShareControl from '@/components/artifact-share-control';
 import type {
     ArtifactEditAccess,
@@ -43,6 +45,8 @@ interface Props {
     openUrl: string;
     /** Null when no download is offered — the public viewer. */
     downloadUrl: string | null;
+    /** A signed-in member's discussion; absent in the public viewer. */
+    comments?: ArtifactComment[];
 }
 
 /** The name a person reads: the title, or a short id when it has none. */
@@ -77,6 +81,7 @@ export default function ArtifactShow({
     viewerUrl,
     openUrl,
     downloadUrl,
+    comments,
 }: Props) {
     const name = artifactName(artifact.title, artifact.id);
     const tooltip = artifact.description
@@ -226,6 +231,13 @@ export default function ArtifactShow({
                     />
                 </div>
             </div>
+
+            {!publicView && comments !== undefined && (
+                <ArtifactComments
+                    artifactId={artifact.id}
+                    comments={comments}
+                />
+            )}
         </>
     );
 }
