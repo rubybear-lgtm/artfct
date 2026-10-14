@@ -14,6 +14,7 @@ enum McpScope: string
     case ArtifactsRead = 'artifacts:read';
     case ArtifactsDeploy = 'artifacts:deploy';
     case ArtifactsDelete = 'artifacts:delete';
+    case CommentsWrite = 'comments:write';
     case CollectionsRead = 'collections:read';
     case CollectionsWrite = 'collections:write';
     case UsageRead = 'usage:read';
@@ -30,6 +31,7 @@ enum McpScope: string
             self::ArtifactsRead => 'Read and search your team\'s shared work',
             self::ArtifactsDeploy => 'Share new work with your team',
             self::ArtifactsDelete => 'Delete shared work',
+            self::CommentsWrite => 'Comment on shared work',
             self::CollectionsRead => 'See your team\'s collections',
             self::CollectionsWrite => 'Create collections and add work to them',
             self::UsageRead => 'See usage and plan limits',
@@ -40,7 +42,7 @@ enum McpScope: string
     {
         return match ($this) {
             self::ArtifactsRead, self::CollectionsRead, self::UsageRead => McpScopeRisk::Read,
-            self::ArtifactsDeploy, self::CollectionsWrite => McpScopeRisk::Write,
+            self::ArtifactsDeploy, self::CollectionsWrite, self::CommentsWrite => McpScopeRisk::Write,
             self::ArtifactsDelete => McpScopeRisk::Destructive,
         };
     }

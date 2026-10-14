@@ -42,7 +42,7 @@ class AuthenticateOrgToken
 
         if (! isset($claims['scope'])) {
             $claims['scope'] = match (TeamRole::tryFrom($claims['role'])) {
-                TeamRole::Admin, TeamRole::Member => 'artifacts:read artifacts:deploy artifacts:delete collections:read collections:write usage:read',
+                TeamRole::Admin, TeamRole::Member => 'artifacts:read artifacts:deploy artifacts:delete comments:write collections:read collections:write usage:read',
                 TeamRole::Viewer => 'artifacts:read collections:read usage:read',
                 default => '',
             };

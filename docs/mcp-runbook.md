@@ -69,6 +69,7 @@ Supported scopes:
 | `artifacts:read`    | Search and retrieve safe artifact metadata |
 | `artifacts:deploy`  | Deploy artifacts to the workspace          |
 | `artifacts:delete`  | Delete artifacts when policy permits       |
+| `comments:write`    | Comment on artifacts and resolve threads   |
 | `collections:read`  | List workspace collections                 |
 | `collections:write` | Create collections and add artifacts       |
 | `usage:read`        | Read customer-safe usage and quota totals  |

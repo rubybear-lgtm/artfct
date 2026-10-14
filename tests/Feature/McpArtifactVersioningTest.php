@@ -4,6 +4,7 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
+use App\Models\ArtifactTypeAssignment;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
@@ -520,4 +521,23 @@ test('deploy_artifact rejects base_version without artifact_id and hides a forbi
 
     $hidden = deployWithBase($token, ['html' => '<p>x</p>', 'artifact_id' => $id, 'base_version' => 2])->assertOk();
     expect($hidden->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found');
+});
+
+test('a view-only caller cannot publish or change the type even with a fresh base_version', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create(['slug' => 'rub-443-view-only']);
+    $token = remoteMcpToken($team);
+    $id = STABLE_ARTIFACT_ID;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id => Http::response(['id' => $id, 'version' => 2, 'can_edit' => false], 200),
+        'worker.test/v1/artifacts/'.$id.'/versions' => Http::response(['error' => ['code' => 'forbidden', 'message' => 'no', 'details' => []]], 403),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = deployWithBase($token, ['html' => '<p>x</p>', 'artifact_id' => $id, 'base_version' => 2, 'artifact_type' => 'dashboard'])->assertOk();
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('edit_forbidden')
+        ->and(ArtifactTypeAssignment::query()->where('team_id', $team->id)->count())->toBe(0);
 });

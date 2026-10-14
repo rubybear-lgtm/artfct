@@ -86,6 +86,33 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'list_artifact_comments' => [
+            'scopes' => ['artifacts:read'],
+            'annotations' => [
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'add_artifact_comment' => [
+            'scopes' => ['comments:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => false,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'resolve_artifact_comment' => [
+            'scopes' => ['comments:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
         'list_collections' => [
             'scopes' => ['collections:read'],
             'annotations' => [
