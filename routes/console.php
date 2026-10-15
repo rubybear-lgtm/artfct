@@ -19,3 +19,6 @@ Schedule::command('mcp:prune-activity')->dailyAt('02:15')->withoutOverlapping();
 
 // Retries edge denylist writes persisted during OAuth refresh-token replay.
 Schedule::command('app:retry-org-token-revocations')->everyMinute()->withoutOverlapping();
+
+// Writes events withheld by an expired or released suppression case to the tenant's audit log (spec 17).
+Schedule::command('ops:release-suppressed')->hourly()->withoutOverlapping();

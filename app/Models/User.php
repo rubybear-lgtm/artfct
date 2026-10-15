@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 #[Fillable(['name', 'email', 'password', 'avatar', 'email_verified_at', 'current_team_id'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'staff_at', 'case_manager_at'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -50,6 +50,24 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this user is artfct staff (spec 17). `staff_at` is not
+     * mass-assignable and is only ever set from an operator command.
+     */
+    public function isStaff(): bool
+    {
+        return $this->staff_at !== null;
+    }
+
+    /**
+     * Whether this staff member may open, renew or release a suppression case.
+     * A separate privilege: holding `staff_at` alone is not enough.
+     */
+    public function isCaseManager(): bool
+    {
+        return $this->staff_at !== null && $this->case_manager_at !== null;
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -59,6 +77,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'deactivated_at' => 'datetime',
+            'staff_at' => 'datetime',
+            'case_manager_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

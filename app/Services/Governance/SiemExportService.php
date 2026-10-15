@@ -41,12 +41,13 @@ final class SiemExportService
             ->map(fn (AuditEvent $event): string => json_encode([
                 'event_type' => $event->event_type->value,
                 'team' => $team->slug,
-                'actor' => $event->actor,
+                'actor' => str_starts_with($event->actor, 'staff:') ? 'staff' : $event->actor,
                 'target' => $event->target,
                 'ip' => $event->ip,
                 'user_agent' => $event->user_agent,
                 'timestamp' => $event->created_at->toIso8601String(),
                 'outcome' => $event->outcome,
+                'reason' => $event->reason,
             ], JSON_THROW_ON_ERROR)."\n")
             ->implode('');
     }

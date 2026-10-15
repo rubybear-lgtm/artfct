@@ -47,6 +47,17 @@ enum AuditEventType: string
     case McpConnectionRefreshed = 'mcp.connection_refreshed';
     case McpConnectionRevoked = 'mcp.connection_revoked';
     case McpConnectionReauthorized = 'mcp.connection_reauthorized';
+    case StaffGranted = 'staff.granted';
+    case StaffRevoked = 'staff.revoked';
+    case OperatorTenantViewed = 'operator.tenant_viewed';
+    case OperatorReindexRequested = 'operator.reindex_requested';
+    case OperatorLimitsChanged = 'operator.limits_changed';
+    case OperatorPlanChanged = 'operator.plan_changed';
+    case OperatorTenantErased = 'operator.tenant_erased';
+    case OperatorCaseCreated = 'operator.case_created';
+    case OperatorCaseRenewed = 'operator.case_renewed';
+    case OperatorCaseReleased = 'operator.case_released';
+    case OperatorCaseDenied = 'operator.case_denied';
 
     /**
      * Plain sentence-case label for admins who are not engineers, shown in
@@ -93,6 +104,54 @@ enum AuditEventType: string
             self::McpConnectionRefreshed => 'AI tool connection refreshed',
             self::McpConnectionRevoked => 'AI tool disconnected',
             self::McpConnectionReauthorized => 'AI tool reconnected',
+            self::StaffGranted => 'Staff access granted',
+            self::StaffRevoked => 'Staff access revoked',
+            self::OperatorTenantViewed => 'Workspace viewed by staff',
+            self::OperatorReindexRequested => 'Search reindex requested by staff',
+            self::OperatorLimitsChanged => 'Limits changed by staff',
+            self::OperatorPlanChanged => 'Plan changed by staff',
+            self::OperatorTenantErased => 'Workspace erased by staff',
+            self::OperatorCaseCreated => 'Suppression case opened',
+            self::OperatorCaseRenewed => 'Suppression case renewed',
+            self::OperatorCaseReleased => 'Suppression case released',
+            self::OperatorCaseDenied => 'Suppression case refused',
         };
+    }
+
+    /**
+     * Operator events that only read tenant data. These are the only events a
+     * suppression case may withhold from the tenant's own audit log (spec 17).
+     */
+    public function isOperatorRead(): bool
+    {
+        return $this === self::OperatorTenantViewed;
+    }
+
+    /**
+     * Operator actions that change tenant state. They are never suppressed and
+     * always carry a reason.
+     */
+    public function isOperatorMutation(): bool
+    {
+        return in_array($this, [
+            self::OperatorReindexRequested,
+            self::OperatorLimitsChanged,
+            self::OperatorPlanChanged,
+            self::OperatorTenantErased,
+        ], true);
+    }
+
+    /**
+     * Suppression-case bookkeeping. Recorded in the internal operator log only
+     * and never written to a tenant's audit log.
+     */
+    public function isInternalOnly(): bool
+    {
+        return in_array($this, [
+            self::OperatorCaseCreated,
+            self::OperatorCaseRenewed,
+            self::OperatorCaseReleased,
+            self::OperatorCaseDenied,
+        ], true);
     }
 }
