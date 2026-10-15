@@ -24,6 +24,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { docs } from '@/routes';
@@ -200,13 +201,11 @@ export default function McpConnections({
     return (
         <>
             <Head title="AI tool connections" />
-            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
-                AI tool connections
-            </h1>
-            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
-                Connect the AI tools your team uses so they can share to this
-                team and find what it has shared.
-            </p>
+            <PageHeader
+                eyebrow={team.name}
+                title="AI tool connections"
+                description="Connect the AI tools your team uses so they can share to this team and find what it has shared."
+            />
 
             <div className="flex flex-col gap-6">
                 <Alert>

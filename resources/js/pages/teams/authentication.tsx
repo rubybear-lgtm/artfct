@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import ssoRoutes from '@/routes/sso';
 import teamRoutes from '@/routes/teams';
@@ -111,12 +112,11 @@ export default function Authentication({
     return (
         <>
             <Head title="Authentication" />
-            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
-                Authentication
-            </h1>
-            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
-                How people sign in to {team.name}.
-            </p>
+            <PageHeader
+                eyebrow={`Admin · ${team.name}`}
+                title="Authentication"
+                description={`How people sign in to ${team.name}.`}
+            />
 
             {!isEnterprise && (
                 <Alert>

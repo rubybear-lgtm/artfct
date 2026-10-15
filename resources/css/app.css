@@ -37,14 +37,17 @@
     --color-muted: var(--surface-muted);
     --color-muted-foreground: var(--ink-muted);
     --color-border: color-mix(in srgb, var(--ink-quiet) 40%, transparent);
-    --color-primary: var(--accent);
-    --color-primary-foreground: var(--ground);
+    --color-primary: var(--accent-fill, var(--accent));
+    --color-primary-foreground: var(--accent-foreground, var(--ground));
     --color-destructive: var(--danger);
     --color-success: var(--success);
     --color-warning: var(--warning);
     --color-ring: var(--accent);
     --color-paper: var(--surface, var(--ground));
-    --color-primary-deep: var(--accent-deep, var(--accent));
+    --color-primary-deep: var(
+        --accent-fill-deep,
+        var(--accent-deep, var(--accent))
+    );
     --color-tint: var(--accent-tint, var(--surface-muted));
 }
 
@@ -97,6 +100,9 @@
     --ink: #262624;
     --accent: #701a24;
     --accent-deep: #58141c;
+    --accent-fill: #701a24;
+    --accent-fill-deep: #58141c;
+    --accent-foreground: #fbfaf8;
     --surface: #fbfaf8;
     --accent-tint: #f1e4e5;
     --success: #2f6b4f;
@@ -111,7 +117,8 @@
 
 /* Dark Oxblood & Bone: follows the system unless the viewer picks a theme
    (data-theme on <html>, set by resources/js/lib/theme.tsx). The accent
-   lightens so it keeps contrast on the dark ground. */
+   lightens so it keeps contrast on the dark ground, while button fills stay
+   rich oxblood (--accent-fill) with crisp bone text. */
 @media (prefers-color-scheme: dark) {
     :root:root.app-theme:not([data-theme='light']) {
         --ground: #1b1a18;
@@ -121,6 +128,9 @@
         --ink: #ece9e3;
         --accent: #d9808b;
         --accent-deep: #e69aa3;
+        --accent-fill: #8a2a36;
+        --accent-fill-deep: #701a24;
+        --accent-foreground: #fbfaf8;
         --surface: #222120;
         --accent-tint: #3a2226;
         --success: #6fb592;
@@ -139,6 +149,9 @@
     --ink: #ece9e3;
     --accent: #d9808b;
     --accent-deep: #e69aa3;
+    --accent-fill: #8a2a36;
+    --accent-fill-deep: #701a24;
+    --accent-foreground: #fbfaf8;
     --surface: #222120;
     --accent-tint: #3a2226;
     --success: #6fb592;
@@ -184,11 +197,51 @@
 }
 
 .app-theme .eyebrow {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--ink-quiet);
+    color: var(--accent);
+}
+
+.app-theme .theme-switch {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    color: var(--ink-muted);
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--ink-quiet) 40%, transparent);
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+@media (max-width: 767px) {
+    .app-theme .theme-switch {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+.app-theme .theme-switch:hover {
+    color: var(--ink);
+    border-color: color-mix(in srgb, var(--ink-quiet) 75%, transparent);
+    background: color-mix(in srgb, var(--surface-muted) 60%, transparent);
+}
+
+.app-theme .theme-switch svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 html {

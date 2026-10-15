@@ -5,16 +5,19 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-    'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 max-md:min-h-[44px] max-md:min-w-[44px]',
+    'inline-flex cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 max-md:min-h-[44px] max-md:min-w-[44px]',
     {
         variants: {
             variant: {
-                default: 'bg-primary text-primary-foreground hover:bg-primary-deep',
+                default:
+                    'bg-primary text-primary-foreground hover:-translate-y-[1px] hover:bg-primary-deep hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--accent)_22%,transparent)] active:translate-y-0',
                 secondary: 'bg-muted text-foreground hover:bg-border',
-                outline: 'border border-border bg-transparent hover:bg-muted',
-                destructive: 'bg-destructive text-primary-foreground hover:opacity-90',
+                outline:
+                    'border border-border bg-paper/70 text-foreground hover:border-foreground/35 hover:bg-muted/60',
+                destructive:
+                    'bg-destructive text-primary-foreground hover:opacity-90',
                 ghost: 'hover:bg-muted',
-                link: 'text-primary underline-offset-4 hover:underline',
+                link: 'text-[var(--accent)] underline-offset-4 hover:underline',
             },
             size: {
                 default: 'h-9 px-4',

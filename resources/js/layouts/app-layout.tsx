@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import { ThemeSwitch } from '@/components/home/theme-switch';
+import { GITHUB } from '@/components/site-chrome';
 import { Alert } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -142,14 +144,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     // teammate path. The server decides the role, never the client.
     const isAdmin = team?.isAdmin === true;
     const currentPath = url.split('?')[0];
-    const navLinkClassFor = (active: boolean) =>
-        `border-b-2 py-3 transition-colors hover:text-foreground ${
+    const topNavLinkClassFor = (active: boolean) =>
+        `inline-flex h-[68px] items-center border-b-2 transition-colors hover:text-foreground ${
             active
-                ? 'border-primary text-foreground'
+                ? 'border-[var(--accent)] text-foreground'
                 : 'border-transparent text-muted-foreground'
         }`;
-    const navLinkClass = (href: string, exact = false) =>
-        navLinkClassFor(
+    const topNavLinkClass = (href: string, exact = false) =>
+        topNavLinkClassFor(
+            currentPath === href || (!exact && url.startsWith(`${href}/`)),
+        );
+    const subNavLinkClassFor = (active: boolean) =>
+        `inline-flex border-b-2 py-2.5 transition-colors hover:text-foreground ${
+            active
+                ? 'border-[var(--accent)] text-foreground'
+                : 'border-transparent text-muted-foreground'
+        }`;
+    const subNavLinkClass = (href: string, exact = false) =>
+        subNavLinkClassFor(
             currentPath === href || (!exact && url.startsWith(`${href}/`)),
         );
 
@@ -316,27 +328,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
 
     return (
-        <div className="min-h-screen bg-background text-foreground">
-            <header className="border-b border-border bg-background">
-                <div className="mx-auto flex h-16 max-w-5xl min-w-0 items-center gap-2 px-4 md:gap-4 md:px-5">
+        <div className="flex min-h-screen flex-col bg-background text-foreground">
+            <header className="sticky top-0 z-30 border-b border-border bg-background/94 backdrop-blur-md">
+                <div className="mx-auto flex h-[68px] max-w-[1120px] min-w-0 items-center gap-2 px-4 md:gap-4 md:px-5">
                     <Link
                         href={
                             team
                                 ? dashboard.url({ current_team: team.slug })
                                 : home.url()
                         }
-                        className="inline-flex shrink-0 items-center font-serif text-2xl tracking-tight max-md:min-h-11"
+                        className="inline-flex shrink-0 items-center font-serif text-[26px] font-medium tracking-[-0.02em] max-md:min-h-11"
                     >
                         Artfct
                     </Link>
 
                     {team && (
                         <DropdownMenu>
-                            <DropdownMenuTrigger className="flex max-w-[36vw] min-w-0 items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-muted max-md:min-h-11 md:max-w-none">
+                            <DropdownMenuTrigger className="flex max-w-[34vw] min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-paper/70 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors hover:border-foreground/30 hover:bg-muted/70 max-md:min-h-11 md:max-w-[140px] lg:max-w-[210px] lg:px-3 lg:text-sm">
                                 <span className="min-w-0 truncate">
                                     {team.name}
                                 </span>
-                                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                                <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                                 <DropdownMenuLabel>
@@ -368,13 +380,92 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         </DropdownMenu>
                     )}
 
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {team && (
+                        <nav
+                            aria-label="Primary"
+                            className="hidden min-w-0 items-center gap-x-3.5 text-[13px] font-medium whitespace-nowrap md:ml-1 md:flex lg:ml-3 lg:gap-x-6 lg:text-sm"
+                        >
+                            <Link
+                                href={dashboard.url({
+                                    current_team: team.slug,
+                                })}
+                                className={topNavLinkClass(
+                                    dashboard.url({ current_team: team.slug }),
+                                )}
+                            >
+                                Home
+                            </Link>
+                            <Link
+                                href={consoleRoutes.index.url({
+                                    team: team.slug,
+                                })}
+                                className={topNavLinkClass(
+                                    consoleRoutes.index.url({
+                                        team: team.slug,
+                                    }),
+                                )}
+                            >
+                                Artifacts
+                            </Link>
+                            <Link
+                                href={teamRoutes.collections.index.url({
+                                    team: team.slug,
+                                })}
+                                className={topNavLinkClass(
+                                    teamRoutes.collections.index.url({
+                                        team: team.slug,
+                                    }),
+                                )}
+                            >
+                                Collections
+                            </Link>
+                            <Link
+                                href={teamRoutes.mcpConnections.index.url({
+                                    team: team.slug,
+                                })}
+                                className={topNavLinkClass(
+                                    teamRoutes.mcpConnections.index.url({
+                                        team: team.slug,
+                                    }),
+                                )}
+                            >
+                                AI tool connections
+                            </Link>
+                            {isAdmin ? (
+                                <Link
+                                    href={teamRoutes.admin.show.url({
+                                        team: team.slug,
+                                    })}
+                                    className={topNavLinkClassFor(onAdminPage)}
+                                >
+                                    Admin
+                                </Link>
+                            ) : (
+                                <Link
+                                    href={teamRoutes.edit.url({
+                                        team: team.slug,
+                                    })}
+                                    className={topNavLinkClass(
+                                        teamRoutes.edit.url({
+                                            team: team.slug,
+                                        }),
+                                        true,
+                                    )}
+                                >
+                                    Team
+                                </Link>
+                            )}
+                        </nav>
+                    )}
+
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <ThemeSwitch />
                         {auth.user && (
                             <>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger
                                         aria-label="Account menu"
-                                        className="inline-flex items-center justify-center max-md:min-h-11 max-md:min-w-11"
+                                        className="inline-flex cursor-pointer items-center justify-center max-md:min-h-11 max-md:min-w-11"
                                     >
                                         <Avatar>
                                             <AvatarFallback>
@@ -449,101 +540,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         )}
                     </div>
                 </div>
-                {team && (
-                    <div className="mx-auto hidden max-w-5xl overflow-x-auto px-5 md:block">
-                        <nav className="flex w-max items-center gap-x-6 text-sm font-medium whitespace-nowrap">
-                            <Link
-                                href={dashboard.url({
-                                    current_team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    dashboard.url({ current_team: team.slug }),
-                                )}
-                            >
-                                Home
-                            </Link>
-                            <Link
-                                href={consoleRoutes.index.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    consoleRoutes.index.url({
-                                        team: team.slug,
-                                    }),
-                                )}
-                            >
-                                Artifacts
-                            </Link>
-                            <Link
-                                href={teamRoutes.collections.index.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    teamRoutes.collections.index.url({
-                                        team: team.slug,
-                                    }),
-                                )}
-                            >
-                                Collections
-                            </Link>
-                            <Link
-                                href={teamRoutes.mcpConnections.index.url({
-                                    team: team.slug,
-                                })}
-                                className={navLinkClass(
-                                    teamRoutes.mcpConnections.index.url({
-                                        team: team.slug,
-                                    }),
-                                )}
-                            >
-                                AI tool connections
-                            </Link>
-                            {isAdmin ? (
-                                <Link
-                                    href={teamRoutes.admin.show.url({
-                                        team: team.slug,
-                                    })}
-                                    className={navLinkClassFor(onAdminPage)}
-                                >
-                                    Admin
-                                </Link>
-                            ) : (
-                                <Link
-                                    href={teamRoutes.edit.url({
-                                        team: team.slug,
-                                    })}
-                                    className={navLinkClass(
-                                        teamRoutes.edit.url({
-                                            team: team.slug,
-                                        }),
-                                        true,
-                                    )}
-                                >
-                                    Team
-                                </Link>
-                            )}
-                        </nav>
-                    </div>
-                )}
                 {team && isAdmin && onAdminPage && (
                     <div
                         data-testid="admin-subnav"
-                        className="mx-auto hidden max-w-5xl overflow-x-auto border-b border-border px-5 md:block"
+                        className="hidden border-t border-border bg-muted/35 md:block"
                     >
-                        <nav className="flex w-max items-center gap-x-4 text-[13px] font-medium whitespace-nowrap">
-                            {adminSubNav.map((item) => (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={navLinkClass(
-                                        item.href,
-                                        item.exact,
-                                    )}
-                                >
-                                    {item.label}
-                                </Link>
-                            ))}
-                        </nav>
+                        <div className="mx-auto max-w-[1120px] overflow-x-auto px-5">
+                            <nav className="flex w-max items-center gap-x-5 text-[13px] font-medium whitespace-nowrap">
+                                {adminSubNav.map((item) => (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        className={subNavLinkClass(
+                                            item.href,
+                                            item.exact,
+                                        )}
+                                    >
+                                        {item.label}
+                                    </Link>
+                                ))}
+                            </nav>
+                        </div>
                     </div>
                 )}
                 {auth.user && (
@@ -696,7 +713,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </header>
 
             {team && quota && banner && (
-                <div className="mx-auto max-w-5xl min-w-0 px-4 pt-4 break-words md:px-5">
+                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5">
                     <Alert
                         variant={quota.exceeded ? 'warning' : 'default'}
                         role="status"
@@ -718,7 +735,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </div>
             )}
             {team?.paymentStatus === 'past_due' && (
-                <div className="mx-auto max-w-5xl min-w-0 px-4 pt-4 break-words md:px-5">
+                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5">
                     <Alert variant="warning" role="status">
                         Payment is past due. New artifacts are blocked; existing
                         ones keep serving.{' '}
@@ -738,26 +755,51 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </div>
             )}
 
-            <main className="mx-auto max-w-5xl min-w-0 px-4 py-8 md:px-5 md:py-12">
+            <main className="mx-auto w-full max-w-[1120px] min-w-0 flex-1 px-4 py-8 md:px-5 md:py-12">
                 {children}
             </main>
             <footer className="border-t border-border">
-                <div className="mx-auto flex max-w-5xl min-w-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-sm text-muted-foreground md:px-5 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:min-w-11 max-md:[&_a]:items-center">
-                    <Link className="hover:text-foreground" href={docs.url()}>
-                        Documentation
-                    </Link>
-                    <Link className="hover:text-foreground" href={blog.url()}>
-                        Blog
-                    </Link>
-                    <Link className="hover:text-foreground" href={terms.url()}>
-                        Terms
-                    </Link>
-                    <Link
-                        className="hover:text-foreground"
-                        href={privacy.url()}
-                    >
-                        Privacy
-                    </Link>
+                <div className="mx-auto flex max-w-[1120px] min-w-0 flex-wrap items-baseline justify-between gap-4 px-4 py-7 text-sm text-muted-foreground md:px-5 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:min-w-11 max-md:[&_a]:items-center">
+                    <div className="flex items-baseline gap-3">
+                        <span className="font-serif text-xl font-medium tracking-[-0.02em] text-foreground">
+                            Artfct
+                        </span>
+                        <span>© {new Date().getFullYear()} Artfct</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <Link
+                            className="transition-colors hover:text-foreground"
+                            href={docs.url()}
+                        >
+                            Documentation
+                        </Link>
+                        <Link
+                            className="transition-colors hover:text-foreground"
+                            href={blog.url()}
+                        >
+                            Blog
+                        </Link>
+                        <a
+                            className="transition-colors hover:text-foreground"
+                            href={GITHUB}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            GitHub
+                        </a>
+                        <Link
+                            className="transition-colors hover:text-foreground"
+                            href={terms.url()}
+                        >
+                            Terms
+                        </Link>
+                        <Link
+                            className="transition-colors hover:text-foreground"
+                            href={privacy.url()}
+                        >
+                            Privacy
+                        </Link>
+                    </div>
                 </div>
             </footer>
             <Toaster />

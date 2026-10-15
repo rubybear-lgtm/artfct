@@ -25,6 +25,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
@@ -123,9 +124,11 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
     return (
         <>
             <Head title="API tokens" />
-            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
-                API tokens
-            </h1>
+            <PageHeader
+                eyebrow={team.name}
+                title="API tokens"
+                description="Mint long-lived tokens for scripts and pipelines that call the Artfct API."
+            />
 
             <div className="flex flex-col gap-6">
                 {canCreate && (

@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
@@ -154,15 +155,21 @@ export default function TeamEdit({
         <>
             <Head title={team.name} />
 
-            <div className="mb-6 flex min-w-0 flex-wrap items-center gap-3">
-                <h1 className="min-w-0 text-2xl font-semibold break-words">
-                    {team.name}
-                </h1>
-                <Badge variant="outline">{team.plan}</Badge>
-                <span className="text-sm break-all text-muted-foreground tabular-nums">
-                    {team.slug}
-                </span>
-            </div>
+            <PageHeader
+                eyebrow={
+                    permissions.canUpdateTeam ? 'Admin · Members' : 'Workspace'
+                }
+                title={team.name}
+                description="Manage workspace members, pending invitations, and roles."
+                actions={
+                    <>
+                        <Badge variant="outline">{team.plan}</Badge>
+                        <span className="text-sm break-all text-muted-foreground tabular-nums">
+                            {team.slug}
+                        </span>
+                    </>
+                }
+            />
 
             <div className="flex flex-col gap-6">
                 {pageErrors.length > 0 && (
@@ -763,9 +770,13 @@ export default function TeamEdit({
                                             )
                                         }
                                     >
-                                        <option value="authkit">authkit</option>
-                                        <option value="dual">dual</option>
-                                        <option value="polis">polis</option>
+                                        <option value="authkit">
+                                            Standard sign-in
+                                        </option>
+                                        <option value="dual">
+                                            Standard sign-in or SSO
+                                        </option>
+                                        <option value="polis">SSO only</option>
                                     </select>
                                 </div>
                                 <Button

@@ -19,7 +19,10 @@ export default function Accept({ version }: { version: string }) {
     return (
         <>
             <Head title="Accept the terms" />
-            <h1 className="mb-2 text-xl font-semibold">One more step</h1>
+            <p className="eyebrow mb-2">Terms &amp; privacy</p>
+            <h1 className="mb-2 font-serif text-3xl tracking-tight">
+                One more step
+            </h1>
             <p className="mb-4 text-sm text-muted-foreground">
                 Please read and accept the{' '}
                 <Link className="underline" href={terms.url()} target="_blank">

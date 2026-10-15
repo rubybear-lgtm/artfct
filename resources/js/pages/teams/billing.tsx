@@ -12,6 +12,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { PageHeader } from '@/components/ui/page-header';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teams from '@/routes/teams';
@@ -178,9 +179,11 @@ export default function Billing({
     return (
         <>
             <Head title="Billing" />
-            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
-                Billing
-            </h1>
+            <PageHeader
+                eyebrow={`Admin · ${team.name}`}
+                title="Billing"
+                description="Plan limits, storage and monthly artifact usage, and payment settings."
+            />
 
             <div className="flex flex-col gap-6">
                 {awaitingWebhook && !pollExhausted && (
