@@ -115,7 +115,7 @@
     <p class="kicker">Handoffs between agents</p>
     <h1>How to share artifacts between different AI agents</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-30 · 6 min</p>
-    <p class="lead">Two agents from different products cannot read each other's work, so the second one rebuilds what the first one already published. An artifact closes that handoff: it is a finished page that stays readable to the next agent, and a connected tool finds it by searching one hosted address, once indexing is switched on at the deployment level — without either tool knowing the other exists.</p>
+    <p class="lead">Two agents from different products cannot read each other's work, so the second one rebuilds what the first one already published. An artifact closes that handoff: it is finished work that stays readable to the next agent, and a connected tool finds it by searching one hosted address, once indexing is switched on at the deployment level — without either tool knowing the other exists.</p>
   </header>
 
   <nav class="toc">
@@ -142,33 +142,34 @@
       <h2>What does one address change for two different tools?</h2>
       <p>The record of that work has to belong to the team rather than to a single tool. Artfct gives the team one hosted address to connect to and search, and each connected tool points there instead of at its own history.</p>
       <p>That indirection is what makes agents from different vendors usable together. The first agent publishes an artifact to the address. The second agent, running inside a different product, searches the same address and finds it. Neither vendor cooperated with the other, and neither tool needed to know the other existed.</p>
-      <p>What travels is a finished page rather than a transcript, so nothing on the reading side is converted or reformatted. An HTML artifact opens in a browser at its link, and the next agent reads the same text a person sees.</p>
+      <p>What travels is a finished artifact rather than a transcript. An HTML artifact opens in a browser at its link, and the next agent reads the same text a person sees.</p>
     </section>
 
     <section class="s" id="s3">
       <h2>How does an artifact get from one agent to the next?</h2>
       <p>Publishing is one call. An agent invokes deploy_artifact with a self-contained HTML page or a bundle of files, and the call returns a link. The artifact lives at that link, outside the tool that made it.</p>
-      <p>Finding it is one search. The next agent invokes search_artifacts, asks in ordinary language, and receives a ranked list of summaries, short excerpts and a link. It can open the page and cite it rather than produce a second version, and it can narrow the search to a collection or a date window first.</p>
-      <p>Neither step asks the two tools to agree on anything. A tool that can reach the address can publish to it, and a tool that can reach it can search it once indexing is enabled at the deployment level, which is what makes a mixed set of agents workable.</p>
+      <p>Finding it is one search. The next agent invokes search_artifacts, asks in ordinary language, and receives a ranked list of summaries, short excerpts and a link. It can cite that artifact rather than produce a second version, and narrow the search to a collection or a date window.</p>
+      <p>When an excerpt is not enough, the next agent invokes read_artifact, which returns the extracted text of a single artifact, one bounded page at a time, and never the HTML bundle. Like search, it is gated on indexing, and only the last-indexed version can be read.</p>
+      <p>No step asks the two tools to agree on anything. A tool that can reach the address can publish to it, and one that can reach it can search it, which is what makes a mixed set of agents workable.</p>
     </section>
 
     <section class="s" id="s4">
       <h2>What has to be true before the next agent can find it?</h2>
       <p>Sharing bounds the handoff, and there are three levels: private, team, or public to anyone with the link — though a team can turn public links off, and a publish asking for public is refused. Team is the default, so a colleague's agent reaches an artifact without the publisher naming it. A private artifact stays out of other members' results, apart from its owner and team admins. The sharing model is covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
-      <p>Search is a setting of the deployment rather than a property of an artifact. Indexing is off by default, and until it is switched on at the deployment level, a search answers that search is not enabled rather than returning an empty list. Once it runs, an artifact becomes searchable as it is published, and re-indexing one artifact is limited to once every ten minutes.</p>
+      <p>Search is a setting of the deployment rather than a property of an artifact. Indexing is off by default, and until it is switched on, a search answers that search is not enabled rather than returning an empty list. Once it runs, an artifact becomes searchable as it is published, and re-indexing one artifact is limited to once every ten minutes.</p>
       <p>Readiness also depends on the reader. A connection is what lets an agent search at all, so an agent whose owner has not connected a tool reads nothing.</p>
     </section>
 
     <section class="s" id="s5">
       <h2>What does connecting a second tool involve?</h2>
       <p>One address and one approval, per person and per tool. A member adds the hosted address to the tool they use, the tool opens a browser page, and that member approves the sign-in. No Artfct server and no local component is installed or kept running on the machine, and no credential is copied out of a settings page. The <a href="https://artfct.dev/docs#mcp">setup guide</a> lists the steps for each tool.</p>
-      <p>The connection belongs to the person who approved it. One member's connection does not authorise a colleague's tool, so every tool asks its own user to sign in in turn, and a workspace cannot pool a single approval across the team.</p>
+      <p>The connection belongs to the person who approved it, so every tool asks its own user to sign in, and a workspace cannot pool a single approval across the team.</p>
       <p>Readiness differs by tool, and the difference is worth keeping straight. Claude Code, Codex, OpenCode and Antigravity are verified against staging, which means someone completed the browser sign-in and a tool call inside each one. The Claude app, ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths that artfct has not tested. A tool that can only start programs on the machine it runs on cannot reach a hosted server at all. The <a href="https://artfct.dev/llms-full.txt">machine-readable reference</a> carries the current list.</p>
     </section>
 
     <section class="s" id="s6">
       <h2>How does a handoff survive a change of tools?</h2>
-      <p>A team that adds or drops a tool keeps the record, because the artifacts live at their links rather than inside a product. A new tool arrives, its user connects once, and the work already published to the workspace is there to search, subject to two conditions: it has to be shared to a level that reaches them, and indexing has to be on.</p>
+      <p>A team that adds or drops a tool keeps the record, because the artifacts live at their links rather than inside a product. A new tool arrives, its user connects once, and the work already published to the workspace is there to search, provided it is shared to a level that reaches them and indexing is on.</p>
       <p>An administrator can revoke a connection when a tool or a person leaves. Revocation removes the tool's access to the address and leaves the published artifacts in place.</p>
       <p>That is the practical difference between a record and a chat history. The record outlives the agent that wrote to it, which is what lets a handoff cross a change of tools and a change of vendor.</p>
     </section>
@@ -182,13 +183,13 @@
         <li>A single HTML page is capped at 1 MB. A bundle is capped at 500 files, and its total is the lower of 8 MB and the plan ceiling: 5 MB on free, 10 MB on team, 25 MB on enterprise.</li>
         <li>It is not a memory layer. The record moves finished artifacts between agents, and it does not add to what a model knows or change how it reasons.</li>
         <li>Reading one artifact does not open another. Each artifact is served from its own hostname, and one artifact's JavaScript cannot read another's.</li>
-        <li>It does not accept arbitrary office files. An artifact is something an AI made that renders as a page.</li>
+        <li>It does not accept arbitrary office files. An artifact is something an AI made that a person can open at a link or download as a file.</li>
       </ul>
     </section>
 
     <section class="faq">
       <h2>Questions</h2>
-      <details class="q"><summary>Do both agents have to be the same product?</summary><p>No. Any tool that can reach a remote server can publish to the address, and can search it once indexing is enabled at the deployment level, so the two ends of a handoff can come from different vendors. The setup guide marks which connections are verified and which are documented only.</p></details>
+      <details class="q"><summary>Do both agents have to be the same product?</summary><p>No. Any tool that can reach a remote server can publish to the address, and can search it once indexing is enabled, so the two ends of a handoff can come from different vendors. The setup guide marks which connections are verified and which are documented only.</p></details>
       <details class="q"><summary>Does a colleague's agent see an artifact as soon as it is published?</summary><p>It sees it once the artifact is shared and indexing is on. Team sharing is the default, and a private artifact stays out of everyone else's results.</p></details>
       <details class="q"><summary>Does every member connect the tools they use?</summary><p>Yes, and each member connects each tool separately. The connection belongs to the person who approved it, so a single approval cannot be pooled, and every tool asks its own user to sign in.</p></details>
       <details class="q"><summary>Which artifact does the next agent get when several match?</summary><p>The search fuses meaning with keyword matching, then ranks results by recency, how often an artifact has been opened, and whether it sits in a pinned collection. Summaries and short excerpts come back with the link, so an agent can choose without opening every match.</p></details>

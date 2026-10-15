@@ -25,7 +25,11 @@ Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 des
 | Publish one HTML file | Self-contained document, one call | `deploy_artifact`, `html` |
 | Publish a multi-file bundle | Up to 500 files and **8 MB in total** through `deploy_artifact`, which is the limit a customer actually meets. A single-page `html` payload is capped at **1 MB**. Plan ceilings bind lower still: free 5 MB, team 10 MB, enterprise 25 MB. The Worker's own storage bounds (25 MiB per file, 50 MiB total) are not reachable from any shipped publish tool — do not quote them. | `DeployArtifactTool` (`MAX_HTML_BYTES`, `MAX_BUNDLE_BYTES`), `config/billing.php` |
 | Same content returns the same artifact | Content-addressed: identical content re-published yields the same artifact rather than a duplicate | manifest-hash id |
-| Update without changing the link | Pass `artifact_id`; publishes a new version on the same URL | `deploy_artifact` |
+| Update without changing the link | Pass `artifact_id`; publishes a new version on the same URL. An optional `base_version` makes the write conditional: if the artifact has moved on since that version, the publish is refused rather than quietly overwriting a colleague's change. | `deploy_artifact` |
+| Artifact type | Every artifact carries one type: `report`, `table`, `document`, `mockup`, `slide_deck`, `dashboard` or `other`. Filterable through `artifact_type` on `list_artifacts` and `search_artifacts`. A type is a label, **not a rendering promise** — see the non-HTML entrypoint gap in §2a. | `app/Enums/ArtifactType.php` |
+| Read the text of an artifact | `read_artifact` returns the extracted, indexed text one bounded page at a time (`offset`, `limit`) with a `next_offset`, and never the HTML bundle. Version-honest: only the last-indexed version can be read. **Gated on indexing** — with it off, the call answers "Reading artifact text is not enabled for this workspace yet." | `ReadArtifactTool` |
+| Comments on an artifact | People and connected agents can comment on an artifact: plain text, up to 4,000 characters, threaded with `parent_id`, and resolvable or reopenable. Over MCP it requires the `comments:write` scope. In the browser the viewer shows the thread and lets a signed-in reader post or resolve, throttled. | `AddArtifactCommentTool`, `ResolveArtifactCommentTool`, `ArtifactViewerController` |
+| Find what changed since a known time | `search_artifacts` accepts `changed_since`, so an agent can ask for work updated after a time it already holds | `search_artifacts` |
 | Version history | List earlier versions, restore one | `console.versions`, `console.versions.restore` |
 | Provenance | A per-artifact record with per-field source attribution. On the supported MCP path it holds the **model** (self-reported, when the caller supplies it), the **MCP session id**, the tool name and the client name and version. Repository, branch, commit and dirty state are recorded as **absent** — see the known gaps below. | `DeployArtifactTool::provenance()` |
 | Free tier | Encrypted, passcode-protected, five-day sliding expiry, 1 MB single file, no account | `DOCUMENTATION.md` |
@@ -37,6 +41,8 @@ Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 des
 - **Public links can be switched off for the whole team.** `public_sharing_allowed` is a team setting (`app/Models/Team.php`). With it off, a publish that asks for public is refused with "Your team has turned off public links" (`DeployArtifactTool`), and the viewer refuses the same way (`ArtifactViewerController`). Any sentence offering a public link as an option must not read as unconditional.
 - **Edit access** as a separate axis from visibility: view or edit, so a teammate can publish the next version.
 - One viewer route, `/a/{id}`, for every sharing level. A signed-out visitor to a team artifact is sent to sign in and back; the route never confirms whether an id exists.
+- **A connection grants named scopes, not blanket access.** `artifacts:read`, `artifacts:deploy`, `artifacts:delete`, `collections:read`, `collections:write`, `usage:read` and `comments:write`. Each carries a risk tier — Read, Write or Destructive — and the consent screen shows a plain-language label for it ("Comment on shared work", "Delete shared work"). A member's approval covers the scopes it asked for and nothing beyond them.
+- **Comments are a write surface.** A reader with access can post a comment on an artifact in the browser or, with the `comments:write` scope, through a connected tool. Any sentence asserting the product "does not write or edit" must be scoped to the artifact's own content: commenting is a write, drafting and editing are not.
 - Per-artifact origin isolation: each artifact gets its own hostname, cookieless, short-lived signed token, and a content security policy derived from what that artifact declared. **One artifact's JavaScript cannot read another's.**
 
 ### Teams, identity and governance
@@ -59,8 +65,10 @@ Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 des
 
 ### Finding and organizing
 
-- **`search_artifacts`** — hybrid search: semantic similarity fused with keyword matching, then ranked by recency, provenance match, how often an artifact has been opened, and whether it sits in a pinned collection. Filterable by repo, agent, collection and date. Returns summaries, short excerpts and a link. This is the retrieval story: the next agent finds the report before rebuilding it, and a canonical artifact outranks a semantically closer one nobody has opened.
-- **`list_artifacts`** — filter by owner, sharing level, collection, agent, date window, title text, file kind; sort by updated, created, most viewed, or title. Note the console's own filters are narrower: title or description, producing agent, repository, and collection.
+- **`search_artifacts`** — hybrid search: semantic similarity fused with keyword matching, then ranked by recency, provenance match, how often an artifact has been opened, and whether it sits in a pinned collection. A minimum relevance threshold gates candidates that do not match at all, so an empty result is a real answer rather than the least-bad row. Filterable by repo, agent, collection, date, `artifact_type` and `changed_since`. Returns summaries, an evidence excerpt and a link; the excerpt a connected tool receives is longer than the one the console shows, because a tool cannot open the page itself. This is the retrieval story: the next agent finds the report before rebuilding it, and a canonical artifact outranks a semantically closer one nobody has opened.
+- **`read_artifact`** — when an excerpt is not enough, read the extracted text of one artifact, one bounded page at a time. Gated on indexing, like search.
+- **`get_guidance`** — the server serves its own rules, one topic at a time: `publish`, `search` or `collaborate`. Static and versioned (contract version `1.0.0`), never built from user input, and shipped alongside the same guidance as Agent Skills files. Do not describe it as documentation for people — it is instructions addressed to an agent.
+- **`list_artifacts`** — filter by owner, sharing level, collection, agent, date window, title text, file kind and `artifact_type`; sort by updated, created, most viewed, or title. Note the console's own filters are narrower: title or description, producing agent, repository, and collection.
 - **Render before indexing** — extraction is not always a matter of reading markup. An artifact whose substance appears only once the page runs is detected, rendered, and indexed by the text a reader would see. Gated by `config('indexing.enabled')`, which defaults off, and a renderer must be configured. | `IndexingService`, `ExtractionHeuristics::needsRender()`
 - Collections: create, rename, add and remove artifacts, pin.
 - Console search page and a reindex action.
@@ -69,7 +77,7 @@ Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 des
 ### The connection
 
 - One way in: the hosted OAuth MCP server at `/mcp`. The CLI and local stdio server were retired in RUB-432 and must not be described as available.
-- Ten advertised tools. `deploy_to_canvas` is **deprecated** — it makes anonymous expiring artifacts the workspace cannot search. Never recommend it.
+- **Fifteen advertised tools**, and the catalog fits one page so a client that ignores paging does not silently lose any: `deploy_artifact`, `search_artifacts`, `read_artifact`, `list_artifacts`, `get_artifact`, `get_guidance`, `get_connection`, `get_usage`, `list_artifact_comments`, `add_artifact_comment`, `resolve_artifact_comment`, `list_collections`, `create_collection`, `add_collection_artifact`, `delete_artifact`. A sixteenth, `deploy_to_canvas`, is **deprecated** — it makes anonymous expiring artifacts the workspace cannot search. Never recommend it, and never count it among the supported fifteen.
 - Quick install across tools: `npx add-mcp@latest <mcp-url> --name artfct --global`.
 - An agent skill for publishing well: `npx skills add rubybear-lgtm/artfct@artfct`.
 - Machine-readable docs at `/llms.txt` and `/llms-full.txt`; the docs page and `llms-full.txt` render from the same PHP source, so they cannot drift.
@@ -121,7 +129,7 @@ One more category, because it is the most tempting: **inference from the archite
 - **Not static site hosting.** No custom builds, no frameworks, no `npm run build`.
 - **Not a CDN.** Shared with tens of people, not millions.
 - **Not a wiki.** No authoring, no editing, no Notion or Confluence comparison. Artfct stores and finds what an AI already made.
-- **Not general file storage.** No arbitrary office files, images, or archives for their own sake. An artifact is something an AI made that renders as a page.
+- **Not general file storage.** No arbitrary office files, images, or archives for their own sake. An artifact is something an AI made that a person can open — rendered at a link, or downloaded as a file when the entrypoint is not HTML. Say "renders as a page" only about an HTML entrypoint, never as the universal definition of an artifact.
 - **Not notebooks, PDFs, or video.**
 - **Not a memory or context layer.** It moves finished artifacts, not reasoning. Do not claim it improves what a model knows or how it reasons.
 - **Not BYOC or self-hosting.** Out of scope, not deferred.

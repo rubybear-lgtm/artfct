@@ -167,7 +167,7 @@
 
     <section class="s" id="s6">
       <h2>What happens when an earlier version was wrong?</h2>
-      <p>The practice dies when people stop trusting the record, so the correction path matters more than it looks. A wrong analysis is fixed by publishing the corrected version under the existing link. Publishing a correction deletes nothing, and starts no parallel document beside the original.</p>
+      <p>The practice dies when people stop trusting the record, so the correction path matters more than it looks. A wrong analysis is fixed by publishing the corrected version under the existing link. Publishing a correction deletes nothing, and starts no parallel document beside the original. A reader who spots a problem can comment on the artifact, so the discussion stays with the record rather than in a chat tool; the thread is resolvable once answered.</p>
       <p>Earlier versions stay listed, so a reader can open the version a decision was made against. A team can also restore one if a correction is later reversed. There is no side-by-side comparison: the history is a list of versions a person opens.</p>
       <p>Publishing a correction takes edit access, a separate axis from who can open an artifact, covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
     </section>
@@ -178,7 +178,7 @@
         <li>Where indexing is enabled, search returns summaries, short excerpts and a link rather than the whole artifact, so a reader still opens the source for detail.</li>
         <li>Indexing is switched on at the deployment level and is off by default. Where it is not enabled, a search reports that search is not enabled for the workspace yet, and re-indexing one artifact is rate-limited.</li>
         <li>An artifact does not record the repository, branch or commit it came from on the supported connection path. Those fields are absent, so a repository filter has nothing to match for work published through the hosted server. The model on the record is the one the caller reported rather than one Artfct observed.</li>
-        <li>Artfct stores and finds what an AI already made. It does not write, edit or rewrite the analysis, and it does not accept arbitrary office files.</li>
+        <li>Artfct stores and finds what an AI already made. It does not write or edit an artifact's content — a member who can see the page can comment on it, and commenting is a write — and it does not accept arbitrary office files.</li>
         <li>Nothing obliges a tool to search before it builds. A connected agent has the option of finding the earlier analysis, and taking that option is a property of the instructions the team gives it.</li>
         <li>A tool that can only start programs on your own computer cannot connect, because Artfct runs as a hosted server.</li>
       </ul>

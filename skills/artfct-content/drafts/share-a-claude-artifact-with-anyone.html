@@ -157,6 +157,7 @@
       <p>Every artifact is opened through one viewer route, <code>/a/{id}</code>, whatever its sharing level. Sharing is private, team or public, and the address does not change with it. What changes is who gets through.</p>
       <p>A public artifact opens for anyone holding the link, provided the team has public links switched on. A team artifact asks a signed-out visitor to sign in and back. A private artifact belongs to its owner and to the team's administrators. The route never confirms whether an id exists. A link forwarded to someone who is not signed in returns a sign-in prompt rather than a description of what they are missing.</p>
       <p>Access belongs to the artifact rather than to the link. Moving an artifact between private, team and public changes who gets through at the same address, and the URL itself does not change. <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">Who sees what your AI makes</a> covers those controls in more detail.</p>
+      <p>The viewer carries a comment thread alongside the page, and a signed-in member of the team can post a comment on it or resolve one. Comments are plain text of up to 4,000 characters, and a reply joins the thread rather than starting a new one.</p>
     </section>
 
     <section class="s" id="s5">
@@ -183,7 +184,7 @@
         <li>Sharing is private, team or public. There is no per-person sharing and no list of named recipients.</li>
         <li>Public links are a team setting, and an admin can switch them off. A publish that asks for public is then refused, with a message that the team has turned off public links.</li>
         <li>A signed-out visitor is sent to sign in, and the viewer route never confirms whether an id exists.</li>
-        <li>It does not serve as an editor. Someone changes the source, publishes a new version, and the same link keeps working.</li>
+        <li>It does not edit an artifact's own content. A signed-in member of the team can comment on the page; changing what the page says means someone publishes a new version, and the same link keeps working.</li>
       </ul>
     </section>
 
@@ -193,7 +194,7 @@
       <details class="q"><summary>What happens when a free link expires?</summary><p>It stops opening. The expiry runs five days from the last time the link was used, so the window slides rather than running out from the publish date. A permanent artifact carries no expiry.</p></details>
       <details class="q"><summary>Is the free link encrypted?</summary><p>Yes. The content is encrypted and protected by a passcode carried in the link, so nothing has to be sent alongside it.</p></details>
       <details class="q"><summary>Can the link be forwarded, or sent to just one person?</summary><p>A free link opens for anyone who holds the link, so forwarding works and the passcode travels with it. A public artifact opens the same way, provided the team has public links switched on. A team artifact asks the next person to sign in and opens only for a member of the team. Sharing is private, team or public, and there is no list of named recipients; the narrowest option is a private artifact, which its owner and the team's administrators can open.</p></details>
-      <details class="q"><summary>Can the recipient change the artifact?</summary><p>Only with edit access, which is granted separately from visibility. Otherwise they read the published page, and a new version comes from someone who can publish.</p></details>
+      <details class="q"><summary>Can the recipient change the artifact?</summary><p>Only with edit access, which is granted separately from visibility. Otherwise they read the published page, and a member of the team who is signed in can comment on it; a new version comes from someone who can publish.</p></details>
     </section>
   </main>
 

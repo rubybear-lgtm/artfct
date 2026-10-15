@@ -154,9 +154,9 @@
 
     <section class="s" id="s4">
       <h2>How does search carry what filing used to do?</h2>
-      <p>Search is hybrid where indexing is enabled for the deployment. It fuses semantic similarity with keyword matching, then ranks results by recency, by how often an artifact has been opened, and by whether it sits in a pinned collection. A query returns summaries with short excerpts and a link, so a result can be judged without opening it.</p>
-      <p>For finding, a connected tool has two entry points. <code>search_artifacts</code> narrows by repository, agent, collection and date. <code>list_artifacts</code> filters by owner, sharing level, collection, agent, date window, title text and file kind. It sorts by updated, created, most viewed or title. The console shares three of those filters: repository, producing agent and collection. Its text box searches a title or a description, and there is no sort control.</p>
-      <p>This is why the filing can stay small. A collection answers the handful of questions a team keeps asking, and search answers the rest without anyone moving a file. The retrieval itself is covered in <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding the report your team already wrote</a>.</p>
+      <p>Search is hybrid where indexing is enabled. It fuses semantic similarity with keyword matching, then ranks by recency, how often an artifact has been opened, and whether it sits in a pinned collection.</p>
+      <p>The tool surface has two entry points. <code>search_artifacts</code> narrows by repository, agent, collection, date and type. <code>list_artifacts</code> filters by owner, sharing level, collection, agent, date window, title text, file kind and type, and sorts by updated, created, most viewed or title. Every artifact carries one type, exposed as <code>artifact_type</code> — report, table, document, mockup, slide deck, dashboard or other — and a type is a label, not a rendering promise. The console carries repository, producing agent and collection only, and its text box searches a title or a description; there is no sort control.</p>
+      <p>This is why the filing stays small: collections answer the repeated questions, and search answers the rest. Retrieval has its own page in <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding the report your team already wrote</a>.</p>
     </section>
 
     <section class="s" id="s5">
@@ -183,7 +183,7 @@
         <li>A bundle publish caps at 500 files, and at the lower of 8 MB and the plan ceiling. That is 5 MB free, 10 MB team, 25 MB enterprise. A single-page publish caps at 1 MB.</li>
         <li>A team admin can switch public links off, after which a publish asking for public is refused.</li>
         <li>Deduplication covers identical content: the id comes from a content hash, so one changed figure makes a new artifact.</li>
-        <li>It does not accept arbitrary office files, images or archives. An artifact is something an AI made that renders as a page.</li>
+        <li>It does not accept arbitrary office files, images or archives. An artifact is something an AI made that a person can open.</li>
         <li>Organizing does not change what a model can do. Artfct stores and finds what an AI already made; it is not a place to author or edit documents.</li>
       </ul>
     </section>
@@ -192,7 +192,7 @@
       <h2>Questions</h2>
       <details class="q"><summary>Does every artifact need a collection?</summary><p>No. A collection earns its place when people keep asking the same question. Artifacts nobody returns to can stay searchable and uncollected.</p></details>
       <details class="q"><summary>What happens when two tools publish the same page?</summary><p>When the content is identical, the second publish resolves to the artifact that already exists, so the collection does not gain a second copy.</p></details>
-      <details class="q"><summary>Do the console filters match the ones an agent gets?</summary><p>Partly. Both surfaces carry the repository, the agent and the collection. The console text box searches a title or a description, while the tool surface adds owner, sharing level, file kind, date windows and sorts.</p></details>
+      <details class="q"><summary>Do the console filters match the ones an agent gets?</summary><p>Partly. Both surfaces carry the repository, the agent and the collection. The console text box searches a title or a description, while the tool surface adds owner, sharing level, file kind, artifact type, date windows and sorts.</p></details>
       <details class="q"><summary>Why would a search return nothing?</summary><p>Indexing is off by default and switched on at the deployment level. Until then, a search answers that search is not enabled for the workspace yet.</p></details>
       <details class="q"><summary>Does a collection change the artifacts it holds?</summary><p>No. Visibility stays with the artifact's own sharing level, which is private, team or public, and a collection does not widen it. Renaming a collection, or moving artifacts in and out of it, changes nothing about them. <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">Sharing</a> has its own page.</p></details>
     </section>

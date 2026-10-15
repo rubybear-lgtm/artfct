@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI artifacts vs agent memory: what is the difference? — artfct</title>
-<meta name="description" content="Agent memory is what an assistant carries while it works, scoped to a session or a project and written for the model. An AI artifact is the finished page a person can open and a colleague can share. This comparison separates the two objects and says which problem each one solves.">
+<meta name="description" content="Agent memory is what an assistant carries while it works, scoped to a session or a project and written for the model. An AI artifact is the finished work a person can open, rendered at a link or downloaded as a file, and a colleague can share. This comparison separates the two objects and says which problem each one solves.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -140,7 +140,7 @@
 
     <section class="s" id="s2">
       <h2>What is an AI artifact, and who is it for?</h2>
-      <p>An AI artifact is a finished work product that an AI tool made and that renders as a page a person can open. A report, a dashboard, a table, a document, or an interactive page all qualify, provided the work is finished and legible to a reader who did not run the session.</p>
+      <p>An AI artifact is a finished work product that an AI tool made and that a person can open, rendered at a link or downloaded as a file. A report, a dashboard or an interactive page all qualify, provided the work is finished and legible to a reader who did not run the session. A table or a document is an artifact too; its type records what kind of work it is, not how it opens, because an entrypoint that is not HTML is served as a download rather than rendered.</p>
       <p>An artifact is published in one call. The publish carries either a single self-contained HTML document, capped at 1 MB, or a bundle of up to 500 files, capped at 8 MB or the plan ceiling, whichever is lower. What comes back is a link, and the link is the point: a person opens it in a browser, and a connected agent reaches the same page through search. Indexing is off by default and is switched on at the deployment level, so search is available only once that setting is enabled. The <a href="https://artfct.dev/llms-full.txt">full reference</a> lists the setup for each tool.</p>
       <p>The audience is therefore double in a way that memory is not. An artifact is addressed both to a colleague who never saw the conversation and to whatever agent asks a similar question later. How a page keeps its address while its contents change is covered in <a href="https://artfct.dev/blog/one-link-that-keeps-its-history">one link that keeps its history</a>.</p>
     </section>
@@ -156,7 +156,7 @@
           <tr><th>Question</th><th>Agent memory</th><th>An AI artifact</th></tr>
         </thead>
         <tbody>
-          <tr><td>What it holds</td><td>Working context: preferences, project terms, decisions already made</td><td>A finished work product that renders as a page</td></tr>
+          <tr><td>What it holds</td><td>Working context: preferences, project terms, decisions already made</td><td>A finished work product, rendered at a link or downloaded as a file</td></tr>
           <tr><td>Who it is for</td><td>The model that reads it next</td><td>A person who opens the link, and any agent a team member has connected</td></tr>
           <tr><td>How long it lasts</td><td>The session or project it was scoped to</td><td>A stable address that outlives the session</td></tr>
           <tr><td>How it is reached</td><td>The tool that owns it, in the context it was written for</td><td>Search, where indexing is switched on, or the link itself</td></tr>
@@ -205,7 +205,7 @@
         <li>Sharing is exactly private, team or public, plus the owner and the team administrators. A team administrator can switch public links off for the whole team, and a publish that asks for public is then refused. There is no per-person share.</li>
         <li>Search depends on indexing, which is switched on at the deployment level and is off by default, and a re-index is rate-limited to once per ten minutes per artifact.</li>
         <li>A single page is limited to 1 MB, and a bundle to 500 files, capped at 8 MB or the plan ceiling, whichever is lower: 5 MB on free, 10 MB on team, 25 MB on enterprise. A link published without an account carries a five-day sliding expiry and a 1 MB limit for a single file.</li>
-        <li>It does not author or edit documents. It stores and finds what an AI already made, and a page is published rather than drafted inside it.</li>
+        <li>It does not author or edit an artifact's own content. It stores and finds what an AI already made, and a page is published rather than drafted inside it; a signed-in member who can see the page can comment on it, and commenting is a write.</li>
       </ul>
     </section>
 

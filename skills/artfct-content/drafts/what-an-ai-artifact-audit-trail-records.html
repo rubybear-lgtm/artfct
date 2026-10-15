@@ -187,8 +187,9 @@
     <section class="s" id="s8">
       <h2>Which entries are not in the log?</h2>
       <p>Deletion is the gap worth stating before a reviewer finds it. Removing an artifact through the connection records telemetry rather than an audit entry, and it is not one of the actions the log's export carries on Enterprise. The deletion entries that do exist come from governance flows such as a legal hold or an erasure, not from an ordinary removal. A question about when something was deleted cannot be answered from the trail alone.</p>
-      <p>Comparison is the second gap. Earlier versions of a page can be listed, opened and restored, and two versions cannot be placed side by side. Nothing in the record describes what changed between them, so a reviewer who needs the difference has to hold both pages and read them.</p>
-      <p>Both gaps are properties of the record rather than failures of a workflow, and a review that assumes otherwise reaches a wrong conclusion at the worst moment. Stating them here is cheaper than discovering them under time pressure.</p>
+      <p>Comments are the second gap, and they arrive from a surface that looks like exactly the kind of event a log should carry. A reader with access can comment on an artifact, and a connected agent can post one: plain text, up to 4,000 characters, threaded as a reply and resolvable. None of that produces an audit entry. There is no comment event type, and the tool that posts one records telemetry only, so the trail shows that a page was shared and says nothing about who weighed in on it.</p>
+      <p>Comparison is the third gap. Earlier versions of a page can be listed, opened and restored, and two versions cannot be placed side by side. Nothing in the record describes what changed between them, so a reviewer who needs the difference has to hold both pages and read them.</p>
+      <p>Each of these gaps is a property of the record rather than a failure of a workflow, and a review that assumes otherwise reaches a wrong conclusion at the worst moment. Stating them here is cheaper than discovering them under time pressure.</p>
     </section>
 
     <section class="s" id="s9">
@@ -203,6 +204,7 @@
       <h2>What this does not do</h2>
       <ul>
         <li><strong>Deletion is not an audit entry.</strong> Removing an artifact through the connection records telemetry rather than an audit entry, and it is not among the actions the log's export carries on Enterprise. Deletion entries come from governance flows such as a legal hold or an erasure.</li>
+        <li><strong>Comments are not audited.</strong> A reader with access can comment on an artifact, and a connected agent can post one, which makes commenting a write against the work. It produces no audit entry: there is no comment event type, and the tool records telemetry only. The log reports that a page was shared rather than what colleagues wrote on it.</li>
         <li><strong>There is no version comparison.</strong> Earlier versions can be listed, opened and restored, and two versions cannot be placed side by side, so the record shows that a change happened rather than what changed.</li>
         <li><strong>No repository, branch or commit.</strong> On the supported connection those fields are recorded as absent, which also leaves the repository filter in search with nothing to match.</li>
         <li><strong>The AI tool is not identified with confidence.</strong> The model is recorded as the caller reports it, and the console's tool column shows an unknown tool for artifacts published through the hosted connection.</li>

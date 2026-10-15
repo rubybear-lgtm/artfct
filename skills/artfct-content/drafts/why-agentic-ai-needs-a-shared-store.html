@@ -127,7 +127,8 @@
       <li><a href="#s4">Why does a bigger window not carry a peer's finished work?</a></li>
       <li><a href="#s5">What would a larger window have to do to replace a shared record?</a></li>
       <li><a href="#s6">How does the first agent's output become findable?</a></li>
-      <li><a href="#s7">Which one does a team need?</a></li>
+      <li><a href="#s7">What can the next agent do once it has found the work?</a></li>
+      <li><a href="#s8">Which one does a team need?</a></li>
     </ol>
   </nav>
 
@@ -144,7 +145,7 @@
       <h2>What is a shared record for, in a team of agents?</h2>
       <p>A shared record is for the finished work that a context window is not built to keep. Artfct takes the page an agent produced in HTML — a report, a dashboard — and publishes it to an address. The <a href="https://artfct.dev/blog/what-is-an-ai-artifact">artifact</a> outlives the session that made it.</p>
       <p>The record is not a larger working memory, and it is not somewhere a model thinks. It is what the team's agents have already built, kept in a place that a person can open and that any connected tool can search once indexing is enabled for the deployment.</p>
-      <p>Its scope is narrow on purpose. It holds pages that an AI tool produced and that render as a page. The team keeps the rest of its files where it keeps them.</p>
+      <p>Its scope is narrow on purpose. It holds what an AI tool produced and a person can open — rendered at a link or downloaded as a file. The team keeps the rest of its files where it keeps them.</p>
       <p>That difference matters in a multi-agent setup, because the second agent is rarely short of its own context. What it lacks is not room, but any sign that the work already exists.</p>
     </section>
 
@@ -181,6 +182,14 @@
     </section>
 
     <section class="s" id="s7">
+      <h2>What can the next agent do once it has found the work?</h2>
+      <p>A search returns a summary, an evidence excerpt and a link, and the excerpt a connected tool receives is longer than the one the console shows. That is often enough to establish that a page is the right one. It is not always enough to build on, because an excerpt is a sample of the work rather than the work itself.</p>
+      <p>Where indexing is enabled, the next agent is not limited to that sample. <code>read_artifact</code> returns the extracted text of one artifact, one bounded page at a time, taking an offset and a limit and reporting a next offset to continue from. It returns text and never the HTML bundle, and it is version-honest: only the last-indexed version can be read, so a reader cannot pull the wording of an older revision.</p>
+      <p>The second question is what has changed since the peer last looked. <code>search_artifacts</code> accepts <code>changed_since</code>, so an agent that already holds a time can ask for the work updated after it, rather than repeating the whole search from the start. A nightly agent picks up the report it read last week and asks only for what has moved since.</p>
+      <p>Both paths depend on indexing, and neither is a property of the window on either side. With indexing off, search answers that it is not enabled for the workspace yet, and a read answers that reading artifact text is not enabled for the workspace yet. Where it is on, a peer can continue from recorded work rather than reconstruct it.</p>
+    </section>
+
+    <section class="s" id="s8">
       <h2>Which one does a team need?</h2>
       <p>The two are not substitutes, and neither replaces the other. A window is where an agent holds the task it is working on. A shared record is where the work goes once the task is finished.</p>
       <table class="t">
@@ -192,7 +201,7 @@
           <tr><td>Lifetime</td><td>Lasts for the session</td><td>Lasts beyond the session, at an address</td></tr>
           <tr><td>Between two different tools</td><td>Nothing crosses unless one vendor owns both</td><td>A published artifact is searchable from either side, once indexing is on</td></tr>
           <tr><td>Holding a long task together</td><td>Its main job</td><td>Not its job; it keeps finished output, not work in progress</td></tr>
-          <tr><td>Finding earlier work</td><td>Not possible; the next session starts over</td><td>With indexing on, search returns the artifact, then the latest version</td></tr>
+          <tr><td>Finding earlier work</td><td>Not possible; the next session starts over</td><td>With indexing on, a read returns the last-indexed text, marked stale</td></tr>
         </tbody>
       </table>
       <h3>Choose a larger context window if</h3>
@@ -207,7 +216,7 @@
         <li>It moves finished artifacts, not reasoning. What reaches the second agent is the report, not the argument or the steps that produced it.</li>
         <li>It does not change what a model knows or how well it reasons. A record of finished work is something a model is given, not an improvement to the model.</li>
         <li>Whether an indexed artifact changes how an agent behaves is not something we can show a measurement for yet. It is the question the product exists to test.</li>
-        <li>Search is off until a deployment operator enables indexing for the deployment, so retrieval is not present in every workspace by default.</li>
+        <li>Search and artifact reading are off until a deployment operator enables indexing for the deployment, so retrieval is not present in every workspace by default.</li>
         <li>Public links can be switched off for a team, so whether a link opens without an account depends on an administrator's setting.</li>
         <li>A tool that can only start programs on your computer cannot connect, because artfct runs as a hosted server.</li>
       </ul>
