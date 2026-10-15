@@ -39,6 +39,7 @@ final class RealAuthKitClient implements AuthKitClientContract
             lastName: $user->lastName,
             avatar: $user->profilePictureUrl,
             sessionId: self::sessionIdFrom($result->accessToken),
+            organizationId: is_string($result->organizationId ?? null) && $result->organizationId !== '' ? $result->organizationId : null,
         );
     }
 

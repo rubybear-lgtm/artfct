@@ -61,6 +61,10 @@ class PolisCallbackController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
+        // Only the staff WorkOS organization on the AuthKit path makes a staff
+        // session (spec 17); a customer SSO sign-in never inherits one.
+        $request->session()->forget('staff_session');
+
         if (! $user->current_team_id) {
             $user->switchTeam($organization);
         }

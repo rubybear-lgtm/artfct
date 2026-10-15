@@ -145,7 +145,7 @@ Erase is the only irreversible action. It always runs the dry run first and disp
 - [ ] A user with `staff_at` who signs in through the staff organization reaches `/ops`.
 - [ ] `staff:grant` sets `users.staff_at`; `staff:revoke` clears it; both leave an audit event.
 - [ ] No HTTP request, including profile and account updates, can set `staff_at`.
-- [ ] A staff user who is not a member of tenant X receives 404 on tenant X's console and settings routes.
+- [ ] A staff user who is not a member of tenant X receives 404 on tenant X's console and settings routes, or 403 on the routes already guarded by the existing `EnsureTeamMembership` middleware (`teams.edit`, `teams.authentication.show`), whose behaviour this spec does not change.
 - [ ] The tenant list filtered by plan, payment status and region returns only matching tenants, and search by slug, billing email and Stripe customer id finds the tenant.
 - [ ] Paging to the end of the tenant list produces no duplicated or skipped rows.
 - [ ] The tenant detail page shows usage against the enforced limits from the Worker; with the Worker unreachable, the page still renders and only the usage panel shows an error.

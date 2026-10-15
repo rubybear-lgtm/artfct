@@ -18,6 +18,10 @@ use RuntimeException;
  * in-memory queue would not. They are encrypted, not merely encoded: an
  * unsigned code would let anyone who can reach `/authenticate` forge a
  * profile (any email) and take over the matching account.
+ *
+ * A code can carry an organization id so tests can prove the callback does
+ * not trust it: a session from this client is never a staff session, whatever
+ * organization it names (spec 17). Dev login never sets one.
  */
 final class FakeAuthKitClient implements AuthKitClientContract
 {
@@ -35,6 +39,7 @@ final class FakeAuthKitClient implements AuthKitClientContract
             'first_name' => $profile->firstName,
             'last_name' => $profile->lastName,
             'avatar' => $profile->avatar,
+            'organization_id' => $profile->organizationId,
             'expires_at' => now()->addMinutes(5)->timestamp,
         ], JSON_THROW_ON_ERROR));
     }
@@ -63,6 +68,7 @@ final class FakeAuthKitClient implements AuthKitClientContract
             firstName: $decoded['first_name'] ?? null,
             lastName: $decoded['last_name'] ?? null,
             avatar: $decoded['avatar'] ?? null,
+            organizationId: is_string($decoded['organization_id'] ?? null) ? $decoded['organization_id'] : null,
         );
     }
 }
