@@ -135,7 +135,7 @@
   <main>
     <section class="s" id="s1">
       <h2>What counts as an artifact?</h2>
-      <p>This page holds one definition and applies it throughout. An artifact is a finished work product that an AI tool made and that renders as a page a reader can open unaided. A revenue report, a dashboard of pipeline numbers, a comparison table, a short written document and an interactive page all qualify, and the form varies while the test does not.</p>
+      <p>This page holds one definition and applies it throughout. An artifact is a finished work product that an AI tool made and that a reader can open unaided — rendered at its link when the entrypoint is a page, downloaded when it is a file such as a table or a document. A revenue report, a dashboard of pipeline numbers, a comparison table, a short written document and an interactive page all qualify, and the form varies while the test does not.</p>
       <p>The test is whether a colleague can use the thing without the conversation that produced it. A finished report passes, because its numbers and its reasoning arrive together and stand on their own. A half-finished outline fails, because the reader cannot separate what was decided from what was merely considered. An artifact sits at the finished end of that spectrum, which is why the word carries the weight it does.</p>
       <p>The same word appears elsewhere in software, and those other senses cause much of the confusion this explainer addresses. In a build pipeline an artifact is a compiled file, a package or a signed manifest. In a design tool it is a mock-up handed between stages. Both senses are legitimate, and neither is the one used here.</p>
     </section>
@@ -198,7 +198,7 @@
       <ul>
         <li>It is not a memory layer for a model. It moves finished artifacts rather than reasoning, and it does not change what a model knows or how it writes.</li>
         <li>It is not a wiki. There is no authoring surface and no editing surface; a record of finished work is kept and found, not written.</li>
-        <li>Notebooks, PDFs and video are not in scope, and neither are arbitrary office files or archives kept for their own sake. An artifact is something an AI made that renders as a page.</li>
+        <li>Notebooks, PDFs and video are not in scope, and neither are arbitrary office files or archives kept for their own sake. An artifact is something an AI made that a person can open — rendered at its link when it is a page, downloaded when it is not.</li>
         <li>It is not static site hosting and it is not a content delivery network, and it is not offered as self-hosted or on-prem software. Pages are shared with tens of people rather than millions.</li>
         <li>There is no per-person sharing. Access is private, team or public, plus the owner and the team's administrators.</li>
         <li>On the hosted connection the provenance record does not include the repository, the branch or the commit, so a repository filter in search matches only the artifacts that carry one.</li>
@@ -210,7 +210,7 @@
     <section class="faq">
       <h2>Questions</h2>
       <details class="q"><summary>Is a chat transcript an artifact?</summary><p>No. A transcript records the reasoning that produced an answer, and it stays inside the tool that held the session. An artifact is the finished output, published at an address that another person or another tool can open.</p></details>
-      <details class="q"><summary>Can a single table or document be an artifact?</summary><p>Yes. The test is that it renders as a page and stands on its own, so a table of results or a short report qualifies. A raw spreadsheet file or an archive does not, because nothing renders it and a reader cannot use it in place.</p></details>
+      <details class="q"><summary>Can a single table or document be an artifact?</summary><p>Yes. A table or a document is an artifact, and it opens the way its format allows: served as a page when the entrypoint is HTML, downloaded when it is a comma- or tab-separated table or a JSON file. What does not qualify is a file with no artifact entrypoint — an office document, an image or an archive kept for its own sake.</p></details>
       <details class="q"><summary>Does an artifact record which repository it came from?</summary><p>On the hosted connection, no. The provenance record holds the model when the caller supplies it, the session, the publishing tool and the client, and it leaves the repository, branch and commit empty. A repository filter in search therefore matches only artifacts that carry those fields.</p></details>
       <details class="q"><summary>Can one artifact be shared with a single named person?</summary><p>Not today. Access is private, team or public, together with the owner and the team's administrators. Edit rights are a separate grant on the same artifact, so a colleague can be allowed to publish the next version without widening who can see it.</p></details>
       <details class="q"><summary>What happens when the same content is published twice?</summary><p>It resolves to one artifact rather than two, because identity is derived from the content itself. That keeps a team from accumulating near-identical copies that differ only in when they were made.</p></details>
