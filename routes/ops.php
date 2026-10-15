@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Ops\HealthController;
+use App\Http\Controllers\Ops\TenantIndexController;
+use App\Http\Controllers\Ops\TenantShowController;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -23,7 +26,11 @@ Route::prefix('ops')
     ->middleware([EnsureStaff::class, 'throttle:ops'])
     ->withoutMiddleware([EnsureTermsAccepted::class])
     ->group(function () {
-        Route::get('/', fn () => response('ok'))->name('tenants.index');
+        Route::get('/', TenantIndexController::class)->name('tenants.index');
+        // Soft-deleted tenants stay reachable: the binding is the slug and
+        // includes trashed teams, so an erased or deleted tenant is readable.
+        Route::get('tenants/{team}', TenantShowController::class)->withTrashed()->name('tenants.show');
+        Route::get('health', HealthController::class)->name('health');
 
         // Later units: add every real `/ops` route ABOVE this one.
         //
