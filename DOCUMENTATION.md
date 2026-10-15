@@ -1,5 +1,10 @@
 # Storage modes
 
+> Update (2026-10): new permanent artifacts use a random 13-character id and open at
+> `/a/{id}`; the 32-character manifest-hash ids and `/p/{id}` paths below still work for
+> older artifacts. See "Versions, sharing and short links". `ARTFCT_ORG_TOKEN` is a legacy
+> fallback, superseded by the auth seam (spec 7).
+
 Ephemeral artifacts remain encrypted in Workers KV and use a fragment passcode. They
 retain the five-day sliding expiration policy and the one-megabyte client limit.
 
@@ -642,6 +647,61 @@ was actually opened" needs a signal from wherever "opened" happens (the
 Worker's serving path again, or an MCP client reporting back) matched
 against the search that returned it. `UsageEventLogger`'s methods for
 both are real and tested; nothing currently calls them for real traffic.
+
+## Versions, sharing and short links (RUB-437, RUB-438, RUB-439)
+
+**Versions.** A permanent artifact has a stable id (13 random characters for
+new artifacts; older 32-character ids keep working) that survives edits.
+`POST /v1/artifacts/{id}/versions` publishes a version (identical bytes are a
+no-op), `GET .../versions[/{n}]` reads history, and `.../versions/{n}/restore`
+republishes an old version as a new one. A new version keeps the artifact's
+link, collections, usage history, revocation and legal hold; a pending upload
+never replaces the current version until it completes. Blob refcounts count
+manifest entries across every version. Search indexes the latest version only
+(`artifact.version_created` re-indexes). Export is current-version only.
+
+**Sharing.** Every permanent artifact is Private (owner and team admins), Team
+(default) or Public (anyone with the link), and Can view or Can edit. The Worker
+enforces Private on every read path (metadata, content, versions, serving,
+list, export, blob download) in one module, `backend/src/sharing.rs`; unknown
+tiers are treated as private and every refusal is the same 404 as a missing
+artifact. `PATCH /v1/artifacts/{id}/sharing` (owner or admin) is audited as
+`artifact.sharing_changed`. Admins can turn public links off for a team, which
+downgrades existing public artifacts to Team and audits each one.
+`php artisan artifacts:backfill-owners` assigns an owner to artifacts published
+before owners were recorded. Permanent responses are
+`Cache-Control: private, no-store` with `Referrer-Policy: no-referrer`, and
+isolated origins can be framed only by the app (`ARTFCT_APP_ORIGIN`).
+
+**Short links.** `/a/{id}` is the one link for every artifact (at most 35
+characters on `artfct.dev`). It opens the artifact in a sandboxed frame on its
+isolated origin under a thin header (version, owner, updated date, Share).
+Public artifacts open for anyone through the unauthenticated
+`GET /v1/public/artifacts/{id}`, which returns the same 404 for anything that
+is not public; team and private links send signed-out visitors to sign in and
+back; `/a/{id}/v/{n}` opens a version. The console open route and the Worker's
+`/p/{id}/` redirect to `/a/{id}` for public artifacts; bundle files and
+ephemeral links are unchanged. Console, search, collections, dashboard and MCP
+all hand out `/a/{id}`.
+
+## Teammate and admin views (2026-10-07)
+
+The app has a teammate view and an admin view, following the roles in
+`docs/prd.md`. Members and viewers see Home, Artifacts, Collections, AI tool
+connections and Team, with API tokens in the account menu; banners tell them to
+ask a team admin rather than linking to billing, and they get no setup
+checklist. Admins see the same, plus an Admin entry (`teams.admin.show`, an
+overview page) with a settings sub-nav. `currentTeam.role` and
+`currentTeam.isAdmin` are shared Inertia props and drive the layout.
+
+The split is navigation only. Billing and token pages stay reachable by URL for
+members on purpose (read-only billing is covered by existing tests); hard-gating
+them is an open follow-up.
+
+## MCP sessions
+
+Hosted MCP sessions last 14 days (`MCP_SESSION_TTL_MINUTES`, default 20160) so
+a connected tool does not need re-authorizing by hand. 
 
 ## Product decisions (2026-09-20)
 

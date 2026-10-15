@@ -1,22 +1,17 @@
-```
- █████╗ ██████╗ ████████╗███████╗ ██████╗████████╗
-██╔══██╗██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝
-███████║██████╔╝   ██║   █████╗  ██║        ██║   
-██╔══██║██╔══██╗   ██║   ██╔══╝  ██║        ██║   
-██║  ██║██║  ██║   ██║   ██║     ╚██████╗   ██║   
-╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝      ╚═════╝   ╚═╝   
-```
+# Artfct
 
-share encrypted html. get a link. that's it.
+What your team's AI makes, shared, stored and searchable by every AI tool you use.
 
-Drop a self-contained HTML file — via browser, API, or AI agent — and get back a
-shareable encrypted link. No sign-up required.
+Artifacts are anything an AI makes that is worth keeping: interactive HTML, reports, markdown
+docs, tables, mockups. Your team shares them to one workspace, and every AI tool you connect reads
+them back with sources (Claude Code, Codex, OpenCode and Antigravity are verified). A free single-file tool is also available
+at [artfct.dev](https://artfct.dev): drop an HTML file and get an encrypted, expiring link with
+no account.
 
 ---
 
 - **Web** — [artfct.dev](https://artfct.dev)
 - **Docs** — [artfct.dev/docs](https://artfct.dev/docs)
-- **Releases** — [github.com/rubybear-lgtm/artfct/releases](https://github.com/rubybear-lgtm/artfct/releases)
 
 ---
 
@@ -24,16 +19,6 @@ shareable encrypted link. No sign-up required.
 
 Visit [artfct.dev](https://artfct.dev). Drop or select an `.html` file. You get a
 link immediately — no account, no configuration.
-
-```
- drop your .html file here
- or click to browse
-
- [ deploy → ]
-
- → https://artfct.dev/p/4fA8gX9z...#abC123xyZ9   ⎘ copy
-   expires in 5 days
-```
 
 Links are encrypted and ephemeral by default: they expire 5 days after last
 access unless you set a custom TTL. Public metadata stays visible for link
@@ -65,19 +50,22 @@ with an organization token (team settings, **API tokens**).
 
 The hosted server exposes these tools:
 
-- `deploy_artifact` — publish HTML, or a multi-file bundle (`files` and `entrypoint`, up to 500 files and 8 MB, base64 for binaries), as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage. Returns a `view_url`: the app's own open route for a secure artifact, the workspace's public artifact URL for a public one.
+- `deploy_artifact` — publish HTML, or a multi-file bundle (`files` and `entrypoint`, up to 500 files and 8 MB, base64 for binaries), as a permanent artifact in your workspace, so it can be searched, retrieved, collected and counted toward usage. Pass `sharing` (`private`, `team` by default, or `public`) and `edit_access`; `tier` is a deprecated alias. Pass `artifact_id` to publish a new version of an existing artifact. Returns a short `view_url` (`/a/{id}`).
 - `deploy_to_canvas` — **deprecated**, use `deploy_artifact`. Publishes an anonymous, encrypted, expiring artifact that the workspace cannot search or retrieve.
-- `search_artifacts` — search previously deployed artifacts without returning HTML. Each result carries a `view_url` on the app's open route.
+- `search_artifacts` — search previously deployed artifacts by meaning, without returning HTML. Each result carries a `view_url` on `/a/{id}`.
+- `list_artifacts` — browse artifacts by owner (`me`, anyone, or a member's email), sharing, collection, agent, dates, title words and kind (html, markdown, table), sorted by updated, created, title or most viewed, with a cursor. Use it to answer "what did I make" or "what did a teammate publish"; use `search_artifacts` for topics.
+- `get_artifact` — retrieve artifact metadata (and a specific `version`) without exposing bundle contents, plus its `view_url`.
+- `delete_artifact` — permanently delete an artifact by ID. Needs the `artifacts:delete` scope and is refused under legal hold.
 - `get_connection` — inspect the authenticated workspace, scopes, and client context.
 - `get_usage` — inspect customer-safe storage, artifact, render, and quota totals.
-- `get_artifact` — retrieve artifact metadata without exposing bundle contents, plus a `view_url` under the same rule as `deploy_artifact`.
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
 
 Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request
 only the scopes they need. The dashboard's **MCP connections** page shows the address and lets
-workspace administrators inspect, monitor, and revoke connections. Connections use Streamable HTTP.
+workspace administrators inspect, monitor, and revoke connections. Connections use Streamable HTTP, and a
+connected tool stays signed in for 14 days (`MCP_SESSION_TTL_MINUTES`).
 `deploy_artifact` is naturally idempotent: publishing identical content to the
 same workspace returns the same artifact. For safe retries of the deprecated
 `deploy_to_canvas`, send a stable `MCP-Request-Id` (or `Idempotency-Key`)
@@ -168,19 +156,20 @@ retrieval, collection, usage, and connection tools documented in [Connect your A
 Tool](#connect-your-ai-tool). `deploy_artifact` accepts a complete HTML payload
 or a multi-file bundle and publishes it to the workspace — agents should deploy instead of emitting raw
 code blocks whenever they produce visual output. Artifacts are stored readable
-by the workspace (that is what makes them searchable); `secure` limits who can
-open the link, `public` does not. A secure artifact's `view_url` is the app's
-own open route (`/settings/teams/<org>/console/artifacts/<id>/open`), so an
-agent can hand it to a colleague and it works when that colleague is signed in;
-a public artifact's `view_url` is the artifact's public URL, which needs no
-session and gets no token minted for it.
+by the workspace (that is what makes them searchable). Sharing is `private`
+(owner and team admins), `team` (the default) or `public` (anyone with the
+link), and `edit_access` lets the people it is shared with publish new
+versions. Every artifact has one short link, `/a/{id}`: public artifacts open
+there for anyone, team and private links send signed-out visitors to sign in
+and back, and `/a/{id}/v/{n}` opens a version. Old console open links and the
+shared-origin `/p/{id}/` links of public artifacts redirect to it.
 
 ```json
 {
   "name": "deploy_artifact",
   "arguments": {
     "html": "<!DOCTYPE html>...",
-    "tier": "secure",
+    "sharing": "team",
     "model": "optional-agent-attested-model"
   }
 }
@@ -233,7 +222,7 @@ npx skills add rubybear-lgtm/artfct@artfct
 The skill teaches agents:
 
 - When to deploy vs. when to return a code block
-- How to choose the right tier (`public` / `secure` / `ephemeral`)
+- How to choose the right sharing level (`private` / `team` / `public`)
 - How to author valid self-contained HTML with SRI-pinned CDN dependencies
 - How to handle errors and present URLs clearly
 
