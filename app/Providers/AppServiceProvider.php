@@ -63,7 +63,9 @@ use App\Services\WorkerEvents\ArtifactVersionCreatedHandler;
 use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use App\Support\ClientIp;
+use App\Support\StaffAccess;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
@@ -180,7 +182,18 @@ class AppServiceProvider extends ServiceProvider
         // The one staff ability (spec 17). Deliberately not a `Gate::before`
         // hook: that would grant every ability, including the tenant policies,
         // to staff who are not members of the tenant.
-        Gate::define('operate', fn (User $user): bool => $user->isStaff());
+        //
+        // It is satisfied by `StaffAccess` and nothing else: the grant alone is
+        // not enough outside a development host, the session proof is needed too.
+        Gate::define('operate', fn (User $user): bool => StaffAccess::allows($user));
+
+        // No sign-in inherits a staff session. The AuthKit callback writes the
+        // flag after `login()`, so this runs first and cannot clear its own.
+        Event::listen(Login::class, function (): void {
+            if (app()->bound('session.store')) {
+                app('session.store')->forget(StaffAccess::SESSION_KEY);
+            }
+        });
 
         // A browser that hits a refused or missing page lands on one branded,
         // plain-language screen instead of Laravel's bare "404 | Not Found".

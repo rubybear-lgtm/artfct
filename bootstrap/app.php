@@ -1,19 +1,21 @@
 <?php
 
 use App\Http\Middleware\CacheControl;
+use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NoIndexOutsideProduction;
 use App\Http\Middleware\PinRequestScheme;
 use App\Http\Middleware\RequireOrgScope;
 use App\Http\Middleware\SetTeamUrlDefaults;
+use App\Support\StaffAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Session\TokenMismatchException;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -53,6 +55,15 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureTermsAccepted::class,
         ]);
 
+        // `/ops` refusals must be the ordinary 404 and nothing else. By default
+        // route model binding (a missing tenant) and the throttle (a 429 after
+        // enough probes) would answer first for a visitor who is not staff, and
+        // neither happens for an unknown URL. The staff guard runs before both.
+        $middleware->prependToPriorityList(
+            before: ThrottleRequests::class,
+            prepend: EnsureStaff::class,
+        );
+
         $middleware->alias([
             'org.scope' => RequireOrgScope::class,
         ]);
@@ -71,7 +82,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // every other route keeps its 419.
         $exceptions->map(
             fn (TokenMismatchException $exception) => request()->is('ops', 'ops/*')
-                ? new NotFoundHttpException('', $exception)
+                ? StaffAccess::notFound(request(), $exception)
                 : $exception,
         );
     })->create();

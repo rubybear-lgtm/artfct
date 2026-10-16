@@ -8,6 +8,7 @@ use App\Services\Operator\OperatorAuditLogger;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Removes artfct staff access (spec 17), including the case manager privilege,
@@ -35,16 +36,18 @@ class StaffRevokeCommand extends Command
             return self::SUCCESS;
         }
 
-        $user->forceFill(['staff_at' => null, 'case_manager_at' => null])->save();
+        DB::transaction(function () use ($user, $logger): void {
+            $user->forceFill(['staff_at' => null, 'case_manager_at' => null])->save();
 
-        $logger->record(
-            AuditEventType::StaffRevoked,
-            null,
-            null,
-            "user:{$user->id}",
-            'internal',
-            'staff:revoke',
-        );
+            $logger->record(
+                AuditEventType::StaffRevoked,
+                null,
+                null,
+                "user:{$user->id}",
+                'internal',
+                'staff:revoke',
+            );
+        });
 
         $this->components->info("Revoked staff access from {$user->email}.");
 

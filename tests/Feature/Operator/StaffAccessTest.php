@@ -14,9 +14,12 @@ use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\AuthKitProfile;
 use App\Services\AuthKit\FakeAuthKitClient;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia as Assert;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\TestCase;
 
 beforeEach(fn () => $this->withoutVite());
@@ -266,6 +269,12 @@ test('staff_grant_and_revoke_write_audit_events', function () {
     $this->artisan('staff:grant', ['email' => 'new-staff@artfct.test', '--case-manager' => true])->assertSuccessful();
     expect($user->fresh()->isCaseManager())->toBeTrue();
 
+    // Granting what is already held is a warning, not another event.
+    $granted = OperatorAuditEvent::query()->where('event_type', AuditEventType::StaffGranted)->count();
+    $this->artisan('staff:grant', ['email' => 'new-staff@artfct.test'])->assertSuccessful();
+    $this->artisan('staff:grant', ['email' => 'new-staff@artfct.test', '--case-manager' => true])->assertSuccessful();
+    expect(OperatorAuditEvent::query()->where('event_type', AuditEventType::StaffGranted)->count())->toBe($granted);
+
     $this->artisan('staff:revoke', ['email' => 'new-staff@artfct.test'])->assertSuccessful();
 
     $user->refresh();
@@ -362,6 +371,7 @@ test('session_from_another_workos_organization_gets_404_on_ops', function () {
 });
 
 test('staff_org_session_with_staff_at_reaches_ops', function () {
+    $this->freezeTime();
     config(['services.workos.staff_organization_id' => STAFF_ACCESS_ORG]);
     $staff = staffAccessStaff('org-staff@artfct.test');
 
@@ -454,6 +464,7 @@ test('staff_non_member_is_refused_on_viewer_console_open_and_export', function (
     $viewer->assertOk();
     expect($viewer->getContent())->toContain('Confidential plan');
     $this->actingAs($member)->get($urls['console open'])->assertRedirect();
+    $this->actingAs($member)->get($urls['console export'])->assertOk();
 
     auth()->logout();
     staffAccessEnvironment('staging');
@@ -467,25 +478,29 @@ test('staff_non_member_is_refused_on_viewer_console_open_and_export', function (
     }
 });
 
-test('non_get_methods_on_ops_return_404_not_405', function () {
-    $member = memberOfTeam(Team::factory()->create(), TeamRole::Member);
+test('non_get_methods_on_ops_return_404_not_405', function (bool $signedIn) {
+    if ($signedIn) {
+        $this->actingAs(memberOfTeam(Team::factory()->create(), TeamRole::Member));
+    }
+
+    expect(auth()->check())->toBe($signedIn);
 
     foreach (['testing', 'staging', 'production'] as $environment) {
         staffAccessEnvironment($environment);
 
         foreach (['/ops', '/ops/anything', '/ops/tenants/1/limits'] as $uri) {
             foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
-                foreach ([null, $member] as $user) {
-                    $request = $user === null ? $this : $this->actingAs($user);
-                    $response = $request->call($method, $uri);
+                $response = $this->call($method, $uri);
 
-                    expect($response->getStatusCode())->toBe(404, "{$method} {$uri} in {$environment} answered {$response->getStatusCode()}");
-                    expect($response->headers->has('Allow'))->toBeFalse("{$method} {$uri} in {$environment} sent an Allow header");
-                }
+                expect($response->getStatusCode())->toBe(404, "{$method} {$uri} in {$environment} answered {$response->getStatusCode()}");
+                expect($response->headers->has('Allow'))->toBeFalse("{$method} {$uri} in {$environment} sent an Allow header");
             }
         }
     }
-});
+})->with([
+    'signed out' => [false],
+    'signed in, not staff' => [true],
+]);
 
 test('staff_session_for_another_user_is_refused', function () {
     $staff = staffAccessStaff();
@@ -500,6 +515,7 @@ test('staff_session_for_another_user_is_refused', function () {
 });
 
 test('staff_session_older_than_the_grant_is_refused', function () {
+    $this->freezeTime();
     $staff = staffAccessStaff();
 
     staffAccessEnvironment('staging');
@@ -513,4 +529,147 @@ test('staff_session_older_than_the_grant_is_refused', function () {
 
     $this->actingAs($staff->fresh())->withSession(staffAccessSession($staff, $signedInAt))->get('/ops')->assertNotFound();
     $this->actingAs($staff->fresh())->withSession(staffAccessSession($staff, now()->addMinutes(6)->timestamp))->get('/ops')->assertOk();
+});
+
+test('ops_refusal_matches_an_unknown_url_for_json_and_html_clients', function () {
+    config(['app.debug' => false]);
+
+    $pairs = [
+        ['GET', '/ops', '/zz-unknown'],
+        ['GET', '/ops/tenants/x', '/zz-unknown/tenants/x'],
+        ['POST', '/ops/anything', '/zz-unknown/anything'],
+    ];
+
+    // The exception the refusal raises carries the message Laravel gives an
+    // unmatched URL, which is what a JSON-rendered 404 would show.
+    $seen = [];
+    app(ExceptionHandler::class)->renderable(function (NotFoundHttpException $exception) use (&$seen) {
+        $seen[] = $exception->getMessage();
+
+        return null;
+    });
+
+    foreach ($pairs as [$method, $opsUri, $unknownUri]) {
+        foreach ([$unknownUri, $opsUri] as $uri) {
+            $seen = [];
+            $this->call($method, $uri)->assertNotFound();
+
+            expect($seen)->toBe(['The route '.trim($uri, '/').' could not be found.']);
+        }
+    }
+
+    // The catch-all itself, reached by a staff user on a URL no real route
+    // claims, answers with the same message.
+    $staff = staffAccessStaff();
+
+    foreach (['/ops/anything', '/ops/tenants/x/nothing'] as $uri) {
+        $seen = [];
+        $this->actingAs($staff)->call('POST', $uri)->assertNotFound();
+
+        expect($seen)->toBe(['The route '.trim($uri, '/').' could not be found.']);
+    }
+
+    auth()->logout();
+
+    // The very first request of a process renders slightly more (cold
+    // framework state); warm it up so the comparison below is like for like.
+    $this->get('/zz-warm-up');
+
+    // And the rendered answer: same status, content type and body (the path
+    // being the only thing allowed to differ), for both kinds of client.
+    foreach ($pairs as [$method, $opsUri, $unknownUri]) {
+        foreach ([[], ['Accept' => 'application/json']] as $headers) {
+            $ops = $this->call($method, $opsUri, [], [], [], collect($headers)->mapWithKeys(fn ($value, $key) => ['HTTP_'.strtoupper($key) => $value])->all());
+            $unknown = $this->call($method, $unknownUri, [], [], [], collect($headers)->mapWithKeys(fn ($value, $key) => ['HTTP_'.strtoupper($key) => $value])->all());
+
+            expect($ops->getStatusCode())->toBe(404)->and($unknown->getStatusCode())->toBe(404);
+
+            // An unmatched URL's response has not been through `prepare()` yet,
+            // so its default content type is only added when it is sent.
+            $contentType = fn ($response): string => strtolower((string) ($response->headers->get('Content-Type') ?? 'text/html; charset=utf-8'));
+            expect($contentType($ops))->toBe($contentType($unknown));
+
+            $normalize = fn (string $body, string $uri): string => str_replace(
+                [addcslashes($uri, '/'), $uri],
+                '{path}',
+                $body,
+            );
+
+            if (str_contains((string) $ops->headers->get('Content-Type'), 'json')) {
+                expect(array_keys($ops->json()))->toBe(array_keys($unknown->json()));
+            }
+
+            expect($normalize((string) $ops->getContent(), $opsUri))
+                ->toBe($normalize((string) $unknown->getContent(), $unknownUri));
+        }
+    }
+});
+
+test('local_environment_shortcut_requires_a_dev_host', function () {
+    $staff = staffAccessStaff();
+
+    staffAccessEnvironment('local');
+
+    // Staff grant only, no staff session, on a deployed-looking host.
+    $this->actingAs($staff)->get('http://app.example.com/ops')->assertNotFound();
+    $this->actingAs($staff)->get('http://artfct.test.example.com/ops')->assertNotFound();
+
+    foreach (['http://localhost/ops', 'http://127.0.0.1/ops', 'http://[::1]/ops', 'http://artfct.test/ops'] as $url) {
+        $this->actingAs($staff)->get($url)->assertOk();
+    }
+
+    // The same grant still counts through the session proof anywhere.
+    $this->actingAs($staff)->withSession(staffAccessSession($staff))->get('http://app.example.com/ops')->assertOk();
+});
+
+test('operate_gate_is_not_satisfied_by_staff_at_alone_outside_a_dev_host', function () {
+    $staff = staffAccessStaff();
+
+    staffAccessEnvironment('production');
+
+    expect(Gate::forUser($staff)->allows('operate'))->toBeFalse();
+
+    staffAccessEnvironment('testing');
+
+    expect(Gate::forUser($staff)->allows('operate'))->toBeTrue();
+});
+
+test('non_staff_sign_in_clears_a_carried_over_staff_session', function () {
+    $this->freezeTime();
+    config(['services.workos.staff_organization_id' => STAFF_ACCESS_ORG]);
+    $staff = staffAccessStaff('carry@artfct.test');
+
+    app()->instance(AuthKitClientContract::class, staffAccessRealClient('carry@artfct.test', 'org_some_customer'));
+
+    // A valid staff session is carried into a sign-in through another organization.
+    $this->withSession(['authkit_state' => 'state-1', ...staffAccessSession($staff)])
+        ->get(route('authenticate', ['code' => 'code-1', 'state' => 'state-1']))
+        ->assertRedirect();
+
+    $this->assertAuthenticatedAs($staff);
+    expect(session('staff_session'))->toBeNull();
+
+    staffAccessEnvironment('staging');
+
+    staffAccessSameSession()->get('/ops')->assertNotFound();
+});
+
+test('any_login_clears_a_carried_over_staff_session', function () {
+    $staff = staffAccessStaff('direct@artfct.test');
+
+    $this->withSession(staffAccessSession($staff));
+    expect(session('staff_session'))->not->toBeNull();
+
+    // A login path that never touches the AuthKit callback's own forget.
+    Auth::guard('web')->login($staff);
+
+    expect(session('staff_session'))->toBeNull();
+});
+
+test('refused_ops_requests_are_never_throttled', function () {
+    // An unknown URL never answers 429, so a probing visitor must not be able
+    // to tell `/ops` apart by exhausting its throttle.
+    foreach (range(1, 130) as $attempt) {
+        $this->get('/ops')->assertNotFound();
+    }
 });

@@ -8,6 +8,7 @@ use App\Services\Operator\OperatorAuditLogger;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Grants artfct staff access (spec 17). This command is the only way
@@ -32,20 +33,28 @@ class StaffGrantCommand extends Command
 
         $caseManager = (bool) $this->option('case-manager');
 
-        $user->forceFill([
-            'staff_at' => $user->staff_at ?? now(),
-            'case_manager_at' => $caseManager ? ($user->case_manager_at ?? now()) : $user->case_manager_at,
-        ])->save();
+        if ($user->staff_at !== null && (! $caseManager || $user->case_manager_at !== null)) {
+            $this->components->warn("{$user->email} already has that access; nothing to grant.");
 
-        $logger->record(
-            AuditEventType::StaffGranted,
-            null,
-            null,
-            "user:{$user->id}",
-            'internal',
-            'staff:grant',
-            $caseManager ? 'staff with case manager privilege' : 'staff',
-        );
+            return self::SUCCESS;
+        }
+
+        DB::transaction(function () use ($user, $caseManager, $logger): void {
+            $user->forceFill([
+                'staff_at' => $user->staff_at ?? now(),
+                'case_manager_at' => $caseManager ? ($user->case_manager_at ?? now()) : $user->case_manager_at,
+            ])->save();
+
+            $logger->record(
+                AuditEventType::StaffGranted,
+                null,
+                null,
+                "user:{$user->id}",
+                'internal',
+                'staff:grant',
+                $caseManager ? 'staff with case manager privilege' : 'staff',
+            );
+        });
 
         $this->components->info("Granted staff access to {$user->email}".($caseManager ? ' as a case manager.' : '.'));
 

@@ -10,7 +10,9 @@ use App\Http\Controllers\Ops\TenantIndexController;
 use App\Http\Controllers\Ops\TenantShowController;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
+use App\Support\StaffAccess;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,7 +54,7 @@ Route::prefix('ops')
         // exists. This answers the ordinary 404 for every non-GET method on a
         // URL no real route above has claimed. It carries no CSRF check, so a
         // forgery-token failure (419) cannot tell it apart from an unknown URL.
-        Route::match(['post', 'put', 'patch', 'delete', 'options'], '{any?}', fn () => abort(404))
+        Route::match(['post', 'put', 'patch', 'delete', 'options'], '{any?}', fn (Request $request) => throw StaffAccess::notFound($request))
             ->where('any', '.*')
             ->withoutMiddleware([PreventRequestForgery::class])
             ->name('fallback');

@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Concerns\HasTeams;
+use App\Support\StaffAccess;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -50,8 +51,12 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this user is artfct staff (spec 17). `staff_at` is not
+     * Whether this user holds a staff grant (spec 17). `staff_at` is not
      * mass-assignable and is only ever set from an operator command.
+     *
+     * This is the raw column check and is NOT authorization: a grant does not
+     * prove a staff sign-in. Authorize with the `operate` gate or
+     * {@see StaffAccess}.
      */
     public function isStaff(): bool
     {
