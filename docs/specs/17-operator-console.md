@@ -130,11 +130,17 @@ Every action calls the same service class the matching artisan command calls. Th
 | Action | Wraps | Guard |
 |---|---|---|
 | Reindex an artifact or a tenant | `IndexArtifactCommand`, `IndexBackfillCommand` | reason |
-| Set org limits or read-only flag | `OrgLimitsWriter`, `billing:sync-limits` | reason |
+| Push org limits (re-sync to the Worker) | `OrgLimitsWriter`, `billing:sync-limits` | reason |
 | Change plan or payment status (comp, extend) | `BillingService` | reason, shows the diff first |
 | Erase a tenant | `GovernanceEraseCommand` service | dry run shown first, typed confirmation of the slug, reason |
 
 Erase is the only irreversible action. It always runs the dry run first and displays the plan, and the confirm step requires typing the team slug.
+
+Reindex only dispatches a queued job: the `/ops` namespaces never depend on the content services, so the job (which reads content as the platform's own indexer) is the only place that does, and staff see "queued", never counts or text.
+
+A plan or payment-status change is pushed to the Worker only after the change and its audit row have committed, so a rolled-back change is never enforced.
+
+Real `/ops` POST routes keep CSRF protection. A missing or expired token on an `/ops` URL answers the ordinary 404 instead of 419, so it does not reveal the route; every other route keeps 419.
 
 ## Definition of done
 
@@ -231,6 +237,7 @@ Reversible. Phase 1 is read paths only; removing the route group removes the sur
 
 - **Impersonation and "view as".** The highest-risk piece. If built, start with a read-only view-as with a visible banner, a reason, a time limit, and the same tenant-visible audit labelling. Read-write impersonation is a separate decision.
 - **Bulk actions.** Same reasoning as spec 8: sequence after the operator audit trail has been in use.
+- **Per-tenant custom limits.** The limits action re-pushes the limits derived from the plan. A custom storage or monthly-artifact number needs a stored per-tenant override; without one, the next `billing:sync-limits` would silently overwrite it. The read-only flag follows payment status and is changed through the plan and payment-status action.
 - **Operator access to artifact titles or content.** Decided against, not merely deferred. Any future support need (for example a customer-initiated, time-boxed grant) would be a new decision and a new spec, not an extension of this one.
 - **Stronger-than-application guarantees** (tenant-held keys, restricted infrastructure access for engineers). Search and indexing read content, so this is a separate architectural decision; until then the boundary is the application's, and anything stronger is process and access control.
 - **Per-tenant dedicated databases** (RUB-318). A cross-tenant query layer over separate databases changes the tenant list and health page. Revisit when that is decided.

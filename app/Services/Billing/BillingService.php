@@ -118,6 +118,28 @@ final class BillingService
         $this->limitsWriter->push($team);
     }
 
+    /**
+     * Operator console plan change (spec 17): sets the plan and payment status
+     * as given. It does not push to the Worker: the caller pushes after its
+     * own transaction commits, so a rolled-back change is never enforced.
+     * Never touches Stripe: a comp or an extension is a state change here only.
+     */
+    public function applyOperatorPlanChange(Team $team, Plan $plan, PaymentStatus $status): void
+    {
+        $team->forceFill([
+            'plan' => $plan,
+            'payment_status' => $status,
+        ])->save();
+    }
+
+    /**
+     * Pushes the team's current limits and payment state to the Worker.
+     */
+    public function pushLimits(Team $team): bool
+    {
+        return $this->limitsWriter->push($team);
+    }
+
     public function cancelSubscription(Team $team): void
     {
         if ($team->stripe_subscription_id !== null) {

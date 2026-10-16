@@ -49,6 +49,7 @@ class TenantIndexController extends Controller
                 'next_cursor' => $page->nextCursor()?->encode(),
                 'prev_cursor' => $page->previousCursor()?->encode(),
             ],
+            'status' => session()->get('status'),
             'filters' => $filters,
             'options' => [
                 'plans' => array_map(fn (Plan $plan): string => $plan->value, Plan::cases()),

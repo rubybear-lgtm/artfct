@@ -54,6 +54,7 @@ enum AuditEventType: string
     case OperatorLimitsChanged = 'operator.limits_changed';
     case OperatorPlanChanged = 'operator.plan_changed';
     case OperatorTenantErased = 'operator.tenant_erased';
+    case OperatorEraseStarted = 'operator.erase_started';
     case OperatorCaseCreated = 'operator.case_created';
     case OperatorCaseRenewed = 'operator.case_renewed';
     case OperatorCaseReleased = 'operator.case_released';
@@ -111,6 +112,7 @@ enum AuditEventType: string
             self::OperatorLimitsChanged => 'Limits changed by staff',
             self::OperatorPlanChanged => 'Plan changed by staff',
             self::OperatorTenantErased => 'Workspace erased by staff',
+            self::OperatorEraseStarted => 'Erase started',
             self::OperatorCaseCreated => 'Suppression case opened',
             self::OperatorCaseRenewed => 'Suppression case renewed',
             self::OperatorCaseReleased => 'Suppression case released',
@@ -142,12 +144,14 @@ enum AuditEventType: string
     }
 
     /**
-     * Suppression-case bookkeeping. Recorded in the internal operator log only
-     * and never written to a tenant's audit log.
+     * Suppression-case bookkeeping and the marker written just before an
+     * erase runs. Recorded in the internal operator log only and never
+     * written to a tenant's audit log.
      */
     public function isInternalOnly(): bool
     {
         return in_array($this, [
+            self::OperatorEraseStarted,
             self::OperatorCaseCreated,
             self::OperatorCaseRenewed,
             self::OperatorCaseReleased,

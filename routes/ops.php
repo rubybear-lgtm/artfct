@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Ops\Actions\EraseController;
+use App\Http\Controllers\Ops\Actions\ErasePreviewController;
+use App\Http\Controllers\Ops\Actions\LimitsController;
+use App\Http\Controllers\Ops\Actions\PlanController;
+use App\Http\Controllers\Ops\Actions\ReindexController;
 use App\Http\Controllers\Ops\HealthController;
 use App\Http\Controllers\Ops\TenantIndexController;
 use App\Http\Controllers\Ops\TenantShowController;
@@ -31,6 +36,14 @@ Route::prefix('ops')
         // includes trashed teams, so an erased or deleted tenant is readable.
         Route::get('tenants/{team}', TenantShowController::class)->withTrashed()->name('tenants.show');
         Route::get('health', HealthController::class)->name('health');
+
+        // Phase 2: audited support actions. Each needs a reason; erase also
+        // needs a dry run and the typed slug.
+        Route::post('tenants/{team}/reindex', ReindexController::class)->withTrashed()->name('tenants.reindex');
+        Route::post('tenants/{team}/limits', LimitsController::class)->withTrashed()->name('tenants.limits');
+        Route::post('tenants/{team}/plan', PlanController::class)->withTrashed()->name('tenants.plan');
+        Route::post('tenants/{team}/erase/preview', ErasePreviewController::class)->withTrashed()->name('tenants.erase.preview');
+        Route::post('tenants/{team}/erase', EraseController::class)->withTrashed()->name('tenants.erase');
 
         // Later units: add every real `/ops` route ABOVE this one.
         //

@@ -12,6 +12,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -61,5 +63,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // arrives as an HTML page. `oauth/authorize` stays HTML: it is a page.
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*', 'oauth/register', 'oauth/token', 'oauth/revoke', 'mcp'),
+        );
+
+        // An expired or missing token on an `/ops` URL would answer 419 and
+        // tell a signed-out visitor the route exists. Mapped before the
+        // handler turns it into a 419, so it renders as the ordinary 404 and
+        // every other route keeps its 419.
+        $exceptions->map(
+            fn (TokenMismatchException $exception) => request()->is('ops', 'ops/*')
+                ? new NotFoundHttpException('', $exception)
+                : $exception,
         );
     })->create();

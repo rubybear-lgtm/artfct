@@ -12,6 +12,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Billing\UsageContract;
+use App\Services\Operator\Actions\EraseTenantAction;
 use App\Services\Polis\PolisAdminClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -99,6 +100,51 @@ final class TenantDetail
             'deleted_at' => $team->deleted_at?->toIso8601String(),
             'created_at' => $team->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Which support actions the page offers for this tenant (phase 2). A
+     * soft-deleted tenant refuses every action; reindex also needs indexing
+     * to be turned on.
+     *
+     * @return array{
+     *     reindex: array{enabled: bool},
+     *     limits: array{enabled: bool},
+     *     billing: array{enabled: bool, plans: list<string>, payment_statuses: list<string>},
+     *     erase: array{enabled: bool}
+     * }
+     */
+    public function actions(Team $team): array
+    {
+        $active = ! $team->trashed();
+
+        return [
+            'reindex' => ['enabled' => $active && (bool) config('indexing.enabled')],
+            'limits' => ['enabled' => $active],
+            'billing' => [
+                'enabled' => $active,
+                'plans' => array_map(fn (Plan $plan): string => $plan->value, Plan::cases()),
+                'payment_statuses' => array_map(fn (PaymentStatus $status): string => $status->value, PaymentStatus::cases()),
+            ],
+            'erase' => ['enabled' => $active],
+        ];
+    }
+
+    /**
+     * The erase dry run this session holds for the tenant, as counts only, or
+     * null when there is none, it is older than 15 minutes, or the tenant is
+     * soft-deleted. Read from the session value the preview stored, so the
+     * confirm step survives a reload and a refused erase.
+     *
+     * @return array{refused: bool, artifact_count: int, held: bool, generated_at: string}|null
+     */
+    public function erasurePlan(Team $team): ?array
+    {
+        if ($team->trashed()) {
+            return null;
+        }
+
+        return EraseTenantAction::heldPreview($team)['plan'] ?? null;
     }
 
     /**
