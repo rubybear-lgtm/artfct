@@ -10,14 +10,18 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "firebase/php-jwt": "^7.0",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.7",
+        "laravel/mcp": "^0.7.0",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "laravel/workos": "^0.6.0",
         "league/commonmark": "^2.8"
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",
+        "larastan/larastan": "^3.12",
         "laravel/boost": "^2.2",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
@@ -61,17 +65,21 @@
         "lint:check": [
             "pint --parallel --test"
         ],
+        "analyse": [
+            "phpstan analyse --memory-limit=1G --no-progress"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "npm run lint:check",
             "npm run format:check",
             "npm run types:check",
+            "@analyse",
             "@test"
         ],
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
-            "@php artisan test"
+            "@php -d memory_limit=512M vendor/bin/pest"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

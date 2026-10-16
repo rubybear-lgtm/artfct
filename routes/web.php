@@ -1,89 +1,135 @@
 <?php
 
+use App\Http\Controllers\ArtifactViewerController;
+use App\Http\Controllers\BlogController;
+use App\Http\Controllers\DocsController;
+use App\Http\Controllers\JwksController;
+use App\Http\Controllers\LandingMediaController;
+use App\Http\Controllers\LegalController;
+use App\Http\Controllers\LlmsTextController;
+use App\Http\Controllers\PolisWebhookController;
+use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\WorkerEventController;
+use App\Support\AiToolSetup;
+use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-$blogPosts = [
-    [
-        'slug' => 'developer-tools',
-        'title' => 'Four developer tools, one skill install',
-        'date' => '2026-06-04',
-        'tag' => 'skills',
-        'description' => 'A walkthrough of the artfct developer-tools skill and the four utilities it deploys.',
+Route::get('/', fn () => Inertia::render('landing', [
+    'meta' => [
+        'title' => 'Artfct — what your AI makes, remembered',
+        'description' => 'Share the reports, tables and documents your AI makes, and every AI tool on your team can read them, with sources. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools.',
     ],
-    [
-        'slug' => 'ai-presentations',
-        'title' => 'AI-generated slide decks, deployed in one step',
-        'date' => '2026-06-04',
-        'tag' => 'skills',
-        'description' => 'How the artfct presentation skill turns a prompt into a shareable HTML deck.',
-    ],
-    [
-        'slug' => 'mermaid-diagrams',
-        'title' => 'Share Mermaid diagrams as live links — no screenshots needed',
-        'date' => '2026-06-06',
-        'tag' => 'skills',
-        'description' => 'Why the artfct Mermaid skill exists and how it helps people share diagrams faster.',
-    ],
-];
+    'flow' => LandingMedia::forPage(),
+]))->name('home');
 
-Route::inertia('/', 'welcome', [
+Route::get('/media/landing/{file}', LandingMediaController::class)
+    ->withoutMiddleware('web')
+    ->name('landing.media');
+
+Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [
         'title' => 'artfct — share HTML & markdown instantly',
-        'description' => 'Drop a self-contained HTML or Markdown file — via browser, CLI, API, or AI agent — and get back a shareable link. No sign-up required. Encrypted by default.',
+        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default.',
     ],
-])->name('home');
+    'mcpEndpoint' => url('/mcp'),
+]))->name('free');
 
-Route::inertia('/docs', 'docs', [
-    'meta' => [
-        'title' => 'api reference — artfct',
-        'description' => 'REST API reference and CLI documentation for artfct. Create, serve, and manage HTML artifacts programmatically.',
-    ],
-])->name('docs');
+Route::get('/docs', DocsController::class)->name('docs');
 
-Route::inertia('/blog', 'blog', [
-    'meta' => [
-        'title' => 'blog — artfct',
-        'description' => 'Product updates, tips, and behind-the-scenes on artfct — the instant HTML sharing tool for developers.',
-    ],
-    'posts' => $blogPosts,
-])->name('blog');
+// One page per connectable AI tool (spec 12's programmatic surface). The
+// guides come from AiToolSetup, the same source the docs page and
+// /llms-full.txt render from, so a setup step cannot drift between them.
+Route::get('/connect/{tool}', function (string $tool) {
+    $setup = AiToolSetup::forCurrentEnvironment();
+    $guides = collect($setup->guides());
+    $guide = $guides->firstWhere('id', $tool);
 
-Route::get('/blog/{slug}', function (string $slug) use ($blogPosts) {
-    $post = collect($blogPosts)->first(
-        fn (array $candidate): bool => $candidate['slug'] === $slug,
-    );
+    abort_if($guide === null, 404);
 
-    abort_if($post === null, 404);
+    $status = $guide['verified']
+        ? 'The path is verified end to end against staging.'
+        : 'The path is documented; it has not been verified end to end.';
 
-    return Inertia::render('blog-show', [
+    return Inertia::render('connect-show', [
         'meta' => [
-            'title' => "{$post['title']} — artfct",
-            'description' => $post['description'],
+            'title' => "Connect {$guide['label']} to Artfct",
+            'description' => "Add Artfct to {$guide['label']} and give it your team's shared store. {$status}",
         ],
-        'post' => $post,
+        'guide' => $guide,
+        'mcpUrl' => $setup->mcpUrl(),
+        'quickInstall' => $setup->quickInstall(),
+        'related' => $guides
+            ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)
+            ->map(fn (array $candidate): array => [
+                'id' => $candidate['id'],
+                'label' => $candidate['label'],
+                'verified' => $candidate['verified'],
+            ])
+            ->values()
+            ->all(),
+        'troubleshooting' => array_slice($setup->troubleshooting(), 0, 3),
     ]);
-})->where('slug', '[a-z0-9-]+')->name('blog.show');
+})->where('tool', '[a-z0-9-]+')->name('connect.show');
+Route::get('/llms.txt', [LlmsTextController::class, 'index'])->name('llms.index');
+Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.full');
+
+Route::get('/terms', [LegalController::class, 'terms'])->name('terms');
+Route::get('/privacy', [LegalController::class, 'privacy'])->name('privacy');
+Route::middleware('auth')->group(function () {
+    Route::get('/terms/accept', [LegalController::class, 'showAcceptance'])->name('terms.accept.show');
+    Route::post('/terms/accept', [LegalController::class, 'accept'])->name('terms.accept');
+});
+
+// Both blog routes read the Markdown files through BlogContent; there is no
+// post list in this file any more.
+Route::get('/blog', [BlogController::class, 'index'])->name('blog');
+
+Route::get('/blog/{slug}', [BlogController::class, 'show'])
+    ->where('slug', '[a-z0-9-]+')
+    ->name('blog.show');
 
 // ── sitemap ───────────────────────────────────────────────────────────────────
 
-Route::get('/sitemap.xml', function () use ($blogPosts) {
-    $urls = [
-        ['loc' => url('/'), 'priority' => '1.0', 'changefreq' => 'weekly'],
-        ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
-        ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
-    ];
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
-    foreach ($blogPosts as $post) {
-        $urls[] = [
-            'loc' => route('blog.show', ['slug' => $post['slug']]),
-            'priority' => '0.7',
-            'changefreq' => 'monthly',
-        ];
-    }
+// ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
+//
+// One short route for every sharing level. The viewer is addressed by artifact
+// id alone: a signed-in member's artifact is resolved from their own
+// memberships, and an artifact no team of theirs owns is resolved through the
+// Worker's public read. A team the visitor is not in is never named; an id
+// that is neither the visitor's nor public is one and the same page, or one and
+// the same sign-in redirect, so the route is never an existence oracle.
+//
+// `artifacts.show` and `artifacts.version` are deliberately outside `auth`: a
+// public artifact renders for anyone, and a team/private one sends a signed-out
+// visitor to sign in and back. A version is named in the path as
+// `/a/{id}/v/{n}`; `?version=` on `artifacts.show` stays supported for older
+// links. Sharing and download stay authenticated.
+Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('artifacts.show');
+Route::get('a/{artifactId}/v/{version}', [ArtifactViewerController::class, 'show'])
+    ->whereNumber('version')
+    ->name('artifacts.version');
 
-    $xml = view('sitemap', ['urls' => $urls])->render();
+Route::middleware('auth')->group(function () {
+    Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
+    Route::post('a/{artifactId}/comments', [ArtifactViewerController::class, 'storeComment'])->middleware('throttle:artifact-comment-store')->name('artifacts.comments.store');
+    Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->middleware('throttle:artifact-comment-resolve')->name('artifacts.comments.resolve');
+    Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
+});
 
-    return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
-        ->header('Content-Type', 'text/xml');
-})->name('sitemap');
+// ── identity (spec 06) ──────────────────────────────────────────────────────
+
+require __DIR__.'/auth.php';
+require __DIR__.'/oauth.php';
+require __DIR__.'/teams.php';
+require __DIR__.'/ops.php';
+
+Route::post('internal/worker-events', WorkerEventController::class)->name('internal.worker-events');
+
+Route::post('webhooks/stripe', StripeWebhookController::class)->name('webhooks.stripe');
+Route::post('webhooks/polis', PolisWebhookController::class)->name('webhooks.polis');
+
+Route::get('.well-known/jwks.json', JwksController::class)->name('jwks');

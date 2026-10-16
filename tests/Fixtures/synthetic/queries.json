@@ -1,0 +1,146 @@
+{
+  "description": "Golden queries for search relevance (RUB-325). expected_keys are corpus keys; the seed writes key -> artifact id to storage/app/synthetic/{slug}.json.",
+  "org": "zz-northwind",
+  "queries": [
+    {
+      "query": "the billing dashboard from last month",
+      "expected_keys": [
+        "billing-dashboard-aug"
+      ]
+    },
+    {
+      "query": "billing dashboard July",
+      "expected_keys": [
+        "billing-dashboard-jul"
+      ]
+    },
+    {
+      "query": "all billing dashboards",
+      "expected_keys": [
+        "billing-dashboard-aug",
+        "billing-dashboard-jul"
+      ]
+    },
+    {
+      "query": "runbook for on-call handoff",
+      "expected_keys": [
+        "oncall-handoff-runbook"
+      ]
+    },
+    {
+      "query": "how do I fail over the database",
+      "expected_keys": [
+        "runbook-database-failover"
+      ]
+    },
+    {
+      "query": "what went wrong in the July checkout outage",
+      "expected_keys": [
+        "incident-2026-07-postmortem"
+      ]
+    },
+    {
+      "query": "churn by signup cohort",
+      "expected_keys": [
+        "churn-cohort-analysis"
+      ]
+    },
+    {
+      "query": "how fast is the data pipeline",
+      "expected_keys": [
+        "pipeline-latency-report"
+      ]
+    },
+    {
+      "query": "where do users drop off during signup",
+      "expected_keys": [
+        "signup-funnel-dashboard"
+      ]
+    },
+    {
+      "query": "results of the pricing experiment",
+      "expected_keys": [
+        "pricing-experiment-results"
+      ]
+    },
+    {
+      "query": "tool to reconcile invoices",
+      "expected_keys": [
+        "invoice-reconciliation-tool"
+      ]
+    },
+    {
+      "query": "API latency heatmap",
+      "expected_keys": [
+        "api-latency-heatmap"
+      ]
+    },
+    {
+      "query": "board deck for the quarter",
+      "expected_keys": [
+        "quarterly-board-deck"
+      ]
+    },
+    {
+      "query": "plan for the schema migration",
+      "expected_keys": [
+        "schema-migration-plan"
+      ]
+    },
+    {
+      "query": "customer health scorecard",
+      "expected_keys": [
+        "customer-health-scorecard"
+      ]
+    },
+    {
+      "query": "onboarding checklist for new engineers",
+      "expected_keys": [
+        "onboarding-checklist"
+      ]
+    },
+    {
+      "query": "capacity plan",
+      "expected_keys": [
+        "lineage-v2"
+      ],
+      "note": "the newer version supersedes lineage-v1"
+    },
+    {
+      "query": "billing dashboard from the billing repo",
+      "expected_keys": [
+        "billing-dashboard-aug",
+        "billing-dashboard-jul"
+      ],
+      "repo_url": "github.com/northwind/billing"
+    },
+    {
+      "query": "runbooks written by cursor in the ops-runbooks repo",
+      "expected_keys": [
+        "oncall-handoff-runbook",
+        "onboarding-checklist"
+      ],
+      "repo_url": "github.com/northwind/ops-runbooks",
+      "agent": "cursor"
+    },
+    {
+      "query": "dashboards in the Billing and revenue collection",
+      "expected_keys": [
+        "billing-dashboard-aug",
+        "billing-dashboard-jul",
+        "invoice-reconciliation-tool",
+        "pricing-experiment-results"
+      ],
+      "collection": "Billing and revenue"
+    },
+    {
+      "query": "on-call material",
+      "expected_keys": [
+        "oncall-handoff-runbook",
+        "runbook-database-failover",
+        "incident-2026-07-postmortem"
+      ],
+      "collection": "On-call and runbooks"
+    }
+  ]
+}

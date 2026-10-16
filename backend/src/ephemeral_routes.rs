@@ -1,0 +1,577 @@
+use super::*;
+
+pub(crate) async fn create_artifact(
+    req: &mut Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
+    let raw = match req.json::<Value>().await {
+        Ok(payload) => payload,
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
+    };
+
+    if raw.get("mode").and_then(Value::as_str) == Some("permanent") {
+        let authorization = req.headers().get("Authorization")?;
+        return create_permanent_artifact(&raw, authorization.as_deref(), env, ctx).await;
+    }
+
+    if ephemeral_manifest_is_invalid(&raw) {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The manifest field is only valid for permanent artifacts.",
+            422,
+        );
+    }
+
+    let payload = match serde_json::from_value::<CreateArtifactRequest>(raw) {
+        Ok(payload) => payload,
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
+    };
+
+    if payload.body_ciphertext_b64.trim().is_empty() {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_ciphertext_b64 field is required.",
+            422,
+        );
+    }
+
+    if payload.body_iv_b64.trim().is_empty() {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_iv_b64 field is required.",
+            422,
+        );
+    }
+
+    let max_html_bytes = env_usize(env, "ARTFCT_MAX_HTML_BYTES", DEFAULT_MAX_HTML_BYTES);
+    let ciphertext_bytes = match base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.body_ciphertext_b64.trim())
+    {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return json_error(
+                ErrorCode::ValidationFailed,
+                "The body_ciphertext_b64 field must be valid base64url.",
+                422,
+            );
+        }
+    };
+
+    if ciphertext_bytes.len() > max_html_bytes + 64 {
+        return json_error(
+            ErrorCode::BodyTooLarge,
+            "The encrypted body exceeds the configured size limit.",
+            413,
+        );
+    }
+
+    let iv_bytes =
+        match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload.body_iv_b64.trim()) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return json_error(
+                    ErrorCode::ValidationFailed,
+                    "The body_iv_b64 field must be valid base64url.",
+                    422,
+                );
+            }
+        };
+
+    if iv_bytes.len() != 12 {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "The body_iv_b64 field must decode to a 12-byte nonce.",
+            422,
+        );
+    }
+
+    let ttl_minutes = payload
+        .ttl_minutes
+        .unwrap_or_else(|| env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES));
+    let max_ttl_minutes = env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES);
+
+    if ttl_minutes == 0 || ttl_minutes > max_ttl_minutes {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "ttl_minutes must be between 1 and the configured maximum.",
+            422,
+        );
+    }
+
+    let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+    let kv_store = store::KvArtifactStore::new(env.kv(KV_BINDING)?);
+    let artifact_id = loop {
+        let candidate = random_artifact_id(ARTIFACT_ID_LENGTH);
+
+        if kv_store
+            .get_record::<String>(&candidate)
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?
+            .is_none()
+        {
+            break candidate;
+        }
+    };
+
+    let title = normalize_metadata_value(payload.title, DEFAULT_ARTIFACT_TITLE);
+    let description = normalize_metadata_value(payload.description, DEFAULT_ARTIFACT_DESCRIPTION);
+    let thumbnail = normalize_metadata_value(payload.thumbnail, DEFAULT_ARTIFACT_THUMBNAIL);
+
+    let stored = StoredArtifact {
+        body_ciphertext_b64: payload.body_ciphertext_b64,
+        body_iv_b64: payload.body_iv_b64,
+        tier: payload.tier,
+        title: title.clone(),
+        description: description.clone(),
+        thumbnail: thumbnail.clone(),
+        preview_blurred: payload.preview_blurred,
+        created_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+    };
+
+    let body = serde_json::to_string(&stored)?;
+    kv_store
+        .put_record(&artifact_id, &body, ttl_seconds)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+
+    let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+    build_create_artifact_response(&artifact_id, &base_url, &stored).into_worker_response()
+}
+
+/// Queues `artifact.created` after the response is built. Best effort: the
+/// send runs in `waitUntil` and can never change the response. `org` is the
+/// verified credential's org.
+pub(crate) fn emit_artifact_created(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    tier: ArtifactTier,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let tier = match tier {
+        ArtifactTier::Public => "public",
+        ArtifactTier::Secure => "secure",
+        ArtifactTier::Private => "private",
+        ArtifactTier::Ephemeral => "ephemeral",
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.created",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({"artifact_id": artifact_id, "tier": tier}),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+/// Queues `artifact.version_created` after a version has been promoted to
+/// current. Emitted only on promotion, never when a version is still pending
+/// its uploads. Best effort: the send runs in `waitUntil` and can never change
+/// the response. `org` is the artifact's owning org and `editor_org` the
+/// credential's org, so Laravel can audit a cross-org Public + edit write;
+/// `created_by` is the publisher's user id.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one named event builder; every field is part of the audit payload"
+)]
+pub(crate) fn emit_artifact_version_created(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    version: u32,
+    tier: ArtifactTier,
+    editor_org: &str,
+    created_by: &str,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let tier = match tier {
+        ArtifactTier::Public => "public",
+        ArtifactTier::Secure => "secure",
+        ArtifactTier::Private => "private",
+        ArtifactTier::Ephemeral => "ephemeral",
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.version_created",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "version": version,
+            "tier": tier,
+            "editor_org": editor_org,
+            "created_by": created_by,
+        }),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+/// Queues `artifact.sharing_changed` after the sharing update is committed.
+/// Best effort, in `waitUntil`, so it never changes the response. `org` is the
+/// artifact's owning org; `actor_user_id` is the credential that changed it.
+/// `from`/`to` use the API sharing names (`private`/`team`/`public`).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one named event builder; every field is part of the audit payload"
+)]
+pub(crate) fn emit_artifact_sharing_changed(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    from: &str,
+    to: &str,
+    from_edit_access: &str,
+    to_edit_access: &str,
+    actor_user_id: &str,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.sharing_changed",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "from": from,
+            "to": to,
+            "from_edit_access": from_edit_access,
+            "to_edit_access": to_edit_access,
+            "actor_user_id": actor_user_id,
+        }),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+/// Notifies Laravel after a permanent artifact has been hard-deleted so its
+/// derived search index can be removed without delaying the delete response.
+pub(crate) fn emit_artifact_deleted(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_artifact_deleted_event(
+        &secret.to_string(),
+        org,
+        artifact_id,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+/// Queues `artifact.viewed` after a permanent artifact is served. The event
+/// carries only the owning org, artifact id, an optional verified viewer id,
+/// and — only when no verified viewer id was resolved — a daily-salted
+/// pseudonymous `viewer_key` (see `artifact_routes::derive_visitor_key`) so
+/// Laravel can still count distinct anonymous viewers (Slack opens, shared
+/// links) for spec 16's usage ranking (RUB-314). It never includes content,
+/// bearer tokens, or query-string access tokens.
+///
+/// This function never dedups: every successful view queues an event, even
+/// a reload by the same visitor a second later. "One event per visitor per
+/// artifact per day" is enforced Laravel-side instead, on a unique index
+/// over `(team_id, artifact_id, viewer_key, event_type)` — `viewer_key`
+/// already changes once per UTC day, so that uniqueness constraint alone
+/// gives the per-day dedup, and (unlike a Worker-side skip keyed on
+/// in-memory or KV state) it is naturally idempotent against redelivery of
+/// this same event, which the Worker->Laravel channel already has to
+/// tolerate elsewhere (see `worker_events_received`'s replay handling).
+pub(crate) fn emit_artifact_viewed(
+    ctx: &worker::Context,
+    env: &Env,
+    org: &str,
+    artifact_id: &str,
+    viewer_user_id: Option<&str>,
+    viewer_key: Option<&str>,
+) {
+    let (Ok(secret), Ok(url)) = (
+        env.var(events::EVENT_SECRET_ENV),
+        env.var(events::EVENT_URL_ENV),
+    ) else {
+        return;
+    };
+    let now = Utc::now();
+    let event = events::build_event(
+        &secret.to_string(),
+        "artifact.viewed",
+        org,
+        &now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        now.timestamp(),
+        serde_json::json!({
+            "artifact_id": artifact_id,
+            "viewer_user_id": viewer_user_id,
+            "viewer_key": viewer_key,
+            "source": "worker_preview",
+        }),
+    );
+    let url = url.to_string();
+    ctx.wait_until(async move { events::send(&url, event).await });
+}
+
+pub(crate) async fn resolve_artifact(
+    path: &str,
+    req: &Request,
+    env: &Env,
+    ctx: &worker::Context,
+) -> Result<Response> {
+    let suffix = path.trim_start_matches("/p/");
+    let (artifact_id, requested_path) =
+        suffix.split_once('/').map_or((suffix, None), |(id, file)| {
+            (id, (!file.is_empty()).then_some(file))
+        });
+    if store::is_permanent_id(artifact_id) {
+        // A leading `v:{n}` segment selects a specific version: `/p/{id}/v:2/`
+        // and `/p/{id}/v:2/a/b.css`. An invalid segment (`v:0`, `v:x`) parses
+        // to `(None, None)`, which only a version-shaped request can produce,
+        // so it is a 404 rather than a fallthrough to the current version.
+        let (version, version_path) = match requested_path {
+            Some(path) => split_version_segment(path),
+            None => (None, None),
+        };
+        if requested_path.is_some() && version.is_none() && version_path.is_none() {
+            return expired_response();
+        }
+        return resolve_permanent_artifact(artifact_id, version_path, version, req, env, ctx).await;
+    }
+    if !is_valid_artifact_id(artifact_id) {
+        return expired_response();
+    }
+
+    let kv_store = store::KvArtifactStore::new(env.kv(KV_BINDING)?);
+    let Some(mut stored) = kv_store
+        .get_record::<StoredArtifact>(artifact_id)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?
+    else {
+        return expired_response();
+    };
+
+    // Sliding expiration: refresh on every access
+    let ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES).min(env_u64(
+        env,
+        "ARTFCT_MAX_TTL_MINUTES",
+        MAX_TTL_MINUTES,
+    ));
+    let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+
+    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+    let body = serde_json::to_string(&stored)?;
+    kv_store
+        .put_record(artifact_id, &body, ttl_seconds)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?;
+
+    let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
+    let url = format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id);
+    let rendered = render_preview_shell(&stored, &url);
+
+    build_preview_response(rendered).into_worker_response()
+}
+
+/// Splits a `/p/{id}/` remainder into an optional version and the file path
+/// within that version. Manifest paths may not contain a colon (see the
+/// contract's `RelativePath`), so a leading `v:` segment can never collide
+/// with a real bundle path.
+///
+/// - `v:2/` -> `(Some(2), None)` (the version's entrypoint)
+/// - `v:2/a/b.css` -> `(Some(2), Some("a/b.css"))`
+/// - `v:0/`, `v:x/` -> `(None, None)`, the caller's not-found sentinel
+/// - `index.html` -> `(None, Some("index.html"))`
+///
+/// Pure so the parsing is unit-tested without a live Worker.
+pub(crate) fn split_version_segment(rest: &str) -> (Option<u32>, Option<&str>) {
+    let Some(after) = rest.strip_prefix("v:") else {
+        return (None, Some(rest));
+    };
+    let (number, remainder) = after
+        .split_once('/')
+        .map_or((after, ""), |(number, remainder)| (number, remainder));
+    let Ok(version) = number.parse::<u32>() else {
+        return (None, None);
+    };
+    if version == 0 {
+        return (None, None);
+    }
+    (Some(version), (!remainder.is_empty()).then_some(remainder))
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PermanentHashRow {
+    #[serde(default)]
+    pub(crate) legal_hold: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PresenceRow {
+    #[allow(dead_code)]
+    present: i64,
+}
+/// Resolves the caller's verified credential: a signed org token (its `org_id`
+/// claim is the org) or the legacy static token (the one org configured in
+/// `ARTFCT_ORG_SLUG`). The org is never taken from a request field. The
+/// inner `Err` is the ready-to-send refusal.
+pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
+    let artifact_id = path.trim_start_matches("/v1/artifacts/");
+    if !is_valid_artifact_id(artifact_id) {
+        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
+    }
+
+    #[derive(Deserialize)]
+    struct UpdateArtifactRequest {
+        ttl_minutes: u64,
+    }
+
+    let payload = match req.json::<UpdateArtifactRequest>().await {
+        Ok(payload) => payload,
+        Err(_) => {
+            return json_error(ErrorCode::InvalidJson, "Invalid JSON request body.", 400);
+        }
+    };
+
+    let max_ttl_minutes = env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES);
+    if payload.ttl_minutes == 0 || payload.ttl_minutes > max_ttl_minutes {
+        return json_error(
+            ErrorCode::ValidationFailed,
+            "ttl_minutes must be between 1 and the configured maximum.",
+            422,
+        );
+    }
+
+    let Some(mut stored) = env
+        .kv(KV_BINDING)?
+        .get(artifact_id)
+        .json::<StoredArtifact>()
+        .await?
+    else {
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or expired.",
+            404,
+        );
+    };
+
+    let ttl_seconds = (payload.ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+
+    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+
+    let body = serde_json::to_string(&stored)?;
+    env.kv(KV_BINDING)?
+        .put(artifact_id, body)?
+        .expiration_ttl(ttl_seconds)
+        .execute()
+        .await?;
+
+    build_update_artifact_response(artifact_id, &stored).into_worker_response()
+}
+
+pub(crate) fn build_create_artifact_response(
+    artifact_id: &str,
+    base_url: &str,
+    stored: &StoredArtifact,
+) -> JsonResponseDefinition {
+    JsonResponseDefinition::json(
+        CreateArtifactResponse {
+            id: artifact_id.to_string(),
+            url: format!("{}/p/{}", base_url.trim_end_matches('/'), artifact_id),
+            tier: stored.tier,
+            expires_at: stored.expires_at.clone(),
+            title: stored.title.clone(),
+            description: stored.description.clone(),
+            thumbnail: stored.thumbnail.clone(),
+            preview_blurred: stored.preview_blurred,
+        },
+        201,
+    )
+}
+
+pub(crate) fn build_update_artifact_response(
+    artifact_id: &str,
+    stored: &StoredArtifact,
+) -> JsonResponseDefinition {
+    JsonResponseDefinition::json(
+        UpdateArtifactResponse {
+            id: artifact_id.to_string(),
+            expires_at: stored.expires_at.clone(),
+        },
+        200,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_version_segment_reads_the_three_shapes() {
+        assert_eq!(split_version_segment("v:2/"), (Some(2), None));
+        assert_eq!(
+            split_version_segment("v:2/a/b.css"),
+            (Some(2), Some("a/b.css"))
+        );
+        assert_eq!(
+            split_version_segment("index.html"),
+            (None, Some("index.html"))
+        );
+        assert_eq!(split_version_segment("a/b.css"), (None, Some("a/b.css")));
+    }
+
+    #[test]
+    fn split_version_segment_treats_invalid_versions_as_not_found() {
+        assert_eq!(split_version_segment("v:0/"), (None, None));
+        assert_eq!(split_version_segment("v:0"), (None, None));
+        assert_eq!(split_version_segment("v:x/"), (None, None));
+        assert_eq!(split_version_segment("v:/"), (None, None));
+        assert_eq!(
+            split_version_segment("v:99999999999999999999/"),
+            (None, None)
+        );
+    }
+}
