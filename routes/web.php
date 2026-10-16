@@ -1,27 +1,20 @@
 <?php
 
 use App\Http\Controllers\ArtifactViewerController;
+use App\Http\Controllers\BlogController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
+use App\Support\AiToolSetup;
 use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-
-$blogPosts = [
-    [
-        'slug' => 'stop-ai-tools-contradicting-each-other',
-        'title' => 'Stopping Claude and Cursor from contradicting each other',
-        'date' => '2026-10-05',
-        'tag' => 'workflows',
-        'description' => 'You drop a phrase in Claude. Cursor brings it back hours later. Here is how a shared library keeps AI tools from repeating decisions you already killed.',
-    ],
-];
 
 Route::get('/', fn () => Inertia::render('landing', [
     'meta' => [
@@ -44,6 +37,41 @@ Route::get('/free', fn () => Inertia::render('welcome', [
 ]))->name('free');
 
 Route::get('/docs', DocsController::class)->name('docs');
+
+// One page per connectable AI tool (spec 12's programmatic surface). The
+// guides come from AiToolSetup, the same source the docs page and
+// /llms-full.txt render from, so a setup step cannot drift between them.
+Route::get('/connect/{tool}', function (string $tool) {
+    $setup = AiToolSetup::forCurrentEnvironment();
+    $guides = collect($setup->guides());
+    $guide = $guides->firstWhere('id', $tool);
+
+    abort_if($guide === null, 404);
+
+    $status = $guide['verified']
+        ? 'The path is verified end to end against staging.'
+        : 'The path is documented; it has not been verified end to end.';
+
+    return Inertia::render('connect-show', [
+        'meta' => [
+            'title' => "Connect {$guide['label']} to Artfct",
+            'description' => "Add Artfct to {$guide['label']} and give it your team's shared store. {$status}",
+        ],
+        'guide' => $guide,
+        'mcpUrl' => $setup->mcpUrl(),
+        'quickInstall' => $setup->quickInstall(),
+        'related' => $guides
+            ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)
+            ->map(fn (array $candidate): array => [
+                'id' => $candidate['id'],
+                'label' => $candidate['label'],
+                'verified' => $candidate['verified'],
+            ])
+            ->values()
+            ->all(),
+        'troubleshooting' => array_slice($setup->troubleshooting(), 0, 3),
+    ]);
+})->where('tool', '[a-z0-9-]+')->name('connect.show');
 Route::get('/llms.txt', [LlmsTextController::class, 'index'])->name('llms.index');
 Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.full');
 
@@ -54,55 +82,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/terms/accept', [LegalController::class, 'accept'])->name('terms.accept');
 });
 
-Route::inertia('/blog', 'blog', [
-    'meta' => [
-        'title' => 'blog — artfct',
-        'description' => 'Product updates and tips from artfct, where what your AI makes is shared with your team.',
-    ],
-    'posts' => $blogPosts,
-])->name('blog');
+// Both blog routes read the Markdown files through BlogContent; there is no
+// post list in this file any more.
+Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
-Route::get('/blog/{slug}', function (string $slug) use ($blogPosts) {
-    $post = collect($blogPosts)->first(
-        fn (array $candidate): bool => $candidate['slug'] === $slug,
-    );
-
-    abort_if($post === null, 404);
-
-    return Inertia::render('blog-show', [
-        'meta' => [
-            'title' => "{$post['title']} — artfct",
-            'description' => $post['description'],
-        ],
-        'post' => $post,
-    ]);
-})->where('slug', '[a-z0-9-]+')->name('blog.show');
+Route::get('/blog/{slug}', [BlogController::class, 'show'])
+    ->where('slug', '[a-z0-9-]+')
+    ->name('blog.show');
 
 // ── sitemap ───────────────────────────────────────────────────────────────────
 
-Route::get('/sitemap.xml', function () use ($blogPosts) {
-    $urls = [
-        ['loc' => url('/'), 'priority' => '1.0', 'changefreq' => 'weekly'],
-        ['loc' => url('/free'), 'priority' => '0.8', 'changefreq' => 'weekly'],
-        ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
-        ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
-        ['loc' => url('/terms'), 'priority' => '0.3', 'changefreq' => 'yearly'],
-        ['loc' => url('/privacy'), 'priority' => '0.3', 'changefreq' => 'yearly'],
-    ];
-
-    foreach ($blogPosts as $post) {
-        $urls[] = [
-            'loc' => route('blog.show', ['slug' => $post['slug']]),
-            'priority' => '0.7',
-            'changefreq' => 'monthly',
-        ];
-    }
-
-    $xml = view('sitemap', ['urls' => $urls])->render();
-
-    return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
-        ->header('Content-Type', 'text/xml');
-})->name('sitemap');
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //

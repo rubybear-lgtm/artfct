@@ -17,7 +17,6 @@ use App\Services\Polis\PolisAdminClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Throwable;
-use UnexpectedValueException;
 
 /**
  * Everything the operator console's tenant page shows (spec 17, phase 1).
@@ -230,10 +229,6 @@ final class TenantDetail
     {
         try {
             $usage = $this->usage->currentUsage($team->slug);
-
-            if (! isset($usage['storage_bytes'], $usage['artifacts_this_period'])) {
-                throw new UnexpectedValueException('The Worker usage payload is missing storage_bytes or artifacts_this_period.');
-            }
 
             return [
                 'storage_bytes' => (int) $usage['storage_bytes'],

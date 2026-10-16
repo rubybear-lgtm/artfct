@@ -1,23 +1,19 @@
 import { Head, Link } from '@inertiajs/react';
 
 import { SitePage } from '@/components/site-chrome';
-import { POSTS } from '@/lib/posts';
 import blogRoutes from '@/routes/blog';
 
 interface BlogPageProps {
-    posts?: Array<{ slug: string; date: string; title: string; tag: string }>;
+    posts: Array<{
+        slug: string;
+        date: string;
+        title: string;
+        tag: string;
+        description: string;
+    }>;
 }
 
 export default function Blog({ posts }: BlogPageProps) {
-    const visiblePosts =
-        posts ??
-        POSTS.map((post) => ({
-            slug: post.slug,
-            date: post.date,
-            title: post.title,
-            tag: post.tag,
-        }));
-
     return (
         <SitePage active="blog">
             <Head title="Blog" />
@@ -35,7 +31,7 @@ export default function Blog({ posts }: BlogPageProps) {
                 </p>
 
                 <ul className="mt-14 divide-y divide-border border-y border-border">
-                    {visiblePosts.map((post) => (
+                    {posts.map((post) => (
                         <li key={post.slug}>
                             <Link
                                 href={blogRoutes.show.url({ slug: post.slug })}
@@ -62,8 +58,7 @@ export default function Blog({ posts }: BlogPageProps) {
                                     {post.title}
                                 </span>
                                 <span className="max-w-[60ch] text-muted-foreground">
-                                    {POSTS.find((p) => p.slug === post.slug)
-                                        ?.description ?? ''}
+                                    {post.description}
                                 </span>
                                 <span className="text-sm font-semibold text-primary">
                                     Read the post{' '}

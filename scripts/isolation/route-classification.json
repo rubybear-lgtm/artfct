@@ -25,6 +25,7 @@
         "POST authkit/dev-login": "guest",
         "GET blog": "public",
         "GET blog/{slug}": "public",
+        "GET connect/{tool}": "public",
         "GET docs": "public",
         "GET free": "public",
         "POST internal/worker-events": "signed",
