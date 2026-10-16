@@ -77,14 +77,18 @@ final class StaffAccess
      */
     private static function sessionBelongsToGrant(mixed $flag, User $user): bool
     {
-        if (! is_array($flag) || ! is_string($user->staff_at)) {
+        if (! is_array($flag)) {
             return false;
         }
 
         $userId = $flag['user_id'] ?? null;
         $signedInAt = $flag['at'] ?? null;
 
-        $grantedAt = strtotime($user->staff_at);
+        $grantedAt = match (true) {
+            $user->staff_at instanceof \DateTimeInterface => $user->staff_at->getTimestamp(),
+            is_string($user->staff_at) => strtotime($user->staff_at),
+            default => false,
+        };
 
         return $userId === $user->id
             && is_int($signedInAt)
