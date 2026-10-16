@@ -12,7 +12,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
+/**
+ * `staff_at` also accepts `string`: the `datetime` cast hydrates Carbon,
+ * but the session-grant check defensively handles raw string values.
+ *
+ * @property Carbon|string|null $staff_at
+ * @property Carbon|null $case_manager_at
+ */
 #[Fillable(['name', 'email', 'password', 'avatar', 'email_verified_at', 'current_team_id'])]
 #[Hidden(['password', 'remember_token', 'staff_at', 'case_manager_at'])]
 class User extends Authenticatable
