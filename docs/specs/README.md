@@ -53,9 +53,8 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | # | Spec | Headline DoD |
 |---|---|---|
 | 12 | [Indexing pipeline](12-indexing-pipeline.md) | A JS-heavy dashboard is searchable by content absent from its source HTML |
-| 13 | [Retrieval](13-retrieval.md) | An agent asks for "the billing dashboard from last month" and gets it before rebuilding it |
-| 15 | [Slack](15-slack.md) | A private artifact unfurls to a bare card; `/artfct` search returns ephemeral results |
 | 16 | [Collections and usage ranking](16-collections.md) | A canonical artifact outranks a semantically closer one nobody has opened |
+| 18 | [Blog content service](18-blog-content-service.md) | A Markdown draft lints against the claim allowlist and renders the review document and the live post from one source |
 
 → **Thesis testable.**
 
