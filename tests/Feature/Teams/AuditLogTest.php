@@ -82,7 +82,7 @@ test('the_page_labels_events_and_offers_a_person_picker', function () {
 
     test()->actingAs($admin)->get(route('teams.audit.index', $team))
         ->assertInertia(fn (Assert $page) => $page
-            ->has('types', count(AuditEventType::cases()))
+            ->has('types', count(array_filter(AuditEventType::cases(), fn (AuditEventType $case): bool => ! $case->isInternalOnly())))
             ->where('types.0', ['value' => 'artifact.created', 'label' => 'Artifact created'])
             ->where('events.data.0.type', 'token.created')
             ->where('events.data.0.typeLabel', 'Token created')

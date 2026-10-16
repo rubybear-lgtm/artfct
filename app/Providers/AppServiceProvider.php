@@ -8,6 +8,7 @@ use App\Contracts\PublicArtifactSource;
 use App\Listeners\CreatePersonalTeam;
 use App\Mail\CloudflareEmailTransport;
 use App\Models\McpConnection;
+use App\Models\User;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
@@ -62,7 +63,9 @@ use App\Services\WorkerEvents\ArtifactVersionCreatedHandler;
 use App\Services\WorkerEvents\ArtifactViewedHandler;
 use App\Services\WorkerEvents\WorkerEventHandlers;
 use App\Support\ClientIp;
+use App\Support\StaffAccess;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
@@ -72,6 +75,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -174,6 +178,22 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // The one staff ability (spec 17). Deliberately not a `Gate::before`
+        // hook: that would grant every ability, including the tenant policies,
+        // to staff who are not members of the tenant.
+        //
+        // It is satisfied by `StaffAccess` and nothing else: the grant alone is
+        // not enough outside a development host, the session proof is needed too.
+        Gate::define('operate', fn (User $user): bool => StaffAccess::allows($user));
+
+        // No sign-in inherits a staff session. The AuthKit callback writes the
+        // flag after `login()`, so this runs first and cannot clear its own.
+        Event::listen(Login::class, function (): void {
+            if (app()->bound('session.store')) {
+                app('session.store')->forget(StaffAccess::SESSION_KEY);
+            }
+        });
 
         // A browser that hits a refused or missing page lands on one branded,
         // plain-language screen instead of Laravel's bare "404 | Not Found".
@@ -360,6 +380,9 @@ class AppServiceProvider extends ServiceProvider
         });
         RateLimiter::for('artifact-comment-store', fn (Request $request): Limit => Limit::perMinute(30)->by('comment-store:'.($request->user()->id ?? ClientIp::for($request))));
         RateLimiter::for('artifact-comment-resolve', fn (Request $request): Limit => Limit::perMinute(60)->by('comment-resolve:'.($request->user()->id ?? ClientIp::for($request))));
+        // The operator console (spec 17): per signed-in staff user, else per
+        // client address.
+        RateLimiter::for('ops', fn (Request $request): Limit => Limit::perMinute(120)->by('ops:'.($request->user()?->id ?? ClientIp::for($request))));
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);
             $claims = $request->attributes->get('org_jwt_claims');

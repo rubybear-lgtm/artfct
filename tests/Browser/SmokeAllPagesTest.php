@@ -123,7 +123,9 @@ test('every_page_route_is_accounted_for', function () {
     $unlisted = collect(Route::getRoutes()->getRoutes())
         ->filter(fn ($route) => in_array('GET', $route->methods(), true))
         ->map(fn ($route) => $route->getName())
-        ->filter(fn ($name) => $name !== null && ! str_starts_with($name, 'generated::') && ! str_starts_with($name, 'boost.') && ! in_array($name, ['storage.local', 'storage.local.upload', 'up', 'livewire.update']))
+        // `ops.*` is the staff-only operator console (spec 17); it 404s for the
+        // signed-in user this suite uses and is covered by OpsConsoleTest.
+        ->filter(fn ($name) => $name !== null && ! str_starts_with($name, 'generated::') && ! str_starts_with($name, 'boost.') && ! str_starts_with($name, 'ops.') && ! in_array($name, ['storage.local', 'storage.local.upload', 'up', 'livewire.update']))
         ->reject(fn ($name) => in_array($name, $known, true))
         ->values()
         ->all();

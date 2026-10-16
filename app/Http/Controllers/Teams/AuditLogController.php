@@ -41,7 +41,9 @@ class AuditLogController extends Controller
         $paginator = AuditEvent::query()
             ->where('team_id', $team->id)
             ->when($type, fn ($query) => $query->where('event_type', $type))
-            ->when($filters['actor'] ?? null, fn ($query, $actor) => $query->where('actor', $actor))
+            ->when($filters['actor'] ?? null, fn ($query, $actor) => $this->isStaffActor($actor)
+                ? $query->where(fn ($staff) => $staff->where('actor', 'staff')->orWhere('actor', 'like', 'staff:%'))
+                : $query->where('actor', $actor))
             ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('created_at', '>=', $from))
             ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('created_at', '<=', $to.' 23:59:59'))
             ->orderByDesc('created_at')
@@ -55,9 +57,10 @@ class AuditLogController extends Controller
             'id' => $event->id,
             'type' => $event->event_type->value,
             'typeLabel' => $event->event_type->label(),
-            'actor' => $event->actor,
+            'actor' => $this->isStaffActor($event->actor) ? 'staff' : $event->actor,
             'actorName' => $names[$event->actor] ?? $event->actor,
             'target' => $event->target,
+            'reason' => $event->reason,
             'outcome' => $event->outcome,
             'ip' => $event->ip,
             'at' => $event->created_at->toIso8601String(),
@@ -68,10 +71,10 @@ class AuditLogController extends Controller
         return Inertia::render('teams/audit', [
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'events' => $events,
-            'types' => array_map(fn (AuditEventType $case): array => [
+            'types' => array_values(array_map(fn (AuditEventType $case): array => [
                 'value' => $case->value,
                 'label' => $case->label(),
-            ], AuditEventType::cases()),
+            ], array_filter(AuditEventType::cases(), fn (AuditEventType $case): bool => ! $case->isInternalOnly()))),
             'members' => $members,
             'total' => $paginator->total(),
             'filters' => [
@@ -140,7 +143,17 @@ class AuditLogController extends Controller
     }
 
     /**
-     * Actor strings are user ids for people; anything else (`cli`,
+     * Operator events are stored with a `staff:{user_id}` actor (spec 17).
+     * The tenant sees them as one anonymous party, never the individual.
+     */
+    private function isStaffActor(string $actor): bool
+    {
+        return $actor === 'staff' || str_starts_with($actor, 'staff:');
+    }
+
+    /**
+     * Actor strings are user ids for people; `staff:*` actors are shown as
+     * "artfct staff" without naming the individual; anything else (`cli`,
      * `slack:unfurl`) is shown as is, and ids of deleted users read
      * "deleted user".
      *
@@ -152,8 +165,16 @@ class AuditLogController extends Controller
         $ids = $actors->filter(fn (string $actor): bool => ctype_digit($actor))->values();
         $users = User::query()->whereIn('id', $ids)->pluck('name', 'id');
 
-        return $ids->mapWithKeys(fn (string $id): array => [
+        $names = $ids->mapWithKeys(fn (string $id): array => [
             $id => (string) ($users[(int) $id] ?? __('deleted user')),
         ])->all();
+
+        foreach ($actors as $actor) {
+            if ($this->isStaffActor($actor)) {
+                $names[$actor] = __('artfct staff');
+            }
+        }
+
+        return $names;
     }
 }

@@ -6,6 +6,11 @@
 // route-classification.json by how it is protected, and the class's own check
 // is run. A route that is missing from the file (or a stale entry) fails.
 //
+// The operator console (every route at /ops or under /ops/) is never a team
+// route, even where its URI carries {team}: it is split out first, must be
+// classified `staff`, and is attacked signed out and as a signed-in user who
+// is not staff. Both must be answered with a plain 404.
+//
 // Worker: every /v1 and /p path in openapi/artfct.yaml is attacked with the
 // other team's credentials against the first team's real ids, by a rule on the
 // path. A path no rule recognises fails, so it cannot slip in unchecked.
@@ -14,6 +19,11 @@ import { readFileSync } from 'node:fs';
 import { artisan, authed, check, laravel, worker } from './lib.mjs';
 
 const TEAM_PARAMS = ['{team}', '{current_team}'];
+
+/** The operator console (spec 17): `/ops` itself and everything under it. */
+const isStaffRoute = (route) =>
+    route.uri === '/ops' || route.uri.startsWith('/ops/');
+
 const classificationFile = JSON.parse(
     readFileSync(
         new URL('./route-classification.json', import.meta.url),
@@ -120,10 +130,10 @@ export async function matrix(world) {
 
     // ── Laravel ──────────────────────────────────────────────────────────────
     const routes = laravelRoutes();
-    const team = routes.filter((r) =>
-        TEAM_PARAMS.some((p) => r.uri.includes(p)),
-    );
-    const other = routes.filter(
+    const staff = routes.filter(isStaffRoute);
+    const rest = routes.filter((r) => !isStaffRoute(r));
+    const team = rest.filter((r) => TEAM_PARAMS.some((p) => r.uri.includes(p)));
+    const other = rest.filter(
         (r) => !TEAM_PARAMS.some((p) => r.uri.includes(p)),
     );
 
@@ -136,8 +146,11 @@ export async function matrix(world) {
     // The home page is the only route whose URI is "/" itself.
     const key = (r) =>
         r.uri === '/' ? `${r.method} /` : `${r.method} ${r.uri.slice(1)}`;
-    const unclassified = other.filter((r) => !known.has(key(r))).map(key);
-    const stale = [...known].filter((k) => !other.some((r) => key(r) === k));
+    const classified = [...other, ...staff];
+    const unclassified = classified.filter((r) => !known.has(key(r))).map(key);
+    const stale = [...known].filter(
+        (k) => !classified.some((r) => key(r) === k),
+    );
     check(
         'every non-team Laravel route is classified',
         unclassified.length === 0,
@@ -149,6 +162,31 @@ export async function matrix(world) {
         `stale: ${stale.join(', ')}`,
     );
     void present;
+
+    const notStaff = staff
+        .filter((r) => classification[key(r)] !== 'staff')
+        .map(key);
+    check(
+        'every /ops route is classified staff',
+        notStaff.length === 0,
+        `not staff: ${notStaff.join(', ')}`,
+    );
+    const strayStaff = Object.entries(classification)
+        .filter(
+            ([routeKey, cls]) =>
+                cls === 'staff' && !/^[A-Z]+ ops(\/|$)/.test(routeKey),
+        )
+        .map(([routeKey]) => routeKey);
+    check(
+        'only /ops routes are classified staff',
+        strayStaff.length === 0,
+        `outside /ops: ${strayStaff.join(', ')}`,
+    );
+    check(
+        `the matrix found ${staff.length} /ops routes`,
+        staff.length > 0,
+        'none registered',
+    );
 
     const values = {
         team: slugV,
@@ -237,6 +275,41 @@ export async function matrix(world) {
                 `got ${response.status}`,
             );
         }
+    }
+
+    // The operator console must not reveal that it exists: a signed-out visitor
+    // and a signed-in user who is not staff get the same plain 404 as an unknown
+    // URL, on every method, with no redirect.
+    for (const route of staff) {
+        if (classification[key(route)] !== 'staff') {
+            continue;
+        }
+
+        const path = fill(route.uri, { ...values, team: slugA });
+        const hasBody = !['GET', 'DELETE'].includes(route.method);
+        const signedOut = await plain(route.method, `${laravel}${path}`);
+        check(
+            `class staff: anonymous gets 404 ${route.method} ${route.uri}`,
+            signedOut.status === 404 && !signedOut.headers.has('location'),
+            `got ${signedOut.status}${signedOut.headers.get('location') ? ` to ${signedOut.headers.get('location')}` : ''}`,
+        );
+        // Node 22's fetch asserts when a response body is left unread.
+        await signedOut.arrayBuffer();
+
+        const signedIn = await bob.request(path, {
+            method: route.method,
+            json: hasBody ? {} : undefined,
+            headers: {
+                Accept:
+                    route.method === 'GET' ? 'text/html' : 'application/json',
+            },
+        });
+        check(
+            `class staff: non-staff bob gets 404 ${route.method} ${route.uri}`,
+            signedIn.status === 404 && !signedIn.headers.has('location'),
+            `got ${signedIn.status}${signedIn.headers.get('location') ? ` to ${signedIn.headers.get('location')}` : ''}`,
+        );
+        await signedIn.arrayBuffer();
     }
 
     // The artifact viewer (RUB-438 / RUB-439) names an artifact without a

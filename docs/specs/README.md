@@ -2,7 +2,7 @@
 
 > **Note (2026-10-04, RUB-432):** the `artfct` CLI and the local stdio MCP server were retired. Artfct supports one way to connect an AI tool: the hosted OAuth MCP server. References to the CLI below describe the design at the time they were written and are kept as a historical record.
 
-Each spec is independently verifiable and safe to stop at. **Every spec follows the template below and is not done until its DoD checklist and its tests both pass.** All 17 are written (0–16) — files in `specs/`. Architecture rationale lives in the [decision record](../architecture-decisions.md); product scope in the [PRD](../prd.md).
+Each spec is independently verifiable and safe to stop at. **Every spec follows the template below and is not done until its DoD checklist and its tests both pass.** All 18 are written (0–17) — files in `specs/`. Architecture rationale lives in the [decision record](../architecture-decisions.md); product scope in the [PRD](../prd.md).
 
 | # | Spec | Headline DoD |
 |---|---|---|
@@ -64,6 +64,12 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | # | Spec | Headline DoD |
 |---|---|---|
 | 14 | [Billing, quotas, branded console](14-billing-quotas-branded-console.md) | Plan gates, per-tenant quotas, Stripe, `artfct.acme.com` |
+
+### Track H — Operations
+
+| # | Spec | Headline DoD |
+|---|---|---|
+| 17 | [Operator console](17-operator-console.md) | Staff finds a tenant, reads its plan, usage against quota and recent audit events; the tenant sees that staff looked |
 
 ---
 

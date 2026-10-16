@@ -39,7 +39,8 @@ final class ErasureService
                 $team->slug,
                 'internal',
                 'governance:erase',
-                "refused: artifact [{$heldId}] is under legal hold",
+                'refused',
+                "artifact [{$heldId}] is under legal hold",
             );
 
             return ErasurePlan::refused($heldId, $dryRun);
@@ -66,8 +67,9 @@ final class ErasureService
             $team->slug,
             'internal',
             'governance:erase',
+            $dryRun ? 'dry_run' : 'success',
             $dryRun
-                ? sprintf('dry_run: would erase %d artifact(s)', count($ids))
+                ? sprintf('would erase %d artifact(s)', count($ids))
                 : sprintf('erased %d artifact(s)', count($ids)),
         );
 

@@ -17,6 +17,6 @@ return [
 
     'consent_required' => (bool) env('LEGAL_CONSENT_REQUIRED', false),
 
-    'terms_version' => env('LEGAL_TERMS_VERSION', '2026-09-20-draft'),
+    'terms_version' => env('LEGAL_TERMS_VERSION', '2026-10-15-draft'),
 
 ];

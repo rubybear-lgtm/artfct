@@ -698,6 +698,67 @@ The split is navigation only. Billing and token pages stay reachable by URL for
 members on purpose (read-only billing is covered by existing tests); hard-gating
 them is an open follow-up.
 
+## Operator console (spec 17)
+
+A staff-only console at `/ops`, outside any team. Code: `routes/ops.php`,
+`App\Http\Controllers\Ops` (and `Ops\Actions`), `App\Services\Operator`
+(directory, detail, health, `OperatorAuditLogger`, `SuppressionCaseService`,
+`Actions\*`), `App\Services\Readiness\IntegrationReadiness`, React pages under
+`resources/js/pages/ops`.
+
+**Access.** `users.staff_at` (and `case_manager_at`, which also needs
+`staff_at`) are set only by artisan: `staff:grant {email} [--case-manager]`,
+`staff:revoke {email}`. Both are hidden from serialisation and not fillable.
+`EnsureStaff` replaces `auth` on the group, so non-staff and signed-out
+requests get the ordinary 404 (never a redirect, 403 or 405; an expired CSRF
+token on an `/ops` URL also answers 404, every other route keeps 419). Outside
+`local` and `testing` it also needs the `staff_session` session value
+(`['user_id', 'at']`), set by the AuthKit callback only when the real client
+signed the user in through `services.workos.staff_organization_id`
+(`WORKOS_STAFF_ORGANIZATION_ID`), bound to that user and newer than their
+`staff_at`. Dev login never sets it. The organization's MFA policy is a WorkOS
+dashboard setting (`domainMfaRequired` / `nonDomainMfaRequired`); the
+application cannot observe MFA itself. Staff sign in at `/login?staff=1`,
+which sends the hosted sign-in to the staff organization only (the id comes
+from config, never from the request) and lands on `/ops`; it does nothing when
+no staff organization is configured. In staging the organization is
+`org_01M51DJ3875V0G7QQS5PE44PK0` ("artfct staff", both MFA flags on, no
+domains, so people join by invitation); production has none yet.
+
+**Content boundary.** Staff never see artifact titles, content, indexed text,
+comments, collections or search queries. The tenant page shows an audit
+event's `target` only for prefixes on `TenantDetail::TARGET_ALLOWLIST`; a test
+makes every new `AuditEventType` case get an explicit decision. An arch test
+fails the build when `App\Http\Controllers\Ops`, `App\Services\Operator` or
+`App\Services\Readiness` depend on the content services or models. This is an
+application boundary, not a cryptographic one.
+
+**Audit.** `OperatorAuditLogger` is the only way `/ops` records anything. It
+writes `operator_audit_events` (append-only, no foreign keys) first and then
+the tenant's `audit_events` copy, in one transaction, with actor `staff:{id}`
+(shown and exported as "artfct staff") and a masked address and browser. A
+mutating action needs a reason (stored in `audit_events.reason`, shown to the
+tenant). A suppression case (`operator_suppression_cases`: category, reference,
+at most 90 days) makes read events skip the tenant copy; creating, renewing and
+releasing one needs `case_manager_at` and is internal-only. `ops:release-suppressed`
+(hourly) writes withheld events to the tenant's log with their original
+timestamps. The privacy page must disclose this before cases are used.
+
+**Actions.** Reindex dispatches `OperatorReindexJob` (the `/ops` code never
+reads content), push limits calls `OrgLimitsWriter::push`, plan change
+re-reads the locked team and pushes to the Worker only after commit, erase
+needs a fresh dry run (kept in the session for 15 minutes, per team), the typed
+slug and a per-tenant lock, and records an internal `operator.erase_started`
+row before deleting. `billing:sync-limits --reason=...` and
+`indexing:backfill --reason=...` leave the same audit event as the console (only
+the actor differs); without `--reason` they are routine and record nothing, so
+the hourly sync stays quiet. Per-tenant custom limits are not supported (the next
+`billing:sync-limits` would overwrite them).
+
+**Isolation matrix.** `/ops` routes are class `staff` in
+`scripts/isolation/route-classification.json`; `matrix.mjs` requires 404 for an
+anonymous request and a signed-in non-staff user.
+
 ## MCP sessions
 
 Hosted MCP sessions last 14 days (`MCP_SESSION_TTL_MINUTES`, default 20160) so

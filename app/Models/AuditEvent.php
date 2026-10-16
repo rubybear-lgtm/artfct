@@ -24,9 +24,10 @@ use Illuminate\Support\Carbon;
  * @property string $ip
  * @property string $user_agent
  * @property string $outcome
+ * @property string|null $reason
  * @property Carbon $created_at
  */
-#[Fillable(['team_id', 'event_type', 'actor', 'target', 'ip', 'user_agent', 'outcome'])]
+#[Fillable(['team_id', 'event_type', 'actor', 'target', 'ip', 'user_agent', 'outcome', 'reason'])]
 class AuditEvent extends Model
 {
     /** @use HasFactory<AuditEventFactory> */

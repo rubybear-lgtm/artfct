@@ -66,6 +66,16 @@ class AuthKitCallbackController extends Controller
             $request->session()->put('workos_session_id', $profile->sessionId);
         }
 
+        // A staff session is one that came through the staff WorkOS
+        // organization on the real client (spec 17). The flag is cleared first
+        // so no other sign-in can inherit one, then set after the session
+        // regeneration above so it belongs to this session id.
+        $request->session()->forget('staff_session');
+
+        if (! $client instanceof FakeAuthKitClient && $this->isStaffOrganization($profile->organizationId)) {
+            $request->session()->put('staff_session', ['user_id' => $user->id, 'at' => now()->timestamp]);
+        }
+
         /** @var User $user */
         $user = $user->fresh();
         $currentTeam = $user->currentTeam ?? $user->personalTeam();
@@ -82,5 +92,20 @@ class AuthKitCallbackController extends Controller
             InvitationLandingController::pendingJoinUrl($request)
                 ?? ($currentTeam ? route('dashboard', ['current_team' => $currentTeam->slug]) : route('teams.index'))
         );
+    }
+
+    /**
+     * Whether the organization the user signed in through is the configured
+     * staff organization. An unset or empty configured id never matches.
+     */
+    private function isStaffOrganization(?string $organizationId): bool
+    {
+        $staffOrganizationId = config('services.workos.staff_organization_id');
+
+        if (! is_string($staffOrganizationId) || $staffOrganizationId === '') {
+            return false;
+        }
+
+        return is_string($organizationId) && $organizationId !== '' && hash_equals($staffOrganizationId, $organizationId);
     }
 }

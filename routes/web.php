@@ -135,6 +135,7 @@ Route::middleware('auth')->group(function () {
 require __DIR__.'/auth.php';
 require __DIR__.'/oauth.php';
 require __DIR__.'/teams.php';
+require __DIR__.'/ops.php';
 
 Route::post('internal/worker-events', WorkerEventController::class)->name('internal.worker-events');
 

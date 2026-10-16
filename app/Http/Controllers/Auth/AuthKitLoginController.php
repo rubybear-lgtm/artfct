@@ -25,11 +25,19 @@ class AuthKitLoginController extends Controller
      * Optional `screen_hint` (sign-up or sign-in) and `login_hint` (an
      * email) query parameters open the hosted UI on the right screen with
      * the email filled in, as the invitation flow does.
+     *
+     * `staff=1` is how artfct staff reach the operator console (spec 17): the
+     * hosted sign-in is scoped to the dedicated staff WorkOS organization, so
+     * that organization's MFA policy applies and the callback can issue a
+     * staff session, and the visitor lands on /ops afterwards. It does
+     * nothing when no staff organization is configured.
      */
     public function __invoke(Request $request, AuthKitClientContract $client): Response|SymfonyResponse
     {
         $screenHint = in_array($request->query('screen_hint'), ['sign-up', 'sign-in'], true) ? $request->query('screen_hint') : null;
         $loginHint = filter_var($request->query('login_hint'), FILTER_VALIDATE_EMAIL) ?: null;
+        $staffOrganizationId = $request->boolean('staff') ? config('services.workos.staff_organization_id') : null;
+        $staffOrganizationId = is_string($staffOrganizationId) && $staffOrganizationId !== '' ? $staffOrganizationId : null;
 
         if ($client instanceof FakeAuthKitClient) {
             return Inertia::render('auth/login', ['loginHint' => $loginHint]);
@@ -49,10 +57,15 @@ class AuthKitLoginController extends Controller
         // so the session must hold the encoded form for the callback to match.
         $request->session()->put('authkit_state', json_encode($state));
 
+        if ($staffOrganizationId !== null) {
+            $request->session()->put('url.intended', route('ops.tenants.index'));
+        }
+
         $url = (new UserManagement)->getAuthorizationUrl(
             config('services.workos.redirect_url'),
             $state,
             'authkit',
+            organizationId: $staffOrganizationId,
             loginHint: $loginHint,
             screenHint: $screenHint,
         );

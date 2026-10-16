@@ -24,6 +24,7 @@ final class AuditLogger
         string $ip,
         string $userAgent,
         string $outcome = 'success',
+        ?string $reason = null,
     ): AuditEvent {
         return AuditEvent::create([
             'team_id' => $team?->id,
@@ -33,6 +34,7 @@ final class AuditLogger
             'ip' => $ip,
             'user_agent' => $userAgent,
             'outcome' => $outcome,
+            'reason' => $reason,
         ]);
     }
 
@@ -48,6 +50,7 @@ final class AuditLogger
         string $actor,
         string $target,
         string $outcome = 'success',
+        ?string $reason = null,
     ): AuditEvent {
         return $this->record(
             $type,
@@ -57,6 +60,7 @@ final class AuditLogger
             ClientIp::for($request),
             $request->userAgent() ?? 'unknown',
             $outcome,
+            $reason,
         );
     }
 }

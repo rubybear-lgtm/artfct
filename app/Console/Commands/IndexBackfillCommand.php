@@ -2,25 +2,24 @@
 
 namespace App\Console\Commands;
 
-use App\Contracts\ArtifactContentSource;
-use App\Contracts\ArtifactDirectory;
-use App\Jobs\IndexArtifactJob;
-use App\Models\ArtifactIndexEntry;
-use App\Models\ArtifactIndexingFailure;
+use App\Enums\AuditEventType;
 use App\Models\Team;
+use App\Services\Indexing\IndexBackfillService;
+use App\Services\Operator\OperatorAuditLogger;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 
-#[Signature('indexing:backfill {org : The team slug}')]
+#[Signature('indexing:backfill {org : The team slug} {--reason= : Why an operator is running this (5 to 500 characters); records the same audit event as the console\'s reindex action}')]
 #[Description('Queues every live, not-yet-indexed artifact of one org for indexing, the same way the console reindex action does')]
 class IndexBackfillCommand extends Command
 {
-    public function handle(ArtifactDirectory $directory, ArtifactContentSource $content): int
+    public function handle(IndexBackfillService $service, OperatorAuditLogger $audit): int
     {
-        if (! config('indexing.enabled')) {
-            $this->components->error('Indexing is turned off.');
+        $reason = $this->option('reason');
+
+        if ($reason !== null && ! OperatorAuditLogger::isValidReason((string) $reason)) {
+            $this->components->error('--reason must be 5 to 500 characters.');
 
             return self::FAILURE;
         }
@@ -34,44 +33,33 @@ class IndexBackfillCommand extends Command
             return self::FAILURE;
         }
 
-        // The directory mints its Worker credential for the signed-in user, so
-        // act as the team's first admin, as the console reindex action does.
-        $admin = $team->firstAdmin();
-        if ($admin === null) {
-            $this->components->error("Team \"{$slug}\" has no admin to act as.");
+        // A refusal is recorded like the console records one, so the two
+        // paths leave the same rows.
+        $refuse = function (string $message) use ($audit, $reason, $team): int {
+            $this->components->error($message);
 
-            return self::FAILURE;
-        }
-        auth()->setUser($admin);
-
-        $indexed = ArtifactIndexEntry::query()->where('team_id', $team->id)->pluck('artifact_id')->all();
-        $failed = ArtifactIndexingFailure::query()->where('team_id', $team->id)->pluck('artifact_id')->all();
-        $queued = 0;
-        $skipped = 0;
-        $cursor = null;
-
-        do {
-            $page = $directory->listArtifacts($team->slug, [], $cursor, 100);
-
-            foreach ($page['artifacts'] as $artifact) {
-                $artifactId = (string) $artifact['id'];
-                $alreadyIndexed = in_array($artifactId, $indexed, true) && ! in_array($artifactId, $failed, true);
-                $fetched = $alreadyIndexed || ! empty($artifact['revoked_at']) ? null : $content->fetch($team->slug, $artifactId);
-
-                if ($fetched === null || ! Cache::add(IndexArtifactJob::reindexCacheKey($team->id, $artifactId), true, now()->addMinutes(10))) {
-                    $skipped++;
-
-                    continue;
-                }
-
-                IndexArtifactJob::dispatch($team->id, $artifactId, $fetched['html'], $fetched['provenance'], $fetched['version'] ?? null)->onQueue('indexing');
-                $queued++;
+            if ($reason !== null) {
+                $audit->recordForCli(AuditEventType::OperatorReindexRequested, $team, $team->slug, trim((string) $reason), 'failure');
             }
 
-            $cursor = $page['next_cursor'];
-        } while ($cursor !== null);
+            return self::FAILURE;
+        };
+
+        if (! config('indexing.enabled')) {
+            return $refuse('Indexing is turned off.');
+        }
+
+        if ($service->actingAdmin($team) === null) {
+            return $refuse("Team \"{$slug}\" has no admin to act as.");
+        }
+
+        ['queued' => $queued, 'skipped' => $skipped] = $service->backfill($team);
 
         $this->components->info("{$queued} artifact(s) queued for indexing, {$skipped} skipped (already indexed, revoked, unreadable, or already queued).");
+
+        if ($reason !== null) {
+            $audit->recordForCli(AuditEventType::OperatorReindexRequested, $team, $team->slug, trim((string) $reason));
+        }
 
         return self::SUCCESS;
     }
