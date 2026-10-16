@@ -38,6 +38,12 @@ SURFACE_H2 = {
     "programmatic": (2, 4),
 }
 
+# The two strings a search result is built from. Both bands are inclusive, and
+# seo-audit.py imports them rather than repeating the numbers, so the scorer and
+# the publish gate cannot disagree about what fits.
+TITLE_RANGE = (45, 60)
+META_RANGE = (120, 160)
+
 # Terms that describe something artfct is not, by decision (feature-inventory
 # section 3). Blocked when asserted of artfct; warned otherwise, because a
 # comparison page may legitimately name a competitor's category.
@@ -126,6 +132,7 @@ class Doc:
         self.body_links = 0
         self.surface = ""
         self.register = ""
+        self.is_html = False
         self.raw = ""
 
 
@@ -225,6 +232,7 @@ def load(path: Path) -> Doc:
     raw = path.read_text(encoding="utf-8", errors="replace")
     doc.raw = raw
     if path.suffix.lower() in (".html", ".htm") or "<html" in raw[:400].lower():
+        doc.is_html = True
         _Extract(doc).feed(raw)
         if not doc.has_updated and re.search(r"last updated", raw, re.I):
             doc.has_updated = True
@@ -397,6 +405,26 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
             warn("W13", str(words) + " words; " + surface + " runs " + str(lo) + "-" + str(hi), "")
     if doc.body_links < 3 and surface != "programmatic":
         warn("W11", str(doc.body_links) + " in-body links; the corpus median is 7", "")
+
+    # The title and the meta description are the two strings a search result is
+    # built from, and nothing else in the pipeline measures them. Sixteen of the
+    # eighteen drafts carried a description past the 160 characters a result
+    # shows, because no check ever said so and a warning would not have stopped
+    # them being published.
+    if doc.is_html:
+        title = re.search(r"<title>(.*?)</title>", doc.raw, re.S)
+        if not title:
+            err("E12", "no <title>; the tab and the search result both need one", "")
+        elif not (45 <= len(title.group(1).strip()) <= 60):
+            err("E12", "title is " + str(len(title.group(1).strip()))
+                + " characters; search shows 45-60", title.group(1).strip())
+
+        meta = re.search(r'<meta\s+name="description"\s+content="(.*?)"', doc.raw, re.S)
+        if not meta:
+            err("E13", "no meta description; the search result needs one", "")
+        elif not (120 <= len(meta.group(1).strip()) <= 160):
+            err("E13", "meta description is " + str(len(meta.group(1).strip()))
+                + " characters; search truncates past 160", meta.group(1).strip()[:70])
     if register == "glean-formal" and re.search(r"!\s*(?:</p>|\n|$)", doc.raw):
         warn("W12", "exclamation mark in a glean-formal page", "")
 

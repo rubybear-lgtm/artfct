@@ -99,8 +99,7 @@ function inline(html) {
 	}).trim();
 }
 
-const PARA = /<p>([\s\S]*?)<\/p>/g;
-const ITEM = /<li>([\s\S]*?)<\/li>/g;
+const ITEM = /<li\b[^>]*>([\s\S]*?)<\/li>/g;
 const LIST_CLASS =
 	'className="mb-5 list-disc space-y-2 pl-6 leading-[1.75] text-muted-foreground"';
 
@@ -108,7 +107,14 @@ function list(block) {
 	const items = [...block.matchAll(ITEM)].map((m) => "                        <li>" + inline(m[1]) + "</li>");
 
 	if (items.length === 0) {
-		return [];
+		throw new Error("a <ul> in the draft has no <li> items");
+	}
+
+	// Prose loose inside the list is not an item, so nothing emits it either.
+	const leftover = block.replace(ITEM, "").trim();
+
+	if (leftover) {
+		throw new Error("unhandled markup inside a list: " + leftover.slice(0, 80));
 	}
 
 	return [
@@ -120,19 +126,166 @@ function list(block) {
 	];
 }
 
-function paragraphs(block, indent) {
-	return [...block.matchAll(PARA)].map((m) => indent + "<P>" + inline(m[1]) + "</P>,");
+/**
+ * A pre block is literal text, so it reaches JSX as a string: escaping it as
+ * inline markup would collapse its whitespace, and leaving its angle brackets
+ * bare would make JSX read them as tags.
+ */
+function literal(html) {
+	const text = html
+		.replace(/<\/?code>/g, "")
+		.replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
+		.replace(/&#x([0-9a-f]+);/gi, (_m, code) => String.fromCodePoint(parseInt(code, 16)))
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, "&")
+		.replace(/\\/g, "\\\\")
+		.replace(/\r?\n/g, "\\n")
+		.replace(/'/g, "\\'");
+
+	return "{'" + text + "'}";
 }
 
-function section(block) {
-	const heading = block.match(/<h2>([\s\S]*?)<\/h2>/);
-	const out = [];
+/** A cell is rendered as a JSX expression, so an entity left in it shows up raw. */
+const quote = (text) =>
+	"'" + text
+		.replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
+		.replace(/&#x([0-9a-f]+);/gi, (_m, code) => String.fromCodePoint(parseInt(code, 16)))
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, "&")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/\\/g, "\\\\")
+		.replace(/'/g, "\\'") + "'";
 
-	if (heading) {
-		out.push("                <H2>" + inline(heading[1]) + "</H2>,");
+const CELL = /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g;
+
+/**
+ * Cells are plain text by contract. A cell carrying a tag would be stringified
+ * into the props and lose it, so that is an error rather than a quiet omission —
+ * and so is a cell whose tag carried an attribute the pattern could not read.
+ */
+function tableCells(chunk) {
+	const found = [...chunk.matchAll(CELL)].map((m) => m[1]);
+
+	for (const cell of found) {
+		if (/<[a-zA-Z]/.test(cell)) {
+			throw new Error("a table cell carries markup the generator would drop: " + cell);
+		}
 	}
 
-	out.push(...paragraphs(block, "                "), ...list(block));
+	const closers = (chunk.match(/<\/t[hd]\b[^>]*>/g) ?? []).length;
+
+	if (closers !== found.length) {
+		throw new Error("a table row has a cell this generator cannot read");
+	}
+
+	return found;
+}
+
+function table(inner) {
+	for (const tag of ["caption", "tfoot", "colgroup", "col"]) {
+		if (new RegExp("<" + tag + "\\b", "i").test(inner)) {
+			throw new Error("a <table> element the generator cannot emit: <" + tag + ">");
+		}
+	}
+
+	const head = [...inner.matchAll(/<thead\b[^>]*>([\s\S]*?)<\/thead>/g)].flatMap((m) => tableCells(m[1]));
+	const bodies = [...inner.matchAll(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/g)].map((m) => m[1]);
+	const rows = bodies.flatMap((body) =>
+		[...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].map((r) => tableCells(r[1])),
+	);
+
+	// A heading or a stray cell sitting between rows is inside the body, so the
+	// check below cannot see it once the body has been read as rows.
+	const strayRows = bodies.join("").replace(/<tr\b[^>]*>[\s\S]*?<\/tr>/g, "").trim();
+
+	if (strayRows) {
+		throw new Error("unhandled markup inside a table body: " + strayRows.slice(0, 80));
+	}
+
+	if (head.length === 0 || rows.length === 0) {
+		throw new Error('a <table class="t"> needs a <thead> and a <tbody> with rows');
+	}
+
+	const ragged = rows.find((row) => row.length !== head.length);
+
+	if (ragged) {
+		throw new Error("a table row has " + ragged.length + " cells where the header has " + head.length);
+	}
+
+	// A heading or a stray cell between rows is markup the template does not
+	// define, and it would leave the page without a word.
+	const leftover = inner
+		.replace(/<thead\b[^>]*>[\s\S]*?<\/thead>/g, "")
+		.replace(/<tbody\b[^>]*>[\s\S]*?<\/tbody>/g, "")
+		.trim();
+
+	if (leftover) {
+		throw new Error("unhandled markup inside a <table>: " + leftover.slice(0, 80));
+	}
+
+	return [
+		"                <Table",
+		"                    head={[" + head.map(quote).join(", ") + "]}",
+		"                    rows={[",
+		...rows.map((row) => "                        [" + row.map(quote).join(", ") + "],"),
+		"                    ]}",
+		"                />,",
+	];
+}
+
+function emit(tag, inner) {
+	if (tag === "h2") {
+		return ["                <H2>" + inline(inner) + "</H2>,"];
+	}
+
+	if (tag === "h3") {
+		return ["                <H3>" + inline(inner) + "</H3>,"];
+	}
+
+	if (tag === "p") {
+		return ["                <P>" + inline(inner) + "</P>,"];
+	}
+
+	if (tag === "ul") {
+		return list(inner);
+	}
+
+	if (tag === "pre") {
+		return ["                <Pre>" + literal(inner) + "</Pre>,"];
+	}
+
+	if (tag === "table") {
+		return table(inner);
+	}
+
+	throw new Error("unhandled block <" + tag + "> in the draft");
+}
+
+/** Every block the article template defines, in the order the draft has them. */
+const BLOCKS = /<(h2|h3|p|ul|pre|table)\b[^>]*>([\s\S]*?)<\/\1>/g;
+
+function section(block) {
+	const out = [];
+
+	for (const m of block.matchAll(BLOCKS)) {
+		out.push(...emit(m[1], m[2]));
+	}
+
+	// Anything the walk did not consume is markup the template does not define.
+	// Dropping it quietly is how a table, a code block and two <h3>s left the
+	// rendered page while this script still exited zero.
+	const leftover = block.replace(BLOCKS, "").trim();
+
+	if (leftover) {
+		throw new Error("unhandled markup in the draft: " + leftover.slice(0, 80));
+	}
 
 	return out;
 }
@@ -149,6 +302,17 @@ function faq(block) {
 		out.push("                <FaqItem question=\"" + inline(m[1]).replace(/"/g, "&quot;") + "\">");
 		out.push("                    " + inline(m[2]));
 		out.push("                </FaqItem>,");
+	}
+
+	// The questions are read out of the details blocks, so prose sitting beside
+	// them in the section would never reach the page.
+	const leftover = block
+		.replace(/<h2>[\s\S]*?<\/h2>/g, "")
+		.replace(/<details class="q">[\s\S]*?<\/details>/g, "")
+		.trim();
+
+	if (leftover) {
+		throw new Error("unhandled markup inside the FAQ: " + leftover.slice(0, 80));
 	}
 
 	return out;
@@ -210,8 +374,7 @@ function convert(draft, { slug, tag }) {
 		"            <>",
 		"                <P>" + inline(lead[1]) + "</P>,",
 		...sections.flatMap((m) => section(m[1])),
-		"                <H2>What this does not do</H2>,",
-		...list(block(draft, "limits")),
+		...section(block(draft, "limits")),
 		...faq(block(draft, "faq")),
 		"            </>",
 	];

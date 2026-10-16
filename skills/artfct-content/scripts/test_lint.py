@@ -15,7 +15,9 @@ HERE = Path(__file__).resolve().parent
 LINT = HERE / "lint-content.py"
 
 CLEAN = """<!doctype html>
-<html lang="en"><head><title>A page about churn</title></head>
+<html lang="en"><head><title>Keeping a churn analysis findable for the team \u2014 artfct</title>
+<meta name="description" content="For a team that pays for analysis once, the second copy is waste. Artfct stores what every agent produces, so the next question starts from work that exists.">
+</head>
 <body data-surface="feature-showcase" data-register="glean-formal">
 <div class="wrap">
 <header>
@@ -92,6 +94,26 @@ def main() -> int:
     assert res["stats"]["has_limits"] is True
     assert res["stats"]["has_updated"] is True
     print("  ok  stats read the document correctly")
+
+    code, res = run(CLEAN)
+    assert "E12" not in rules(res) and "E13" not in rules(res), \
+        "the clean fixture must satisfy the title and description bands: " + json.dumps(res["errors"], indent=2)
+    print("  ok  the clean fixture satisfies the title and description bands")
+
+    # Both directions matter. The band exists because a description ran long, so
+    # a suite that only tested the short side would not see that regression.
+    check("E12 a title under the band",
+          CLEAN.replace("Keeping a churn analysis findable for the team", "A churn page"), "E12")
+    check("E12 a title over the band",
+          CLEAN.replace("Keeping a churn analysis findable for the team",
+                        "Keeping a churn analysis findable for the team and its partners"), "E12")
+    check("E13 a description under the band",
+          CLEAN.replace(
+              "the second copy is waste. Artfct stores what every agent produces, so the next question starts from work that exists.",
+              "it is waste."), "E13")
+    check("E13 a description over the band",
+          CLEAN.replace("work that exists.",
+                        "work that exists, which matters because a team that cannot find its own analysis pays for it twice."), "E13")
 
     check("E11 unfilled token", variant("{{LEAD}}"), "E11")
     check("E1 non-goal asserted of artfct",
