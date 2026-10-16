@@ -305,7 +305,7 @@ fabricated by a helper. Each scenario is one module in `scripts/isolation/`:
 | `baseline` | The cross-team matrix on the Worker (list, export, usage, content, metadata, serve, blob, delete) both ways, then the RUB-434 attack: rename a team, claim its old slug, get a token naming it. |
 | `webRoutes` | A non-member against a team's settings, console and API routes, and a member pairing their own team's URL with another team's ids (IDOR), on a dedicated victim team so a missing guard cannot damage the other teams. |
 | `originLink` | The signed per-artifact link: valid on its own host, refused on another artifact's host, without its token, or altered. |
-| `matrix` | Every Laravel route with a `{team}` or `{current_team}` parameter, attacked automatically; every other route must be classified in `scripts/isolation/route-classification.json`; every Worker `/v1` and `/p` path in `openapi/artfct.yaml` is attacked with the other team's credentials. An unclassified or stale route fails the run. |
+| `matrix` | Every Laravel route with a `{team}` or `{current_team}` parameter, attacked automatically; every other route must be classified in `scripts/isolation/route-classification.json`; every Worker `/v1` and `/p` path in `openapi/artfct.yaml` is attacked with the other team's credentials. An unclassified or stale route fails the run. Every `/ops` route is class `staff` (never a team route): signed out and as a non-staff user, each must answer a plain 404. |
 | `roles` | Viewer, member and admin limits, and tokens consented with fewer scopes than the role allows. |
 | `revocation` | A removed member's token and refresh token, and every credential of a deleted team, stop working (polled, since revocation reaches the Worker asynchronously). |
 
