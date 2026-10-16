@@ -1,6 +1,7 @@
 import { Deferred, Head, Link } from '@inertiajs/react';
 import type { ReactNode } from 'react';
 
+import { ActionsPanel } from '@/components/ops/actions-panel';
 import {
     formatBytes,
     formatDate,
@@ -10,6 +11,8 @@ import {
 } from '@/components/ops/format';
 import { FactList, MeterBar, Section } from '@/components/ops/section';
 import type {
+    ErasurePlan,
+    TenantActions,
     TenantConnections,
     TenantDetail,
     TenantEvent,
@@ -32,6 +35,9 @@ interface Props {
     sso?: TenantSso | TenantSsoError;
     usage?: TenantUsage | TenantUsageError;
     events: TenantEvent[];
+    actions: TenantActions;
+    erasure_plan: ErasurePlan | null;
+    status: string | null;
 }
 
 function isUsageError(
@@ -233,6 +239,9 @@ export default function TenantShow({
     sso,
     usage,
     events,
+    actions,
+    erasure_plan,
+    status,
 }: Props) {
     const isDeleted = tenant.deleted_at !== null;
 
@@ -462,6 +471,15 @@ export default function TenantShow({
                         ))}
                     </ul>
                 )}
+            </Section>
+
+            <Section title="Actions">
+                <ActionsPanel
+                    tenant={tenant}
+                    actions={actions}
+                    erasurePlan={erasure_plan}
+                    status={status}
+                />
             </Section>
         </>
     );

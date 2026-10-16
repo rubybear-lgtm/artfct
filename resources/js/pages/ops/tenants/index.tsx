@@ -28,6 +28,7 @@ interface Props {
     };
     filters: TenantListFilters;
     options: TenantListOptions;
+    status: string | null;
 }
 
 type ToggleKey = 'provisioning_failed' | 'past_due' | 'cancelling' | 'deleted';
@@ -98,7 +99,12 @@ function FilterField({
     );
 }
 
-export default function TenantsIndex({ tenants, filters, options }: Props) {
+export default function TenantsIndex({
+    tenants,
+    filters,
+    options,
+    status,
+}: Props) {
     const [search, setSearch] = useState(filters.q ?? '');
     const [announcement, setAnnouncement] = useState('');
 
@@ -146,6 +152,13 @@ export default function TenantsIndex({ tenants, filters, options }: Props) {
             <p className="sr-only" role="status" aria-live="polite">
                 {announcement}
             </p>
+            <div role="status" aria-live="polite">
+                {status && (
+                    <p className="mb-6 border-l-2 border-primary pl-3 text-sm">
+                        {status}
+                    </p>
+                )}
+            </div>
             <div className="mb-6">
                 <h1 className="mb-1">Tenants</h1>
                 <p className="text-sm text-muted-foreground">

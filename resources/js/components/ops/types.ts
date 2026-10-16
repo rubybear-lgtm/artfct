@@ -100,6 +100,24 @@ export interface TenantEvent {
     at: string;
 }
 
+export interface TenantActions {
+    reindex: { enabled: boolean };
+    limits: { enabled: boolean };
+    billing: {
+        enabled: boolean;
+        plans: string[];
+        payment_statuses: string[];
+    };
+    erase: { enabled: boolean };
+}
+
+export interface ErasurePlan {
+    refused: boolean;
+    artifact_count: number;
+    held: boolean;
+    generated_at: string;
+}
+
 export type ReadinessState = 'ready' | 'not configured' | 'incomplete';
 
 export interface ReadinessCheck {
