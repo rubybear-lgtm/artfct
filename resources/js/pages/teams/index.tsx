@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 import type { SharedTeam } from '@/types/shared';
@@ -30,9 +31,11 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
     return (
         <>
             <Head title="Your teams" />
-            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
-                Your teams
-            </h1>
+            <PageHeader
+                eyebrow="Workspaces"
+                title="Your teams"
+                description="Switch to another team workspace or create a new one."
+            />
 
             <div className="flex flex-col gap-6">
                 <Card>

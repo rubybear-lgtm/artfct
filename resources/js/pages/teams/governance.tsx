@@ -15,6 +15,7 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 
@@ -82,13 +83,11 @@ export default function Governance({
     return (
         <>
             <Head title="Governance" />
-            <h1 className="mb-1 min-w-0 text-2xl font-semibold break-words">
-                Governance
-            </h1>
-            <p className="mb-6 min-w-0 text-sm break-words text-muted-foreground">
-                How long {team.name} keeps artifacts, and which ones are
-                protected from deletion.
-            </p>
+            <PageHeader
+                eyebrow={`Admin · ${team.name}`}
+                title="Governance"
+                description={`How long ${team.name} keeps artifacts, and which ones are protected from deletion.`}
+            />
 
             <div className="flex flex-col gap-6">
                 <Card>

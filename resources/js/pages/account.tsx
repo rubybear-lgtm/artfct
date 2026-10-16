@@ -14,6 +14,7 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import { useTheme } from '@/lib/theme';
 import type { Theme } from '@/lib/theme';
@@ -88,9 +89,11 @@ export default function Account({ teams, identities, blockingTeams }: Props) {
     return (
         <>
             <Head title="Account" />
-            <h1 className="mb-6 min-w-0 text-2xl font-semibold break-words">
-                Account
-            </h1>
+            <PageHeader
+                eyebrow="Personal settings"
+                title="Account"
+                description="Manage your profile, theme preference, linked sign-in identities, and team memberships."
+            />
 
             {pageErrors.length > 0 && (
                 <Alert variant="destructive" className="mb-6">

@@ -21,10 +21,11 @@ export default function OnboardingTeam({
     return (
         <>
             <Head title="Create your team" />
-            <h1 className="mb-2 text-xl font-semibold">
+            <p className="eyebrow mb-2">Welcome to Artfct</p>
+            <h1 className="mb-2 font-serif text-3xl tracking-tight">
                 Create your first team
             </h1>
-            <p className="mb-4 text-sm text-muted-foreground">
+            <p className="mb-5 text-sm text-muted-foreground">
                 Everything your team shares lives here, and only your team can
                 see it. You can change the name later and invite people next.
             </p>

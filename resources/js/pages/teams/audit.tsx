@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
@@ -79,47 +80,45 @@ export default function Audit({
     return (
         <>
             <Head title="Audit log" />
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <h1 className="mb-1 text-2xl font-semibold">Audit log</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Every member, role, token, retention and export action
-                        for {team.name}. Entries cannot be edited or deleted.
-                    </p>
-                </div>
-                <div className="flex flex-col items-start gap-1">
-                    {canExport ? (
-                        <>
-                            <Button asChild variant="outline">
-                                <a
-                                    href={teamRoutes.audit.export.url({
+            <PageHeader
+                eyebrow={`Admin · ${team.name}`}
+                title="Audit log"
+                description={`Every member, role, token, retention and export action for ${team.name}. Entries cannot be edited or deleted.`}
+                actions={
+                    <div className="flex flex-col items-start gap-1 sm:items-end">
+                        {canExport ? (
+                            <>
+                                <Button asChild variant="outline">
+                                    <a
+                                        href={teamRoutes.audit.export.url({
+                                            team: team.slug,
+                                        })}
+                                    >
+                                        Download full log
+                                    </a>
+                                </Button>
+                                <p className="text-xs text-muted-foreground">
+                                    Includes every event, not just the filtered
+                                    ones.
+                                </p>
+                            </>
+                        ) : (
+                            <span className="text-sm text-muted-foreground">
+                                Export to your security tool is an Enterprise
+                                feature.{' '}
+                                <Link
+                                    className="underline"
+                                    href={teamRoutes.billing.show.url({
                                         team: team.slug,
                                     })}
                                 >
-                                    Download full log
-                                </a>
-                            </Button>
-                            <p className="text-xs text-muted-foreground">
-                                Includes every event, not just the filtered
-                                ones.
-                            </p>
-                        </>
-                    ) : (
-                        <span className="text-sm text-muted-foreground">
-                            Export to your security tool is an Enterprise
-                            feature.{' '}
-                            <Link
-                                className="underline"
-                                href={teamRoutes.billing.show.url({
-                                    team: team.slug,
-                                })}
-                            >
-                                See plans
-                            </Link>
-                        </span>
-                    )}
-                </div>
-            </div>
+                                    See plans
+                                </Link>
+                            </span>
+                        )}
+                    </div>
+                }
+            />
 
             <form
                 onSubmit={apply}

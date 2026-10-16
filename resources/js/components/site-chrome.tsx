@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useRef } from 'react';
+import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAppTheme } from '@/lib/useAppTheme';
 import { blog, docs, home, login, privacy, terms } from '@/routes';
 import consoleRoutes from '@/routes/console';
@@ -52,12 +53,8 @@ function Wordmark({ className = '' }: { className?: string }) {
     return (
         <Link
             href={home.url()}
-            className={`flex items-center gap-2 font-serif text-2xl font-medium tracking-tight ${className}`}
+            className={`inline-flex items-center font-serif text-[26px] font-medium tracking-[-0.02em] ${className}`}
         >
-            <span
-                aria-hidden="true"
-                className="size-2 rounded-full bg-primary"
-            />
             Artfct
         </Link>
     );
@@ -73,8 +70,8 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
 
     return (
-        <header className="border-b border-border">
-            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-[14px] sm:gap-6 sm:px-5 sm:py-[18px]">
+        <header className="sticky top-0 z-20 border-b border-border bg-background/94 backdrop-blur-md">
+            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-[14px] sm:gap-6 sm:px-5 sm:py-[16px]">
                 <Wordmark />
                 <nav
                     aria-label="Site"
@@ -98,7 +95,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                         Menu
                     </summary>
                     <div
-                        className="absolute right-0 z-20 mt-2 flex min-w-[200px] flex-col rounded-md border border-border bg-background p-2 text-sm text-muted-foreground shadow-lg"
+                        className="absolute right-0 z-20 mt-2 flex min-w-[200px] flex-col rounded-md border border-border bg-paper p-2 text-sm text-muted-foreground shadow-lg"
                         onClick={() => {
                             if (phoneMenu.current) {
                                 phoneMenu.current.open = false;
@@ -132,9 +129,10 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                     </div>
                 </details>
                 <div
-                    className="flex flex-wrap items-center gap-x-[18px] gap-y-2 text-sm"
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"
                     data-testid="site-account"
                 >
+                    <ThemeSwitch />
                     {!isAuthenticated && (
                         <Link
                             href={login.url()}
@@ -147,7 +145,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                     <Link
                         href={accountUrl}
                         data-testid="site-account-cta"
-                        className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-deep"
+                        className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-all duration-150 hover:-translate-y-[1px] hover:bg-primary-deep hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--accent)_22%,transparent)]"
                     >
                         {accountLabel}
                     </Link>

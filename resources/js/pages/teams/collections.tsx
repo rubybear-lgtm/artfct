@@ -24,6 +24,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 
@@ -637,11 +638,11 @@ export default function Collections({
     return (
         <>
             <Head title="Collections" />
-            <h1 className="mb-1 text-2xl font-semibold">Collections</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
-                Named sets of artifacts. A canonical collection ranks higher in
-                search.
-            </p>
+            <PageHeader
+                eyebrow={team.name}
+                title="Collections"
+                description="Named sets of artifacts. A canonical collection ranks higher in search."
+            />
 
             {canEdit && (
                 <form onSubmit={create} className="mb-6 flex flex-wrap gap-2">

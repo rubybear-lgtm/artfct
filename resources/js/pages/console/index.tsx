@@ -1,12 +1,17 @@
-import { Link, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import { Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import ArtifactVersionController from '@/actions/App/Http/Controllers/ArtifactVersionController';
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
+import { AiToolIcon } from '@/components/ai-tool-icon';
+import { RowIcon, shortDate } from '@/components/home/artifact-row';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import { aiToolName, AI_TOOL_NAMES } from '@/lib/ai-tools';
 import teamRoutes from '@/routes/teams';
@@ -88,7 +93,8 @@ export default function ConsoleIndex({
     const pendingFilterVisit = useRef<ReturnType<typeof setTimeout> | null>(
         null,
     );
-    const hasActionsColumn = isAdmin || canOpenArtifacts;
+    const hasActionsColumn =
+        isAdmin || canOpenArtifacts || (canCollect && collections.length > 0);
     const hasActiveFilters = Object.values(localFilters).some(Boolean);
     // Known tools are always offered, so narrowing to one tool never hides the
     // others from the list; tools seen on this page and the active filter are added.
@@ -203,238 +209,199 @@ export default function ConsoleIndex({
 
     return (
         <div>
-            <div>
-                <div className="mb-8">
-                    <h1 className="text-foreground">Artifacts</h1>
-                    <p className="mt-2 text-muted-foreground">
-                        Manage artifacts produced by your team
-                    </p>
-                </div>
+            <Head title="Artifacts" />
+            <PageHeader
+                eyebrow={team.name}
+                title="Artifacts"
+                description="Manage artifacts produced by your team."
+                actions={
+                    isAdmin ? (
+                        <Button asChild variant="outline">
+                            <a
+                                href={ConsoleController.export.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                Download export (.zip)
+                            </a>
+                        </Button>
+                    ) : undefined
+                }
+            />
 
-                {/* Filters */}
-                <div className="mb-8 rounded-[10px] border border-border bg-paper p-6">
-                    <h2 className="mb-4 text-lg font-semibold text-foreground">
-                        Filters
-                    </h2>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <div>
-                            <label
-                                htmlFor="repo_url"
-                                className="mb-2 block text-sm font-medium text-foreground"
-                            >
-                                Repository
-                            </label>
-                            <input
-                                id="repo_url"
-                                name="repo_url"
-                                type="text"
-                                value={localFilters.repo_url || ''}
-                                onChange={(e) =>
-                                    handleFilterChange(
-                                        'repo_url',
-                                        e.target.value,
-                                    )
-                                }
-                                placeholder="github.com/example/repo"
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
+            {/* Integrated Search & Filter Bar */}
+            <div className="mb-8 rounded-[10px] border border-border bg-paper p-4 sm:p-5">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
+                    <div className="md:col-span-5">
+                        <label
+                            htmlFor="console-search"
+                            className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                        >
+                            Search
+                        </label>
+                        <div className="relative">
+                            <Search
+                                aria-hidden="true"
+                                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
                             />
-                        </div>
-                        <div>
-                            <label
-                                htmlFor="agent"
-                                className="mb-2 block text-sm font-medium text-foreground"
-                            >
-                                AI tool
-                            </label>
-                            <select
-                                id="agent"
-                                name="agent"
-                                value={localFilters.agent || ''}
-                                onChange={(e) =>
-                                    handleSelectChange('agent', e.target.value)
-                                }
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
-                            >
-                                <option value="">All AI tools</option>
-                                {aiTools.map((agent) => (
-                                    <option key={agent} value={agent}>
-                                        {aiToolName(agent)}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="mb-2 block text-sm font-medium text-foreground">
-                                Search
-                            </label>
                             <input
+                                id="console-search"
                                 type="text"
                                 value={localFilters.q || ''}
                                 onChange={(e) =>
                                     handleFilterChange('q', e.target.value)
                                 }
                                 placeholder="Title or description..."
-                                className="w-full rounded-md border border-border px-3 py-2 text-sm max-md:min-h-[44px] max-md:text-base"
+                                className="h-9 w-full rounded-md border border-border bg-background/60 pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground max-md:min-h-[44px] max-md:text-base"
                             />
                         </div>
-                        {isAdmin && (
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-foreground">
-                                    Actions
-                                </label>
-                                <Button
-                                    asChild
-                                    className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-                                >
-                                    <a
-                                        href={ConsoleController.export.url({
-                                            team: team.slug,
-                                        })}
-                                    >
-                                        Download export (.zip)
-                                    </a>
-                                </Button>
-                            </div>
-                        )}
+                    </div>
+                    <div className="md:col-span-4">
+                        <label
+                            htmlFor="repo_url"
+                            className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                        >
+                            Repository
+                        </label>
+                        <input
+                            id="repo_url"
+                            name="repo_url"
+                            type="text"
+                            value={localFilters.repo_url || ''}
+                            onChange={(e) =>
+                                handleFilterChange('repo_url', e.target.value)
+                            }
+                            placeholder="github.com/example/repo"
+                            className="h-9 w-full rounded-md border border-border bg-background/60 px-3 text-sm text-foreground placeholder:text-muted-foreground max-md:min-h-[44px] max-md:text-base"
+                        />
+                    </div>
+                    <div className="md:col-span-3">
+                        <label
+                            htmlFor="agent"
+                            className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                        >
+                            AI tool
+                        </label>
+                        <select
+                            id="agent"
+                            name="agent"
+                            value={localFilters.agent || ''}
+                            onChange={(e) =>
+                                handleSelectChange('agent', e.target.value)
+                            }
+                            className="h-9 w-full rounded-md border border-border bg-background/60 px-3 text-sm text-foreground max-md:min-h-[44px] max-md:text-base"
+                        >
+                            <option value="">All AI tools</option>
+                            {aiTools.map((agent) => (
+                                <option key={agent} value={agent}>
+                                    {aiToolName(agent)}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
-
-                {!indexingEnabled && (
-                    <p className="text-sm text-muted-foreground">
-                        Search indexing is turned off on this environment, so
-                        new artifacts are not indexed yet.
-                    </p>
-                )}
-                {indexingEnabled && indexingFailures.length > 0 && (
-                    <div className="rounded-[10px] border border-border bg-paper p-4">
-                        <h2 className="mb-2 text-sm font-semibold">
-                            Indexing failures
-                        </h2>
-                        <ul className="divide-y divide-border text-sm">
-                            {indexingFailures.map((failure) => (
-                                <li
-                                    key={failure.artifact_id}
-                                    className="flex flex-wrap items-center gap-3 py-2"
-                                >
-                                    <span className="break-all tabular-nums">
-                                        {failure.artifact_id.slice(0, 8)}
-                                    </span>
-                                    <span className="break-words text-muted-foreground">
-                                        {failure.attempts} attempts:{' '}
-                                        {failure.reason}
-                                    </span>
-                                    {isAdmin && (
-                                        <Button
-                                            className="ml-auto underline"
-                                            onClick={() =>
-                                                router.post(
-                                                    ConsoleController.reindex.url(
-                                                        {
-                                                            team: team.slug,
-                                                            artifactId:
-                                                                failure.artifact_id,
-                                                        },
-                                                    ),
-                                                )
-                                            }
-                                        >
-                                            Retry
-                                        </Button>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
+                {hasActiveFilters && (
+                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
+                        <span>Filtered results</span>
+                        <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="cursor-pointer font-medium text-[var(--accent)] hover:underline"
+                        >
+                            Clear filters
+                        </button>
                     </div>
                 )}
+            </div>
 
-                {/* Artifact List */}
-                <div
-                    className="overflow-x-auto rounded-[10px] border border-border bg-paper max-md:p-3"
-                    data-testid="artifact-list"
-                >
-                    <table className="w-full">
-                        <thead className="border-b border-border bg-muted max-md:hidden">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    Title
-                                </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    Repository
-                                </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    AI tool
-                                </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    Created
-                                </th>
-                                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                    Status
-                                </th>
-                                {hasActionsColumn && (
-                                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
-                                        Actions
-                                    </th>
+            {!indexingEnabled && (
+                <p className="mb-6 text-sm text-muted-foreground">
+                    Search indexing is turned off on this environment, so new
+                    artifacts are not indexed yet.
+                </p>
+            )}
+            {indexingEnabled && indexingFailures.length > 0 && (
+                <div className="mb-6 rounded-[10px] border border-border bg-paper p-4">
+                    <h2 className="mb-2 text-sm font-semibold">
+                        Indexing failures
+                    </h2>
+                    <ul className="divide-y divide-border text-sm">
+                        {indexingFailures.map((failure) => (
+                            <li
+                                key={failure.artifact_id}
+                                className="flex flex-wrap items-center gap-3 py-2"
+                            >
+                                <span className="break-all tabular-nums">
+                                    {failure.artifact_id.slice(0, 8)}
+                                </span>
+                                <span className="break-words text-muted-foreground">
+                                    {failure.attempts} attempts:{' '}
+                                    {failure.reason}
+                                </span>
+                                {isAdmin && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="ml-auto"
+                                        onClick={() =>
+                                            router.post(
+                                                ConsoleController.reindex.url({
+                                                    team: team.slug,
+                                                    artifactId:
+                                                        failure.artifact_id,
+                                                }),
+                                            )
+                                        }
+                                    >
+                                        Retry
+                                    </Button>
                                 )}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border max-md:block max-md:space-y-3 max-md:divide-y-0">
-                            {artifacts.length === 0 ? (
-                                <tr className="max-md:block max-md:rounded-lg max-md:border max-md:border-border max-md:p-4">
-                                    <td
-                                        colSpan={hasActionsColumn ? 6 : 5}
-                                        className="px-6 py-4 text-center text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1"
-                                    >
-                                        {hasActiveFilters ? (
-                                            <EmptyState title="No artifacts match these filters">
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={clearFilters}
-                                                >
-                                                    Clear filters
-                                                </Button>
-                                            </EmptyState>
-                                        ) : (
-                                            <EmptyState title="No artifacts yet">
-                                                <p className="text-sm">
-                                                    Connect an AI tool, then
-                                                    share something it made. It
-                                                    will appear here.
-                                                </p>
-                                                <Button
-                                                    asChild
-                                                    variant="outline"
-                                                    className="mt-4"
-                                                >
-                                                    <Link
-                                                        href={teamRoutes.mcpConnections.index.url(
-                                                            {
-                                                                team: team.slug,
-                                                            },
-                                                        )}
-                                                    >
-                                                        AI tool connections
-                                                    </Link>
-                                                </Button>
-                                            </EmptyState>
-                                        )}
-                                    </td>
-                                </tr>
-                            ) : (
-                                artifacts.map((artifact) => (
-                                    <tr
-                                        key={artifact.id}
-                                        className="hover:bg-muted max-md:block max-md:rounded-lg max-md:border max-md:border-border max-md:p-4"
-                                    >
-                                        <td className="min-w-0 px-6 py-4 break-words max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                            <span
-                                                aria-hidden="true"
-                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
-                                            >
-                                                Title
-                                            </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* Editorial Hairline Artifact List */}
+            <div data-testid="artifact-list">
+                {artifacts.length === 0 ? (
+                    hasActiveFilters ? (
+                        <EmptyState title="No artifacts match these filters">
+                            <Button variant="outline" onClick={clearFilters}>
+                                Clear filters
+                            </Button>
+                        </EmptyState>
+                    ) : (
+                        <EmptyState title="No artifacts yet">
+                            <p className="text-sm text-muted-foreground">
+                                Connect an AI tool, then share something it
+                                made. It will appear here.
+                            </p>
+                            <Button asChild variant="outline" className="mt-4">
+                                <Link
+                                    href={teamRoutes.mcpConnections.index.url({
+                                        team: team.slug,
+                                    })}
+                                >
+                                    AI tool connections
+                                </Link>
+                            </Button>
+                        </EmptyState>
+                    )
+                ) : (
+                    <ul className="divide-y divide-border border-y border-border">
+                        {artifacts.map((artifact) => (
+                            <li
+                                key={artifact.id}
+                                className="flex flex-col gap-3 py-4 transition-colors md:flex-row md:items-start md:justify-between md:gap-6"
+                            >
+                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                    <RowIcon />
+                                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             {artifact.revoked_at ? (
                                                 <span
-                                                    className="text-sm font-medium text-muted-foreground"
+                                                    className="min-w-0 font-semibold break-words text-muted-foreground"
                                                     data-testid="open-artifact-title-disabled"
                                                     title={revokedOpenTooltip}
                                                     aria-disabled="true"
@@ -446,97 +413,49 @@ export default function ConsoleIndex({
                                                     href={openHref(artifact.id)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-sm font-medium text-foreground underline-offset-2 hover:text-primary hover:underline"
+                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline"
                                                     data-testid="open-artifact-title"
                                                 >
                                                     {artifactTitle(artifact)}
                                                 </a>
                                             ) : (
-                                                <span className="text-sm font-medium text-foreground">
+                                                <span className="min-w-0 font-semibold break-words text-foreground">
                                                     {artifactTitle(artifact)}
                                                 </span>
                                             )}
-                                            <div className="text-xs break-words text-muted-foreground">
-                                                {artifact.description}
-                                            </div>
-                                            <div
-                                                className="text-xs text-muted-foreground"
-                                                data-testid="indexing-state"
-                                            >
-                                                Indexing:{' '}
-                                                {indexing[artifact.id] ?? 'off'}
-                                            </div>
-                                            {!artifact.revoked_at && (
-                                                <Link
-                                                    href={ArtifactVersionController.show.url(
-                                                        {
-                                                            team: team.slug,
-                                                            artifactId:
-                                                                artifact.id,
-                                                        },
-                                                    )}
-                                                    className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
-                                                    data-testid={`artifact-history-${artifact.id}`}
-                                                >
-                                                    History
-                                                </Link>
+                                            {artifact.revoked_at ? (
+                                                <Badge variant="destructive">
+                                                    Revoked
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="success">
+                                                    Active
+                                                </Badge>
                                             )}
-                                            {canCollect &&
-                                                collections.length > 0 && (
-                                                    <select
-                                                        aria-label={`Add ${artifact.title || artifact.id} to a collection`}
-                                                        className="mt-1 rounded border border-border bg-background px-1 text-xs max-md:min-h-[44px] max-md:text-base"
-                                                        value=""
-                                                        onChange={(e) => {
-                                                            if (
-                                                                e.target.value
-                                                            ) {
-                                                                router.post(
-                                                                    CollectionController.addArtifact.url(
-                                                                        {
-                                                                            team: team.slug,
-                                                                            collection:
-                                                                                Number(
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                ),
-                                                                        },
-                                                                    ),
-                                                                    {
-                                                                        artifact_id:
-                                                                            artifact.id,
-                                                                    },
-                                                                    {
-                                                                        preserveScroll: true,
-                                                                    },
-                                                                );
-                                                            }
-                                                        }}
-                                                    >
-                                                        <option value="">
-                                                            Add to collection…
-                                                        </option>
-                                                        {collections.map(
-                                                            (c) => (
-                                                                <option
-                                                                    key={c.id}
-                                                                    value={c.id}
-                                                                >
-                                                                    {c.name}
-                                                                </option>
-                                                            ),
-                                                        )}
-                                                    </select>
+                                        </div>
+
+                                        {artifact.description && (
+                                            <p className="min-w-0 text-sm break-words text-muted-foreground">
+                                                {artifact.description}
+                                            </p>
+                                        )}
+
+                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {artifact.provenance.agent && (
+                                                    <AiToolIcon
+                                                        tool={
+                                                            artifact.provenance
+                                                                .agent
+                                                        }
+                                                        size={13}
+                                                    />
                                                 )}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                            <span
-                                                aria-hidden="true"
-                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
-                                            >
-                                                Repository
+                                                {aiToolName(
+                                                    artifact.provenance.agent,
+                                                )}
                                             </span>
+                                            <span aria-hidden="true">·</span>
                                             {artifact.provenance.repo_url ? (
                                                 <a
                                                     href={
@@ -545,7 +464,7 @@ export default function ConsoleIndex({
                                                     }
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="break-all text-primary hover:underline"
+                                                    className="font-mono text-xs break-all text-[var(--accent)] hover:underline"
                                                 >
                                                     {artifact.provenance.repo_url
                                                         .split('/')
@@ -553,154 +472,173 @@ export default function ConsoleIndex({
                                                         .join('/')}
                                                 </a>
                                             ) : (
-                                                <span className="text-muted-foreground">
-                                                    Unknown
-                                                </span>
+                                                <span>Unknown repo</span>
                                             )}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                            <span
-                                                aria-hidden="true"
-                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
-                                            >
-                                                AI tool
+                                            <span aria-hidden="true">·</span>
+                                            <span className="tabular-nums">
+                                                {shortDate(artifact.created_at)}
                                             </span>
-                                            {aiToolName(
-                                                artifact.provenance.agent,
+                                            <span aria-hidden="true">·</span>
+                                            <span data-testid="indexing-state">
+                                                Indexing:{' '}
+                                                {indexing[artifact.id] ?? 'off'}
+                                            </span>
+                                            {!artifact.revoked_at && (
+                                                <>
+                                                    <span aria-hidden="true">
+                                                        ·
+                                                    </span>
+                                                    <Link
+                                                        href={ArtifactVersionController.show.url(
+                                                            {
+                                                                team: team.slug,
+                                                                artifactId:
+                                                                    artifact.id,
+                                                            },
+                                                        )}
+                                                        className="font-medium text-[var(--accent)] hover:underline"
+                                                        data-testid={`artifact-history-${artifact.id}`}
+                                                    >
+                                                        History
+                                                    </Link>
+                                                </>
                                             )}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-muted-foreground max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                            <span
-                                                aria-hidden="true"
-                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
-                                            >
-                                                Created
-                                            </span>
-                                            {new Date(
-                                                artifact.created_at,
-                                            ).toLocaleDateString()}
-                                        </td>
-                                        <td className="px-6 py-4 max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                            <span
-                                                aria-hidden="true"
-                                                className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
-                                            >
-                                                Status
-                                            </span>
-                                            {artifact.revoked_at ? (
-                                                <span className="inline-block rounded bg-destructive/15 px-2 py-1 text-xs font-semibold text-destructive">
-                                                    Revoked
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {hasActionsColumn && (
+                                    <div className="flex shrink-0 flex-wrap items-center gap-2 md:pt-0.5">
+                                        {canCollect &&
+                                            collections.length > 0 && (
+                                                <select
+                                                    aria-label={`Add ${artifact.title || artifact.id} to a collection`}
+                                                    className="h-8 rounded-md border border-border bg-paper px-2.5 text-xs text-foreground max-md:min-h-[44px] max-md:text-base"
+                                                    value=""
+                                                    onChange={(e) => {
+                                                        if (e.target.value) {
+                                                            router.post(
+                                                                CollectionController.addArtifact.url(
+                                                                    {
+                                                                        team: team.slug,
+                                                                        collection:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    },
+                                                                ),
+                                                                {
+                                                                    artifact_id:
+                                                                        artifact.id,
+                                                                },
+                                                                {
+                                                                    preserveScroll: true,
+                                                                },
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value="">
+                                                        Add to collection…
+                                                    </option>
+                                                    {collections.map((c) => (
+                                                        <option
+                                                            key={c.id}
+                                                            value={c.id}
+                                                        >
+                                                            {c.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        {canOpenArtifacts &&
+                                            (artifact.revoked_at ? (
+                                                <span
+                                                    className="inline-flex h-8 cursor-not-allowed items-center rounded-md border border-border px-3 text-xs font-medium text-muted-foreground opacity-60 max-md:min-h-[44px]"
+                                                    data-testid="open-artifact-disabled"
+                                                    title={revokedOpenTooltip}
+                                                    aria-disabled="true"
+                                                >
+                                                    Open
                                                 </span>
                                             ) : (
-                                                <span className="inline-block rounded bg-success/15 px-2 py-1 text-xs font-semibold text-success">
-                                                    Active
-                                                </span>
-                                            )}
-                                        </td>
-                                        {hasActionsColumn && (
-                                            <td className="px-6 py-4 text-sm max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
-                                                <span
-                                                    aria-hidden="true"
-                                                    className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden"
+                                                <a
+                                                    href={openHref(artifact.id)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex h-8 items-center rounded-md border border-border bg-paper/70 px-3 text-xs font-medium text-foreground transition-colors hover:border-foreground/35 hover:bg-muted/60 max-md:min-h-[44px]"
+                                                    data-testid="open-artifact"
                                                 >
-                                                    Actions
-                                                </span>
-                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                                                    {canOpenArtifacts &&
-                                                        (artifact.revoked_at ? (
-                                                            <span
-                                                                className="cursor-not-allowed font-medium text-muted-foreground"
-                                                                data-testid="open-artifact-disabled"
-                                                                title={
-                                                                    revokedOpenTooltip
-                                                                }
-                                                                aria-disabled="true"
-                                                            >
-                                                                Open
-                                                            </span>
-                                                        ) : (
-                                                            <a
-                                                                href={openHref(
-                                                                    artifact.id,
-                                                                )}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="font-medium text-primary hover:underline max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
-                                                                data-testid="open-artifact"
-                                                            >
-                                                                Open
-                                                            </a>
-                                                        ))}
-                                                    {isAdmin &&
-                                                        !artifact.revoked_at && (
-                                                            <Button
-                                                                variant="outline"
-                                                                aria-label={`Revoke ${artifactName(artifact)}`}
-                                                                onClick={() =>
-                                                                    setRevoking(
-                                                                        artifact,
-                                                                    )
-                                                                }
-                                                            >
-                                                                Revoke
-                                                            </Button>
-                                                        )}
-                                                </div>
-                                            </td>
+                                                    Open
+                                                </a>
+                                            ))}
+                                        {isAdmin && !artifact.revoked_at && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                aria-label={`Revoke ${artifactName(artifact)}`}
+                                                onClick={() =>
+                                                    setRevoking(artifact)
+                                                }
+                                            >
+                                                Revoke
+                                            </Button>
                                         )}
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Pagination */}
-                {(nextCursor || cursor) && (
-                    <div className="mt-6 flex flex-wrap justify-center gap-3">
-                        {cursor && (
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    visitWithFilters(localFilters, {
-                                        cursor: null,
-                                        replace: false,
-                                    })
-                                }
-                            >
-                                First page
-                            </Button>
-                        )}
-                        {nextCursor && (
-                            <Button
-                                onClick={() =>
-                                    visitWithFilters(localFilters, {
-                                        cursor: nextCursor,
-                                        replace: false,
-                                    })
-                                }
-                            >
-                                Next page
-                            </Button>
-                        )}
-                    </div>
-                )}
-
-                {revoking && (
-                    <ConfirmDialog
-                        open
-                        onOpenChange={(open) => {
-                            if (!open) {
-                                setRevoking(null);
-                            }
-                        }}
-                        title={`Revoke ${artifactName(revoking)}?`}
-                        description="People and AI tools lose access to it right away. This cannot be undone."
-                        confirmLabel="Revoke artifact"
-                        onConfirm={handleRevoke}
-                    />
+                                    </div>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </div>
+
+            {/* Pagination */}
+            {(nextCursor || cursor) && (
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    {cursor && (
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                visitWithFilters(localFilters, {
+                                    cursor: null,
+                                    replace: false,
+                                })
+                            }
+                        >
+                            First page
+                        </Button>
+                    )}
+                    {nextCursor && (
+                        <Button
+                            onClick={() =>
+                                visitWithFilters(localFilters, {
+                                    cursor: nextCursor,
+                                    replace: false,
+                                })
+                            }
+                        >
+                            Next page
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            {revoking && (
+                <ConfirmDialog
+                    open
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setRevoking(null);
+                        }
+                    }}
+                    title={`Revoke ${artifactName(revoking)}?`}
+                    description="People and AI tools lose access to it right away. This cannot be undone."
+                    confirmLabel="Revoke artifact"
+                    onConfirm={handleRevoke}
+                />
+            )}
         </div>
     );
 }
