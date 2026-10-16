@@ -39,7 +39,7 @@ MD;
         ->toContain('<h3 class="mt-8 mb-2 font-serif text-lg leading-snug font-medium text-foreground">')
         ->toContain('<code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">')
         ->toContain('<strong class="text-foreground">')
-        ->toContain('<a href="https://artfct.test/docs" class="font-semibold text-primary underline-offset-4 hover:underline">')
+        ->toContain('<a href="'.url('/docs').'" class="font-semibold text-primary underline-offset-4 hover:underline">')
         ->toContain('<ul class="mb-5 list-disc space-y-2 pl-6 leading-[1.75] text-muted-foreground">')
         ->toContain('<ol class="mb-5 list-decimal space-y-2 pl-6 leading-[1.75] text-muted-foreground">')
         ->toContain('<blockquote class="mb-5 border-l-2 border-border pl-4 leading-[1.75] text-muted-foreground italic">')
