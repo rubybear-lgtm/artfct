@@ -123,25 +123,15 @@
                     @break
 
                 @case('blog')
-                    @php
-                        $fallbackPostSlug = $page['props']['postSlug'] ?? null;
-                        $fallbackPosts = $page['props']['posts'] ?? [];
-                    @endphp
-                    @if ($fallbackPostSlug && !empty($fallbackPosts))
-                        @php
-                            $matchedPost = collect($fallbackPosts)->firstWhere('slug', $fallbackPostSlug);
-                        @endphp
-                        @if ($matchedPost)
-                            <h1>{{ $matchedPost['title'] }} — artfct</h1>
-                            <p>{{ $matchedPost['description'] }}</p>
-                        @else
-                            <h1>{{ $fallbackTitle }}</h1>
-                            <p>{{ $pageDescription }}</p>
-                        @endif
-                    @else
-                        <h1>{{ $fallbackTitle }}</h1>
-                        <p>{{ $pageDescription }}</p>
-                    @endif
+                    <h1>{{ $fallbackTitle }}</h1>
+                    <p>{{ $pageDescription }}</p>
+                    @break
+
+                {{-- An article's title and description. The body is React blocks and
+                     is not server-rendered into this crawler fallback. --}}
+                @case('blog-show')
+                    <h1>{{ $fallbackTitle }}</h1>
+                    <p>{{ $pageDescription }}</p>
                     @break
 
                 @default

@@ -1,35 +1,3 @@
-<!doctype html>
-<!--
-  artfct-content draft template.
-
-  This shell is fixed. Fill the {{TOKENS}} and do not restructure the page.
-  The blocks below are the corpus block order; deleting one is a lint failure.
-
-  data-surface and data-register on <body> are read by content_lint. Set them
-  to the surface you are writing for and the register you are writing in.
-
-  Filling {{SECTIONS}} and {{FAQ}}:
-
-    A section is
-      <section class="s">
-        <h2>{{question-shaped heading}}</h2>
-        <p>...</p>
-      </section>
-
-    An FAQ item is
-      <details class="q"><summary>{{question}}</summary><p>{{answer}}</p></details>
-
-    A table is <table class="t"><thead>...</thead><tbody>...</tbody></table>
-    A code block is <pre><code>...</code></pre>
-
-  Every capability claim must trace to references/feature-inventory.md.
--->
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{TITLE}} — artfct</title>
-<meta name="description" content="{{DESCRIPTION}}">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -129,59 +97,7 @@
     body { background: #fff; }
     nav.toc, .cta a.btn { display: none; }
   }
+
+  /* The review copy shows where a figure sits; the site mounts a component. */
+  figure.fig { margin: 2rem 0; padding: 1rem 1.15rem; border: 1px dashed var(--rule); border-radius: 4px; font-family: var(--mono); font-size: 12px; color: var(--base1); }
 </style>
-</head>
-<body data-surface="{{SURFACE}}" data-register="{{REGISTER}}">
-<div class="wrap">
-
-  <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
-
-  <header>
-    <p class="kicker">{{KICKER}}</p>
-    <h1>{{TITLE}}</h1>
-    <p class="meta"><b>{{AUTHOR}}</b> · Last updated {{LAST_UPDATED}} · {{READ_TIME}}</p>
-    <p class="lead">{{LEAD}}</p>
-  </header>
-
-  <nav class="toc">
-    <p>On this page</p>
-    <ol>
-{{TOC}}
-    </ol>
-  </nav>
-
-  <main>
-{{SECTIONS}}
-
-    <section class="limits">
-      <h2>What this does not do</h2>
-      <ul>
-{{LIMITS}}
-      </ul>
-    </section>
-
-    <section class="faq">
-      <h2>Questions</h2>
-{{FAQ}}
-    </section>
-  </main>
-
-  <div class="byline">
-    <div class="av">{{AUTHOR_INITIALS}}</div>
-    <div>
-      <div class="who">{{AUTHOR}}</div>
-      <p class="bio">{{AUTHOR_BIO}}</p>
-    </div>
-  </div>
-
-  <section class="cta">
-    <h2>{{CTA_HEADLINE}}</h2>
-    <p>{{CTA_BODY}}</p>
-    <a class="btn" href="{{CTA_URL}}">{{CTA_LABEL}}</a>
-  </section>
-
-  <footer>{{FOOTER_NOTE}}</footer>
-</div>
-</body>
-</html>
-

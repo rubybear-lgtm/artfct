@@ -1,272 +1,314 @@
 <?php
 
+use App\Services\Blog\BlogContent;
+use App\Services\Blog\BlogRenderer;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
- * Every post, in the order the index lists them (newest first, which the blog
- * route sorts for itself). Kept in one place so the shared expectations stay in
- * sync with $blogPosts in routes/web.php.
+ * The drafts directory, without going through the container.
  *
- * @return array<string, array{0: string, 1: int, 2: string, 3: string, 4: string, 5: string}>
+ * Pest resolves a `->with(...)` closure before it boots the application, so a
+ * dataset that called `base_path()` failed with "Call to undefined method
+ * Illuminate\Container\Container::basePath()" — every dataset-driven test in
+ * this file reported as an invalid data provider rather than failing.
  */
-function blogPosts(): array
+function draftsPath(): string
 {
-    return [
-        'finding-what-your-ai-already-made' => [
-            'finding-what-your-ai-already-made',
-            0,
-            'Finding the report your team already wrote',
-            'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes what your agents produce, so a team can find its AI work, not rebuild it.',
-            '2026-10-08',
-            'search',
-        ],
-        'who-sees-what-your-ai-makes' => [
-            'who-sees-what-your-ai-makes',
-            1,
-            'Who sees what your AI makes, and when',
-            'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. Who sees what your AI makes, and how that changes.',
-            '2026-10-07',
-            'governance',
-        ],
-        'one-link-that-keeps-its-history' => [
-            'one-link-that-keeps-its-history',
-            2,
-            'One link that keeps a version history',
-            'Publishing the same content twice resolves to one artifact, and a change creates a new version under the same link. How the version history and identity work.',
-            '2026-10-06',
-            'workflows',
-        ],
-        'stop-ai-tools-contradicting-each-other' => [
-            'stop-ai-tools-contradicting-each-other',
-            3,
-            'Stopping Claude and Cursor from contradicting each other',
-            'You drop a phrase in Claude. Cursor brings it back hours later. Here is how a shared library keeps AI tools from repeating decisions you already killed.',
-            '2026-10-05',
-            'workflows',
-        ],
-        'artfct-vs-a-shared-drive-folder' => [
-            'artfct-vs-a-shared-drive-folder',
-            4,
-            'Artfct vs a shared drive: what works better',
-            'A shared drive folder holds the files people open. Artfct holds the pages AI tools make and answers search for the next agent. Where each one fits.',
-            '2026-10-04',
-            'comparisons',
-        ],
-        'artfct-vs-your-ai-tools-own-sharing' => [
-            'artfct-vs-your-ai-tools-own-sharing',
-            5,
-            'Artfct vs your AI tool\'s own sharing',
-            'Claude Code Artifacts and OpenAI\'s Sites share work inside one vendor. Artfct keeps the same work findable across tools. Reach, controls and retrieval.',
-            '2026-10-03',
-            'comparisons',
-        ],
-        'why-your-ai-tools-cannot-see-each-others-work' => [
-            'why-your-ai-tools-cannot-see-each-others-work',
-            6,
-            'Why your AI tools cannot see each other\'s work',
-            'Every AI tool keeps its own record of what it made, so the next agent rebuilds finished work. Why AI tools cannot see each other\'s work, and what changes.',
-            '2026-10-02',
-            'explainers',
-        ],
-        'what-is-an-ai-artifact' => [
-            'what-is-an-ai-artifact',
-            7,
-            'What is an AI artifact, and what is not?',
-            'An AI artifact is finished work an AI tool made that a person can open: a report, dashboard, table or document. How it differs from chat scrollback.',
-            '2026-10-01',
-            'explainers',
-        ],
-    ];
+    return dirname(__DIR__, 2).'/skills/artfct-content/drafts';
 }
 
-test('blog index lists every post at its expected position', function (string $slug, int $index) {
-    /** @var TestResponse $response */
-    $response = $this->get(route('blog'));
+/**
+ * The drafts as files, read here rather than through the service, so these are
+ * not the application agreeing with itself.
+ *
+ * @return list<array{slug: string, title: string, description: string, date: string, tag: string, published: bool}>
+ */
+function blogMarkdown(): array
+{
+    $posts = [];
 
-    $response->assertOk();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('blog')
-        ->has('posts', count(blogPosts()))
-        ->where("posts.{$index}.slug", $slug));
-})->with([
-    ...collect(blogPosts())
-        ->map(fn (array $post): array => [$post[0], $post[1]])
-        ->all(),
-]);
+    foreach (glob(draftsPath().'/*.md') ?: [] as $path) {
+        $raw = (string) file_get_contents($path);
+        $meta = [];
 
-test('each post lists its full metadata on the blog index', function (string $slug, int $index, string $title, string $description, string $date, string $tag) {
-    /** @var TestResponse $response */
-    $response = $this->get(route('blog'));
+        foreach (explode("\n", substr($raw, 4, (int) strpos($raw, "\n---\n", 4) - 4)) as $line) {
+            if (str_contains($line, ':')) {
+                [$key, $value] = explode(':', $line, 2);
+                $meta[trim($key)] = trim($value);
+            }
+        }
 
-    $response->assertOk();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('blog')
-        ->where("posts.{$index}.title", $title)
-        ->where("posts.{$index}.description", $description)
-        ->where("posts.{$index}.date", $date)
-        ->where("posts.{$index}.tag", $tag));
-})->with(blogPosts());
+        $posts[] = [
+            'slug' => $meta['slug'] ?? '',
+            'title' => $meta['title'] ?? '',
+            'description' => $meta['description'] ?? '',
+            'date' => $meta['date'] ?? '',
+            'tag' => $meta['tag'] ?? '',
+            'published' => ($meta['published'] ?? 'false') === 'true',
+        ];
+    }
 
-test('each post renders its permalink with the Inertia page and SEO meta', function (string $slug, int $index, string $title, string $description, string $date, string $tag) {
-    /** @var TestResponse $response */
-    $response = $this->get(route('blog.show', ['slug' => $slug]));
+    usort($posts, fn (array $a, array $b): int => [$b['date'], $a['slug']] <=> [$a['date'], $b['slug']]);
 
-    $response->assertOk();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('blog-show')
-        ->where('post.slug', $slug)
-        ->where('post.title', $title)
-        ->where('post.description', $description)
-        ->where('post.date', $date)
-        ->where('post.tag', $tag)
-        ->where('meta.title', "{$title} — artfct")
-        ->where('meta.description', $description));
+    return $posts;
+}
 
-    // The title is HTML-escaped in <title>, so a title with an apostrophe
-    // renders as &#039;. Escape the expectation the same way rather than
-    // weakening the assertion.
-    $response->assertSee(e($title).' — artfct', escape: false);
-})->with(blogPosts());
+/**
+ * @return list<array{slug: string, title: string, description: string, date: string, tag: string, published: bool}>
+ */
+function publishedBlogMarkdown(): array
+{
+    return array_values(array_filter(blogMarkdown(), fn (array $post): bool => $post['published']));
+}
 
-test('sitemap includes each post permalink', function (string $slug) {
-    /** @var TestResponse $response */
-    $response = $this->get(route('sitemap'));
+/**
+ * @return list<array{slug: string, title: string, description: string, date: string, tag: string, published: bool}>
+ */
+function heldBackBlogMarkdown(): array
+{
+    return array_values(array_filter(blogMarkdown(), fn (array $post): bool => ! $post['published']));
+}
 
-    $response->assertOk();
-    $response->assertHeader('Content-Type', 'text/xml; charset=UTF-8');
+function blogDataset(): array
+{
+    return collect(publishedBlogMarkdown())
+        ->mapWithKeys(fn (array $post, int $index): array => [$post['slug'] => [$post['slug'], $index]])
+        ->all();
+}
 
-    $response->assertSee(route('blog.show', ['slug' => $slug]), escape: false);
-})->with(blogPosts());
+function blogFileContents(): array
+{
+    $files = [];
 
-test('blog returns 404 for an unknown permalink', function () {
+    foreach (publishedBlogMarkdown() as $post) {
+        $files[] = [
+            'post' => $post,
+            'markdown' => (string) file_get_contents(draftsPath().'/'.$post['slug'].'.md'),
+        ];
+    }
+
+    return $files;
+}
+
+/**
+ * A BlogContent over a directory of its own, so a test that needs a broken or
+ * brand-new draft never writes into the real content directory.
+ *
+ * @param  array<string, string>  $files
+ */
+function blogTempContent(array $files): BlogContent
+{
+    $directory = sys_get_temp_dir().'/artfct-blog-'.bin2hex(random_bytes(6));
+
+    mkdir($directory);
+
+    foreach ($files as $name => $contents) {
+        file_put_contents($directory.'/'.$name, $contents);
+    }
+
+    return new BlogContent(new BlogRenderer, $directory);
+}
+
+function blogDraft(string $slug, string $extra = ''): string
+{
+    return <<<MD
+---
+slug: {$slug}
+title: A post about a temporary subject
+description: A description long enough to be real copy and short enough to stay inside the band the linter enforces.
+date: 2030-01-01
+tag: workflows
+published: true
+surface: explainer
+register: glean-formal
+target: a temporary question
+---
+{$extra}
+MD;
+}
+
+test('the drafts directory resolves and holds published posts', function () {
+    expect(is_dir(base_path('skills/artfct-content/drafts')))->toBeTrue()
+        ->and(publishedBlogMarkdown())->not->toBeEmpty()
+        ->and(heldBackBlogMarkdown())->not->toBeEmpty();
+});
+
+test('the index lists every published file', function () {
+    $this->get(route('blog'))
+        ->assertOk()
+        ->assertInertia(function (Assert $page) {
+            $slugs = collect($page->toArray()['props']['posts'])->pluck('slug');
+
+            expect($slugs->all())->toBe(array_column(publishedBlogMarkdown(), 'slug'));
+        });
+});
+
+test('each published file appears on the index at its date-ordered position', function (string $slug, int $index) {
+    $this->get(route('blog'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->where("posts.{$index}.slug", $slug));
+})->with(fn (): array => blogDataset());
+
+test('each published file carries its own front matter onto the index', function (array $post) {
+    $this->get(route('blog'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where("posts.{$post['index']}.title", $post['title'])
+            ->where("posts.{$post['index']}.description", $post['description'])
+            ->where("posts.{$post['index']}.date", $post['date'])
+            ->where("posts.{$post['index']}.tag", $post['tag']));
+})->with(fn (): array => collect(publishedBlogMarkdown())
+    ->values()
+    ->map(fn (array $post, int $index): array => ['post' => [...$post, 'index' => $index]])
+    ->all());
+
+test('each published permalink renders its own front matter, SEO meta and title', function (array $post) {
+    $response = $this->get(route('blog.show', ['slug' => $post['slug']]));
+
+    $response->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('blog-show')
+            ->where('post.slug', $post['slug'])
+            ->where('post.title', $post['title'])
+            ->where('post.description', $post['description'])
+            ->where('post.date', $post['date'])
+            ->where('post.tag', $post['tag'])
+            ->where('meta.title', $post['title'].' — artfct')
+            ->where('meta.description', $post['description']));
+
+    // The served `<title>`, not only the prop: this is the string the search
+    // result is built from, and the one `E12` measures. It is HTML-escaped in
+    // the document, so the expectation is escaped the same way rather than
+    // weakened.
+    $response->assertSee(e($post['title']).' — artfct', escape: false);
+})->with(fn (): array => collect(publishedBlogMarkdown())
+    ->mapWithKeys(fn (array $post): array => [$post['slug'] => [$post]])
+    ->all());
+
+/**
+ * Whether a draft opens a code fence (as opposed to a figure fence, whose
+ * closing line is a bare ``` that a naive pattern reads as code).
+ */
+function fileHasCodeFence(string $markdown): bool
+{
+    $open = false;
+
+    foreach (explode("\n", $markdown) as $line) {
+        if (preg_match('/^```(.*)$/', $line, $matches) !== 1) {
+            continue;
+        }
+
+        if ($open) {
+            $open = false;
+
+            continue;
+        }
+
+        if (trim($matches[1]) !== 'figure') {
+            return true;
+        }
+
+        $open = true;
+    }
+
+    return false;
+}
+
+test('every block a published file carries reaches the rendered article', function (array $post, string $markdown) {
+    $this->get(route('blog.show', ['slug' => $post['slug']]))
+        ->assertOk()
+        ->assertInertia(function (Assert $page) use ($post, $markdown) {
+            $html = collect($page->toArray()['props']['post']['blocks'])
+                ->where('type', 'html')
+                ->pluck('html')
+                ->implode("\n");
+
+            $markers = [
+                'h2' => ['/^## /m', '<h2'],
+                'h3' => ['/^### /m', '<h3'],
+                'list' => ['/^- /m', '<ul'],
+                'table' => ['/^\| /m', '<table'],
+                'quote' => ['/^> /m', '<blockquote'],
+            ];
+
+            foreach ($markers as $name => [$pattern, $tag]) {
+                if (preg_match($pattern, $markdown) !== 1) {
+                    continue;
+                }
+
+                $this->assertStringContainsString(
+                    $tag,
+                    $html,
+                    "the {$name} in {$post['slug']} never reached the rendered article",
+                );
+            }
+
+            if (fileHasCodeFence($markdown)) {
+                $this->assertStringContainsString(
+                    '<pre',
+                    $html,
+                    "the code block in {$post['slug']} never reached the rendered article",
+                );
+            }
+        });
+})->with(fn (): array => blogFileContents());
+
+test('a new published file is enough for the index, the permalink and the sitemap', function () {
+    app()->instance(BlogContent::class, blogTempContent([
+        'a-temporary-post.md' => blogDraft(
+            'a-temporary-post',
+            "A lead paragraph for a temporary post.\n\n## A temporary section\n\nThe body of a temporary post, which the permalink should render.\n",
+        ),
+    ]));
+
+    $this->get(route('blog'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->where('posts.0.slug', 'a-temporary-post'));
+
+    $this->get('/blog/a-temporary-post')
+        ->assertOk()
+        ->assertSee('The body of a temporary post');
+
+    expect((string) $this->get(route('sitemap'))->getContent())
+        ->toContain('/blog/a-temporary-post');
+});
+
+test('an article arrives as ordered blocks, not one html string', function () {
+    $this->get(route('blog.show', ['slug' => 'what-is-an-ai-artifact']))
+        ->assertOk()
+        ->assertInertia(function (Assert $page) {
+            $blocks = $page->toArray()['props']['post']['blocks'];
+
+            expect($blocks)->not->toBeEmpty()
+                ->and(collect($blocks)->every(fn (array $block): bool => in_array($block['type'], ['html', 'figure'], true)))->toBeTrue();
+
+            $html = collect($blocks)->where('type', 'html')->pluck('html')->implode('');
+
+            // The named blocks this post actually carries, not only "some blocks
+            // arrived": this is the assertion that fails if a renderer drops a
+            // section. The per-file test below covers every other block type
+            // across the whole corpus.
+            expect($html)->toContain('<h2')
+                ->toContain('<h3')
+                ->toContain('<pre')
+                ->toContain('<ul');
+        });
+});
+
+test('the sitemap includes every published permalink', function () {
+    $sitemap = (string) $this->get(route('sitemap'))->getContent();
+
+    foreach (publishedBlogMarkdown() as $post) {
+        expect($sitemap)->toContain(route('blog.show', ['slug' => $post['slug']]));
+    }
+});
+
+test('an unknown permalink returns 404', function () {
     $this->get('/blog/not-a-real-post')->assertNotFound();
 });
 
-/**
- * Every draft in skills/artfct-content/drafts, split by its data-published flag.
- *
- * A draft carrying data-published="false" is held back: it is written, linted and
- * reviewed, but it is not part of the published blog and deliberately has no row in
- * $blogPosts. Anything else is expected to be published, and therefore to have one.
- *
- * @return array{published: array<string, array{title: string, description: string}>, unpublished: array<string, array{title: string, description: string}>}
- */
-function draftsByPublication(): array
-{
-    $published = [];
-    $unpublished = [];
-
-    foreach (glob(base_path('skills/artfct-content/drafts/*.html')) ?: [] as $path) {
-        $html = (string) file_get_contents($path);
-
-        preg_match('/<meta name="description" content="(.*?)"/s', $html, $description);
-        preg_match('/<h1>(.*?)<\/h1>/s', $html, $title);
-
-        $draft = [
-            'title' => html_entity_decode(trim($title[1] ?? ''), ENT_QUOTES),
-            'description' => html_entity_decode(trim($description[1] ?? ''), ENT_QUOTES),
-        ];
-
-        if (str_contains($html, 'data-published="false"')) {
-            $unpublished[basename($path, '.html')] = $draft;
-        } else {
-            $published[basename($path, '.html')] = $draft;
-        }
-    }
-
-    return ['published' => $published, 'unpublished' => $unpublished];
-}
-
-/**
- * The draft is the source of truth and the row is generated from it, so the two
- * cannot be allowed to drift. Without this, editing a draft's headline or meta
- * description silently leaves the index showing the old copy.
- */
-test('every published draft matches the post row generated from it', function () {
-    $drafts = draftsByPublication()['published'];
-
-    expect($drafts)->not->toBeEmpty();
-
-    $response = $this->get(route('blog'));
-
-    $response->assertOk();
-    $response->assertInertia(function (Assert $page) use ($drafts) {
-        $posts = collect($page->toArray()['props']['posts'])->keyBy('slug');
-
-        foreach ($drafts as $slug => $draft) {
-            $this->assertTrue($posts->has($slug), "no blogPosts row for the draft {$slug}");
-            expect($posts[$slug]['title'])->toBe($draft['title'], "title drifted for {$slug}");
-            expect($posts[$slug]['description'])->toBe($draft['description'], "description drifted for {$slug}");
-        }
-    });
-});
-
-test('posts.tsx carries the copy and the blocks of every published draft', function () {
-    $drafts = draftsByPublication()['published'];
-    $source = (string) file_get_contents(resource_path('js/lib/posts.tsx'));
-
-    expect($drafts)->not->toBeEmpty();
-
-    // draft-to-post.mjs writes the copy into the literal, and Prettier then
-    // re-quotes any string holding an apostrophe, so both spellings count and
-    // neither is a reason to weaken the check.
-    $carries = fn (string $haystack, string $text): bool => str_contains($haystack, $text)
-        || str_contains($haystack, str_replace("'", "\\'", $text));
-
-    // A block the generator stopped emitting leaves no other trace: the props
-    // test above still passes, and every browser test asserts a sentence.
-    $blocks = ['<table class="t">' => '<Table', '<pre><code>' => '<Pre>', '<h3>' => '<H3>'];
-
-    foreach ($drafts as $slug => $draft) {
-        // The entry delimiter, not `slug: '` — a body carries inner slug
-        // references for its cross-links, and slicing on those truncates the
-        // entry before the block the assertion is looking for.
-        $marker = "\n    {\n        slug: '";
-        $start = strpos($source, $marker.$slug."',");
-
-        // PHPUnit assertions rather than expect(): Pest's toContain() takes
-        // variadic needles, so a message passed to it is read as another needle
-        // and the assertion silently tests something else.
-        $this->assertNotFalse($start, "posts.tsx has no entry for {$slug}");
-
-        $next = strpos($source, $marker, (int) $start + 1);
-        $entry = substr($source, (int) $start, $next === false ? null : $next - (int) $start);
-
-        $this->assertTrue($carries($entry, $draft['title']), "the title of {$slug} is missing from its own entry");
-        $this->assertTrue($carries($entry, $draft['description']), "the description of {$slug} is missing from its own entry");
-
-        $html = (string) file_get_contents(base_path("skills/artfct-content/drafts/{$slug}.html"));
-
-        foreach ($blocks as $inDraft => $inJsx) {
-            if (! str_contains($html, $inDraft)) {
-                continue;
-            }
-
-            $this->assertStringContainsString($inJsx, $entry, "the {$inDraft} block of {$slug} never reached posts.tsx");
-        }
-    }
-});
-
-/**
- * Held-back drafts are the exception the parity test carves out, so the carve-out
- * needs a test of its own: an unpublished draft must not be readable at its
- * permalink, which is what makes "unpublished" a property of the app rather than a
- * note in a filename.
- */
-test('an unpublished draft is not reachable at its permalink', function () {
-    $unpublished = draftsByPublication()['unpublished'];
-
-    expect($unpublished)->not->toBeEmpty();
-
-    foreach (array_keys($unpublished) as $slug) {
-        $this->get("/blog/{$slug}")->assertNotFound();
-    }
-});
-
-test('an unpublished draft is absent from the blog index and the sitemap', function () {
-    $slugs = array_keys(draftsByPublication()['unpublished']);
-
-    expect($slugs)->not->toBeEmpty();
+test('a held-back file is absent from the index and the sitemap', function () {
+    $slugs = array_column(heldBackBlogMarkdown(), 'slug');
 
     $this->get(route('blog'))->assertInertia(function (Assert $page) use ($slugs) {
         $indexed = collect($page->toArray()['props']['posts'])->pluck('slug');
@@ -277,18 +319,95 @@ test('an unpublished draft is absent from the blog index and the sitemap', funct
     $sitemap = (string) $this->get(route('sitemap'))->getContent();
 
     foreach ($slugs as $slug) {
-        expect($sitemap)->not->toContain("/blog/{$slug}");
+        expect($sitemap)->not->toContain('/blog/'.$slug);
+    }
+});
+
+test('a held-back file is not reachable at its permalink', function () {
+    foreach (array_column(heldBackBlogMarkdown(), 'slug') as $slug) {
+        $this->get('/blog/'.$slug)->assertNotFound();
     }
 });
 
 test('the index is ordered newest first', function () {
-    /** @var TestResponse $response */
-    $response = $this->get(route('blog'));
-
-    $response->assertOk();
-    $response->assertInertia(function (Assert $page) {
+    $this->get(route('blog'))->assertInertia(function (Assert $page) {
         $dates = collect($page->toArray()['props']['posts'])->pluck('date');
 
         expect($dates->all())->toBe($dates->sortDesc()->values()->all());
     });
+});
+
+test('the faq heading renders as the site calls it', function () {
+    $this->get(route('blog.show', ['slug' => 'what-is-an-ai-artifact']))
+        ->assertOk()
+        ->assertInertia(function (Assert $page) {
+            $html = collect($page->toArray()['props']['post']['blocks'])
+                ->where('type', 'html')
+                ->pluck('html')
+                ->implode('');
+
+            expect($html)->toContain('Frequently asked questions')
+                ->not->toContain('>Questions<');
+        });
+});
+
+test('a figure block sits where the file puts it', function () {
+    $this->get(route('blog.show', ['slug' => 'stop-ai-tools-contradicting-each-other']))
+        ->assertOk()
+        ->assertInertia(function (Assert $page) {
+            $blocks = $page->toArray()['props']['post']['blocks'];
+            $figures = array_values(array_filter($blocks, fn (array $block): bool => $block['type'] === 'figure'));
+
+            expect(array_column($figures, 'name'))->toBe(['break', 'loop']);
+
+            // Both figures sit after prose, and the first is the second block.
+            expect($blocks[1]['type'])->toBe('figure')
+                ->and($blocks[0]['type'])->toBe('html')
+                ->and(end($blocks)['type'])->toBe('html');
+        });
+});
+
+test('the post metadata has exactly one home', function () {
+    expect(file_exists(resource_path('js/lib/posts.tsx')))->toBeFalse()
+        ->and(file_get_contents(base_path('routes/web.php')))->not->toContain('$blogPosts');
+});
+
+test('an absent drafts directory yields an empty index rather than an error', function () {
+    app()->instance(BlogContent::class, new BlogContent(new BlogRenderer, '/tmp/nonexistent-artfct-drafts'));
+
+    $this->get(route('blog'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->has('posts', 0));
+});
+
+test('a file with no section fails instead of rendering half a page', function () {
+    $content = blogTempContent(['no-section.md' => blogDraft('no-section', "Only a lead paragraph, and no section.\n")]);
+
+    expect(fn (): array => $content->every())
+        ->toThrow(RuntimeException::class, 'has no `##` section');
+});
+
+test('a file with no lead fails instead of rendering a bare heading', function () {
+    $content = blogTempContent(['no-lead.md' => blogDraft('no-lead', "## A section\n\nBody with no lead before it.\n")]);
+
+    expect(fn (): array => $content->every())
+        ->toThrow(RuntimeException::class, 'has no lead paragraph');
+});
+
+test('two files declaring one slug fail naming both', function () {
+    $content = blogTempContent([
+        'first.md' => blogDraft('shared-slug', "A lead.\n\n## A section\n\nBody.\n"),
+        'second.md' => blogDraft('shared-slug', "Another lead.\n\n## Another section\n\nBody.\n"),
+    ]);
+
+    expect(fn (): array => $content->every())
+        ->toThrow(RuntimeException::class, 'two drafts declare the slug `shared-slug`');
+});
+
+test('an empty drafts directory is reported rather than served silently', function () {
+    Log::spy();
+
+    expect(blogTempContent([])->all())->toBe([]);
+
+    Log::shouldHaveReceived('warning');
 });

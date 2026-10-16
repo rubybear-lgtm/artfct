@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Score an artfct-content draft against the on-page search rubric.
 
-    python3 skills/artfct-content/scripts/seo-audit.py DRAFT [...]
+    python3 skills/artfct-content/scripts/seo-audit.py RENDERED [...]
+    python3 skills/artfct-content/scripts/seo-audit.py RENDERED-DIR [...]
     python3 skills/artfct-content/scripts/seo-audit.py --all
     python3 skills/artfct-content/scripts/seo-audit.py --all --json
+
+A draft is Markdown, and what this scores is the document it renders to, so
+render first: `php artisan blog:render <draft> --out=<file>` for one draft,
+or `php artisan blog:render --all --out=<dir>` and point this at the
+directory. A positional argument is a path, or a directory of rendered
+documents.
 
 The rubric is the one the PR #39 review states it applied: title length,
 meta description length, word count and H2 shape for the surface, FAQ count,
@@ -26,7 +33,9 @@ import argparse
 import importlib.util
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -149,17 +158,46 @@ def audit(path: Path) -> dict:
     }
 
 
+def render_every_draft() -> list[Path]:
+    """`--all` scores every draft, so it renders them first.
+
+    The audit reads HTML and the drafts are Markdown, so globbing the drafts
+    directory finds nothing. Rendering through the application keeps this flag
+    meaning what it says instead of quietly scoring zero pages.
+    """
+    out = Path(tempfile.mkdtemp(prefix="artfct-seo-"))
+    result = subprocess.run(
+        ["php", "artisan", "blog:render", "--all", "--out=" + str(out)],
+        cwd=SKILL.parents[1],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print("seo-audit: blog:render failed\n" + (result.stderr or result.stdout), file=sys.stderr)
+        raise SystemExit(2)
+
+    return sorted(out.glob("*.html"))
+
+
 def draft_paths(args) -> list[Path]:
     if args.all:
-        return sorted((SKILL / "drafts").glob("*.html"))
+        return render_every_draft()
 
-    return [Path(p) for p in args.draft]
+    paths: list[Path] = []
+    for argument in args.draft:
+        candidate = Path(argument)
+        # A directory is what `blog:render --all --out=<dir>` writes, and the
+        # audit is pointed at it rather than at nineteen file arguments.
+        paths += sorted(candidate.glob("*.html")) if candidate.is_dir() else [candidate]
+
+    return paths
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Score artfct-content drafts for on-page search.")
-    ap.add_argument("draft", nargs="*")
-    ap.add_argument("--all", action="store_true", help="every draft in skills/artfct-content/drafts")
+    ap.add_argument("draft", nargs="*", help="a rendered document, or a directory of them")
+    ap.add_argument("--all", action="store_true", help="render every draft in the drafts directory and score it")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--quiet", action="store_true", help="summary line only")
     ap.add_argument("--floor", type=int, default=0, help="exit non-zero below this score")

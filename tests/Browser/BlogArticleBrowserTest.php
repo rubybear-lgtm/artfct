@@ -1,16 +1,20 @@
 <?php
 
 /**
- * Every post in $blogPosts opens in a real browser without a JavaScript error.
+ * Every published post opens in a real browser without a JavaScript error.
  *
- * BlogPermalinksTest and BlogFeatureStoriesTest cover the HTTP contract; this is
- * the check that the generated body actually renders, which is the part a prop
- * assertion cannot see.
+ * BlogPermalinksTest and BlogFeatureStoriesTest cover the HTTP contract, and
+ * BlogFeatureStoriesTest derives the post list from the files. This is the check
+ * that the rendered body actually reaches a reader — a sentence and the FAQ
+ * heading per post — which a prop assertion cannot see.
+ *
+ * The phrases are written out by hand on purpose: deriving them from the file
+ * would only assert the file against itself.
  */
 dataset('blog articles', [
     'stop-ai-tools-contradicting-each-other' => [
         'stop-ai-tools-contradicting-each-other',
-        'Stopping Claude and Cursor from contradicting each other',
+        'Stopping Claude and Cursor contradicting each other',
         'The team is aligned. The tools are not.',
     ],
     'finding-what-your-ai-already-made' => [
@@ -57,3 +61,14 @@ test('each blog article renders without javascript errors', function (string $sl
         ->assertSee('Frequently asked questions')
         ->assertNoJavaScriptErrors();
 })->with('blog articles');
+
+test('the one post whose file carries figures renders both, and only it', function () {
+    visit(route('blog.show', ['slug' => 'stop-ai-tools-contradicting-each-other']))
+        ->assertPresent('figure[aria-labelledby="fig1-cap"]')
+        ->assertPresent('figure[aria-labelledby="fig2-cap"]')
+        ->assertNoJavaScriptErrors();
+
+    visit(route('blog.show', ['slug' => 'what-is-an-ai-artifact']))
+        ->assertMissing('figure[aria-labelledby="fig1-cap"]')
+        ->assertNoJavaScriptErrors();
+});

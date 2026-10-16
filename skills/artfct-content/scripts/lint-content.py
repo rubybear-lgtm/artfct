@@ -16,6 +16,7 @@ references/page-anatomy.md (block order) and references/surfaces.md
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -413,17 +414,21 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
     # them being published.
     if doc.is_html:
         title = re.search(r"<title>(.*?)</title>", doc.raw, re.S)
+        # A search result shows the decoded text, and the renderer escapes an
+        # apostrophe as `&#039;` to keep the attribute well-formed. Measuring the
+        # raw attribute counted five characters per apostrophe and failed
+        # descriptions that are inside the band.
         if not title:
             err("E12", "no <title>; the tab and the search result both need one", "")
-        elif not (45 <= len(title.group(1).strip()) <= 60):
-            err("E12", "title is " + str(len(title.group(1).strip()))
+        elif not (45 <= len(html.unescape(title.group(1)).strip()) <= 60):
+            err("E12", "title is " + str(len(html.unescape(title.group(1)).strip()))
                 + " characters; search shows 45-60", title.group(1).strip())
 
         meta = re.search(r'<meta\s+name="description"\s+content="(.*?)"', doc.raw, re.S)
         if not meta:
             err("E13", "no meta description; the search result needs one", "")
-        elif not (120 <= len(meta.group(1).strip()) <= 160):
-            err("E13", "meta description is " + str(len(meta.group(1).strip()))
+        elif not (120 <= len(html.unescape(meta.group(1)).strip()) <= 160):
+            err("E13", "meta description is " + str(len(html.unescape(meta.group(1)).strip()))
                 + " characters; search truncates past 160", meta.group(1).strip()[:70])
     if register == "glean-formal" and re.search(r"!\s*(?:</p>|\n|$)", doc.raw):
         warn("W12", "exclamation mark in a glean-formal page", "")

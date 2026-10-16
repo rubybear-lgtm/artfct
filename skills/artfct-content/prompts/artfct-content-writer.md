@@ -8,8 +8,10 @@ Delegate this to the `artfct-content-writer` agent. Call `subagent` once with
 The child runs in an isolated context, so the task has to stand on its own. Build it to include:
 
 - the surface — `feature-showcase`, `comparison`, `explainer` or `programmatic`
-- the slug, the tag, and the date line
-- the draft path, `skills/artfct-content/drafts/<slug>.html`, and that cwd is the repository root
+- the slug, the tag, and the date — all three are front matter
+- the draft path, `skills/artfct-content/drafts/<slug>.md`, and that cwd is the repository root
+- that the draft starts from `skills/artfct-content/assets/article-template.md`, and that every
+  front-matter key that file lists is required
 - what the page has to say, in one or two sentences
 - a reminder that every capability claim must trace to a row in
   `skills/artfct-content/references/feature-inventory.md`, including its known-gaps section

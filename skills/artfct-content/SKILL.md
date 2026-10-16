@@ -24,8 +24,8 @@ opening a comparison, handling a pricing objection, introducing a technical conc
 non-technical reader. Do not paraphrase from memory; the corpus is the source.
 
 **Lint before you publish.** `content_lint` enforces the measurable parts of the
-anatomy. The publish gate blocks `deploy_artifact` while a draft fails, so a failing
-lint is a stop, not a warning.
+anatomy, on the rendered document rather than the Markdown file. The publish gate blocks
+`deploy_artifact` while a draft fails, so a failing lint is a stop, not a warning.
 
 ## Workflow
 
@@ -34,11 +34,19 @@ lint is a stop, not a warning.
    comparison page written as a feature showcase answers a question nobody asked.
 2. **Search the corpus** for the move you are about to make. One query per structural
    decision, not one query per article.
-3. **Draft against the anatomy**, starting from `assets/article-template.html` so the
-   gate applies and the block order is right. `references/page-anatomy.md` for structure,
-   `references/headline-formulas.md` for the headline, `references/voice-register.md`
-   for sentence-level voice.
-4. **Lint.** Run `content_lint` on the draft. Fix and re-run until clean. The linter
+3. **Draft against the anatomy**, starting from `assets/article-template.md` so the
+   front matter is complete and the block order is right. The front matter carries the
+   page's metadata and the body is CommonMark plus tables. `references/page-anatomy.md`
+   for structure, `references/headline-formulas.md` for the headline,
+   `references/voice-register.md` for sentence-level voice.
+4. **Render, then lint.** The linter reads HTML, so render the draft to the document
+   the page will become and lint that:
+
+   ```
+   php artisan blog:render skills/artfct-content/drafts/<slug>.md --out=/tmp/<slug>.html
+   ```
+
+   Then run `content_lint` on `/tmp/<slug>.html`. Fix and re-run until clean. The linter
    is the floor, not the review: it checks the measurable rules and cannot tell
    whether a sentence describes a capability the product actually has.
 5. **Review with a clean agent.** Hand the draft to `artfct-content-reviewer`,
@@ -47,29 +55,26 @@ lint is a stop, not a warning.
    findings — on the first three pages it caught a provenance claim the hosted
    path does not support, an absolute the product falsifies, and a filter set the
    console does not have. Fix and re-run until it stops finding blockers.
-6. **Publish the draft** with `deploy_artifact` at `team` sharing, so the page can be
-   read in a browser before it becomes code. Give it a real `title` and a one-sentence
+6. **Publish the render** with `deploy_artifact` at `team` sharing, so the page can be
+   read in a browser before it goes live. Give it a real `title` and a one-sentence
    `description`. Re-publishing after a fix takes `artifact_id` so the link stays
    stable and the review history stays on one artifact.
-7. **Emit the page** only after the draft is approved. Generate the post body from the
-   draft rather than retyping it:
+7. **Publish the post** by setting `published: true` in the front matter. That is the
+   whole step: the file is the only copy, so `/blog`, `/blog/<slug>`, the sitemap and the
+   structured data pick it up at request time and nothing else changes. A file left
+   `published: false` is written, linted and reviewed, and is absent from the index, the
+   sitemap and its own permalink.
 
-   ```
-   node skills/artfct-content/scripts/draft-to-post.mjs \
-       skills/artfct-content/drafts/<slug>.html \
-       --slug <slug> --tag <tag> --insert resources/js/lib/posts.tsx
-   ```
+Drafts live in `skills/artfct-content/drafts/`, one Markdown file per page. Front matter
+is flat `key: value` between `---` fences, and every key the template lists is required;
+`lint` is the only optional one. An unknown key is an error naming the file, and so is a
+missing required key, so a typo fails loudly instead of shipping. `title` is the bare
+headline — the renderer appends ` — artfct` for the `<title>`, which is what keeps that string
+inside the 45-60 character band. The structured-data `headline` stays the bare headline.
 
-   Then add the metadata row to `$blogPosts` in `routes/web.php` — the
-   `description` must match the draft's meta description, because
-   `tests/Feature/BlogFeatureStoriesTest.php` asserts both — and update that test's
-   `workflowPosts()` map and its `has('posts', n)` count. Finally run
-   `vendor/bin/pint --dirty`, `npx prettier --write resources/js/lib/posts.tsx`,
-   `npx eslint --fix`, and the full suite.
-
-Drafts live in `skills/artfct-content/drafts/`, one file per page. That directory is
-the input to `draft-to-post.mjs`, which is why the published page and the reviewed
-draft cannot disagree.
+That directory is what the application reads at request time, which is why the published
+page and the reviewed draft cannot disagree: the file is the only copy of the page and
+its metadata.
 
 ## Register is a parameter, not a personality
 
@@ -88,9 +93,9 @@ the register explicitly and say which one you used.
 | `references/voice-register.md` | What does a sentence sound like in this register? |
 | `references/feature-inventory.md` | What does artfct actually do? |
 | `references/surfaces.md` | Which of the four surfaces is this, and what does it owe the reader? |
-| `assets/article-template.html` | The draft shell to fill in before publishing. |
-| `assets/example-feature-showcase.html` | A filled draft that passes the linter — the shape to aim for. |
-| `drafts/` | One file per page, the input to `draft-to-post.mjs`. |
+| `assets/article-template.md` | The draft to copy: the front matter keys and the block order. |
+| `assets/example-feature-showcase.html` | The publish gate's own test fixture, not a draft to copy. For the shape to aim for, read a published file in `drafts/`. |
+| `drafts/` | One Markdown file per page, the only copy of each post. |
 
 ## The programmatic surface is generated, not written
 
@@ -104,27 +109,28 @@ Programmatic pages carry no FAQ, no table of contents, no author card and no
 a concrete example, related links and a CTA. Do not generate one for a parameter with no
 search demand, and do not let two parameters produce the same page with one word swapped.
 
-## The publish gate is armed by the template
+## The publish gate is armed by the render
 
-`deploy_artifact` is blocked when the draft fails the linter, but only for a draft
-that carries a `data-surface` attribute on `<body>`. That attribute is what the
-template sets, and it is what tells the gate "this is an artfct-content page". A
-dashboard, a spec, or a plan has no marker and publishes untouched, because these
-rules do not describe it.
+`deploy_artifact` is blocked when the document fails the linter, but only for a
+document that carries a `data-surface` attribute on `<body>`. The renderer writes that
+attribute from the draft's `surface` front-matter key, and it is what tells the gate
+"this is an artfct-content page". A dashboard, a spec, or a plan has no marker and
+publishes untouched, because these rules do not describe it.
 
-The practical consequence: **a draft built from scratch instead of from the template
-is not gated.** Use the template. If a page genuinely must publish while failing a
-rule, `data-lint="skip"` on the body is the documented override — reach for it
-deliberately, not to silence a rule you disagree with.
+The practical consequence: **publish the render, not the Markdown file and not markup
+built by hand.** Use the template. Missing or mistyped front matter fails the render by
+the file's name instead of reaching the gate ungated. If a page genuinely must publish
+while failing a rule, `lint: skip` in the front matter is the documented override —
+reach for it deliberately, not to silence a rule you disagree with.
 
 ## Bundled scripts
 
 | Script | Does |
 |---|---|
 | `scripts/build-corpus-index.py` | Rebuilds the corpus index. No arguments to rebuild, `--query "<fts5>"` to search from a shell, `--json` for structured output. |
-| `scripts/lint-content.py` | The linter the gate calls. `lint-content.py DRAFT [--surface S] [--register R] [--json]`, exit 1 on any error. |
+| `scripts/lint-content.py` | The linter the gate calls, on the rendered document. `lint-content.py RENDERED [--surface S] [--register R] [--json]`, exit 1 on any error. |
+| `scripts/seo-audit.py` | Scores the rendered documents for on-page search. It reads HTML too, so render a directory first — `php artisan blog:render --all --out=/tmp/blog-rendered` — and pass that directory. |
 | `scripts/test_lint.py` | Tests the linter's rules, one case per rule. `python3 scripts/test_lint.py`. |
-| `scripts/draft-to-post.mjs` | Turns a draft into the JSX a blog post uses, and splices it into `resources/js/lib/posts.tsx`. The draft stays the source of truth, so the published page cannot drift from the reviewed draft. |
 | `scripts/test-gate.mjs` | Tests the publish gate end to end, including that it fails closed. `node scripts/test-gate.mjs`. |
 
 The corpus text is third-party marketing copy and is deliberately kept outside this

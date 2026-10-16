@@ -1,8 +1,17 @@
 import { Link } from '@inertiajs/react';
+import type { ComponentType } from 'react';
 
+import { BreakFigure, LoopFigure } from '@/components/contradicting-figures';
 import { SitePage } from '@/components/site-chrome';
-import { getPostBySlug } from '@/lib/posts';
 import { blog } from '@/routes';
+
+/** The closed set the renderer emits; a name outside it is a server bug. */
+const FIGURES: Record<string, ComponentType> = {
+    break: BreakFigure,
+    loop: LoopFigure,
+};
+
+type Block = { type: 'html'; html: string } | { type: 'figure'; name: string };
 
 interface BlogShowProps {
     post: {
@@ -11,16 +20,43 @@ interface BlogShowProps {
         description: string;
         date: string;
         tag: string;
+        blocks: Block[];
     };
 }
 
+/**
+ * The article body arrives as ordered blocks rather than one HTML string,
+ * because a figure is a React component and cannot be mounted inside
+ * server-rendered markup.
+ */
+function ArticleBody({ blocks, slug }: { blocks: Block[]; slug: string }) {
+    return (
+        <>
+            {blocks.map((block, index) => {
+                if (block.type === 'figure') {
+                    const Figure = FIGURES[block.name];
+
+                    if (!Figure) {
+                        throw new Error(
+                            `Unknown figure block "${block.name}" in post "${slug}".`,
+                        );
+                    }
+
+                    return <Figure key={index} />;
+                }
+
+                return (
+                    <div
+                        key={index}
+                        dangerouslySetInnerHTML={{ __html: block.html }}
+                    />
+                );
+            })}
+        </>
+    );
+}
+
 export default function BlogShow({ post }: BlogShowProps) {
-    const fullPost = getPostBySlug(post.slug);
-
-    if (!fullPost) {
-        return null;
-    }
-
     return (
         <SitePage active="blog">
             <main className="mx-auto max-w-[680px] px-5 py-14">
@@ -60,29 +96,10 @@ export default function BlogShow({ post }: BlogShowProps) {
                         <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
                             {post.description}
                         </p>
-                        {fullPost.image && (
-                            <picture>
-                                {/* Written alongside each PNG by `npm run images:webp`. */}
-                                <source
-                                    srcSet={fullPost.image.replace(
-                                        /\.png$/,
-                                        '.webp',
-                                    )}
-                                    type="image/webp"
-                                />
-                                <img
-                                    src={fullPost.image}
-                                    alt=""
-                                    width={1024}
-                                    height={576}
-                                    className="mt-9 w-full rounded-[6px]"
-                                />
-                            </picture>
-                        )}
                     </header>
 
                     <div className="min-w-0 pt-10 break-words">
-                        {fullPost.body}
+                        <ArticleBody blocks={post.blocks} slug={post.slug} />
                     </div>
                 </article>
 

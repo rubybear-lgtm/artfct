@@ -149,7 +149,7 @@ One CTA per page. The corpus repeats its CTA rather than stacking different ones
 
 ## Where these pages live
 
-Default to the existing pipeline: a metadata row in `$blogPosts` in `routes/web.php` and a body in `resources/js/lib/posts`, reached through `getPostBySlug()`. That is what `tests/Feature/BlogPermalinksTest.php` and `BlogFeatureStoriesTest.php` already cover.
+Default to the existing pipeline: one Markdown file per page in `skills/artfct-content/drafts/`, whose front matter carries the metadata and whose body carries the article. `/blog`, `/blog/{slug}`, the sitemap and the structured data all read those files at request time, so there is no second copy to update and no route to add. That is what `tests/Feature/BlogPermalinksTest.php` and `BlogFeatureStoriesTest.php` cover.
 
-A surface earns its own route and template only when it has a genuinely different shape — programmatic pages do, comparisons probably will. Until then, one pipeline, and the tests keep it honest. Note that `BlogFeatureStoriesTest.php` asserts a post count; adding a post means updating that assertion deliberately, not discovering it in CI.
+A surface earns its own route and template only when it has a genuinely different shape — programmatic pages do, comparisons probably will. Until then, one pipeline, and the tests keep it honest. A new post is a new file, nowhere else.
 

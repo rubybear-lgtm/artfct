@@ -1,77 +1,20 @@
 <?php
 
 use App\Http\Controllers\ArtifactViewerController;
+use App\Http\Controllers\BlogController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
 use App\Support\AiToolSetup;
 use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-
-$blogPosts = [
-    [
-        'slug' => 'finding-what-your-ai-already-made',
-        'title' => 'Finding the report your team already wrote',
-        'date' => '2026-10-08',
-        'tag' => 'search',
-        'description' => 'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes what your agents produce, so a team can find its AI work, not rebuild it.',
-    ],
-    [
-        'slug' => 'who-sees-what-your-ai-makes',
-        'title' => 'Who sees what your AI makes, and when',
-        'date' => '2026-10-07',
-        'tag' => 'governance',
-        'description' => 'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. Who sees what your AI makes, and how that changes.',
-    ],
-    [
-        'slug' => 'one-link-that-keeps-its-history',
-        'title' => 'One link that keeps a version history',
-        'date' => '2026-10-06',
-        'tag' => 'workflows',
-        'description' => 'Publishing the same content twice resolves to one artifact, and a change creates a new version under the same link. How the version history and identity work.',
-    ],
-    [
-        'slug' => 'stop-ai-tools-contradicting-each-other',
-        'title' => 'Stopping Claude and Cursor from contradicting each other',
-        'date' => '2026-10-05',
-        'tag' => 'workflows',
-        'description' => 'You drop a phrase in Claude. Cursor brings it back hours later. Here is how a shared library keeps AI tools from repeating decisions you already killed.',
-    ],
-    [
-        'slug' => 'why-your-ai-tools-cannot-see-each-others-work',
-        'title' => 'Why your AI tools cannot see each other\'s work',
-        'date' => '2026-10-02',
-        'tag' => 'explainers',
-        'description' => 'Every AI tool keeps its own record of what it made, so the next agent rebuilds finished work. Why AI tools cannot see each other\'s work, and what changes.',
-    ],
-    [
-        'slug' => 'what-is-an-ai-artifact',
-        'title' => 'What is an AI artifact, and what is not?',
-        'date' => '2026-10-01',
-        'tag' => 'explainers',
-        'description' => 'An AI artifact is finished work an AI tool made that a person can open: a report, dashboard, table or document. How it differs from chat scrollback.',
-    ],
-    [
-        'slug' => 'artfct-vs-a-shared-drive-folder',
-        'title' => 'Artfct vs a shared drive: what works better',
-        'date' => '2026-10-04',
-        'tag' => 'comparisons',
-        'description' => 'A shared drive folder holds the files people open. Artfct holds the pages AI tools make and answers search for the next agent. Where each one fits.',
-    ],
-    [
-        'slug' => 'artfct-vs-your-ai-tools-own-sharing',
-        'title' => 'Artfct vs your AI tool\'s own sharing',
-        'date' => '2026-10-03',
-        'tag' => 'comparisons',
-        'description' => 'Claude Code Artifacts and OpenAI\'s Sites share work inside one vendor. Artfct keeps the same work findable across tools. Reach, controls and retrieval.',
-    ],
-];
 
 Route::get('/', fn () => Inertia::render('landing', [
     'meta' => [
@@ -139,65 +82,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/terms/accept', [LegalController::class, 'accept'])->name('terms.accept');
 });
 
-Route::inertia('/blog', 'blog', [
-    'meta' => [
-        'title' => 'blog — artfct',
-        'description' => 'Product updates and tips from artfct, where what your AI makes is shared with your team.',
-    ],
-    // Newest first, computed rather than relying on the literal's order, so a
-    // new post cannot land in the wrong place on the index.
-    'posts' => collect($blogPosts)->sortByDesc('date')->values()->all(),
-])->name('blog');
+// Both blog routes read the Markdown files through BlogContent; there is no
+// post list in this file any more.
+Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
-Route::get('/blog/{slug}', function (string $slug) use ($blogPosts) {
-    $post = collect($blogPosts)->first(
-        fn (array $candidate): bool => $candidate['slug'] === $slug,
-    );
-
-    abort_if($post === null, 404);
-
-    return Inertia::render('blog-show', [
-        'meta' => [
-            'title' => "{$post['title']} — artfct",
-            'description' => $post['description'],
-        ],
-        'post' => $post,
-    ]);
-})->where('slug', '[a-z0-9-]+')->name('blog.show');
+Route::get('/blog/{slug}', [BlogController::class, 'show'])
+    ->where('slug', '[a-z0-9-]+')
+    ->name('blog.show');
 
 // ── sitemap ───────────────────────────────────────────────────────────────────
 
-Route::get('/sitemap.xml', function () use ($blogPosts) {
-    $urls = [
-        ['loc' => url('/'), 'priority' => '1.0', 'changefreq' => 'weekly'],
-        ['loc' => url('/free'), 'priority' => '0.8', 'changefreq' => 'weekly'],
-        ['loc' => url('/docs'), 'priority' => '0.8', 'changefreq' => 'weekly'],
-        ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
-        ['loc' => url('/terms'), 'priority' => '0.3', 'changefreq' => 'yearly'],
-        ['loc' => url('/privacy'), 'priority' => '0.3', 'changefreq' => 'yearly'],
-    ];
-
-    foreach ($blogPosts as $post) {
-        $urls[] = [
-            'loc' => route('blog.show', ['slug' => $post['slug']]),
-            'priority' => '0.7',
-            'changefreq' => 'monthly',
-        ];
-    }
-
-    foreach (AiToolSetup::forCurrentEnvironment()->guides() as $guide) {
-        $urls[] = [
-            'loc' => route('connect.show', ['tool' => $guide['id']]),
-            'priority' => '0.6',
-            'changefreq' => 'monthly',
-        ];
-    }
-
-    $xml = view('sitemap', ['urls' => $urls])->render();
-
-    return response('<?xml version="1.0" encoding="UTF-8"?>'."\n".$xml)
-        ->header('Content-Type', 'text/xml');
-})->name('sitemap');
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //
