@@ -391,6 +391,114 @@ test('ui_and_cli_actions_write_equivalent_audit_rows', function () {
     Queue::assertPushed(IndexArtifactJob::class, fn (IndexArtifactJob $job): bool => $job->artifactId === 'abcdef0123456789abcdef0123456789' && $job->queue === 'indexing');
 });
 
+/**
+ * The tenant-visible operator rows for one team, comparable across teams:
+ * everything but the actor, address and browser.
+ *
+ * @return list<array{type: string, target: string, outcome: string, reason: string|null}>
+ */
+function opsActionTenantRows(Team $team): array
+{
+    return AuditEvent::query()
+        ->where('team_id', $team->id)
+        ->where('event_type', 'like', 'operator.%')
+        ->orderBy('id')
+        ->get()
+        ->map(fn (AuditEvent $event): array => [
+            'type' => $event->event_type->value,
+            'target' => str_replace($team->slug, '{slug}', $event->target),
+            'outcome' => $event->outcome,
+            'reason' => $event->reason,
+        ])->all();
+}
+
+test('cli_runs_with_a_reason_write_the_same_audit_rows_as_the_console', function () {
+    Http::fake(['worker.test/*' => Http::response(['ok' => true])]);
+    Queue::fake();
+    $cliTeam = Team::factory()->create(['slug' => 'cli-parity']);
+    $uiTeam = Team::factory()->create(['slug' => 'ui-parity']);
+    memberOfTeam($cliTeam, TeamRole::Admin);
+    memberOfTeam($uiTeam, TeamRole::Admin);
+    $staff = opsActionStaff();
+
+    $this->artisan('billing:sync-limits', ['org' => 'cli-parity', '--reason' => OPS_ACTION_REASON])->assertSuccessful();
+    $this->artisan('indexing:backfill', ['org' => 'cli-parity', '--reason' => OPS_ACTION_REASON])->assertSuccessful();
+
+    $this->actingAs($staff)->post(route('ops.tenants.limits', $uiTeam), ['reason' => OPS_ACTION_REASON])->assertSessionHasNoErrors();
+    $this->actingAs($staff)->post(route('ops.tenants.reindex', $uiTeam), ['scope' => 'tenant', 'reason' => OPS_ACTION_REASON])->assertSessionHasNoErrors();
+
+    $cli = opsActionTenantRows($cliTeam);
+    $ui = opsActionTenantRows($uiTeam);
+
+    expect($cli)->toHaveCount(2)
+        ->and($ui)->toBe($cli)
+        ->and(array_column($cli, 'type'))->toBe(['operator.limits_changed', 'operator.reindex_requested'])
+        ->and($cli[0]['reason'])->toBe(OPS_ACTION_REASON);
+
+    // Apart from the actor, the rows are the same; the actor is the one thing
+    // that differs, and neither names a person to the tenant.
+    $actors = fn (Team $team): array => AuditEvent::query()->where('team_id', $team->id)->where('event_type', 'like', 'operator.%')->pluck('actor')->unique()->values()->all();
+    expect($actors($cliTeam))->toBe(['staff'])
+        ->and($actors($uiTeam))->toBe(["staff:{$staff->id}"]);
+
+    // The internal log keeps who ran it: a person for the console, the command
+    // line (no staff user) for the CLI.
+    expect(OperatorAuditEvent::query()->where('team_id', $cliTeam->id)->pluck('ip')->unique()->all())->toBe(['cli'])
+        ->and(OperatorAuditEvent::query()->where('team_id', $cliTeam->id)->whereNull('staff_user_id')->count())->toBe(2)
+        ->and(OperatorAuditEvent::query()->where('team_id', $uiTeam->id)->where('staff_user_id', $staff->id)->count())->toBe(2);
+});
+
+test('cli_failures_write_the_same_failure_rows_as_the_console', function () {
+    Http::fake(['worker.test/*' => Http::response([], 500)]);
+    $cliTeam = Team::factory()->create(['slug' => 'cli-fail']);
+    $uiTeam = Team::factory()->create(['slug' => 'ui-fail']);
+    $staff = opsActionStaff();
+
+    $this->artisan('billing:sync-limits', ['org' => 'cli-fail', '--reason' => OPS_ACTION_REASON])->assertFailed();
+    $this->actingAs($staff)->post(route('ops.tenants.limits', $uiTeam), ['reason' => OPS_ACTION_REASON])->assertSessionHasErrors('action');
+
+    expect(opsActionTenantRows($cliTeam))->toBe(opsActionTenantRows($uiTeam))
+        ->and(opsActionTenantRows($cliTeam)[0]['outcome'])->toBe('failure');
+
+    // No admin to act as: refused the same way, recorded the same way.
+    $this->artisan('indexing:backfill', ['org' => 'cli-fail', '--reason' => OPS_ACTION_REASON])->assertFailed();
+    $this->actingAs($staff)->post(route('ops.tenants.reindex', $uiTeam), ['scope' => 'tenant', 'reason' => OPS_ACTION_REASON])->assertSessionHasErrors('action');
+
+    expect(array_column(opsActionTenantRows($cliTeam), 'outcome'))->toBe(['failure', 'failure'])
+        ->and(opsActionTenantRows($uiTeam))->toBe(opsActionTenantRows($cliTeam));
+});
+
+test('routine_cli_runs_without_a_reason_write_no_audit_rows', function () {
+    Http::fake(['worker.test/*' => Http::response(['ok' => true])]);
+    Queue::fake();
+    $team = Team::factory()->create(['slug' => 'routine-org']);
+    memberOfTeam($team, TeamRole::Admin);
+
+    // The hourly sync (every team) and a manual run with no reason are not
+    // operator actions: a tenant must not see a "limits changed" row every hour.
+    $this->artisan('billing:sync-limits')->assertSuccessful();
+    $this->artisan('billing:sync-limits', ['org' => 'routine-org'])->assertSuccessful();
+    $this->artisan('indexing:backfill', ['org' => 'routine-org'])->assertSuccessful();
+
+    expect(opsActionRowCounts())->toBe(['internal' => 0, 'tenant' => 0]);
+});
+
+test('cli_reason_must_meet_the_console_rules', function () {
+    Http::fake(['worker.test/*' => Http::response(['ok' => true])]);
+    Queue::fake();
+    $team = Team::factory()->create(['slug' => 'reason-org']);
+    memberOfTeam($team, TeamRole::Admin);
+
+    foreach (['', '   ', 'abcd', str_repeat('x', 501)] as $reason) {
+        $this->artisan('billing:sync-limits', ['org' => 'reason-org', '--reason' => $reason])->assertFailed();
+        $this->artisan('indexing:backfill', ['org' => 'reason-org', '--reason' => $reason])->assertFailed();
+    }
+
+    Http::assertNothingSent();
+    Queue::assertNothingPushed();
+    expect(opsActionRowCounts())->toBe(['internal' => 0, 'tenant' => 0]);
+});
+
 test('reindex_result_shown_to_staff_contains_no_content', function () {
     Queue::fake();
     $team = Team::factory()->create(['slug' => 'blind-org']);

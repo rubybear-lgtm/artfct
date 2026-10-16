@@ -744,7 +744,10 @@ reads content), push limits calls `OrgLimitsWriter::push`, plan change
 re-reads the locked team and pushes to the Worker only after commit, erase
 needs a fresh dry run (kept in the session for 15 minutes, per team), the typed
 slug and a per-tenant lock, and records an internal `operator.erase_started`
-row before deleting. Per-tenant custom limits are not supported (the next
+row before deleting. `billing:sync-limits --reason=...` and
+`indexing:backfill --reason=...` leave the same audit event as the console (only
+the actor differs); without `--reason` they are routine and record nothing, so
+the hourly sync stays quiet. Per-tenant custom limits are not supported (the next
 `billing:sync-limits` would overwrite them).
 
 **Isolation matrix.** `/ops` routes are class `staff` in

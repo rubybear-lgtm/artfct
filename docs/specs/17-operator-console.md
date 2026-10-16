@@ -136,6 +136,8 @@ Every action calls the same service class the matching artisan command calls. Th
 
 Erase is the only irreversible action. It always runs the dry run first and displays the plan, and the confirm step requires typing the team slug.
 
+The commands leave the same rows when an operator runs them: `billing:sync-limits` and `indexing:backfill` take `--reason` (5 to 500 characters, the console's rule) and then record the same `operator.limits_changed` / `operator.reindex_requested` event, with the same target, reason and outcome (`failure` on a refusal), through `OperatorAuditLogger::recordForCli`. Only the actor differs (`staff` for a command line, `staff:{id}` for the console), and the internal log keeps `cli` as the address. A run with no `--reason` is routine and records nothing: `billing:sync-limits` is scheduled hourly, and a tenant must not see a "limits changed" row every hour. `governance:erase` already writes the same rows through `ErasureService`.
+
 Reindex only dispatches a queued job: the `/ops` namespaces never depend on the content services, so the job (which reads content as the platform's own indexer) is the only place that does, and staff see "queued", never counts or text.
 
 A plan or payment-status change is pushed to the Worker only after the change and its audit row have committed, so a rolled-back change is never enforced.
@@ -178,6 +180,7 @@ Real `/ops` POST routes keep CSRF protection. A missing or expired token on an `
 - [ ] Setting limits through the console and through `billing:sync-limits` produce identical `org_limits` rows.
 - [ ] A staff action is visible to the tenant's admins on their audit page the same minute it happens, and this holds even while a suppression case is active for that tenant.
 - [ ] An action rejected by a guard leaves no state change and an audit event with a failure outcome.
+- [ ] Running `billing:sync-limits` or `indexing:backfill` with `--reason` leaves the same tenant-visible event (type, target, reason, outcome) as the console action, differing only in actor; a run without `--reason` leaves none.
 
 ## Tests
 
@@ -223,7 +226,11 @@ Real `/ops` POST routes keep CSRF protection. A missing or expired token on an `
 - `action_requires_reason` *(Phase 2, negative)*
 - `erase_requires_dry_run_then_typed_slug` *(Phase 2, negative)*
 - `console_limits_match_billing_sync_limits` *(Phase 2)*
-- `ui_and_cli_actions_write_equivalent_audit_rows` *(Phase 2)*
+- `ui_and_cli_actions_write_equivalent_audit_rows` *(Phase 2; erase rows, and the reindex jobs)*
+- `cli_runs_with_a_reason_write_the_same_audit_rows_as_the_console` *(Phase 2; limits and reindex)*
+- `cli_failures_write_the_same_failure_rows_as_the_console` *(Phase 2)*
+- `routine_cli_runs_without_a_reason_write_no_audit_rows` *(Phase 2, negative)*
+- `cli_reason_must_meet_the_console_rules` *(Phase 2, negative)*
 
 **Pest — browser**
 - `staff_finds_a_tenant_and_reads_its_usage` — the demo flow, end to end

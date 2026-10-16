@@ -140,6 +140,34 @@ final class OperatorAuditLogger
     }
 
     /**
+     * Record an operator-initiated artisan run (spec 17): the same event the
+     * console writes for the same action, with no staff user and the address
+     * and browser of a command line. Routine runs (the hourly limits sync)
+     * pass no reason and are not recorded; only a run that names a reason is
+     * an operator action.
+     */
+    public function recordForCli(
+        AuditEventType $type,
+        ?Team $team,
+        string $target,
+        string $reason,
+        string $outcome = 'success',
+    ): OperatorAuditEvent {
+        return $this->record($type, null, $team, $target, 'cli', 'artisan', $reason, $outcome);
+    }
+
+    /**
+     * Whether a reason given on the command line meets the console's rules
+     * (5 to 500 characters once trimmed).
+     */
+    public static function isValidReason(?string $reason): bool
+    {
+        $length = mb_strlen(trim((string) $reason));
+
+        return $length >= 5 && $length <= 500;
+    }
+
+    /**
      * Record a tenant detail page view, at most once per staff user and
      * tenant per hour. The dedupe reads the internal log, so a suppressed view
      * counts toward the hour as well. Returns null when the view was deduped.
