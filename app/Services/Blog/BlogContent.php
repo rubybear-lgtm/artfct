@@ -185,18 +185,18 @@ final class BlogContent
         $question = null;
         $answer = [];
         $fence = false;
-        $flush = function () use (&$items, &$question, &$answer): void {
-            if ($question === null) {
+        $flush = function (?string &$currentQuestion, array &$currentAnswer) use (&$items): void {
+            if ($currentQuestion === null) {
                 return;
             }
 
             $items[] = [
-                'question' => $question,
-                'answer' => $this->renderer->document(implode("\n", $answer)),
+                'question' => $currentQuestion,
+                'answer' => $this->renderer->document(implode("\n", $currentAnswer)),
             ];
 
-            $question = null;
-            $answer = [];
+            $currentQuestion = null;
+            $currentAnswer = [];
         };
 
         foreach (explode("\n", $section->body) as $line) {
@@ -205,7 +205,7 @@ final class BlogContent
             }
 
             if (! $fence && preg_match('/^###\s+(.*)$/', $line, $matches) === 1) {
-                $flush();
+                $flush($question, $answer);
                 $question = trim($matches[1]);
 
                 continue;
@@ -216,7 +216,7 @@ final class BlogContent
             }
         }
 
-        $flush();
+        $flush($question, $answer);
 
         return $items;
     }
