@@ -293,6 +293,8 @@ export async function matrix(world) {
             signedOut.status === 404 && !signedOut.headers.has('location'),
             `got ${signedOut.status}${signedOut.headers.get('location') ? ` to ${signedOut.headers.get('location')}` : ''}`,
         );
+        // Node 22's fetch asserts when a response body is left unread.
+        await signedOut.arrayBuffer();
 
         const signedIn = await bob.request(path, {
             method: route.method,
@@ -307,6 +309,7 @@ export async function matrix(world) {
             signedIn.status === 404 && !signedIn.headers.has('location'),
             `got ${signedIn.status}${signedIn.headers.get('location') ? ` to ${signedIn.headers.get('location')}` : ''}`,
         );
+        await signedIn.arrayBuffer();
     }
 
     // The artifact viewer (RUB-438 / RUB-439) names an artifact without a
