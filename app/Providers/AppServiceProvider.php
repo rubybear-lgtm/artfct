@@ -382,7 +382,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('artifact-comment-resolve', fn (Request $request): Limit => Limit::perMinute(60)->by('comment-resolve:'.($request->user()->id ?? ClientIp::for($request))));
         // The operator console (spec 17): per signed-in staff user, else per
         // client address.
-        RateLimiter::for('ops', fn (Request $request): Limit => Limit::perMinute(120)->by('ops:'.($request->user()?->id ?? ClientIp::for($request))));
+        RateLimiter::for('ops', fn (Request $request): Limit => Limit::perMinute(120)->by('ops:'.($request->user()->id ?? ClientIp::for($request))));
         RateLimiter::for('mcp', function (Request $request): array {
             $limit = (int) config('auth.mcp_throttle_per_minute', 120);
             $claims = $request->attributes->get('org_jwt_claims');

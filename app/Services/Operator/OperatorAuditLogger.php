@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Governance\AuditLogger;
 use App\Support\ClientIp;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -92,7 +93,7 @@ final class OperatorAuditLogger
                 'outcome' => $outcome,
                 'suppression_case_id' => $case?->id,
             ]);
-            $row->created_at = now();
+            $row->created_at = Carbon::now();
             $row->save();
 
             if ($row->suppression_case_id === null && ! $type->isInternalOnly()) {
