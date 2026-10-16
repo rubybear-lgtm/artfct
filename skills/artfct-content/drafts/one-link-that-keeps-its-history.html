@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>One link that keeps its history — artfct</title>
-<meta name="description" content="Publishing the same content twice resolves to one artifact, and publishing a change creates a new version under the same link. How versions, identity and provenance work in Artfct.">
+<title>One link that keeps a version history — artfct</title>
+<meta name="description" content="Publishing the same content twice resolves to one artifact, and a change creates a new version under the same link. How the version history and identity work.">
 <style>
   body { background: #fdf6e3; color: #657b83; font-family: "Instrument Sans", system-ui, sans-serif; }
 </style>
 </head>
-<body data-surface="feature-showcase" data-register="glean-formal">
+<body data-surface="feature-showcase" data-register="glean-formal" data-target="version history">
 <div class="wrap">
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Versions and history</p>
-    <h1>One link that keeps its history</h1>
+    <h1>One link that keeps a version history</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-10-06 · 4 min</p>
-    <p class="lead">A link to an artifact is only useful if it keeps working. Artfct gives an artifact one address for its whole life: publishing the same content again resolves to the artifact that already exists, and publishing a change creates a new version under the same link rather than a second page nobody can find.</p>
+    <p class="lead">A link to an artifact is only useful if it keeps working. Artfct gives an artifact one address for its whole life: publishing the same content again resolves to the artifact that already exists, and publishing a change extends the version history under the same link rather than a second page nobody can find.</p>
   </header>
 
   <nav class="toc">
@@ -51,13 +51,13 @@
       <h2>What does an earlier version show?</h2>
       <p>The console keeps the version history of each permanent artifact, newest first. Every completed version can be opened on its own, and a past version can be restored, which publishes it as the current one again while leaving the record of what happened intact.</p>
       <p>Each entry names the version number, when it was published, the member who published it while they are still on the team, and the title it carried. An entry that was itself a restore says which version it came from.</p>
-      <p>The history is a record of decisions rather than a list of files. A reader can see that a version was published, when, and by whom, and can open any two versions side by side to compare them.</p>
+      <p>The history is a record of decisions rather than a list of files. A reader can see that a version was published, when, and by whom, and can open any earlier version on its own.</p>
     </section>
 
     <section class="s" id="s4">
       <h2>What is recorded about how something was made?</h2>
       <p>Every permanent artifact carries a provenance record alongside its content, and the record is built when the artifact is published rather than reconstructed afterwards. Each field also carries its own source, so a value the connection could not observe is recorded as absent rather than left blank or guessed.</p>
-      <p>On the supported connection, the record holds the model when the caller supplied one, the session the publish came from, the tool that published the artifact, and the name and version of the client. Fields the connection could not observe are recorded as absent rather than guessed, and the record says which of the two each field is. The <a href="https://artfct.dev/docs">documentation</a> covers the publish step that builds it.</p>
+      <p>On the supported connection, the record holds the model when the caller supplied one, the session the publish came from, the tool that published the artifact, and the name and version of the client. A client reports its name and version at initialization, per the <a href="https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle">Model Context Protocol</a>. Fields the connection could not observe are recorded as absent rather than guessed, and the record says which of the two each field is. The <a href="https://artfct.dev/docs">documentation</a> covers the publish step that builds it.</p>
       <p>Provenance covers what the connection can observe. Repository, branch and commit are recorded as absent on this path; those fields were populated by a command-line client that has since been retired, and the hosted server does not attempt to reconstruct them. A team that needs the commit a page came from cannot currently read it from the artifact. The gap is recorded rather than hidden, which is the purpose of tracking a source for every field.</p>
     </section>
 

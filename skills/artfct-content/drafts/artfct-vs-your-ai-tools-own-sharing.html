@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Artfct vs your AI tool's own sharing: what works better — artfct</title>
-<meta name="description" content="Claude Code Artifacts and OpenAI's Sites share work inside one vendor. Artfct keeps the same artifacts findable across tools. A comparison of reach, controls, durability and retrieval.">
+<title>Artfct vs your AI tool's own sharing — artfct</title>
+<meta name="description" content="Claude Code Artifacts and OpenAI's Sites share work inside one vendor. Artfct keeps the same work findable across tools. Reach, controls and retrieval.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,14 +106,14 @@
   }
 </style>
 </head>
-<body data-surface="comparison" data-register="glean-formal">
+<body data-surface="comparison" data-register="glean-formal" data-target="Claude Code Artifacts">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Comparisons</p>
-    <h1>Artfct vs your AI tool's own sharing: what works better</h1>
+    <h1>Artfct vs your AI tool's own sharing</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-10-03 · 7 min</p>
     <p class="lead">Every large AI vendor now lets a team share what its agent makes. Claude Code Artifacts and OpenAI's Sites are both governed by the vendor's own administration, with role-based access and per-site sharing modes. Those controls are real, and they work well inside one product. The difference is reach, because a vendor indexes its own output and no vendor indexes a competitor's output.</p>
   </header>
@@ -135,8 +135,8 @@
   <main>
     <section class="s" id="s1">
       <h2>What is built-in sharing for?</h2>
-      <p>Built-in sharing is a feature of the product that already made the artifact, and it is designed around that fact. Claude Code Artifacts ship inside Anthropic's own product, where an administrator governs them through organization settings and sharing stays inside that workspace. OpenAI's Sites carry administrator-managed role-based access, and each site's audience is drawn from the vendor's own list of people and groups.</p>
-      <p>That design fits a team that lives in one tool. The artifact appears where the conversation happened, the permissions come from a directory the organisation already maintains, and nobody adopts a second vendor in order to share a dashboard. For a working session between colleagues who all use the same assistant, this is the shorter path, and it deserves to be said plainly.</p>
+      <p>Built-in sharing is a feature of the product that already made the artifact, and it is designed around that fact. Claude Code Artifacts ship inside Anthropic's own product, where an administrator governs them through organization settings and public sharing is a setting only that administrator controls. The <a href="https://docs.claude.com/en/docs/claude-code/artifacts#manage-artifacts-for-your-organization">Claude Code artifacts documentation</a> covers those organization controls. OpenAI's Sites carry administrator-managed role-based access, and each site's audience is drawn from the vendor's own list of people and groups.</p>
+      <p>That design fits a team that lives in one tool. The artifact appears where the conversation happened, the permissions come from a directory the organization already maintains, and nobody adopts a second vendor in order to share a dashboard. For a working session between colleagues who all use the same assistant, this is the shorter path, and it deserves to be said plainly.</p>
       <p>The boundary is the vendor. A product indexes its own conversations, its own files and its own artifacts, and it has no commercial reason to read another vendor's. A report published inside one tool therefore does not exist for a person or an agent working in a different tool. That is a structural limit rather than a missing feature, and it is the whole of the difference this page is about.</p>
     </section>
 
@@ -150,15 +150,15 @@
     <section class="s" id="s3">
       <h2>Why does a single-vendor index leave gaps?</h2>
       <p>A vendor indexes what it can observe, which is its own product. No laboratory will index a competitor's output, because the artifact is the reason a customer stays. The practical result is that a dashboard made in one tool is invisible in another, and the second tool rebuilds it rather than finding it.</p>
-      <p>The behaviour this meets is ordinary rather than exotic. Survey work published by the Pragmatic Engineer in 2026 found that most engineers juggle two to four AI tools at once, and JetBrains reported in August 2026 that 90% of professional developers use an AI coding agent weekly, with 68% using one daily. Adoption of that shape produces two histories per team, and neither history answers a question asked in the other product.</p>
+      <p>The behavior this meets is ordinary rather than exotic. <a href="https://newsletter.pragmaticengineer.com/p/ai-tooling-2026">Survey work published by the Pragmatic Engineer in 2026</a> found that most engineers juggle two to four AI tools at once, and <a href="https://blog.jetbrains.com/research/2026/08/ai-coding-agent-adoption-2026/">JetBrains reported in August 2026</a> that 90% of professional developers use an AI coding agent weekly, with 68% using one daily. Adoption of that shape produces two histories per team, and neither history answers a question asked in the other product.</p>
       <p>Memory accumulates per product, while the work belongs to the team. That mismatch is what an artifact record is designed to close, and it is the axis on which the rest of this comparison turns.</p>
     </section>
 
     <section class="s" id="s4">
       <h2>Who can open an artifact, and who administers the controls?</h2>
       <p>Both options carry real controls, and a comparison that pretends otherwise is not worth reading. Built-in sharing takes its permissions from the vendor's own administration. An administrator enables the feature, access runs through role-based controls, and public sharing is a separate grant that the owner must make.</p>
-      <p>Artfct organises access around the artifact itself. A published page is private, shared with the team, or public to anyone holding the link, and edit access is a separate permission so that a colleague can publish the next version. Every sharing level uses one viewer route; a signed-out visitor to a team artifact is sent to sign in and back, and the route never confirms whether an identifier exists. Each artifact also receives its own hostname with a short-lived signed token and a content security policy derived from what that artifact declared, so one artifact's scripts cannot read another's.</p>
-      <p>Around that sit the controls an administrator would ask about. Roles cover administrators, members and viewers. Single sign-on runs through SAML or OIDC once a domain is verified by a DNS record. Directory sync provisions and de-provisions people from the identity provider. An audit log records create, view, share, revoke and delete, and it exports. Retention policy and legal hold are configurable, and an administrator can export everything the organisation holds as a set of files verified against their hashes. A list of connected AI tools can be revoked from the same console.</p>
+      <p>Artfct organizes access around the artifact itself. A published page is private, shared with the team, or public to anyone holding the link, and edit access is a separate permission so that a colleague can publish the next version. Every sharing level uses one viewer route; a signed-out visitor to a team artifact is sent to sign in and back, and the route never confirms whether an identifier exists. Each artifact also receives its own hostname with a short-lived signed token and a content security policy derived from what that artifact declared, so one artifact's scripts cannot read another's.</p>
+      <p>Around that sit the controls an administrator would ask about. Roles cover administrators, members and viewers. Single sign-on runs through SAML or OIDC once a domain is verified by a DNS record. Directory sync provisions and de-provisions people from the identity provider. An audit log records create, view, share and revoke, and its export is available on Enterprise. Retention policy and legal hold are Enterprise-tier features, and an administrator can export everything the organization holds as a set of files verified against their hashes. A list of connected AI tools can be revoked from the same console.</p>
       <p>Sharing is exactly private, team or public, plus the owner and the team administrators. There is no sharing with a hand-picked individual, and a page that claims otherwise would be describing a feature that does not exist.</p>
     </section>
 
@@ -185,11 +185,11 @@
         </thead>
         <tbody>
           <tr><td>Reach</td><td>Visible to people and agents inside that vendor's product</td><td>Visible to any connected tool, whichever vendor published the artifact</td></tr>
-          <tr><td>Who can open it</td><td>Governed by the vendor's own administration, with role-based access and sharing inside that vendor's workspace</td><td>Private, team, or a link anyone can open; edit access is a separate axis; a signed-out visitor is sent to sign in</td></tr>
+          <tr><td>Who can open it</td><td>Governed by the vendor's own administration, with role-based access and a public-link setting the administrator controls</td><td>Private, team, or a link anyone can open; edit access is a separate axis; a signed-out visitor is sent to sign in</td></tr>
           <tr><td>The link</td><td>Tied to the workspace that holds the artifact</td><td>Unchanged when a new version is published; identical content resolves to one artifact</td></tr>
           <tr><td>What is recorded</td><td>Kept with the vendor's workspace record</td><td>Publishing tool, client version, session identifier and the model when supplied; repository and commit details are not captured</td></tr>
-          <tr><td>Administration</td><td>Administrator enablement, share permissions, role-based access</td><td>Roles, single sign-on, directory sync, an exportable audit log, retention policy and legal hold</td></tr>
-          <tr><td>Getting started</td><td>Included in the plan the team already holds</td><td>A link tier that needs no account to open, and a permanent organisational tier</td></tr>
+          <tr><td>Administration</td><td>Administrator enablement, share permissions, role-based access</td><td>Roles, single sign-on, directory sync, an audit log, and retention policy and legal hold on Enterprise</td></tr>
+          <tr><td>Getting started</td><td>Included in the plan the team already holds</td><td>A link tier that needs no account to open, and a permanent organizational tier</td></tr>
         </tbody>
       </table>
     </section>
@@ -198,7 +198,7 @@
       <h2>Which should a team choose?</h2>
       <p>Choose built-in sharing when the team works in one AI tool and the artifact is part of that working session. A dashboard produced and read inside the same product, shared with colleagues who already have accounts there, is served well by the controls the vendor already maintains. Administration stays in one place, the directory does the work, and no second vendor enters the procurement conversation. A team that has deliberately consolidated on one assistant should use what that assistant ships.</p>
       <p>Choose Artfct when more than one tool is in use and the artifact has to outlive the session that produced it. A report made in one product and read by an agent in another is the case the vendor cannot serve, and it is the case that produces silent duplication. Two tools, two histories, and a second version of a number the team had settled is worse than one version nobody can find.</p>
-      <p>The two are not rivals in most organisations. Built-in sharing is where the work happens; an artifact record is where it stays. Which pages see which audience is covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>, and how a link keeps its history is covered in <a href="https://artfct.dev/blog/one-link-that-keeps-its-history">one link that keeps its history</a>.</p>
+      <p>The two are not rivals in most organizations. Built-in sharing is where the work happens; an artifact record is where it stays. Which pages see which audience is covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>, and how a link keeps its history is covered in <a href="https://artfct.dev/blog/one-link-that-keeps-its-history">one link that keeps its history</a>.</p>
     </section>
 
     <section class="limits">
@@ -219,8 +219,8 @@
       <details class="q"><summary>Is Artfct a replacement for the AI tools a team already uses?</summary><p>No. It does not generate or edit anything. It receives a finished artifact from whichever tool made it, stores it under a stable link, and answers searches from every connected tool. The tools keep doing the producing.</p></details>
       <details class="q"><summary>Can two colleagues share a page with each other alone?</summary><p>No. Sharing is private, team or public, plus the owner and the team administrators. A narrower grant is not available, so a page that needs to reach one person is published to the team or by link instead.</p></details>
       <details class="q"><summary>What keeps one published page from reading another?</summary><p>Each artifact receives its own hostname, a short-lived signed token, and a content security policy derived from what that artifact declared. Pages are cookieless, and one artifact's scripts cannot reach another's data.</p></details>
-      <details class="q"><summary>Can an artifact be taken back?</summary><p>Yes. An administrator can revoke it from the console, the artifact leaves every list and every search, and the revocation is written to an audit log that exports.</p></details>
-      <details class="q"><summary>What does it cost to try?</summary><p>A single page can be published as a link with no account, encrypted and passcode-protected, and it expires five days after the last visit. A durable artifact is held under the organisation's own keys, with no expiry.</p></details>
+      <details class="q"><summary>Can an artifact be taken back?</summary><p>Yes. An administrator can revoke it from the console, the artifact leaves every list and every search, and the revocation is written to an audit log, whose export is available on Enterprise.</p></details>
+      <details class="q"><summary>What does it cost to try?</summary><p>A single page can be published as a link with no account, encrypted and passcode-protected, and it expires five days after the last visit. A durable artifact is held under the organization's own keys, with no expiry.</p></details>
     </section>
   </main>
 

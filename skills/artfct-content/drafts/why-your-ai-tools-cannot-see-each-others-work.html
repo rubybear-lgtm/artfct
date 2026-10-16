@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Why your AI tools cannot see each other's work — artfct</title>
-<meta name="description" content="Every AI tool keeps its own record of what it made, so the next agent rebuilds work another tool already finished. Why that boundary exists, and what changes when the record is shared.">
+<meta name="description" content="Every AI tool keeps its own record of what it made, so the next agent rebuilds finished work. Why AI tools cannot see each other's work, and what changes.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,7 +106,7 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal">
+<body data-surface="explainer" data-register="glean-formal" data-target="AI tools cannot see each other">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
@@ -115,7 +115,7 @@
     <p class="kicker">Cross-tool memory</p>
     <h1>Why your AI tools cannot see each other's work</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-10-02 · 9 min</p>
-    <p class="lead">Cross-tool blindness is what happens when each AI tool remembers only its own output. It is a product boundary rather than an oversight. A vendor indexes the work its own model produced and has no commercial reason to index a rival's, so the unit of memory is the tool while the unit of work is the team.</p>
+    <p class="lead">Cross-tool blindness is what happens when each AI tool remembers only its own output. It is a product boundary rather than an oversight, and it is why AI tools cannot see each other's work. A vendor indexes the work its own model produced and has no commercial reason to index a rival's, so the unit of memory is the tool while the unit of work is the team.</p>
   </header>
 
   <nav class="toc">
@@ -144,7 +144,7 @@
       <h2>Why does each AI tool keep its own memory?</h2>
       <p>Every AI tool ships with a product around its model, and that product keeps the record of what the model made inside it. The record serves the vendor's own customers, inside the vendor's own workspace. There is no commercial reason for one vendor to index a competitor's output, and there is a strong reason to keep the record where the vendor can govern it.</p>
       <p>The consequence is structural rather than accidental. The unit of memory is the tool, while the unit of work is the team. A person moves between several tools in a single week, and each tool sees a fragment of that movement.</p>
-      <p>Teams rarely standardise on one tool. Different roles reach for different assistants, and the tools rarely agree on where finished work should live. The natural fault line therefore runs between the products, not inside them.</p>
+      <p>Teams rarely standardize on one tool. Different roles reach for different assistants, and the tools rarely agree on where finished work should live. The natural fault line therefore runs between the products, not inside them.</p>
       <p>Closing the gap requires a record that no single tool owns. That is a different product from any of the tools it connects, because its whole value lies in spanning them.</p>
     </section>
 
@@ -166,7 +166,7 @@
 
     <section class="s" id="s5">
       <h2>Do the labs' own sharing controls close the gap?</h2>
-      <p>This is the fair objection, and the honest answer begins with a concession. During 2026 the major labs shipped governance inside their own products. <a href="https://venturebeat.com/data/anthropics-claude-code-artifacts-update-brings-live-shared-dashboards-and-interactive-workspaces-to-enterprises">Claude Code Artifacts</a> require an administrator to enable them for an organization, and the owner then grants permission before a page is shared publicly. <a href="https://intuitionlabs.ai/articles/enterprise-ai-dashboards-chatgpt-claude">OpenAI Canvas Sites</a> arrived for business and enterprise workspaces with administrator-managed role-based access and per-site access modes that can be self-only, whole-workspace, or limited to named user groups.</p>
+      <p>This is the fair objection, and the honest answer begins with a concession. During 2026 the major labs shipped governance inside their own products. <a href="https://docs.claude.com/en/docs/claude-code/artifacts">Claude Code Artifacts</a> require an administrator to enable them for an organization, and the owner then grants permission before a page is shared publicly. OpenAI Canvas Sites arrived for business and enterprise workspaces with administrator-managed role-based access and per-site access modes that can be self-only, whole-workspace, or limited to named user groups.</p>
       <p>Those controls are real, and a platform lead who has configured them will not be persuaded by a pitch that denies they exist. What they govern is one vendor's output, inside one vendor's workspace. The controls stop at the edge of the product that shipped them.</p>
       <p>The structural problem is subtler than an absence of controls. No lab will index a competitor's output, because the index is the vendor's own product. Anthropic indexing Cursor's artifacts is not a feature that is running late; it is competitively incoherent. The gap lives between products, and every product boundary reproduces it.</p>
     </section>
@@ -190,7 +190,7 @@
     <section class="s" id="s8">
       <h2>Where does a shared record cross into governance?</h2>
       <p>A store that tools can read is also a store that needs rules. Artfct publishes every artifact at one of three levels: private to the owner and administrators, visible to the team, or public to anyone holding the link. Editing is a separate decision from visibility, so a colleague can publish the next version of an artifact while the link stays the same.</p>
-      <p>The record is accountable. Creating, viewing, sharing, revoking and deleting all write to an audit log that a team can export, and a team can set a retention policy or place a legal hold that prevents an artifact from being deleted. Each artifact also carries a provenance record: the tool that published it, the session it came from, and the model, when the caller supplied one.</p>
+      <p>The record is accountable. Creating, viewing, sharing and revoking all write to an audit log, and its export is available on Enterprise. A retention policy and a legal hold are Enterprise-tier features, and a hold prevents an artifact from being deleted while it stands. Each artifact also carries a provenance record: the tool that published it, the session it came from, and the model, when the caller supplied one.</p>
       <p>Two boundary cases are worth stating plainly. Sharing is exactly three levels rather than a per-person list, so an artifact is visible to the whole team or to its owner and the team's administrators. And provenance records the publishing tool and client rather than the repository or commit, because those fields are not captured on the supported connection path.</p>
       <p>Those rules are what make a shared record safe to adopt rather than a second place to lose track of work. Access is re-checked whenever an artifact is opened, and the three levels described here are the ones a team can change at any time. The <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">sharing model</a> is covered in more detail elsewhere.</p>
     </section>
@@ -216,7 +216,7 @@
       <details class="q"><summary>Does a shared record make a model smarter?</summary><p>No. It moves finished artifacts between tools. It does not improve what a model knows or how it reasons, and it is not a context layer for the model.</p></details>
       <details class="q"><summary>How does a teammate find something an agent published?</summary><p>The same way they would search anything else. They describe what they are looking for, and the record returns matching artifacts with a link, ranked by recency and by what the team has actually opened.</p></details>
       <details class="q"><summary>What happens when two tools produce the same thing?</summary><p>Identical content resolves to a single artifact rather than a duplicate, and a later version of the same artifact keeps the original link. A teammate who saved the first link still reaches the current version.</p></details>
-      <details class="q"><summary>Can an administrator remove something a colleague published?</summary><p>Yes. An administrator can revoke any artifact in the team, and the revocation is written to the audit log. Retention and legal hold rules apply to that removal as well.</p></details>
+      <details class="q"><summary>Can an administrator remove something a colleague published?</summary><p>Yes. An administrator can revoke any artifact in the team, and the revocation is written to the audit log. Retention and legal hold rules, both Enterprise-tier settings, apply to that removal as well.</p></details>
     </section>
   </main>
 

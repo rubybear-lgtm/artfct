@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>What is the Model Context Protocol (MCP)? — artfct</title>
-<meta name="description" content="The Model Context Protocol is an open standard that lets an AI tool reach data outside its own prompt. This explainer covers the client and the server, what a server exposes to a model, where a hosted server fits, and what the standard does not decide.">
+<meta name="description" content="The Model Context Protocol is an open standard that lets an AI tool reach data outside its own prompt. What a server exposes, and where a hosted one fits.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,7 +106,7 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal" data-published="false">
+<body data-surface="explainer" data-register="glean-formal" data-target="Model Context Protocol" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
@@ -200,7 +200,7 @@
       <p>Permission sits in two places, and conflating them produces most of the anxiety around agent connections. The server decides what exists to be called. The person decides whether their tool may call it at all.</p>
       <p>On artfct the person's decision arrives as a browser sign-in. The approval screen names the client, the workspace and the person asking, and nothing at all is granted until it is accepted. A connection belongs to one person, so a colleague's approval does not carry over to anyone else, and every tool asks its own user in turn.</p>
       <p>An administrator holds the list. The console shows the AI tools connected to a workspace, and any connection on that list can be revoked by an admin. Sharing levels still govern the material underneath: a private artifact stays with its owner, a team artifact is visible to the team, and a public artifact to anyone holding the link.</p>
-      <p>Governance keeps its own record. An audit log captures creation, viewing, sharing and revocation, and it can be exported. An organization can also revoke the tokens its automation uses through the REST API, without disturbing the connections that individual people set up for their own tools.</p>
+      <p>Governance keeps its own record. An audit log captures creation, viewing, sharing and revocation, and its export is available on Enterprise. An organization can also revoke the tokens its automation uses through the REST API, without disturbing the connections that individual people set up for their own tools.</p>
     </section>
 
     <section class="s" id="s9">

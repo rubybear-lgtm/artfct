@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Where do AI-generated documents go? — artfct</title>
-<meta name="description" content="AI-generated documents land in the tool that made them, inside a conversation history or an auto-created folder, and most stay there. This explainer covers why that is structural, what a shared record of finished pages changes, and where the boundary sits.">
+<title>Where do AI-generated documents end up? — artfct</title>
+<meta name="description" content="AI-generated documents land in the tool that made them, inside a conversation history, and most stay there. Why that is structural, and what changes.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,14 +106,14 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal" data-published="false">
+<body data-surface="explainer" data-register="glean-formal" data-target="AI-generated documents" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Explainers</p>
-    <h1>Where do AI-generated documents go?</h1>
+    <h1>Where do AI-generated documents end up?</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-24 · 10 min</p>
     <p class="lead">AI-generated documents land in the tool that produced them, inside a conversation history or a folder the tool created for the session, and most of them stay there. Nobody files them and nobody names them, so the next person who needs the same analysis starts from nothing. The reason is structural rather than careless.</p>
   </header>
@@ -144,8 +144,8 @@
       <h2>Why is this structural rather than careless?</h2>
       <p>It is tempting to read the mess as a discipline problem. A tidier team would name its files and put them in the right place, and that team already does so for the documents it writes by hand. What makes AI output escape the habit is that there is nowhere shared for it to go.</p>
       <p>Each AI tool keeps its own record. The history, the workspace and the index belong to one product, one account and usually one session, and they are built to serve the person sitting in front of them. A vendor indexes the output its own model produced, and no vendor maintains an index of a rival's output. That is a commercial boundary rather than an oversight, and it survives every improvement each vendor ships.</p>
-      <p>Three consequences follow. A second tool cannot see the page a first tool made, which makes cross-tool blindness a product boundary rather than a bug, and it is worked through in <a href="https://artfct.dev/blog/why-your-ai-tools-cannot-see-each-others-work">why your AI tools cannot see each other's work</a>. A colleague who opens the same tool sees a personal history rather than the team's. And the folder that looks organised is scoped to one conversation, so its contents answer a question nobody is asking any more.</p>
-      <p>None of this is a defect in a particular product. The vendors that ship these tools also ship sharing controls and administrative settings inside their own products, and those controls govern what they were built to govern. The limit is the boundary of the record, not the quality of the controls inside it.</p>
+      <p>Three consequences follow. A second tool cannot see the page a first tool made, which makes cross-tool blindness a product boundary rather than a bug, and it is worked through in <a href="https://artfct.dev/blog/why-your-ai-tools-cannot-see-each-others-work">why your AI tools cannot see each other's work</a>. A colleague who opens the same tool sees a personal history rather than the team's. And the folder that looks organized is scoped to one conversation, so its contents answer a question nobody is asking any more.</p>
+      <p>None of this is a defect in a particular product. The vendors that ship these tools also ship sharing controls and administrative settings inside their own products — <a href="https://support.claude.com/en/articles/9927533-control-project-sharing-for-your-organization">Claude's project-sharing settings are set by an organization's administrators</a> — and those controls govern what they were built to govern. The limit is the boundary of the record, not the quality of the controls inside it.</p>
     </section>
 
     <section class="s" id="s3">
@@ -161,15 +161,15 @@
       <p>Two things change together and they are worth separating. The first is that publishing produces an address rather than a file. An artifact is stored once for identical content, at a link that can be pasted into a decision document, a ticket or a message, and it opens for anyone whose access allows it, including somebody who was not in the room when it was made.</p>
       <p>The second is that the record belongs to the team rather than to one account. Artifacts published through the supported publish tool land in the same library, and that library answers two kinds of question once indexing is switched on at the deployment level. A person describes what is needed and receives matching pages. A connected tool asks the same library before it starts work, so the next question can begin from the report that already exists rather than rebuilding it. The retrieval side is set out in <a href="https://artfct.dev/blog/finding-what-your-ai-already-made">finding what your AI already made</a>, and the mechanics of connecting a tool are in the <a href="https://artfct.dev/docs">documentation</a>.</p>
       <p>Search is not a text box over a list of filenames. Semantic similarity and keyword matching are fused before anything is ranked, so a page about the same subject in different words still surfaces, and a search for an exact term still works. The fused result is then ordered by recency, by how often a page has been opened, and by whether it sits in a pinned collection, which means a page the team trusts outranks a newer one that nobody reads.</p>
-      <p>A retrieval answer does not stop at a snippet. Search returns a summary and a short evidence excerpt beside each link, which is enough to recognise a page and not always enough to work from. An agent can read further, because one call returns the extracted text of a single artifact, one bounded page at a time, and hands back the offset at which the next page begins. That text is served from the index rather than from the stored bundle, which carries two conditions worth stating plainly. Reading depends on indexing exactly as search does, and it returns the version that was indexed most recently, so a page re-published a minute ago can still answer with the text of its previous version.</p>
-      <p>One caution belongs here rather than at the end. That a tool can search before it builds is not the same as proof that searching changes how that tool plans its work. The behaviour is what the product exists to make possible, and the evidence is still being gathered. This page does not claim it as a result.</p>
+      <p>A retrieval answer does not stop at a snippet. Search returns a summary and a short evidence excerpt beside each link, which is enough to recognize a page and not always enough to work from. An agent can read further, because one call returns the extracted text of a single artifact, one bounded page at a time, and hands back the offset at which the next page begins. That text is served from the index rather than from the stored bundle, which carries two conditions worth stating plainly. Reading depends on indexing exactly as search does, and it returns the version that was indexed most recently, so a page re-published a minute ago can still answer with the text of its previous version.</p>
+      <p>One caution belongs here rather than at the end. That a tool can search before it builds is not the same as proof that searching changes how that tool plans its work. The behavior is what the product exists to make possible, and the evidence is still being gathered. This page does not claim it as a result.</p>
     </section>
 
     <section class="s" id="s5">
       <h2>Who can open the page, and who can change it?</h2>
       <p>A drive folder inherits whatever the drive grants and nobody decides its contents one item at a time. A page in this record carries its own level instead. Every artifact is private, visible to the team as the default, or public to anyone holding the link — a team can switch public links off — and the level can be changed after publishing.</p>
       <p>Visibility and edit rights are separate grants. A teammate can be given the ability to publish the next version of a page they did not create, without the ability to see everything else the team owns. One route serves every level, so a signed-out visitor to a team page is sent to sign in and returned to what they were opening, and the route never confirms whether a particular identifier exists.</p>
-      <p>Administrators see the same objects through a console rather than a filesystem. They can filter and search everything the organisation owns, revoke a page, and export the record as metadata alongside the files themselves. An audit log records creation, viewing, sharing and revocation, and it can be exported. Retention policies and legal hold sit beside it, so a page is kept for a stated period or frozen deliberately rather than by habit. The access model is covered in more detail in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
+      <p>Administrators see the same objects through a console rather than a filesystem. They can filter and search everything the organization owns, revoke a page, and export the record as metadata alongside the files themselves. An audit log records creation, viewing, sharing and revocation, and its export is available on Enterprise. Retention policy and legal hold sit beside it, both Enterprise-tier settings, so a page is kept for a stated period or frozen deliberately rather than by habit. The access model is covered in more detail in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
       <p>Isolation earns one sentence of its own. Each permanent page is served from its own hostname with a cookieless, short-lived token and a content security policy derived from what that page declared, so the scripts inside one page cannot read the scripts inside another.</p>
     </section>
 

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>What is a shared artifact library? — artfct</title>
-<meta name="description" content="A shared artifact library is one place inside a team workspace where the pages an AI tool made are kept, so anyone on the team can open and cite them, and search them once indexing is enabled.">
+<title>What is a shared artifact library for? — artfct</title>
+<meta name="description" content="A shared artifact library is one place inside a team workspace where the pages an AI tool made are kept, so any member can open, cite and search them.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,14 +106,14 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal" data-published="false">
+<body data-surface="explainer" data-register="glean-formal" data-target="shared artifact library" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Explainers</p>
-    <h1>What is a shared artifact library?</h1>
+    <h1>What is a shared artifact library for?</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-26 · 11 min</p>
     <p class="lead">A shared artifact library is one place inside a team workspace where the finished pages an AI tool produced are kept, so that any member of the team can open them, cite them weeks later, and search them once indexing is enabled. It is a record of output rather than of conversation, and that single choice is what separates it from a chat history.</p>
   </header>
@@ -156,7 +156,7 @@
       <p>A library with a single audience is not genuinely shared, and a library with no audience is not genuinely a library. The useful arrangement is a default audience with deliberate narrowing, so publishing is an ordinary act and restricting something is a decision a person made.</p>
       <p>Three audiences cover the cases a team meets. Work is visible to the whole team by default. It can be held to its owner alone, for something not yet ready. It can be opened to anyone holding the link — unless the team has switched public links off — for work that has to leave the workspace without an account on the other end. All three reach the same <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">viewer address</a>, so a link that worked yesterday keeps its shape today.</p>
       <p>The default is the load-bearing part. If publishing dropped work into a private space, a library would fill with things nobody could find, and its value would depend on each person remembering to open it. A team default means the record grows as a side effect of publishing rather than as an extra step.</p>
-      <p>Administration sits beside access rather than inside it. A workspace carries roles — an administrator, an ordinary member, and a viewer who reads rather than publishes — and an invitation carries one. An AI tool reaches the library as the person who connected it rather than as the workspace, so one person's approval does not extend to anyone else.</p>
+      <p>Administration sits beside access rather than inside it. A workspace carries roles — an administrator, an ordinary member, and a viewer who reads rather than publishes — and an invitation carries one. An AI tool reaches the library as the person who connected it rather than as the workspace — <a href="https://www.rfc-editor.org/rfc/rfc6749">a client acting on behalf of the resource owner</a> — so one person's approval does not extend to anyone else.</p>
       <p>Isolation is the last property, and it stays invisible until it is tested. Each artifact is served from its own address, so the scripts inside one page cannot reach the scripts inside another, and two artifacts in one library do not share a runtime.</p>
     </section>
 
@@ -223,7 +223,7 @@
       <h2>Questions</h2>
       <details class="q"><summary>Why is a shared artifact library not a wiki?</summary><p>Because nothing is drafted in it. A wiki is a surface for writing and editing pages by hand; a library is not that, because it receives finished pages an AI already produced and keeps them findable. A reader can post a comment, but that is discussion rather than a draft of the work.</p></details>
       <details class="q"><summary>Does a shared artifact library replace the tools that make the work?</summary><p>No. It stores and finds what those tools produce. The tools remain where the work happens, and the library is the shared record that outlives any one session.</p></details>
-      <details class="q"><summary>How long does an artifact stay in the library?</summary><p>A free artifact is encrypted, passcode-protected, and expires after five days of disuse, with no account required. A permanent artifact is held under organization keys, with durable storage. Retention is a team setting: a team sets the period, and with it unset the default is 90 days.</p></details>
+      <details class="q"><summary>How long does an artifact stay in the library?</summary><p>A free artifact is encrypted, passcode-protected, and expires after five days of disuse, with no account required. A permanent artifact is held under organization keys, with durable storage. Retention has a default period of 90 days, and setting a custom period is an Enterprise-tier setting.</p></details>
       <details class="q"><summary>Can someone outside the team open an artifact?</summary><p>Yes, at the public level, where anyone holding the link can read it, unless the team has turned public links off. A signed-out visitor to a team artifact is sent to sign in and back, and the route does not confirm whether an identifier exists.</p></details>
       <details class="q"><summary>What happens when a correction is needed?</summary><p>A corrected version is published to the same address, so existing citations keep working, and earlier versions stay listed and can be restored. Two versions can be opened one after another, and there is no side-by-side comparison.</p></details>
       <details class="q"><summary>Does an agent need to be told about the library?</summary><p>A connected tool can search and list what the workspace holds, and publishing is one call. Both need the tool to reach a remote server. Search also needs indexing switched on at the deployment level; listing and publishing work with indexing off.</p></details>

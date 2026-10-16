@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>What is an AI artifact? — artfct</title>
-<meta name="description" content="An AI artifact is a finished work product an AI tool made and a person can open: a report, dashboard, table or document. This explainer defines the term, separates it from chat scrollback and memory notes, and says where a record of finished work fits.">
+<title>What is an AI artifact, and what is not? — artfct</title>
+<meta name="description" content="An AI artifact is finished work an AI tool made that a person can open: a report, dashboard, table or document. How it differs from chat scrollback.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,14 +106,14 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal">
+<body data-surface="explainer" data-register="glean-formal" data-target="AI artifact">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Explainers</p>
-    <h1>What is an AI artifact?</h1>
+    <h1>What is an AI artifact, and what is not?</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-10-01 · 10 min</p>
     <p class="lead">An AI artifact is a finished work product that an AI tool produced and that a person can open: a report, a dashboard, a table, a document, or an interactive page. It is the output, not the conversation that produced it. That distinction matters, because most AI work today disappears into a chat window when the session ends.</p>
   </header>
@@ -149,8 +149,8 @@
 
     <section class="s" id="s3">
       <h2>How is an artifact different from a memory note?</h2>
-      <p>A memory note is an input. Assistants increasingly keep a small store of facts, preferences and terminology, and they read that store at the beginning of a session so that later answers fit the organisation. The note is never the deliverable itself; it shapes the deliverable, quietly and continuously.</p>
-      <p>An artifact is an output. It is the thing that was asked for, finished, and handed to a reader who may never know which tool made it. The distinction is not cosmetic, because the two stores change different behaviour in different places. Editing a memory note changes what a model generates next, while keeping an artifact changes what a team can find long afterwards.</p>
+      <p>A memory note is an input. Assistants increasingly keep a small store of facts, preferences and terminology, and they read that store at the beginning of a session so that later answers fit the organization. The note is never the deliverable itself; it shapes the deliverable, quietly and continuously.</p>
+      <p>An artifact is an output. It is the thing that was asked for, finished, and handed to a reader who may never know which tool made it. The distinction is not cosmetic, because the two stores change different behavior in different places. Editing a memory note changes what a model generates next, while keeping an artifact changes what a team can find long afterwards.</p>
       <p>A useful way to hold the difference is to look at the intended audience. A memory note is written to influence a future model call, while an artifact is written to inform a future reader. The first is addressed to a model and the second to a person, and those two audiences make very different demands of the same words.</p>
       <p>Treating the two as substitutes produces a predictable disappointment. A team that relies on memory alone gets answers phrased in house language and very little it can hand to a client or an auditor. A team that keeps artifacts gets a record of the work itself, and that record outlives the session which produced it.</p>
     </section>
@@ -181,13 +181,13 @@
       <h2>Who can see an artifact, and who can change it?</h2>
       <p>Sharing has three levels: private, team and public. A private artifact is visible to its owner, a team artifact to the members of that team, and a public artifact to anyone holding the link. Visibility and edit rights are separate grants, so a colleague can be given the ability to publish the next version of something they did not create.</p>
       <p>One route serves every level. A signed-out visitor who opens a team artifact is sent to sign in and returned to the page, and the route never confirms whether a particular identifier exists. Each artifact is served from its own hostname with a cookieless token and a content security policy derived from what that artifact declared, so the scripts inside one artifact cannot read the scripts inside another. The access model is covered in <a href="https://artfct.dev/blog/who-sees-what-your-ai-makes">who sees what your AI makes</a>.</p>
-      <p>Administrators see the same objects through a governance surface. An audit log records creation, viewing, sharing, revocation and deletion, and it can be exported. Retention policies and legal hold sit alongside it, so a record is kept deliberately or released on a schedule rather than by habit.</p>
+      <p>Administrators see the same objects through a governance surface. An audit log records creation, viewing, sharing and revocation, and its export is available on Enterprise. Retention policy and legal hold are Enterprise-tier features, so a record is kept deliberately or released on a schedule rather than by habit.</p>
     </section>
 
     <section class="s" id="s8">
       <h2>What does a team do first?</h2>
       <p>The concept is separable from any product, and a team can test the concept in a single sitting. One person connects a tool once, and every member of the team then publishes and searches through the tools they already use, with nothing further to install on their own machines.</p>
-      <p>The connection is a hosted OAuth server reached over HTTP. A single command registers it, and the same setup text appears in the <a href="https://artfct.dev/docs">docs</a> and in the machine-readable reference at <a href="https://artfct.dev/llms-full.txt">llms-full.txt</a>, because both render from one source and cannot drift apart.</p>
+      <p>The connection is a hosted OAuth server reached over HTTP (<a href="https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization">MCP specification, authorization section</a>). A single command registers it, and the same setup text appears in the <a href="https://artfct.dev/docs">docs</a> and in the machine-readable reference at <a href="https://artfct.dev/llms-full.txt">llms-full.txt</a>, because both render from one source and cannot drift apart.</p>
       <pre><code>npx add-mcp@latest &lt;mcp-url&gt; --name artfct --global</code></pre>
       <p>Readiness varies by tool, and the distinction is worth keeping straight. Claude Code, Codex, OpenCode and Antigravity have been verified against staging. ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths rather than tested ones, and any other client that can reach a remote server can connect. A publishing skill for agents exists as well, installable with a single command.</p>
       <p>For the sharing half alone, one page can be <a href="https://artfct.dev/free">published as a link</a> without an account, which is the shortest route to seeing what an artifact is. The same link then opens for a colleague, a client or a connected agent.</p>

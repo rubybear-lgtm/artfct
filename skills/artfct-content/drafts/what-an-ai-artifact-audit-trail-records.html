@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>What should an AI artifact audit trail record? — artfct</title>
-<meta name="description" content="An AI audit trail should answer who made an artifact, who opened it, when its sharing changed and when access was withdrawn. What artfct's log holds, what sits outside it, and what a team still has to supply.">
+<meta name="description" content="An audit trail records who made an artifact, who opened it, when its sharing changed and access was withdrawn. What Artfct's log holds, and what it does not.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,7 +106,7 @@
   }
 </style>
 </head>
-<body data-surface="explainer" data-register="glean-formal" data-published="false">
+<body data-surface="explainer" data-register="glean-formal" data-target="audit trail" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
@@ -180,7 +180,7 @@
     <section class="s" id="s7">
       <h2>What can an administrator export, and in what form?</h2>
       <p>Two exports exist and they answer different questions. The audit log leaves as its own export on Enterprise, which is what a reviewer reads for events. The console can also list, filter and search everything the organization owns and export it as a single archive: metadata alongside the files themselves, byte-identical to what was published, each verified against its hash.</p>
-      <p>The hash is the part that makes the archive usable as evidence rather than as a backup. A reviewer can show that the file in hand is the file that was published, without trusting a copy step in between. That is a stronger statement than a screenshot and a simpler one to defend.</p>
+      <p>The hash is the part that makes the archive usable as evidence rather than as a backup. A reviewer can show that the file in hand is the file that was published, without trusting a copy step in between. That is a stronger statement than a screenshot and a simpler one to defend. Detecting a changed file from its digest is what the <a href="https://csrc.nist.gov/pubs/fips/180-4/upd1/final">Secure Hash Standard</a> specifies.</p>
       <p>Retention policy, legal hold and release of hold sit in the same console on Enterprise; when a team leaves retention unset, the period is 90 days, and a hold is a decision somebody makes deliberately rather than one a team inherits by default. The export itself is a file an administrator runs and takes away; moving it into another system is a step the organization performs.</p>
     </section>
 

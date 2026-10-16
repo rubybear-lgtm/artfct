@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How to share artifacts between different AI agents — artfct</title>
-<meta name="description" content="Different AI tools cannot read each other's work, so an agent rebuilds what a peer already made. An artifact published to one hosted address is what the next agent finds.">
+<title>How to share artifacts between agents — artfct</title>
+<meta name="description" content="Different AI tools cannot read each other's work, so an agent rebuilds what a peer made. To share artifacts between agents, publish to one hosted address.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,16 +106,16 @@
   }
 </style>
 </head>
-<body data-surface="feature-showcase" data-register="glean-formal" data-published="false">
+<body data-surface="feature-showcase" data-register="glean-formal" data-target="share artifacts between agents" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Handoffs between agents</p>
-    <h1>How to share artifacts between different AI agents</h1>
+    <h1>How to share artifacts between agents</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-30 · 6 min</p>
-    <p class="lead">Two agents from different products cannot read each other's work, so the second one rebuilds what the first one already published. An artifact closes that handoff: it is finished work that stays readable to the next agent, and a connected tool finds it by searching one hosted address, once indexing is switched on at the deployment level — without either tool knowing the other exists.</p>
+    <p class="lead">To share artifacts between agents from different products, something has to hold the work itself, since one cannot read the other's output. An artifact closes that handoff: it is finished work that stays readable to the next agent, and a connected tool finds it by searching one hosted address, once indexing is switched on at the deployment level — without either tool knowing the other exists.</p>
   </header>
 
   <nav class="toc">
@@ -162,7 +162,7 @@
 
     <section class="s" id="s5">
       <h2>What does connecting a second tool involve?</h2>
-      <p>One address and one approval, per person and per tool. A member adds the hosted address to the tool they use, the tool opens a browser page, and that member approves the sign-in. No Artfct server and no local component is installed or kept running on the machine, and no credential is copied out of a settings page. The <a href="https://artfct.dev/docs#mcp">setup guide</a> lists the steps for each tool.</p>
+      <p>One address and one approval, per person and per tool. A member adds the hosted address to the tool they use, the tool opens a browser page, and that member <a href="https://www.rfc-editor.org/rfc/rfc6749">approves the sign-in</a>. No Artfct server and no local component is installed or kept running on the machine, and no credential is copied out of a settings page. The <a href="https://artfct.dev/docs#mcp">setup guide</a> lists the steps for each tool.</p>
       <p>The connection belongs to the person who approved it, so every tool asks its own user to sign in, and a workspace cannot pool a single approval across the team.</p>
       <p>Readiness differs by tool, and the difference is worth keeping straight. Claude Code, Codex, OpenCode and Antigravity are verified against staging, which means someone completed the browser sign-in and a tool call inside each one. The Claude app, ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths that artfct has not tested. A tool that can only start programs on the machine it runs on cannot reach a hosted server at all. The <a href="https://artfct.dev/llms-full.txt">machine-readable reference</a> carries the current list.</p>
     </section>

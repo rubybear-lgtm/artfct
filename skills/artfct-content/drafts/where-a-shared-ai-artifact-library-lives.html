@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Where should a shared AI artifact library live? — artfct</title>
-<meta name="description" content="A shared artifact library for AI output can sit at one hosted address every member signs in to, or on a machine the team runs itself. Four jobs decide the placement: reach, what is installed, who maintains it, and whether one person's connection covers a colleague.">
+<meta name="description" content="A shared AI artifact library can sit at one hosted address every member signs in to, or on a machine the team runs. Four jobs decide the placement.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,7 +106,7 @@
   }
 </style>
 </head>
-<body data-surface="comparison" data-register="glean-formal" data-published="false">
+<body data-surface="comparison" data-register="glean-formal" data-target="shared AI artifact library" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
@@ -115,7 +115,7 @@
     <p class="kicker">Comparisons</p>
     <h1>Where should a shared AI artifact library live?</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-29 · 7 min</p>
-    <p class="lead">A shared artifact library for what an AI tool makes can sit at one hosted address that every member signs in to, or on a machine the team runs itself. Four jobs decide the choice between them: who can reach the library, what has to be installed on each machine, who maintains it, and whether one person's connection covers a colleague.</p>
+    <p class="lead">A shared AI artifact library for what an AI tool makes can sit at one hosted address that every member signs in to, or on a machine the team runs itself. Four jobs decide the choice between them: who can reach the library, what has to be installed on each machine, who maintains it, and whether one person's connection covers a colleague.</p>
   </header>
 
   <nav class="toc">
@@ -143,7 +143,7 @@
 
     <section class="s" id="s2">
       <h2>Who can reach the library?</h2>
-      <p>A hosted address answers anything that speaks the remote protocol over HTTP. A client that runs in a browser reaches the same server as a client that runs on a laptop, because neither of them hosts the library. A tool that can only start programs on the machine it sits on cannot connect to a hosted address at all.</p>
+      <p>A hosted address answers anything that speaks the <a href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports">remote transport the Model Context Protocol defines</a> over HTTP. A client that runs in a browser reaches the same server as a client that runs on a laptop, because neither of them hosts the library. A tool that can only start programs on the machine it sits on cannot connect to a hosted address at all.</p>
       <p>A library the team runs itself is reachable only where the team has run the wiring. A machine on the same network opens it easily enough. A colleague working from elsewhere needs a route to that machine before a browser shows anything.</p>
       <p>The two answers differ rather than compete. One is reachable from wherever a member can sign in, and the other from wherever the team has decided the network should extend.</p>
       <p>The <a href="https://artfct.dev/docs">documentation</a> lists which AI tools connect and the status of each one, so a team can check its own clients before deciding.</p>
@@ -151,7 +151,7 @@
 
     <section class="s" id="s3">
       <h2>What has to be installed on each machine?</h2>
-      <p>On the hosted arrangement, the answer is one approval per person rather than software the team maintains. A member signs in through a browser and authorises the tool, and the library is there from that machine. No Artfct server and no local component is installed or kept running.</p>
+      <p>On the hosted arrangement, the answer is one approval per person rather than software the team maintains. A member signs in through a browser and authorizes the tool, and the library is there from that machine. No Artfct server and no local component is installed or kept running.</p>
       <p>A library the team runs itself lives on the machines that host it. Every host needs the software kept current, and every machine that talks to it needs to be pointed at it. When the version changes, someone is responsible for each host that runs it, including the one nobody remembers.</p>
       <p>That obligation grows with the number of hosts rather than the number of members. A single machine is therefore easy to run, and several machines become a commitment with a schedule attached.</p>
       <p>The connection itself is a step a member takes once per tool. The <a href="https://artfct.dev/llms-full.txt">full reference</a> lists every tool that connects and what each one can be asked to do.</p>
@@ -159,7 +159,7 @@
 
     <section class="s" id="s4">
       <h2>Who keeps it running?</h2>
-      <p>Behind a hosted address, the operator carries the upgrades, the storage and the work of staying answerable. A member's part ends at keeping a connection authorised, and an administrator can revoke a connected tool when that person leaves.</p>
+      <p>Behind a hosted address, the operator carries the upgrades, the storage and the work of staying answerable. A member's part ends at keeping a connection authorized, and an administrator can revoke a connected tool when that person leaves.</p>
       <p>A library the team runs itself hands that work back to the team. Someone patches it, someone holds the keys, and someone notices when the storage fills. None of that can be delegated to a vendor who is not in the building.</p>
       <p>The trade is legible. A team that already runs services for itself is adding one more to a practice it has. A team with no operations habit is taking one on.</p>
       <p>The cost of that ownership is wider than the software. A library the team runs itself answers only to the people who can reach the network it sits on, and a machine that has been switched off is a library that nobody can open.</p>
@@ -167,7 +167,7 @@
 
     <section class="s" id="s5">
       <h2>Does one person's connection cover a colleague?</h2>
-      <p>Connections to a hosted library are per person. Each member authorises their own tool, and one member's connection does not carry another. The credential belongs to the person who signed in, and it reaches the library rather than the machine.</p>
+      <p>Connections to a hosted library are per person. Each member authorizes their own tool, and one member's connection does not carry another. The credential belongs to the person who signed in, and it reaches the library rather than the machine.</p>
       <p>That is deliberate. An administrator can revoke one person's tool without disturbing anyone else's, and the list of connected tools stays a list of decisions somebody made rather than a shared secret.</p>
       <p>A library that the team runs itself can centralise this instead. One credential held on the machine can serve everyone who reaches it, which is less to manage when the group is small and the network is closed.</p>
       <p>The difference is where the identity sits, not whether either arrangement is careful. A connection per person is a governance choice, and a shared credential on a private machine is a simplicity choice.</p>
@@ -184,7 +184,7 @@
           <tr><td>Who can reach it</td><td>Any member who can sign in, from a browser or from a client that can reach a hosted server over the network</td><td>Machines the team has given a route to, and whoever holds the credential for them</td></tr>
           <tr><td>What is installed on a member's machine</td><td>No Artfct server or local component stays on the machine; each person approves the connection once through a browser</td><td>The library on every host, kept current by the team</td></tr>
           <tr><td>Who maintains it</td><td>The operator behind the address</td><td>The team, across every host that runs it</td></tr>
-          <tr><td>Whose connection covers a colleague</td><td>Nobody's; each member authorises their own tool</td><td>A credential on the machine can serve every user of it</td></tr>
+          <tr><td>Whose connection covers a colleague</td><td>Nobody's; each member authorizes their own tool</td><td>A credential on the machine can serve every user of it</td></tr>
           <tr><td>Storage bounds</td><td>A single page up to 1 MB; a bundle up to 500 files, capped at the lower of 8 MB and the plan ceiling (5 MB on the free plan)</td><td>Whatever the team provides on its own hardware</td></tr>
         </tbody>
       </table>
@@ -193,7 +193,7 @@
     <section class="s" id="s7">
       <h2>When is a library the team runs itself the better choice?</h2>
       <p>One case is unambiguous. A person with private files, nothing shared and nobody else to serve gains nothing from an address that other people can sign in to.</p>
-      <p>The machine is already where the work has to be. A single host answers the browser on the same desk, holds what that machine holds, and needs nobody else's authorisation to exist. Publishing to a shared artifact library adds a step to a job that ended when the file was written.</p>
+      <p>The machine is already where the work has to be. A single host answers the browser on the same desk, holds what that machine holds, and needs nobody else's authorization to exist. Publishing to a shared artifact library adds a step to a job that ended when the file was written.</p>
       <p>The second case is a team with a rule it does not bend. Where a standing policy keeps work on hardware the team owns, the operational cost of running the library is not a reason to reopen the policy.</p>
       <p>The third is a team that already runs services and has a person who does it. One more service on hardware that team knows is an addition to a practice, not a new practice.</p>
     </section>
@@ -212,7 +212,7 @@
       <h2>What this does not do</h2>
       <ul>
         <li>Artfct is offered as the hosted arrangement. There is no version for a team to install and run on its own machine.</li>
-        <li>Connections are per person. One member's connection does not authorise another, and each tool asks that member to sign in.</li>
+        <li>Connections are per person. One member's connection does not authorize another, and each tool asks that member to sign in.</li>
         <li>A single page is capped at 1 MB. A bundle is capped at 500 files, and in total at the lower of 8 MB and the plan ceiling: 5 MB on the free plan, 10 MB on team, 25 MB on enterprise.</li>
         <li>Sharing is one of three levels rather than a per-person permission list: team, private or public, plus the owner and the team administrators. Public links can be switched off for the whole team by an administrator, and a publish that asks for one is refused while that setting is off.</li>
         <li>A tool that can only start programs on the machine it runs on cannot connect to a hosted address.</li>

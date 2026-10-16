@@ -51,6 +51,49 @@ export function Mono({ children }: { children: React.ReactNode }) {
     );
 }
 
+export function Pre({ children }: { children: React.ReactNode }) {
+    return (
+        <pre className="mb-5 overflow-x-auto rounded border border-border bg-muted p-4 font-mono text-sm leading-relaxed text-foreground">
+            <code>{children}</code>
+        </pre>
+    );
+}
+
+export function Table({ head, rows }: { head: string[]; rows: string[][] }) {
+    return (
+        <div className="mb-5 overflow-x-auto">
+            <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr>
+                        {head.map((cell) => (
+                            <th
+                                key={cell}
+                                className="border-b border-border pr-4 pb-2 font-mono text-xs tracking-wide text-foreground uppercase"
+                            >
+                                {cell}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row[0]}>
+                            {row.map((cell, index) => (
+                                <td
+                                    key={index}
+                                    className="border-b border-border py-3 pr-4 align-top leading-[1.6] text-muted-foreground"
+                                >
+                                    {cell}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 export function A({
     href,
     children,
@@ -104,7 +147,7 @@ const POSTS_UNSORTED: Post[] = [
         title: 'Artfct vs a shared drive: what works better',
         tag: 'comparisons',
         description:
-            'A shared drive folder holds the files people open. Artfct holds the pages AI tools make, records which tool produced each one, and answers search for the next agent. Where each one fits, and when a team should keep both.',
+            'A shared drive folder holds the files people open. Artfct holds the pages AI tools make and answers search for the next agent. Where each one fits.',
         body: (
             <>
                 <P>
@@ -122,7 +165,12 @@ const POSTS_UNSORTED: Post[] = [
                     files rather than as one store. The platform that hosts it
                     manages access: a folder or an individual file is shared
                     with named people, and an administrator can see what exists
-                    and remove it.
+                    and remove it. Sharing a folder with named people is covered
+                    in{' '}
+                    <A href="https://support.google.com/drive/answer/2494822">
+                        Google Drive Help
+                    </A>
+                    .
                 </P>
                 ,
                 <P>
@@ -164,7 +212,7 @@ const POSTS_UNSORTED: Post[] = [
                 <P>
                     The audience is double. A teammate opens the link, and a
                     connected AI tool reaches the same store through a hosted
-                    server that advertises ten tools. Search there fuses
+                    server that advertises fifteen tools. Search there fuses
                     semantic similarity with keyword matching, and it orders
                     results by recency, by how often an artifact has been
                     opened, and by whether it sits in a pinned collection. The{' '}
@@ -266,6 +314,42 @@ const POSTS_UNSORTED: Post[] = [
                     features both happen to share. The table below sets out the
                     six questions that decide most cases.
                 </P>
+                ,
+                <Table
+                    head={['Question', 'A shared drive folder', 'Artfct']}
+                    rows={[
+                        [
+                            'What it holds',
+                            'Any file a person produces, in its native format',
+                            'A page an AI tool made: one self-contained HTML file, or a bundle of up to 500 files',
+                        ],
+                        [
+                            'Who it is built for',
+                            'Colleagues who open files in the applications that made them',
+                            'A team that shares links, plus the AI tools that search the store',
+                        ],
+                        [
+                            'Where access is decided',
+                            "The platform's own folder and file permissions, managed by its administrator",
+                            'One of three levels, team, private or public, with view or edit as a separate axis',
+                        ],
+                        [
+                            'What is recorded about origin',
+                            'The account that saved the file, and the time it last changed',
+                            'The tool, the client and the model when supplied; repository and commit are absent',
+                        ],
+                        [
+                            'How the next version arrives',
+                            'A person uploads or replaces the file, and the name may change',
+                            'A new version on the same link, with earlier versions listed and restorable',
+                        ],
+                        [
+                            'What it costs to start',
+                            'Storage that usually sits inside a subscription the company already pays for',
+                            'A free tier for a single file up to 1 MB, encrypted and passcode-protected, and org-held keys on the permanent tier',
+                        ],
+                    ]}
+                />
                 ,<H2>When is a shared drive the better choice?</H2>,
                 <P>
                     The drive wins in the cases it was built for, and those
@@ -346,8 +430,8 @@ const POSTS_UNSORTED: Post[] = [
                     <li>
                         It does not accept arbitrary office files, images or
                         archives, and it does not replace a drive as general
-                        file storage. An artifact is something an AI made that
-                        renders as a page, not a folder of working documents.
+                        file storage. An artifact is something an AI made that a
+                        person can open, not a folder of working documents.
                     </li>
                     <li>
                         It does not record the repository, branch or commit an
@@ -415,10 +499,10 @@ const POSTS_UNSORTED: Post[] = [
     {
         slug: 'artfct-vs-your-ai-tools-own-sharing',
         date: '2026-10-03',
-        title: "Artfct vs your AI tool's own sharing: what works better",
+        title: "Artfct vs your AI tool's own sharing",
         tag: 'comparisons',
         description:
-            "Claude Code Artifacts and OpenAI's Sites share work inside one vendor. Artfct keeps the same artifacts findable across tools. A comparison of reach, controls, durability and retrieval.",
+            "Claude Code Artifacts and OpenAI's Sites share work inside one vendor. Artfct keeps the same work findable across tools. Reach, controls and retrieval.",
         body: (
             <>
                 <P>
@@ -436,16 +520,21 @@ const POSTS_UNSORTED: Post[] = [
                     made the artifact, and it is designed around that fact.
                     Claude Code Artifacts ship inside Anthropic's own product,
                     where an administrator governs them through organization
-                    settings and sharing stays inside that workspace. OpenAI's
-                    Sites carry administrator-managed role-based access, and
-                    each site's audience is drawn from the vendor's own list of
-                    people and groups.
+                    settings and public sharing is a setting only that
+                    administrator controls. The{' '}
+                    <A href="https://docs.claude.com/en/docs/claude-code/artifacts#manage-artifacts-for-your-organization">
+                        Claude Code artifacts documentation
+                    </A>{' '}
+                    covers those organization controls. OpenAI's Sites carry
+                    administrator-managed role-based access, and each site's
+                    audience is drawn from the vendor's own list of people and
+                    groups.
                 </P>
                 ,
                 <P>
                     That design fits a team that lives in one tool. The artifact
                     appears where the conversation happened, the permissions
-                    come from a directory the organisation already maintains,
+                    come from a directory the organization already maintains,
                     and nobody adopts a second vendor in order to share a
                     dashboard. For a working session between colleagues who all
                     use the same assistant, this is the shorter path, and it
@@ -500,14 +589,19 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    The behaviour this meets is ordinary rather than exotic.
-                    Survey work published by the Pragmatic Engineer in 2026
+                    The behavior this meets is ordinary rather than exotic.{' '}
+                    <A href="https://newsletter.pragmaticengineer.com/p/ai-tooling-2026">
+                        Survey work published by the Pragmatic Engineer in 2026
+                    </A>{' '}
                     found that most engineers juggle two to four AI tools at
-                    once, and JetBrains reported in August 2026 that 90% of
-                    professional developers use an AI coding agent weekly, with
-                    68% using one daily. Adoption of that shape produces two
-                    histories per team, and neither history answers a question
-                    asked in the other product.
+                    once, and{' '}
+                    <A href="https://blog.jetbrains.com/research/2026/08/ai-coding-agent-adoption-2026/">
+                        JetBrains reported in August 2026
+                    </A>{' '}
+                    that 90% of professional developers use an AI coding agent
+                    weekly, with 68% using one daily. Adoption of that shape
+                    produces two histories per team, and neither history answers
+                    a question asked in the other product.
                 </P>
                 ,
                 <P>
@@ -531,7 +625,7 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    Artfct organises access around the artifact itself. A
+                    Artfct organizes access around the artifact itself. A
                     published page is private, shared with the team, or public
                     to anyone holding the link, and edit access is a separate
                     permission so that a colleague can publish the next version.
@@ -550,12 +644,12 @@ const POSTS_UNSORTED: Post[] = [
                     Single sign-on runs through SAML or OIDC once a domain is
                     verified by a DNS record. Directory sync provisions and
                     de-provisions people from the identity provider. An audit
-                    log records create, view, share, revoke and delete, and it
-                    exports. Retention policy and legal hold are configurable,
-                    and an administrator can export everything the organisation
-                    holds as a set of files verified against their hashes. A
-                    list of connected AI tools can be revoked from the same
-                    console.
+                    log records create, view, share and revoke, and its export
+                    is available on Enterprise. Retention policy and legal hold
+                    are Enterprise-tier features, and an administrator can
+                    export everything the organization holds as a set of files
+                    verified against their hashes. A list of connected AI tools
+                    can be revoked from the same console.
                 </P>
                 ,
                 <P>
@@ -648,6 +742,46 @@ const POSTS_UNSORTED: Post[] = [
                     counts do not, because both options share a page, both
                     render it, and both protect it.
                 </P>
+                ,
+                <Table
+                    head={[
+                        'Dimension',
+                        'Built-in sharing in an AI tool',
+                        'Artfct',
+                    ]}
+                    rows={[
+                        [
+                            'Reach',
+                            "Visible to people and agents inside that vendor's product",
+                            'Visible to any connected tool, whichever vendor published the artifact',
+                        ],
+                        [
+                            'Who can open it',
+                            "Governed by the vendor's own administration, with role-based access and a public-link setting the administrator controls",
+                            'Private, team, or a link anyone can open; edit access is a separate axis; a signed-out visitor is sent to sign in',
+                        ],
+                        [
+                            'The link',
+                            'Tied to the workspace that holds the artifact',
+                            'Unchanged when a new version is published; identical content resolves to one artifact',
+                        ],
+                        [
+                            'What is recorded',
+                            "Kept with the vendor's workspace record",
+                            'Publishing tool, client version, session identifier and the model when supplied; repository and commit details are not captured',
+                        ],
+                        [
+                            'Administration',
+                            'Administrator enablement, share permissions, role-based access',
+                            'Roles, single sign-on, directory sync, an audit log, and retention policy and legal hold on Enterprise',
+                        ],
+                        [
+                            'Getting started',
+                            'Included in the plan the team already holds',
+                            'A link tier that needs no account to open, and a permanent organizational tier',
+                        ],
+                    ]}
+                />
                 ,<H2>Which should a team choose?</H2>,
                 <P>
                     Choose built-in sharing when the team works in one AI tool
@@ -672,7 +806,7 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    The two are not rivals in most organisations. Built-in
+                    The two are not rivals in most organizations. Built-in
                     sharing is where the work happens; an artifact record is
                     where it stays. Which pages see which audience is covered in{' '}
                     <A
@@ -701,8 +835,9 @@ const POSTS_UNSORTED: Post[] = [
                     </li>
                     <li>
                         It does not accept arbitrary office files, images or
-                        archives. An artifact is something an AI made that
-                        renders as a page.
+                        archives. An artifact is something an AI made that a
+                        person can open — rendered at its link when it is a
+                        page, downloaded when it is not.
                     </li>
                     <li>
                         It does not record repository, branch or commit
@@ -760,14 +895,15 @@ const POSTS_UNSORTED: Post[] = [
                 <FaqItem question="Can an artifact be taken back?">
                     Yes. An administrator can revoke it from the console, the
                     artifact leaves every list and every search, and the
-                    revocation is written to an audit log that exports.
+                    revocation is written to an audit log, whose export is
+                    available on Enterprise.
                 </FaqItem>
                 ,
                 <FaqItem question="What does it cost to try?">
                     A single page can be published as a link with no account,
                     encrypted and passcode-protected, and it expires five days
                     after the last visit. A durable artifact is held under the
-                    organisation's own keys, with no expiry.
+                    organization's own keys, with no expiry.
                 </FaqItem>
                 ,
             </>
@@ -779,16 +915,17 @@ const POSTS_UNSORTED: Post[] = [
         title: "Why your AI tools cannot see each other's work",
         tag: 'explainers',
         description:
-            'Every AI tool keeps its own record of what it made, so the next agent rebuilds work another tool already finished. Why that boundary exists, and what changes when the record is shared.',
+            "Every AI tool keeps its own record of what it made, so the next agent rebuilds finished work. Why AI tools cannot see each other's work, and what changes.",
         body: (
             <>
                 <P>
                     Cross-tool blindness is what happens when each AI tool
                     remembers only its own output. It is a product boundary
-                    rather than an oversight. A vendor indexes the work its own
-                    model produced and has no commercial reason to index a
-                    rival's, so the unit of memory is the tool while the unit of
-                    work is the team.
+                    rather than an oversight, and it is why AI tools cannot see
+                    each other's work. A vendor indexes the work its own model
+                    produced and has no commercial reason to index a rival's, so
+                    the unit of memory is the tool while the unit of work is the
+                    team.
                 </P>
                 ,
                 <H2>
@@ -843,7 +980,7 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    Teams rarely standardise on one tool. Different roles reach
+                    Teams rarely standardize on one tool. Different roles reach
                     for different assistants, and the tools rarely agree on
                     where finished work should live. The natural fault line
                     therefore runs between the products, not inside them.
@@ -939,19 +1076,15 @@ const POSTS_UNSORTED: Post[] = [
                     This is the fair objection, and the honest answer begins
                     with a concession. During 2026 the major labs shipped
                     governance inside their own products.{' '}
-                    <A href="https://venturebeat.com/data/anthropics-claude-code-artifacts-update-brings-live-shared-dashboards-and-interactive-workspaces-to-enterprises">
+                    <A href="https://docs.claude.com/en/docs/claude-code/artifacts">
                         Claude Code Artifacts
                     </A>{' '}
                     require an administrator to enable them for an organization,
                     and the owner then grants permission before a page is shared
-                    publicly.{' '}
-                    <A href="https://intuitionlabs.ai/articles/enterprise-ai-dashboards-chatgpt-claude">
-                        OpenAI Canvas Sites
-                    </A>{' '}
-                    arrived for business and enterprise workspaces with
-                    administrator-managed role-based access and per-site access
-                    modes that can be self-only, whole-workspace, or limited to
-                    named user groups.
+                    publicly. OpenAI Canvas Sites arrived for business and
+                    enterprise workspaces with administrator-managed role-based
+                    access and per-site access modes that can be self-only,
+                    whole-workspace, or limited to named user groups.
                 </P>
                 ,
                 <P>
@@ -1057,13 +1190,14 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    The record is accountable. Creating, viewing, sharing,
-                    revoking and deleting all write to an audit log that a team
-                    can export, and a team can set a retention policy or place a
-                    legal hold that prevents an artifact from being deleted.
-                    Each artifact also carries a provenance record: the tool
-                    that published it, the session it came from, and the model,
-                    when the caller supplied one.
+                    The record is accountable. Creating, viewing, sharing and
+                    revoking all write to an audit log, and its export is
+                    available on Enterprise. A retention policy and a legal hold
+                    are Enterprise-tier features, and a hold prevents an
+                    artifact from being deleted while it stands. Each artifact
+                    also carries a provenance record: the tool that published
+                    it, the session it came from, and the model, when the caller
+                    supplied one.
                 </P>
                 ,
                 <P>
@@ -1100,8 +1234,9 @@ const POSTS_UNSORTED: Post[] = [
                     </li>
                     <li>
                         It does not accept arbitrary office files, images or
-                        archives. An artifact is something an AI made that
-                        renders as a page.
+                        archives. An artifact is something an AI made that a
+                        person can open — rendered at its link when it is a
+                        page, downloaded when it is not.
                     </li>
                     <li>
                         Sharing is three levels, not a per-person permission
@@ -1176,7 +1311,8 @@ const POSTS_UNSORTED: Post[] = [
                 <FaqItem question="Can an administrator remove something a colleague published?">
                     Yes. An administrator can revoke any artifact in the team,
                     and the revocation is written to the audit log. Retention
-                    and legal hold rules apply to that removal as well.
+                    and legal hold rules, both Enterprise-tier settings, apply
+                    to that removal as well.
                 </FaqItem>
                 ,
             </>
@@ -1185,10 +1321,10 @@ const POSTS_UNSORTED: Post[] = [
     {
         slug: 'what-is-an-ai-artifact',
         date: '2026-10-01',
-        title: 'What is an AI artifact?',
+        title: 'What is an AI artifact, and what is not?',
         tag: 'explainers',
         description:
-            'An AI artifact is a finished work product an AI tool made and a person can open: a report, dashboard, table or document. This explainer defines the term, separates it from chat scrollback and memory notes, and says where a record of finished work fits.',
+            'An AI artifact is finished work an AI tool made that a person can open: a report, dashboard, table or document. How it differs from chat scrollback.',
         body: (
             <>
                 <P>
@@ -1203,10 +1339,12 @@ const POSTS_UNSORTED: Post[] = [
                 <P>
                     This page holds one definition and applies it throughout. An
                     artifact is a finished work product that an AI tool made and
-                    that renders as a page a reader can open unaided. A revenue
-                    report, a dashboard of pipeline numbers, a comparison table,
-                    a short written document and an interactive page all
-                    qualify, and the form varies while the test does not.
+                    that a reader can open unaided — rendered at its link when
+                    the entrypoint is a page, downloaded when it is a file such
+                    as a table or a document. A revenue report, a dashboard of
+                    pipeline numbers, a comparison table, a short written
+                    document and an interactive page all qualify, and the form
+                    varies while the test does not.
                 </P>
                 ,
                 <P>
@@ -1268,7 +1406,7 @@ const POSTS_UNSORTED: Post[] = [
                     A memory note is an input. Assistants increasingly keep a
                     small store of facts, preferences and terminology, and they
                     read that store at the beginning of a session so that later
-                    answers fit the organisation. The note is never the
+                    answers fit the organization. The note is never the
                     deliverable itself; it shapes the deliverable, quietly and
                     continuously.
                 </P>
@@ -1277,7 +1415,7 @@ const POSTS_UNSORTED: Post[] = [
                     An artifact is an output. It is the thing that was asked
                     for, finished, and handed to a reader who may never know
                     which tool made it. The distinction is not cosmetic, because
-                    the two stores change different behaviour in different
+                    the two stores change different behavior in different
                     places. Editing a memory note changes what a model generates
                     next, while keeping an artifact changes what a team can find
                     long afterwards.
@@ -1438,11 +1576,11 @@ const POSTS_UNSORTED: Post[] = [
                 ,
                 <P>
                     Administrators see the same objects through a governance
-                    surface. An audit log records creation, viewing, sharing,
-                    revocation and deletion, and it can be exported. Retention
-                    policies and legal hold sit alongside it, so a record is
-                    kept deliberately or released on a schedule rather than by
-                    habit.
+                    surface. An audit log records creation, viewing, sharing and
+                    revocation, and its export is available on Enterprise.
+                    Retention policy and legal hold are Enterprise-tier
+                    features, so a record is kept deliberately or released on a
+                    schedule rather than by habit.
                 </P>
                 ,<H2>What does a team do first?</H2>,
                 <P>
@@ -1454,13 +1592,20 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    The connection is a hosted OAuth server reached over HTTP. A
-                    single command registers it, and the same setup text appears
-                    in the <A href={docs().url}>docs</A> and in the
+                    The connection is a hosted OAuth server reached over HTTP (
+                    <A href="https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization">
+                        MCP specification, authorization section
+                    </A>
+                    ). A single command registers it, and the same setup text
+                    appears in the <A href={docs().url}>docs</A> and in the
                     machine-readable reference at{' '}
                     <A href={llmsRoutes.full.url()}>llms-full.txt</A>, because
                     both render from one source and cannot drift apart.
                 </P>
+                ,
+                <Pre>
+                    {'npx add-mcp@latest <mcp-url> --name artfct --global'}
+                </Pre>
                 ,
                 <P>
                     Readiness varies by tool, and the distinction is worth
@@ -1494,8 +1639,9 @@ const POSTS_UNSORTED: Post[] = [
                     <li>
                         Notebooks, PDFs and video are not in scope, and neither
                         are arbitrary office files or archives kept for their
-                        own sake. An artifact is something an AI made that
-                        renders as a page.
+                        own sake. An artifact is something an AI made that a
+                        person can open — rendered at its link when it is a
+                        page, downloaded when it is not.
                     </li>
                     <li>
                         It is not static site hosting and it is not a content
@@ -1534,10 +1680,12 @@ const POSTS_UNSORTED: Post[] = [
                 </FaqItem>
                 ,
                 <FaqItem question="Can a single table or document be an artifact?">
-                    Yes. The test is that it renders as a page and stands on its
-                    own, so a table of results or a short report qualifies. A
-                    raw spreadsheet file or an archive does not, because nothing
-                    renders it and a reader cannot use it in place.
+                    Yes. A table or a document is an artifact, and it opens the
+                    way its format allows: served as a page when the entrypoint
+                    is HTML, downloaded when it is a comma- or tab-separated
+                    table or a JSON file. What does not qualify is a file with
+                    no artifact entrypoint — an office document, an image or an
+                    archive kept for its own sake.
                 </FaqItem>
                 ,
                 <FaqItem question="Does an artifact record which repository it came from?">
@@ -1588,7 +1736,7 @@ const POSTS_UNSORTED: Post[] = [
         title: 'Finding the report your team already wrote',
         tag: 'search',
         description:
-            'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes the reports, tables and documents your agents produce, so the next question starts from what already exists.',
+            'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes what your agents produce, so a team can find its AI work, not rebuild it.',
         body: (
             <>
                 <P>
@@ -1596,8 +1744,8 @@ const POSTS_UNSORTED: Post[] = [
                     ability to find it, because each AI tool keeps its own
                     conversation history and nothing keeps the finished work.
                     Artfct indexes the reports, tables and documents a team's
-                    agents produce, so the next question starts from what
-                    already exists rather than from nothing.
+                    agents produce, so a team can find its AI work rather than
+                    commissioning it again.
                 </P>
                 ,<H2>Why does finished work go missing?</H2>,
                 <P>
@@ -1671,8 +1819,11 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,<H2>How does an agent search before it starts?</H2>,
                 <P>
-                    A connected tool reaches the store through one tool call. It
-                    asks a question in ordinary language, and receives
+                    A connected tool reaches the store through{' '}
+                    <A href="https://modelcontextprotocol.io/specification/2025-06-18/server/tools">
+                        one tool call
+                    </A>
+                    . It asks a question in ordinary language, and receives
                     summaries, short excerpts and a link for each match. The
                     agent can then say which artifacts it used, so a reader can
                     follow the reasoning back to its source.
@@ -1691,7 +1842,7 @@ const POSTS_UNSORTED: Post[] = [
                     Teams commonly put that expectation in the project
                     instructions an AI tool reads at the start of a session. A
                     single line — search the store before starting research, and
-                    name what was used — is enough to make the behaviour
+                    name what was used — is enough to make the behavior
                     consistent across tools.
                 </P>
                 ,<H2>How is one result ranked above another?</H2>,
@@ -1718,7 +1869,7 @@ const POSTS_UNSORTED: Post[] = [
                 <P>
                     The practical consequence is that a canonical artifact
                     outranks a semantically closer one nobody has opened. A
-                    team's own behaviour becomes part of the ranking, which is
+                    team's own behavior becomes part of the ranking, which is
                     what turns a pile of outputs into a set of answers the team
                     trusts.
                 </P>
@@ -1823,18 +1974,19 @@ const POSTS_UNSORTED: Post[] = [
     {
         slug: 'who-sees-what-your-ai-makes',
         date: '2026-10-07',
-        title: 'Who sees what your AI makes',
+        title: 'Who sees what your AI makes, and when',
         tag: 'governance',
         description:
-            'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. How sharing, isolation and revocation work in Artfct.',
+            'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. Who sees what your AI makes, and how that changes.',
         body: (
             <>
                 <P>
-                    An artifact arrives visible to the whole team unless someone
-                    says otherwise, and the level can be changed at any time
-                    afterwards. Artfct records the choice, records who changed
-                    it, and serves each permanent artifact from its own origin
-                    so one page cannot read another.
+                    Who sees what your AI makes is settled by a default rather
+                    than a decision: an artifact arrives visible to the whole
+                    team unless someone says otherwise, and the level can be
+                    changed at any time afterwards. Artfct records the choice,
+                    records who changed it, and serves each permanent artifact
+                    from its own origin so one page cannot read another.
                 </P>
                 ,<H2>What happens when an artifact is published?</H2>,
                 <P>
@@ -1928,12 +2080,11 @@ const POSTS_UNSORTED: Post[] = [
                 </P>
                 ,
                 <P>
-                    Each of those actions is recorded. Creating, viewing,
-                    sharing and revoking all write to an audit log, and the log
-                    can be exported. A team can also set a retention policy, and
-                    place a legal hold on an artifact so that deletion is
-                    refused for as long as the hold stands. Retention and export
-                    are covered in the{' '}
+                    Creating, viewing, sharing and revoking are all recorded in
+                    an audit log, and its export is available on Enterprise. A
+                    retention policy and a legal hold are Enterprise-tier
+                    features, and a hold refuses deletion for as long as it
+                    stands. Retention and export are covered in the{' '}
                     <A href={docs().url}>console documentation</A>.
                 </P>
                 ,
@@ -1960,7 +2111,11 @@ const POSTS_UNSORTED: Post[] = [
                     and an expired token is refused. The content security policy
                     served alongside an artifact is derived from what that
                     artifact declared, so a page naming no external origin is
-                    served with a policy that permits none.
+                    served with a policy that permits none. The{' '}
+                    <A href="https://www.w3.org/TR/CSP3/">
+                        Content Security Policy
+                    </A>{' '}
+                    specification defines how a document declares those origins.
                 </P>
                 ,
                 <P>
@@ -2005,7 +2160,8 @@ const POSTS_UNSORTED: Post[] = [
                     </li>
                     <li>
                         Deletion is permanent. A legal hold prevents an artifact
-                        from being deleted rather than delaying the deletion.
+                        from being deleted rather than delaying the deletion,
+                        and it is an Enterprise-tier setting.
                     </li>
                     <li>
                         The free tier expires after five days of inactivity and
@@ -2034,8 +2190,8 @@ const POSTS_UNSORTED: Post[] = [
                     An administrator can revoke any artifact in the team, and
                     the revocation is written to the audit log. Deleting is a
                     separate action, available to a connection that holds the
-                    delete permission, and it is refused while a legal hold is
-                    in place.
+                    delete permission, and it is refused while a legal hold, an
+                    Enterprise-tier setting, is in place.
                 </FaqItem>
                 ,
                 <FaqItem question="Does an AI tool see artifacts that are private?">
@@ -2050,19 +2206,19 @@ const POSTS_UNSORTED: Post[] = [
     {
         slug: 'one-link-that-keeps-its-history',
         date: '2026-10-06',
-        title: 'One link that keeps its history',
+        title: 'One link that keeps a version history',
         tag: 'workflows',
         description:
-            'Publishing the same content twice resolves to one artifact, and publishing a change creates a new version under the same link. How versions, identity and provenance work in Artfct.',
+            'Publishing the same content twice resolves to one artifact, and a change creates a new version under the same link. How the version history and identity work.',
         body: (
             <>
                 <P>
                     A link to an artifact is only useful if it keeps working.
                     Artfct gives an artifact one address for its whole life:
                     publishing the same content again resolves to the artifact
-                    that already exists, and publishing a change creates a new
-                    version under the same link rather than a second page nobody
-                    can find.
+                    that already exists, and publishing a change extends the
+                    version history under the same link rather than a second
+                    page nobody can find.
                 </P>
                 ,<H2>What happens when the same thing is published twice?</H2>,
                 <P>
@@ -2132,8 +2288,7 @@ const POSTS_UNSORTED: Post[] = [
                 <P>
                     The history is a record of decisions rather than a list of
                     files. A reader can see that a version was published, when,
-                    and by whom, and can open any two versions side by side to
-                    compare them.
+                    and by whom, and can open any earlier version on its own.
                 </P>
                 ,<H2>What is recorded about how something was made?</H2>,
                 <P>
@@ -2149,9 +2304,14 @@ const POSTS_UNSORTED: Post[] = [
                     On the supported connection, the record holds the model when
                     the caller supplied one, the session the publish came from,
                     the tool that published the artifact, and the name and
-                    version of the client. Fields the connection could not
-                    observe are recorded as absent rather than guessed, and the
-                    record says which of the two each field is. The{' '}
+                    version of the client. A client reports its name and version
+                    at initialization, per the{' '}
+                    <A href="https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle">
+                        Model Context Protocol
+                    </A>
+                    . Fields the connection could not observe are recorded as
+                    absent rather than guessed, and the record says which of the
+                    two each field is. The{' '}
                     <A href={docs().url}>documentation</A> covers the publish
                     step that builds it.
                 </P>

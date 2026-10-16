@@ -20,12 +20,12 @@ dataset('blog articles', [
     ],
     'who-sees-what-your-ai-makes' => [
         'who-sees-what-your-ai-makes',
-        'Who sees what your AI makes',
+        'Who sees what your AI makes, and when',
         'turn public links off entirely',
     ],
     'one-link-that-keeps-its-history' => [
         'one-link-that-keeps-its-history',
-        'One link that keeps its history',
+        'One link that keeps a version history',
         'Nearly identical is not identical',
     ],
     'artfct-vs-a-shared-drive-folder' => [
@@ -35,17 +35,17 @@ dataset('blog articles', [
     ],
     'artfct-vs-your-ai-tools-own-sharing' => [
         'artfct-vs-your-ai-tools-own-sharing',
-        'Artfct vs your AI tool',
+        "Artfct vs your AI tool's own sharing",
         'The boundary is the vendor',
     ],
     'why-your-ai-tools-cannot-see-each-others-work' => [
         'why-your-ai-tools-cannot-see-each-others-work',
-        'Why your AI tools cannot see each other',
+        "Why your AI tools cannot see each other's work",
         'The controls stop at the edge of the product',
     ],
     'what-is-an-ai-artifact' => [
         'what-is-an-ai-artifact',
-        'What is an AI artifact?',
+        'What is an AI artifact, and what is not?',
         'It is the output, not the conversation that produced it',
     ],
 ]);

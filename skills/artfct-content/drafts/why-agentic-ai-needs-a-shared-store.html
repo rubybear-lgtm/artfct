@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Why agentic AI needs a shared record, not a bigger context window — artfct</title>
-<meta name="description" content="A larger context window helps one agent hold more of one task. It cannot hand a finished report to a second agent, because that boundary sits between tools rather than inside a window.">
+<title>Why agentic AI needs a shared record — artfct</title>
+<meta name="description" content="A larger context window helps one agent hold more of one task. It cannot hand a finished report to a second one. Why agentic AI needs a shared record instead.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,16 +106,16 @@
   }
 </style>
 </head>
-<body data-surface="comparison" data-register="glean-formal" data-published="false">
+<body data-surface="comparison" data-register="glean-formal" data-target="agentic AI" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Comparison</p>
-    <h1>Why agentic AI needs a shared record, not a bigger context window</h1>
+    <h1>Why agentic AI needs a shared record</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-28 · 8 min</p>
-    <p class="lead">A larger context window lets one agent hold more of one task, and that is a genuine gain. What it cannot do is show a second agent what a first one produced, because that boundary sits between tools rather than inside a window. A shared record of what your agents built is what closes the handoff.</p>
+    <p class="lead">The case for a shared record in agentic AI does not rest on a bigger window. A larger context window lets one agent hold more of one task, and that is a genuine gain. What it cannot do is show a second agent what a first one produced, because that boundary sits between tools rather than inside a window. A shared record of what your agents built is what closes the handoff.</p>
   </header>
 
   <nav class="toc">
@@ -135,8 +135,8 @@
   <main>
     <section class="s" id="s1">
       <h2>What does a larger context window actually buy?</h2>
-      <p>A context window is the working memory a model can read at once. It holds the current exchange, the documents in play, and the result of each step the agent has taken. A larger window means more of a single task fits inside it without being trimmed.</p>
-      <p>That is a genuine gain, and it is why the number keeps growing. A long document can be read in full rather than summarised in pieces. More of a codebase stays in view while one agent works. A run of steps holds together, so the agent does not lose the thread halfway through a task.</p>
+      <p>A context window is the working memory a model can read at once, as <a href="https://docs.anthropic.com/en/docs/build-with-claude/context-windows">the definition a model vendor publishes</a> sets out. It holds the current exchange, the documents in play, and the result of each step the agent has taken. A larger window means more of a single task fits inside it without being trimmed.</p>
+      <p>That is a genuine gain, and it is why the number keeps growing. A long document can be read in full rather than summarized in pieces. More of a codebase stays in view while one agent works. A run of steps holds together, so the agent does not lose the thread halfway through a task.</p>
       <p>Windows fill up in ordinary use. Tool results arrive by the page, and one broad retrieval step can consume a large share of the space available. Past a point, the agent keeps less of the task in view and more of it in compressed form.</p>
       <p>For one agent working through one task, a larger window removes a real constraint. It delays the point at which the task has to be split, and it keeps the facts a single step needs in the same place. It is the right lever for a long task handled by one agent.</p>
     </section>

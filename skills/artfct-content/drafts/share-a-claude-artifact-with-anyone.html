@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How to share a Claude artifact with someone who does not use Claude — artfct</title>
-<meta name="description" content="Hand someone outside your AI tool a link that opens in any browser. A free link needs no account and is encrypted, passcode-protected and good for five days.">
+<title>How to share a Claude artifact with anyone — artfct</title>
+<meta name="description" content="To share a Claude artifact with someone who does not use Claude, send a link that opens in any browser. It needs no account, and can be encrypted.">
 <style>
   :root {
     --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
@@ -106,16 +106,16 @@
   }
 </style>
 </head>
-<body data-surface="feature-showcase" data-register="glean-formal" data-published="false">
+<body data-surface="feature-showcase" data-register="glean-formal" data-target="share a Claude artifact" data-published="false">
 <div class="wrap">
 
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
   <header>
     <p class="kicker">Workflows</p>
-    <h1>How to share a Claude artifact with someone who does not use Claude</h1>
+    <h1>How to share a Claude artifact with anyone</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-09-25 · 5 min</p>
-    <p class="lead">Sharing an artifact with someone outside the tool it was made in comes down to one object: a link. Everything else stays behind — the conversation, the account it belonged to, the tool that rendered it. Artfct publishes the finished page to a URL that opens in any browser, so the person on the other end needs nothing but the link.</p>
+    <p class="lead">To share a Claude artifact with someone outside the tool that made it, one object decides whether it works: the link. Everything else stays behind — the conversation, the account it belonged to, the tool that rendered it. Artfct publishes the finished page to a URL that opens in any browser, so the person on the other end needs nothing but the link.</p>
   </header>
 
   <nav class="toc">
@@ -136,20 +136,20 @@
     <section class="s" id="s1">
       <h2>What actually travels when the link is sent?</h2>
       <p>What travels is a self-contained HTML document. The artifact is published to artfct, given an id, and served at one address. The conversation, the model and the application that produced it stay where they were. Nothing about the recipient's own setup enters into it.</p>
-      <p>That is a page rather than a file to open somewhere else. The recipient sees what a reader would see. The layout and the tables the artifact already carried render on the screen in front of them. They do not have to download a document, install an application, or work out which version of it they were sent.</p>
+      <p>That is a page rather than a file to open somewhere else. <a href="https://docs.claude.com/en/docs/claude-code/artifacts">Anthropic's documentation</a> describes an artifact as a live, interactive web page. The recipient sees what a reader would see. The layout and the tables the artifact already carried render on the screen in front of them. They do not have to download a document, install an application, or work out which version of it they were sent.</p>
       <p>The distinction matters as soon as the work leaves the team, whether the recipient is a client, a vendor or a colleague in another department. They do not need the tool, an account in it, or the transcript around it. They need a browser and the link. The <a href="https://artfct.dev/docs">docs</a> describe the publish step and what a published page carries.</p>
     </section>
 
     <section class="s" id="s2">
       <h2>What does the recipient need before they can open it?</h2>
       <p>A free link asks for nothing. The content is encrypted, protected by a passcode that travels inside the link itself, and capped at one megabyte for a single HTML file. The person opening it needs no account, and nobody has to send them a passcode separately.</p>
-      <p>A team artifact behaves differently. A signed-out visitor is sent to sign in and then returned to the page. The link works for the team's members and stops there. A permanent artifact is held under the organisation's keys, which is the tier for a page that should still open next month.</p>
+      <p>A team artifact behaves differently. A signed-out visitor is sent to sign in and then returned to the page. The link works for the team's members and stops there. A permanent artifact is held under the organization's keys, which is the tier for a page that should still open next month.</p>
     </section>
 
     <section class="s" id="s3">
       <h2>How long does the link keep working?</h2>
       <p>A free link expires five days after it was last opened. The window slides with use instead of counting down from the day of publishing. A link that someone keeps returning to stays alive, and an idle one lapses. That matches what a free link is for: handing something over now, rather than parking a record.</p>
-      <p>A permanent artifact does not expire. It stays in the workspace under the organisation's keys, and the same link resolves weeks later when the page is needed again.</p>
+      <p>A permanent artifact does not expire. It stays in the workspace under the organization's keys, and the same link resolves weeks later when the page is needed again.</p>
     </section>
 
     <section class="s" id="s4">
@@ -179,7 +179,7 @@
       <h2>What this does not do</h2>
       <ul>
         <li>It does not move a conversation or a prompt. What travels is the finished artifact, not the reasoning that produced it.</li>
-        <li>Encryption is tiered. A free link is encrypted and passcode-protected; a permanent artifact is held under the organisation's keys.</li>
+        <li>Encryption is tiered. A free link is encrypted and passcode-protected; a permanent artifact is held under the organization's keys.</li>
         <li>A free single-file link is capped at one megabyte and lapses five days after it was last opened.</li>
         <li>Sharing is private, team or public. There is no per-person sharing and no list of named recipients.</li>
         <li>Public links are a team setting, and an admin can switch them off. A publish that asks for public is then refused, with a message that the team has turned off public links.</li>
@@ -190,7 +190,7 @@
 
     <section class="faq">
       <h2>Questions</h2>
-      <details class="q"><summary>Does the person I send it to need an account?</summary><p>Not for a free link. It opens with a passcode and no sign-in. A teammate opening a team artifact is asked to sign in, and a permanent artifact is reached under the organisation's access.</p></details>
+      <details class="q"><summary>Does the person I send it to need an account?</summary><p>Not for a free link. It opens with a passcode and no sign-in. A teammate opening a team artifact is asked to sign in, and a permanent artifact is reached under the organization's access.</p></details>
       <details class="q"><summary>What happens when a free link expires?</summary><p>It stops opening. The expiry runs five days from the last time the link was used, so the window slides rather than running out from the publish date. A permanent artifact carries no expiry.</p></details>
       <details class="q"><summary>Is the free link encrypted?</summary><p>Yes. The content is encrypted and protected by a passcode carried in the link, so nothing has to be sent alongside it.</p></details>
       <details class="q"><summary>Can the link be forwarded, or sent to just one person?</summary><p>A free link opens for anyone who holds the link, so forwarding works and the passcode travels with it. A public artifact opens the same way, provided the team has public links switched on. A team artifact asks the next person to sign in and opens only for a member of the team. Sharing is private, team or public, and there is no list of named recipients; the narrowest option is a private artifact, which its owner and the team's administrators can open.</p></details>

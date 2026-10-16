@@ -16,23 +16,23 @@ function blogPosts(): array
             'finding-what-your-ai-already-made',
             0,
             'Finding the report your team already wrote',
-            'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes the reports, tables and documents your agents produce, so the next question starts from what already exists.',
+            'Each AI tool keeps its own history, so finished work goes missing. Artfct indexes what your agents produce, so a team can find its AI work, not rebuild it.',
             '2026-10-08',
             'search',
         ],
         'who-sees-what-your-ai-makes' => [
             'who-sees-what-your-ai-makes',
             1,
-            'Who sees what your AI makes',
-            'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. How sharing, isolation and revocation work in Artfct.',
+            'Who sees what your AI makes, and when',
+            'An artifact is shared with the team unless someone says otherwise, and the level can change at any time. Who sees what your AI makes, and how that changes.',
             '2026-10-07',
             'governance',
         ],
         'one-link-that-keeps-its-history' => [
             'one-link-that-keeps-its-history',
             2,
-            'One link that keeps its history',
-            'Publishing the same content twice resolves to one artifact, and publishing a change creates a new version under the same link. How versions, identity and provenance work in Artfct.',
+            'One link that keeps a version history',
+            'Publishing the same content twice resolves to one artifact, and a change creates a new version under the same link. How the version history and identity work.',
             '2026-10-06',
             'workflows',
         ],
@@ -48,31 +48,31 @@ function blogPosts(): array
             'artfct-vs-a-shared-drive-folder',
             4,
             'Artfct vs a shared drive: what works better',
-            'A shared drive folder holds the files people open. Artfct holds the pages AI tools make, records which tool produced each one, and answers search for the next agent. Where each one fits, and when a team should keep both.',
+            'A shared drive folder holds the files people open. Artfct holds the pages AI tools make and answers search for the next agent. Where each one fits.',
             '2026-10-04',
             'comparisons',
         ],
         'artfct-vs-your-ai-tools-own-sharing' => [
             'artfct-vs-your-ai-tools-own-sharing',
             5,
-            "Artfct vs your AI tool's own sharing: what works better",
-            "Claude Code Artifacts and OpenAI's Sites share work inside one vendor. Artfct keeps the same artifacts findable across tools. A comparison of reach, controls, durability and retrieval.",
+            'Artfct vs your AI tool\'s own sharing',
+            'Claude Code Artifacts and OpenAI\'s Sites share work inside one vendor. Artfct keeps the same work findable across tools. Reach, controls and retrieval.',
             '2026-10-03',
             'comparisons',
         ],
         'why-your-ai-tools-cannot-see-each-others-work' => [
             'why-your-ai-tools-cannot-see-each-others-work',
             6,
-            "Why your AI tools cannot see each other's work",
-            'Every AI tool keeps its own record of what it made, so the next agent rebuilds work another tool already finished. Why that boundary exists, and what changes when the record is shared.',
+            'Why your AI tools cannot see each other\'s work',
+            'Every AI tool keeps its own record of what it made, so the next agent rebuilds finished work. Why AI tools cannot see each other\'s work, and what changes.',
             '2026-10-02',
             'explainers',
         ],
         'what-is-an-ai-artifact' => [
             'what-is-an-ai-artifact',
             7,
-            'What is an AI artifact?',
-            'An AI artifact is a finished work product an AI tool made and a person can open: a report, dashboard, table or document. This explainer defines the term, separates it from chat scrollback and memory notes, and says where a record of finished work fits.',
+            'What is an AI artifact, and what is not?',
+            'An AI artifact is finished work an AI tool made that a person can open: a report, dashboard, table or document. How it differs from chat scrollback.',
             '2026-10-01',
             'explainers',
         ],
@@ -194,11 +194,57 @@ test('every published draft matches the post row generated from it', function ()
         $posts = collect($page->toArray()['props']['posts'])->keyBy('slug');
 
         foreach ($drafts as $slug => $draft) {
-            expect($posts->has($slug))->toBeTrue("no blogPosts row for the draft {$slug}");
+            $this->assertTrue($posts->has($slug), "no blogPosts row for the draft {$slug}");
             expect($posts[$slug]['title'])->toBe($draft['title'], "title drifted for {$slug}");
             expect($posts[$slug]['description'])->toBe($draft['description'], "description drifted for {$slug}");
         }
     });
+});
+
+test('posts.tsx carries the copy and the blocks of every published draft', function () {
+    $drafts = draftsByPublication()['published'];
+    $source = (string) file_get_contents(resource_path('js/lib/posts.tsx'));
+
+    expect($drafts)->not->toBeEmpty();
+
+    // draft-to-post.mjs writes the copy into the literal, and Prettier then
+    // re-quotes any string holding an apostrophe, so both spellings count and
+    // neither is a reason to weaken the check.
+    $carries = fn (string $haystack, string $text): bool => str_contains($haystack, $text)
+        || str_contains($haystack, str_replace("'", "\\'", $text));
+
+    // A block the generator stopped emitting leaves no other trace: the props
+    // test above still passes, and every browser test asserts a sentence.
+    $blocks = ['<table class="t">' => '<Table', '<pre><code>' => '<Pre>', '<h3>' => '<H3>'];
+
+    foreach ($drafts as $slug => $draft) {
+        // The entry delimiter, not `slug: '` — a body carries inner slug
+        // references for its cross-links, and slicing on those truncates the
+        // entry before the block the assertion is looking for.
+        $marker = "\n    {\n        slug: '";
+        $start = strpos($source, $marker.$slug."',");
+
+        // PHPUnit assertions rather than expect(): Pest's toContain() takes
+        // variadic needles, so a message passed to it is read as another needle
+        // and the assertion silently tests something else.
+        $this->assertNotFalse($start, "posts.tsx has no entry for {$slug}");
+
+        $next = strpos($source, $marker, (int) $start + 1);
+        $entry = substr($source, (int) $start, $next === false ? null : $next - (int) $start);
+
+        $this->assertTrue($carries($entry, $draft['title']), "the title of {$slug} is missing from its own entry");
+        $this->assertTrue($carries($entry, $draft['description']), "the description of {$slug} is missing from its own entry");
+
+        $html = (string) file_get_contents(base_path("skills/artfct-content/drafts/{$slug}.html"));
+
+        foreach ($blocks as $inDraft => $inJsx) {
+            if (! str_contains($html, $inDraft)) {
+                continue;
+            }
+
+            $this->assertStringContainsString($inJsx, $entry, "the {$inDraft} block of {$slug} never reached posts.tsx");
+        }
+    }
 });
 
 /**

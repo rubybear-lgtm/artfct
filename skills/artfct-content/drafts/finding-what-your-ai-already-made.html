@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Finding the report your team already wrote — artfct</title>
-<meta name="description" content="Each AI tool keeps its own history, so finished work goes missing. Artfct indexes the reports, tables and documents your agents produce, so the next question starts from what already exists.">
+<meta name="description" content="Each AI tool keeps its own history, so finished work goes missing. Artfct indexes what your agents produce, so a team can find its AI work, not rebuild it.">
 <style>
   body { background: #fdf6e3; color: #657b83; font-family: "Instrument Sans", system-ui, sans-serif; }
 </style>
 </head>
-<body data-surface="feature-showcase" data-register="glean-formal">
+<body data-surface="feature-showcase" data-register="glean-formal" data-target="AI work">
 <div class="wrap">
   <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
 
@@ -17,7 +17,7 @@
     <p class="kicker">Finding work</p>
     <h1>Finding the report your team already wrote</h1>
     <p class="meta"><b>The artfct team</b> · Last updated 2026-10-08 · 4 min</p>
-    <p class="lead">Teams rarely lack the analysis they need. They lack the ability to find it, because each AI tool keeps its own conversation history and nothing keeps the finished work. Artfct indexes the reports, tables and documents a team's agents produce, so the next question starts from what already exists rather than from nothing.</p>
+    <p class="lead">Teams rarely lack the analysis they need. They lack the ability to find it, because each AI tool keeps its own conversation history and nothing keeps the finished work. Artfct indexes the reports, tables and documents a team's agents produce, so a team can find its AI work rather than commissioning it again.</p>
   </header>
 
   <nav class="toc">
@@ -49,16 +49,16 @@
 
     <section class="s" id="s3">
       <h2>How does an agent search before it starts?</h2>
-      <p>A connected tool reaches the store through one tool call. It asks a question in ordinary language, and receives summaries, short excerpts and a link for each match. The agent can then say which artifacts it used, so a reader can follow the reasoning back to its source.</p>
+      <p>A connected tool reaches the store through <a href="https://modelcontextprotocol.io/specification/2025-06-18/server/tools">one tool call</a>. It asks a question in ordinary language, and receives summaries, short excerpts and a link for each match. The agent can then say which artifacts it used, so a reader can follow the reasoning back to its source.</p>
       <p>This is the mechanism the rest of the product rests on. An agent that searches first has the option of not rebuilding a report that already exists, rather than producing a second, slightly different version of a number the team had settled. Whether a team's tools take that option is the design's intent rather than a promise this page can make.</p>
-      <p>Teams commonly put that expectation in the project instructions an AI tool reads at the start of a session. A single line — search the store before starting research, and name what was used — is enough to make the behaviour consistent across tools.</p>
+      <p>Teams commonly put that expectation in the project instructions an AI tool reads at the start of a session. A single line — search the store before starting research, and name what was used — is enough to make the behavior consistent across tools.</p>
     </section>
 
     <section class="s" id="s4">
       <h2>How is one result ranked above another?</h2>
       <p>Matching alone produces poor results, because the artifact that shares the most vocabulary is frequently not the one a team relies on. Artfct fuses two signals first: semantic similarity, which finds work about the same subject in different words, and keyword matching, which finds the exact term when the exact term matters.</p>
       <p>The fused result is then ranked by evidence of use. Recency counts, and so does the number of distinct people who have opened an artifact, weighted so that one reader returning five times does not outrank five readers. That signal decays over time, and an artifact superseded by a newer version drops out of the ranking rather than coasting on its history. An artifact pinned to a collection receives an additional lift.</p>
-      <p>The practical consequence is that a canonical artifact outranks a semantically closer one nobody has opened. A team's own behaviour becomes part of the ranking, which is what turns a pile of outputs into a set of answers the team trusts.</p>
+      <p>The practical consequence is that a canonical artifact outranks a semantically closer one nobody has opened. A team's own behavior becomes part of the ranking, which is what turns a pile of outputs into a set of answers the team trusts.</p>
     </section>
 
     <section class="s" id="s5">
