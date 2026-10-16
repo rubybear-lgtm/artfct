@@ -253,7 +253,7 @@ Reversible. Phase 1 is read paths only; removing the route group removes the sur
 
 ## Open questions
 
-- **Suppression scope.** The spec suppresses operator **reads** only and never mutating actions. Confirm this is what is wanted.
-- **Published terms wording.** The privacy page needs a disclosure line before suppression is enabled; the wording and the edit are the legal-page owner's.
-- **Authorization URL hint.** Starting AuthKit sign-in scoped to the staff organization is expected to be possible through an organization parameter on the authorization URL. Confirm against `RealAuthKitClient` and the SDK at implementation; if it is not, the user selects the organization at sign-in and the `organization_id` check above still holds.
-- **WorkOS organization setup.** Creating the `artfct staff` organization with both MFA flags on is a WorkOS dashboard change in staging and, later, production. It is not made by this spec, and production stays on hold.
+- **Who may run which action.** Any staff user can run every action, including tenant erase. Whether erase (or all actions) should need `case_manager_at` or a separate privilege is undecided.
+- **Production.** The `artfct staff` WorkOS organization exists in the staging environment only (`org_01M51DJ3875V0G7QQS5PE44PK0`, both MFA flags on). Creating it in production, and setting `WORKOS_STAFF_ORGANIZATION_ID` in each environment, is a separate step; production stays on hold.
+
+Resolved at implementation: staff sign in at `/login?staff=1`, which scopes the hosted sign-in to the configured staff organization (the SDK's `organizationId`) and lands on `/ops`; the privacy page now discloses staff access and the withholding exception (`resources/js/pages/legal/privacy.tsx`, with `legal.terms_version` bumped).

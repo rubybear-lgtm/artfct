@@ -718,7 +718,12 @@ signed the user in through `services.workos.staff_organization_id`
 (`WORKOS_STAFF_ORGANIZATION_ID`), bound to that user and newer than their
 `staff_at`. Dev login never sets it. The organization's MFA policy is a WorkOS
 dashboard setting (`domainMfaRequired` / `nonDomainMfaRequired`); the
-application cannot observe MFA itself.
+application cannot observe MFA itself. Staff sign in at `/login?staff=1`,
+which sends the hosted sign-in to the staff organization only (the id comes
+from config, never from the request) and lands on `/ops`; it does nothing when
+no staff organization is configured. In staging the organization is
+`org_01M51DJ3875V0G7QQS5PE44PK0` ("artfct staff", both MFA flags on, no
+domains, so people join by invitation); production has none yet.
 
 **Content boundary.** Staff never see artifact titles, content, indexed text,
 comments, collections or search queries. The tenant page shows an audit
