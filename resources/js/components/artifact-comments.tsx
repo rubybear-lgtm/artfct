@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import comments from '@/routes/artifacts/comments';
 
 export interface ArtifactComment {
@@ -17,6 +18,7 @@ export interface ArtifactComment {
 interface Props {
     artifactId: string;
     comments: ArtifactComment[];
+    className?: string;
 }
 
 function formatWhen(value: string): string {
@@ -37,6 +39,7 @@ function authorLabel(comment: ArtifactComment): string {
 export default function ArtifactComments({
     artifactId,
     comments: items,
+    className,
 }: Props) {
     const [body, setBody] = useState('');
     const [replyTo, setReplyTo] = useState<number | null>(null);
@@ -70,7 +73,10 @@ export default function ArtifactComments({
         <section
             aria-label="Comments"
             data-testid="artifact-comments"
-            className="mx-auto mt-8 w-full max-w-3xl border-t border-border pt-6"
+            className={cn(
+                'mx-auto mt-8 w-full max-w-3xl border-t border-border pt-6',
+                className,
+            )}
         >
             <h2 className="text-lg font-normal">Comments</h2>
 

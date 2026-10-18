@@ -1,5 +1,11 @@
-import { Head, router } from '@inertiajs/react';
-import { ExternalLink } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    ExternalLink,
+    PanelRightClose,
+    PanelRightOpen,
+} from 'lucide-react';
+import { useState } from 'react';
 
 import ArtifactComments from '@/components/artifact-comments';
 import type { ArtifactComment } from '@/components/artifact-comments';
@@ -9,9 +15,10 @@ import type {
     ArtifactSharing,
 } from '@/components/artifact-share-control';
 import { Button } from '@/components/ui/button';
-import AppLayout from '@/layouts/app-layout';
-import { login } from '@/routes';
+import ViewerLayout from '@/layouts/viewer-layout';
+import { home, login } from '@/routes';
 import artifacts from '@/routes/artifacts';
+import consoleRoutes from '@/routes/console';
 
 interface VersionRow {
     number: number;
@@ -106,140 +113,194 @@ export default function ArtifactShow({
         );
     };
 
+    const [panelOpen, setPanelOpen] = useState(false);
+    const commentCount = comments?.length ?? 0;
+    const backHref = publicView
+        ? home.url()
+        : consoleRoutes.index.url({ team: team.slug });
+
     return (
         <>
             <Head title={name} />
 
             {/*
-                The page column is sized to the viewport minus the app chrome
-                (global header + nav + main's top padding): 6rem at phone
-                width, 9.875rem once the desktop nav appears. The header takes
-                its natural height and the frame flexes to fill the rest, so a
-                wrapped header shrinks the frame instead of pushing it off
-                screen. The 420px floor keeps a usable frame on short views.
+                The layout is a full-viewport column: a thin header, then the
+                artifact fills everything left. The details panel slides in
+                beside the frame (over it below lg) instead of sitting under it.
             */}
-            <div className="flex h-[calc(100dvh-6rem)] flex-col md:h-[calc(100dvh-9.875rem)]">
-                <header className="shrink-0 border-b border-border pb-3">
-                    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-                        <div className="w-full min-w-0 md:w-auto md:flex-1">
-                            <h1
-                                className="truncate text-2xl! leading-7 font-normal"
-                                title={tooltip}
-                            >
-                                {name}
-                            </h1>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                                {meta.map((part, index) => (
-                                    <span
-                                        key={part}
-                                        className="flex items-center gap-x-2"
-                                    >
-                                        {index > 0 && (
-                                            <span aria-hidden="true">·</span>
-                                        )}
-                                        {part}
-                                    </span>
-                                ))}
-                            </p>
-                        </div>
+            <header className="shrink-0 border-b border-border bg-background">
+                <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 md:flex-nowrap">
+                    <Link
+                        href={backHref}
+                        aria-label={
+                            publicView ? 'Artfct home' : 'Back to artifacts'
+                        }
+                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:size-11"
+                    >
+                        <ArrowLeft className="size-4" />
+                    </Link>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                            {versions && versions.length > 1 && (
-                                <label className="flex items-center gap-2 text-sm">
-                                    <span className="sr-only">Version</span>
-                                    <select
-                                        value={shownVersion}
-                                        onChange={(event) =>
-                                            selectVersion(
-                                                Number(event.target.value),
-                                            )
-                                        }
-                                        data-testid="version-picker"
-                                        className="h-8 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base"
-                                    >
-                                        {versions.map((version) => (
-                                            <option
-                                                key={version.number}
-                                                value={version.number}
-                                            >
-                                                Version {version.number}
-                                                {version.current
-                                                    ? ' (current)'
-                                                    : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                            )}
+                    <div className="flex min-w-0 flex-1 items-baseline gap-3">
+                        <h1
+                            className="truncate text-base! leading-6 font-medium"
+                            title={tooltip}
+                        >
+                            {name}
+                        </h1>
+                        <p className="hidden min-w-0 items-center gap-x-2 truncate text-xs text-muted-foreground md:flex">
+                            {meta.map((part, index) => (
+                                <span
+                                    key={part}
+                                    className="flex items-center gap-x-2"
+                                >
+                                    {index > 0 && (
+                                        <span aria-hidden="true">·</span>
+                                    )}
+                                    {part}
+                                </span>
+                            ))}
+                        </p>
+                    </div>
 
-                            {!publicView && (
-                                <ArtifactShareControl
-                                    artifactId={artifact.id}
-                                    sharing={artifact.sharing}
-                                    editAccess={artifact.editAccess}
-                                    publicSharingAllowed={
-                                        team.publicSharingAllowed
+                    <div className="flex flex-wrap items-center gap-2 max-md:order-last max-md:w-full">
+                        {versions && versions.length > 1 && (
+                            <label className="flex items-center gap-2 text-sm">
+                                <span className="sr-only">Version</span>
+                                <select
+                                    value={shownVersion}
+                                    onChange={(event) =>
+                                        selectVersion(
+                                            Number(event.target.value),
+                                        )
                                     }
-                                    canChangeSharing={artifact.canChangeSharing}
-                                    viewerUrl={viewerUrl}
-                                />
-                            )}
+                                    data-testid="version-picker"
+                                    className="h-8 rounded-md border border-border bg-transparent px-2 text-sm max-md:min-h-[44px] max-md:text-base"
+                                >
+                                    {versions.map((version) => (
+                                        <option
+                                            key={version.number}
+                                            value={version.number}
+                                        >
+                                            Version {version.number}
+                                            {version.current
+                                                ? ' (current)'
+                                                : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
 
+                        {!publicView && (
+                            <ArtifactShareControl
+                                artifactId={artifact.id}
+                                sharing={artifact.sharing}
+                                editAccess={artifact.editAccess}
+                                publicSharingAllowed={team.publicSharingAllowed}
+                                canChangeSharing={artifact.canChangeSharing}
+                                viewerUrl={viewerUrl}
+                            />
+                        )}
+
+                        <Button asChild variant="outline" size="sm">
+                            <a
+                                href={openUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid="open-artifact"
+                            >
+                                <ExternalLink className="size-3.5" /> Open
+                            </a>
+                        </Button>
+
+                        {downloadUrl && (
                             <Button asChild variant="outline" size="sm">
                                 <a
-                                    href={openUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    data-testid="open-artifact"
+                                    href={downloadUrl}
+                                    data-testid="download-artifact"
                                 >
-                                    <ExternalLink className="size-3.5" /> Open
+                                    Download
                                 </a>
                             </Button>
+                        )}
 
-                            {downloadUrl && (
-                                <Button asChild variant="outline" size="sm">
-                                    <a
-                                        href={downloadUrl}
-                                        data-testid="download-artifact"
-                                    >
-                                        Download
-                                    </a>
-                                </Button>
-                            )}
-
-                            {canSignInToEdit && (
-                                <a
-                                    href={login.url()}
-                                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                                    data-testid="sign-in-to-edit"
-                                >
-                                    Sign in to edit
-                                </a>
-                            )}
-                        </div>
+                        {canSignInToEdit && (
+                            <a
+                                href={login.url()}
+                                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                                data-testid="sign-in-to-edit"
+                            >
+                                Sign in to edit
+                            </a>
+                        )}
                     </div>
-                </header>
 
-                <div className="min-h-0 flex-1 pt-4">
-                    <iframe
-                        src={frameUrl}
-                        title={name}
-                        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                        referrerPolicy="no-referrer"
-                        data-testid="artifact-frame"
-                        className="h-full min-h-[420px] w-full rounded-lg border border-border bg-paper"
-                    />
+                    <button
+                        type="button"
+                        onClick={() => setPanelOpen((open) => !open)}
+                        aria-expanded={panelOpen}
+                        aria-controls="artifact-panel"
+                        aria-label={
+                            panelOpen ? 'Close details' : 'Open details'
+                        }
+                        data-testid="artifact-panel-toggle"
+                        className="relative inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:size-11"
+                    >
+                        {panelOpen ? (
+                            <PanelRightClose className="size-4" />
+                        ) : (
+                            <PanelRightOpen className="size-4" />
+                        )}
+                        {commentCount > 0 && !panelOpen && (
+                            <span className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-[var(--accent)] px-1 text-center text-[10px] leading-4 text-white">
+                                {commentCount}
+                            </span>
+                        )}
+                    </button>
                 </div>
-            </div>
+            </header>
 
-            {!publicView && comments !== undefined && (
-                <ArtifactComments
-                    artifactId={artifact.id}
-                    comments={comments}
+            <div className="relative flex min-h-0 flex-1">
+                <iframe
+                    src={frameUrl}
+                    title={name}
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                    referrerPolicy="no-referrer"
+                    data-testid="artifact-frame"
+                    className="h-full min-w-0 flex-1 border-0 bg-paper"
                 />
-            )}
+
+                {panelOpen && (
+                    <aside
+                        id="artifact-panel"
+                        aria-label="Artifact details"
+                        data-testid="artifact-panel"
+                        className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[380px] flex-col overflow-y-auto border-l border-border bg-background p-5 shadow-xl lg:static lg:z-auto lg:w-[380px] lg:shrink-0 lg:shadow-none"
+                    >
+                        <h2 className="text-lg font-normal">{name}</h2>
+                        {artifact.description && (
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                {artifact.description}
+                            </p>
+                        )}
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            {meta.join(' · ')}
+                        </p>
+
+                        {!publicView && comments !== undefined && (
+                            <ArtifactComments
+                                artifactId={artifact.id}
+                                comments={comments}
+                                className="max-w-none"
+                            />
+                        )}
+                    </aside>
+                )}
+            </div>
         </>
     );
 }
 
-ArtifactShow.layout = (page: React.ReactNode) => <AppLayout>{page}</AppLayout>;
+ArtifactShow.layout = (page: React.ReactNode) => (
+    <ViewerLayout>{page}</ViewerLayout>
+);

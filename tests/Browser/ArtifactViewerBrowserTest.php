@@ -164,6 +164,29 @@ test('the_version_picker_offers_every_version_when_there_is_more_than_one', func
         ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options[0].text", 'Version 3 (current)');
 });
 
+test('the_artifact_fills_the_page_and_the_details_panel_slides_in_beside_it', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Panel', 'viewer-panel@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $frameRect = "document.querySelector('[data-testid=\"artifact-frame\"]').getBoundingClientRect()";
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->resize(1440, 900)
+        ->assertNoJavaScriptErrors()
+        ->assertMissing('@artifact-panel')
+        // The frame spans the viewport width and sits under a thin header.
+        ->assertScript("{$frameRect}.width === window.innerWidth")
+        ->assertScript("{$frameRect}.top <= 64");
+
+    $page->click('@artifact-panel-toggle')
+        ->assertVisible('@artifact-panel')
+        ->assertSee('Comments')
+        ->assertScript("{$frameRect}.width < window.innerWidth");
+});
+
 test('the_header_wraps_at_375px_with_no_horizontal_scroll', function () {
     configureViewerBrowserLinks();
 
