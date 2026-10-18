@@ -110,3 +110,19 @@ test('get_guidance names its own guidance version like the guided tools', functi
 
     expect($tool['_meta']['artfct']['guidanceVersion'])->toBe(ArtifactGuidance::VERSION);
 });
+
+/*
+ * The guidance says inline scripts and outside resources are blocked. That is
+ * only true while the Worker's isolated-origin policy builder keeps scripts to
+ * 'self' and sets no img-src or font-src. If it changes, this fails so the
+ * guidance, the skills and the tool text are revisited with it (RUB-444).
+ */
+test('the guidance rule matches the isolated origin policy the Worker builds', function () {
+    $source = (string) file_get_contents(base_path('backend/src/artifact_origin.rs'));
+
+    expect($source)->toContain('script-src {script_src};')
+        ->toContain('let mut script_src = default_src.clone();')
+        ->not->toContain('script_src.push_str(" \'unsafe-inline\'")')
+        ->not->toContain('img-src')
+        ->not->toContain('font-src');
+});

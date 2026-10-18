@@ -13,7 +13,7 @@ hero.png        images and fonts as files, not data: URIs
 vendor/chart.umd.min.js   any library, vendored into the bundle
 ```
 
-A page with no script, no images and no outside fonts can be a single `html` string. The image and font rules above come from the served policy and were not checked against a live artifact. See RUB-444.
+A page with no script, no images and no outside fonts can be a single `html` string. Checked on a live staging artifact on 2026-10-18: an inline script, a base64 image, an image from another site and a Google Fonts stylesheet were all blocked. See RUB-444.
 
 ## Single-file form (older, shared-origin preview)
 
