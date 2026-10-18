@@ -2,6 +2,8 @@
 
 artfct hosts a single HTML file. All resources must be inlined or loaded from public CDNs.
 
+> **Permanent artifacts (`deploy_artifact`) do not run inline scripts.** They are served with `script-src 'self'`, so an inline `<script>` block, an `onclick=` attribute and a CDN `<script src>` are blocked and the page shows its static content with no error. For anything interactive publish a bundle: pass `files`, put the JavaScript in its own file (for example `app.js`), load it with `<script src="app.js"></script>`, and add any library as a file in the bundle. Inline `<style>` and `style=` attributes still work. The inlining table and template below describe the single-file form, which is fine for pages with no script. See RUB-444.
+
 ## Inlining Rules
 
 | Resource | How to inline |

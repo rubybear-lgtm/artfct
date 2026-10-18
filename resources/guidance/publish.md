@@ -5,6 +5,7 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 ## The contract
 
 - Give one self-contained HTML document (up to 1 MB) in `html`, or a bundle in `files` (up to 500 files, 8 MB). Text in the page is what gets indexed and found, so keep the real content in the HTML, not in images.
+- Scripts only run from a file in the same bundle. An inline `<script>` block, an `onclick=` style attribute and a script from another site are all blocked: the page shows its static content and nothing reports an error. For anything interactive, publish a bundle in `files`: put the JavaScript in its own file such as `app.js`, load it with `<script src="app.js"></script>`, and include any library as a file in the bundle. Inline `<style>` blocks and `style=` attributes are fine.
 - New artifacts are shared with the team by default. Do not widen `sharing` to `public` unless the person asked for it.
 - Never put secrets, keys, tokens or personal data in an artifact.
 

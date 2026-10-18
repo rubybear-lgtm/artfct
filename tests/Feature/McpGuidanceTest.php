@@ -78,3 +78,26 @@ test('the Agent Skills files carry exactly the served guidance', function (strin
     expect($skill)->toStartWith("---\nname: artfct-{$topic}\n")
         ->and(str_ends_with($skill, $guidance))->toBeTrue();
 })->with(ArtifactGuidance::TOPICS);
+
+/*
+ * RUB-444: a published page is served with `script-src 'self'`, so an inline
+ * script never runs and nothing reports it. The rule has to be in front of the
+ * agent that writes the page, in the guidance and in the tool description.
+ */
+test('the publish guidance says inline scripts do not run and where scripts must live', function () {
+    $text = ArtifactGuidance::topic('publish')['text'];
+
+    expect($text)->toContain('inline `<script>` block')
+        ->toContain('`onclick=`')
+        ->toContain('`files`')
+        ->toContain('app.js');
+});
+
+test('deploy_artifact tells agents inline scripts do not run', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')->toArray();
+
+    expect($tool['description'])->toContain('Inline `<script>` blocks do not run')
+        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts');
+});
