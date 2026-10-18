@@ -112,15 +112,21 @@ test('one-click install links carry the hosted MCP URL', function () {
         ->toContain($setup->vscodeWebInstallLink());
 });
 
-test('the agent setup prompt teaches connection and the one-line rule', function () {
+test('the agent setup prompt connects, verifies and teaches the project, leaving sign-in to the person', function () {
     $setup = new AiToolSetup('https://staging.artfct.dev');
 
     expect($setup->agentSetupPrompt())
         ->toContain('https://staging.artfct.dev/mcp')
         ->toContain('get_connection')
+        ->toContain('CLAUDE.md')
         ->toContain('AGENTS.md')
-        ->toContain($setup->agentInstructionLine())
+        ->toContain('restart')
+        ->toContain('Never ask me for a password or a token')
+        ->toContain('Connected to the wrong team')
+        ->toContain($setup->projectInstructions())
         ->toContain('https://staging.artfct.dev/llms-full.txt')
+        ->and($setup->projectInstructions())
+        ->toContain('base_version')
         ->and($setup->agentInstructionLine())
         ->toContain('search_artifacts')
         ->toContain('deploy_artifact');
@@ -244,10 +250,9 @@ test('setup guides for tools we have not verified are labelled as untested', fun
         ->toContain('Not yet tested by us');
 });
 
-test('the documented actions match the tools the server registers, minus the deprecated one', function () {
+test('the documented actions match the tools the server registers', function () {
     $registered = collect((new ReflectionClass(ArtfctServer::class))->getProperty('tools')->getDefaultValue())
         ->map(fn (string $tool): string => (new ReflectionClass($tool))->getAttributes(Name::class)[0]->getArguments()[0])
-        ->reject(fn (string $name): bool => $name === 'deploy_to_canvas')
         ->sort()
         ->values()
         ->all();

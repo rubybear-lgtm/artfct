@@ -371,7 +371,7 @@ test('a past-due workspace keeps reading artifacts but cannot deploy', function 
 
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
-        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => '<h1>x</h1>']],
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<h1>x</h1>']],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'quota_exceeded');

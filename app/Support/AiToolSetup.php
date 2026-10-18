@@ -215,8 +215,7 @@ class AiToolSetup
 
     /**
      * What a connected AI tool can do, in plain language. The names must match
-     * the tools `ArtfctServer` registers; the deprecated `deploy_to_canvas` is
-     * left out on purpose.
+     * the tools `ArtfctServer` registers.
      *
      * @return list<array{name: string, does: string, permission: string}>
      */
@@ -294,7 +293,7 @@ class AiToolSetup
 
             - Before starting research, a report or an analysis, search Artfct with `search_artifacts` for related work, and say which artifacts you used.
             - When you make something worth keeping (a report, dashboard, table, document or mockup), publish it with `deploy_artifact` and share the link it returns instead of pasting the raw code.
-            - When you change something you published before, publish it again with its `artifact_id` so the team keeps one link and its history.
+            - When you change something you published before, publish it again with its `artifact_id` and the `base_version` you built on, so the team keeps one link and its history and nobody's newer change is overwritten.
             - Full setup and tool reference: {$this->baseUrl}/llms-full.txt
             MD;
     }
@@ -311,18 +310,26 @@ class AiToolSetup
 
     /**
      * A prompt the user pastes into any agent to connect it to Artfct and
-     * teach it the one-line rule. Tool-agnostic on purpose: the agent knows
-     * its own client's steps for adding a remote MCP server.
+     * teach it when to use it. It branches on what the agent can do: a coding
+     * agent adds the server itself, a chat app walks the person through the
+     * guide. Sign-in always stays with the person.
      */
     public function agentSetupPrompt(): string
     {
         return <<<MD
-            Connect this project to Artfct:
+            Connect this project to Artfct, where my team keeps what our AI tools make. Work through these steps in order and tell me when you need something from me.
 
-            1. Add a remote MCP server named `artfct` at {$this->mcpUrl()} and complete the sign-in that opens in your browser.
-            2. Confirm it works by calling `get_connection` and telling me the team name it returns.
-            3. Append this line to AGENTS.md (create the file if needed): {$this->agentInstructionLine()}
-            4. Full tool reference if you need it: {$this->baseUrl}/llms-full.txt
+            1. If you already have Artfct tools such as `get_connection`, skip to step 3.
+            2. Add a remote MCP server named `artfct` at {$this->mcpUrl()}.
+               - If you can run shell commands, use your own client's command for adding a remote server. The commands for each client are at {$this->baseUrl}/llms-full.txt. If you cannot, read that page and walk me through the steps for the tool I am using.
+               - Signing in happens in my browser. Tell me to approve the page that opens, then wait. Never ask me for a password or a token.
+               - Some tools only show a new server after a restart or a reconnect (for example `/mcp`). If the Artfct tools are missing, tell me what to do, and carry on from step 3 once they appear.
+            3. Check the connection: call `get_connection` and tell me the team and person it reports. If that is not my team, stop and point me to the "Connected to the wrong team" section at {$this->baseUrl}/llms-full.txt.
+            4. Teach this project when to use Artfct. Add the block between the lines below to the file your tool reads for project instructions (`CLAUDE.md`, `AGENTS.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
+
+            ---
+            {$this->projectInstructions()}
+            ---
             MD;
     }
 

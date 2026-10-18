@@ -22,16 +22,6 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => true,
             ],
         ],
-        'deploy_to_canvas' => [
-            'scopes' => ['artifacts:deploy'],
-            'compatibility' => 'deprecated',
-            'annotations' => [
-                'readOnlyHint' => false,
-                'idempotentHint' => false,
-                'destructiveHint' => false,
-                'openWorldHint' => true,
-            ],
-        ],
         'search_artifacts' => [
             'scopes' => ['artifacts:read'],
             'annotations' => [
@@ -155,7 +145,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
                 'destructiveHint' => true,
-                'openWorldHint' => true,
+                'openWorldHint' => false,
             ],
         ],
     ];
@@ -170,6 +160,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
         $metadata = $tool['_meta']['artfct'];
 
         expect($tool['description'])->not->toBeEmpty()
+            ->and($tool['title'])->not->toBeEmpty()->not->toEndWith('Tool')
             ->and($tool['inputSchema']['type'])->toBe('object')
             ->and($tool['inputSchema'])->toHaveKey('properties')
             ->and($annotations)->toBe($contract['annotations'])
