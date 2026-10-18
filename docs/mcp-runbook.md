@@ -380,6 +380,13 @@ for `ARTIFACTS_DB` with the actual production D1 database ID and verify that
 the KV namespace and R2 bucket bindings point to production resources. Never
 reuse staging resource IDs.
 
+*Done in the repo (2026-10-18):* the route is now `*--prod.artfct.dev/*`, the
+Worker vars set `ARTFCT_ARTIFACT_ORIGIN_SUFFIX=--prod.artfct.dev`,
+`ARTFCT_APP_ORIGIN` and `ARTFCT_WORKER_EVENT_URL`, and `ARTIFACTS_DB` points at
+the production D1 `artfct-artifacts` (migrations 0001-0007 applied). Still
+manual: the matching `ARTFCT_ARTIFACT_ORIGIN_SUFFIX` on the Laravel production
+services, and the Worker secrets.
+
 **Steps, in order:**
 
 1. Confirm the zone's wildcard DNS record is proxied and Universal SSL covers one
