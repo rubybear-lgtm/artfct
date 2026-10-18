@@ -24,6 +24,8 @@ const REPO = resolve(HERE, "..", "..");
 const SCRIPTS = join(REPO, "skills", "artfct-content", "scripts");
 const INDEX_SCRIPT = join(SCRIPTS, "build-corpus-index.py");
 const LINT_SCRIPT = join(SCRIPTS, "lint-content.py");
+// Shared with the Pi extension and build-corpus-index.py, which hardcodes
+// ~/.pi/agent/artfct-content-corpus. Do not change here alone.
 const CORPUS_DB = join(homedir(), ".pi", "agent", "artfct-content-corpus", "glean.db");
 const CORPUS_JSONL = join(homedir(), ".pi", "agent", "artfct-content-corpus", "glean-corpus.jsonl");
 
@@ -127,6 +129,37 @@ function formatBlock(result: LintResult): string {
 	return lines.join("\n");
 }
 
+/**
+ * The HTML a deploy_artifact call would publish, whichever argument carries
+ * it. Tolerant of nulls and extra entries: MCP callers commonly send null
+ * for omitted fields, and a strict schema would fail open by rejecting the
+ * whole input before the marker check runs.
+ */
+function draftFrom(input: unknown): { html: string; where: string } | undefined {
+	if (!input || typeof input !== "object") {
+		return undefined;
+	}
+
+	if ("html" in input && typeof input.html === "string") {
+		return { html: input.html, where: "the html argument" };
+	}
+
+	if ("files" in input && Array.isArray(input.files)) {
+		const entry = "entrypoint" in input && typeof input.entrypoint === "string" ? input.entrypoint : "index.html";
+
+		for (const file of input.files) {
+			if (
+				file && typeof file === "object" && "path" in file && "content" in file &&
+				file.path === entry && typeof file.content === "string"
+			) {
+				return { html: file.content, where: entry };
+			}
+		}
+	}
+
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	const z = pi.zod;
 
@@ -136,17 +169,6 @@ export default function (pi: ExtensionAPI) {
 		),
 		limit: z.number().min(1).max(20).optional().describe("Pages to return, 1-20. Defaults to 6."),
 		section: z.string().optional().describe("Restrict to one corpus section, for example blog or perspectives."),
-	});
-
-	const DeployFiles = z.object({
-		path: z.string(),
-		content: z.string(),
-	});
-
-	const DeployParams = z.object({
-		html: z.string().optional(),
-		files: z.array(DeployFiles).optional(),
-		entrypoint: z.string().optional(),
 	});
 
 	const ContentLintParams = z.object({
@@ -231,8 +253,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: ContentLintParams,
 		approval: "read",
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const parsed = ContentLintParams.parse(params);
-			const result = await lintFile(pi, resolve(ctx.cwd, parsed.path), parsed.surface, parsed.register);
+			const result = await lintFile(pi, resolve(ctx.cwd, params.path), params.surface, params.register);
 
 			if (!("errors" in result)) {
 				throw new Error("content_lint could not run: " + result.failure);
@@ -251,24 +272,7 @@ export default function (pi: ExtensionAPI) {
 			return undefined;
 		}
 
-		const parsed = DeployParams.safeParse(event.input);
-
-		if (!parsed.success) {
-			return undefined;
-		}
-
-		const draft = parsed.data.html
-			? { html: parsed.data.html, where: "the html argument" }
-			: (() => {
-				if (!parsed.data.files) {
-					return undefined;
-				}
-
-				const entry = parsed.data.entrypoint ?? "index.html";
-				const match = parsed.data.files.find((f) => f.path === entry);
-
-				return match ? { html: match.content, where: entry } : undefined;
-			})();
+		const draft = draftFrom(event.input);
 
 		if (!draft) {
 			return undefined;

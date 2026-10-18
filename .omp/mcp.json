@@ -3,7 +3,7 @@
   "mcpServers": {
     "artfct": {
       "type": "http",
-      "url": "https://artfct.dev/mcp"
+      "url": "https://staging.artfct.dev/mcp"
     }
   }
 }

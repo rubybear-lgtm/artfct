@@ -158,8 +158,8 @@ test('the docs give step-by-step setup for every verified AI tool', function () 
     $codes = fn (string $id): array => collect($guides[$id]['steps'])->pluck('code')->filter()->values()->all();
 
     expect($guides->where('verified', true)->keys()->all())
-        ->toBe(['connect-claude-code', 'connect-codex', 'connect-omp', 'connect-opencode', 'connect-antigravity'])
-        ->and($codes('connect-omp'))->toHaveCount(1)
+        ->toBe(['connect-claude-code', 'connect-codex', 'connect-opencode', 'connect-antigravity'])
+        ->and($codes('connect-claude-code'))->toContain('claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
         ->and($codes('connect-codex'))->toBe(['codex mcp add artfct --url https://staging.artfct.dev/mcp', 'codex mcp login artfct'])
         ->and($codes('connect-opencode'))->toBe(['opencode mcp add artfct --url https://staging.artfct.dev/mcp', 'opencode mcp auth artfct'])
         ->and($guides['connect-opencode']['steps'][1]['text'])->toContain('select Approve once')
@@ -176,7 +176,9 @@ test('setup guides for tools we have not verified are labelled as untested', fun
     $guides = collect((new AiToolSetup('https://artfct.dev'))->guides())->keyBy('id');
 
     expect($guides->where('verified', false)->keys()->all())
-        ->toBe(['connect-claude', 'connect-chatgpt', 'connect-cursor', 'connect-vscode', 'connect-windsurf', 'connect-zed', 'connect-other'])
+        ->toBe(['connect-omp', 'connect-claude', 'connect-chatgpt', 'connect-cursor', 'connect-vscode', 'connect-windsurf', 'connect-zed', 'connect-other'])
+        ->and(json_decode(collect($guides['connect-omp']['steps'])->pluck('code')->filter()->values()->all()[0], true))->toBe(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
+        ->and($guides['connect-omp']['steps'][0]['text'])->toContain('~/.omp/agent/mcp.json')
         ->and(collect($guides['connect-cursor']['steps'])->pluck('code')->filter()->all())->toContain('cursor-agent mcp login artfct')
         ->and(json_decode($guides['connect-vscode']['steps'][0]['code'], true))->toBe(['servers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and(json_decode($guides['connect-windsurf']['steps'][0]['code'], true))->toBe(['mcpServers' => ['artfct' => ['serverUrl' => 'https://artfct.dev/mcp']]]);

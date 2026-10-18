@@ -15,6 +15,16 @@ function optional(wrapper) {
 		describe(text) {
 			return { ...this, description: text };
 		},
+		parse(value) {
+			return checkValue(this, value, "");
+		},
+		safeParse(value) {
+			try {
+				return { success: true, data: checkValue(this, value, "") };
+			} catch (error) {
+				return { success: false, error };
+			}
+		},
 	};
 }
 
@@ -27,16 +37,30 @@ function base(type) {
 		describe(text) {
 			return { ...this, description: text };
 		},
+		parse(value) {
+			return checkValue(this, value, "");
+		},
+		safeParse(value) {
+			try {
+				return { success: true, data: checkValue(this, value, "") };
+			} catch (error) {
+				return { success: false, error };
+			}
+		},
 	};
 }
 
 function checkValue(schema, value, path) {
-	if (value === undefined) {
-		if (!schema._optional) {
+	if (value === undefined || value === null) {
+		if (value === null && !schema._nullish) {
+			throw new Error((path || "value") + " must not be null");
+		}
+
+		if (!schema._optional && !schema._nullish) {
 			throw new Error("missing required field: " + path);
 		}
 
-		return undefined;
+		return value === null ? null : undefined;
 	}
 
 	switch (schema.type) {
@@ -47,7 +71,7 @@ function checkValue(schema, value, path) {
 
 			return value;
 		case "number":
-			if (typeof value !== "number") {
+			if (typeof value !== "number" || Number.isNaN(value)) {
 				throw new Error(path + " must be a number");
 			}
 
@@ -96,18 +120,8 @@ function checkValue(schema, value, path) {
 
 function object(shape) {
 	const schema = {
-		type: "object",
+		...base("object"),
 		shape,
-		parse(value) {
-			return checkValue(schema, value, "");
-		},
-		safeParse(value) {
-			try {
-				return { success: true, data: checkValue(schema, value, "") };
-			} catch (error) {
-				return { success: false, error };
-			}
-		},
 	};
 
 	return schema;
@@ -125,6 +139,6 @@ export const zod = {
 			return { ...this, max };
 		},
 	}),
-	array: (items) => base("array") && { ...base("array"), items },
-	enum: (values) => base("enum") && { ...base("enum"), values },
+	array: (items) => ({ ...base("array"), items }),
+	enum: (values) => ({ ...base("enum"), values }),
 };

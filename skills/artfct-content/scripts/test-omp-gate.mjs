@@ -7,8 +7,8 @@
  * Mirrors test-gate.mjs (the Pi original) with three differences: the
  * extension is bundled from .omp/extensions, the @oh-my-pi import is
  * stubbed, and `pi.zod` is backed by a minimal schema builder that records
- * shapes and validates the fields the gate relies on (optional/nullable
- * strings, string arrays of records, enums). The bundle is written into a
+ * shapes and validates the fields the gate relies on (optional strings,
+ * bounded numbers, string enums, arrays of file records). The bundle is written into a
  * throwaway directory that reproduces the real layout (.omp/extensions
  * beside skills/), because the extension locates the linter relative to
  * its own file. One case deliberately builds a layout with no linter, to
@@ -31,6 +31,7 @@ const STUBS = join(HERE, "test-omp-gate-stubs");
 const ESBUILD = join(REPO, "node_modules", ".bin", "esbuild");
 const FIXTURE = join(SKILL, "assets", "example-feature-showcase.html");
 const { __zod } = await import("./test-omp-gate-stubs/omp-agent.mjs");
+import { gateCases } from "./test-gate-cases.mjs";
 
 /**
  * Bundle the extension into a throwaway tree laid out as <base>/.omp/extensions
@@ -78,7 +79,7 @@ function harness(extension) {
 
 				return { stdout, stderr: stderr ?? "", code: 0 };
 			} catch (error) {
-				return { stdout: error.stdout ?? "", stderr: error.stderr ?? "", code: error.code ?? 1 };
+				return { stdout: error.stdout ?? "", stderr: error.stderr ?? "", code: typeof error.code === "number" ? error.code : 1 };
 			}
 		},
 	};
@@ -98,12 +99,15 @@ const check = (name, ok, detail) => {
 };
 
 async function main() {
-	const { base, out } = await build({ withLinter: true });
-	const broken = await build({ withLinter: false });
+	let built;
+	let broken;
 
 	try {
+		built = await build({ withLinter: true });
+		broken = await build({ withLinter: false });
+		const { out } = built;
 		const extension = await import(pathToFileURL(out).href);
-		const { handlers, tools, ctx } = harness(extension);
+		const { handlers, tools, notices, ctx } = harness(extension);
 
 		check(
 			"registers corpus_search and content_lint",
@@ -119,23 +123,29 @@ async function main() {
 		const clean = await readFile(FIXTURE, "utf8");
 
 		const cases = [
-			["a clean content draft is allowed", { html: clean }, false],
-			["an artifact without the marker passes untouched", { html: "<html><body>a dashboard</body></html>" }, false],
-			["the explicit skip marker is honoured", { html: clean.replace("data-surface=", 'data-lint="skip" data-surface=') }, false],
-			["a bundle entrypoint is linted", { files: [{ path: "index.html", content: clean }], entrypoint: "index.html" }, false],
-			["a bundle without a matching entrypoint passes", { files: [{ path: "other.html", content: clean }], entrypoint: "index.html" }, false],
-			["a non-goal claim is blocked", { html: clean.replace("It does not write", "Artfct is an artifact store. It does not write") }, true],
-			["an unfilled token is blocked", { html: clean.replace("Every AI tool on your team starts from the same store", "{{TITLE}}") }, true],
-			["a retired connection method is blocked", { html: clean.replace("Members install nothing.", "Members use the CLI.") }, true],
-			["an unsupportable absolute is blocked", { html: clean.replace("Members install nothing.", "Artfct guarantees nothing is ever lost.") }, true],
-			["a lab disparagement claim is blocked", { html: clean.replace("Members install nothing.", "Claude and Copilot give you no controls.") }, true],
-		];
+			...gateCases(clean),
+			["a null entrypoint still lints the bundle", { files: [{ path: "index.html", content: clean }], entrypoint: null }, false],
+			["null sibling fields still inspect the html draft", { html: clean.replace("Members install nothing.", "Artfct guarantees nothing is ever lost."), files: null, entrypoint: null }, true],
+		]
 
 		for (const [name, input, expectBlock] of cases) {
 			const result = await call(input);
 			check(name, Boolean(result && result.block) === expectBlock, "expected " + (expectBlock ? "block" : "allow"));
 		}
 
+		check("malformed deploy input without extractable html passes untouched", (await call({ html: 123 })) === undefined);
+		check("a file entry without content passes untouched", (await call({ files: [{ path: "index.html" }] })) === undefined);
+
+		const corpusParams = tools[0].parameters;
+		check("corpus_search rejects a non-string query", !corpusParams.safeParse({ query: 123 }).success);
+		check("corpus_search rejects an out-of-range limit", !corpusParams.safeParse({ query: "x", limit: 99 }).success);
+		check("corpus_search accepts a bounded limit", corpusParams.safeParse({ query: "x", limit: 5 }).success);
+
+		const lintParams = tools[1].parameters;
+		check("content_lint rejects an unknown surface", !lintParams.safeParse({ path: "d.md", surface: "nope" }).success);
+		check("content_lint accepts a known surface", lintParams.safeParse({ path: "d.md", surface: "comparison" }).success);
+
+		check("a passing draft notifies", notices.some((n) => n[1].includes("passes the gate")), JSON.stringify(notices));
 		check("unrelated tool calls are ignored", (await call({ command: "rm -rf /" }, "bash")) === undefined);
 
 		// Fail-closed: this layout has no linter at all, so a draft that opted
@@ -154,8 +164,13 @@ async function main() {
 
 		console.log(failed === 0 ? "gate: all cases passed" : "gate: " + failed + " failed");
 	} finally {
-		await rm(base, { recursive: true, force: true });
-		await rm(broken.base, { recursive: true, force: true });
+		if (built) {
+			await rm(built.base, { recursive: true, force: true });
+		}
+
+		if (broken) {
+			await rm(broken.base, { recursive: true, force: true });
+		}
 	}
 
 	process.exit(failed === 0 ? 0 : 1);
