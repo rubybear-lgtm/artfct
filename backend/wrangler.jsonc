@@ -55,7 +55,7 @@
         {
             "binding": "ARTIFACTS_DB",
             "database_name": "artfct-artifacts",
-            "database_id": "00000000-0000-0000-0000-000000000000",
+            "database_id": "ff104444-d0e7-4a63-8e89-d7ad76e82103",
             "migrations_dir": "migrations",
         },
     ],
