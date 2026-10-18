@@ -31,6 +31,40 @@ class AiToolSetup
     }
 
     /**
+     * One-click install links for the tools that support them. Cursor and
+     * VS Code both register a protocol handler (`cursor://`, `vscode:`) that
+     * installs a server straight from a link; each also has an https fallback
+     * for browsers without the handler. Every other tool stays copy-paste.
+     */
+    public function cursorInstallLink(): string
+    {
+        $config = base64_encode((string) json_encode(['url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "cursor://anysphere.cursor-deeplink/mcp/install?name=artfct&config={$config}";
+    }
+
+    public function cursorWebInstallLink(): string
+    {
+        $config = base64_encode((string) json_encode(['url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return 'https://cursor.com/install-mcp?config='.urlencode($config).'&name=artfct';
+    }
+
+    public function vscodeInstallLink(): string
+    {
+        $config = rawurlencode((string) json_encode(['name' => 'artfct', 'type' => 'http', 'url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "vscode:mcp/install?{$config}";
+    }
+
+    public function vscodeWebInstallLink(): string
+    {
+        $config = rawurlencode((string) json_encode(['type' => 'http', 'url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "https://vscode.dev/redirect/mcp/install?config={$config}&name=artfct";
+    }
+
+    /**
      * One command that adds Artfct to every supported AI tool it finds on the
      * machine. Each tool still asks the person to sign in afterwards.
      */
@@ -40,7 +74,7 @@ class AiToolSetup
     }
 
     /**
-     * @return list<array{id: string, label: string, verified: bool, intro?: string, steps: list<array{text: string, code?: string}>}>
+     * @return list<array{id: string, label: string, verified: bool, intro?: string, installLink?: string, installLinkFallback?: string, steps: list<array{text: string, code?: string}>}>
      */
     public function guides(): array
     {
@@ -126,8 +160,10 @@ class AiToolSetup
                 'id' => 'connect-cursor',
                 'label' => 'Cursor',
                 'verified' => false,
+                'installLink' => $this->cursorInstallLink(),
+                'installLinkFallback' => $this->cursorWebInstallLink(),
                 'steps' => [
-                    ['text' => 'Add this to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in one project):', 'code' => $this->json(['mcpServers' => ['artfct' => ['url' => $url]]])],
+                    ['text' => 'Select Add to Cursor below. If the link does not open Cursor, paste the address by hand instead:', 'code' => $this->json(['mcpServers' => ['artfct' => ['url' => $url]]])],
                     ['text' => 'Open Cursor Settings, find artfct in the tools list and select Connect, or run:', 'code' => 'cursor-agent mcp login artfct'],
                     ['text' => 'Approve the sign-in that opens in your browser.'],
                 ],
@@ -137,8 +173,10 @@ class AiToolSetup
                 'label' => 'VS Code',
                 'verified' => false,
                 'intro' => 'For GitHub Copilot Chat in agent mode.',
+                'installLink' => $this->vscodeInstallLink(),
+                'installLinkFallback' => $this->vscodeWebInstallLink(),
                 'steps' => [
-                    ['text' => 'Add this to `.vscode/mcp.json` in your project, or open the command palette, run MCP: Open User Configuration and add it there for every project:', 'code' => $this->json(['servers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
+                    ['text' => 'Select Add to VS Code below. If the link does not open VS Code, add this to `.vscode/mcp.json` in your project instead, or open the command palette, run MCP: Open User Configuration and add it there for every project:', 'code' => $this->json(['servers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
                     ['text' => 'Select Start above the artfct entry and approve the sign-in when VS Code asks.'],
                     ['text' => 'In Copilot Chat, switch to Agent mode. Artfct appears in the tools list.'],
                 ],
@@ -262,6 +300,33 @@ class AiToolSetup
     }
 
     /**
+     * A one-line rule for AGENTS.md, CLAUDE.md or Cursor rules. The full
+     * block lives in projectInstructions(); this is the smallest thing that
+     * still teaches the tool when to reach for Artfct.
+     */
+    public function agentInstructionLine(): string
+    {
+        return 'Before research, a report or an analysis, search Artfct with `search_artifacts` for related work; publish anything worth keeping with `deploy_artifact` and share its link.';
+    }
+
+    /**
+     * A prompt the user pastes into any agent to connect it to Artfct and
+     * teach it the one-line rule. Tool-agnostic on purpose: the agent knows
+     * its own client's steps for adding a remote MCP server.
+     */
+    public function agentSetupPrompt(): string
+    {
+        return <<<MD
+            Connect this project to Artfct:
+
+            1. Add a remote MCP server named `artfct` at {$this->mcpUrl()} and complete the sign-in that opens in your browser.
+            2. Confirm it works by calling `get_connection` and telling me the team name it returns.
+            3. Append this line to AGENTS.md (create the file if needed): {$this->agentInstructionLine()}
+            4. Full tool reference if you need it: {$this->baseUrl}/llms-full.txt
+            MD;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -271,12 +336,18 @@ class AiToolSetup
             'llmsUrl' => "{$this->baseUrl}/llms.txt",
             'llmsFullUrl' => "{$this->baseUrl}/llms-full.txt",
             'quickInstall' => $this->quickInstall(),
+            'cursorInstallLink' => $this->cursorInstallLink(),
+            'cursorWebInstallLink' => $this->cursorWebInstallLink(),
+            'vscodeInstallLink' => $this->vscodeInstallLink(),
+            'vscodeWebInstallLink' => $this->vscodeWebInstallLink(),
             'guides' => $this->guides(),
             'tools' => $this->tools(),
             'permissions' => $this->permissions(),
             'troubleshooting' => $this->troubleshooting(),
             'skills' => $this->skills(),
             'projectInstructions' => $this->projectInstructions(),
+            'agentSetupPrompt' => $this->agentSetupPrompt(),
+            'agentInstructionLine' => $this->agentInstructionLine(),
         ];
     }
 

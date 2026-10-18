@@ -15,6 +15,8 @@ interface Guide {
     label: string;
     verified: boolean;
     intro?: string;
+    installLink?: string;
+    installLinkFallback?: string;
     steps: GuideStep[];
 }
 
@@ -99,12 +101,30 @@ export default function ConnectShow({
                     </p>
                 )}
 
+                {guide.installLink && (
+                    <div className="mt-6 flex flex-wrap items-center gap-3">
+                        <a
+                            href={guide.installLink}
+                            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                        >
+                            Add to {guide.label}
+                        </a>
+                        {guide.installLinkFallback && (
+                            <a
+                                href={guide.installLinkFallback}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                            >
+                                Open in browser instead
+                            </a>
+                        )}
+                    </div>
+                )}
+
                 <Section title="What you need">
                     <p className="leading-[1.75] text-muted-foreground">
                         A {guide.label} that can reach a remote server, and the
-                        address below. Artfct runs only as a hosted server, so a
-                        tool that can only start programs on your own computer
-                        cannot connect.
                     </p>
                     <pre className="mt-4 overflow-x-auto rounded bg-muted p-3 font-mono text-sm">
                         {mcpUrl}

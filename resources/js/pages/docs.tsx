@@ -20,6 +20,8 @@ type ConnectionGuide = {
     label: string;
     verified: boolean;
     intro?: string;
+    installLink?: string;
+    installLinkFallback?: string;
     steps: SetupStep[];
 };
 
@@ -34,6 +36,8 @@ type AiToolSetup = {
     troubleshooting: Array<{ name: string; type: string; note: string }>;
     skills: Array<{ name: string; install: string; note: string }>;
     projectInstructions: string;
+    agentSetupPrompt: string;
+    agentInstructionLine: string;
 };
 
 type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
@@ -598,6 +602,23 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     <Tag>Not yet tested by us</Tag>
                 </div>
             )}
+            {guide.installLink && (
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button type="button" asChild>
+                        <a href={guide.installLink}>Add to {guide.label}</a>
+                    </Button>
+                    {guide.installLinkFallback && (
+                        <a
+                            href={guide.installLinkFallback}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                            Open in browser instead
+                        </a>
+                    )}
+                </div>
+            )}
             {guide.intro && (
                 <Prose>
                     <Inline text={guide.intro} />
@@ -980,6 +1001,15 @@ export default function Docs({ contract, setup }: DocsProps) {
                             each time.
                         </Prose>
                         <CodeBlock code={setup.projectInstructions} />
+                        <SubHeading id="connect-agent-prompt">
+                            Or let your agent do it
+                        </SubHeading>
+                        <Prose>
+                            Paste this into the agent instead and it connects
+                            itself, checks it works, and adds the one-line rule
+                            to your project.
+                        </Prose>
+                        <CodeBlock code={setup.agentSetupPrompt} />
                     </Section>
 
                     <Section

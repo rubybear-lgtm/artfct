@@ -81,6 +81,62 @@ test('the MCP config block on the docs page is the hosted URL only', function ()
         ->not->toContain('"command": "artfct"');
 });
 
+test('one-click install links carry the hosted MCP URL', function () {
+    $setup = new AiToolSetup('https://staging.artfct.dev');
+
+    $cursorConfig = json_decode((string) base64_decode(substr($setup->cursorInstallLink(), strpos($setup->cursorInstallLink(), 'config=') + 7)), true);
+    $vscodeConfig = json_decode(urldecode(substr($setup->vscodeInstallLink(), strpos($setup->vscodeInstallLink(), '?') + 1)), true);
+
+    expect($setup->cursorInstallLink())->toStartWith('cursor://anysphere.cursor-deeplink/mcp/install?name=artfct&config=')
+        ->and($cursorConfig)->toBe(['url' => 'https://staging.artfct.dev/mcp'])
+        ->and($setup->cursorWebInstallLink())->toStartWith('https://cursor.com/install-mcp?')
+        ->and($setup->vscodeInstallLink())->toStartWith('vscode:mcp/install?')
+        ->and($vscodeConfig)->toBe(['name' => 'artfct', 'type' => 'http', 'url' => 'https://staging.artfct.dev/mcp'])
+        ->and($setup->vscodeWebInstallLink())->toStartWith('https://vscode.dev/redirect/mcp/install?');
+
+    $guides = collect($setup->guides())->keyBy('id');
+
+    expect($guides['connect-cursor']['installLink'])->toBe($setup->cursorInstallLink())
+        ->and($guides['connect-vscode']['installLink'])->toBe($setup->vscodeInstallLink());
+
+    config(['app.url' => 'https://staging.artfct.dev']);
+
+    $this->get(route('docs'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('setup.cursorInstallLink', $setup->cursorInstallLink())
+            ->where('setup.vscodeInstallLink', $setup->vscodeInstallLink()));
+
+    expect($this->get('/llms-full.txt')->getContent())
+        ->toContain($setup->cursorInstallLink())
+        ->toContain($setup->vscodeWebInstallLink());
+});
+
+test('the agent setup prompt teaches connection and the one-line rule', function () {
+    $setup = new AiToolSetup('https://staging.artfct.dev');
+
+    expect($setup->agentSetupPrompt())
+        ->toContain('https://staging.artfct.dev/mcp')
+        ->toContain('get_connection')
+        ->toContain('AGENTS.md')
+        ->toContain($setup->agentInstructionLine())
+        ->toContain('https://staging.artfct.dev/llms-full.txt')
+        ->and($setup->agentInstructionLine())
+        ->toContain('search_artifacts')
+        ->toContain('deploy_artifact');
+
+    config(['app.url' => 'https://staging.artfct.dev']);
+
+    $this->get(route('docs'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('setup.agentSetupPrompt', $setup->agentSetupPrompt())
+            ->where('setup.agentInstructionLine', $setup->agentInstructionLine()));
+
+    expect($this->get('/llms-full.txt')->getContent())
+        ->toContain($setup->agentSetupPrompt());
+});
+
 test('the docs document only the hosted server', function () {
     $page = file_get_contents(resource_path('js/pages/docs.tsx'));
 
