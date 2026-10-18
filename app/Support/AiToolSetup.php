@@ -68,6 +68,17 @@ class AiToolSetup
                 ],
             ],
             [
+                'id' => 'connect-omp',
+                'label' => 'OMP',
+                'verified' => true,
+                'intro' => 'OMP (oh-my-pi) reads Model Context Protocol servers from its own config file. The project already carries `.omp/mcp.json`; these steps connect your personal install outside this repo.',
+                'steps' => [
+                    ['text' => 'Add the artfct server to your user config (`~/.omp/agent/mcp.json`, creating the file if needed):', 'code' => $this->json(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
+                    ['text' => 'Start `omp`, type `/mcp`, choose `artfct` and approve the sign-in that opens in your browser.'],
+                    ['text' => 'The five artfct skills load from this repo’s `.omp/skills/` automatically; no install step needed.'],
+                ],
+            ],
+            [
                 'id' => 'connect-opencode',
                 'label' => 'OpenCode',
                 'verified' => true,
@@ -214,7 +225,7 @@ class AiToolSetup
     public function troubleshooting(): array
     {
         return [
-            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings.'],
+            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. OMP: type /mcp, choose artfct and approve the sign-in. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings.'],
             ['name' => 'Connected to the wrong team', 'type' => 'Sign out, then in', 'note' => 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.'],
             ['name' => 'The tool cannot reach Artfct', 'type' => 'Check the address', 'note' => "Make sure the address is exactly {$this->mcpUrl()} and that your tool supports remote (HTTP) servers. Tools that can only start programs on your computer cannot connect."],
             ['name' => 'Your tool says it is being rate limited', 'type' => 'Wait a moment', 'note' => 'Wait as long as your tool reports, then try again.'],

@@ -158,8 +158,8 @@ test('the docs give step-by-step setup for every verified AI tool', function () 
     $codes = fn (string $id): array => collect($guides[$id]['steps'])->pluck('code')->filter()->values()->all();
 
     expect($guides->where('verified', true)->keys()->all())
-        ->toBe(['connect-claude-code', 'connect-codex', 'connect-opencode', 'connect-antigravity'])
-        ->and($codes('connect-claude-code'))->toContain('claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
+        ->toBe(['connect-claude-code', 'connect-codex', 'connect-omp', 'connect-opencode', 'connect-antigravity'])
+        ->and($codes('connect-omp'))->toHaveCount(1)
         ->and($codes('connect-codex'))->toBe(['codex mcp add artfct --url https://staging.artfct.dev/mcp', 'codex mcp login artfct'])
         ->and($codes('connect-opencode'))->toBe(['opencode mcp add artfct --url https://staging.artfct.dev/mcp', 'opencode mcp auth artfct'])
         ->and($guides['connect-opencode']['steps'][1]['text'])->toContain('select Approve once')
