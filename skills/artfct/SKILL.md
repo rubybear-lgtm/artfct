@@ -181,15 +181,15 @@ When `deploy_to_canvas` fails:
 
 ## HTML Requirements
 
-artfct hosts a single file. All resources must be inlined or loaded from public CDNs:
+A permanent artifact (`deploy_artifact`) is served with a policy that loads only the artifact's own files, so plan for that:
 
-- **CSS** → `<style>` in `<head>`
-- **JavaScript** → `<script>` before `</body>`
-- **Images** → base64 data URIs or public CDN URLs
-- **Fonts** → Google Fonts `@import` or system font stack
-- **Libraries** → CDN `<script src>` with Subresource Integrity (pin a specific version)
+- **CSS** → `<style>` in `<head>`; inline styles work
+- **JavaScript** → a separate file in a bundle (`files`), loaded with `<script src="app.js">`. Inline `<script>` blocks and `onclick=` attributes do not run
+- **Images** → files in the bundle. Base64 `data:` images and images from other sites are blocked
+- **Fonts** → a system font stack, or font files in the bundle. Google Fonts and other outside web fonts are blocked
+- **Libraries** → add the library file to the bundle. A CDN `<script src>` is blocked
 
-Never reference local paths — they will 404 once hosted. For the full HTML template and SRI guidance, see `references/html-authoring.md`.
+A page with no script, no images and no outside fonts can be one `html` string; anything else is a bundle. Every file the page uses must be in the bundle: a path that is not in it will 404. `references/html-authoring.md` has the bundle layout and the older single-file form (RUB-444).
 
 ## The Link You Hand Back
 

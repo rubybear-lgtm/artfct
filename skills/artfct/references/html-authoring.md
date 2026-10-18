@@ -1,8 +1,23 @@
 # Self-Contained HTML Reference
 
-artfct hosts a single HTML file. All resources must be inlined or loaded from public CDNs.
+## Permanent artifacts: a bundle with its own files
 
-> **Permanent artifacts (`deploy_artifact`) do not run inline scripts.** They are served with `script-src 'self'`, so an inline `<script>` block, an `onclick=` attribute and a CDN `<script src>` are blocked and the page shows its static content with no error. For anything interactive publish a bundle: pass `files`, put the JavaScript in its own file (for example `app.js`), load it with `<script src="app.js"></script>`, and add any library as a file in the bundle. Inline `<style>` and `style=` attributes still work. The inlining table and template below describe the single-file form, which is fine for pages with no script. See RUB-444.
+`deploy_artifact` serves each artifact from its own isolated origin with `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`. Only the artifact's own files load. An inline `<script>` block, an `onclick=` attribute and any script, image or font from another site are blocked, and so are base64 `data:` images and fonts. The page still shows, just without them, and nothing on the page says why. Inline `<style>` and `style=` attributes work.
+
+For anything interactive, or with images or fonts, pass `files` and reference each by a relative path:
+
+```
+index.html      <script src="app.js"></script>, <img src="hero.png">
+app.js          all application JavaScript
+hero.png        images and fonts as files, not data: URIs
+vendor/chart.umd.min.js   any library, vendored into the bundle
+```
+
+A page with no script, no images and no outside fonts can be a single `html` string. The image and font rules above come from the served policy and were not checked against a live artifact. See RUB-444.
+
+## Single-file form (older, shared-origin preview)
+
+Everything below describes one HTML file that inlines its resources or loads public CDNs. That form is served from the shared origin used by `deploy_to_canvas` (deprecated). Do not use it for `deploy_artifact`: its inline scripts, CDN libraries, Google Fonts and `data:` images are blocked there.
 
 ## Inlining Rules
 

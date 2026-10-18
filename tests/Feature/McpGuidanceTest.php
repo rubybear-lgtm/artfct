@@ -89,7 +89,8 @@ test('the publish guidance says inline scripts do not run and where scripts must
 
     expect($text)->toContain('inline `<script>` block')
         ->toContain('`onclick=`')
-        ->toContain('`files`')
+        ->toContain('from another site')
+        ->toContain('`data:`')
         ->toContain('app.js');
 });
 
@@ -98,6 +99,14 @@ test('deploy_artifact tells agents inline scripts do not run', function () {
     $server->start();
     $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')->toArray();
 
-    expect($tool['description'])->toContain('Inline `<script>` blocks do not run')
-        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts');
+    expect($tool['description'])->toContain('Inline `<script>` blocks and resources from other sites do not load')
+        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts or outside resources');
+});
+
+test('get_guidance names its own guidance version like the guided tools', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'get_guidance')->toArray();
+
+    expect($tool['_meta']['artfct']['guidanceVersion'])->toBe(ArtifactGuidance::VERSION);
 });

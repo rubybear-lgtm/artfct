@@ -32,7 +32,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. Inline `<script>` blocks do not run on the served page: put JavaScript in its own file in `files`. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. Inline `<script>` blocks and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
@@ -376,7 +376,7 @@ final class DeployArtifactTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'html' => $schema->string()->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document, without inline scripts (they do not run; use `files` for interactive pages). Give this or `files`, not both.')->nullable(),
+            'html' => $schema->string()->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document, without inline scripts or outside resources (they do not load; put scripts, images and fonts in `files`). Give this or `files`, not both.')->nullable(),
             'files' => $schema->array()->items($schema->object([
                 'path' => $schema->string()->max(255)->description('Relative path inside the bundle, e.g. `index.html` or `assets/app.css`. No leading slash, `..` or backslashes.')->required(),
                 'content' => $schema->string()->description('The file content.')->required(),
