@@ -226,7 +226,7 @@ Check these before touching storage, request routing, identity, cryptography, or
 - `isset($a, $b, $c)` is an AND, not an OR.
 - `PRAGMA foreign_keys` is per-connection and defaults OFF, so `ON DELETE CASCADE` silently does not fire.
 - `wrangler dev` replaces the request `Host` with the host inferred from the first `routes` entry, and no flag disables it — run the dev session from a config copy with `routes` stripped.
-- Cloudflare route patterns allow exactly one wildcard and it must BEGIN the hostname; `*.artfct.dev/*` is the only expressible form and it over-matches `staging.artfct.dev`.
+- Cloudflare route patterns allow exactly one wildcard and it must BEGIN the hostname; a bare `*.artfct.dev/*` over-matches `staging.artfct.dev`, so artifact hosts carry a marker suffix (`--stg`, `--prod`) and the route anchors on it.
 - PHP and browsers parse URLs differently, so validating with one and navigating with the other leaves a gap.
 
 **A merged fix on a stale deployment is not live.** Confirm the running version carries the change, not just the branch.
