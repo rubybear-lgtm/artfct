@@ -4,7 +4,9 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpTelemetry;
+use App\Models\ArtifactIndexEntry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -64,11 +66,30 @@ final class GetConnectionTool extends Tool
             'credential_source' => 'bearer',
             'client' => $httpRequest->header('MCP-Client-Name'),
             'session_id' => $request->sessionId(),
+            'search' => $this->searchReadiness($team->id),
         ]);
 
         app(McpTelemetry::class)->record('get_connection', 'success', $startedAt);
 
         return $response;
+    }
+
+    /**
+     * Whether search works for this workspace, so a caller can tell a disabled
+     * search from one that is on but has nothing indexed yet.
+     *
+     * @return array{enabled: bool, indexed_artifacts: int, last_indexed_at: string|null}
+     */
+    private function searchReadiness(int $teamId): array
+    {
+        $entries = ArtifactIndexEntry::query()->where('team_id', $teamId);
+        $lastIndexedAt = $entries->max('extracted_at');
+
+        return [
+            'enabled' => (bool) config('indexing.enabled'),
+            'indexed_artifacts' => $entries->count(),
+            'last_indexed_at' => $lastIndexedAt === null ? null : Carbon::parse($lastIndexedAt)->toIso8601String(),
+        ];
     }
 
     /**

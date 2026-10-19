@@ -229,6 +229,8 @@ The skill teaches agents:
 - How to author a published page: a bundle with its own script, image and font files (RUB-444)
 - How to handle errors and present URLs clearly
 
+`skills/artfct-init/` sets artfct up for a project (RUB-446): it checks the connection and search readiness, adds a managed block to `AGENTS.md` or `CLAUDE.md`, installs `GUIDELINES.md` and `DESIGN.md`, grants only the tool permissions the user approves (Claude Code and Codex), and stores optional personal preferences or reviewed team defaults. Its scripts run on Node with no dependencies and are tested with `npm run test:skills`.
+
 Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.
 
 ## Development
