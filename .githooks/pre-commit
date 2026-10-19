@@ -115,7 +115,7 @@ if [ "$HAS_PHP" = true ]; then
     fi
 
     echo "🐘 Running PHP pre-commit checks..."
-    vendor/bin/pint --test --format agent
+    vendor/bin/pint --parallel --test --format agent
     echo "✅ PHP checks passed."
 fi
 

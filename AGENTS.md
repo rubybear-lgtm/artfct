@@ -284,7 +284,7 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 
 - always: gitleaks secret scan on staged files
 - Rust staged: `cargo fmt --all -- --check`, `cargo check --workspace --locked`, `cargo check -p artfct-backend --target wasm32-unknown-unknown`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p artfct-backend`
-- PHP staged: `vendor/bin/pint --test --format agent`
+- PHP staged: `vendor/bin/pint --parallel --test --format agent`
 - frontend staged: `npm run format:check`, `npm run lint:check`, `npm run types:check`
 
 `composer test` runs config clear + Pint check + Pest; `composer ci:check` runs the full frontend and test suite. A failing hook is a real failure — fix it, do not bypass with `--no-verify`.

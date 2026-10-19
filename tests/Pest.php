@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\ExternalIdentity;
 use App\Models\OAuthClient;
 use App\Models\Team;
 use App\Models\User;
@@ -319,4 +320,47 @@ function configureOrgJwt(): void
         'services.org_jwt.worker_base_url' => 'https://worker.test',
         'services.org_jwt.revocation_write_secret' => 'test-revocation-secret',
     ]);
+}
+
+/*
+ * Anything below is loaded by every test process, which is what makes it
+ * usable from more than one test file. A helper or constant declared inside a
+ * test file only exists when that file is loaded, so under `pest --parallel`
+ * — where each worker loads just the files assigned to it — a second file
+ * using it dies with "undefined function/constant". Keep cross-file helpers
+ * here, not in a test file.
+ */
+
+/**
+ * RUB-437: a permanent artifact is versioned under a stable id, so every
+ * Laravel id check, link builder and MCP tool that names an artifact has to
+ * understand the new shape (13-character lowercase base36) without losing the
+ * old one (32-character lowercase hex).
+ */
+const STABLE_ARTIFACT_ID = 'abc123def4567';
+
+/**
+ * Creates a member of the team and links a Slack external identity to them —
+ * the state every slash-command and unfurl test starts from (spec 15).
+ */
+function linkSlackUser(Team $team, TeamRole $role, string $slackUserId): User
+{
+    $user = memberOfTeam($team, $role);
+    ExternalIdentity::create([
+        'user_id' => $user->id,
+        'provider' => 'slack',
+        'external_id' => $slackUserId,
+        'email' => $user->email,
+        'verified_at' => now(),
+    ]);
+
+    return $user;
+}
+
+/**
+ * The console URL the browser tests open to find the seeded RUB-367 artifact.
+ */
+function consoleUrl(Team $team): string
+{
+    return '/settings/teams/'.$team->slug.'/console?q=RUB367';
 }
