@@ -567,28 +567,30 @@ export default function ConsoleIndex({
                                 <li
                                     key={artifact.id}
                                     data-testid={`artifact-card-${artifact.id}`}
-                                    className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper"
+                                    className="group flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper transition-colors duration-200 hover:border-foreground/25"
                                 >
-                                    <div className="relative">
-                                        {previewUrl ? (
-                                            <ArtifactPreview
-                                                previewUrl={previewUrl}
-                                                title={`Preview of ${artifactName(artifact)}`}
-                                                decorative
-                                                className="border-b border-border"
-                                            />
-                                        ) : (
-                                            <div
-                                                aria-hidden="true"
-                                                className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
-                                            >
-                                                <RowIcon />
-                                            </div>
-                                        )}
+                                    <div className="relative overflow-hidden">
+                                        <div className="transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                                            {previewUrl ? (
+                                                <ArtifactPreview
+                                                    previewUrl={previewUrl}
+                                                    title={`Preview of ${artifactName(artifact)}`}
+                                                    decorative
+                                                    className="border-b border-border"
+                                                />
+                                            ) : (
+                                                <div
+                                                    aria-hidden="true"
+                                                    className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
+                                                >
+                                                    <RowIcon />
+                                                </div>
+                                            )}
+                                        </div>
                                         {artifact.provenance.agent && (
                                             <span
                                                 aria-hidden="true"
-                                                className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper"
+                                                className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper transition-transform duration-200 group-hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
                                             >
                                                 <AiToolIcon
                                                     tool={
