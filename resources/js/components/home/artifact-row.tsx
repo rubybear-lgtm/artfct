@@ -91,27 +91,29 @@ export function RecentArtifactCard({
     ].join(' · ');
 
     return (
-        <li className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper">
-            <div className="relative">
-                {item.previewUrl ? (
-                    <ArtifactPreview
-                        previewUrl={item.previewUrl}
-                        title={`Preview of ${rowTitle(item)}`}
-                        decorative
-                        className="border-b border-border"
-                    />
-                ) : (
-                    <div
-                        aria-hidden="true"
-                        className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
-                    >
-                        <RowIcon />
-                    </div>
-                )}
+        <li className="group flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper transition-colors duration-200 hover:border-foreground/25">
+            <div className="relative overflow-hidden">
+                <div className="transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                    {item.previewUrl ? (
+                        <ArtifactPreview
+                            previewUrl={item.previewUrl}
+                            title={`Preview of ${rowTitle(item)}`}
+                            decorative
+                            className="border-b border-border"
+                        />
+                    ) : (
+                        <div
+                            aria-hidden="true"
+                            className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
+                        >
+                            <RowIcon />
+                        </div>
+                    )}
+                </div>
                 {item.agent && (
                     <span
                         aria-hidden="true"
-                        className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper"
+                        className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper transition-transform duration-200 group-hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
                     >
                         <AiToolIcon tool={item.agent} size={16} />
                     </span>
