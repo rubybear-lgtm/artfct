@@ -21,10 +21,7 @@ export function CollectionList({
     });
 
     return (
-        <section
-            aria-labelledby="home-collections-heading"
-            className="min-w-0 min-[800px]:border-l min-[800px]:border-border min-[800px]:pl-10"
-        >
+        <section aria-labelledby="home-collections-heading" className="min-w-0">
             <h2 id="home-collections-heading" className="eyebrow mb-3">
                 Collections
             </h2>

@@ -1,6 +1,7 @@
 import { FileText } from 'lucide-react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { ArtifactPreview } from '@/components/artifact-preview';
 import type {
     HomeRecentArtifact,
     HomeSearchResult,
@@ -52,7 +53,30 @@ function rowTitle(item: { title: string; id: string }): string {
     return item.title || item.id.slice(0, 8);
 }
 
-export function RecentArtifactRow({
+/** Placeholder cards while a scope switch is in flight. */
+export function SkeletonCards() {
+    return (
+        <ul
+            aria-hidden="true"
+            className="grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3"
+        >
+            {[0, 1, 2].map((index) => (
+                <li
+                    key={index}
+                    className="overflow-hidden rounded-[10px] border border-border bg-paper"
+                >
+                    <span className="block aspect-[8/5] bg-muted motion-safe:animate-pulse" />
+                    <span className="flex flex-col gap-2 p-4">
+                        <span className="block h-4 w-2/3 rounded bg-muted motion-safe:animate-pulse" />
+                        <span className="block h-3 w-1/3 rounded bg-muted motion-safe:animate-pulse" />
+                    </span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+export function RecentArtifactCard({
     item,
     canOpenArtifacts,
 }: {
@@ -67,15 +91,39 @@ export function RecentArtifactRow({
     ].join(' · ');
 
     return (
-        <li className="flex min-w-0 items-start gap-3 py-4">
-            <RowIcon />
-            <div className="flex min-w-0 flex-1 flex-col">
+        <li className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper">
+            <div className="relative">
+                {item.previewUrl ? (
+                    <ArtifactPreview
+                        previewUrl={item.previewUrl}
+                        title={`Preview of ${rowTitle(item)}`}
+                        decorative
+                        className="border-b border-border"
+                    />
+                ) : (
+                    <div
+                        aria-hidden="true"
+                        className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
+                    >
+                        <RowIcon />
+                    </div>
+                )}
+                {item.agent && (
+                    <span
+                        aria-hidden="true"
+                        className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper"
+                    >
+                        <AiToolIcon tool={item.agent} size={16} />
+                    </span>
+                )}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1 p-4">
                 {clickable ? (
                     <a
                         href={item.openUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="line-clamp-2 min-w-0 font-semibold break-words hover:underline"
+                        className="line-clamp-2 min-w-0 font-semibold break-words hover:text-primary hover:underline"
                     >
                         {rowTitle(item)}
                     </a>
@@ -88,16 +136,11 @@ export function RecentArtifactRow({
                         {rowTitle(item)}
                     </span>
                 )}
-                <span className="mt-0.5 min-w-0 text-sm break-words text-muted-foreground">
+                <span className="min-w-0 text-xs break-words text-muted-foreground">
                     {meta}
                 </span>
-                {item.description && (
-                    <span className="mt-0.5 line-clamp-2 min-w-0 text-sm break-words text-muted-foreground">
-                        {item.description}
-                    </span>
-                )}
                 {item.revoked && (
-                    <span className="mt-1.5">
+                    <span className="mt-0.5">
                         <Badge variant="outline">No longer shared</Badge>
                     </span>
                 )}
