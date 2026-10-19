@@ -60,10 +60,11 @@ jobs:
         run: |
           cargo test -p artfct-backend --locked
 
-  # PHP static analysis and the frontend checks. Same steps the old
-  # monolithic `application` job ran before its Pest steps.
+  # PHP static analysis, the frontend checks, and the RUB-446 skill script
+  # suite. Same steps the old monolithic `application` job ran before its Pest
+  # steps.
   php_static:
-    name: PHP static analysis and frontend checks
+    name: Static checks (PHP, frontend, skill scripts)
     runs-on: ubuntu-latest
 
     steps:
@@ -143,6 +144,10 @@ jobs:
 
       - name: Check frontend route references
         run: npm run routes:check
+
+      # RUB-446: the artfct-init skill's scripts have their own Node test suite.
+      - name: Test skill scripts
+        run: npm run test:skills
 
   # The unit and feature suites hold no state a worker can see from another
   # worker: RefreshDatabase runs them on in-memory SQLite, so ParaTest's

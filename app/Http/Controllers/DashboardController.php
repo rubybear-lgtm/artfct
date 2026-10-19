@@ -30,10 +30,6 @@ class DashboardController extends Controller
 
     public function __invoke(Request $request): Response|RedirectResponse
     {
-        if ($request->user()->needsFirstTeam()) {
-            return redirect()->route('onboarding.team.show');
-        }
-
         $email = strtolower($request->user()->email);
 
         $pendingInvitations = TeamInvitation::query()

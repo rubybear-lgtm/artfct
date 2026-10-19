@@ -1,5 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,23 +9,13 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 import type { SharedTeam } from '@/types/shared';
 
 export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
-    const { data, setData, post, processing, errors, reset } = useForm({
-        name: '',
-        slug: '',
-    });
-
-    const submit = (e: FormEvent) => {
-        e.preventDefault();
-        post(teamRoutes.store.url(), { onSuccess: () => reset() });
-    };
+    const personalTeam = teams.find((team) => team.isPersonal);
 
     return (
         <>
@@ -34,7 +23,7 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
             <PageHeader
                 eyebrow="Workspaces"
                 title="Your teams"
-                description="Switch to another team workspace or create a new one."
+                description="Switch to another team workspace."
             />
 
             <div className="flex flex-col gap-6">
@@ -92,64 +81,28 @@ export default function TeamsIndex({ teams }: { teams: SharedTeam[] }) {
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>New team</CardTitle>
-                        <CardDescription>
-                            You become its owner and admin.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form
-                            onSubmit={submit}
-                            className="flex flex-wrap items-end gap-3"
-                        >
-                            <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-                                <Label htmlFor="team-name">Name</Label>
-                                <Input
-                                    id="team-name"
-                                    name="name"
-                                    value={data.name}
-                                    onChange={(e) =>
-                                        setData('name', e.target.value)
-                                    }
-                                />
-                                {errors.name && (
-                                    <p
-                                        role="alert"
-                                        className="text-sm text-destructive"
-                                    >
-                                        {errors.name}
-                                    </p>
-                                )}
-                            </div>
-                            <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-                                <Label htmlFor="team-slug">
-                                    Slug (optional)
-                                </Label>
-                                <Input
-                                    id="team-slug"
-                                    name="slug"
-                                    value={data.slug}
-                                    onChange={(e) =>
-                                        setData('slug', e.target.value)
-                                    }
-                                />
-                                {errors.slug && (
-                                    <p
-                                        role="alert"
-                                        className="text-sm text-destructive"
-                                    >
-                                        {errors.slug}
-                                    </p>
-                                )}
-                            </div>
-                            <Button type="submit" disabled={processing}>
-                                Create team
+                {personalTeam && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Need a team?</CardTitle>
+                            <CardDescription>
+                                Turn your personal workspace into a team and
+                                your artifacts come with it.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button asChild variant="outline">
+                                <Link
+                                    href={teamRoutes.edit.url({
+                                        team: personalTeam.slug,
+                                    })}
+                                >
+                                    Set up a team
+                                </Link>
                             </Button>
-                        </form>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </>
     );

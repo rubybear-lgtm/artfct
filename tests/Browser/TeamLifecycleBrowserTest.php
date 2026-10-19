@@ -3,6 +3,7 @@
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
+use App\Models\Team;
 use App\Models\User;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\VectorChunk;
@@ -19,16 +20,16 @@ test('new_user_signs_up_becomes_owner_and_invites_a_teammate', function () {
         ->fill('email', 'captain@example.com')
         ->fill('name', 'Casey Captain')
         ->click('Continue with Google')
-        ->assertSee('Create your first team')
-        ->click('Create team')
         ->assertSee('What are you looking for?')
         ->assertNoJavaScriptErrors();
 
     $page->navigate('/settings/teams')
         ->assertSee('Your teams')
-        ->fill('name', 'Northwind Analytics')
+        ->click('Set up a team')
+        ->fill('upgrade-name', 'Northwind Analytics')
         ->click('Create team')
         ->assertSee('Northwind Analytics')
+        ->navigate('/settings/teams/'.Team::query()->where('name', 'Northwind Analytics')->value('slug'))
         ->assertSee('owner')
         ->fill('email', 'teammate@example.com')
         ->click('Send invite')

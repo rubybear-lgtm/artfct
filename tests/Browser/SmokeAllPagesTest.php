@@ -38,7 +38,7 @@ function coveredElsewhere(): array
         'blog.show' => 'BlogPermalinksTest',
         'connect.show' => 'ConnectPagesTest',
         'invitations.show' => 'InvitationBrowserTest',
-        'onboarding.team.show' => 'IdentityBrowserTest (first sign-in)',
+        'onboarding.team.show' => 'OnboardingTest (redirects to the dashboard)',
         'terms.accept.show' => 'TeamLifecycleBrowserTest (consent)',
         'console.open' => 'ConsoleOpenLinkBrowserTest (control) and ConsoleTest (signed redirect)',
         'console.versions' => 'ArtifactVersionsBrowserTest (needs a seeded permanent artifact id)',

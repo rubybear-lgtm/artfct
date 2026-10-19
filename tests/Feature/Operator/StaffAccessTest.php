@@ -386,7 +386,7 @@ test('staff_org_session_with_staff_at_reaches_ops', function () {
 
     $response = staffAccessSameSession()->get('/ops');
 
-    $response->assertOk()->assertSee('ok');
+    $response->assertOk()->assertInertia(fn (Assert $page) => $page->component('ops/tenants/index'));
     expect($response->headers->get('X-Robots-Tag'))->toBe('noindex, nofollow');
 
     staffAccessEnvironment('staging');
