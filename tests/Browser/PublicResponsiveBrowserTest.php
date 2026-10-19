@@ -54,7 +54,6 @@ test('auth pages fit every viewport without sideways scrolling', function () {
 
     $user = User::factory()->create(['email' => 'responsive@example.com']);
     test()->actingAs($user);
-    assertPagesFitViewports(['/onboarding/team'], 'Create your first team');
 
     $team = app(CreateTeam::class)->handle($user, 'Responsive Co');
     oauthTestClient();
@@ -120,16 +119,6 @@ test('phone controls meet touch and type sizes', function () {
     visit('/login')
         ->resize(390, 844)
         ->assertScript('parseFloat(getComputedStyle(document.querySelector(\'#email\')).fontSize) >= 16', true)
-        ->assertScript('document.querySelector(\'button[type="submit"]\').getBoundingClientRect().height >= 44', true)
-        ->assertNoJavaScriptErrors();
-
-    // Team creation is the same story one step later.
-    $user = User::factory()->create(['email' => 'phone-targets@example.com']);
-    test()->actingAs($user);
-
-    visit('/onboarding/team')
-        ->resize(390, 844)
-        ->assertScript('parseFloat(getComputedStyle(document.querySelector(\'#name\')).fontSize) >= 16', true)
         ->assertScript('document.querySelector(\'button[type="submit"]\').getBoundingClientRect().height >= 44', true)
         ->assertNoJavaScriptErrors();
 });

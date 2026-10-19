@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\CreateTeam;
+use App\Actions\Teams\UpgradePersonalTeam;
 use App\Enums\AuditEventType;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
@@ -12,6 +13,7 @@ use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Rules\TeamName;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use App\Services\Sharing\OrgSettingsWriter;
@@ -56,6 +58,30 @@ class TeamController extends Controller
     }
 
     /**
+     * Turn a personal team into a team, keeping its artifacts.
+     */
+    public function upgrade(Request $request, Team $team, UpgradePersonalTeam $upgradePersonalTeam, AuditLogger $auditLogger): RedirectResponse
+    {
+        Gate::authorize('upgrade', $team);
+
+        $submitted = $request->input('name');
+
+        $request->merge(['name' => is_string($submitted) ? trim($submitted) : $submitted]);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:255', new TeamName],
+        ]);
+
+        $upgradePersonalTeam->handle($request->user(), $team, $validated['name']);
+
+        $auditLogger->recordForRequest($request, AuditEventType::TeamCreated, $team, (string) $request->user()->id, $team->slug);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Your workspace is now a team.')]);
+
+        return to_route('teams.billing.show', ['team' => $team->slug]);
+    }
+
+    /**
      * Show the team edit page.
      */
     public function edit(Request $request, Team $team): Response
@@ -81,6 +107,7 @@ class TeamController extends Controller
                 'canDelete' => $user->can('delete', $team),
                 'canTransfer' => $user->can('transferOwnership', $team),
                 'canLeave' => $user->can('leave', $team),
+                'canUpgrade' => $user->can('upgrade', $team),
             ],
             'members' => $team->members()->get()->map(function (User $member) {
                 /** @var Membership $membership */

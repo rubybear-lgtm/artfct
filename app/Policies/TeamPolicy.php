@@ -156,4 +156,12 @@ class TeamPolicy
     {
         return ! $team->is_personal && $team->owner_user_id === $user->id;
     }
+
+    /**
+     * Only the owner of a personal team can turn it into a team.
+     */
+    public function upgrade(User $user, Team $team): bool
+    {
+        return $team->is_personal && $team->owner_user_id === $user->id;
+    }
 }

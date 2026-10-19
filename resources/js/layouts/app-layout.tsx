@@ -374,7 +374,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         router.visit(teamRoutes.index.url())
                                     }
                                 >
-                                    All teams and new team
+                                    All teams
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
@@ -660,7 +660,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                             onClick={closeMenu}
                                             className="flex min-h-[44px] items-center text-[15px] font-medium text-muted-foreground"
                                         >
-                                            All teams and new team
+                                            All teams
                                         </Link>
                                     </section>
                                 )}

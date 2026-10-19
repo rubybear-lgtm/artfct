@@ -104,6 +104,7 @@ class BillingController extends Controller
     public function checkout(Team $team, BillingService $billing): SymfonyResponse
     {
         Gate::authorize('manageBilling', $team);
+        abort_if($team->is_personal, 403, __('Turn this workspace into a team before starting a plan.'));
 
         if ($team->stripe_subscription_id !== null) {
             Inertia::flash('toast', ['type' => 'error', 'message' => __('This team already has a subscription. Use Manage billing to change it.')]);
