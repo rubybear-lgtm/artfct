@@ -1,0 +1,11 @@
+# Reviewed RustSec exceptions (RUB-425). Keep each entry justified; remove it
+# when a fixed release exists.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 (rsa, Marvin timing attack on private-key operations):
+    # no patched release exists. The Worker only VERIFIES RS256 org tokens
+    # through jsonwebtoken, which uses the public key; the one signing path
+    # found is test-only. Re-review when `rsa` or jsonwebtoken ships a fix.
+    "RUSTSEC-2023-0071",
+]

@@ -74,6 +74,8 @@ Use when the user explicitly asks for fragments, speaker notes, or needs PDF exp
 
 > Always fetch current SRI hashes from `https://data.jsdelivr.com/v1/packages/npm/reveal.js@5.1.0/integrity` before using. The hashes above are placeholders.
 
+> This setup works when published with `deploy_to_canvas`. A page published with `deploy_artifact` loads only its own files, so the CDN assets and the inline `Reveal.initialize` are blocked there (RUB-444). Publish a bundle instead: `files` with `index.html`, `reveal.js`, `reveal.css`, the theme CSS and an `init.js` containing `Reveal.initialize({ hash: true });`, loaded with `<script src="init.js"></script>` after `reveal.js`.
+
 ### Minimal Reveal.js structure
 
 ```html

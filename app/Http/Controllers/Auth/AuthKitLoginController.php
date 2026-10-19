@@ -1,0 +1,75 @@
+<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Services\AuthKit\AuthKitClientContract;
+use App\Services\AuthKit\FakeAuthKitClient;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use WorkOS\UserManagement;
+use WorkOS\WorkOS as WorkOSSdk;
+
+class AuthKitLoginController extends Controller
+{
+    /**
+     * Show the login screen. When AuthKit is configured with real
+     * credentials, this redirects straight to WorkOS's hosted UI (Google,
+     * Microsoft, Apple, passkeys, Magic Auth). Otherwise it renders a
+     * local dev/test login screen backed by FakeAuthKitClient.
+     *
+     * Optional `screen_hint` (sign-up or sign-in) and `login_hint` (an
+     * email) query parameters open the hosted UI on the right screen with
+     * the email filled in, as the invitation flow does.
+     *
+     * `staff=1` is how artfct staff reach the operator console (spec 17): the
+     * hosted sign-in is scoped to the dedicated staff WorkOS organization, so
+     * that organization's MFA policy applies and the callback can issue a
+     * staff session, and the visitor lands on /ops afterwards. It does
+     * nothing when no staff organization is configured.
+     */
+    public function __invoke(Request $request, AuthKitClientContract $client): Response|SymfonyResponse
+    {
+        $screenHint = in_array($request->query('screen_hint'), ['sign-up', 'sign-in'], true) ? $request->query('screen_hint') : null;
+        $loginHint = filter_var($request->query('login_hint'), FILTER_VALIDATE_EMAIL) ?: null;
+        $staffOrganizationId = $request->boolean('staff') ? config('services.workos.staff_organization_id') : null;
+        $staffOrganizationId = is_string($staffOrganizationId) && $staffOrganizationId !== '' ? $staffOrganizationId : null;
+
+        if ($client instanceof FakeAuthKitClient) {
+            return Inertia::render('auth/login', ['loginHint' => $loginHint]);
+        }
+
+        $clientId = config('services.workos.client_id');
+
+        if (! $clientId || ! config('services.workos.secret') || ! config('services.workos.redirect_url')) {
+            throw new RuntimeException('WorkOS AuthKit is not configured.');
+        }
+
+        WorkOSSdk::setClientId($clientId);
+        WorkOSSdk::setApiKey(config('services.workos.secret'));
+
+        $state = ['state' => Str::random(20)];
+        // The SDK JSON-encodes the state it sends, and WorkOS returns it verbatim,
+        // so the session must hold the encoded form for the callback to match.
+        $request->session()->put('authkit_state', json_encode($state));
+
+        if ($staffOrganizationId !== null) {
+            $request->session()->put('url.intended', route('ops.tenants.index'));
+        }
+
+        $url = (new UserManagement)->getAuthorizationUrl(
+            config('services.workos.redirect_url'),
+            $state,
+            'authkit',
+            organizationId: $staffOrganizationId,
+            loginHint: $loginHint,
+            screenHint: $screenHint,
+        );
+
+        return Inertia::location($url);
+    }
+}

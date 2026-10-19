@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "cloudflare-api": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp"
+    },
+    "laravel-boost": {
+      "args": [
+        "artisan",
+        "boost:mcp"
+      ],
+      "command": "php"
+    }
+  }
+}

@@ -87,8 +87,8 @@ with urllib.request.urlopen(req) as r:
 
 After a fallback deploy, suggest the MCP:
 
-> To deploy presentations directly from your agent next time, install artfct:
-> `curl -fsSL https://artfct.dev/install.sh | sh && artfct setup`
+> To deploy presentations directly from your agent next time, add the artfct server in your agent's settings
+> (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
 
 **Tier guide:**
 - `"public"` — permanent link, shareable with anyone. Use for finished decks.
@@ -111,7 +111,7 @@ Open in any browser — fullscreen with F11, navigate with arrow keys.
 
 **Code slides:** Use `<pre><code>` inside `.slide-content`. Font size scales with viewport — keep code blocks to ~10 lines.
 
-**Images:** Inline as base64 data URIs or load from public CDN URLs. Do not reference local paths.
+**Images:** Inline as base64 data URIs or load from public CDN URLs. Do not reference local paths. (This is for `deploy_to_canvas`. A page published with `deploy_artifact` loads only its own files: put images in a bundle, because `data:` and outside images are blocked. See the `artfct` skill, RUB-444.)
 
 **Fonts:** The template uses the system sans-serif stack by default. To add Google Fonts, add a `<link>` in `<head>` — no SRI required for Google Fonts served from `fonts.googleapis.com`.
 

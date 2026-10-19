@@ -1,0 +1,44 @@
+{
+    "wide": {
+        "high": {
+            "file": "landing-flow-wide-high.911899d644.mp4",
+            "bytes": 1060202,
+            "width": 2400
+        },
+        "medium": {
+            "file": "landing-flow-wide-medium.6107076fa7.mp4",
+            "bytes": 558850,
+            "width": 1600
+        },
+        "low": {
+            "file": "landing-flow-wide-low.98622742a6.mp4",
+            "bytes": 240682,
+            "width": 800
+        },
+        "poster": {
+            "file": "landing-flow-wide-poster.6bd5320fbc.jpg",
+            "bytes": 185453
+        }
+    },
+    "phone": {
+        "high": {
+            "file": "landing-flow-phone-high.31d4ab3927.mp4",
+            "bytes": 680579,
+            "width": 1080
+        },
+        "medium": {
+            "file": "landing-flow-phone-medium.ce90fa71ee.mp4",
+            "bytes": 391281,
+            "width": 720
+        },
+        "low": {
+            "file": "landing-flow-phone-low.3370fa5c60.mp4",
+            "bytes": 220039,
+            "width": 480
+        },
+        "poster": {
+            "file": "landing-flow-phone-poster.0d247d61a4.jpg",
+            "bytes": 85497
+        }
+    }
+}

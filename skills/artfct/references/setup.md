@@ -1,47 +1,64 @@
 # artfct Setup Reference
 
-This reference is for users who need to install and configure artfct. Agents using this skill
+This reference is for users who need to connect artfct to their AI tool. Agents using this skill
 already have artfct MCP configured — share these instructions when a user asks how to get set up.
 
-## Install the CLI
+## Connect your AI tool
 
-```bash
-curl -fsSL https://artfct.dev/install.sh | sh
+There is nothing to install and no key to copy. Add the artfct address to the AI tool, then
+approve the sign-in that opens in the browser. The address is:
+
+```
+https://artfct.dev/mcp
 ```
 
-Then register with Claude Code in one step:
+The full guide, with the address for the site you use already filled in, is at
+https://artfct.dev/docs#mcp.
 
-```bash
-artfct setup
+**Claude Code**
+
+```sh
+claude mcp add --transport http artfct https://artfct.dev/mcp
 ```
 
-## Manual MCP Configuration
+Then start Claude Code, type `/mcp`, choose `artfct` and select **Authenticate**.
 
-Add to your Claude Code MCP config (`.claude/mcp.json` or project `.mcp.json`):
+**Codex**
 
-```json
-{
-  "mcpServers": {
-    "artfct": {
-      "command": "artfct",
-      "args": ["mcp", "serve"]
-    }
-  }
-}
+```sh
+codex mcp add artfct --url https://artfct.dev/mcp
+codex mcp login artfct
 ```
 
-Restart Claude Code. The tool will appear as `mcp__artfct__deploy_to_canvas`.
+**OpenCode**
 
-## Verify Installation
-
-```bash
-artfct doctor
+```sh
+opencode mcp add artfct --url https://artfct.dev/mcp
+opencode mcp auth artfct
 ```
 
-This checks that the CLI is installed, the API is reachable, and the MCP server responds correctly.
+Approve the sign-in once. Approving the same page twice makes OpenCode report that the code is
+invalid or expired; run `opencode mcp auth artfct` again if that happens.
 
-## Supported Platforms
+**Antigravity**
 
-- macOS (arm64, x86_64)
-- Linux (x86_64)
-- Windows (via WSL)
+```sh
+agy mcp add artfct https://artfct.dev/mcp
+```
+
+Open `~/.gemini/config/mcp_config.json`, add `"oauth": {}` to the `artfct` entry, then start
+`agy`, type `/mcp` and choose `artfct` to sign in.
+
+**Other tools**
+
+Add a remote (HTTP) server named `artfct` with the address above. These tools have not been
+verified yet. If the tool cannot use a remote server, it is not supported.
+
+If the user set up the retired `artfct` command-line app before, remove its old `artfct` entry
+first (for example `claude mcp remove artfct` or `codex mcp remove artfct`).
+
+## Verify the connection
+
+Ask the AI tool "Which Artfct workspace am I connected to?". It calls `get_connection`, which
+reports the signed-in workspace and its permissions. The tools appear as
+`mcp__artfct__deploy_artifact` and the other artfct tools.

@@ -1,7 +1,7 @@
 <?php
 
 it('keeps the ascii logo centered and contained on mobile', function () {
-    $page = visit('/')->on()->mobile();
+    $page = visit('/free')->on()->mobile();
 
     $page
         ->assertNoJavaScriptErrors()

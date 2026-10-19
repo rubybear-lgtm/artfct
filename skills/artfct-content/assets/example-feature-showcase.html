@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared knowledge across the AI tools a team uses — artfct</title>
+<meta name="description" content="Your team runs several AI tools. Artfct gives them one store of finished work, so the next agent finds what the last one made.">
+<style>
+  body { background: #fdf6e3; color: #657b83; font-family: "Instrument Sans", system-ui, sans-serif; }
+</style>
+</head>
+<body data-surface="feature-showcase" data-register="glean-formal">
+<div class="wrap">
+  <p class="mark"><span class="m1">▄▀█</span> <span class="m2">█▀▄</span> <span class="m3">▀█▀</span> <span class="m4">█▀▀</span> <span class="m5">▄▀▀</span> <span class="m6">▀█▀</span><span class="brand">artfct</span><br><span class="m1">█▀█</span> <span class="m2">█▄▀</span> <span class="m3">&nbsp;█&nbsp;</span> <span class="m4">█▀&nbsp;</span> <span class="m5">▀▄▄</span> <span class="m6">&nbsp;█&nbsp;</span></p>
+
+  <header>
+    <p class="kicker">Shared knowledge</p>
+    <h1>Every AI tool on your team starts from the same store</h1>
+    <p class="meta"><b>The artfct team</b> · Last updated 2026-10-08 · 5 min</p>
+    <p class="lead">Most teams run two to four AI tools, and each one keeps its own history. A report your product manager made in Cursor is invisible to an engineer in Claude Code, so the next agent rebuilds work the team already paid for. Artfct gives those tools one store of finished work, and any connected tool can find it.</p>
+  </header>
+
+  <nav class="toc">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#s1">Why does each tool keep its own history?</a></li>
+      <li><a href="#s2">What does a connected tool actually see?</a></li>
+      <li><a href="#s3">How does a teammate find the same thing?</a></li>
+      <li><a href="#s4">What does connecting a tool involve?</a></li>
+      <li><a href="#s5">How do you keep it from becoming a dumping ground?</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="s" id="s1">
+      <h2>Why does each tool keep its own history?</h2>
+      <p>An AI tool remembers the conversations held inside it. That is a product boundary, not an oversight: a vendor indexes its own output and has no reason to index a competitor's. The consequence is that the unit of memory is the tool, while the unit of work is the team.</p>
+      <p>Work therefore gets redone. The engineer asks for a churn breakdown the analyst already produced a month ago, and gets a second, slightly different one. Two versions of the same number is worse than one, because nobody can tell which is current.</p>
+    </section>
+
+    <section class="s" id="s2">
+      <h2>What does a connected tool actually see?</h2>
+      <p>When someone publishes a page, report, table or document, Artfct stores it with its provenance: which agent produced it, which model, and where there is one, the repository and commit. Every connected tool can search that store.</p>
+      <p>Retrieval is what makes it useful rather than merely tidy. An agent asks a question in plain language, gets back summaries with a link to each artifact, and says which ones it used. The <a href="https://artfct.dev/docs">docs</a> describe the tools a connection exposes.</p>
+    </section>
+
+    <section class="s" id="s3">
+      <h2>How does a teammate find the same thing?</h2>
+      <p>The same store answers people. Someone describes what they are looking for and gets matching artifacts back, without knowing a filename or which tool made it. Results are ranked by what the team has actually used, so the version people keep opening comes first.</p>
+      <p>Sharing stays one step. Publishing produces a link; the same link opens in Slack for a colleague and is visible to an agent through retrieval.</p>
+    </section>
+
+    <section class="s" id="s4">
+      <h2>What does connecting a tool involve?</h2>
+      <p>One person adds the server to each tool and signs in once. Claude Code, Codex, OpenCode and Antigravity are verified end to end; the <a href="https://artfct.dev/docs">setup guides</a> cover Claude, ChatGPT, Cursor, VS Code, Windsurf and Zed as documented paths.</p>
+      <p>Members install nothing. If you are the person setting this up, the <a href="https://artfct.dev/llms-full.txt">full reference</a> lists every tool and what each one is allowed to do.</p>
+    </section>
+
+    <section class="s" id="s5">
+      <h2>How do you keep it from becoming a dumping ground?</h2>
+      <p>Publishing is deliberate, and collections are how a team marks what mattered. Pinning an artifact to a collection lifts it in later results, which turns the store from an archive into a record of the way the team works.</p>
+      <p>Usage does the rest. An artifact nobody opens stops outranking one that gets used.</p>
+    </section>
+
+    <section class="limits">
+      <h2>What this does not do</h2>
+      <ul>
+        <li>It does not write or edit documents for you. Artfct stores and finds what an AI already made.</li>
+        <li>It does not accept arbitrary office files. An artifact is something an AI made that renders as a page.</li>
+        <li>A tool that can only start programs on your computer cannot connect, because Artfct runs as a hosted server.</li>
+        <li>It does not make a model smarter. It moves finished work between tools, not reasoning.</li>
+      </ul>
+    </section>
+
+    <section class="faq">
+      <h2>Questions</h2>
+      <details class="q"><summary>Does a team member need to install anything?</summary><p>No. The person who connects the tools signs in once, and everyone else just uses what is shared.</p></details>
+      <details class="q"><summary>Which tools are supported today?</summary><p>Any tool that can reach a remote server. Claude Code, Codex, OpenCode and Antigravity are verified; several others have documented setup.</p></details>
+      <details class="q"><summary>Can an agent see something that was not shared?</summary><p>No. An artifact is visible to a tool only when it is shared with the team or published publicly.</p></details>
+      <details class="q"><summary>What happens when two tools produce the same thing?</summary><p>Identical content resolves to one artifact rather than a duplicate, and a later version of the same artifact keeps the original link.</p></details>
+      <details class="q"><summary>How do we get rid of something?</summary><p>An admin can revoke or delete it from the console, and the action is recorded in the audit log.</p></details>
+    </section>
+  </main>
+
+  <div class="byline">
+    <div class="av">A</div>
+    <div>
+      <div class="who">The artfct team</div>
+      <p class="bio">Notes on keeping what your AI makes.</p>
+    </div>
+  </div>
+
+  <section class="cta">
+    <h2>Try it with one page</h2>
+    <p>Share a page as a link, with no account needed to open it.</p>
+    <a class="btn" href="https://artfct.dev/free">Start free</a>
+  </section>
+
+  <footer>artfct — what your AI makes, remembered</footer>
+</div>
+</body>
+</html>

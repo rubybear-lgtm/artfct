@@ -5,7 +5,13 @@
     "main": "build/worker/shim.mjs",
     "compatibility_date": "2026-06-03",
     "build": {
-        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+        // --locked is load-bearing. worker-build 0.8.3 needs zip ^2.1.3 via
+        // binary-install, and every zip 2.x on crates.io is yanked, so a fresh
+        // resolve selects nothing and the build dies at resolution. --locked
+        // pins the lockfile worker-build ships, which still names the yanked
+        // versions and installs them. Removing it breaks this build again with
+        // no other change here.
+        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --locked --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
     },
     "observability": {
         "enabled": true,
@@ -20,6 +26,18 @@
             "pattern": "artfct.dev/p/*",
             "zone_name": "artfct.dev",
         },
+        // RUB-365/RUB-366: isolated artifact origins,
+        // `<tenant-slug>--<artifact-id>--prod.artfct.dev` (spec 05). The
+        // `--prod` marker anchors a leading-wildcard route that stays narrow:
+        // a bare `*.artfct.dev/*` would also match `staging.artfct.dev` and
+        // route staging's app traffic into this Worker. Keep this route and
+        // ARTFCT_ARTIFACT_ORIGIN_SUFFIX below in step, and never add the broad
+        // pattern back. Reuses the zone's `*.artfct.dev` Universal SSL
+        // certificate and DNS wildcard record, like staging's `--stg` form.
+        {
+            "pattern": "*--prod.artfct.dev/*",
+            "zone_name": "artfct.dev",
+        },
     ],
     "kv_namespaces": [
         {
@@ -27,8 +45,28 @@
             "id": "89447fa353bd403abdcffbce5e5c331b",
         },
     ],
+    "d1_databases": [
+        {
+            "binding": "ARTIFACTS_DB",
+            "database_name": "artfct-artifacts",
+            "database_id": "ff104444-d0e7-4a63-8e89-d7ad76e82103",
+            "migrations_dir": "migrations",
+        },
+    ],
+    "r2_buckets": [
+        {
+            "binding": "ARTIFACTS_BUCKET",
+            "bucket_name": "artfct-blobs",
+        },
+    ],
     "vars": {
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
+        "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--prod.artfct.dev",
+        // RUB-438: the only origin allowed to frame isolated artifacts (the viewer).
+        "ARTFCT_APP_ORIGIN": "https://artfct.dev",
+        "ARTFCT_WORKER_EVENT_URL": "https://artfct.dev/internal/worker-events",
+        "ARTFCT_JWT_ISSUER": "https://artfct.dev",
+        "ARTFCT_JWT_AUDIENCE": "artfct-engine",
         "ARTFCT_MAX_HTML_BYTES": "1048576",
         "ARTFCT_DEFAULT_TTL_MINUTES": "7200",
         "ARTFCT_MAX_TTL_MINUTES": "525600",
