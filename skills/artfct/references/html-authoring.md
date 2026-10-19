@@ -1,6 +1,23 @@
 # Self-Contained HTML Reference
 
-artfct hosts a single HTML file. All resources must be inlined or loaded from public CDNs.
+## Permanent artifacts: a bundle with its own files
+
+`deploy_artifact` serves each artifact from its own isolated origin with `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`. Only the artifact's own files load. An inline `<script>` block, an `onclick=` attribute and any script, image or font from another site are blocked, and so are base64 `data:` images and fonts. The page still shows, just without them, and nothing on the page says why. Inline `<style>` and `style=` attributes work.
+
+For anything interactive, or with images or fonts, pass `files` and reference each by a relative path:
+
+```
+index.html      <script src="app.js"></script>, <img src="hero.png">
+app.js          all application JavaScript
+hero.png        images and fonts as files, not data: URIs
+vendor/chart.umd.min.js   any library, vendored into the bundle
+```
+
+A page with no script, no images and no outside fonts can be a single `html` string. Checked on a live staging artifact on 2026-10-18: an inline script, a base64 image, an image from another site and a Google Fonts stylesheet were all blocked. See RUB-444.
+
+## Single-file form (older, shared-origin preview)
+
+Everything below describes one HTML file that inlines its resources or loads public CDNs. That form is served from the shared origin used by `deploy_to_canvas` (deprecated). Do not use it for `deploy_artifact`: its inline scripts, CDN libraries, Google Fonts and `data:` images are blocked there.
 
 ## Inlining Rules
 

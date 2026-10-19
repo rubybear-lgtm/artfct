@@ -302,7 +302,7 @@ Use the `artfct-staging` MCP server to store what development and sessions produ
 **How**
 
 - Search first: `search_artifacts` (natural-language `query`, optionally `repo`, `collection`, `since`) before writing a new spec, plan or explanation, so existing work is reused or updated instead of duplicated.
-- Publish with `deploy_artifact`: give `html` as one self-contained HTML document (convert markdown to styled HTML first), or `files` plus `entrypoint` for a multi-file bundle. Always set `title` and a one-sentence `description` so search can find it; set `model` for provenance. Re-publishing identical content returns the same artifact.
+- Publish with `deploy_artifact`: give `html` as one self-contained HTML document (convert markdown to styled HTML first), or `files` plus `entrypoint` for a multi-file bundle. A published artifact loads only its own files (`default-src 'self'; script-src 'self'`): inline `<script>` blocks, CDN scripts, outside images and fonts, and `data:` images are blocked, so anything interactive or with images or fonts must be a bundle with each in its own file such as `app.js` (RUB-444). Always set `title` and a one-sentence `description` so search can find it; set `model` for provenance. Re-publishing identical content returns the same artifact.
 - Tier: `secure` (the default, signed-in workspace members only) for anything internal, which is nearly everything here. Use `public` only when the user asks for a link anyone can open.
 - Group related artifacts with `list_collections`, `create_collection` and `add_collection_artifact` (for example one collection per spec or feature). Reuse an existing collection before creating one.
 - Share the returned `view_url` with the user. Use `get_artifact` for a fresh link.

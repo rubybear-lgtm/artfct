@@ -226,7 +226,7 @@ The skill teaches agents:
 
 - When to deploy vs. when to return a code block
 - How to choose the right sharing level (`private` / `team` / `public`)
-- How to author valid self-contained HTML with SRI-pinned CDN dependencies
+- How to author a published page: a bundle with its own script, image and font files (RUB-444)
 - How to handle errors and present URLs clearly
 
 Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.

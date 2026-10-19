@@ -78,3 +78,51 @@ test('the Agent Skills files carry exactly the served guidance', function (strin
     expect($skill)->toStartWith("---\nname: artfct-{$topic}\n")
         ->and(str_ends_with($skill, $guidance))->toBeTrue();
 })->with(ArtifactGuidance::TOPICS);
+
+/*
+ * RUB-444: a published page is served with `script-src 'self'`, so an inline
+ * script never runs and nothing reports it. The rule has to be in front of the
+ * agent that writes the page, in the guidance and in the tool description.
+ */
+test('the publish guidance says inline scripts do not run and where scripts must live', function () {
+    $text = ArtifactGuidance::topic('publish')['text'];
+
+    expect($text)->toContain('inline `<script>` block')
+        ->toContain('`onclick=`')
+        ->toContain('from another site')
+        ->toContain('`data:`')
+        ->toContain('app.js');
+});
+
+test('deploy_artifact tells agents inline scripts do not run', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')->toArray();
+
+    expect($tool['description'])->toContain('Inline `<script>` blocks and resources from other sites do not load')
+        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts or outside resources');
+});
+
+test('get_guidance names its own guidance version like the guided tools', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'get_guidance')->toArray();
+
+    expect($tool['_meta']['artfct']['guidanceVersion'])->toBe(ArtifactGuidance::VERSION);
+});
+
+/*
+ * The guidance says inline scripts and outside resources are blocked. That is
+ * only true while the Worker's isolated-origin policy builder keeps scripts to
+ * 'self' and sets no img-src or font-src. If it changes, this fails so the
+ * guidance, the skills and the tool text are revisited with it (RUB-444).
+ */
+test('the guidance rule matches the isolated origin policy the Worker builds', function () {
+    $source = (string) file_get_contents(base_path('backend/src/artifact_origin.rs'));
+
+    expect($source)->toContain('script-src {script_src};')
+        ->toContain('let mut script_src = default_src.clone();')
+        ->not->toContain('script_src.push_str(" \'unsafe-inline\'")')
+        ->not->toContain('img-src')
+        ->not->toContain('font-src');
+});
