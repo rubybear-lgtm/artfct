@@ -48,7 +48,6 @@
         "POST oauth/revoke": "public",
         "POST oauth/token": "public",
         "GET onboarding/team": "user",
-        "POST onboarding/team": "user",
         "GET ops": "staff",
         "GET ops/health": "staff",
         "GET ops/tenants/{team}": "staff",
