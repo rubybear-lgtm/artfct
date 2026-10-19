@@ -79,6 +79,7 @@ interface Props {
         canDelete: boolean;
         canTransfer: boolean;
         canLeave: boolean;
+        canUpgrade: boolean;
     };
     members: Member[];
     invitations: Invitation[];
@@ -106,6 +107,7 @@ export default function TeamEdit({
 }: Props) {
     const inviteForm = useForm({ email: '', role: 'member' });
     const renameForm = useForm({ name: team.name });
+    const upgradeForm = useForm({ name: '' });
     const sharingForm = useForm({
         name: team.name,
         public_sharing_allowed: team.publicSharingAllowed,
@@ -232,6 +234,63 @@ export default function TeamEdit({
                         )}
                     </CardContent>
                 </Card>
+
+                {viewer.canUpgrade && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Turn this into a team</CardTitle>
+                            <CardDescription>
+                                Everything here moves with it, so your artifacts
+                                stay put. You get a new personal workspace, and
+                                you can invite people and start your plan next.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <form
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    upgradeForm.post(
+                                        TeamController.upgrade.url({
+                                            team: team.slug,
+                                        }),
+                                    );
+                                }}
+                                className="flex flex-wrap items-end gap-3"
+                            >
+                                <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                                    <Label htmlFor="upgrade-name">
+                                        Team name
+                                    </Label>
+                                    <Input
+                                        id="upgrade-name"
+                                        name="name"
+                                        value={upgradeForm.data.name}
+                                        onChange={(e) =>
+                                            upgradeForm.setData(
+                                                'name',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={upgradeForm.processing}
+                                >
+                                    Create team
+                                </Button>
+                            </form>
+                            {upgradeForm.errors.name && (
+                                <p
+                                    role="alert"
+                                    className="mt-2 text-sm text-destructive"
+                                >
+                                    {upgradeForm.errors.name}
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {permissions.canUpdateTeam && (
                     <Card>

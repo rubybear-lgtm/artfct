@@ -38,7 +38,6 @@ Route::prefix('{current_team}')
 
 Route::middleware(['auth'])->group(function () {
     Route::get('onboarding/team', [OnboardingController::class, 'show'])->name('onboarding.team.show');
-    Route::post('onboarding/team', [OnboardingController::class, 'store'])->middleware('throttle:team-creation')->name('onboarding.team.store');
 
     Route::get('settings/account', [AccountController::class, 'show'])->name('account.show');
     Route::patch('settings/account', [AccountController::class, 'update'])->name('account.update');
@@ -89,6 +88,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('settings/teams/{team}', [TeamController::class, 'edit'])->name('teams.edit');
         Route::patch('settings/teams/{team}', [TeamController::class, 'update'])->name('teams.update');
         Route::delete('settings/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
+        Route::post('settings/teams/{team}/upgrade', [TeamController::class, 'upgrade'])->middleware('throttle:team-creation')->name('teams.upgrade');
         Route::post('settings/teams/{team}/switch', [TeamController::class, 'switch'])->name('teams.switch');
         Route::patch('settings/teams/{team}/owner', TeamOwnerController::class)->name('teams.owner.update');
         Route::delete('settings/teams/{team}/leave', [TeamController::class, 'leave'])->name('teams.leave');
