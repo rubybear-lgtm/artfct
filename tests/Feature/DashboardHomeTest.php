@@ -139,6 +139,24 @@ test('recent_rows_flag_revoked_and_resolve_the_team_members_name', function () {
             ->where('home.recent.1.authorName', null));
 });
 
+test('recent_rows_carry_a_preview_url_unless_revoked', function () {
+    User::factory()->count(2)->create();
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    seedDashboardArtifact($team, 'revoked-row', [
+        'revoked_at' => now()->toIso8601String(),
+    ]);
+    seedDashboardArtifact($team, 'live-row', [
+        'created_at' => now()->subMinute()->toIso8601String(),
+    ]);
+
+    test()->actingAs($member)->get(route('dashboard', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('home.recent.0.previewUrl', null)
+            ->where('home.recent.1.previewUrl', route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => 'live-row'])));
+});
+
 test('a_search_returns_service_results_and_lists_no_recent_artifacts', function () {
     config(['indexing.enabled' => true]);
     $team = Team::factory()->create(['slug' => 'search-home-org']);
