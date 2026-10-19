@@ -126,7 +126,7 @@ test('long_team_artifact_member_and_domain_content_fits_at_320px', function () {
 
     test()->actingAs($owner);
 
-    $page = visit(route('console.index', ['team' => $team->slug]))->resize(320, 800);
+    $page = visit(route('console.index', ['team' => $team->slug, 'view' => 'list']))->resize(320, 800);
     assertNarrowPageFits($page);
     $page->assertSee('Exceptionally Long Artifact Title');
 
@@ -310,10 +310,11 @@ test('mobile_controls_meet_touch_and_font_targets', function () {
 
     test()->actingAs($owner);
 
-    $page = visit(route('console.index', ['team' => $team->slug]))->resize(390, 844);
+    $page = visit(route('console.index', ['team' => $team->slug, 'view' => 'list']))->resize(390, 844);
 
     // iOS zooms inputs under 16px; filters must stay at body size on phones.
-    $page->assertScript('parseFloat(getComputedStyle(document.querySelector("#repo_url")).fontSize) >= 16')
+    $page->click('[aria-label="Filter artifacts"]')
+        ->assertScript('parseFloat(getComputedStyle(document.querySelector("#repo_url")).fontSize) >= 16')
         ->assertScript('Array.from(document.querySelectorAll("header button, header > div > a, footer a")).filter((element) => element.getBoundingClientRect().width > 0).every((element) => element.getBoundingClientRect().height >= 44)')
         ->assertScript('(document.querySelector(\'[data-testid="mobile-menu-button"]\').getBoundingClientRect().height) >= 44')
         ->assertScript('(document.querySelector(\'[data-testid="open-artifact"]\').getBoundingClientRect().height) >= 44')

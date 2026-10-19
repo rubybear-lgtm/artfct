@@ -67,7 +67,7 @@ function seedConsoleArtifact(Team $team, string $tier, bool $revoked = false): v
 
 function consoleUrl(Team $team): string
 {
-    return '/settings/teams/'.$team->slug.'/console?q=RUB367';
+    return '/settings/teams/'.$team->slug.'/console?q=RUB367&view=list';
 }
 
 test('console_open_control_opens_the_signed_link_route_in_a_new_tab', function () {

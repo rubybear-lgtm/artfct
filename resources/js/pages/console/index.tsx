@@ -1,15 +1,30 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Search } from 'lucide-react';
+import {
+    LayoutGrid,
+    List,
+    MoreHorizontal,
+    Search,
+    SlidersHorizontal,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import ArtifactVersionController from '@/actions/App/Http/Controllers/ArtifactVersionController';
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { ArtifactPreview } from '@/components/artifact-preview';
 import { RowIcon, shortDate } from '@/components/home/artifact-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
@@ -35,6 +50,10 @@ interface ConsoleIndexProps {
         slug: string;
     };
     artifacts: Artifact[];
+    view: 'grid' | 'list';
+    currentUserId: string;
+    /** Session-authenticated preview URLs by artifact id; revoked artifacts have none. */
+    previewUrls: Record<string, string>;
     /** The AI tools the listed artifacts were produced with. */
     agents: string[];
     filters: {
@@ -73,9 +92,65 @@ function artifactTitle(artifact: Artifact) {
     );
 }
 
+function ScopeButton({
+    active,
+    onClick,
+    children,
+}: {
+    active: boolean;
+    onClick: () => void;
+    children: string;
+}) {
+    return (
+        <button
+            type="button"
+            aria-pressed={active}
+            onClick={onClick}
+            className={`rounded px-3 py-1.5 text-sm font-medium transition-colors motion-safe:duration-200 max-md:min-h-11 ${
+                active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+            }`}
+        >
+            {children}
+        </button>
+    );
+}
+
+function ToolbarButton({
+    label,
+    pressed,
+    onClick,
+    children,
+}: {
+    label: string;
+    pressed?: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            aria-label={label}
+            aria-pressed={pressed}
+            onClick={onClick}
+            className={`inline-flex size-10 cursor-pointer items-center justify-center rounded-md transition-colors max-md:size-11 ${
+                pressed
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+        >
+            {children}
+        </button>
+    );
+}
+
 export default function ConsoleIndex({
     team,
     artifacts,
+    view,
+    currentUserId,
+    previewUrls,
     agents,
     filters,
     nextCursor,
@@ -90,6 +165,10 @@ export default function ConsoleIndex({
 }: ConsoleIndexProps) {
     const [localFilters, setLocalFilters] = useState(filters);
     const [revoking, setRevoking] = useState<Artifact | null>(null);
+    const [searchOpen, setSearchOpen] = useState(Boolean(filters.q));
+    const [filtersOpen, setFiltersOpen] = useState(
+        Boolean(filters.repo_url || filters.agent),
+    );
     const pendingFilterVisit = useRef<ReturnType<typeof setTimeout> | null>(
         null,
     );
@@ -120,9 +199,18 @@ export default function ConsoleIndex({
         {
             cursor = null,
             replace = true,
-        }: { cursor?: string | null; replace?: boolean } = {},
+            nextView = view,
+        }: {
+            cursor?: string | null;
+            replace?: boolean;
+            nextView?: 'grid' | 'list';
+        } = {},
     ) => {
         const params = new URLSearchParams();
+
+        if (nextView === 'list') {
+            params.set('view', 'list');
+        }
 
         if (cursor) {
             params.set('cursor', cursor);
@@ -213,50 +301,118 @@ export default function ConsoleIndex({
             <PageHeader
                 eyebrow={team.name}
                 title="Artifacts"
-                description="Manage artifacts produced by your team."
-                actions={
-                    isAdmin ? (
-                        <Button asChild variant="outline">
-                            <a
-                                href={ConsoleController.export.url({
-                                    team: team.slug,
-                                })}
-                            >
-                                Download export (.zip)
-                            </a>
-                        </Button>
-                    ) : undefined
-                }
+                description="Everything your team has shared, in one place."
             />
 
-            {/* Integrated Search & Filter Bar */}
-            <div className="mb-8 rounded-[10px] border border-border bg-paper p-4 sm:p-5">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
-                    <div className="md:col-span-5">
-                        <label
-                            htmlFor="console-search"
-                            className="mb-1.5 block text-xs font-medium text-muted-foreground"
-                        >
-                            Search
-                        </label>
-                        <div className="relative">
-                            <Search
-                                aria-hidden="true"
-                                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-                            />
-                            <input
-                                id="console-search"
-                                type="text"
-                                value={localFilters.q || ''}
-                                onChange={(e) =>
-                                    handleFilterChange('q', e.target.value)
-                                }
-                                placeholder="Title or description..."
-                                className="h-9 w-full rounded-md border border-border bg-background/60 pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground max-md:min-h-[44px] max-md:text-base"
-                            />
-                        </div>
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+                <div
+                    role="group"
+                    aria-label="Whose artifacts to show"
+                    className="inline-flex rounded-md border border-border p-0.5"
+                >
+                    <ScopeButton
+                        active={!localFilters.user_id}
+                        onClick={() => handleSelectChange('user_id', '')}
+                    >
+                        All
+                    </ScopeButton>
+                    <ScopeButton
+                        active={localFilters.user_id === currentUserId}
+                        onClick={() =>
+                            handleSelectChange('user_id', currentUserId)
+                        }
+                    >
+                        Yours
+                    </ScopeButton>
+                </div>
+
+                <div className="ml-auto flex items-center gap-1">
+                    <ToolbarButton
+                        label="Search artifacts"
+                        pressed={searchOpen}
+                        onClick={() => setSearchOpen((open) => !open)}
+                    >
+                        <Search className="size-5" />
+                    </ToolbarButton>
+                    <ToolbarButton
+                        label={
+                            view === 'grid' ? 'Show as list' : 'Show as grid'
+                        }
+                        onClick={() =>
+                            visitWithFilters(localFilters, {
+                                nextView: view === 'grid' ? 'list' : 'grid',
+                                replace: false,
+                            })
+                        }
+                    >
+                        {view === 'grid' ? (
+                            <List className="size-5" />
+                        ) : (
+                            <LayoutGrid className="size-5" />
+                        )}
+                    </ToolbarButton>
+                    <ToolbarButton
+                        label="Filter artifacts"
+                        pressed={filtersOpen}
+                        onClick={() => setFiltersOpen((open) => !open)}
+                    >
+                        <SlidersHorizontal className="size-5" />
+                    </ToolbarButton>
+                    {isAdmin && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label="More actions"
+                                    className="inline-flex size-10 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:size-11"
+                                >
+                                    <MoreHorizontal className="size-5" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                    <a
+                                        href={ConsoleController.export.url({
+                                            team: team.slug,
+                                        })}
+                                    >
+                                        Download export (.zip)
+                                    </a>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                </div>
+            </div>
+
+            {searchOpen && (
+                <div className="mb-6">
+                    <label htmlFor="console-search" className="sr-only">
+                        Search
+                    </label>
+                    <div className="relative">
+                        <Search
+                            aria-hidden="true"
+                            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                        />
+                        <input
+                            id="console-search"
+                            type="text"
+                            autoFocus
+                            value={localFilters.q || ''}
+                            onChange={(e) =>
+                                handleFilterChange('q', e.target.value)
+                            }
+                            placeholder="Search by title or description"
+                            className="h-10 w-full rounded-md border border-border bg-background/60 pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground max-md:min-h-[44px] max-md:text-base"
+                        />
                     </div>
-                    <div className="md:col-span-4">
+                </div>
+            )}
+
+            {filtersOpen && (
+                <div className="mb-6 grid grid-cols-1 gap-3 rounded-[10px] border border-border bg-paper p-4 md:grid-cols-2">
+                    <div>
                         <label
                             htmlFor="repo_url"
                             className="mb-1.5 block text-xs font-medium text-muted-foreground"
@@ -275,7 +431,7 @@ export default function ConsoleIndex({
                             className="h-9 w-full rounded-md border border-border bg-background/60 px-3 text-sm text-foreground placeholder:text-muted-foreground max-md:min-h-[44px] max-md:text-base"
                         />
                     </div>
-                    <div className="md:col-span-3">
+                    <div>
                         <label
                             htmlFor="agent"
                             className="mb-1.5 block text-xs font-medium text-muted-foreground"
@@ -300,19 +456,20 @@ export default function ConsoleIndex({
                         </select>
                     </div>
                 </div>
-                {hasActiveFilters && (
-                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
-                        <span>Filtered results</span>
-                        <button
-                            type="button"
-                            onClick={clearFilters}
-                            className="cursor-pointer font-medium text-[var(--accent)] hover:underline"
-                        >
-                            Clear filters
-                        </button>
-                    </div>
-                )}
-            </div>
+            )}
+
+            {hasActiveFilters && (
+                <div className="mb-6 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Filtered results</span>
+                    <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="cursor-pointer font-medium text-[var(--accent)] hover:underline"
+                    >
+                        Clear filters
+                    </button>
+                </div>
+            )}
 
             {!indexingEnabled && (
                 <p className="mb-6 text-sm text-muted-foreground">
@@ -388,6 +545,223 @@ export default function ConsoleIndex({
                             </Button>
                         </EmptyState>
                     )
+                ) : view === 'grid' ? (
+                    <ul
+                        data-testid="artifact-grid"
+                        className="grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3"
+                    >
+                        {artifacts.map((artifact) => {
+                            const previewUrl = previewUrls[artifact.id];
+                            const openable =
+                                canOpenArtifacts && !artifact.revoked_at;
+                            const canAddToCollection =
+                                canCollect &&
+                                collections.length > 0 &&
+                                !artifact.revoked_at;
+                            const hasMenu =
+                                !artifact.revoked_at ||
+                                isAdmin ||
+                                canAddToCollection;
+
+                            return (
+                                <li
+                                    key={artifact.id}
+                                    data-testid={`artifact-card-${artifact.id}`}
+                                    className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-border bg-paper"
+                                >
+                                    <div className="relative">
+                                        {previewUrl ? (
+                                            <ArtifactPreview
+                                                previewUrl={previewUrl}
+                                                title={`Preview of ${artifactName(artifact)}`}
+                                                decorative
+                                                className="border-b border-border"
+                                            />
+                                        ) : (
+                                            <div
+                                                aria-hidden="true"
+                                                className="flex aspect-[8/5] w-full items-center justify-center border-b border-border bg-muted/50"
+                                            >
+                                                <RowIcon />
+                                            </div>
+                                        )}
+                                        {artifact.provenance.agent && (
+                                            <span
+                                                aria-hidden="true"
+                                                className="absolute bottom-2 left-2 flex size-8 items-center justify-center rounded-md border border-border bg-paper"
+                                            >
+                                                <AiToolIcon
+                                                    tool={
+                                                        artifact.provenance
+                                                            .agent
+                                                    }
+                                                    size={16}
+                                                />
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex min-w-0 items-start gap-2 p-4">
+                                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                            {artifact.revoked_at ? (
+                                                <span
+                                                    className="min-w-0 font-semibold break-words text-muted-foreground"
+                                                    data-testid="open-artifact-title-disabled"
+                                                    title={revokedOpenTooltip}
+                                                    aria-disabled="true"
+                                                >
+                                                    {artifactTitle(artifact)}
+                                                </span>
+                                            ) : openable ? (
+                                                <a
+                                                    href={openHref(artifact.id)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline"
+                                                    data-testid="open-artifact-title"
+                                                >
+                                                    {artifactTitle(artifact)}
+                                                </a>
+                                            ) : (
+                                                <span className="min-w-0 font-semibold break-words text-foreground">
+                                                    {artifactTitle(artifact)}
+                                                </span>
+                                            )}
+                                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                                <span>
+                                                    {aiToolName(
+                                                        artifact.provenance
+                                                            .agent,
+                                                    )}
+                                                </span>
+                                                <span aria-hidden="true">
+                                                    ·
+                                                </span>
+                                                <span className="tabular-nums">
+                                                    {shortDate(
+                                                        artifact.created_at,
+                                                    )}
+                                                </span>
+                                                {artifact.revoked_at && (
+                                                    <Badge variant="destructive">
+                                                        Revoked
+                                                    </Badge>
+                                                )}
+                                                {indexingEnabled &&
+                                                    indexing[artifact.id] ===
+                                                        'failed' && (
+                                                        <Badge variant="warning">
+                                                            Not searchable
+                                                        </Badge>
+                                                    )}
+                                            </p>
+                                        </div>
+                                        {hasMenu && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Actions for ${artifactName(artifact)}`}
+                                                        className="-mt-1 -mr-2 inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:size-11"
+                                                    >
+                                                        <MoreHorizontal className="size-5" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    {openable && (
+                                                        <DropdownMenuItem
+                                                            asChild
+                                                        >
+                                                            <a
+                                                                href={openHref(
+                                                                    artifact.id,
+                                                                )}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                            >
+                                                                Open
+                                                            </a>
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    {!artifact.revoked_at && (
+                                                        <DropdownMenuItem
+                                                            asChild
+                                                        >
+                                                            <Link
+                                                                href={ArtifactVersionController.show.url(
+                                                                    {
+                                                                        team: team.slug,
+                                                                        artifactId:
+                                                                            artifact.id,
+                                                                    },
+                                                                )}
+                                                                data-testid={`artifact-history-${artifact.id}`}
+                                                            >
+                                                                History
+                                                            </Link>
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    {canAddToCollection && (
+                                                        <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuLabel>
+                                                                Add to
+                                                                collection
+                                                            </DropdownMenuLabel>
+                                                            {collections.map(
+                                                                (c) => (
+                                                                    <DropdownMenuItem
+                                                                        key={
+                                                                            c.id
+                                                                        }
+                                                                        onSelect={() =>
+                                                                            router.post(
+                                                                                CollectionController.addArtifact.url(
+                                                                                    {
+                                                                                        team: team.slug,
+                                                                                        collection:
+                                                                                            c.id,
+                                                                                    },
+                                                                                ),
+                                                                                {
+                                                                                    artifact_id:
+                                                                                        artifact.id,
+                                                                                },
+                                                                                {
+                                                                                    preserveScroll: true,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        {c.name}
+                                                                    </DropdownMenuItem>
+                                                                ),
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {isAdmin &&
+                                                        !artifact.revoked_at && (
+                                                            <>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem
+                                                                    className="text-destructive"
+                                                                    onSelect={() =>
+                                                                        setRevoking(
+                                                                            artifact,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Revoke
+                                                                </DropdownMenuItem>
+                                                            </>
+                                                        )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
                 ) : (
                     <ul className="divide-y divide-border border-y border-border">
                         {artifacts.map((artifact) => (
