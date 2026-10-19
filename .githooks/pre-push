@@ -32,7 +32,8 @@ php artisan wayfinder:generate --no-interaction
 npm run format:check
 npm run lint:check
 npm run types:check
-npm run build
+# Built the way production builds it (see the CI step of the same name).
+APP_ENV=production npm run build:ssr
 echo "✅ Frontend checks passed."
 
 echo "🐘 PHP (style, full Pest suite against a CI-like .env)..."
