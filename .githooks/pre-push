@@ -35,13 +35,36 @@ npm run types:check
 npm run build
 echo "✅ Frontend checks passed."
 
-echo "🐘 PHP (style, full Pest suite)..."
+echo "🐘 PHP (style, full Pest suite against a CI-like .env)..."
+# CI builds its .env with `cp .env.example .env && php artisan key:generate`, so
+# the suite must pass against exactly that. Running it against a developer's own
+# .env hid a real failure (2026-10-19): a line added to .env.example turned dev
+# login off in CI only, while every local run, which had dev login on, passed.
+# The original .env is put back on any exit, including a failing test run.
+env_backup=""
+if [ -f .env ]; then
+    env_backup="$(mktemp)"
+    cp .env "$env_backup"
+fi
+restore_env() {
+    if [ -n "$env_backup" ]; then
+        cp "$env_backup" .env
+        rm -f "$env_backup"
+    else
+        rm -f .env
+    fi
+}
+trap restore_env EXIT
+cp .env.example .env
+php artisan key:generate --no-interaction --quiet
 if [ ! -f vendor/bin/pint ]; then
     echo "❌ vendor/bin/pint not found. Run: composer install"
     exit 1
 fi
 vendor/bin/pint --test --format agent
 php -d memory_limit=512M vendor/bin/pest --compact
+restore_env
+trap - EXIT
 echo "✅ PHP checks passed."
 
 if [ "${MCP_E2E_PRE_PUSH:-false}" = "true" ]; then
