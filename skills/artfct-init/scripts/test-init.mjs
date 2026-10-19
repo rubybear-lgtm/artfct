@@ -8,7 +8,8 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -186,6 +187,51 @@ const cases = [
 			assert.deepEqual(JSON.parse(readFileSync(join(box.repo, "artfct.json"), "utf8")).grants, {});
 			rmSync(text);
 			rmSync(selection);
+		},
+	},
+	{
+		name: "a full re-run leaves every byte alone",
+		run: async () => {
+			const box = sandbox();
+			const sequence = async () => {
+				await init(box.args("status"));
+				await init(box.args("block-upsert", ["--host", "claude"]));
+				await init(box.args("files-install", ["--name", "GUIDELINES"]));
+				await init(box.args("files-install", ["--name", "DESIGN"]));
+				await init(box.args("decide", ["--key", "instructions", "--status", "configured"]));
+				await init(box.args("prefs-write", ["--key", "detail", "--value", "concise"]));
+				await init(box.args("prefs-write", ["--key", "comparisons", "--value", "tables"]));
+				await init(box.args("decide", ["--key", "preferences", "--status", "configured"]));
+				await init(box.args("perms-apply", ["--host", "claude", "--server", SERVER, "--capabilities", "read,publish"]));
+				await init(box.args("decide", ["--key", "permissions", "--status", "configured"]));
+			};
+			const digest = () => {
+				const root = dirname(box.repo);
+				const lines = [];
+				const walk = (dir) => {
+					for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+						const full = join(dir, entry.name);
+
+						if (entry.isDirectory()) {
+							walk(full);
+						} else {
+							lines.push(`${full.slice(root.length)}\t${createHash("sha256").update(readFileSync(full)).digest("hex")}`);
+						}
+					}
+				};
+
+				walk(root);
+
+				return lines.join("\n");
+			};
+
+			await sequence();
+			const first = digest();
+
+			await sequence();
+
+			assert.notEqual(first, "");
+			assert.equal(digest(), first);
 		},
 	},
 	{
