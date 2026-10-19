@@ -83,3 +83,31 @@ test('portal_session_returns_to_the_billing_page_for_the_teams_customer', functi
     Http::assertSent(fn (Request $request) => $request['customer'] === 'cus_1'
         && $request['return_url'] === route('teams.billing.show', ['team' => $team->slug]));
 });
+
+test('checkout and customer creation carry idempotency keys and allow cards only', function () {
+    Http::fake([
+        'api.stripe.com/v1/customers' => Http::response(['id' => 'cus_key']),
+        'api.stripe.com/v1/checkout/sessions' => Http::response(['url' => 'https://checkout.stripe.test/k']),
+    ]);
+    $team = Team::factory()->create(['owner_user_id' => User::factory()->create()->id]);
+
+    (new RealBilling)->createCheckoutSession($team, 3);
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/customers')
+        && str_starts_with($request->header('Idempotency-Key')[0] ?? '', 'artfct-customer-'.$team->id.'-'));
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/checkout/sessions')
+        && str_starts_with($request->header('Idempotency-Key')[0] ?? '', 'artfct-checkout-'.$team->id.'-3-')
+        && $request['payment_method_types'] === ['card']);
+});
+
+test('a test mode key is refused in production and allowed elsewhere', function () {
+    config(['services.stripe.secret' => 'sk_test_x']);
+    Http::fake(['api.stripe.com/v1/checkout/sessions' => Http::response(['url' => 'https://c.test'])]);
+    $team = Team::factory()->create(['stripe_customer_id' => 'cus_env']);
+
+    expect((new RealBilling)->createCheckoutSession($team, 1))->toBe('https://c.test');
+
+    app()->detectEnvironment(fn (): string => 'production');
+
+    expect(fn () => (new RealBilling)->createCheckoutSession($team, 1))->toThrow(RuntimeException::class, 'test-mode key');
+});

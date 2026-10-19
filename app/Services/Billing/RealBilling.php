@@ -23,11 +23,18 @@ final class RealBilling implements BillingContract
             throw new RuntimeException('services.stripe.team_price_id must be configured to start checkout.');
         }
 
-        $response = $this->http()->asForm()->post(self::BASE.'/checkout/sessions', [
+        $seats = max(1, $seatCount);
+        $customer = $this->customerFor($team);
+
+        // The key makes a double click or a retried request return the same
+        // session instead of opening a second subscription; it rolls over every
+        // ten minutes so a later, genuine attempt gets a fresh one.
+        $response = $this->http()->withHeaders(['Idempotency-Key' => 'artfct-checkout-'.$team->id.'-'.$seats.'-'.intdiv(now()->timestamp, 600)])->asForm()->post(self::BASE.'/checkout/sessions', [
             'mode' => 'subscription',
+            'payment_method_types' => ['card'],
             'client_reference_id' => (string) $team->id,
-            'customer' => $this->customerFor($team),
-            'line_items' => [['price' => $priceId, 'quantity' => max(1, $seatCount)]],
+            'customer' => $customer,
+            'line_items' => [['price' => $priceId, 'quantity' => $seats]],
             'subscription_data' => ['metadata' => ['team_id' => (string) $team->id]],
             'success_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=success',
             'cancel_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=cancelled',
@@ -96,11 +103,15 @@ final class RealBilling implements BillingContract
 
         $email = $team->billing_email ?? $team->owner?->email;
 
-        $id = (string) $this->http()->asForm()->post(self::BASE.'/customers', array_filter([
+        $parameters = array_filter([
             'email' => $email,
             'name' => $team->name,
             'metadata' => ['team_id' => (string) $team->id, 'team_slug' => $team->slug],
-        ]))->throw()->json('id');
+        ]);
+
+        // Two concurrent first checkouts must not create two Stripe customers.
+        $id = (string) $this->http()->withHeaders(['Idempotency-Key' => 'artfct-customer-'.$team->id.'-'.substr(sha1((string) json_encode($parameters)), 0, 16)])
+            ->asForm()->post(self::BASE.'/customers', $parameters)->throw()->json('id');
 
         $team->forceFill(['stripe_customer_id' => $id])->save();
 
@@ -113,6 +124,10 @@ final class RealBilling implements BillingContract
 
         if (! $secret) {
             throw new RuntimeException('services.stripe.secret must be configured to bill teams.');
+        }
+
+        if (app()->environment('production') && preg_match('/^(sk|rk)_test_/', (string) $secret) === 1) {
+            throw new RuntimeException('A Stripe test-mode key is configured in production; refusing to bill with it.');
         }
 
         return Http::withToken($secret)->acceptJson()->timeout(30);
