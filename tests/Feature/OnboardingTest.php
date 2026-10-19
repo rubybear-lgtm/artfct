@@ -15,30 +15,32 @@ function freshSignUp(string $email = 'new@example.com'): User
     return $user;
 }
 
-test('a_user_nobody_invited_is_asked_to_create_their_first_team', function () {
+test('a_new_user_lands_in_their_personal_workspace_without_being_asked_for_a_team', function () {
     $user = freshSignUp();
     $personal = $user->personalTeam();
 
-    test()->actingAs($user)->get(route('dashboard', $personal))->assertRedirect(route('onboarding.team.show'));
-    test()->actingAs($user)->get(route('onboarding.team.show'))
+    test()->actingAs($user)->get(route('dashboard', $personal))
         ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page->component('onboarding/team'));
+        ->assertInertia(fn (Assert $page) => $page->component('dashboard'));
+    test()->actingAs($user)->get(route('onboarding.team.show'))
+        ->assertRedirect(route('dashboard', ['current_team' => $personal->slug]));
+    expect($user->teams()->count())->toBe(1);
 });
 
-test('creating_the_first_team_makes_the_user_its_owner_admin_and_lands_on_its_dashboard', function () {
+test('creating_a_team_makes_the_user_its_owner_admin_and_lands_on_its_settings', function () {
     $user = freshSignUp();
 
-    $response = test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => 'Northwind Analytics']);
+    $response = test()->actingAs($user)->post(route('teams.store'), ['name' => 'Northwind Analytics']);
 
     $team = Team::query()->where('name', 'Northwind Analytics')->firstOrFail();
-    $response->assertRedirect(route('dashboard', ['current_team' => $team->slug]));
+    $response->assertRedirect(route('teams.edit', ['team' => $team->slug]));
     expect($team->owner_user_id)->toBe($user->id)
+        ->and($team->is_personal)->toBeFalse()
         ->and($team->memberships()->where('user_id', $user->id)->value('role'))->toBe(TeamRole::Admin)
-        ->and($user->fresh()->current_team_id)->toBe($team->id)
-        ->and($user->fresh()->needsFirstTeam())->toBeFalse();
+        ->and($user->teams()->count())->toBe(2);
 });
 
-test('an_invited_user_is_not_asked_and_sees_the_invitation_first', function () {
+test('an_invited_user_sees_the_invitation_on_their_dashboard', function () {
     $user = freshSignUp('invited@example.com');
     $team = Team::factory()->create();
     $leader = memberOfTeam($team, TeamRole::Admin);
@@ -47,54 +49,36 @@ test('an_invited_user_is_not_asked_and_sees_the_invitation_first', function () {
     test()->actingAs($user)->get(route('dashboard', $user->personalTeam()))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->component('dashboard')->has('pendingInvitations', 1));
-    test()->actingAs($user)->get(route('onboarding.team.show'))->assertRedirect(route('teams.index'));
 });
 
-test('a_user_who_declines_their_only_invitation_is_then_asked_to_create_a_team', function () {
-    $user = freshSignUp('decliner2@example.com');
-    $team = Team::factory()->create();
-    $leader = memberOfTeam($team, TeamRole::Admin);
-    $invitation = $team->invitations()->create(['email' => 'decliner2@example.com', 'role' => TeamRole::Member, 'invited_by' => $leader->id, 'expires_at' => now()->addDay()]);
+test('a_personal_team_can_be_upgraded_in_place_and_keeps_its_slug', function () {
+    $user = freshSignUp();
+    $personal = $user->personalTeam();
+    $slug = $personal->slug;
 
-    test()->actingAs($user)->delete(route('invitations.decline', $invitation));
+    test()->actingAs($user)->post(route('teams.upgrade', $personal), ['name' => 'Northwind Analytics'])
+        ->assertRedirect(route('teams.billing.show', ['team' => $slug]));
 
-    expect($user->fresh()->needsFirstTeam())->toBeTrue();
+    $personal->refresh();
+    expect($personal->name)->toBe('Northwind Analytics')
+        ->and($personal->is_personal)->toBeFalse()
+        ->and($personal->slug)->toBe($slug)
+        ->and($user->fresh()->current_team_id)->toBe($personal->id)
+        ->and($user->fresh()->personalTeam())->not->toBeNull()
+        ->and($user->fresh()->personalTeam()->id)->not->toBe($personal->id);
 });
 
-test('a_user_with_a_team_of_their_own_is_not_asked', function () {
-    $team = Team::factory()->create();
-    $member = memberOfTeam($team, TeamRole::Member);
-    $member->switchTeam($team);
+test('only_a_personal_team_can_be_upgraded_and_it_needs_a_valid_name', function () {
+    $user = freshSignUp();
+    test()->actingAs($user)->post(route('teams.store'), ['name' => 'Acme']);
+    $team = Team::query()->where('name', 'Acme')->firstOrFail();
 
-    expect($member->needsFirstTeam())->toBeFalse();
-    test()->actingAs($member)->get(route('onboarding.team.show'))->assertRedirect(route('teams.index'));
+    test()->actingAs($user)->post(route('teams.upgrade', $team), ['name' => 'Other'])->assertForbidden();
+    test()->actingAs($user)->post(route('teams.upgrade', $user->personalTeam()), ['name' => 'x'])->assertSessionHasErrors('name');
 });
 
-test('the_first_team_needs_a_name', function () {
+test('a_personal_team_cannot_start_checkout', function () {
     $user = freshSignUp();
 
-    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => ''])->assertSessionHasErrors('name');
-    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => 'x'])->assertSessionHasErrors('name');
-});
-
-test('the_first_team_rejects_a_reserved_name', function () {
-    $user = freshSignUp();
-
-    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => 'dashboard'])
-        ->assertSessionHasErrors('name');
-
-    expect(Team::query()->where('name', 'dashboard')->exists())->toBeFalse();
-});
-
-test('the_first_team_name_is_trimmed_before_validation_and_storage', function () {
-    $user = freshSignUp();
-
-    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => '  Northwind Analytics  '])
-        ->assertRedirect();
-
-    expect(Team::query()->where('name', 'Northwind Analytics')->exists())->toBeTrue()
-        ->and(Team::query()->where('name', '  Northwind Analytics  ')->exists())->toBeFalse();
-
-    test()->actingAs($user)->post(route('onboarding.team.store'), ['name' => '  x  '])
-        ->assertSessionHasErrors('name');
+    test()->actingAs($user)->post(route('teams.billing.checkout', $user->personalTeam()))->assertForbidden();
 });
