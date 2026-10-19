@@ -84,6 +84,7 @@ use Illuminate\Validation\Rules\Password;
 use Inertia\ExceptionResponse;
 use Inertia\Inertia;
 use Laravel\Mcp\Events\SessionInitialized;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -106,10 +107,19 @@ class AppServiceProvider extends ServiceProvider
             && config('services.workos.secret')
             && config('services.workos.redirect_url');
 
-        $this->app->singleton(
-            AuthKitClientContract::class,
-            $workosConfigured ? RealAuthKitClient::class : FakeAuthKitClient::class,
-        );
+        // Never fall back to the fake client in production: incomplete WorkOS
+        // config there must fail loudly, not quietly serve a fake sign-in.
+        $this->app->singleton(AuthKitClientContract::class, function ($app) use ($workosConfigured): AuthKitClientContract {
+            if ($workosConfigured) {
+                return $app->make(RealAuthKitClient::class);
+            }
+
+            if ($app->environment('production')) {
+                throw new RuntimeException('WorkOS is not fully configured: WORKOS_CLIENT_ID, WORKOS_API_KEY and WORKOS_REDIRECT_URL are required in production.');
+            }
+
+            return $app->make(FakeAuthKitClient::class);
+        });
         $this->app->singleton(
             DnsResolverContract::class,
             app()->environment('testing') ? FakeDnsResolver::class : RealDnsResolver::class,

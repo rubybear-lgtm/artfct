@@ -94,7 +94,7 @@ const NOT_IMPLEMENTED_STATUS: u16 = 501;
 const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
 const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
 const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
-const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none';";
+const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads;";
 /// Default wildcard suffix for the per-artifact isolated origin scheme:
 /// `<tenant-slug>--<artifact-id>.artfct.dev`. One wildcard level, covered by
 /// Universal SSL (spec 05). Overridable per environment via
@@ -2101,6 +2101,12 @@ mod tests {
             .contains("script-src 'unsafe-inline' 'unsafe-eval' https:;"));
         assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("style-src 'unsafe-inline' https:;"));
         assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("font-src https: data:;"));
+        // A shared-origin artifact runs on the same origin as the console, so the
+        // document is sandboxed into an opaque origin: scripts still run, but it
+        // cannot read the console's cookies or call it with the visitor's session.
+        assert!(PREVIEW_CONTENT_SECURITY_POLICY.contains("sandbox allow-scripts"));
+        assert!(!PREVIEW_CONTENT_SECURITY_POLICY.contains("allow-same-origin"));
+        assert!(!PREVIEW_CONTENT_SECURITY_POLICY.contains("allow-top-navigation"));
     }
 
     fn permanent_manifest(external_origins: Vec<&str>, unsafe_eval: bool) -> PermanentManifest {

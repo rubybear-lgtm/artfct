@@ -245,3 +245,13 @@ test('checkout_creates_subscription_and_sets_team_plan', function () {
     expect($team->fresh()->plan)->toBe(Plan::Team);
     expect($team->fresh()->stripe_subscription_id)->toBe($subscriptionId);
 });
+
+test('a team that already has a subscription cannot start a second checkout', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_subscription_id' => 'sub_existing']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->post(route('teams.billing.checkout', ['team' => $team->slug]))
+        ->assertRedirect(route('teams.billing.show', ['team' => $team->slug]));
+
+    expect($team->fresh()->stripe_subscription_id)->toBe('sub_existing');
+});

@@ -15,9 +15,15 @@ beforeEach(function () {
     Http::fake(['worker.test/*' => Http::response(['ok' => true])]);
 });
 
-function stripeEvent(string $type, array $object, ?string $id = null, ?string $secret = 'whsec_test', ?int $timestamp = null): TestResponse
+function stripeEvent(string $type, array $object, ?string $id = null, ?string $secret = 'whsec_test', ?int $timestamp = null, ?int $created = null, ?bool $livemode = null): TestResponse
 {
-    $body = json_encode(['id' => $id ?? 'evt_'.uniqid(), 'type' => $type, 'data' => ['object' => $object]]);
+    $body = json_encode(array_filter([
+        'id' => $id ?? 'evt_'.uniqid(),
+        'type' => $type,
+        'created' => $created,
+        'livemode' => $livemode,
+        'data' => ['object' => $object],
+    ], fn ($value): bool => $value !== null));
     $timestamp ??= time();
 
     return test()->call('POST', '/webhooks/stripe', [], [], [], [
@@ -30,7 +36,7 @@ test('checkout_completed_upgrades_the_team_and_pushes_limits', function () {
     $team = Team::factory()->create();
     memberOfTeam($team, TeamRole::Admin);
 
-    stripeEvent('checkout.session.completed', ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_1', 'customer' => 'cus_1'])->assertOk();
+    stripeEvent('checkout.session.completed', ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_1', 'customer' => 'cus_1', 'payment_status' => 'paid'])->assertOk();
 
     $team->refresh();
     expect($team->plan)->toBe(Plan::Team)
@@ -52,7 +58,7 @@ test('bad_signature_is_rejected_and_changes_nothing', function () {
 
 test('replayed_event_is_a_no_op', function () {
     $team = Team::factory()->create();
-    $object = ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_1', 'customer' => 'cus_1'];
+    $object = ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_1', 'customer' => 'cus_1', 'payment_status' => 'paid'];
 
     stripeEvent('checkout.session.completed', $object, 'evt_same')->assertOk();
     $team->forceFill(['plan' => Plan::Free])->save();
@@ -147,5 +153,80 @@ test('a retry after a mid-apply failure is reprocessed, not swallowed', function
         'client_reference_id' => $t->id,
         'subscription' => 'sub_retry',
         'customer' => $t->stripe_customer_id,
+        'payment_status' => 'paid',
     ]],
 ]);
+
+test('a stale event retried after a newer one does not undo it', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_customer_id' => 'cus_order', 'stripe_subscription_id' => 'sub_order']);
+    $checkout = ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_order', 'customer' => 'cus_order', 'payment_status' => 'paid'];
+
+    stripeEvent('customer.subscription.deleted', ['customer' => 'cus_order'], created: 2000)->assertOk();
+    expect($team->fresh()->plan)->toBe(Plan::Free);
+
+    stripeEvent('checkout.session.completed', $checkout, created: 1000)->assertOk();
+
+    expect($team->fresh()->plan)->toBe(Plan::Free)
+        ->and($team->fresh()->stripe_subscription_id)->toBeNull();
+});
+
+test('a stale payment failure retried after a success does not leave a paying team read-only', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_customer_id' => 'cus_pay']);
+
+    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_pay'], created: 2000)->assertOk();
+    stripeEvent('invoice.payment_failed', ['customer' => 'cus_pay'], created: 1000)->assertOk();
+
+    expect($team->fresh()->payment_status)->toBe(PaymentStatus::Active);
+});
+
+test('events with the same timestamp are both applied', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_customer_id' => 'cus_same']);
+
+    stripeEvent('invoice.payment_failed', ['customer' => 'cus_same'], created: 3000)->assertOk();
+    stripeEvent('invoice.payment_succeeded', ['customer' => 'cus_same'], created: 3000)->assertOk();
+
+    expect($team->fresh()->payment_status)->toBe(PaymentStatus::Active);
+});
+
+test('a checkout session that is not paid does not upgrade the team', function (?string $status) {
+    $team = Team::factory()->create();
+    $session = ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_unpaid', 'customer' => 'cus_unpaid'];
+
+    stripeEvent('checkout.session.completed', $status === null ? $session : $session + ['payment_status' => $status])->assertOk();
+
+    expect($team->fresh()->plan)->toBe(Plan::Free)
+        ->and($team->fresh()->stripe_subscription_id)->toBeNull();
+})->with([null, 'unpaid']);
+
+test('a session with no payment due still upgrades the team', function () {
+    $team = Team::factory()->create();
+
+    stripeEvent('checkout.session.completed', ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_free', 'customer' => 'cus_free', 'payment_status' => 'no_payment_required'])->assertOk();
+
+    expect($team->fresh()->plan)->toBe(Plan::Team);
+});
+
+test('an event from the other Stripe mode is ignored and not recorded', function (string $key, bool $livemode, bool $applied) {
+    config(['services.stripe.secret' => $key]);
+    $team = Team::factory()->create();
+
+    $response = stripeEvent('checkout.session.completed', ['client_reference_id' => (string) $team->id, 'subscription' => 'sub_mode', 'customer' => 'cus_mode', 'payment_status' => 'paid'], livemode: $livemode)->assertOk();
+
+    expect($team->fresh()->plan)->toBe($applied ? Plan::Team : Plan::Free);
+    $applied ? $response->assertJson(['status' => 'ok']) : $response->assertJson(['status' => 'ignored']);
+})->with([
+    'test event, live key' => ['sk_live_abc', false, false],
+    'live event, test key' => ['sk_test_abc', true, false],
+    'live event, restricted live key' => ['rk_live_abc', true, true],
+    'test event, test key' => ['sk_test_abc', false, true],
+]);
+
+test('a past due subscription degrades the team even if the invoice event was lost', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_customer_id' => 'cus_status']);
+
+    stripeEvent('customer.subscription.updated', ['customer' => 'cus_status', 'status' => 'past_due', 'cancel_at_period_end' => false], created: 100)->assertOk();
+    expect($team->fresh()->payment_status)->toBe(PaymentStatus::PastDue);
+
+    stripeEvent('customer.subscription.updated', ['customer' => 'cus_status', 'status' => 'active', 'cancel_at_period_end' => false], created: 200)->assertOk();
+    expect($team->fresh()->payment_status)->toBe(PaymentStatus::Active);
+});

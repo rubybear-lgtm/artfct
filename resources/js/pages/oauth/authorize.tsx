@@ -62,6 +62,14 @@ export default function Authorize({
     team,
     teams,
 }: Props) {
+    const redirectHost = (() => {
+        try {
+            return new URL(redirectUri).host;
+        } catch {
+            return redirectUri;
+        }
+    })();
+
     const form = useForm({
         client_id: clientId,
         redirect_uri: redirectUri,
@@ -111,6 +119,12 @@ export default function Authorize({
                             <div className="font-medium">Signed in as</div>
                             <div className="mt-1 break-words text-muted-foreground">
                                 {userName}
+                            </div>
+                        </div>
+                        <div className="sm:col-span-2">
+                            <div className="font-medium">Returns to</div>
+                            <div className="mt-1 break-all text-muted-foreground">
+                                {redirectHost}
                             </div>
                         </div>
                         <div className="sm:col-span-2">

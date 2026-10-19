@@ -21,10 +21,8 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  * Spec 14: checkout and custom hostname. Stripe webhook processing
  * (`checkout.session.completed`, `invoice.payment_failed`,
  * `invoice.payment_succeeded`) is applied through `BillingService`'s
- * `applyCheckoutCompleted`/`applyPaymentFailed`/`applyPaymentSucceeded` —
- * a real webhook-receiving route that verifies Stripe's signature and
- * calls these was not built this session (no live Stripe account to sign
- * against); see DOCUMENTATION.md.
+ * `applyCheckoutCompleted`/`applyPaymentFailed`/`applyPaymentSucceeded`,
+ * called from `StripeWebhookController`, which verifies Stripe's signature.
  */
 class BillingController extends Controller
 {
@@ -106,6 +104,12 @@ class BillingController extends Controller
     public function checkout(Team $team, BillingService $billing): SymfonyResponse
     {
         Gate::authorize('manageBilling', $team);
+
+        if ($team->stripe_subscription_id !== null) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => __('This team already has a subscription. Use Manage billing to change it.')]);
+
+            return to_route('teams.billing.show', ['team' => $team->slug]);
+        }
 
         $url = $billing->startCheckout($team);
 

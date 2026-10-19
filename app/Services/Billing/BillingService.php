@@ -160,12 +160,27 @@ final class BillingService
      * Applies Stripe's `customer.subscription.updated`: the renewal date and
      * whether the subscription is set to end with the current period.
      */
-    public function applySubscriptionUpdated(Team $team, bool $cancelAtPeriodEnd, ?int $periodEnd): void
+    public function applySubscriptionUpdated(Team $team, bool $cancelAtPeriodEnd, ?int $periodEnd, ?string $status = null): void
     {
-        $team->forceFill([
+        $attributes = [
             'cancel_at_period_end' => $cancelAtPeriodEnd,
             'current_period_end' => $periodEnd === null ? null : Carbon::createFromTimestamp($periodEnd),
-        ])->save();
+        ];
+
+        // The subscription's own status is the backstop for a lost or reordered
+        // invoice event: a past-due subscription degrades the team, an active
+        // one restores it.
+        if (in_array($status, ['past_due', 'unpaid'], true)) {
+            $attributes['payment_status'] = PaymentStatus::PastDue;
+        } elseif (in_array($status, ['active', 'trialing'], true)) {
+            $attributes['payment_status'] = PaymentStatus::Active;
+        }
+
+        $team->forceFill($attributes)->save();
+
+        if ($team->wasChanged('payment_status')) {
+            $this->limitsWriter->push($team);
+        }
     }
 
     /**
