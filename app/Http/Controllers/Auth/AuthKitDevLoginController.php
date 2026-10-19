@@ -11,8 +11,9 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
- * Dev/test-only stand-in for WorkOS's hosted login screen. Never registered
- * in production (see routes/auth.php) — this is what
+ * Dev/test-only stand-in for WorkOS's hosted login screen. Registered in every
+ * environment (the login page imports its generated action) but answers 404 in
+ * production whatever the flag says (see routes/auth.php) — this is what
  * `registration_and_org_creation_flow` and the feature tests click/post
  * through instead of a real WorkOS redirect.
  */
@@ -20,6 +21,7 @@ class AuthKitDevLoginController extends Controller
 {
     public function __invoke(Request $request): RedirectResponse
     {
+        abort_if(app()->environment('production'), 404);
         abort_unless(config('services.authkit.dev_login_enabled'), 404);
 
         $validated = $request->validate([
