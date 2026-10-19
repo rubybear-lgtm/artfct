@@ -14,6 +14,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
@@ -22,6 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Description('Mark a comment thread resolved, or reopen it with resolved set to false. Requires the comments:write scope and access to the artifact.')]
 #[Name('resolve_artifact_comment')]
+#[Title('Resolve comment thread')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
 #[IsDestructive(false)]

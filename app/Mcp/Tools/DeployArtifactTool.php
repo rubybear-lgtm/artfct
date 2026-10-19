@@ -25,6 +25,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
@@ -34,6 +35,7 @@ use RuntimeException;
 
 #[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
+#[Title('Publish artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
 #[IsDestructive(false)]

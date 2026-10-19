@@ -43,7 +43,6 @@ const concurrency = optionalInteger('MCP_LIVE_CONCURRENCY', 8, 2, 32);
 
 const supportedTools = new Set([
     'deploy_artifact',
-    'deploy_to_canvas',
     'search_artifacts',
     'list_artifacts',
     'get_connection',
@@ -81,14 +80,15 @@ for (const tool of tools.result?.tools ?? []) {
         metadata?.owner === 'artfct-mcp',
         tool.name + ' omitted its owner metadata',
     );
-    const legacy = tool.name === 'deploy_to_canvas';
     assert(
-        metadata?.compatibility === (legacy ? 'deprecated' : 'stable'),
+        metadata?.compatibility === 'stable',
         tool.name + ' reported unexpected compatibility metadata',
     );
     assert(
-        !legacy || metadata?.replacedBy === 'deploy_artifact',
-        'deploy_to_canvas must point at deploy_artifact',
+        typeof tool.title === 'string' &&
+            tool.title !== '' &&
+            !tool.title.endsWith('Tool'),
+        tool.name + ' omitted a human-readable title',
     );
     assert(
         Array.isArray(metadata?.requiredScopes),

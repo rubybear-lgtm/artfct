@@ -69,7 +69,7 @@ return [
     ],
     'protocol.retries' => [
         'surface' => 'protocol',
-        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'remote deployment deduplicates retries with the same request ID'],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'deploy_artifact skips the upload when the Worker already has the content'],
     ],
     'protocol.reconnection' => [
         'surface' => 'protocol',
@@ -132,7 +132,7 @@ return [
     ],
     'policy.degraded_service' => [
         'surface' => 'policy',
-        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'remote deployment reports an unavailable artifact service instead of an internal error'],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpRemoteTransportTest.php', 'name' => 'deploy_artifact reports an unavailable artifact service instead of an internal error'],
     ],
 
     // ── Clients ───────────────────────────────────────────────────────────

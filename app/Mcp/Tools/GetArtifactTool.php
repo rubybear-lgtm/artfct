@@ -16,6 +16,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
@@ -24,6 +25,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a fresh short-lived signed link at click time; for a public artifact it is the workspace\'s public artifact URL.')]
 #[Name('get_artifact')]
+#[Title('Get artifact details')]
 #[IsReadOnly]
 #[IsIdempotent]
 #[IsDestructive(false)]

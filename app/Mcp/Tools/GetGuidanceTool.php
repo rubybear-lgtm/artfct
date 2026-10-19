@@ -11,6 +11,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
@@ -19,6 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Description('Return Artfct\'s rules for one task: publish (publishing and updating), search (finding and reading) or collaborate (safe updates and comments), with the current artifact types and limits. Read it before publishing or answering from the library. The rules apply even if you did not read them.')]
 #[Name('get_guidance')]
+#[Title('Get guidance')]
 #[IsReadOnly]
 #[IsIdempotent]
 #[IsDestructive(false)]

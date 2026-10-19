@@ -31,6 +31,40 @@ class AiToolSetup
     }
 
     /**
+     * One-click install links for the tools that support them. Cursor and
+     * VS Code both register a protocol handler (`cursor://`, `vscode:`) that
+     * installs a server straight from a link; each also has an https fallback
+     * for browsers without the handler. Every other tool stays copy-paste.
+     */
+    public function cursorInstallLink(): string
+    {
+        $config = base64_encode((string) json_encode(['url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "cursor://anysphere.cursor-deeplink/mcp/install?name=artfct&config={$config}";
+    }
+
+    public function cursorWebInstallLink(): string
+    {
+        $config = base64_encode((string) json_encode(['url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return 'https://cursor.com/install-mcp?config='.urlencode($config).'&name=artfct';
+    }
+
+    public function vscodeInstallLink(): string
+    {
+        $config = rawurlencode((string) json_encode(['name' => 'artfct', 'type' => 'http', 'url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "vscode:mcp/install?{$config}";
+    }
+
+    public function vscodeWebInstallLink(): string
+    {
+        $config = rawurlencode((string) json_encode(['type' => 'http', 'url' => $this->mcpUrl()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        return "https://vscode.dev/redirect/mcp/install?config={$config}&name=artfct";
+    }
+
+    /**
      * One command that adds Artfct to every supported AI tool it finds on the
      * machine. Each tool still asks the person to sign in afterwards.
      */
@@ -40,7 +74,7 @@ class AiToolSetup
     }
 
     /**
-     * @return list<array{id: string, label: string, verified: bool, intro?: string, steps: list<array{text: string, code?: string}>}>
+     * @return list<array{id: string, label: string, verified: bool, intro?: string, installLink?: string, installLinkFallback?: string, steps: list<array{text: string, code?: string}>}>
      */
     public function guides(): array
     {
@@ -65,6 +99,17 @@ class AiToolSetup
                     ['text' => 'Run this in your terminal:', 'code' => "codex mcp add artfct --url {$url}"],
                     ['text' => 'Sign in, and approve the page that opens in your browser:', 'code' => 'codex mcp login artfct'],
                     ['text' => 'Start Codex. Artfct is ready to use.'],
+                ],
+            ],
+            [
+                'id' => 'connect-omp',
+                'label' => 'OMP',
+                'verified' => false,
+                'intro' => 'OMP (oh-my-pi) reads Model Context Protocol servers from its own config file, so add the artfct server there and sign in once.',
+                'steps' => [
+                    ['text' => 'Add the artfct server to your user config (`~/.omp/agent/mcp.json`, creating the file if needed):', 'code' => $this->json(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
+                    ['text' => 'Start `omp`, type `/mcp`, choose `artfct` and approve the sign-in that opens in your browser.'],
+                    ['text' => 'Publish with the `deploy_artifact` tool. When the HTML is ready, deploy instead of pasting raw code: the live link is what you share.'],
                 ],
             ],
             [
@@ -115,8 +160,10 @@ class AiToolSetup
                 'id' => 'connect-cursor',
                 'label' => 'Cursor',
                 'verified' => false,
+                'installLink' => $this->cursorInstallLink(),
+                'installLinkFallback' => $this->cursorWebInstallLink(),
                 'steps' => [
-                    ['text' => 'Add this to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in one project):', 'code' => $this->json(['mcpServers' => ['artfct' => ['url' => $url]]])],
+                    ['text' => 'Select Add to Cursor below. If the link does not open Cursor, paste the address by hand instead:', 'code' => $this->json(['mcpServers' => ['artfct' => ['url' => $url]]])],
                     ['text' => 'Open Cursor Settings, find artfct in the tools list and select Connect, or run:', 'code' => 'cursor-agent mcp login artfct'],
                     ['text' => 'Approve the sign-in that opens in your browser.'],
                 ],
@@ -126,8 +173,10 @@ class AiToolSetup
                 'label' => 'VS Code',
                 'verified' => false,
                 'intro' => 'For GitHub Copilot Chat in agent mode.',
+                'installLink' => $this->vscodeInstallLink(),
+                'installLinkFallback' => $this->vscodeWebInstallLink(),
                 'steps' => [
-                    ['text' => 'Add this to `.vscode/mcp.json` in your project, or open the command palette, run MCP: Open User Configuration and add it there for every project:', 'code' => $this->json(['servers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
+                    ['text' => 'Select Add to VS Code below. If the link does not open VS Code, add this to `.vscode/mcp.json` in your project instead, or open the command palette, run MCP: Open User Configuration and add it there for every project:', 'code' => $this->json(['servers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
                     ['text' => 'Select Start above the artfct entry and approve the sign-in when VS Code asks.'],
                     ['text' => 'In Copilot Chat, switch to Agent mode. Artfct appears in the tools list.'],
                 ],
@@ -166,8 +215,7 @@ class AiToolSetup
 
     /**
      * What a connected AI tool can do, in plain language. The names must match
-     * the tools `ArtfctServer` registers; the deprecated `deploy_to_canvas` is
-     * left out on purpose.
+     * the tools `ArtfctServer` registers.
      *
      * @return list<array{name: string, does: string, permission: string}>
      */
@@ -214,8 +262,8 @@ class AiToolSetup
     public function troubleshooting(): array
     {
         return [
-            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings.'],
-            ['name' => 'Connected to the wrong team', 'type' => 'Sign out, then in', 'note' => 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.'],
+            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. OMP: type /mcp, choose artfct and approve the sign-in. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings.'],
+            ['name' => 'Connected to the wrong team', 'type' => 'Sign out, then in', 'note' => 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code or OMP: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.'],
             ['name' => 'The tool cannot reach Artfct', 'type' => 'Check the address', 'note' => "Make sure the address is exactly {$this->mcpUrl()} and that your tool supports remote (HTTP) servers. Tools that can only start programs on your computer cannot connect."],
             ['name' => 'Your tool says it is being rate limited', 'type' => 'Wait a moment', 'note' => 'Wait as long as your tool reports, then try again.'],
             ['name' => 'An administrator removed or reset the connection', 'type' => 'Sign in again', 'note' => 'Repeat the sign-in step for your tool and approve access again. If you have left the team, ask an administrator to invite you back.'],
@@ -245,8 +293,43 @@ class AiToolSetup
 
             - Before starting research, a report or an analysis, search Artfct with `search_artifacts` for related work, and say which artifacts you used.
             - When you make something worth keeping (a report, dashboard, table, document or mockup), publish it with `deploy_artifact` and share the link it returns instead of pasting the raw code.
-            - When you change something you published before, publish it again with its `artifact_id` so the team keeps one link and its history.
+            - When you change something you published before, publish it again with its `artifact_id` and the `base_version` you built on, so the team keeps one link and its history and nobody's newer change is overwritten.
             - Full setup and tool reference: {$this->baseUrl}/llms-full.txt
+            MD;
+    }
+
+    /**
+     * A one-line rule for AGENTS.md, CLAUDE.md or Cursor rules. The full
+     * block lives in projectInstructions(); this is the smallest thing that
+     * still teaches the tool when to reach for Artfct.
+     */
+    public function agentInstructionLine(): string
+    {
+        return 'Before research, a report or an analysis, search Artfct with `search_artifacts` for related work; publish anything worth keeping with `deploy_artifact` and share its link.';
+    }
+
+    /**
+     * A prompt the user pastes into any agent to connect it to Artfct and
+     * teach it when to use it. It branches on what the agent can do: a coding
+     * agent adds the server itself, a chat app walks the person through the
+     * guide. Sign-in always stays with the person.
+     */
+    public function agentSetupPrompt(): string
+    {
+        return <<<MD
+            Connect this project to Artfct, where my team keeps what our AI tools make. Work through these steps in order and tell me when you need something from me.
+
+            1. If you already have Artfct tools such as `get_connection`, skip to step 3.
+            2. Add a remote MCP server named `artfct` at {$this->mcpUrl()}.
+               - If you can run shell commands, use your own client's command for adding a remote server. The commands for each client are at {$this->baseUrl}/llms-full.txt. If you cannot, read that page and walk me through the steps for the tool I am using.
+               - Signing in happens in my browser. Tell me to approve the page that opens, then wait. Never ask me for a password or a token.
+               - Some tools only show a new server after a restart or a reconnect (for example `/mcp`). If the Artfct tools are missing, tell me what to do, and carry on from step 3 once they appear.
+            3. Check the connection: call `get_connection` and tell me the team and person it reports. If that is not my team, stop and point me to the "Connected to the wrong team" section at {$this->baseUrl}/llms-full.txt.
+            4. Teach this project when to use Artfct. Add the block between the lines below to the file your tool reads for project instructions (`CLAUDE.md`, `AGENTS.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
+
+            ---
+            {$this->projectInstructions()}
+            ---
             MD;
     }
 
@@ -260,12 +343,18 @@ class AiToolSetup
             'llmsUrl' => "{$this->baseUrl}/llms.txt",
             'llmsFullUrl' => "{$this->baseUrl}/llms-full.txt",
             'quickInstall' => $this->quickInstall(),
+            'cursorInstallLink' => $this->cursorInstallLink(),
+            'cursorWebInstallLink' => $this->cursorWebInstallLink(),
+            'vscodeInstallLink' => $this->vscodeInstallLink(),
+            'vscodeWebInstallLink' => $this->vscodeWebInstallLink(),
             'guides' => $this->guides(),
             'tools' => $this->tools(),
             'permissions' => $this->permissions(),
             'troubleshooting' => $this->troubleshooting(),
             'skills' => $this->skills(),
             'projectInstructions' => $this->projectInstructions(),
+            'agentSetupPrompt' => $this->agentSetupPrompt(),
+            'agentInstructionLine' => $this->agentInstructionLine(),
         ];
     }
 

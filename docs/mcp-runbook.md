@@ -156,10 +156,11 @@ against a broken checkout and call that a rollback.
 The hosted endpoint negotiates an explicitly supported protocol version during
 `initialize`. Additive tool metadata and fields are backward-compatible, but
 removing or changing the meaning of a tool argument requires a new tool/schema
-version and a migration note in this runbook. Keep the legacy
-`deploy_to_canvas` tool available while clients migrate to `deploy_artifact`;
-its metadata is marked deprecated and it creates anonymous, expiring artifacts
-that are not searchable in the workspace catalog.
+version and a migration note in this runbook. The legacy `deploy_to_canvas`
+tool (anonymous, expiring, unsearchable artifacts) was deprecated in favor of
+`deploy_artifact` and removed from the hosted server on 2026-10-18, ahead of the
+Claude connectors directory submission. A client that still calls it gets the
+standard unknown-tool error.
 
 When deprecating a protocol version or tool, record the first release that
 announced the deprecation, the last release that accepts it, the replacement,
@@ -197,13 +198,6 @@ that is depends on the artifact's tier:
 - **`public`** — the artifact's public URL. The Worker serves a public artifact
   to anyone, so no token is minted for it and no session is needed.
 
-**`deploy_to_canvas` is the exception to both bullets.** Its artifacts are
-anonymous, expiring records with no workspace row, so the open route could only
-404 for them and no session can authorize one. Its `view_url` is the Worker's own
-`/p/{id}` URL **with the decryption fragment** (`#<shareCode>`) at every tier it
-accepts, and it opens on the Worker origin. The fragment is the decryption key —
-strip it and the page renders only a placeholder.
-
 `view_url` replaces the earlier `url` field. An agent should present `view_url` rather than reconstructing a
 `/p/{id}` URL from an artifact id: the raw URL carries no credential, so a
 browser cannot open a secure artifact with it.
@@ -214,15 +208,10 @@ retrying cannot help.
 
 ## Safe retries and policy errors
 
-`deploy_to_canvas` is the only tool that deduplicates retries. Send a stable
-`MCP-Request-Id` (or `Idempotency-Key`) header to opt in: repeating the same
-key with the same payload returns the original result, reusing the key with a
-different payload is rejected with the non-retryable
-`idempotency_key_reused` code, and a concurrent duplicate reports the
-retryable `idempotency_in_progress` code. Cached results are kept for
-`auth.mcp_idempotency_ttl_seconds` (default 600). `deploy_artifact`,
-`create_collection`, and `add_collection_artifact` do not deduplicate retries,
-and `deploy_to_canvas` itself is deprecated in favor of `deploy_artifact`.
+No hosted tool deduplicates retries by request header. `deploy_artifact`
+dedupes on content (publishing the same content again returns the same
+artifact), while `create_collection` and `add_collection_artifact` do not
+deduplicate retries.
 
 Rate-limit responses include `Retry-After`; quota and policy errors include a
 stable machine-readable error code and remediation-safe usage details. Retry
@@ -476,14 +465,14 @@ the active session remains usable after refresh. A different connection or a
 stale/expired session ID returns JSON-RPC `-32001` with
 `error.data.artfct.errorCode=session_expired` and `nextAction=initialize`.
 Re-authenticate and send `initialize` to obtain a new session before retrying
-the interrupted request. A stable `MCP-Request-Id` continues to deduplicate
-supported tool retries across that new session.
+the interrupted request. Retrying `deploy_artifact` after that is safe: the
+same content returns the same artifact and uploads nothing twice.
 
 Known, currently verified compatibility:
 
 - **Streamable HTTP reconnection:** expired or credential-mismatched session
-  IDs are rejected with reinitialization guidance, and a stable request ID
-  deduplicates retries across newly initialized sessions. Feature tests cover
+  IDs are rejected with reinitialization guidance, and a repeated
+  `deploy_artifact` publish is deduplicated by content. Feature tests cover
   those application-level recovery paths. The automated suite does not sever a
   live transport mid-request; it verifies the server's behavior after the
   client reconnects and presents an expired or mismatched session.

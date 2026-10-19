@@ -13,7 +13,6 @@ use App\Models\McpConnection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
-use App\Services\Artifacts\HttpArtifactContentSource;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\RealUsage;
@@ -21,12 +20,11 @@ use App\Services\Billing\UsageContract;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 
 /*
  * Following an artifact `view_url` the way a browser would is the only way to
  * tell a link that works from one that merely looks right — which is exactly
- * what a string-prefix assertion could not do for `deploy_to_canvas`.
+ * what a string-prefix assertion could not do.
  *
  * Dispatch is by origin, because the origin is what decides which server
  * actually answers. A URL on the Worker's public origin is a real HTTP fetch
@@ -76,35 +74,6 @@ function followArtifactViewUrl(string $viewUrl, ?User $as = null): array
     ];
 }
 
-/** The base64url form the `deploy_to_canvas` tool posts its body in. */
-function base64UrlDecode(string $value): string
-{
-    return (string) base64_decode(strtr($value, '-_', '+/'), true);
-}
-
-/**
- * Decrypt a posted `deploy_to_canvas` body with the share fragment from the
- * link the tool returned: the fragment is the artifact's access mechanism, so
- * the right fragment must yield the payload the tool was given.
- *
- * @param  array<string, mixed>  $posted  The create request body the tool sent.
- */
-function decryptCanvasPayload(array $posted, string $fragment): string|false
-{
-    $sealed = base64UrlDecode((string) $posted['body_ciphertext_b64']);
-    $iv = base64UrlDecode((string) $posted['body_iv_b64']);
-    $tag = substr($sealed, -16);
-
-    return openssl_decrypt(
-        substr($sealed, 0, -16),
-        'aes-256-gcm',
-        hash('sha256', $fragment, true),
-        OPENSSL_RAW_DATA,
-        $iv,
-        $tag,
-    );
-}
-
 test('serves the native Streamable HTTP MCP transport with bearer authentication', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
@@ -151,9 +120,11 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         'params' => [],
     ])->assertOk()
         ->assertJsonPath('result.tools.0.name', 'deploy_artifact')
-        ->assertJsonPath('result.tools.1.name', 'deploy_to_canvas')
-        ->assertJsonPath('result.tools.2.name', 'search_artifacts')
-        ->assertJsonPath('result.tools.3.name', 'get_connection')
+        ->assertJsonPath('result.tools.1.name', 'search_artifacts')
+        ->assertJsonPath('result.tools.2.name', 'get_connection')
+        ->assertJsonPath('result.tools.0.title', 'Publish artifact')
+        ->assertJsonPath('result.tools.1.title', 'Search artifacts')
+        ->assertJsonMissingPath('result.tools.15')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy')
         ->assertJsonMissingPath('result.nextCursor');
@@ -491,7 +462,7 @@ test('remote MCP tools honor bearer scopes', function () {
         'id' => 1,
         'method' => 'tools/call',
         'params' => [
-            'name' => 'deploy_to_canvas',
+            'name' => 'deploy_artifact',
             'arguments' => ['html' => '<h1>no</h1>'],
         ],
     ])->assertOk()
@@ -502,7 +473,7 @@ test('remote MCP tools honor bearer scopes', function () {
 
     expect(McpActivity::query()
         ->where('team_id', $team->id)
-        ->where('tool', 'deploy_to_canvas')
+        ->where('tool', 'deploy_artifact')
         ->where('outcome', 'denied')
         ->exists())->toBeTrue();
 });
@@ -698,268 +669,6 @@ test('compatibility failures identify client transport protocol version and reme
         ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'configuration_error');
 });
 
-test('remote deployment encrypts the body and returns a shareable result', function () {
-    $team = Team::factory()->create();
-    $token = remoteMcpToken($team);
-    config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake([
-        'worker.test/v1/artifacts' => Http::response([
-            'id' => 'artifact-123',
-            'url' => 'https://artfct.dev/p/artifact-123',
-            'tier' => 'public',
-            'expires_at' => now()->addDay()->toIso8601String(),
-            'title' => 'Remote test',
-            'description' => 'Encrypted HTML preview on artfct.',
-            'thumbnail' => 'https://artfct.dev/og-image.svg',
-            'preview_blurred' => true,
-        ], 201),
-    ]);
-
-    $response = $this->withHeaders([
-        'Authorization' => 'Bearer '.$token,
-        'Accept' => 'application/json',
-    ])->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 1,
-        'method' => 'tools/call',
-        'params' => [
-            'name' => 'deploy_to_canvas',
-            'arguments' => ['html' => '<title>Remote test</title><h1>Hello</h1>'],
-        ],
-    ])->assertOk();
-
-    $response->assertJsonPath('result.structuredContent.id', 'artifact-123')
-        ->assertJsonPath('result.structuredContent.organization', $team->slug);
-
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/v1/artifacts')
-        && $request->data()['body_ciphertext_b64'] !== '<title>Remote test</title><h1>Hello</h1>');
-
-    expect(McpActivity::query()
-        ->where('team_id', $team->id)
-        ->where('tool', 'deploy_to_canvas')
-        ->where('outcome', 'success')
-        ->count())->toBe(1);
-});
-
-test('deploy_to_canvas hands back a link that resolves for the artifact it created, at every tier it accepts', function (string $tier) {
-    configureArtifactLinks();
-
-    $team = Team::factory()->create(['slug' => 'rub-367-canvas']);
-    $token = remoteMcpToken($team);
-    $member = memberOfTeam($team, TeamRole::Member);
-    $html = '<title>Canvas preview</title><h1>preview</h1>';
-    config([
-        'services.worker.base_url' => 'https://worker.test',
-        'app.public_base_url' => 'https://artfct.dev',
-    ]);
-
-    // The Worker exactly as production serves this tool's artifacts: the create
-    // response addresses an anonymous KV record, `/p/{id}` renders that
-    // record's preview shell, and every D1-backed read — the org content
-    // endpoint the app's open route goes through — finds no row, because this
-    // tool writes none. The real HTTP content source is bound deliberately: an
-    // in-memory source is what let the old string-prefix assertion pass while
-    // the link it blessed resolved to a 404 for real.
-    app()->bind(ArtifactContentSource::class, fn (): HttpArtifactContentSource => HttpArtifactContentSource::default());
-
-    Http::fake(function ($request) use ($tier) {
-        $path = (string) parse_url($request->url(), PHP_URL_PATH);
-
-        return match (true) {
-            $path === '/v1/artifacts' => Http::response([
-                'id' => ARTIFACT_LINK_ID,
-                'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
-                'tier' => $tier,
-                'expires_at' => now()->addDay()->toIso8601String(),
-                'title' => 'Canvas preview',
-                'description' => 'Encrypted HTML preview on artfct.',
-                'thumbnail' => 'https://artfct.dev/og-image.svg',
-                'preview_blurred' => true,
-            ], 201),
-            // The KV path: the only thing that can serve this artifact.
-            $path === '/p/'.ARTIFACT_LINK_ID => Http::response(
-                '<!doctype html><title>Canvas preview</title><p>Waiting for the decryption key in the URL fragment.</p>',
-                200,
-            ),
-            default => Http::response(['error' => ['code' => 'artifact_not_found']], 404),
-        };
-    });
-    app()->bind(UsageContract::class, FakeUsage::class);
-
-    $response = $this->withToken($token)->postJson('/mcp', [
-        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => $html, 'tier' => $tier]],
-    ])->assertOk();
-
-    $viewUrl = (string) $response->json('result.structuredContent.view_url');
-    $followed = followArtifactViewUrl($viewUrl);
-
-    // The link resolves, for the artifact the tool created, on the only origin
-    // that has it: following it reaches the KV record's preview shell. This is
-    // the assertion the prefix check only pretended to make.
-    expect($followed['dispatched_to'])->toBe('worker')
-        ->and($followed['url'])->toBe('https://worker.test/p/'.ARTIFACT_LINK_ID.'#'.substr($viewUrl, strpos($viewUrl, '#') + 1))
-        ->and($followed['status'])->toBe(200)
-        ->and($followed['body'])->toContain('Waiting for the decryption key in the URL fragment.');
-
-    // And the app's open route is the dead end it always was for these
-    // artifacts: the same member asking for the same id through the app gets a
-    // 404, because the route reads D1 and there is no row. An app-route link
-    // with a fragment appended to it can therefore never be the right answer.
-    $throughTheApp = followArtifactViewUrl(
-        route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]),
-        $member,
-    );
-
-    expect($throughTheApp['status'])->toBe(404)
-        ->and($throughTheApp['location'])->toBeNull();
-
-    // The fragment is not decoration: it is the key to the body the tool
-    // actually posted, so the whole link — origin, path, fragment — is one
-    // working artifact.
-    $posted = null;
-    foreach (Http::recorded() as [$request]) {
-        if ($request->method() === 'POST' && str_ends_with((string) $request->url(), '/v1/artifacts')) {
-            $posted = $request->data();
-        }
-    }
-
-    $fragment = substr($viewUrl, strpos($viewUrl, '#') + 1);
-
-    expect($posted)->toBeArray()
-        ->and($fragment)->not->toBe('')
-        ->and(decryptCanvasPayload($posted, $fragment))->toBe($html);
-
-    // The canonical form is the resource's identity, not a link a person opens,
-    // and the field is `view_url` — one name for one meaning.
-    expect($response->json('result.structuredContent.canonical_url'))->toBe('https://worker.test/p/'.ARTIFACT_LINK_ID)
-        ->and($response->json('result.structuredContent'))->not->toHaveKey('url');
-    // The hosted tool accepts only public and secure, so `ephemeral` — the
-    // local server's third tier — is exercised by the shared contract fixture
-    // and the Rust suite instead of here; all three get the same link shape.
-})->with(['public', 'secure']);
-
-test('remote deployment deduplicates retries with the same request ID', function () {
-    $team = Team::factory()->create();
-    $token = remoteMcpToken($team);
-    config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake([
-        'worker.test/v1/artifacts' => Http::response([
-            'id' => 'artifact-retried',
-            'url' => 'https://artfct.dev/p/artifact-retried',
-            'tier' => 'public',
-            'expires_at' => now()->addDay()->toIso8601String(),
-            'title' => 'Retried deployment',
-            'description' => 'Encrypted HTML preview on artfct.',
-            'thumbnail' => 'https://artfct.dev/og-image.svg',
-            'preview_blurred' => true,
-        ], 201),
-    ]);
-
-    $requestId = 'retry-'.Str::uuid();
-    $firstInitialize = $this->withToken($token)->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 1,
-        'method' => 'initialize',
-        'params' => ['protocolVersion' => '2025-11-25'],
-    ])->assertOk();
-    $secondInitialize = $this->withToken($token)->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 2,
-        'method' => 'initialize',
-        'params' => ['protocolVersion' => '2025-11-25'],
-    ])->assertOk();
-    $payload = [
-        'jsonrpc' => '2.0',
-        'id' => 3,
-        'method' => 'tools/call',
-        'params' => [
-            'name' => 'deploy_to_canvas',
-            'arguments' => ['html' => '<h1>retry me</h1>'],
-        ],
-    ];
-
-    $first = $this->withHeaders([
-        'Authorization' => 'Bearer '.$token,
-        'MCP-Request-Id' => $requestId,
-        'MCP-Session-Id' => $firstInitialize->headers->get('MCP-Session-Id'),
-    ])->postJson('/mcp', $payload)->assertOk();
-
-    $second = $this->withHeaders([
-        'Authorization' => 'Bearer '.$token,
-        'MCP-Request-Id' => $requestId,
-        'MCP-Session-Id' => $secondInitialize->headers->get('MCP-Session-Id'),
-    ])->postJson('/mcp', $payload)->assertOk();
-
-    $second->assertJsonPath('result.structuredContent.id', 'artifact-retried')
-        ->assertJsonPath('result.structuredContent.view_url', $first->json('result.structuredContent.view_url'))
-        // The idempotent replay carries the same link, and that link is a real
-        // one — comparing two nulls would pass for the wrong reason.
-        ->assertJsonMissingPath('result.structuredContent.url');
-
-    // The replayed link is a real one, not two nulls comparing equal: a public
-    // artifact gets the workspace's public URL, with the client-side share
-    // fragment that unlocks it.
-    expect((string) $first->json('result.structuredContent.view_url'))
-        ->toStartWith('https://artfct.dev/p/artifact-retried#');
-
-    expect($second->json('result.structuredContent.view_url'))
-        ->toBe($first->json('result.structuredContent.view_url'));
-    Http::assertSentCount(1);
-    expect(McpActivity::query()
-        ->where('team_id', $team->id)
-        ->where('tool', 'deploy_to_canvas')
-        ->where('outcome', 'duplicate')
-        ->exists())->toBeTrue();
-
-    $this->withHeaders([
-        'Authorization' => 'Bearer '.$token,
-        'MCP-Request-Id' => $requestId,
-    ])->postJson('/mcp', [
-        ...$payload,
-        'params' => [
-            ...$payload['params'],
-            'arguments' => ['html' => '<h1>different payload</h1>'],
-        ],
-    ])->assertOk()
-        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'idempotency_key_reused');
-    Http::assertSentCount(1);
-});
-
-test('remote deployment refuses over-quota workspaces before contacting the worker', function () {
-    $team = Team::factory()->create();
-    $token = remoteMcpToken($team);
-    /** @var FakeUsage $usage */
-    $usage = app(UsageContract::class);
-    $usage->setUsage($team->slug, storageBytes: PHP_INT_MAX, artifactsThisPeriod: 0);
-    config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake();
-
-    $response = $this->withToken($token)->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 1,
-        'method' => 'tools/call',
-        'params' => [
-            'name' => 'deploy_to_canvas',
-            'arguments' => ['html' => '<h1>quota</h1>'],
-        ],
-    ])->assertOk()
-        ->assertJsonPath('result.isError', true)
-        ->assertJsonPath('result.content.0.type', 'text')
-        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'quota_exceeded')
-        ->assertJsonPath('result.content.0._meta.artfct.retryable', false)
-        ->assertJsonPath('result.content.0._meta.artfct.nextAction', 'get_usage');
-
-    expect($response->json('result.content.0.text'))->toContain('get_usage');
-
-    Http::assertNothingSent();
-    expect(McpActivity::query()
-        ->where('team_id', $team->id)
-        ->where('tool', 'deploy_to_canvas')
-        ->where('outcome', 'quota_exceeded')
-        ->exists())->toBeTrue();
-});
-
 test('remote usage returns customer-safe quota and render totals', function () {
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
@@ -1153,25 +862,6 @@ test('collection mutations require the explicit write scope and stay organizatio
         ->where('tool', 'create_collection')
         ->where('outcome', 'denied')
         ->exists())->toBeTrue();
-});
-
-test('remote deployment reports an unavailable artifact service instead of an internal error', function () {
-    $team = Team::factory()->create();
-    $token = remoteMcpToken($team);
-    config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake(['worker.test/*' => Http::response(['error' => 'unauthorized'], 401)]);
-    app()->bind(UsageContract::class, RealUsage::class);
-
-    $this->withToken($token)->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 1,
-        'method' => 'tools/call',
-        'params' => ['name' => 'deploy_to_canvas', 'arguments' => ['html' => '<h1>x</h1>']],
-    ])->assertOk()
-        ->assertJsonMissingPath('error')
-        ->assertJsonPath('result.isError', true)
-        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'upstream_unavailable')
-        ->assertJsonPath('result.content.0._meta.artfct.retryable', true);
 });
 
 test('deploy_artifact publishes a permanent org artifact in two steps', function () {
@@ -1713,6 +1403,25 @@ test('deploy_artifact maps Worker refusals to stable errors', function (int $sta
     'worker quota' => [403, ['error' => ['code' => 'quota_exceeded']], 'quota_exceeded', false],
     'invalid manifest' => [422, ['error' => ['code' => 'validation_failed']], 'deployment_rejected', false],
 ]);
+
+test('deploy_artifact reports an unavailable artifact service instead of an internal error', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/*' => Http::response(['error' => 'unauthorized'], 401)]);
+    app()->bind(UsageContract::class, RealUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<h1>x</h1>']],
+    ])->assertOk()
+        ->assertJsonMissingPath('error')
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'upstream_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.retryable', true);
+});
 
 test('deploy_artifact requires the deploy scope', function () {
     $team = Team::factory()->create();

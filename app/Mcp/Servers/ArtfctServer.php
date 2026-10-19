@@ -8,7 +8,6 @@ use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
 use App\Mcp\Tools\DeleteArtifactTool;
 use App\Mcp\Tools\DeployArtifactTool;
-use App\Mcp\Tools\DeployToCanvasTool;
 use App\Mcp\Tools\GetArtifactTool;
 use App\Mcp\Tools\GetConnectionTool;
 use App\Mcp\Tools\GetGuidanceTool;
@@ -46,7 +45,6 @@ final class ArtfctServer extends Server
 
     protected array $tools = [
         DeployArtifactTool::class,
-        DeployToCanvasTool::class,
         SearchArtifactsTool::class,
         GetConnectionTool::class,
         GetGuidanceTool::class,

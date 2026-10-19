@@ -13,6 +13,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
@@ -21,10 +22,11 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Description('Permanently delete one artifact from the authenticated workspace. Requires the explicit artifacts:delete scope and is refused while a legal hold is active.')]
 #[Name('delete_artifact')]
+#[Title('Delete artifact')]
 #[IsReadOnly(false)]
 #[IsIdempotent(true)]
 #[IsDestructive(true)]
-#[IsOpenWorld(true)]
+#[IsOpenWorld(false)]
 final class DeleteArtifactTool extends Tool
 {
     /** @var array<string, mixed> */

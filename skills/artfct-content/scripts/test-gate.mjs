@@ -28,6 +28,7 @@ const EXTENSION = join(REPO, ".pi", "extensions", "artfct-content.ts");
 const STUBS = join(HERE, "test-gate-stubs");
 const ESBUILD = join(REPO, "node_modules", ".bin", "esbuild");
 const FIXTURE = join(SKILL, "assets", "example-feature-showcase.html");
+import { gateCases } from "./test-gate-cases.mjs";
 
 /**
  * Bundle the extension into a throwaway tree laid out as <base>/.pi/extensions
@@ -116,18 +117,7 @@ async function main() {
 
 		const clean = await readFile(FIXTURE, "utf8");
 
-		const cases = [
-			["a clean content draft is allowed", { html: clean }, false],
-			["an artifact without the marker passes untouched", { html: "<html><body>a dashboard</body></html>" }, false],
-			["the explicit skip marker is honoured", { html: clean.replace("data-surface=", 'data-lint="skip" data-surface=') }, false],
-			["a bundle entrypoint is linted", { files: [{ path: "index.html", content: clean }], entrypoint: "index.html" }, false],
-			["a bundle without a matching entrypoint passes", { files: [{ path: "other.html", content: clean }], entrypoint: "index.html" }, false],
-			["a non-goal claim is blocked", { html: clean.replace("It does not write", "Artfct is an artifact store. It does not write") }, true],
-			["an unfilled token is blocked", { html: clean.replace("Every AI tool on your team starts from the same store", "{{TITLE}}") }, true],
-			["a retired connection method is blocked", { html: clean.replace("Members install nothing.", "Members use the CLI.") }, true],
-			["an unsupportable absolute is blocked", { html: clean.replace("Members install nothing.", "Artfct guarantees nothing is ever lost.") }, true],
-			["a lab disparagement claim is blocked", { html: clean.replace("Members install nothing.", "Claude and Copilot give you no controls.") }, true],
-		];
+		const cases = gateCases(clean);
 
 		for (const [name, input, expectBlock] of cases) {
 			const result = await call(input);
