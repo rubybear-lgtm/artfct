@@ -137,8 +137,14 @@ jobs:
       # import from there, so on a fresh checkout they must run after a
       # build, not before — a stale local checkout with old generated files
       # lying around masks this, which is how it went unnoticed.
+      # Built the way Railway builds production: APP_ENV=production and the SSR
+      # bundle. Wayfinder generates its route actions from the routes registered
+      # under that environment, so a route that exists only outside production
+      # breaks this build, which is how the first production deploy failed.
       - name: Build frontend
-        run: npm run build
+        env:
+          APP_ENV: production
+        run: npm run build:ssr
 
       - name: Check frontend lint
         run: npm run lint:check
