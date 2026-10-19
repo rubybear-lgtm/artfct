@@ -75,16 +75,44 @@ const cases = [
 		},
 	},
 	{
-		name: "block-upsert creates AGENTS.md when no entrypoint exists, and the block names no permission grants",
+		name: "for Claude Code a missing entrypoint becomes CLAUDE.md, and the block names no permission grants",
 		run: async () => {
 			const box = sandbox();
 
-			await init(box.args("block-upsert"));
+			await init(box.args("block-upsert", ["--host", "claude"]));
 
-			const text = readFileSync(join(box.repo, "AGENTS.md"), "utf8");
+			const text = readFileSync(join(box.repo, "CLAUDE.md"), "utf8");
 
 			assert.ok(text.includes("GUIDELINES.md") && text.includes("DESIGN.md") && text.includes("USER.local.md"));
 			assert.ok(!/mcp__/.test(text));
+			assert.equal(existsSync(join(box.repo, "AGENTS.md")), false);
+		},
+	},
+	{
+		name: "for Claude Code an AGENTS.md-only repo gets a CLAUDE.md that imports it, with the block kept in AGENTS.md",
+		run: async () => {
+			const box = sandbox();
+
+			writeFileSync(join(box.repo, "AGENTS.md"), "# Team rules\n");
+			await init(box.args("block-upsert", ["--host", "claude"]));
+
+			assert.equal(readFileSync(join(box.repo, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+			assert.ok(readFileSync(join(box.repo, "AGENTS.md"), "utf8").includes("<artfct-guidelines>"));
+
+			const again = await init(box.args("block-upsert", ["--host", "claude"]));
+
+			assert.equal(again.files.every((file) => file.changed === false), true);
+		},
+	},
+	{
+		name: "for Codex a missing entrypoint becomes AGENTS.md and CLAUDE.md is not created",
+		run: async () => {
+			const box = sandbox();
+
+			await init(box.args("block-upsert", ["--host", "codex"]));
+
+			assert.ok(readFileSync(join(box.repo, "AGENTS.md"), "utf8").includes("<artfct-guidelines>"));
+			assert.equal(existsSync(join(box.repo, "CLAUDE.md")), false);
 		},
 	},
 	{

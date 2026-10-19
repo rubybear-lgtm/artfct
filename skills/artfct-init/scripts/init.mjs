@@ -113,6 +113,38 @@ function currentGrants(host, path) {
 }
 
 /**
+ * Picks the file that must carry the block for a host. Claude Code loads
+ * CLAUDE.md and not AGENTS.md, so with no CLAUDE.md a thin one is created that
+ * imports AGENTS.md (or holds the block itself when AGENTS.md is absent).
+ * Codex loads AGENTS.md, so that file is used and created when missing.
+ *
+ * @param {string} host
+ * @param {string} repoDir
+ * @param {boolean} create Whether a missing entry file may be created.
+ * @returns {string[]}
+ */
+function entrypointsFor(host, repoDir, create) {
+	const existing = findEntrypoints(repoDir);
+	const hasName = (/** @type {string} */ name) => existing.some((path) => path.toLowerCase().endsWith(`/${name}`));
+
+	if (host === "codex") {
+		return hasName("agents.md") ? existing.filter((path) => path.toLowerCase().endsWith("/agents.md")) : [join(repoDir, "AGENTS.md")];
+	}
+
+	if (hasName("claude.md") || !create) {
+		return existing;
+	}
+
+	if (hasName("agents.md")) {
+		writeFileSync(join(repoDir, "CLAUDE.md"), "@AGENTS.md\n");
+
+		return findEntrypoints(repoDir);
+	}
+
+	return [join(repoDir, "CLAUDE.md")];
+}
+
+/**
  * Splits markdown into `## Heading` sections keyed by heading text.
  *
  * @param {string} text
@@ -188,7 +220,7 @@ function run(command, flags) {
 		case "block-upsert":
 		case "block-remove": {
 			const body = readFileSync(flags.body ?? DEFAULT_BLOCK, "utf8");
-			const paths = flags.entry ? [resolve(flags.entry)] : findEntrypoints(repoDir);
+			const paths = flags.entry ? [resolve(flags.entry)] : entrypointsFor(host, repoDir, command === "block-upsert");
 			const targets = paths.length > 0 ? paths : [join(repoDir, "AGENTS.md")];
 
 			return {

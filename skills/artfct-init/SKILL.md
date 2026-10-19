@@ -48,7 +48,7 @@ If the user declines or does not answer: run `decide --key permissions --status 
 
 ## 3. Project instructions
 
-Run `block-upsert`. It adds a small managed `<artfct-guidelines>` block to AGENTS.md or CLAUDE.md (creating AGENTS.md if neither exists), keeps every other line, and does nothing on a repeat run. The block routes agents to GUIDELINES.md, to DESIGN.md when making visuals, and to USER.local.md when present. File names are not loaded automatically; the block is what points to them.
+Run `block-upsert --host <claude|codex>`. It adds a small managed `<artfct-guidelines>` block, keeps every other line, and does nothing on a repeat run. Claude Code loads CLAUDE.md and not AGENTS.md, so for `claude` it uses CLAUDE.md, or creates a CLAUDE.md that imports AGENTS.md when only AGENTS.md exists. Codex loads AGENTS.md, so for `codex` it uses AGENTS.md and creates it when missing. The block routes agents to GUIDELINES.md, to DESIGN.md when making visuals, and to USER.local.md when present. File names are not loaded automatically; the block is what points to them.
 
 Run `files-install --name GUIDELINES` and `files-install --name DESIGN`. An existing file is reused as it is, whatever its capitalization. Never overwrite one. Mention that DESIGN.md describes how artifacts look and USER preferences describe how information is explained, and that neither belongs in GUIDELINES.md.
 
