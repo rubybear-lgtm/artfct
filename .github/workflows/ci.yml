@@ -282,32 +282,67 @@ jobs:
       - name: Run Pest (browser)
         run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Browser
 
-  # The `application` check is required on `main`, so the name and the job id
-  # have to stay exactly as they are: this gate passes only when all three
-  # application jobs above pass.
+  # The `application` check is required on `main` and `develop`, so the name and
+  # the job id have to stay exactly as they are. It needs every job that guards
+  # correctness. A job the path filter skipped (mcp_e2e) counts as passing, and
+  # the skip decision itself is mcp_e2e_scope, which is needed too. Only a
+  # `failure` or `cancelled` result fails this gate, which is why it runs with
+  # `if: always()`: the default would hide a skipped-by-upstream result.
   application:
     runs-on: ubuntu-latest
+    if: always()
     needs:
       - php_static
       - pest_unit_feature
       - pest_browser
+      - openapi_lint
+      - contract_drift
+      - mcp_application
+      - mcp_e2e_scope
+      - mcp_e2e
+      - release_readiness
+      - secrets
+      - rust
 
     steps:
-      - name: Confirm the application gates passed
-        run: echo 'Static analysis, unit and feature tests, and browser tests all passed.'
+      - name: Confirm no needed job failed or was cancelled
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          blocking=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
+          if [ -n "$blocking" ]; then
+            echo "Failed or cancelled: $blocking"
+            exit 1
+          fi
 
+  # Release-critical checks that sit outside the PHP suites. It is a separate
+  # named check, so a failure here is visible without opening the aggregate. It
+  # does not need `application`, which needs it: that would be a cycle.
   release_readiness:
-    name: 'Release readiness: authentication, tenancy and quota'
+    name: 'Release readiness: OpenAPI, contract and hosted MCP checks'
+    if: always()
     needs:
-      - application
+      - openapi_lint
       - contract_drift
+      - mcp_application
+      - mcp_e2e_scope
+      - mcp_e2e
     runs-on: ubuntu-latest
 
     steps:
-      - name: Confirm release-critical suites are required
+      - name: Confirm no release-critical job failed or was cancelled
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo 'Authentication, tenancy, quota and contract checks are required by this gate.'
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          blocking=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
+          if [ -n "$blocking" ]; then
+            echo "Failed or cancelled: $blocking"
+            exit 1
+          fi
 
   secrets:
     runs-on: ubuntu-latest
