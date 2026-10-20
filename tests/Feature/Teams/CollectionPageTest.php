@@ -6,6 +6,7 @@ use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function collectionTeam(): array
@@ -17,16 +18,28 @@ function collectionTeam(): array
     return [$team, $admin, $member];
 }
 
+/**
+ * Answers the Worker's visibility lookup for an artifact the way the Worker
+ * does: 200 for one the caller may see, 404 for one they may not.
+ */
+function workerAnswersArtifactLookup(int $status): void
+{
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/v1/artifacts/*' => Http::response([], $status)]);
+}
+
 test('a_member_creates_a_collection_and_adds_and_removes_artifacts', function () {
     [$team, , $member] = collectionTeam();
+    workerAnswersArtifactLookup(200);
 
     test()->actingAs($member)->post(route('teams.collections.store', $team), ['name' => 'reporting'])->assertRedirect();
     $collection = Collection::query()->where('team_id', $team->id)->firstOrFail();
 
-    test()->actingAs($member)->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => 'art1'])->assertRedirect();
+    test()->actingAs($member)->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => ARTIFACT_LINK_ID])->assertRedirect();
     expect($collection->artifacts()->count())->toBe(1);
 
-    test()->actingAs($member)->delete(route('teams.collections.artifacts.remove', [$team, $collection, 'art1']))->assertRedirect();
+    test()->actingAs($member)->delete(route('teams.collections.artifacts.remove', [$team, $collection, ARTIFACT_LINK_ID]))->assertRedirect();
     expect($collection->artifacts()->count())->toBe(0);
 });
 
@@ -137,6 +150,7 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
 
 test('every_collection_action_flashes_a_toast', function () {
     [$team, , $member] = collectionTeam();
+    workerAnswersArtifactLookup(200);
 
     test()->actingAs($member)
         ->post(route('teams.collections.store', $team), ['name' => 'reporting'])
@@ -157,7 +171,7 @@ test('every_collection_action_flashes_a_toast', function () {
         ]);
 
     test()->actingAs($member)
-        ->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => 'art1'])
+        ->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => ARTIFACT_LINK_ID])
         ->assertRedirect()
         ->assertInertiaFlash('toast', [
             'type' => 'success',
@@ -165,7 +179,7 @@ test('every_collection_action_flashes_a_toast', function () {
         ]);
 
     test()->actingAs($member)
-        ->delete(route('teams.collections.artifacts.remove', [$team, $collection, 'art1']))
+        ->delete(route('teams.collections.artifacts.remove', [$team, $collection, ARTIFACT_LINK_ID]))
         ->assertRedirect()
         ->assertInertiaFlash('toast', [
             'type' => 'success',
@@ -235,4 +249,41 @@ test('an_artifact_without_a_title_is_offered_by_a_short_id', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('artifactOptions.2.id', 'noname1234567890')
             ->where('artifactOptions.2.title', 'noname12'));
+});
+
+test('a_malformed_artifact_id_is_rejected_before_the_worker_is_asked', function () {
+    [$team, , $member] = collectionTeam();
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
+    workerAnswersArtifactLookup(200);
+
+    test()->actingAs($member)->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => 'not a valid id!'])
+        ->assertSessionHasErrors('artifact_id');
+
+    Http::assertNothingSent();
+    expect($collection->artifacts()->count())->toBe(0);
+});
+
+test('an_artifact_another_team_owns_is_rejected_as_not_found', function () {
+    [$team, , $member] = collectionTeam();
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
+    // The Worker answers a lookup for another team's artifact with the same 404
+    // as a missing one, so the check must refuse it.
+    workerAnswersArtifactLookup(404);
+
+    test()->actingAs($member)->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => ARTIFACT_LINK_ID])
+        ->assertSessionHasErrors('artifact_id');
+
+    expect($collection->artifacts()->count())->toBe(0);
+});
+
+test('a_worker_outage_adds_nothing_and_says_so', function () {
+    [$team, , $member] = collectionTeam();
+    $collection = Collection::create(['team_id' => $team->id, 'name' => 'c', 'created_by_user_id' => $member->id]);
+    workerAnswersArtifactLookup(500);
+
+    test()->actingAs($member)->post(route('teams.collections.artifacts.add', [$team, $collection]), ['artifact_id' => ARTIFACT_LINK_ID])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast', ['type' => 'error', 'message' => "Couldn't add it right now. Try again in a minute."]);
+
+    expect($collection->artifacts()->count())->toBe(0);
 });

@@ -13,6 +13,7 @@ use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\ArtifactServiceUnavailableException;
 use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ArtifactTextPurger;
@@ -179,7 +180,18 @@ class ConsoleController extends Controller
         abort_if(! $user->isAdminOf($team), 403);
 
         try {
-            $artifact = $this->artifacts->revokeArtifact($team->slug, $artifactId);
+            // The Worker must confirm the revoke before any local state moves:
+            // an unconfirmed revoke leaves the index and the audit log as they were.
+            try {
+                $artifact = $this->artifacts->revokeArtifact($team->slug, $artifactId);
+            } catch (ArtifactServiceUnavailableException $exception) {
+                report($exception);
+
+                Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't revoke the artifact right now. It is still live, so try again in a minute.")]);
+
+                return redirect()->route('console.index', ['team' => $team]);
+            }
+
             ArtifactTextPurger::purgeIndexText($team, $artifactId);
 
             try {
@@ -205,7 +217,7 @@ class ConsoleController extends Controller
      * Download all permanent artifacts for the organization as a zip
      * (metadata plus every file). Admin only, rate-limited, audited.
      */
-    public function export(Request $request, string $teamSlug, OrganizationExportArchive $archive): BinaryFileResponse
+    public function export(Request $request, string $teamSlug, OrganizationExportArchive $archive): BinaryFileResponse|RedirectResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -225,7 +237,16 @@ class ConsoleController extends Controller
         }
 
         try {
-            $path = $archive->build($team->slug);
+            try {
+                $path = $archive->build($team->slug);
+            } catch (ArtifactServiceUnavailableException $exception) {
+                // An export the Worker did not confirm is never offered as a download.
+                report($exception);
+
+                Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't prepare the export right now. Try again in a minute.")]);
+
+                return redirect()->route('console.index', ['team' => $team]);
+            }
 
             $this->auditLogger->recordForRequest($request, AuditEventType::ExportPerformed, $team, (string) $user->id, "team:{$team->slug}");
 
