@@ -307,7 +307,6 @@ Use the `artfct-staging` MCP server to store what development and sessions produ
 - Group related artifacts with `list_collections`, `create_collection` and `add_collection_artifact` (for example one collection per spec or feature). Reuse an existing collection before creating one.
 - Share the returned `view_url` with the user. Use `get_artifact` for a fresh link.
 - Never put secrets, credentials or customer data in an artifact.
-- `deploy_to_canvas` is deprecated: it creates anonymous expiring artifacts the workspace cannot search. Do not use it for development artifacts.
 
 **When** — publish at the end of the step that produced the artifact (spec agreed, plan approved, investigation concluded), not as an afterthought. This overrides the "documentation files" rule above only for artifact publishing: artfct artifacts are not repository files, so do not also commit them as docs unless asked.
 
