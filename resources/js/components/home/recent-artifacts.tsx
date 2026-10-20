@@ -2,8 +2,8 @@ import { Link } from '@inertiajs/react';
 import { ArrowRight } from 'lucide-react';
 
 import {
-    RecentArtifactRow,
-    SkeletonRows,
+    RecentArtifactCard,
+    SkeletonCards,
 } from '@/components/home/artifact-row';
 import type { HomeFilters, HomeRecentArtifact } from '@/components/home/types';
 import consoleRoutes from '@/routes/console';
@@ -83,7 +83,7 @@ export function RecentArtifacts({
                     {recentError}
                 </p>
             ) : busy && recent.length === 0 ? (
-                <SkeletonRows />
+                <SkeletonCards />
             ) : recent.length === 0 ? (
                 scope === 'team' ? (
                     <>
@@ -107,9 +107,9 @@ export function RecentArtifacts({
                     </p>
                 )
             ) : (
-                <ul className="divide-y divide-border border-y border-border">
+                <ul className="grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                     {recent.map((item) => (
-                        <RecentArtifactRow
+                        <RecentArtifactCard
                             key={item.id}
                             item={item}
                             canOpenArtifacts={canOpenArtifacts}

@@ -55,10 +55,10 @@ class ArtifactPreviewController extends Controller
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Preview unavailable</title>
         <style>
-        html { background: #fdf6e3; color: #586e75; font: 16px/1.6 system-ui, sans-serif; }
+        html { background: #F7F5F2; color: #55544E; font: 16px/1.6 system-ui, sans-serif; }
         body { margin: 0; display: grid; min-height: 100vh; place-items: center; padding: 1.5rem; }
         main { max-width: 32rem; text-align: center; }
-        h1 { color: #073642; font-size: 1.25rem; }
+        h1 { color: #262624; font-size: 1.25rem; }
         </style>
         </head>
         <body>

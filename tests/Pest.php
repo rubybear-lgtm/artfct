@@ -362,5 +362,5 @@ function linkSlackUser(Team $team, TeamRole $role, string $slackUserId): User
  */
 function consoleUrl(Team $team): string
 {
-    return '/settings/teams/'.$team->slug.'/console?q=RUB367';
+    return '/settings/teams/'.$team->slug.'/console?q=RUB367&view=list';
 }

@@ -84,7 +84,18 @@ class ConsoleController extends Controller
         $failed = ArtifactIndexingFailure::query()->where('team_id', $team->id)->whereIn('artifact_id', $artifactIds)->pluck('artifact_id')->all();
         $indexingEnabled = (bool) config('indexing.enabled');
 
+        // A revoked artifact has no preview (the route answers it with its
+        // refusal page), so it gets no URL and the card shows a placeholder.
+        $previewUrls = collect($data['artifacts'])
+            ->filter(fn (array $artifact): bool => empty($artifact['revoked_at']))
+            ->mapWithKeys(fn (array $artifact): array => [
+                $artifact['id'] => route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => $artifact['id']]),
+            ])->all();
+
         return Inertia::render('console/index', [
+            'view' => $request->query('view') === 'list' ? 'list' : 'grid',
+            'currentUserId' => (string) $user->id,
+            'previewUrls' => $previewUrls,
             'collections' => Collection::query()->where('team_id', $team->id)->orderBy('name')->get(['id', 'name']),
             'canCollect' => $user->teamRole($team) !== TeamRole::Viewer,
             'indexingEnabled' => $indexingEnabled,

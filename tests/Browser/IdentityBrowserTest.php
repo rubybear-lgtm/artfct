@@ -50,13 +50,13 @@ test('admin_finds_artifact_by_repo_and_revokes_it', function () {
 
     // The page now shows the team; navigate to console for that team
     // Since we're using the fake artifact directory, it will have test data
-    $page->navigate('/settings/teams/admin-users-team/console');
+    $page->navigate('/settings/teams/admin-users-team/console?view=list');
     $page->assertNoJavaScriptErrors()
         ->assertSee('Dashboard HTML')
         ->assertSee('Active');
 
     // Filter by repo
-    $page->fill('repo_url', 'https://github.com/example/repo1')
+    $page->click('[aria-label="Filter artifacts"]')->fill('repo_url', 'https://github.com/example/repo1')
         ->wait(1);
     $page->assertSee('Dashboard HTML');
 
