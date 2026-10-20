@@ -48,8 +48,12 @@ under the per-hash lifecycle locks.
 ## Per-artifact origin isolation
 
 Every permanent artifact has an isolated hostname
-`<tenant-slug>--<artifact-id>.artfct.dev`, one wildcard level under Universal
-SSL (`isolated_artifact_hostname`, `store::hostname_label`). It reuses the
+`<tenant-slug>--<artifact-id>--prod.artfct.dev` in production and
+`<tenant-slug>--<artifact-id>--stg.artfct.dev` in staging, one wildcard level
+under Universal SSL (`isolated_artifact_hostname`, `store::hostname_label`).
+The environment marker is required: the Worker route is `*--prod.artfct.dev/*`
+(see `backend/wrangler.jsonc`), because a bare `*.artfct.dev/*` would also match
+`staging.artfct.dev`. It reuses the
 slug and ID character-set rules from permanent bundle storage, so two
 artifacts in the same org always derive different hostnames. This is
 additive: shared-origin `/p/{id}` links keep working exactly as before,
@@ -277,11 +281,13 @@ Spec 10's SAML/OIDC broker is Ory Polis (`boxyhq/jackson`), abstracted
 into a standard OAuth 2.0 authorization-code flow — so login/linking is
 pure Laravel logic behind `App\Services\Polis\PolisClientContract`, the
 same fail-closed real/fake seam as WorkOS AuthKit. `RealPolisClient`
-throws unless `services.polis.base_url`/`api_key` are configured, then
-throws "not implemented" regardless — the real OAuth exchange was never
-written, since no live Polis instance exists in this environment to test
-it against. `FakePolisClient` is bound in testing, mirroring
-`FakeAuthKitClient`'s self-describing-code pattern.
+implements the OAuth authorization-code flow: it builds the authorize URL,
+exchanges the code at `/api/oauth/token`, reads the profile from
+`/api/oauth/userinfo`, and refuses a login issued for another tenant. It
+throws unless `services.polis.base_url` and `client_secret_verifier` are
+configured. It has been exercised against Polis on Railway staging (see
+"Polis on Railway staging" below). `FakePolisClient` is bound in testing,
+mirroring `FakeAuthKitClient`'s self-describing-code pattern.
 
 Polis logins reuse `AuthKitProfile` as their shape (`provider` is already
 a generic string field — a SAML login sets it to `polis`, OIDC to
@@ -463,15 +469,14 @@ cost model; real-provider retrieval latency must also be measured.
 
 ## Retrieval (spec 13)
 
-**The second MCP tool.** `search_artifacts` is listed alongside
-`deploy_to_canvas` in the hosted `tools/list`. Its description
+**The search tool.** `search_artifacts` is listed in the hosted `tools/list`
+(`App\Mcp\Servers\ArtfctServer`). Its description
 explicitly tells an agent *when* to call it — before generating a
 dashboard/page/report the user references — because, per the spec, a
 tool agents don't know when to call is a tool that gets ignored in favor
 of regenerating from scratch. Request/response shaping
 (`search_request_payload`/`format_search_response`) is pure and tested
-without a live call, the same precedent `deploy_to_canvas`'s own tests
-already set.
+without a live call.
 
 **`/api/search` — a new, real endpoint.** Unlike specs 11/12's deferred
 HTTP wiring, this one is built: `AuthenticateOrgToken` middleware
