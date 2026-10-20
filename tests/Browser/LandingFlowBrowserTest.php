@@ -56,7 +56,7 @@ test('a phone gets the story in one column and it fits the screen width', functi
 
 test('the tool strip shows a product mark beside each AI tool name', function () {
     visit('/')
-        ->assertScript('document.querySelectorAll(".strip .names > span:not(.more) svg").length', 4)
+        ->assertScript('document.querySelectorAll(".strip .names > a:not(.more) svg").length', 4)
         ->assertNoJavaScriptErrors();
 });
 
