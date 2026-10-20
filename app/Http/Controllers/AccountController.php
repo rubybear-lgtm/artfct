@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
+use App\Services\Identity\ScimProvisioningService;
 use App\Services\Teams\LastAdminGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -66,7 +67,7 @@ class AccountController extends Controller
      * audit history stays intact). Blocked while they own a team that still
      * has other members: ownership must be transferred first.
      */
-    public function destroy(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
+    public function destroy(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker, ScimProvisioningService $scim): RedirectResponse
     {
         $request->validate(['confirmation' => ['required', 'in:DELETE']]);
 
@@ -94,7 +95,7 @@ class AccountController extends Controller
         $user->orgTokens()->whereNull('revoked_at')->update(['revoked_at' => now()]);
         OAuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
-        DB::transaction(function () use ($user): void {
+        DB::transaction(function () use ($user, $scim): void {
             Team::query()->where('owner_user_id', $user->id)->get()->each(function (Team $team): void {
                 $team->invitations()->delete();
                 $team->memberships()->delete();
@@ -107,8 +108,9 @@ class AccountController extends Controller
                 'name' => 'Deleted user',
                 'email' => "deleted-{$user->id}@invalid.example",
                 'current_team_id' => null,
-                'deactivated_at' => now(),
             ])->save();
+
+            $scim->deactivate($user);
         });
 
         Auth::guard('web')->logout();
