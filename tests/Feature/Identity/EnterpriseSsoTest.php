@@ -72,14 +72,14 @@ test('scim_provisions_user', function () {
     $user = $service->provision($team, 'scim-ext-1', 'new-hire@acme.com', 'New Hire');
 
     expect($user->email)->toBe('new-hire@acme.com');
-    expect(ExternalIdentity::query()->where('provider', 'scim')->where('external_id', 'scim-ext-1')->exists())->toBeTrue();
+    expect(ExternalIdentity::query()->where('provider', 'scim:'.$team->id)->where('external_id', 'scim-ext-1')->exists())->toBeTrue();
     expect($team->fresh()->members()->where('users.id', $user->id)->exists())->toBeTrue();
 
     // Provisioning again with the same SCIM id is idempotent -- no
     // duplicate identity or membership.
     $again = $service->provision($team, 'scim-ext-1', 'new-hire@acme.com', 'New Hire');
     expect($again->id)->toBe($user->id);
-    expect(ExternalIdentity::query()->where('provider', 'scim')->where('external_id', 'scim-ext-1')->count())->toBe(1);
+    expect(ExternalIdentity::query()->where('provider', 'scim:'.$team->id)->where('external_id', 'scim-ext-1')->count())->toBe(1);
 });
 
 test('scim_deprovision_revokes_sessions', function () {
@@ -95,7 +95,7 @@ test('scim_deprovision_revokes_sessions', function () {
 
     $token = OrgToken::factory()->for($team)->for($user)->create(['revoked_at' => null]);
 
-    expect($service->deprovision('scim-ext-2'))->toBeTrue();
+    expect($service->deprovision($team, 'scim-ext-2'))->toBeTrue();
 
     expect($user->fresh()->deactivated_at)->not->toBeNull();
     expect($token->fresh()->revoked_at)->not->toBeNull();
@@ -114,7 +114,7 @@ test('scim_deprovision_preserves_access_when_worker_revocation_fails', function 
     $user = $service->provision($team, 'scim-ext-fail', 'held@acme.com');
     $token = OrgToken::factory()->for($team)->for($user)->create(['revoked_at' => null]);
 
-    expect($service->deprovision('scim-ext-fail'))->toBeFalse()
+    expect($service->deprovision($team, 'scim-ext-fail'))->toBeFalse()
         ->and($user->fresh()->deactivated_at)->toBeNull()
         ->and($token->fresh()->revoked_at)->toBeNull();
 });
