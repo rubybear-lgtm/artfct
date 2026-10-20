@@ -1,5 +1,7 @@
 # Railway configuration
 
+> **Do not run `railway config apply` against production (RUB-466).** `railway.ts` declares only the staging services (`staging-web`, `staging-scheduler`, `staging-queue`, `staging-polis`, `Postgres-XPCc`, `Postgres`) and does not export `partial`. Omitted resources are deletions, so applying it to production would plan deleting production `web`, `queue`, `scheduler`, `Postgres-tsII` and its volume. `railway config plan` is read-only and still safe to run. Lift this freeze only after the file covers both environments (or is scoped with `partial`) and a production plan shows no deletes.
+
 This project defines its Railway infrastructure in code.
 
 ```txt
