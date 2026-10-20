@@ -86,6 +86,24 @@ test('a_tenant_cannot_deactivate_a_user_whose_identity_belongs_to_another_tenant
         ->and(OrgToken::query()->where('user_id', $victim->id)->whereNull('revoked_at')->exists())->toBeTrue();
 });
 
+test('a_stale_identity_from_another_tenant_cannot_deactivate_a_user_through_this_tenant', function () {
+    $tenantA = scopedTeam('alpha', 'alpha.com');
+    $tenantB = scopedTeam('beta', 'beta.com');
+    $former = User::factory()->create(['email' => 'former@beta.com']);
+    ExternalIdentity::query()->create([
+        'user_id' => $former->id,
+        'provider' => 'scim:'.$tenantB->id,
+        'external_id' => 'b-stale',
+        'email' => 'former@beta.com',
+        'verified_at' => now(),
+    ]);
+
+    directoryEvent('alpha', ['event' => 'user.updated', 'data' => ['id' => 'b-stale', 'email' => 'former@beta.com', 'active' => false]])->assertOk();
+
+    expect($former->fresh()->deactivated_at)->toBeNull()
+        ->and(ExternalIdentity::query()->where('user_id', $former->id)->where('provider', 'scim:'.$tenantB->id)->exists())->toBeTrue();
+});
+
 test('a_tenant_deprovisioning_its_own_identity_leaves_the_same_user_in_another_tenant_active', function () {
     $tenantA = scopedTeam('alpha', 'shared.com');
     $tenantB = scopedTeam('beta', 'shared.com');
