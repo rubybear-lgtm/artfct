@@ -24,6 +24,15 @@ final class IntegrationReadiness
             'WorkOS sign-in' => ['services.workos.client_id', 'services.workos.secret', 'services.workos.redirect_url'],
             'Stripe payments' => ['services.stripe.secret', 'services.stripe.webhook_secret', 'services.stripe.team_price_id'],
             'Invitation email' => $this->emailKeys(),
+            'Worker and org-token keys' => [
+                'services.org_jwt.worker_base_url',
+                'services.org_jwt.jwks_write_secret',
+                'services.org_jwt.revocation_write_secret',
+                'services.org_jwt.private_key',
+                'services.org_jwt.kid',
+                'services.org_jwt.issuer',
+                'services.org_jwt.audience',
+            ],
         ];
 
         $results = [];
