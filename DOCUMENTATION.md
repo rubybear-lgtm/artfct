@@ -907,7 +907,7 @@ meters.
 
 ### The queue worker's start command is a Railway service setting (2026-09-23)
 
-Service settings are defined in `.railway/railway.ts` (Railway Infrastructure as
+Service settings are defined in `.railway/staging.ts` and `.railway/production.ts` (one file per environment) (Railway Infrastructure as
 Code; `railway.json` was removed for RUB-402 ahead of Railway's 2026-12-01
 Config as Code cutoff), and `staging-queue`'s start command is a service-level
 setting. There is intentionally no
@@ -922,7 +922,7 @@ without the repo's config, so Railpack auto-detects `composer install
 --optimize-autoloader --no-scripts --no-interaction` — with dev dependencies —
 in an image that has no `ext-sockets`, and the build dies on
 `pestphp/pest-plugin-browser`'s platform requirement. Push-triggered deploys
-build with the `--no-dev` build command from `.railway/railway.ts` and succeed. Same failure family
+build with the `--no-dev` build command from `.railway/staging.ts` and succeed. Same failure family
 as RUB-397.
 
 ### Live verification results (2026-09-20)
