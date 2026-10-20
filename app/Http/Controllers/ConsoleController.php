@@ -18,6 +18,7 @@ use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
 use App\Services\Sharing\ArtifactVisibility;
+use App\Support\TeamSignIn;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,7 +53,7 @@ class ConsoleController extends Controller
     public function index(Request $request, string $teamSlug): InertiaResponse
     {
         $user = $request->user();
-        $team = $this->resolveTeam($user, $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         Gate::authorize('view', $team);
 
@@ -132,7 +133,7 @@ class ConsoleController extends Controller
     public function reindex(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): RedirectResponse
     {
         $user = $request->user();
-        $team = $this->resolveTeam($user, $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         abort_if(! $user->isAdminOf($team), 403);
         abort_unless(config('indexing.enabled'), 409, 'Indexing is turned off.');
@@ -174,7 +175,7 @@ class ConsoleController extends Controller
     public function revoke(Request $request, string $teamSlug, string $artifactId): RedirectResponse
     {
         $user = $request->user();
-        $team = $this->resolveTeam($user, $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         abort_if(! $user->isAdminOf($team), 403);
 
@@ -208,7 +209,7 @@ class ConsoleController extends Controller
     public function export(Request $request, string $teamSlug, OrganizationExportArchive $archive): BinaryFileResponse
     {
         $user = $request->user();
-        $team = $this->resolveTeam($user, $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         abort_if(! $user->isAdminOf($team), 403);
 
@@ -259,7 +260,7 @@ class ConsoleController extends Controller
     public function open(Request $request, string $teamSlug, string $artifactId, ArtifactContentSource $content): RedirectResponse
     {
         $user = $request->user();
-        $team = $this->resolveTeam($user, $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         Gate::authorize('view', $team);
 
@@ -302,11 +303,15 @@ class ConsoleController extends Controller
      * Resolve team from the user's memberships only.
      * Returns 404 if user is not a member, not 403.
      */
-    private function resolveTeam(User $user, string $teamSlug): Team
+    private function resolveTeam(Request $request, string $teamSlug): Team
     {
+        $user = $request->user();
         $team = $user->teams()
             ->where('slug', $teamSlug)
             ->firstOrFail();
+
+        // A `polis` team admits only a Polis sign-in (RUB-458); anything else is a plain 403.
+        abort_unless(TeamSignIn::admits($request, $user, $team), 403, "This organisation only accepts sign-in through its single sign-on. Sign in with your organisation's SSO to continue.");
 
         return $team;
     }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Services\Identity\EnterpriseIdentityResolver;
 use App\Services\Polis\PolisClientContract;
+use App\Support\TeamSignIn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -64,6 +65,10 @@ class PolisCallbackController extends Controller
         // Only the staff WorkOS organization on the AuthKit path makes a staff
         // session (spec 17); a customer SSO sign-in never inherits one.
         $request->session()->forget('staff_session');
+
+        // Proves this session signed in through the org's Polis IdP, which is the
+        // only sign-in a `polis` team admits (RUB-458).
+        TeamSignIn::recordPolisSignIn($request, $user, $organization);
 
         if (! $user->current_team_id) {
             $user->switchTeam($organization);

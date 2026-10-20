@@ -57,7 +57,11 @@ final class StaffAccess
         );
     }
 
-    private static function isDevelopmentHost(Request $request): bool
+    /**
+     * Whether the request is addressed to a loopback or `.test` host. Shared by
+     * the staff gate and the dev login, so both use one definition (RUB-460).
+     */
+    public static function isDevelopmentHost(Request $request): bool
     {
         try {
             $host = strtolower($request->getHost());

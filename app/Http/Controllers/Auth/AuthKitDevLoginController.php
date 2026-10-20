@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Services\AuthKit\AuthKitProfile;
 use App\Services\AuthKit\FakeAuthKitClient;
+use App\Support\StaffAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -23,6 +24,9 @@ class AuthKitDevLoginController extends Controller
     {
         abort_if(app()->environment('production'), 404);
         abort_unless(config('services.authkit.dev_login_enabled'), 404);
+        // A mis-set APP_ENV on a deployed host must not turn this into a login for
+        // any email, so only a loopback or .test request is answered (RUB-460).
+        abort_unless(StaffAccess::isDevelopmentHost($request), 404);
 
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],

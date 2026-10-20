@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TeamSignIn;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +22,12 @@ class EnsureTeamMembership
         [$user, $team] = [$request->user(), $this->team($request)];
 
         abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
+
+        abort_unless(
+            TeamSignIn::admits($request, $user, $team),
+            403,
+            "This organisation only accepts sign-in through its single sign-on. Sign in with your organisation's SSO to continue.",
+        );
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 

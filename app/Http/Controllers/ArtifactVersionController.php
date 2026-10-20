@@ -8,6 +8,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Governance\AuditLogger;
+use App\Support\TeamSignIn;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +39,7 @@ final class ArtifactVersionController extends Controller
      */
     public function show(Request $request, string $teamSlug, string $artifactId, ArtifactDirectory $artifacts): Response
     {
-        $team = $this->resolveTeam($request->user(), $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         Gate::authorize('view', $team);
 
@@ -79,7 +80,7 @@ final class ArtifactVersionController extends Controller
      */
     public function restore(Request $request, string $teamSlug, string $artifactId, int $version, ArtifactDirectory $artifacts): RedirectResponse
     {
-        $team = $this->resolveTeam($request->user(), $teamSlug);
+        $team = $this->resolveTeam($request, $teamSlug);
 
         Gate::authorize('view', $team);
 
@@ -136,10 +137,15 @@ final class ArtifactVersionController extends Controller
      * Resolve the team from the user's memberships only, exactly like the
      * console: a non-member gets 404, not 403.
      */
-    private function resolveTeam(User $user, string $teamSlug): Team
+    private function resolveTeam(Request $request, string $teamSlug): Team
     {
-        return $user->teams()
+        $user = $request->user();
+        $team = $user->teams()
             ->where('slug', $teamSlug)
             ->firstOrFail();
+
+        abort_unless(TeamSignIn::admits($request, $user, $team), 403, "This organisation only accepts sign-in through its single sign-on. Sign in with your organisation's SSO to continue.");
+
+        return $team;
     }
 }
