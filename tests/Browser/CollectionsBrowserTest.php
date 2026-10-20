@@ -6,6 +6,7 @@ use App\Models\Collection;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -19,6 +20,9 @@ uses(RefreshDatabase::class);
  * `Feature/Teams/CollectionPageTest.php`; preview-frame assertions live in
  * `CollectionPreviewBrowserTest.php`.
  */
+const MUT_KEEP_ID = '1111111111111111111111111111111a';
+const MUT_ADD_ID = '2222222222222222222222222222222b';
+
 function stacksTeam(string $teamName = 'Stacks Users', string $email = 'stacks-user@example.com'): array
 {
     $owner = User::factory()->create(['name' => 'Stacks User', 'email' => $email]);
@@ -233,10 +237,15 @@ test('the_stack_opens_from_the_keyboard_and_closes_with_escape', function () {
 
 test('rename_add_and_remove_keep_the_stack_modal_open', function () {
     [$team, $owner] = stacksTeam('Mutation Users', 'mutation-user@example.com');
-    seedStackArtifact($team, 'mut-report-1', 'Keep me report');
-    seedStackArtifact($team, 'mut-report-2', 'Add me report');
+    seedStackArtifact($team, MUT_KEEP_ID, 'Keep me report');
+    seedStackArtifact($team, MUT_ADD_ID, 'Add me report');
 
-    $collection = seedStackCollection($team, $owner->id, 'Mutable', ['mut-report-1']);
+    // The add is confirmed with the Worker under the member's own credential.
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake(['worker.test/v1/artifacts/*' => Http::response([], 200)]);
+
+    $collection = seedStackCollection($team, $owner->id, 'Mutable', [MUT_KEEP_ID]);
     test()->actingAs($owner);
 
     $page = visit(stacksUrl($team))->assertNoJavaScriptErrors();
@@ -259,7 +268,7 @@ test('rename_add_and_remove_keep_the_stack_modal_open', function () {
         ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
         ->assertPresent("@collection-panel-{$collection->id}")
         ->assertSee('No artifacts yet')
-        ->assertMissing("@collection-artifact-{$collection->id}-mut-report-1");
+        ->assertMissing("@collection-artifact-{$collection->id}-".MUT_KEEP_ID.'');
 
     // POST: the add control lives on the card, so close the modal, add, and
     // reopen to find the new row.
@@ -268,7 +277,7 @@ test('rename_add_and_remove_keep_the_stack_modal_open', function () {
         ->click('Add')
         ->waitForText('Added to Mutable renamed.')
         ->click("@collection-toggle-{$collection->id}")->wait(0.3)
-        ->assertPresent("@collection-artifact-{$collection->id}-mut-report-2")
+        ->assertPresent("@collection-artifact-{$collection->id}-".MUT_ADD_ID.'')
         ->assertNoJavaScriptErrors();
 });
 
