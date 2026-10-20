@@ -26,9 +26,6 @@ use Illuminate\Testing\TestResponse;
  * return.
  */
 
-/** A 13-character lowercase base36 id: the shape every new permanent artifact gets. */
-const STABLE_ARTIFACT_ID = 'abc123def4567';
-
 test('deploy_artifact with artifact_id publishes a new version through the versions endpoint', function () {
     configureArtifactLinks();
 

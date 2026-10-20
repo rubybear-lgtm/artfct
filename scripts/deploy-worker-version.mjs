@@ -45,7 +45,11 @@ run('sh', [
     'command -v cargo >/dev/null 2>&1 || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal)',
 ]);
 run('rustup', ['target', 'add', 'wasm32-unknown-unknown']);
-run('cargo', ['install', '-q', 'worker-build', '--version', '0.8.3', '--root', workerTools]);
+// --locked is load-bearing here for the same reason it is in
+// backend/wrangler.jsonc: worker-build 0.8.3 needs zip ^2.1.3 via
+// binary-install, every zip 2.x on crates.io is yanked, and a fresh resolve
+// therefore selects nothing. Without the flag this install fails.
+run('cargo', ['install', '-q', 'worker-build', '--version', '0.8.3', '--locked', '--root', workerTools]);
 run('worker-build', ['--release']);
 
 const tag = process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 12) : undefined;
