@@ -101,7 +101,7 @@ Route::middleware('auth')->group(function () {
 Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
 // A retired post that search engines still list (RUB-491).
-Route::permanentRedirect('/blog/ai-presentations', '/blog');
+Route::get('/blog/ai-presentations', fn () => redirect('/blog', 301));
 
 Route::get('/blog/{slug}', [BlogController::class, 'show'])
     ->where('slug', '[a-z0-9-]+')
