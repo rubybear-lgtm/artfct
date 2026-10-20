@@ -432,8 +432,53 @@ jobs:
           tests/Feature/McpConnectionsPageTest.php
           tests/Feature/McpActivityTest.php
 
+  # The MCP end-to-end job boots Postgres, a Worker and Laravel and costs about
+  # six minutes, so a pull request that cannot reach any of that skips it. This
+  # is a skip list, not an allow list: any file outside it, including one this
+  # list has never heard of, still runs the job. Pushes to main and develop
+  # always run it, so a miss here is caught after the merge.
+  mcp_e2e_scope:
+    name: Decide whether the MCP end-to-end job is needed
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Compare the changed files with the skip list
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          skip='^(docs/|resources/js/|resources/css/|tests/Browser/|public/images/|.*\.md$|\.github/workflows/(mcp-live|polis-advisories)\.yml$)'
+          needed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ev "$skip" || true)
+
+          if [ -n "$needed" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            echo "Running: these changed files can reach the MCP stack:"
+            echo "$needed"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'Skipping: every changed file is on the skip list.'
+          fi
+
   mcp_e2e:
     name: MCP local end-to-end (Postgres + Worker + hosted OAuth)
+    needs: mcp_e2e_scope
+    if: needs.mcp_e2e_scope.outputs.run == 'true'
     runs-on: ubuntu-latest
 
     services:
@@ -482,6 +527,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            target
             backend/target
           key: ${{ runner.os }}-mcp-e2e-cargo-${{ hashFiles('Cargo.lock') }}
 
