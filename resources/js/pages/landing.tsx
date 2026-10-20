@@ -548,7 +548,7 @@ const GUIDES: {
 }[] = [
     {
         title: 'Share context between Claude Code and Cursor',
-        text: 'Both connect to the same Artfct workspace, so what one publishes the other can search and read.',
+        text: 'Connect both to the same Artfct workspace. Each one publishes there and searches what the other published.',
         links: [
             { label: 'Connect Claude Code', guide: 'connect-claude-code' },
             { label: 'Connect Cursor', guide: 'connect-cursor' },
@@ -560,7 +560,7 @@ const GUIDES: {
     },
     {
         title: 'Let ChatGPT read what you made in Claude',
-        text: 'Publish from Claude, then ask ChatGPT. It finds the artifact and cites it.',
+        text: 'Connect both to your Artfct workspace. Share from Claude, and ChatGPT can search for it there.',
         links: [
             { label: 'Connect the Claude app', guide: 'connect-claude' },
             { label: 'Connect ChatGPT', guide: 'connect-chatgpt' },

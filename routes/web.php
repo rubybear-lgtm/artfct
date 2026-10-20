@@ -13,6 +13,7 @@ use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
 use App\Services\Blog\BlogContent;
+use App\Services\Blog\BlogPost;
 use App\Support\AiToolSetup;
 use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
@@ -32,7 +33,7 @@ Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
         ->all(),
     'latestPosts' => collect($blog->all())
         ->take(3)
-        ->map(fn ($post): array => ['slug' => $post->slug, 'title' => $post->title])
+        ->map(fn (BlogPost $post): array => ['slug' => $post->slug, 'title' => $post->title])
         ->values()
         ->all(),
 ]))->name('home');
