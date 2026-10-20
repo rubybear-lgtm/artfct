@@ -35,7 +35,7 @@ final readonly class BlogPost
      */
     public function metaTitle(): string
     {
-        return $this->title.' — artfct';
+        return $this->title.' — Artfct';
     }
 
     public function kicker(): string

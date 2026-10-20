@@ -84,21 +84,21 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="artfct — share HTML & markdown privately">
+            <Head title="Share an HTML or Markdown file as a private link — Artfct">
                 <meta
                     head-key="og:title"
                     property="og:title"
-                    content="artfct — share HTML & markdown privately"
+                    content="Share an HTML or Markdown file as a private link — Artfct"
                 />
                 <meta
                     head-key="og:description"
                     property="og:description"
-                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
+                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted in your browser, and the link expires when it goes unused."
                 />
                 <meta
                     head-key="description"
                     name="description"
-                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default."
+                    content="Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted in your browser, and the link expires when it goes unused."
                 />
             </Head>
             <ThemeToggle />
@@ -107,6 +107,9 @@ export default function Welcome() {
             </a>
             <div className="welcome-shell">
                 <div className="welcome-content">
+                    <h1 className="sr-only">
+                        Share an HTML or Markdown file as a private link
+                    </h1>
                     <AsciiLogo
                         colorA={controller.gradient[0]}
                         colorB={controller.gradient[1]}

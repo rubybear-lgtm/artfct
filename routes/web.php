@@ -8,20 +8,33 @@ use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
+use App\Http\Controllers\RobotsController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
+use App\Services\Blog\BlogContent;
 use App\Support\AiToolSetup;
 use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn () => Inertia::render('landing', [
+// The homepage links every setup guide and the newest posts so crawlers reach
+// them from `/`, not only from the sitemap (RUB-488).
+Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
     'meta' => [
-        'title' => 'Artfct — what your AI makes, remembered',
-        'description' => 'Share the reports, tables and documents your AI makes, and every AI tool on your team can read them, with sources. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools.',
+        'title' => 'Artfct: shared context and AI artifacts for every agent',
+        'description' => 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.',
     ],
     'flow' => LandingMedia::forPage(),
+    'connectGuides' => collect(AiToolSetup::forCurrentEnvironment()->guides())
+        ->map(fn (array $guide): array => ['id' => $guide['id'], 'label' => $guide['label']])
+        ->values()
+        ->all(),
+    'latestPosts' => collect($blog->all())
+        ->take(3)
+        ->map(fn ($post): array => ['slug' => $post->slug, 'title' => $post->title])
+        ->values()
+        ->all(),
 ]))->name('home');
 
 Route::get('/media/landing/{file}', LandingMediaController::class)
@@ -30,8 +43,8 @@ Route::get('/media/landing/{file}', LandingMediaController::class)
 
 Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [
-        'title' => 'artfct — share HTML & markdown instantly',
-        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default.',
+        'title' => 'Share an HTML or Markdown file as a private link — Artfct',
+        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted in your browser, and the link expires when it goes unused.',
     ],
     'mcpEndpoint' => url('/mcp'),
 ]))->name('free');
@@ -86,6 +99,9 @@ Route::middleware('auth')->group(function () {
 // post list in this file any more.
 Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
+// A retired post that search engines still list (RUB-491).
+Route::permanentRedirect('/blog/ai-presentations', '/blog');
+
 Route::get('/blog/{slug}', [BlogController::class, 'show'])
     ->where('slug', '[a-z0-9-]+')
     ->name('blog.show');
@@ -93,6 +109,7 @@ Route::get('/blog/{slug}', [BlogController::class, 'show'])
 // ── sitemap ───────────────────────────────────────────────────────────────────
 
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
+Route::get('/robots.txt', RobotsController::class)->name('robots');
 
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //

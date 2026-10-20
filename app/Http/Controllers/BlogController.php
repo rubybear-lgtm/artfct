@@ -24,7 +24,7 @@ class BlogController extends Controller
     {
         return Inertia::render('blog', [
             'meta' => [
-                'title' => 'blog — artfct',
+                'title' => 'Blog — Artfct',
                 'description' => 'Product updates and tips from artfct, where what your AI makes is shared with your team.',
             ],
             'posts' => array_map(
