@@ -35,7 +35,7 @@ test('a_created_user_is_provisioned_into_the_tenant_org', function () {
 
     $user = User::query()->where('email', 'new@acme.com')->firstOrFail();
     expect($team->memberships()->where('user_id', $user->id)->exists())->toBeTrue()
-        ->and(ExternalIdentity::query()->where('provider', 'scim')->where('external_id', 'scim-1')->exists())->toBeTrue();
+        ->and(ExternalIdentity::query()->where('provider', 'scim:'.$team->id)->where('external_id', 'scim-1')->exists())->toBeTrue();
 });
 
 test('a_repeated_event_does_not_duplicate_the_user', function () {

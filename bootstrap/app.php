@@ -3,6 +3,7 @@
 use App\Http\Middleware\CacheControl;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NoIndexOutsideProduction;
 use App\Http\Middleware\PinRequestScheme;
@@ -53,6 +54,7 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             SetTeamUrlDefaults::class,
             EnsureTermsAccepted::class,
+            EnsureUserIsActive::class,
         ]);
 
         // `/ops` refusals must be the ordinary 404 and nothing else. By default

@@ -114,8 +114,10 @@ class AppServiceProvider extends ServiceProvider
                 return $app->make(RealAuthKitClient::class);
             }
 
-            if ($app->environment('production')) {
-                throw new RuntimeException('WorkOS is not fully configured: WORKOS_CLIENT_ID, WORKOS_API_KEY and WORKOS_REDIRECT_URL are required in production.');
+            // The fake client is bound only for local development and tests, never for
+            // any other environment, whatever flags are set (RUB-460).
+            if (! $app->environment(['local', 'testing'])) {
+                throw new RuntimeException('WorkOS is not fully configured: WORKOS_CLIENT_ID, WORKOS_API_KEY and WORKOS_REDIRECT_URL are required outside local and testing.');
             }
 
             return $app->make(FakeAuthKitClient::class);

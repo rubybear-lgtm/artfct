@@ -12,6 +12,7 @@ use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
 use App\Services\Identity\AuthModeTransitioner;
 use App\Services\Identity\AuthModeTransitionException;
+use App\Support\TeamSignIn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -32,6 +33,12 @@ class AuthModeController extends Controller
         $target = AuthMode::from($request->validated('auth_mode'));
         $confirmed = (bool) $request->boolean('confirmed');
         $previous = $team->auth_mode;
+
+        // Switching to SSO-only from a session that did not sign in through SSO would
+        // lock this admin out of the settings they are using (RUB-458).
+        if ($target === AuthMode::Polis && ! TeamSignIn::provesPolisSignIn($request, $request->user(), $team)) {
+            throw ValidationException::withMessages(['auth_mode' => __("Sign in with your organisation's SSO before switching to SSO-only, so you keep access to these settings.")]);
+        }
 
         if ($target !== AuthMode::AuthKit) {
             try {

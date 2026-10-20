@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\Identity\IdentityResolver;
+use App\Support\TeamSignIn;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,9 @@ class AuthKitCallbackController extends Controller
         // so no other sign-in can inherit one, then set after the session
         // regeneration above so it belongs to this session id.
         $request->session()->forget('staff_session');
+
+        // An AuthKit sign-in never proves a Polis sign-in, so it cannot admit a `polis` team.
+        TeamSignIn::forgetPolisSignIns($request);
 
         if (! $client instanceof FakeAuthKitClient && $this->isStaffOrganization($profile->organizationId)) {
             $request->session()->put('staff_session', ['user_id' => $user->id, 'at' => now()->timestamp]);

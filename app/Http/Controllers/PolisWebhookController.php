@@ -55,19 +55,26 @@ class PolisWebhookController extends Controller
             return true;
         }
 
+        $team = Team::query()->where('slug', (string) ($event['tenant'] ?? ''))->first();
+        $product = $event['product'] ?? 'artfct';
+
+        if ($team === null || $product !== 'artfct') {
+            Log::warning('Polis directory event for an unknown org or product.', ['tenant' => $event['tenant'] ?? null, 'product' => $product]);
+
+            return true;
+        }
+
         $active = (bool) ($data['active'] ?? true);
 
         if ($type === 'user.deleted' || (in_array($type, ['user.created', 'user.updated'], true) && ! $active)) {
-            return $scim->deprovision($scimId);
-
+            return $scim->deprovision($team, $scimId);
         }
 
         if (in_array($type, ['user.created', 'user.updated'], true)) {
-            $team = Team::query()->where('slug', (string) ($event['tenant'] ?? ''))->first();
             $email = $data['email'] ?? null;
 
-            if ($team === null || ! is_string($email) || $email === '') {
-                Log::warning('Polis directory event for an unknown org or without an email.', ['tenant' => $event['tenant'] ?? null]);
+            if (! is_string($email) || $email === '') {
+                Log::warning('Polis directory event without an email.', ['tenant' => $event['tenant'] ?? null]);
 
                 return true;
             }

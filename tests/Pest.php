@@ -364,3 +364,52 @@ function consoleUrl(Team $team): string
 {
     return '/settings/teams/'.$team->slug.'/console?q=RUB367&view=list';
 }
+
+/**
+ * Runs $callback with the given environment variables unset or set, in $_ENV,
+ * $_SERVER and the process environment, and restores every one afterwards.
+ *
+ * @param  array<string, string|null>  $variables  null unsets the variable
+ */
+function withEnvironmentVariables(array $variables, Closure $callback): mixed
+{
+    $previous = [];
+
+    foreach ($variables as $name => $value) {
+        $previous[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+
+        if ($value === null) {
+            putenv($name);
+            unset($_ENV[$name], $_SERVER[$name]);
+
+            continue;
+        }
+
+        putenv("{$name}={$value}");
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+
+    try {
+        return $callback();
+    } finally {
+        foreach ($previous as $name => [$processValue, $envValue, $serverValue]) {
+            if ($processValue === false) {
+                putenv($name);
+            } else {
+                putenv("{$name}={$processValue}");
+            }
+
+            if ($envValue === null) {
+                unset($_ENV[$name]);
+            } else {
+                $_ENV[$name] = $envValue;
+            }
+
+            if ($serverValue === null) {
+                unset($_SERVER[$name]);
+            } else {
+                $_SERVER[$name] = $serverValue;
+            }
+        }
+    }
+}

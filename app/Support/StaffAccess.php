@@ -29,8 +29,9 @@ final class StaffAccess
 
     public static function allows(User $user, ?Request $request = null): bool
     {
-        // The raw column check; `User::isStaff()` is not authorization.
-        if ($user->staff_at === null) {
+        // The raw column check; `User::isStaff()` is not authorization. A
+        // deactivated user has no staff access whatever `staff_at` says (RUB-457).
+        if ($user->staff_at === null || $user->deactivated_at !== null) {
             return false;
         }
 
@@ -57,7 +58,11 @@ final class StaffAccess
         );
     }
 
-    private static function isDevelopmentHost(Request $request): bool
+    /**
+     * Whether the request is addressed to a loopback or `.test` host. Shared by
+     * the staff gate and the dev login, so both use one definition (RUB-460).
+     */
+    public static function isDevelopmentHost(Request $request): bool
     {
         try {
             $host = strtolower($request->getHost());

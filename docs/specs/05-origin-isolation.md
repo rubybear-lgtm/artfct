@@ -23,7 +23,7 @@ Today's CSP allows `unsafe-inline`, `unsafe-eval` and any `https:` origin. That 
 
 ### Scheme
 
-`<tenant-slug>--<artifact-id>.artfct.dev` — one wildcard level, covered by Universal SSL. Constraints and their enforcement are inherited from spec 3, which fixed the ID format and the slug rules for exactly this reason.
+`<tenant-slug>--<artifact-id>--prod.artfct.dev` in production and `<tenant-slug>--<artifact-id>--stg.artfct.dev` in staging — one wildcard level, covered by Universal SSL. The environment marker keeps the Worker route narrow: a bare `*.artfct.dev/*` would also match `staging.artfct.dev`. Constraints and their enforcement are inherited from spec 3, which fixed the ID format and the slug rules for exactly this reason.
 
 Two levels (`<id>.artifacts.<tenant>.artfct.dev`) would need Advanced Certificate Manager at ~$10/month. Flat is free and the hierarchy buys nothing.
 

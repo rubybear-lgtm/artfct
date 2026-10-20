@@ -134,6 +134,7 @@ pub(crate) async fn create_artifact(
         preview_blurred: payload.preview_blurred,
         created_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
         expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+        ttl_minutes: Some(ttl_minutes),
     };
 
     let body = serde_json::to_string(&stored)?;
@@ -390,17 +391,15 @@ pub(crate) async fn resolve_artifact(
         return expired_response();
     };
 
-    // Sliding expiration: refresh on every access
-    let ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES).min(env_u64(
-        env,
-        "ARTFCT_MAX_TTL_MINUTES",
-        MAX_TTL_MINUTES,
-    ));
-    let ttl_seconds = (ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
-    let now = Utc::now();
-    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+    let default_ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES);
+    let max_ttl_minutes = env_u64(env, "ARTFCT_MAX_TTL_MINUTES", MAX_TTL_MINUTES);
+    let ttl_seconds = slide_expiry(
+        &mut stored,
+        default_ttl_minutes,
+        max_ttl_minutes,
+        Utc::now(),
+    );
 
-    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
     let body = serde_json::to_string(&stored)?;
     kv_store
         .put_record(artifact_id, &body, ttl_seconds)
@@ -452,10 +451,56 @@ pub(crate) struct PresenceRow {
     #[allow(dead_code)]
     present: i64,
 }
-/// Resolves the caller's verified credential: a signed org token (its `org_id`
-/// claim is the org) or the legacy static token (the one org configured in
-/// `ARTFCT_ORG_SLUG`). The org is never taken from a request field. The
-/// inner `Err` is the ready-to-send refusal.
+/// Minutes an ephemeral record lives after its last access. Records written
+/// before the TTL was persisted have none and keep the environment default.
+pub(crate) fn effective_ttl_minutes(
+    stored: &StoredArtifact,
+    default_minutes: u64,
+    max_minutes: u64,
+) -> u64 {
+    stored
+        .ttl_minutes
+        .unwrap_or(default_minutes)
+        .min(max_minutes)
+}
+
+/// Slides a stored ephemeral record's expiry from the TTL it was created or
+/// last shortened with, so a view never replaces a custom TTL with the default.
+/// Returns the KV TTL in seconds.
+pub(crate) fn slide_expiry(
+    stored: &mut StoredArtifact,
+    default_minutes: u64,
+    max_minutes: u64,
+    now: chrono::DateTime<Utc>,
+) -> u64 {
+    let ttl_seconds = (effective_ttl_minutes(stored, default_minutes, max_minutes) * 60)
+        .max(MIN_EXPIRATION_TTL_SECONDS);
+    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
+
+    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+    ttl_seconds
+}
+
+/// Applies an anonymous `PATCH /v1/artifacts/{id}`. Creation issues no
+/// capability or secret, so the link alone cannot change retention beyond
+/// what a view already does: the request can shorten the record's TTL or
+/// re-slide it up to the TTL it already has, and never extend past that.
+/// The lowered TTL is persisted, so later views slide with it. Returns the
+/// KV TTL in seconds.
+pub(crate) fn apply_anonymous_ttl_patch(
+    stored: &mut StoredArtifact,
+    requested_minutes: u64,
+    default_minutes: u64,
+    max_minutes: u64,
+    now: chrono::DateTime<Utc>,
+) -> u64 {
+    stored.ttl_minutes =
+        Some(requested_minutes.min(effective_ttl_minutes(stored, default_minutes, max_minutes)));
+    slide_expiry(stored, default_minutes, max_minutes, now)
+}
+
+/// Updates the expiry of an ephemeral artifact. See `apply_anonymous_ttl_patch`
+/// for what an anonymous caller may change.
 pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) -> Result<Response> {
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
     if !is_valid_artifact_id(artifact_id) {
@@ -496,11 +541,14 @@ pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) ->
         );
     };
 
-    let ttl_seconds = (payload.ttl_minutes * 60).max(MIN_EXPIRATION_TTL_SECONDS);
-    let now = Utc::now();
-    let expires_at = now + chrono::Duration::seconds(ttl_seconds as i64);
-
-    stored.expires_at = expires_at.to_rfc3339_opts(SecondsFormat::Secs, true);
+    let default_ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES);
+    let ttl_seconds = apply_anonymous_ttl_patch(
+        &mut stored,
+        payload.ttl_minutes,
+        default_ttl_minutes,
+        max_ttl_minutes,
+        Utc::now(),
+    );
 
     let body = serde_json::to_string(&stored)?;
     env.kv(KV_BINDING)?
@@ -573,5 +621,125 @@ mod tests {
             split_version_segment("v:99999999999999999999/"),
             (None, None)
         );
+    }
+
+    const DEFAULT_MINUTES: u64 = 5 * 24 * 60;
+    const MAX_MINUTES: u64 = 365 * 24 * 60;
+
+    fn stored_with_ttl(ttl_minutes: Option<u64>) -> StoredArtifact {
+        StoredArtifact {
+            body_ciphertext_b64: "ciphertext".to_string(),
+            body_iv_b64: "nonce".to_string(),
+            tier: ArtifactTier::Ephemeral,
+            title: "Artifact".to_string(),
+            description: String::new(),
+            thumbnail: String::new(),
+            preview_blurred: false,
+            created_at: "2026-10-19T00:00:00Z".to_string(),
+            expires_at: "2026-10-19T00:00:00Z".to_string(),
+            ttl_minutes,
+        }
+    }
+
+    /// Mirrors the KV round trip every view and PATCH goes through.
+    fn kv_round_trip(stored: &StoredArtifact) -> StoredArtifact {
+        let encoded = serde_json::to_string(stored).expect("stored artifact serializes");
+        serde_json::from_str(&encoded).expect("stored artifact deserializes")
+    }
+
+    fn at(rfc3339: &str) -> chrono::DateTime<Utc> {
+        chrono::DateTime::parse_from_rfc3339(rfc3339)
+            .expect("valid timestamp")
+            .with_timezone(&Utc)
+    }
+
+    fn expires_at_after(now: chrono::DateTime<Utc>, seconds: i64) -> String {
+        (now + chrono::Duration::seconds(seconds)).to_rfc3339_opts(SecondsFormat::Secs, true)
+    }
+
+    #[test]
+    fn custom_short_ttl_survives_repeated_views() {
+        let created = at("2026-10-19T12:00:00Z");
+        let mut stored = stored_with_ttl(Some(1));
+
+        for view_offset_seconds in [0, 30, 45] {
+            let view_at = created + chrono::Duration::seconds(view_offset_seconds);
+            let mut loaded = kv_round_trip(&stored);
+            let ttl_seconds = slide_expiry(&mut loaded, DEFAULT_MINUTES, MAX_MINUTES, view_at);
+            stored = loaded;
+
+            assert_eq!(ttl_seconds, 60);
+            assert_eq!(stored.expires_at, expires_at_after(view_at, 60));
+        }
+        assert_eq!(stored.ttl_minutes, Some(1));
+    }
+
+    #[test]
+    fn custom_long_ttl_survives_repeated_views() {
+        let created = at("2026-10-19T12:00:00Z");
+        let mut stored = stored_with_ttl(Some(MAX_MINUTES));
+
+        for view_offset_days in [0, 1, 2] {
+            let view_at = created + chrono::Duration::days(view_offset_days);
+            let mut loaded = kv_round_trip(&stored);
+            let ttl_seconds = slide_expiry(&mut loaded, DEFAULT_MINUTES, MAX_MINUTES, view_at);
+            stored = loaded;
+
+            assert_eq!(ttl_seconds, MAX_MINUTES * 60);
+            assert_eq!(
+                stored.expires_at,
+                expires_at_after(view_at, 365 * 24 * 60 * 60)
+            );
+        }
+    }
+
+    #[test]
+    fn record_without_persisted_ttl_keeps_the_default_window() {
+        let viewed = at("2026-10-19T12:00:00Z");
+        let mut stored = stored_with_ttl(None);
+
+        let ttl_seconds = slide_expiry(&mut stored, DEFAULT_MINUTES, MAX_MINUTES, viewed);
+
+        assert_eq!(ttl_seconds, DEFAULT_MINUTES * 60);
+        assert_eq!(
+            stored.expires_at,
+            expires_at_after(viewed, 5 * 24 * 60 * 60)
+        );
+        assert_eq!(stored.ttl_minutes, None);
+    }
+
+    #[test]
+    fn anonymous_patch_cannot_extend_past_the_stored_ttl() {
+        let patched = at("2026-10-19T12:00:00Z");
+        let mut stored = stored_with_ttl(Some(24 * 60));
+
+        let ttl_seconds = apply_anonymous_ttl_patch(
+            &mut stored,
+            MAX_MINUTES,
+            DEFAULT_MINUTES,
+            MAX_MINUTES,
+            patched,
+        );
+
+        assert_eq!(ttl_seconds, 24 * 60 * 60);
+        assert_eq!(stored.ttl_minutes, Some(24 * 60));
+        assert_eq!(stored.expires_at, expires_at_after(patched, 24 * 60 * 60));
+    }
+
+    #[test]
+    fn anonymous_patch_can_shorten_and_the_shorter_ttl_persists() {
+        let patched = at("2026-10-19T12:00:00Z");
+        let mut stored = stored_with_ttl(Some(24 * 60));
+
+        let ttl_seconds =
+            apply_anonymous_ttl_patch(&mut stored, 10, DEFAULT_MINUTES, MAX_MINUTES, patched);
+        assert_eq!(ttl_seconds, 10 * 60);
+
+        let later_view = patched + chrono::Duration::minutes(5);
+        let mut loaded = kv_round_trip(&stored);
+        slide_expiry(&mut loaded, DEFAULT_MINUTES, MAX_MINUTES, later_view);
+
+        assert_eq!(loaded.ttl_minutes, Some(10));
+        assert_eq!(loaded.expires_at, expires_at_after(later_view, 10 * 60));
     }
 }

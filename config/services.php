@@ -87,9 +87,9 @@ return [
     ],
 
     'authkit' => [
-        // The passwordless dev login is on by default only locally and in tests;
-        // any other environment must opt in with AUTHKIT_DEV_LOGIN_ENABLED=true.
-        'dev_login_enabled' => (bool) env('AUTHKIT_DEV_LOGIN_ENABLED', in_array(env('APP_ENV'), ['local', 'testing'], true)),
+        // The passwordless dev login is off unless explicitly enabled, and it also
+        // needs a loopback or .test host (see AuthKitDevLoginController, RUB-460).
+        'dev_login_enabled' => (bool) env('AUTHKIT_DEV_LOGIN_ENABLED', false),
         // Comma-separated email domains allowed through the non-production dev login.
         // Empty means unrestricted (local and tests).
         'dev_login_domains' => array_filter(explode(',', (string) env('AUTHKIT_DEV_LOGIN_DOMAINS', ''))),

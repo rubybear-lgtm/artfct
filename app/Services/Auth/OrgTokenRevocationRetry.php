@@ -46,12 +46,24 @@ class OrgTokenRevocationRetry
             ->limit($limit)
             ->get();
 
+        $writer = RevocationWriter::default();
+
+        if ($pending->isNotEmpty() && ! $writer->isConfigured()) {
+            Log::warning('Org-token revocation retries skipped: the Worker denylist writer is not configured.', [
+                'pending' => $pending->count(),
+            ]);
+
+            throw new MissingRevocationWriterConfiguration(
+                'ARTFCT_WORKER_BASE_URL and ARTFCT_REVOCATION_WRITE_SECRET must be set before pending org-token revocations can be retried.',
+            );
+        }
+
         foreach ($pending as $retry) {
             $attemptedAt = now();
 
             try {
                 $jti = Crypt::decryptString($retry->encrypted_jti);
-                $revoked = RevocationWriter::default()->revoke($jti, Carbon::parse($retry->expires_at));
+                $revoked = $writer->revoke($jti, Carbon::parse($retry->expires_at));
             } catch (\Throwable $exception) {
                 $revoked = false;
 

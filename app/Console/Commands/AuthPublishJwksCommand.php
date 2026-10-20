@@ -26,17 +26,13 @@ class AuthPublishJwksCommand extends Command
         $secret = config('services.org_jwt.jwks_write_secret');
 
         if (! $baseUrl || ! $secret) {
-            $this->components->warn('ARTFCT_WORKER_BASE_URL and ARTFCT_JWKS_WRITE_SECRET are not both set; skipping.');
-
-            return self::SUCCESS;
+            return $this->missingConfiguration('ARTFCT_WORKER_BASE_URL and ARTFCT_JWKS_WRITE_SECRET are not both set.');
         }
 
         try {
             $keys = [OrgJwtService::default()->jwk()];
         } catch (RuntimeException $exception) {
-            $this->components->warn('No org-token signing key configured; skipping.');
-
-            return self::SUCCESS;
+            return $this->missingConfiguration('No org-token signing key configured: '.$exception->getMessage());
         }
 
         if ($path = $this->option('extra-jwks')) {
@@ -61,5 +57,22 @@ class AuthPublishJwksCommand extends Command
         $this->components->info('Published '.count($keys).' key(s) to the Worker.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Local and testing have no Worker by design, so a missing value is a skip.
+     * Anywhere else the Worker would reject every org token, so the deploy fails.
+     */
+    private function missingConfiguration(string $message): int
+    {
+        if (app()->environment(['local', 'testing'])) {
+            $this->components->warn($message.' Skipping.');
+
+            return self::SUCCESS;
+        }
+
+        $this->components->error($message);
+
+        return self::FAILURE;
     }
 }

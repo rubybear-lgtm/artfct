@@ -17,6 +17,7 @@ use App\Services\Auth\OrgTokenRevocationRetry;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use App\Support\ClientIp;
+use App\Support\TeamSignIn;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -185,6 +186,7 @@ final class AuthorizationServerController extends Controller
         $team = $this->teamFor($user, $parameters['team']);
 
         abort_if($team === null, 403, 'Create a team first, then start the connection again from your AI tool.');
+        $this->abortUnlessSignInAdmitted($request, $user, $team);
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
 
@@ -237,6 +239,7 @@ final class AuthorizationServerController extends Controller
         $team = $this->teamFor($user, $request->input('team'));
 
         abort_if($team === null, 403, 'The selected team is not available to this account.');
+        $this->abortUnlessSignInAdmitted($request, $user, $team);
 
         $code = Str::random(96);
         Cache::put($this->codeKey($code), [
@@ -719,6 +722,15 @@ final class AuthorizationServerController extends Controller
         }
 
         return $parameters;
+    }
+
+    /**
+     * A `polis` team admits consent only from a session that signed in through its
+     * Polis IdP (RUB-458). The token exchange carries no session, so only consent is gated.
+     */
+    private function abortUnlessSignInAdmitted(Request $request, User $user, Team $team): void
+    {
+        abort_unless(TeamSignIn::admits($request, $user, $team), 403, "This organisation only accepts sign-in through its single sign-on. Sign in with your organisation's SSO to continue.");
     }
 
     private function teamFor(User $user, ?string $team): ?Team
