@@ -31,6 +31,14 @@ final class TeamSignIn
             return true;
         }
 
+        return self::provesPolisSignIn($request, $user, $team);
+    }
+
+    /**
+     * Whether this session completed a Polis sign-in for the team as this user.
+     */
+    public static function provesPolisSignIn(Request $request, User $user, Team $team): bool
+    {
         if (! $request->hasSession()) {
             return false;
         }

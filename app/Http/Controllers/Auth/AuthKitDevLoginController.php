@@ -24,9 +24,13 @@ class AuthKitDevLoginController extends Controller
     {
         abort_if(app()->environment('production'), 404);
         abort_unless(config('services.authkit.dev_login_enabled'), 404);
+
         // A mis-set APP_ENV on a deployed host must not turn this into a login for
-        // any email, so only a loopback or .test request is answered (RUB-460).
-        abort_unless(StaffAccess::isDevelopmentHost($request), 404);
+        // any email. Off a loopback or .test host the stand-in answers only when a
+        // domain allowlist is configured (staging), and only with the flag explicitly on
+        // (RUB-460). The allowlist check below then limits which emails may sign in.
+        $allowedDomains = array_filter((array) config('services.authkit.dev_login_domains'));
+        abort_unless(StaffAccess::isDevelopmentHost($request) || $allowedDomains !== [], 404);
 
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],
@@ -39,7 +43,6 @@ class AuthKitDevLoginController extends Controller
         // On a reachable non-production host (staging) only allow listed email
         // domains, so the passwordless stand-in cannot be used to sign in as
         // or create arbitrary accounts.
-        $allowedDomains = array_filter((array) config('services.authkit.dev_login_domains'));
         if ($allowedDomains !== [] && ! in_array(Str::after($email, '@'), $allowedDomains, true)) {
             abort(403, 'This email domain is not allowed for dev login.');
         }

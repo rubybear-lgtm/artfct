@@ -24,6 +24,7 @@ use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Teams\TeamMemberController;
 use App\Http\Controllers\Teams\TeamOwnerController;
 use App\Http\Middleware\EnsureTeamMembership;
+use App\Http\Middleware\EnsureTeamSignIn;
 use Illuminate\Support\Facades\Route;
 
 Route::get('invitations/{invitation}', [InvitationLandingController::class, 'show'])
@@ -31,12 +32,13 @@ Route::get('invitations/{invitation}', [InvitationLandingController::class, 'sho
 Route::post('invitations/{invitation}/join', [InvitationLandingController::class, 'join'])->middleware('guest')->name('invitations.join');
 
 Route::prefix('{current_team}')
-    ->middleware(['auth', EnsureTeamMembership::class])
+    ->middleware(['auth', EnsureTeamSignIn::class, EnsureTeamMembership::class])
     ->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
     });
 
-Route::middleware(['auth'])->group(function () {
+// Every team-scoped route sits in this group, so the auth_mode sign-in check (RUB-458) applies to all of them.
+Route::middleware(['auth', EnsureTeamSignIn::class])->group(function () {
     Route::get('onboarding/team', [OnboardingController::class, 'show'])->name('onboarding.team.show');
 
     Route::get('settings/account', [AccountController::class, 'show'])->name('account.show');
