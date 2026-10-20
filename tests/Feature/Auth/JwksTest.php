@@ -106,3 +106,44 @@ test('mint_fails_closed_without_a_key', function () {
 
     expect(fn () => OrgJwtService::default())->toThrow(RuntimeException::class);
 });
+
+test('publish_fails_in_production_when_a_required_value_is_missing', function (string $key, mixed $value) {
+    configureSigning(testSigningKey());
+    config([$key => $value]);
+    app()->detectEnvironment(fn () => 'production');
+    Http::fake();
+
+    test()->artisan('auth:publish-jwks')->assertFailed();
+
+    Http::assertNothingSent();
+})->with([
+    'worker base url' => ['services.org_jwt.worker_base_url', null],
+    'jwks write secret' => ['services.org_jwt.jwks_write_secret', null],
+    'signing key' => ['services.org_jwt.private_key', null],
+    'issuer' => ['services.org_jwt.issuer', ''],
+    'audience' => ['services.org_jwt.audience', ''],
+]);
+
+test('publish_skips_with_success_in_testing_when_a_required_value_is_missing', function (string $key, mixed $value) {
+    configureSigning(testSigningKey());
+    config([$key => $value]);
+    Http::fake();
+
+    test()->artisan('auth:publish-jwks')->assertSuccessful();
+
+    Http::assertNothingSent();
+})->with([
+    'worker base url' => ['services.org_jwt.worker_base_url', null],
+    'jwks write secret' => ['services.org_jwt.jwks_write_secret', null],
+    'signing key' => ['services.org_jwt.private_key', null],
+    'issuer' => ['services.org_jwt.issuer', ''],
+    'audience' => ['services.org_jwt.audience', ''],
+]);
+
+test('publish_succeeds_in_production_when_fully_configured', function () {
+    configureSigning(testSigningKey());
+    app()->detectEnvironment(fn () => 'production');
+    Http::fake(['worker.test/*' => Http::response(['keys' => 1])]);
+
+    test()->artisan('auth:publish-jwks')->assertSuccessful();
+});

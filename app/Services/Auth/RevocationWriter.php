@@ -34,6 +34,16 @@ final class RevocationWriter
     }
 
     /**
+     * Whether the Worker URL and write secret are both present. False means
+     * `revoke()` can never succeed until configuration changes, which is not
+     * the same as a transient Worker failure.
+     */
+    public function isConfigured(): bool
+    {
+        return $this->baseUrl !== null && $this->secret !== null;
+    }
+
+    /**
      * Writes a denylist entry for `$jti`, expiring at `$expiresAt` (the
      * token's own natural expiry, so the entry expires with it and the
      * denylist stays small). Returns whether the write succeeded.

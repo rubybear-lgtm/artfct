@@ -76,7 +76,7 @@ test('health_page_reports_failed_jobs_and_indexing_failures', function () {
             ->where('stripe.last_received_at', fn (string $at) => str_starts_with($at, '2026-10-14T09:00:00'))
             ->where('worker_events.last_received_at', fn (string $at) => str_starts_with($at, '2026-10-15T10:30:00'))
             ->where('staff_organization', ['configured' => true, 'id' => 'org_staff_123'])
-            ->has('readiness', 3, fn (Assert $row) => $row->hasAll(['name', 'state', 'missing'])));
+            ->has('readiness', 4, fn (Assert $row) => $row->hasAll(['name', 'state', 'missing'])));
 });
 
 test('health_page_readiness_matches_the_readiness_command', function () {
