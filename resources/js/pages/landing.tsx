@@ -26,6 +26,8 @@ import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { backgroundPair, randomBackgroundPairs } from '@/lib/backgrounds';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
+import blogRoutes from '@/routes/blog';
+import connectRoutes from '@/routes/connect';
 
 type UseScene = {
     frame: { light: string; dark: string };
@@ -528,6 +530,58 @@ function UseCaseRow({
 
 type FramePair = { light: string; dark: string };
 
+type ConnectGuide = { id: string; label: string };
+
+type LatestPost = { slug: string; title: string };
+
+type LandingProps = {
+    connectGuides: ConnectGuide[];
+    latestPosts: LatestPost[];
+};
+
+/* Questions agent-native teams search for, each answered by a setup guide or
+   a post, so crawlers reach those pages from the homepage (RUB-494). */
+const GUIDES: {
+    title: string;
+    text: string;
+    links: { label: string; guide?: string; post?: string }[];
+}[] = [
+    {
+        title: 'Share context between Claude Code and Cursor',
+        text: 'Connect both to the same Artfct workspace. Each one publishes there and searches what the other published.',
+        links: [
+            { label: 'Connect Claude Code', guide: 'connect-claude-code' },
+            { label: 'Connect Cursor', guide: 'connect-cursor' },
+            {
+                label: 'Stop them contradicting each other',
+                post: 'stop-ai-tools-contradicting-each-other',
+            },
+        ],
+    },
+    {
+        title: 'Let ChatGPT read what you made in Claude',
+        text: 'Connect both to your Artfct workspace. Share from Claude, and ChatGPT can search for it there.',
+        links: [
+            { label: 'Connect the Claude app', guide: 'connect-claude' },
+            { label: 'Connect ChatGPT', guide: 'connect-chatgpt' },
+        ],
+    },
+    {
+        title: 'Search your team’s AI artifacts, with sources',
+        text: 'Any connected agent can search by meaning, read the right part and link back to where it came from.',
+        links: [
+            {
+                label: 'Finding what your AI already made',
+                post: 'finding-what-your-ai-already-made',
+            },
+            {
+                label: 'What is an AI artifact?',
+                post: 'what-is-an-ai-artifact',
+            },
+        ],
+    },
+];
+
 const subscribeNothing = () => () => {};
 let framesForThisLoad: FramePair[] | null = null;
 
@@ -539,7 +593,7 @@ function randomFramesOnce(): FramePair[] {
     return framesForThisLoad;
 }
 
-export default function Landing() {
+export default function Landing({ connectGuides, latestPosts }: LandingProps) {
     const story = useStory();
     const frames = useSyncExternalStore(
         subscribeNothing,
@@ -608,14 +662,15 @@ export default function Landing() {
                                 The team knowledge base for every AI tool
                             </div>
                             <h1 className="two">
-                                Unsilo your knowledge.{' '}
-                                <span>Feed every agent.</span>
+                                Every agent sees{' '}
+                                <span>what the others made.</span>
                             </h1>
                             <p className="lede">
-                                Share a report, table or mockup from Claude,
-                                ChatGPT, Cursor or Copilot. Every AI tool on
-                                your team can find it, open it and show where it
-                                came from.
+                                Artfct indexes every AI artifact your agents
+                                publish: reports, specs, tables and mockups.
+                                Claude, Cursor, Codex and ChatGPT can search
+                                across your team’s work, read the right part and
+                                cite where it came from.
                             </p>
                             <div className="cta">
                                 <Button asChild className="btn btn-primary">
@@ -641,25 +696,94 @@ export default function Landing() {
                             Works with the AI tools your team already uses.
                         </div>
                         <div className="names">
-                            <span>
+                            <Link
+                                href={connectRoutes.show('connect-claude').url}
+                            >
                                 <AiToolIcon tool="claude" size={26} />
                                 Claude
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-chatgpt').url}
+                            >
                                 <AiToolIcon tool="chatgpt" size={26} />
                                 ChatGPT
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-vscode').url}
+                            >
                                 <AiToolIcon tool="copilot" size={26} />
                                 Copilot
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-cursor').url}
+                            >
                                 <AiToolIcon tool="cursor" size={26} />
                                 Cursor
-                            </span>
-                            <span className="more">and other AI tools</span>
+                            </Link>
+                            <Link
+                                className="more"
+                                href={connectRoutes.show('connect-other').url}
+                            >
+                                and other AI tools
+                            </Link>
                         </div>
                     </div>
+
+                    <section className="guides pad rule" id="guides">
+                        <div className="guide-list">
+                            {GUIDES.map((guide) => (
+                                <div key={guide.title} className="guide">
+                                    <h2>{guide.title}</h2>
+                                    <p>{guide.text}</p>
+                                    <ul>
+                                        {guide.links.map((link) => (
+                                            <li key={link.label}>
+                                                <Link
+                                                    href={
+                                                        link.guide
+                                                            ? connectRoutes.show(
+                                                                  link.guide,
+                                                              ).url
+                                                            : blogRoutes.show(
+                                                                  link.post ??
+                                                                      '',
+                                                              ).url
+                                                    }
+                                                >
+                                                    {link.label}{' '}
+                                                    <span className="arrow">
+                                                        →
+                                                    </span>
+                                                </Link>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
+                        </div>
+                        <nav className="guide-index" aria-label="Setup guides">
+                            <span className="lab">Set up</span>
+                            {connectGuides.map((guide) => (
+                                <Link
+                                    key={guide.id}
+                                    href={connectRoutes.show(guide.id).url}
+                                >
+                                    {guide.label}
+                                </Link>
+                            ))}
+                        </nav>
+                        <nav className="guide-index" aria-label="Latest guides">
+                            <span className="lab">Latest</span>
+                            {latestPosts.map((post) => (
+                                <Link
+                                    key={post.slug}
+                                    href={blogRoutes.show(post.slug).url}
+                                >
+                                    {post.title}
+                                </Link>
+                            ))}
+                        </nav>
+                    </section>
 
                     <section className="statement pad rule">
                         <h2 className="two">
