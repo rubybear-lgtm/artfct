@@ -117,7 +117,7 @@ test('every guide icon names a mark the icon component draws', function () {
     $component = file_get_contents(resource_path('js/components/ai-tool-icon.tsx'));
     $icons = collect(AiToolSetup::forCurrentEnvironment()->guides())->pluck('icon')->filter()->unique();
 
-    expect($icons->all())->toContain('codex', 'opencode', 'windsurf', 'zed', 'antigravity');
+    expect($icons->all())->toContain('codex', 'opencode', 'windsurf', 'zed', 'antigravity', 'omp', 'mcp');
 
     foreach ($icons as $icon) {
         expect($component)->toContain("    {$icon}: (");
