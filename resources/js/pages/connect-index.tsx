@@ -33,7 +33,7 @@ export default function ConnectIndex({
     })).filter((group) => group.guides.length > 0);
 
     return (
-        <SitePage active="docs">
+        <SitePage active="connect">
             <Head title={meta.title}>
                 <meta
                     head-key="description"

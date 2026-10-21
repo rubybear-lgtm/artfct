@@ -112,3 +112,14 @@ test('a guide page carries the setup prompt and only its own troubleshooting sen
 test('the sitemap lists the hub', function () {
     $this->get(route('sitemap'))->assertSee(route('connect.index'), escape: false);
 });
+
+test('every guide icon names a mark the icon component draws', function () {
+    $component = file_get_contents(resource_path('js/components/ai-tool-icon.tsx'));
+    $icons = collect(AiToolSetup::forCurrentEnvironment()->guides())->pluck('icon')->filter()->unique();
+
+    expect($icons->all())->toContain('codex', 'opencode', 'windsurf', 'zed', 'antigravity');
+
+    foreach ($icons as $icon) {
+        expect($component)->toContain("    {$icon}: (");
+    }
+});

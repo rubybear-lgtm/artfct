@@ -358,7 +358,7 @@ export default function ConnectShow({
     ];
 
     return (
-        <SitePage active="docs">
+        <SitePage active="connect">
             <Head title={meta.title}>
                 <meta
                     head-key="description"

@@ -541,23 +541,42 @@ type LandingProps = {
     latestPosts: LatestPost[];
 };
 
-/* Questions agent-native teams search for, each answered by a setup guide or
-   a post. They sit in the footer with every setup guide and the newest posts,
-   so crawlers still reach all of them from the homepage (RUB-488, RUB-502). */
-const TOPICS: { label: string; guide?: string; post?: string }[] = [
+/* Questions agent-native teams search for (RUB-494), each with the posts
+   that answer it. Setup links live in "Connect your agent" just below. */
+const GUIDES: {
+    title: string;
+    text: string;
+    posts: { label: string; slug: string }[];
+}[] = [
     {
-        label: 'Share context between Claude Code and Cursor',
-        post: 'stop-ai-tools-contradicting-each-other',
+        title: 'Share context between Claude Code and Cursor',
+        text: 'Connect both to the same Artfct workspace. Each one publishes there and searches what the other published.',
+        posts: [
+            {
+                label: 'Stop them contradicting each other',
+                slug: 'stop-ai-tools-contradicting-each-other',
+            },
+        ],
     },
     {
-        label: 'Let ChatGPT read what you made in Claude',
-        guide: 'connect-chatgpt',
+        title: 'Let ChatGPT read what you made in Claude',
+        text: 'Connect both to your Artfct workspace. Share from Claude, and ChatGPT can search for it there.',
+        posts: [],
     },
     {
-        label: 'Search your team’s AI artifacts, with sources',
-        post: 'finding-what-your-ai-already-made',
+        title: 'Search your team’s AI artifacts, with sources',
+        text: 'Any connected agent can search by meaning, read the right part and link back to where it came from.',
+        posts: [
+            {
+                label: 'Finding what your AI already made',
+                slug: 'finding-what-your-ai-already-made',
+            },
+            {
+                label: 'What is an AI artifact?',
+                slug: 'what-is-an-ai-artifact',
+            },
+        ],
     },
-    { label: 'What is an AI artifact?', post: 'what-is-an-ai-artifact' },
 ];
 
 const subscribeNothing = () => () => {};
@@ -596,6 +615,7 @@ export default function Landing({
                         <a href="#how">How it works</a>
                         <a href="#use">Use cases</a>
                         <a href="#plans">Pricing</a>
+                        <Link href={connectRoutes.index().url}>Connect</Link>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
                     </div>
@@ -612,6 +632,9 @@ export default function Landing({
                             <a href="#how">How it works</a>
                             <a href="#use">Use cases</a>
                             <a href="#plans">Pricing</a>
+                            <Link href={connectRoutes.index().url}>
+                                Connect
+                            </Link>
                             <Link href={docs.url()}>Docs</Link>
                             <Link href={blog.url()}>Blog</Link>
                         </div>
@@ -710,6 +733,37 @@ export default function Landing({
                             </Link>
                         </div>
                     </div>
+
+                    <section className="guides pad rule" id="guides">
+                        <div className="guide-list">
+                            {GUIDES.map((guide) => (
+                                <div key={guide.title} className="guide">
+                                    <h2>{guide.title}</h2>
+                                    <p>{guide.text}</p>
+                                    {guide.posts.length > 0 && (
+                                        <ul>
+                                            {guide.posts.map((post) => (
+                                                <li key={post.slug}>
+                                                    <Link
+                                                        href={
+                                                            blogRoutes.show(
+                                                                post.slug,
+                                                            ).url
+                                                        }
+                                                    >
+                                                        {post.label}{' '}
+                                                        <span className="arrow">
+                                                            →
+                                                        </span>
+                                                    </Link>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
 
                     <section
                         className="connect pad rule"
@@ -961,28 +1015,6 @@ export default function Landing({
                         </ul>
                     </div>
                     <div>
-                        <h3>Guides</h3>
-                        <ul>
-                            {TOPICS.map((topic) => (
-                                <li key={topic.label}>
-                                    <Link
-                                        href={
-                                            topic.guide
-                                                ? connectRoutes.show(
-                                                      topic.guide,
-                                                  ).url
-                                                : blogRoutes.show(
-                                                      topic.post ?? '',
-                                                  ).url
-                                        }
-                                    >
-                                        {topic.label}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    <div>
                         <h3>Latest</h3>
                         <ul>
                             {latestPosts.map((post) => (
@@ -1004,6 +1036,7 @@ export default function Landing({
                     <div className="r">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
+                        <Link href={connectRoutes.index().url}>Connect</Link>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
                         <Link href={privacy.url()}>Privacy</Link>
