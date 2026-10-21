@@ -75,3 +75,40 @@ test('the sitemap lists every connect page', function () {
         );
     }
 });
+
+test('the hub lists every guide by kind with the one setup prompt', function () {
+    $setup = AiToolSetup::forCurrentEnvironment();
+    $guides = collect($setup->guides());
+
+    $this->get(route('connect.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('connect-index')
+            ->where('meta.title', fn (string $title): bool => str_contains($title, 'Agent setup'))
+            ->where('guides', fn ($cards): bool => collect($cards)->pluck('id')->all() === $guides->pluck('id')->all())
+            ->where('guides.0.kind', 'terminal')
+            ->where('prompt', $setup->agentSetupPrompt())
+            ->where('quickInstall', $setup->quickInstall()));
+
+    expect($guides->pluck('kind')->unique()->sort()->values()->all())->toBe(['chat', 'editor', 'other', 'terminal']);
+});
+
+test('a guide page carries the setup prompt and only its own troubleshooting sentence', function () {
+    $setup = AiToolSetup::forCurrentEnvironment();
+
+    $this->get(route('connect.show', ['tool' => 'connect-codex']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('prompt', $setup->agentSetupPrompt())
+            ->where('guide.initHost', 'codex')
+            ->where('troubleshooting.0.note', 'Codex: run codex mcp login artfct.')
+            ->where('related.0.kind', 'terminal'));
+
+    $this->get(route('connect.show', ['tool' => 'connect-chatgpt']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->missing('guide.initHost')
+            ->where('guide.kind', 'chat'));
+});
+
+test('the sitemap lists the hub', function () {
+    $this->get(route('sitemap'))->assertSee(route('connect.index'), escape: false);
+});

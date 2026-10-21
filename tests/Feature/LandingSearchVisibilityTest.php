@@ -31,6 +31,7 @@ test('the homepage links every setup guide and the three newest posts', function
 
     test()->get(route('home'))
         ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('agentSetupPrompt', AiToolSetup::forCurrentEnvironment()->agentSetupPrompt())
             ->where('connectGuides', fn ($guides): bool => collect($guides)->pluck('id')->all() === $guideIds)
             ->where('latestPosts', fn ($posts): bool => collect($posts)->pluck('slug')->all() === $newestSlugs));
 

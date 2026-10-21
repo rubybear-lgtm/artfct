@@ -69,3 +69,12 @@ test('on a phone the headline, the demo and the tools strip fit one screen', fun
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)
         ->assertNoJavaScriptErrors();
 });
+
+test('the connect section copies the setup prompt and links to the setup guides', function () {
+    visit(route('home'))
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Connect your agent')
+        ->assertScript('document.querySelectorAll("#connect [data-testid=copy-prompt] svg").length', 4)
+        ->assertScript('document.querySelector("#connect a.btn").getAttribute("href")', '/connect')
+        ->assertScript('document.querySelectorAll(".sitemap > div:first-child a[href^=\"/connect/\"]").length', 12);
+});

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ArtifactViewerController;
 use App\Http\Controllers\BlogController;
+use App\Http\Controllers\ConnectController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LandingMediaController;
@@ -27,6 +28,7 @@ Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
         'description' => 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.',
     ],
     'flow' => LandingMedia::forPage(),
+    'agentSetupPrompt' => AiToolSetup::forCurrentEnvironment()->agentSetupPrompt(),
     'connectGuides' => collect(AiToolSetup::forCurrentEnvironment()->guides())
         ->map(fn (array $guide): array => ['id' => $guide['id'], 'label' => $guide['label']])
         ->values()
@@ -52,35 +54,13 @@ Route::get('/free', fn () => Inertia::render('welcome', [
 
 Route::get('/docs', DocsController::class)->name('docs');
 
-// One page per connectable AI tool (spec 12's programmatic surface). The
-// guides come from AiToolSetup, the same source the docs page and
-// /llms-full.txt render from, so a setup step cannot drift between them.
-Route::get('/connect/{tool}', function (string $tool) {
-    $setup = AiToolSetup::forCurrentEnvironment();
-    $guides = collect($setup->guides());
-    $guide = $guides->firstWhere('id', $tool);
-
-    abort_if($guide === null, 404);
-
-    return Inertia::render('connect-show', [
-        'meta' => [
-            'title' => "Connect {$guide['label']} to Artfct",
-            'description' => "Add Artfct to {$guide['label']} so it can publish to your team's workspace and search what your other AI tools made.",
-        ],
-        'guide' => $guide,
-        'mcpUrl' => $setup->mcpUrl(),
-        'quickInstall' => $setup->quickInstall(),
-        'related' => $guides
-            ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)
-            ->map(fn (array $candidate): array => [
-                'id' => $candidate['id'],
-                'label' => $candidate['label'],
-            ])
-            ->values()
-            ->all(),
-        'troubleshooting' => array_slice($setup->troubleshooting(), 0, 3),
-    ]);
-})->where('tool', '[a-z0-9-]+')->name('connect.show');
+// The /connect hub and one page per connectable AI tool. Both read
+// AiToolSetup, the same source the docs page and /llms-full.txt render from,
+// so a setup step cannot drift between them.
+Route::get('/connect', [ConnectController::class, 'index'])->name('connect.index');
+Route::get('/connect/{tool}', [ConnectController::class, 'show'])
+    ->where('tool', '[a-z0-9-]+')
+    ->name('connect.show');
 Route::get('/llms.txt', [LlmsTextController::class, 'index'])->name('llms.index');
 Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.full');
 

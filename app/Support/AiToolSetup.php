@@ -74,7 +74,11 @@ class AiToolSetup
     }
 
     /**
-     * @return list<array{id: string, label: string, verified: bool, intro?: string, installLink?: string, installLinkFallback?: string, steps: list<array{text: string, code?: string}>}>
+     * `kind` groups the /connect hub, `method` says how the tool connects,
+     * `icon` names an AiToolIcon mark, and `initHost` is the artfct-init
+     * `--host` for coding agents that work in a project (RUB-502).
+     *
+     * @return list<array{id: string, label: string, verified: bool, kind: 'terminal'|'editor'|'chat'|'other', method: string, summary: string, maker?: string, icon?: string, initHost?: string, intro?: string, installLink?: string, installLinkFallback?: string, steps: list<array{text: string, code?: string}>}>
      */
     public function guides(): array
     {
@@ -85,6 +89,12 @@ class AiToolSetup
                 'id' => 'connect-claude-code',
                 'label' => 'Claude Code',
                 'verified' => true,
+                'kind' => 'terminal',
+                'method' => 'One command',
+                'summary' => 'Anthropic’s coding agent in your terminal. Add Artfct with one command and sign in from /mcp.',
+                'maker' => 'Anthropic',
+                'icon' => 'claude',
+                'initHost' => 'claude',
                 'steps' => [
                     ['text' => 'Run this in your terminal:', 'code' => "claude mcp add --transport http artfct {$url}"],
                     ['text' => 'Start Claude Code, type `/mcp`, choose `artfct` and select `Authenticate`.'],
@@ -95,6 +105,12 @@ class AiToolSetup
                 'id' => 'connect-codex',
                 'label' => 'Codex',
                 'verified' => true,
+                'kind' => 'terminal',
+                'method' => 'One command',
+                'summary' => 'OpenAI’s coding agent. Add the server, sign in once, and Codex can search and publish.',
+                'maker' => 'OpenAI',
+                'icon' => 'chatgpt',
+                'initHost' => 'codex',
                 'steps' => [
                     ['text' => 'Run this in your terminal:', 'code' => "codex mcp add artfct --url {$url}"],
                     ['text' => 'Sign in, and approve the page that opens in your browser:', 'code' => 'codex mcp login artfct'],
@@ -105,6 +121,9 @@ class AiToolSetup
                 'id' => 'connect-omp',
                 'label' => 'OMP',
                 'verified' => false,
+                'kind' => 'terminal',
+                'method' => 'Config file',
+                'summary' => 'Add Artfct to OMP’s server config, then sign in from /mcp.',
                 'intro' => 'OMP (oh-my-pi) reads Model Context Protocol servers from its own config file, so add the artfct server there and sign in once.',
                 'steps' => [
                     ['text' => 'Add the artfct server to your user config (`~/.omp/agent/mcp.json`, creating the file if needed):', 'code' => $this->json(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => $url]]])],
@@ -116,6 +135,10 @@ class AiToolSetup
                 'id' => 'connect-opencode',
                 'label' => 'OpenCode',
                 'verified' => true,
+                'kind' => 'terminal',
+                'method' => 'One command',
+                'summary' => 'Open-source terminal agent. Add Artfct and approve the sign-in once.',
+                'initHost' => 'opencode',
                 'steps' => [
                     ['text' => 'Run this in your terminal:', 'code' => "opencode mcp add artfct --url {$url}"],
                     ['text' => 'Sign in, and select Approve once. Approving the same page twice makes OpenCode report that the code is invalid or expired; if that happens, run the command again.', 'code' => 'opencode mcp auth artfct'],
@@ -126,6 +149,11 @@ class AiToolSetup
                 'id' => 'connect-antigravity',
                 'label' => 'Antigravity',
                 'verified' => true,
+                'kind' => 'terminal',
+                'method' => 'One command',
+                'summary' => 'Add Artfct from the terminal, then sign in from /mcp inside agy.',
+                'maker' => 'Google',
+                'initHost' => 'antigravity',
                 'steps' => [
                     ['text' => 'Run this in your terminal:', 'code' => "agy mcp add artfct {$url}"],
                     ['text' => 'Open `~/.gemini/config/mcp_config.json` and add `"oauth": {}` to the `artfct` entry, so it reads:', 'code' => $this->json(['artfct' => ['serverUrl' => $url, 'oauth' => new \stdClass]])],
@@ -136,6 +164,11 @@ class AiToolSetup
                 'id' => 'connect-claude',
                 'label' => 'Claude app',
                 'verified' => false,
+                'kind' => 'chat',
+                'method' => 'Add a connector',
+                'summary' => 'Claude on the web, desktop and phone. Add Artfct once as a connector and it is there everywhere.',
+                'maker' => 'Anthropic',
+                'icon' => 'claude',
                 'intro' => 'For Claude on the web and the desktop app. A connector added once is available everywhere you use Claude. On Team and Enterprise plans, an owner adds it first: Organization settings, then Connectors, then Add, then Custom, then Web, using the same details. Members then find it under Customize, then Connectors, and select Connect.',
                 'steps' => [
                     ['text' => 'In Claude, open Customize, then Connectors. Select Add, then Add custom connector.'],
@@ -148,6 +181,11 @@ class AiToolSetup
                 'id' => 'connect-chatgpt',
                 'label' => 'ChatGPT',
                 'verified' => false,
+                'kind' => 'chat',
+                'method' => 'Add a connector',
+                'summary' => 'Add Artfct as a connector so ChatGPT can search and read what your team made in other tools.',
+                'maker' => 'OpenAI',
+                'icon' => 'chatgpt',
                 'intro' => 'ChatGPT adds custom connectors in developer mode, on paid plans. On business plans an administrator may need to allow it first.',
                 'steps' => [
                     ['text' => 'In ChatGPT, open Settings, then Apps & Connectors (called Connectors on some plans), then Advanced settings, and turn on Developer mode.'],
@@ -160,6 +198,12 @@ class AiToolSetup
                 'id' => 'connect-cursor',
                 'label' => 'Cursor',
                 'verified' => false,
+                'kind' => 'editor',
+                'method' => 'One click',
+                'summary' => 'One click adds Artfct to Cursor. Connect it in settings and every Cursor agent can use it.',
+                'maker' => 'Cursor',
+                'icon' => 'cursor',
+                'initHost' => 'cursor',
                 'installLink' => $this->cursorInstallLink(),
                 'installLinkFallback' => $this->cursorWebInstallLink(),
                 'steps' => [
@@ -172,6 +216,12 @@ class AiToolSetup
                 'id' => 'connect-vscode',
                 'label' => 'VS Code',
                 'verified' => false,
+                'kind' => 'editor',
+                'method' => 'One click',
+                'summary' => 'For Copilot Chat in agent mode. One click adds Artfct to VS Code.',
+                'maker' => 'GitHub Copilot',
+                'icon' => 'copilot',
+                'initHost' => 'vscode',
                 'intro' => 'For GitHub Copilot Chat in agent mode.',
                 'installLink' => $this->vscodeInstallLink(),
                 'installLinkFallback' => $this->vscodeWebInstallLink(),
@@ -185,6 +235,10 @@ class AiToolSetup
                 'id' => 'connect-windsurf',
                 'label' => 'Windsurf',
                 'verified' => false,
+                'kind' => 'editor',
+                'method' => 'Config file',
+                'summary' => 'Add Artfct to Windsurf’s server config and approve the sign-in on restart.',
+                'initHost' => 'windsurf',
                 'steps' => [
                     ['text' => 'Add this to `~/.codeium/windsurf/mcp_config.json`:', 'code' => $this->json(['mcpServers' => ['artfct' => ['serverUrl' => $url]]])],
                     ['text' => 'Quit and reopen Windsurf, then approve the sign-in when it asks.'],
@@ -194,6 +248,10 @@ class AiToolSetup
                 'id' => 'connect-zed',
                 'label' => 'Zed',
                 'verified' => false,
+                'kind' => 'editor',
+                'method' => 'Config file',
+                'summary' => 'Add Artfct to your Zed settings, then sign in from the Agent panel.',
+                'initHost' => 'zed',
                 'steps' => [
                     ['text' => 'Open your Zed settings file and add:', 'code' => $this->json(['context_servers' => ['artfct' => ['url' => $url]]])],
                     ['text' => 'Open the Agent panel settings, find artfct and approve the sign-in when it asks.'],
@@ -203,6 +261,9 @@ class AiToolSetup
                 'id' => 'connect-other',
                 'label' => 'Other tools',
                 'verified' => false,
+                'kind' => 'other',
+                'method' => 'Server address',
+                'summary' => 'Any agent that can add a remote server connects with the same address and a browser sign-in.',
                 'intro' => 'Most AI tools have a place to add a remote server (sometimes called an HTTP, URL or streamable HTTP server). Artfct only runs as a hosted server, so a tool that can only start programs on your computer cannot connect.',
                 'steps' => [
                     ['text' => 'Add a server named `artfct` with this address:', 'code' => $url],

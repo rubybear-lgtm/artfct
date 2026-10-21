@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { CopyPrompt } from '@/components/connect/copy-prompt';
 import {
     AgentWindow,
     AuthorMessages,
@@ -535,51 +536,28 @@ type ConnectGuide = { id: string; label: string };
 type LatestPost = { slug: string; title: string };
 
 type LandingProps = {
+    agentSetupPrompt: string;
     connectGuides: ConnectGuide[];
     latestPosts: LatestPost[];
 };
 
 /* Questions agent-native teams search for, each answered by a setup guide or
-   a post, so crawlers reach those pages from the homepage (RUB-494). */
-const GUIDES: {
-    title: string;
-    text: string;
-    links: { label: string; guide?: string; post?: string }[];
-}[] = [
+   a post. They sit in the footer with every setup guide and the newest posts,
+   so crawlers still reach all of them from the homepage (RUB-488, RUB-502). */
+const TOPICS: { label: string; guide?: string; post?: string }[] = [
     {
-        title: 'Share context between Claude Code and Cursor',
-        text: 'Connect both to the same Artfct workspace. Each one publishes there and searches what the other published.',
-        links: [
-            { label: 'Connect Claude Code', guide: 'connect-claude-code' },
-            { label: 'Connect Cursor', guide: 'connect-cursor' },
-            {
-                label: 'Stop them contradicting each other',
-                post: 'stop-ai-tools-contradicting-each-other',
-            },
-        ],
+        label: 'Share context between Claude Code and Cursor',
+        post: 'stop-ai-tools-contradicting-each-other',
     },
     {
-        title: 'Let ChatGPT read what you made in Claude',
-        text: 'Connect both to your Artfct workspace. Share from Claude, and ChatGPT can search for it there.',
-        links: [
-            { label: 'Connect the Claude app', guide: 'connect-claude' },
-            { label: 'Connect ChatGPT', guide: 'connect-chatgpt' },
-        ],
+        label: 'Let ChatGPT read what you made in Claude',
+        guide: 'connect-chatgpt',
     },
     {
-        title: 'Search your team’s AI artifacts, with sources',
-        text: 'Any connected agent can search by meaning, read the right part and link back to where it came from.',
-        links: [
-            {
-                label: 'Finding what your AI already made',
-                post: 'finding-what-your-ai-already-made',
-            },
-            {
-                label: 'What is an AI artifact?',
-                post: 'what-is-an-ai-artifact',
-            },
-        ],
+        label: 'Search your team’s AI artifacts, with sources',
+        post: 'finding-what-your-ai-already-made',
     },
+    { label: 'What is an AI artifact?', post: 'what-is-an-ai-artifact' },
 ];
 
 const subscribeNothing = () => () => {};
@@ -593,7 +571,11 @@ function randomFramesOnce(): FramePair[] {
     return framesForThisLoad;
 }
 
-export default function Landing({ connectGuides, latestPosts }: LandingProps) {
+export default function Landing({
+    agentSetupPrompt,
+    connectGuides,
+    latestPosts,
+}: LandingProps) {
     const story = useStory();
     const frames = useSyncExternalStore(
         subscribeNothing,
@@ -729,60 +711,38 @@ export default function Landing({ connectGuides, latestPosts }: LandingProps) {
                         </div>
                     </div>
 
-                    <section className="guides pad rule" id="guides">
-                        <div className="guide-list">
-                            {GUIDES.map((guide) => (
-                                <div key={guide.title} className="guide">
-                                    <h2>{guide.title}</h2>
-                                    <p>{guide.text}</p>
-                                    <ul>
-                                        {guide.links.map((link) => (
-                                            <li key={link.label}>
-                                                <Link
-                                                    href={
-                                                        link.guide
-                                                            ? connectRoutes.show(
-                                                                  link.guide,
-                                                              ).url
-                                                            : blogRoutes.show(
-                                                                  link.post ??
-                                                                      '',
-                                                              ).url
-                                                    }
-                                                >
-                                                    {link.label}{' '}
-                                                    <span className="arrow">
-                                                        →
-                                                    </span>
-                                                </Link>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
+                    <section
+                        className="connect pad rule"
+                        id="connect"
+                        aria-labelledby="connect-title"
+                    >
+                        <h2 id="connect-title">Connect your agent</h2>
+                        <p className="lede">
+                            Paste one prompt into Claude Code, Codex, Cursor,
+                            ChatGPT or any agent you use. It finds the steps for
+                            that app, connects to your team’s workspace and asks
+                            you to approve the sign-in.
+                        </p>
+                        <div className="actions">
+                            <CopyPrompt prompt={agentSetupPrompt} />
+                            <Button asChild className="btn btn-primary">
+                                <Link href={connectRoutes.index().url}>
+                                    Setup guides{' '}
+                                    <span className="arrow">→</span>
+                                </Link>
+                            </Button>
                         </div>
-                        <nav className="guide-index" aria-label="Setup guides">
-                            <span className="lab">Set up</span>
-                            {connectGuides.map((guide) => (
-                                <Link
-                                    key={guide.id}
-                                    href={connectRoutes.show(guide.id).url}
-                                >
-                                    {guide.label}
-                                </Link>
-                            ))}
-                        </nav>
-                        <nav className="guide-index" aria-label="Latest guides">
-                            <span className="lab">Latest</span>
-                            {latestPosts.map((post) => (
-                                <Link
-                                    key={post.slug}
-                                    href={blogRoutes.show(post.slug).url}
-                                >
-                                    {post.title}
-                                </Link>
-                            ))}
-                        </nav>
+                        <ol className="beats">
+                            <li>
+                                <b>Paste</b> into the agent you already use
+                            </li>
+                            <li>
+                                <b>Approve</b> the sign-in in your browser
+                            </li>
+                            <li>
+                                <b>Search</b> what every other agent made
+                            </li>
+                        </ol>
                     </section>
 
                     <section className="statement pad rule">
@@ -979,6 +939,62 @@ export default function Landing({ connectGuides, latestPosts }: LandingProps) {
                         </div>
                     </section>
                 </main>
+
+                <nav className="sitemap pad" aria-label="Site">
+                    <div>
+                        <h3>Connect</h3>
+                        <ul>
+                            <li>
+                                <Link href={connectRoutes.index().url}>
+                                    All agents
+                                </Link>
+                            </li>
+                            {connectGuides.map((guide) => (
+                                <li key={guide.id}>
+                                    <Link
+                                        href={connectRoutes.show(guide.id).url}
+                                    >
+                                        {guide.label}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Guides</h3>
+                        <ul>
+                            {TOPICS.map((topic) => (
+                                <li key={topic.label}>
+                                    <Link
+                                        href={
+                                            topic.guide
+                                                ? connectRoutes.show(
+                                                      topic.guide,
+                                                  ).url
+                                                : blogRoutes.show(
+                                                      topic.post ?? '',
+                                                  ).url
+                                        }
+                                    >
+                                        {topic.label}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Latest</h3>
+                        <ul>
+                            {latestPosts.map((post) => (
+                                <li key={post.slug}>
+                                    <Link href={blogRoutes.show(post.slug).url}>
+                                        {post.title}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </nav>
 
                 <footer className="pad">
                     <div className="l">

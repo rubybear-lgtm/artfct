@@ -26,6 +26,7 @@
         "GET blog": "public",
         "GET blog/{retired}": "public",
         "GET blog/{slug}": "public",
+        "GET connect": "public",
         "GET connect/{tool}": "public",
         "GET docs": "public",
         "GET free": "public",

@@ -229,7 +229,7 @@ The skill teaches agents:
 - How to author a published page: a bundle with its own script, image and font files (RUB-444)
 - How to handle errors and present URLs clearly
 
-`skills/artfct-init/` sets artfct up for a project (RUB-446): it checks the connection and search readiness, adds a managed block to `AGENTS.md` or `CLAUDE.md`, installs `GUIDELINES.md` and `DESIGN.md`, grants only the tool permissions the user approves (Claude Code and Codex), and stores optional personal preferences or reviewed team defaults. Its scripts run on Node with no dependencies and are tested with `npm run test:skills`.
+`skills/artfct-init/` sets artfct up in any coding agent (RUB-446, RUB-502), installed with `npx skills add rubybear-lgtm/artfct@artfct-init`. It checks the connection and search readiness, then works at the level the person picks: **global** (them, every project), **user** (them, this repo, git-excluded) or **repo** (committed for the team). It adds a managed block to the file that agent reads at that level, installs `GUIDELINES.md` and `DESIGN.md` at the repo level, grants only the tool permissions the user approves (Claude Code and Codex have tested writers), and stores optional personal preferences or reviewed team defaults. `skills/artfct-init/references/hosts.md` lists every agent's files per level with sources. Its scripts run on Node with no dependencies and are tested with `npm run test:skills`, which also checks that every skill's frontmatter parses for the skills.sh installer.
 
 Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.
 
