@@ -52,7 +52,7 @@ function coveredElsewhere(): array
 function notPages(): array
 {
     return [
-        'jwks' => 'JSON', 'sitemap' => 'XML', 'robots' => 'plain text (LandingSearchVisibilityTest)',
+        'jwks' => 'JSON', 'mcp.server-card' => 'JSON (McpServerCardTest)', 'sitemap' => 'XML', 'robots' => 'plain text (LandingSearchVisibilityTest)',
         'landing.media' => 'landing animation files (LandingFlowAssetsTest)',
         'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
         'oauth.metadata' => 'OAuth discovery JSON',

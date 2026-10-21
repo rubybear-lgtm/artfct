@@ -2,6 +2,7 @@
     "_comment": "Every Laravel route that does not carry a {team} or {current_team} parameter, and every /ops route (which does, but is never a team route), by how it is protected. Team routes are classified automatically and attacked by the matrix. A route missing from this file fails the isolation run (RUB-435): add it here with the right class, and make sure the class's check really applies. Classes: public (no sign-in by design), guest (sign-in flow), user (needs a signed-in user, not tied to a team), token (needs an org bearer token), signed (needs a signature or shared secret), dev-only (only registered outside production), staff (the operator console under /ops: every route must answer a plain 404 to a signed-out visitor and to a signed-in user who is not staff, and only /ops routes may carry this class).",
     "laravel": {
         "GET .well-known/jwks.json": "public",
+        "GET .well-known/mcp/server-card.json": "public",
         "GET .well-known/oauth-authorization-server": "public",
         "GET .well-known/oauth-authorization-server/{path}": "public",
         "GET .well-known/oauth-protected-resource": "public",

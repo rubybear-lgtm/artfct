@@ -411,6 +411,32 @@ class AiToolSetup
     }
 
     /**
+     * One guide's intro and numbered steps as Markdown, shared by
+     * /llms-full.txt and the Markdown version of its /connect page.
+     *
+     * @param  array{intro?: string, steps: list<array{text: string, code?: string}>}  $guide
+     */
+    public function guideMarkdown(array $guide): string
+    {
+        $lines = isset($guide['intro']) ? [$guide['intro'], ''] : [];
+
+        foreach ($guide['steps'] as $number => $step) {
+            $lines[] = ($number + 1).'. '.$step['text'];
+
+            if (isset($step['code'])) {
+                $lines[] = '';
+                array_push($lines, ...array_map(
+                    fn (string $line): string => "   {$line}",
+                    ['```', ...explode("\n", $step['code']), '```'],
+                ));
+                $lines[] = '';
+            }
+        }
+
+        return rtrim(implode("\n", $lines), "\n");
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
