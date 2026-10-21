@@ -1,6 +1,8 @@
 ---
 name: krea2-prompt-craft
-description: Use when writing or adapting an image prompt for Krea 2 Turbo, selecting `frame_backend: krea2`, regenerating a Krea frame, or creating a Krea style-reference image. Produces detailed natural-language prompts that preserve subjects, composition, materials, lighting, palette, and quoted rendered text.
+description: "Use when writing or adapting an image prompt for Krea 2 Turbo, selecting `frame_backend: krea2`, regenerating a Krea frame, or creating a Krea style-reference image. Produces detailed natural-language prompts that preserve subjects, composition, materials, lighting, palette, and quoted rendered text."
+metadata:
+  internal: true
 ---
 
 # Krea 2 Prompt Craft

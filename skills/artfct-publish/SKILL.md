@@ -1,6 +1,6 @@
 ---
 name: artfct-publish
-description: Use when publishing or updating an artifact with deploy_artifact: title and description rules, artifact type, base_version updates, secrets, and the one findability check after publishing.
+description: "Use when publishing or updating an artifact with deploy_artifact: title and description rules, artifact type, base_version updates, secrets, and the one findability check after publishing."
 ---
 
 # Publishing to Artfct

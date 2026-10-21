@@ -11,21 +11,28 @@
  * perms-detect, perms-plan, perms-apply, perms-verify, prefs-read,
  * prefs-write, prefs-exclude, prefs-resolve, import-parse, import-preview,
  * import-apply.
+ *
+ * `--host` takes any agent in levels.mjs (claude, codex, cursor, opencode,
+ * vscode, windsurf, zed, antigravity). `--level global|user|repo` picks where
+ * the block, permissions and decisions go; without it the commands keep their
+ * original repo-level behaviour.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findEntrypoints, removeBlock, upsertBlock } from "./block.mjs";
 import { installTemplate, resolveSharedFile } from "./files.mjs";
 import { applyImport, parseProfile, previewImport } from "./imports.mjs";
+import { blockPresence, HOSTS, instructionsTarget, permissionsTarget } from "./levels.mjs";
 import { isResolved, readManifest, recordDecision, writeManifest } from "./manifest.mjs";
 import { applyChanges, buildProfile, detectServerNames, planChanges, verifyGrants } from "./permissions.mjs";
 import { ensureLocalExclude, readPreferences, resolveConfigDir, resolvePreference, writePreference } from "./preferences.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BLOCK = join(HERE, "..", "assets", "entrypoint-block.md");
+const GLOBAL_BLOCK = join(HERE, "..", "assets", "entrypoint-block-global.md");
 const CAPABILITIES = ["read", "publish", "organize", "comment"];
 
 /**
@@ -145,6 +152,43 @@ function entrypointsFor(host, repoDir, create) {
 }
 
 /**
+ * @param {string} path
+ * @param {string} text
+ */
+function writeCreatingDirs(path, text) {
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, text);
+}
+
+/**
+ * The files the block goes into: an explicit --entry, the level's file from
+ * levels.mjs, or (with no --level, or Claude Code at repo level) the original
+ * CLAUDE.md/AGENTS.md choice.
+ *
+ * @param {string} command
+ * @param {Record<string, string>} flags
+ * @param {{host: string, repoDir: string, homeDir: string}} context
+ * @returns {{paths: string[], exclude?: string, note?: string} | {unsupported: true, reason: string}}
+ */
+function blockTargets(command, flags, { host, repoDir, homeDir }) {
+	if (flags.entry) {
+		return { paths: [resolve(flags.entry)] };
+	}
+
+	const level = flags.level;
+
+	if (level === undefined || (level === "repo" && (host === "claude" || host === "codex"))) {
+		const paths = entrypointsFor(host, repoDir, command === "block-upsert");
+
+		return { paths: paths.length > 0 ? paths : [join(repoDir, "AGENTS.md")] };
+	}
+
+	const target = instructionsTarget(host, level, { repoDir, homeDir, env: process.env });
+
+	return "unsupported" in target ? target : { paths: [target.path], exclude: target.exclude, note: target.note };
+}
+
+/**
  * Splits markdown into `## Heading` sections keyed by heading text.
  *
  * @param {string} text
@@ -186,6 +230,9 @@ function run(command, flags) {
 	const homeDir = resolve(flags.home ?? homedir());
 	const configDir = flags["config-dir"] ?? resolveConfigDir(process.env, homeDir);
 	const host = flags.host ?? "claude";
+	const level = flags.level;
+	const places = { repoDir, homeDir, env: process.env };
+	const manifestDir = level === "global" ? configDir : repoDir;
 
 	switch (command) {
 		case "status": {
@@ -202,64 +249,95 @@ function run(command, flags) {
 				},
 				servers: { claude: detectServerNames("claude", repoDir, homeDir), codex: detectServerNames("codex", repoDir, homeDir) },
 				preferences: readPreferences(configDir, repoDir),
+				globalManifest: readManifest(configDir),
+				blocks: Object.fromEntries(HOSTS.map((name) => [name, blockPresence(name, places)])),
 			};
 		}
 
 		case "decide": {
 			const key = need(flags, "key");
-			const before = readManifest(repoDir);
+			const isNew = !existsSync(join(manifestDir, "artfct.json"));
+			const before = readManifest(manifestDir);
 			const after = recordDecision(before, key, { status: need(flags, "status"), at: new Date().toISOString() });
 
 			if (after !== before) {
-				writeManifest(repoDir, after);
+				mkdirSync(manifestDir, { recursive: true });
+				writeManifest(manifestDir, after);
 			}
 
-			return { key, changed: after !== before, resolved: isResolved(after, key) };
+			const excluded = level === "user" && isNew && after !== before ? ensureLocalExclude(repoDir, "artfct.json") : null;
+
+			return { key, level: level ?? "repo", changed: after !== before, resolved: isResolved(after, key), excluded };
 		}
 
 		case "block-upsert":
 		case "block-remove": {
-			const body = readFileSync(flags.body ?? DEFAULT_BLOCK, "utf8");
-			const paths = flags.entry ? [resolve(flags.entry)] : entrypointsFor(host, repoDir, command === "block-upsert");
-			const targets = paths.length > 0 ? paths : [join(repoDir, "AGENTS.md")];
+			const targets = blockTargets(command, flags, { host, repoDir, homeDir });
 
-			return {
-				files: targets.map((path) => {
-					const text = existsSync(path) ? readFileSync(path, "utf8") : "";
-					const result = command === "block-upsert" ? upsertBlock(text, body) : removeBlock(text);
+			if ("unsupported" in targets) {
+				return { host, level, ...targets, files: [] };
+			}
 
-					if (result.changed) {
-						writeFileSync(path, result.text);
-					}
+			const body = readFileSync(flags.body ?? (level === "global" ? GLOBAL_BLOCK : DEFAULT_BLOCK), "utf8");
+			const files = targets.paths.map((path) => {
+				const text = existsSync(path) ? readFileSync(path, "utf8") : "";
+				const result = command === "block-upsert" ? upsertBlock(text, body) : removeBlock(text);
 
-					return { path, changed: result.changed };
-				}),
-			};
+				if (result.changed) {
+					writeCreatingDirs(path, result.text);
+				}
+
+				return { path, changed: result.changed };
+			});
+			const excluded = targets.exclude && command === "block-upsert" ? ensureLocalExclude(repoDir, targets.exclude) : null;
+
+			return { host, level: level ?? "repo", files, note: targets.note, excluded };
 		}
 
 		case "files-install":
+			if (level !== undefined && level !== "repo") {
+				return { unsupported: true, reason: "GUIDELINES.md and DESIGN.md belong to a repo. Run this at the repo level." };
+			}
+
 			return installTemplate(repoDir, /** @type {"GUIDELINES" | "DESIGN"} */ (need(flags, "name")));
 
 		case "perms-detect":
+			if (host !== "claude" && host !== "codex") {
+				return { servers: [], undetectable: true, reason: `artfct-init does not read ${host}'s server config yet.` };
+			}
+
 			return detectServerNames(host, repoDir, homeDir);
 
 		case "perms-plan":
 		case "perms-apply":
 		case "perms-verify": {
+			if (flags.file === undefined && level !== undefined) {
+				const target = permissionsTarget(host, level, places);
+
+				if ("unsupported" in target) {
+					return { host, level, ...target };
+				}
+
+				flags.file = target.path;
+				flags.note = target.note ?? "";
+			}
+
 			const file = flags.file ?? defaultGrantFile(host, repoDir, homeDir);
+			const note = flags.note || undefined;
 			const wanted = buildProfile(need(flags, "server"), capabilitiesFrom(flags.capabilities ?? "read"));
 
 			if (command === "perms-verify") {
-				return { file, wanted, ...verifyGrants(host, file, wanted) };
+				return { file, note, wanted, ...verifyGrants(host, file, wanted) };
 			}
 
 			const plan = planChanges(host, currentGrants(host, file), wanted);
 
 			if (command === "perms-apply") {
+				mkdirSync(dirname(file), { recursive: true });
 				applyChanges(host, file, plan);
 			}
 
-			return { file, wanted, plan, applied: command === "perms-apply" };
+			return { file, note, wanted, plan, applied: command === "perms-apply" };
 		}
 
 		case "prefs-read":

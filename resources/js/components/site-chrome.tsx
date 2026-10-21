@@ -3,12 +3,13 @@ import { useRef } from 'react';
 import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAppTheme } from '@/lib/useAppTheme';
 import { blog, docs, home, login, privacy, terms } from '@/routes';
+import connectRoutes from '@/routes/connect';
 import consoleRoutes from '@/routes/console';
 import onboardingRoutes from '@/routes/onboarding';
 
 const GITHUB = 'https://github.com/rubybear-lgtm/artfct';
 
-type SiteSection = 'docs' | 'blog';
+type SiteSection = 'connect' | 'docs' | 'blog';
 
 /**
  * Account controls shared by the public site chrome. `auth.user` is the login
@@ -83,6 +84,12 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                     <Link href={`${home.url()}#plans`} className={link()}>
                         Pricing
                     </Link>
+                    <Link
+                        href={connectRoutes.index().url}
+                        className={link('connect')}
+                    >
+                        Connect
+                    </Link>
                     <Link href={docs.url()} className={link('docs')}>
                         Docs
                     </Link>
@@ -113,6 +120,12 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
                             className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
                         >
                             Pricing
+                        </Link>
+                        <Link
+                            href={connectRoutes.index().url}
+                            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:text-foreground"
+                        >
+                            Connect
                         </Link>
                         <Link
                             href={docs.url()}

@@ -75,7 +75,7 @@ class LlmsTextController extends Controller
         ];
 
         foreach ($setup->guides() as $guide) {
-            $lines[] = "### {$guide['label']}".($guide['verified'] ? '' : ' (not yet tested by Artfct)');
+            $lines[] = "### {$guide['label']}";
             $lines[] = '';
 
             if (isset($guide['intro'])) {
@@ -142,7 +142,7 @@ class LlmsTextController extends Controller
             '',
             ...$this->codeBlock($setup->projectInstructions(), 'md'),
             '',
-            'Or paste this into the agent and it connects itself, checks it works, and adds the one-line rule to your project:',
+            'Or paste this into any agent. It finds the steps for its own app, connects (or walks you through it), checks the connection and offers to set up your project:',
             '',
             ...$this->codeBlock($setup->agentSetupPrompt()),
             '',

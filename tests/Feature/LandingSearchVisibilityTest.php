@@ -31,6 +31,7 @@ test('the homepage links every setup guide and the three newest posts', function
 
     test()->get(route('home'))
         ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('agentSetupPrompt', AiToolSetup::forCurrentEnvironment()->agentSetupPrompt())
             ->where('connectGuides', fn ($guides): bool => collect($guides)->pluck('id')->all() === $guideIds)
             ->where('latestPosts', fn ($posts): bool => collect($posts)->pluck('slug')->all() === $newestSlugs));
 
@@ -72,10 +73,16 @@ test('with server rendering the crawler fallback is left out', function () {
         ->and(substr_count($html, '<h1'))->toBe(1);
 });
 
-test('the retired presentations post redirects permanently to the blog', function () {
-    test()->get('/blog/ai-presentations')
+test('retired posts redirect permanently to the blog', function (string $slug) {
+    test()->get("/blog/{$slug}")
         ->assertStatus(301)
         ->assertRedirect('/blog');
+})->with(['ai-presentations', 'developer-tools', 'mermaid-diagrams']);
+
+test('current posts are not caught by the retired post redirect', function () {
+    $slug = collect(app(BlogContent::class)->all())->first()->slug;
+
+    test()->get("/blog/{$slug}")->assertOk();
 });
 
 test('the free page title says what it does', function () {

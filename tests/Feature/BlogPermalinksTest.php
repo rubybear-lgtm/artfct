@@ -20,10 +20,10 @@ class BlogPermalinksTest extends TestCase
             ->assertSee('stop-ai-tools-contradicting-each-other');
     }
 
-    public function test_it_returns_404_for_removed_and_unknown_blog_permalinks(): void
+    public function test_it_returns_404_for_unknown_blog_permalinks_and_redirects_removed_ones(): void
     {
         $this->get('/blog/not-a-real-post')->assertNotFound();
-        $this->get('/blog/mermaid-diagrams')->assertNotFound();
+        $this->get('/blog/mermaid-diagrams')->assertRedirect('/blog')->assertStatus(301);
     }
 
     public function test_it_includes_the_blog_permalink_in_the_sitemap(): void

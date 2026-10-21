@@ -1,13 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
-import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-    useSyncExternalStore,
-} from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { KeyboardEvent } from 'react';
 
+import { CodeBlock } from '@/components/code-block';
 import { GITHUB, SitePage } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { login, privacy, terms } from '@/routes';
@@ -233,31 +228,6 @@ function Label({ children }: { children: React.ReactNode }) {
         <p className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
             {children}
         </p>
-    );
-}
-
-function CodeBlock({ code }: { code: string }) {
-    const [copied, setCopied] = useState(false);
-
-    const copy = useCallback(async () => {
-        await navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    }, [code]);
-
-    return (
-        <div className="relative">
-            <pre className="overflow-x-auto rounded-[10px] border border-border bg-paper p-4 pr-20 font-mono text-[13px] leading-relaxed text-foreground">
-                {code}
-            </pre>
-            <Button
-                type="button"
-                onClick={copy}
-                className="mt-2 ml-auto block rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary sm:absolute sm:top-2.5 sm:right-2.5 sm:mt-0 sm:ml-0"
-            >
-                {copied ? 'Copied' : 'Copy'}
-            </Button>
-        </div>
     );
 }
 
@@ -597,11 +567,6 @@ function Inline({ text }: { text: string }) {
 function GuideSteps({ guide }: { guide: ConnectionGuide }) {
     return (
         <div className="flex flex-col gap-4">
-            {!guide.verified && (
-                <div className="flex flex-wrap gap-2">
-                    <Tag>Not yet tested by us</Tag>
-                </div>
-            )}
             {guide.installLink && (
                 <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" asChild>
@@ -634,20 +599,14 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     </Step>
                 ))}
             </Steps>
-            {!guide.verified && (
-                <Prose>
-                    If these steps do not match what you see, or the tool does
-                    not connect,{' '}
-                    <a
-                        href={`${GITHUB}/issues`}
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        tell us
-                    </a>
-                    .
-                </Prose>
-            )}
+            <Prose>
+                If these steps do not match what you see, or the tool does not
+                connect,{' '}
+                <a href={`${GITHUB}/issues`} target="_blank" rel="noreferrer">
+                    tell us
+                </a>
+                .
+            </Prose>
         </div>
     );
 }
