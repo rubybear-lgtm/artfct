@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\NegotiateMarkdown;
 use App\Http\Middleware\NoIndexOutsideProduction;
 use App\Http\Middleware\PinRequestScheme;
 use App\Http\Middleware\RequireOrgScope;
@@ -46,6 +47,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(PinRequestScheme::class);
 
         $middleware->preventRequestForgery(except: ['internal/worker-events', 'webhooks/stripe', 'webhooks/polis', 'oauth/register', 'oauth/token', 'oauth/revoke']);
+
+        // Agents asking for text/markdown get the Markdown version of a public
+        // page before the session and Inertia run (RUB-503).
+        $middleware->web(prepend: [NegotiateMarkdown::class]);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

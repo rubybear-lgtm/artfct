@@ -77,25 +77,7 @@ class LlmsTextController extends Controller
         foreach ($setup->guides() as $guide) {
             $lines[] = "### {$guide['label']}";
             $lines[] = '';
-
-            if (isset($guide['intro'])) {
-                $lines[] = $guide['intro'];
-                $lines[] = '';
-            }
-
-            foreach ($guide['steps'] as $number => $step) {
-                $lines[] = ($number + 1).'. '.$step['text'];
-
-                if (isset($step['code'])) {
-                    $lines[] = '';
-                    array_push($lines, ...array_map(
-                        fn (string $line): string => "   {$line}",
-                        $this->codeBlock($step['code']),
-                    ));
-                    $lines[] = '';
-                }
-            }
-
+            $lines[] = $setup->guideMarkdown($guide);
             $lines[] = '';
         }
 
