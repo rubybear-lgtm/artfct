@@ -1,0 +1,25 @@
+{
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name": "dev.artfct/artfct",
+    "title": "Artfct",
+    "description": "Shared workspace for AI artifacts: your agents publish, search and cite each other's work.",
+    "version": "1.0.0",
+    "websiteUrl": "https://artfct.dev/connect",
+    "repository": {
+        "url": "https://github.com/rubybear-lgtm/artfct",
+        "source": "github"
+    },
+    "icons": [
+        {
+            "src": "https://artfct.dev/favicon.svg",
+            "mimeType": "image/svg+xml",
+            "sizes": ["any"]
+        }
+    ],
+    "remotes": [
+        {
+            "type": "streamable-http",
+            "url": "https://artfct.dev/mcp"
+        }
+    ]
+}
