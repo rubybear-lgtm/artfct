@@ -116,6 +116,12 @@ test('the agent setup prompt connects, verifies and teaches the project, leaving
     $setup = new AiToolSetup('https://staging.artfct.dev');
 
     expect($setup->agentSetupPrompt())
+        ->toContain("\n\n{\n    \"mcpServers\": {\n        \"artfct\": {\n            \"type\": \"http\",\n            \"url\": \"https://staging.artfct.dev/mcp\"\n        }\n    }\n}\n\n")
+        ->toContain('Work out which app you are running in')
+        ->toContain('npx skills add rubybear-lgtm/artfct@artfct-init')
+        ->toContain('all my projects, just me in this project, or the whole team in this repo')
+        ->toContain('offer to help connect them to the same workspace')
+        ->not->toContain('not yet tested')
         ->toContain('https://staging.artfct.dev/mcp')
         ->toContain('get_connection')
         ->toContain('CLAUDE.md')

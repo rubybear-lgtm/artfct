@@ -277,6 +277,7 @@ class AiToolSetup
     {
         return [
             ['name' => 'artfct', 'install' => 'npx skills add rubybear-lgtm/artfct@artfct', 'note' => 'When and how to publish: writing self-contained HTML, choosing who can see it and handling errors.'],
+            ['name' => 'artfct-init', 'install' => 'npx skills add rubybear-lgtm/artfct@artfct-init', 'note' => 'Sets Artfct up for you or a project in any coding agent: project instructions, the files they point to, and only the tool permissions you approve. Works for all your projects, just you in one project, or the whole team in a repo.'],
         ];
     }
 
@@ -309,27 +310,36 @@ class AiToolSetup
     }
 
     /**
-     * A prompt the user pastes into any agent to connect it to Artfct and
-     * teach it when to use it. It branches on what the agent can do: a coding
-     * agent adds the server itself, a chat app walks the person through the
-     * guide. Sign-in always stays with the person.
+     * The one prompt behind "Copy prompt" on the homepage, /connect and every
+     * guide (RUB-502). It works in any agent: the agent finds its own section
+     * of llms-full.txt and either makes the change itself or walks the person
+     * through it. Sign-in and every file it writes stay with the person.
      */
     public function agentSetupPrompt(): string
     {
-        return <<<MD
-            Connect this project to Artfct, where my team keeps what our AI tools make. Work through these steps in order and tell me when you need something from me.
+        $serverEntry = $this->json(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => $this->mcpUrl()]]]);
 
-            1. If you already have Artfct tools such as `get_connection`, skip to step 3.
-            2. Add a remote MCP server named `artfct` at {$this->mcpUrl()}.
-               - If you can run shell commands, use your own client's command for adding a remote server. The commands for each client are at {$this->baseUrl}/llms-full.txt. If you cannot, read that page and walk me through the steps for the tool I am using.
+        return <<<MD
+            Connect yourself to Artfct, the shared workspace where my team's AI agents publish their work and search each other's. Work through these steps in order and tell me when you need something from me.
+
+            1. Work out which app you are running in (for example Claude Code, Codex, Cursor, VS Code, the Claude app or ChatGPT). If you already have Artfct tools such as `get_connection`, skip to step 4.
+            2. Read {$this->baseUrl}/llms-full.txt and follow the setup section for your app. The server is named `artfct` and lives at {$this->mcpUrl()}. In a JSON config file the entry looks like this; some apps use other key names (`servers`, `context_servers`, `serverUrl`), and that page has the exact entry for each:
+
+            {$serverEntry}
+
+            3. If you can run commands or change your own settings, make the change yourself. If you cannot, walk me through the steps for this app one at a time.
                - Signing in happens in my browser. Tell me to approve the page that opens, then wait. Never ask me for a password or a token.
-               - Some tools only show a new server after a restart or a reconnect (for example `/mcp`). If the Artfct tools are missing, tell me what to do, and carry on from step 3 once they appear.
-            3. Check the connection: call `get_connection` and tell me the team and person it reports. If that is not my team, stop and point me to the "Connected to the wrong team" section at {$this->baseUrl}/llms-full.txt.
-            4. Teach this project when to use Artfct. Add the block between the lines below to the file your tool reads for project instructions (`CLAUDE.md`, `AGENTS.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
+               - Some apps only show a new server after a restart or a reconnect (for example `/mcp`). If the Artfct tools are missing, tell me what to do, and carry on once they appear.
+            4. Check the connection: call `get_connection` and tell me which team I'm in and whether search is on. If that is not my team, stop and point me to "Connected to the wrong team" in {$this->baseUrl}/llms-full.txt.
+            5. If you are a coding agent working in a project, offer to set Artfct up there too. Ask before you change anything.
+               - If you can install skills, run `npx skills add rubybear-lgtm/artfct@artfct-init` and then the artfct-init skill. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
+               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
 
             ---
             {$this->projectInstructions()}
             ---
+
+            6. Ask me which other AI tools I use, and offer to help connect them to the same workspace so they can find what you publish.
             MD;
     }
 
