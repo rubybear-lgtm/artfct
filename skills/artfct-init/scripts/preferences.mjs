@@ -185,14 +185,16 @@ function writeText(path, text) {
 }
 
 /**
- * Adds USER.local.md to the repo's local exclude file so it is never
+ * Adds a personal file (USER.local.md by default, or CLAUDE.local.md for a
+ * user-level setup) to the repo's local exclude file so it is never
  * committed. Never edits .gitignore. A worktree's `.git` file is followed to
  * the common git directory, where the exclude file lives.
  *
  * @param {string} repoDir
+ * @param {string} [entry]
  * @returns {{changed: boolean}}
  */
-export function ensureLocalExclude(repoDir) {
+export function ensureLocalExclude(repoDir, entry = EXCLUDE_ENTRY) {
 	const gitPath = join(repoDir, ".git");
 
 	if (!existsSync(gitPath)) {
@@ -203,14 +205,14 @@ export function ensureLocalExclude(repoDir) {
 	const excludePath = join(gitDir, "info", "exclude");
 	const text = existsSync(excludePath) ? readFileSync(excludePath, "utf8") : "";
 
-	if (splitLines(text).some((line) => line.content.trim() === EXCLUDE_ENTRY)) {
+	if (splitLines(text).some((line) => line.content.trim() === entry)) {
 		return { changed: false };
 	}
 
 	const eol = text.includes("\r\n") ? "\r\n" : "\n";
 	const separator = text === "" || /\r?\n$/.test(text) ? "" : eol;
 
-	writeText(excludePath, text + separator + EXCLUDE_ENTRY + eol);
+	writeText(excludePath, text + separator + entry + eol);
 
 	return { changed: true };
 }

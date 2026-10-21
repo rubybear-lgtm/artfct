@@ -7,7 +7,19 @@ description: "Use when the user asks to set up, connect, install, update or revi
 
 Run this when someone asks to set up, connect, update or review artfct. It makes a coding agent look in the team's artfct library without being told to, and it grants permissions only when the user approves them.
 
-Run every step through `scripts/init.mjs` in this skill's folder. Each command prints one JSON document. Call it as `node <skill folder>/scripts/init.mjs <command> --repo <project folder> [flags]`. Hosts: Claude Code (`/artfct-init`) and Codex (`$artfct-init`). Host details are in `references/hosts.md`.
+Run every step through `scripts/init.mjs` in this skill's folder. Each command prints one JSON document. Call it as `node <skill folder>/scripts/init.mjs <command> --repo <project folder> --host <agent> --level <level> [flags]`.
+
+It works in any coding agent. Pass the one you are running in as `--host`: `claude` (Claude Code), `codex`, `cursor`, `opencode`, `vscode` (GitHub Copilot), `windsurf`, `zed` or `antigravity`. Invoke the skill the way your agent does (`/artfct-init` in Claude Code, `$artfct-init` in Codex). Where each agent keeps its files, and the source for each, is in `references/hosts.md`.
+
+## 0. Pick the level
+
+Ask once, in plain words, and pass the answer as `--level` to every command below:
+
+- **Global** (`global`): just me, in every project on this machine.
+- **User** (`user`): just me, in this project. Kept out of git.
+- **Repo** (`repo`): everyone who works in this repo. Committed and shared.
+
+If the person is unsure, suggest Repo for a team project and Global for personal use. Some agents have no file for a level; the command then returns `unsupported` with a reason. Report that as blocked and offer a level that works.
 
 ## Rules that always apply
 
@@ -20,7 +32,7 @@ Run every step through `scripts/init.mjs` in this skill's folder. Each command p
 
 ## 1. Look before asking
 
-Run `status`. It reports the manifest, existing entrypoint files, whether GUIDELINES.md and DESIGN.md already exist (with their on-disk capitalization), artfct servers found for each host, and any saved preferences.
+Run `status`. It reports the manifest (and `globalManifest` for global decisions), existing entrypoint files, `blocks` (where the artfct block already is for each agent at each level), whether GUIDELINES.md and DESIGN.md already exist (with their on-disk capitalization), artfct servers found for each host, and any saved preferences.
 
 Then check the connection yourself, since the script cannot see your tools:
 
@@ -31,6 +43,8 @@ Then check the connection yourself, since the script cannot see your tools:
 
 Report five readiness lines: connection, search, permissions, project instructions, preferences.
 
+If `blocks.<host>` shows the block at another level already, say where and ask before adding it at this one; the same instructions loaded twice add nothing.
+
 If `servers` lists more than one artfct server (for example staging and production), ask which one this project uses. If `undetectable` is true, the connection comes from a connector the files do not show; explain that permissions for it cannot be written from here.
 
 ## 2. Permissions
@@ -40,19 +54,20 @@ Explain the two layers in one short paragraph: the workspace sign-in decides wha
 - Workspace and server name.
 - Actions that would run without a prompt. Offer: read and search (default), publish and update, organize into collections, comments.
 - Never offered: deleting, and anything that publishes publicly. These keep their own approval every time.
-- File that would change: the personal settings file by default (`.claude/settings.local.json` for Claude Code, `~/.codex/config.toml` for Codex). Shared project settings only if the user asks.
+- File that would change: the one for the chosen level (`perms-plan --level <level>` reports it and a `note`). At Global it applies to every project; at Repo it is committed and applies to everyone in the repo. Say so before asking.
+- Only Claude Code and Codex have a tested permissions writer. For other agents `perms-*` returns `unsupported`: tell the person to approve the artfct tools in their agent the first time it asks.
 
-On approval run `perms-apply --host <claude|codex> --server <name> --capabilities read,publish`, then `perms-verify` with the same flags and report `granted` and `missing`. If `unsupported` is not empty, say which entries the host cannot take. For Codex, say the setting is written but the user should confirm in a session that approved tools no longer prompt.
+On approval run `perms-apply --host <agent> --level <level> --server <name> --capabilities read,publish`, then `perms-verify` with the same flags and report `granted` and `missing`. If `unsupported` is not empty, say which entries the host cannot take. For Codex, say the setting is written but the user should confirm in a session that approved tools no longer prompt.
 
-If the user declines or does not answer: run `decide --key permissions --status skipped` and change nothing. If they approve: `decide --key permissions --status configured`. Preserve grants that already exist; do not ask about them again.
+If the user declines or does not answer: run `decide --key permissions --status skipped --level <level>` and change nothing. If they approve: `decide --key permissions --status configured --level <level>`. Global decisions are kept in the personal config folder, not in the repo. Preserve grants that already exist; do not ask about them again.
 
 ## 3. Project instructions
 
-Run `block-upsert --host <claude|codex>`. It adds a small managed `<artfct-guidelines>` block, keeps every other line, and does nothing on a repeat run. Claude Code loads CLAUDE.md and not AGENTS.md, so for `claude` it uses CLAUDE.md, or creates a CLAUDE.md that imports AGENTS.md when only AGENTS.md exists. Codex loads AGENTS.md, so for `codex` it uses AGENTS.md and creates it when missing. The block routes agents to GUIDELINES.md, to DESIGN.md when making visuals, and to USER.local.md when present. File names are not loaded automatically; the block is what points to them.
+Run `block-upsert --host <agent> --level <level>`. It adds a small managed `<artfct-guidelines>` block, keeps every other line, and does nothing on a repeat run. Claude Code loads CLAUDE.md and not AGENTS.md, so for `claude` it uses CLAUDE.md, or creates a CLAUDE.md that imports AGENTS.md when only AGENTS.md exists. Codex loads AGENTS.md, so for `codex` it uses AGENTS.md and creates it when missing. At Global the block goes into the agent's user-wide file and only points to `GUIDELINES.md` and `DESIGN.md` when a project has them. At User (Claude Code only) it goes into a git-excluded `CLAUDE.local.md`. At Repo most agents read `AGENTS.md`; VS Code uses `.github/copilot-instructions.md`, and Zed uses whichever rules file it already reads. The block routes agents to GUIDELINES.md, to DESIGN.md when making visuals, and to USER.local.md when present. File names are not loaded automatically; the block is what points to them.
 
-Run `files-install --name GUIDELINES` and `files-install --name DESIGN`. An existing file is reused as it is, whatever its capitalization. Never overwrite one. Mention that DESIGN.md describes how artifacts look and USER preferences describe how information is explained, and that neither belongs in GUIDELINES.md.
+At the Repo level, run `files-install --name GUIDELINES` and `files-install --name DESIGN`. Skip them at Global and User. An existing file is reused as it is, whatever its capitalization. Never overwrite one. Mention that DESIGN.md describes how artifacts look and USER preferences describe how information is explained, and that neither belongs in GUIDELINES.md.
 
-Record with `decide --key instructions --status configured`.
+Record with `decide --key instructions --status configured --level <level>`.
 
 ## 4. Preferences (optional)
 

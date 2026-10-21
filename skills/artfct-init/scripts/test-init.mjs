@@ -242,6 +242,140 @@ const cases = [
 		},
 	},
 	{
+		name: "global level writes each agent's documented user-wide file with the conditional block",
+		run: async () => {
+			const expected = {
+				claude: ".claude/CLAUDE.md",
+				codex: ".codex/AGENTS.md",
+				opencode: ".config/opencode/AGENTS.md",
+				vscode: ".copilot/copilot-instructions.md",
+				windsurf: ".codeium/windsurf/memories/global_rules.md",
+				antigravity: ".gemini/GEMINI.md",
+			};
+
+			for (const [host, relative] of Object.entries(expected)) {
+				const box = sandbox();
+				const result = await box.init("block-upsert", ["--host", host, "--level", "global"]);
+				const path = join(box.home, relative);
+				const text = readFileSync(path, "utf8");
+
+				assert.equal(result.files[0].path, path, host);
+				assert.ok(text.includes("<artfct-guidelines>"), host);
+				assert.ok(text.includes("If the project has a `GUIDELINES.md`"), `${host} gets the global block`);
+				assert.deepEqual(readdirSync(box.repo), [], `${host} writes nothing in the repo`);
+				assert.equal((await box.init("block-upsert", ["--host", host, "--level", "global"])).files[0].changed, false, `${host} second run`);
+			}
+		},
+	},
+	{
+		name: "global level is reported as blocked for agents that keep user rules inside the app",
+		run: async () => {
+			for (const host of ["cursor", "zed"]) {
+				const box = sandbox();
+				const result = await box.init("block-upsert", ["--host", host, "--level", "global"]);
+
+				assert.equal(result.unsupported, true, host);
+				assert.match(result.reason, /not in a file/, host);
+				assert.deepEqual(readdirSync(box.home), [], `${host} writes nothing`);
+			}
+		},
+	},
+	{
+		name: "user level writes a git-excluded CLAUDE.local.md for Claude Code and is blocked elsewhere",
+		run: async () => {
+			const box = sandbox();
+
+			mkdirSync(join(box.repo, ".git", "info"), { recursive: true });
+
+			const result = await box.init("block-upsert", ["--host", "claude", "--level", "user"]);
+
+			assert.equal(result.files[0].path, join(box.repo, "CLAUDE.local.md"));
+			assert.ok(readFileSync(join(box.repo, "CLAUDE.local.md"), "utf8").includes("<artfct-guidelines>"));
+			assert.ok(readFileSync(join(box.repo, ".git", "info", "exclude"), "utf8").split("\n").includes("CLAUDE.local.md"));
+			assert.equal(existsSync(join(box.repo, "CLAUDE.md")), false);
+
+			for (const host of ["codex", "cursor", "opencode", "vscode", "windsurf", "zed", "antigravity"]) {
+				const blocked = await box.init("block-upsert", ["--host", host, "--level", "user"]);
+
+				assert.equal(blocked.unsupported, true, host);
+			}
+		},
+	},
+	{
+		name: "repo level writes AGENTS.md for AGENTS.md agents, Copilot's file for VS Code, and the file Zed actually reads",
+		run: async () => {
+			for (const host of ["codex", "cursor", "opencode", "windsurf", "antigravity"]) {
+				const box = sandbox();
+
+				await box.init("block-upsert", ["--host", host, "--level", "repo"]);
+				assert.ok(readFileSync(join(box.repo, "AGENTS.md"), "utf8").includes("<artfct-guidelines>"), host);
+			}
+
+			const vscode = sandbox();
+
+			await vscode.init("block-upsert", ["--host", "vscode", "--level", "repo"]);
+			assert.ok(readFileSync(join(vscode.repo, ".github", "copilot-instructions.md"), "utf8").includes("<artfct-guidelines>"));
+
+			const zed = sandbox();
+
+			writeFileSync(join(zed.repo, ".rules"), "# Zed rules\n");
+			writeFileSync(join(zed.repo, "AGENTS.md"), "# Team\n");
+
+			const result = await zed.init("block-upsert", ["--host", "zed", "--level", "repo"]);
+
+			assert.equal(result.files[0].path, join(zed.repo, ".rules"));
+			assert.match(result.note, /only \.rules/);
+			assert.ok(!readFileSync(join(zed.repo, "AGENTS.md"), "utf8").includes("<artfct-guidelines>"));
+		},
+	},
+	{
+		name: "status reports where the block already is at each level, so a second level is not added blindly",
+		run: async () => {
+			const box = sandbox();
+
+			await box.init("block-upsert", ["--host", "claude", "--level", "global"]);
+
+			const status = await box.init("status");
+
+			assert.equal(status.blocks.claude.global.hasBlock, true);
+			assert.equal(status.blocks.claude.repo.hasBlock, false);
+			assert.equal(status.blocks.cursor.global.unsupported, true);
+		},
+	},
+	{
+		name: "permissions go to each level's settings file for Claude Code and Codex, and are blocked for other agents",
+		run: async () => {
+			const box = sandbox();
+			const grant = (host, level) => box.init("perms-apply", ["--host", host, "--level", level, "--server", SERVER, "--capabilities", "read"]);
+
+			assert.equal((await grant("claude", "global")).file, join(box.home, ".claude", "settings.json"));
+			assert.equal((await grant("claude", "user")).file, join(box.repo, ".claude", "settings.local.json"));
+			assert.equal((await grant("claude", "repo")).file, join(box.repo, ".claude", "settings.json"));
+			assert.equal((await grant("codex", "global")).file, join(box.home, ".codex", "config.toml"));
+			assert.equal((await grant("codex", "repo")).file, join(box.repo, ".codex", "config.toml"));
+			assert.equal((await grant("codex", "user")).unsupported, true);
+			assert.equal((await grant("cursor", "repo")).unsupported, true);
+
+			const settings = JSON.parse(readFileSync(join(box.home, ".claude", "settings.json"), "utf8"));
+
+			assert.ok(settings.permissions.allow.includes(`mcp__${SERVER}__search_artifacts`));
+			assert.ok(!JSON.stringify(settings).includes("delete_artifact"));
+			assert.match((await grant("claude", "global")).note, /every project/);
+		},
+	},
+	{
+		name: "a global decision is recorded in the personal config, not the repo",
+		run: async () => {
+			const box = sandbox();
+
+			await box.init("decide", ["--key", "instructions", "--status", "configured", "--level", "global"]);
+
+			assert.equal(existsSync(join(box.repo, "artfct.json")), false);
+			assert.equal(JSON.parse(readFileSync(join(box.configDir, "artfct.json"), "utf8")).decisions.instructions.status, "configured");
+			assert.equal((await box.init("files-install", ["--name", "GUIDELINES", "--level", "global"])).unsupported, true);
+		},
+	},
+	{
 		name: "an unknown command prints an error document and exits non-zero",
 		run: async () => {
 			const box = sandbox();
