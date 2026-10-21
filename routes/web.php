@@ -100,8 +100,9 @@ Route::middleware('auth')->group(function () {
 // post list in this file any more.
 Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
-// A retired post that search engines still list (RUB-491).
-Route::get('/blog/ai-presentations', fn () => redirect('/blog', 301));
+// Retired posts that search engines still list (RUB-491).
+Route::get('/blog/{retired}', fn () => redirect('/blog', 301))
+    ->whereIn('retired', ['ai-presentations', 'developer-tools', 'mermaid-diagrams']);
 
 Route::get('/blog/{slug}', [BlogController::class, 'show'])
     ->where('slug', '[a-z0-9-]+')

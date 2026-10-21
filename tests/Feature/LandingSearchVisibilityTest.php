@@ -72,10 +72,16 @@ test('with server rendering the crawler fallback is left out', function () {
         ->and(substr_count($html, '<h1'))->toBe(1);
 });
 
-test('the retired presentations post redirects permanently to the blog', function () {
-    test()->get('/blog/ai-presentations')
+test('retired posts redirect permanently to the blog', function (string $slug) {
+    test()->get("/blog/{$slug}")
         ->assertStatus(301)
         ->assertRedirect('/blog');
+})->with(['ai-presentations', 'developer-tools', 'mermaid-diagrams']);
+
+test('current posts are not caught by the retired post redirect', function () {
+    $slug = collect(app(BlogContent::class)->all())->first()->slug;
+
+    test()->get("/blog/{$slug}")->assertOk();
 });
 
 test('the free page title says what it does', function () {

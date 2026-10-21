@@ -24,7 +24,7 @@
         "GET authenticate": "guest",
         "POST authkit/dev-login": "guest",
         "GET blog": "public",
-        "GET blog/ai-presentations": "public",
+        "GET blog/{retired}": "public",
         "GET blog/{slug}": "public",
         "GET connect/{tool}": "public",
         "GET docs": "public",
