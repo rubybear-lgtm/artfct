@@ -429,6 +429,10 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
     let url = req.url()?;
     let path = url.path();
 
+    if is_robots_request(&method, path) {
+        return robots_response();
+    }
+
     if let Some(response) = dispatch_unimplemented_route(&method, path) {
         return response.into_worker_response();
     }
@@ -598,6 +602,26 @@ fn is_unimplemented_route(method: &Method, path: &str) -> bool {
     }
 }
 
+/// robots.txt for every host the Worker serves (RUB-500). On the isolated
+/// artifact hosts (`*--prod.artfct.dev`, `*--stg.artfct.dev`) this is the only
+/// robots.txt: Cloudflare's managed robots.txt is zone-wide, so it can only be
+/// turned off once these hosts answer for themselves. Artifact content is
+/// token-gated and never meant for search or AI training, so every crawler is
+/// asked to stay out. The apex's robots.txt is served by the Laravel app.
+const ROBOTS_TXT: &str = "User-agent: *\nContent-Signal: search=no, ai-train=no\nDisallow: /\n";
+
+fn is_robots_request(method: &Method, path: &str) -> bool {
+    matches!(method, Method::Get | Method::Head) && path == "/robots.txt"
+}
+
+fn robots_response() -> Result<Response> {
+    let headers = Headers::new();
+    headers.set("Content-Type", "text/plain; charset=utf-8")?;
+    headers.set("Cache-Control", "public, max-age=3600")?;
+    headers.set("X-Content-Type-Options", "nosniff")?;
+    Response::ok(ROBOTS_TXT).map(|response| response.with_headers(headers))
+}
+
 fn dispatch_unimplemented_route(method: &Method, path: &str) -> Option<JsonResponseDefinition> {
     is_unimplemented_route(method, path).then_some(build_unimplemented_response())
 }
@@ -703,6 +727,23 @@ mod tests {
     use crate::preview::{error_html_page, escape_json_script};
     use crate::sharing::{EditAccess, Sharing, Viewer};
     use crate::validation::{manifest_is_complete, normalized_content_type};
+
+    #[test]
+    fn robots_txt_asks_every_crawler_to_stay_off_worker_hosts() {
+        assert!(super::is_robots_request(&Method::Get, "/robots.txt"));
+        assert!(super::is_robots_request(&Method::Head, "/robots.txt"));
+        assert!(!super::is_robots_request(&Method::Post, "/robots.txt"));
+        assert!(!super::is_robots_request(&Method::Get, "/robots.txt/extra"));
+        assert!(!super::is_robots_request(&Method::Get, "/v1/robots.txt"));
+
+        let lines: Vec<&str> = super::ROBOTS_TXT.lines().collect();
+        assert_eq!(lines.first(), Some(&"User-agent: *"));
+        assert!(lines.contains(&"Disallow: /"));
+        assert!(
+            !super::ROBOTS_TXT.contains("Allow: /\n"),
+            "artifact hosts never allow crawling"
+        );
+    }
 
     #[test]
     fn artifact_insert_conflicts_are_classified_and_other_failures_are_not() {
