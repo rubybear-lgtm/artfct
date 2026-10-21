@@ -28,7 +28,7 @@ function signedInPages(): array
 /** @return list<string> */
 function publicPages(): array
 {
-    return ['home', 'free', 'blog', 'docs', 'terms', 'privacy', 'login'];
+    return ['home', 'free', 'blog', 'docs', 'connect.index', 'terms', 'privacy', 'login'];
 }
 
 /** @return array<string, string> route name => where it is covered */
@@ -52,7 +52,7 @@ function coveredElsewhere(): array
 function notPages(): array
 {
     return [
-        'jwks' => 'JSON', 'sitemap' => 'XML',
+        'jwks' => 'JSON', 'sitemap' => 'XML', 'robots' => 'plain text (LandingSearchVisibilityTest)',
         'landing.media' => 'landing animation files (LandingFlowAssetsTest)',
         'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
         'oauth.metadata' => 'OAuth discovery JSON',

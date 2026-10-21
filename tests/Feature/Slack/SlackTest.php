@@ -3,10 +3,8 @@
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
-use App\Models\ExternalIdentity;
 use App\Models\OrgToken;
 use App\Models\Team;
-use App\Models\User;
 use App\Services\Slack\ArtifactSharingContract;
 use App\Services\Slack\FakeArtifactSharing;
 use App\Services\Slack\FakeSlackPost;
@@ -17,20 +15,6 @@ use App\Services\Slack\SlackPostService;
 use App\Services\Slack\SlackRateLimitExceededException;
 use App\Services\Slack\SlashCommandService;
 use App\Services\Slack\UnfurlService;
-
-function linkSlackUser(Team $team, TeamRole $role, string $slackUserId): User
-{
-    $user = memberOfTeam($team, $role);
-    ExternalIdentity::create([
-        'user_id' => $user->id,
-        'provider' => 'slack',
-        'external_id' => $slackUserId,
-        'email' => $user->email,
-        'verified_at' => now(),
-    ]);
-
-    return $user;
-}
 
 test('public_artifact_unfurls_with_full_metadata', function () {
     $team = Team::factory()->create(['slug' => 'test-org']);

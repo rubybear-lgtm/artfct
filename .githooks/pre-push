@@ -62,8 +62,8 @@ if [ ! -f vendor/bin/pint ]; then
     echo "❌ vendor/bin/pint not found. Run: composer install"
     exit 1
 fi
-vendor/bin/pint --test --format agent
-php -d memory_limit=512M vendor/bin/pest --compact
+vendor/bin/pint --parallel --test --format agent
+php -d memory_limit=512M vendor/bin/pest --parallel --compact
 restore_env
 trap - EXIT
 echo "✅ PHP checks passed."

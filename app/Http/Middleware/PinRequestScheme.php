@@ -16,6 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
  * and terms gates) and `_previous.url`. An http redirect from an https page is
  * blocked as mixed content, so an Inertia form looked like it needed a second
  * click. This reads no header; the scheme comes from configuration only.
+ *
+ * It also sends `Strict-Transport-Security` on https responses outside local and
+ * testing, so a browser that reached the app over https keeps using https (RUB-460).
  */
 class PinRequestScheme
 {
@@ -25,6 +28,12 @@ class PinRequestScheme
             $request->server->set('HTTPS', 'on');
         }
 
-        return $next($request);
+        $response = $next($request);
+
+        if ($request->isSecure() && ! app()->environment(['local', 'testing'])) {
+            $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+
+        return $response;
     }
 }

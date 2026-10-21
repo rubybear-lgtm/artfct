@@ -60,23 +60,12 @@ jobs:
         run: |
           cargo test -p artfct-backend --locked
 
-  application:
+  # PHP static analysis, the frontend checks, and the RUB-446 skill script
+  # suite. Same steps the old monolithic `application` job ran before its Pest
+  # steps.
+  php_static:
+    name: Static checks (PHP, frontend, skill scripts)
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: artfct
-          POSTGRES_DB: artfct_test
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d artfct_test"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
 
     steps:
       - name: Checkout
@@ -89,6 +78,10 @@ jobs:
         with:
           php-version: '8.5'
           tools: composer:v2
+          # CLI opcache is off by default, so every PHP file Pint, Larastan and
+          # Pest touch is re-parsed from disk on each run. Turning it on took
+          # Pint from 141 s in CI to under a second for the same 397 files.
+          ini-values: opcache.enable_cli=1
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -115,16 +108,13 @@ jobs:
       - name: Audit Node dependencies
         run: npm audit --audit-level=critical
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
       - name: Prepare Laravel
         run: |
           cp .env.example .env
           php artisan key:generate --no-interaction
 
       - name: Check PHP style
-        run: vendor/bin/pint --test --format agent
+        run: vendor/bin/pint --parallel --test --format agent
 
       - name: Analyse PHP (Larastan level 6)
         run: composer analyse
@@ -155,26 +145,204 @@ jobs:
       - name: Check frontend route references
         run: npm run routes:check
 
-      - name: Run Pest
-        run: php -d memory_limit=512M vendor/bin/pest --compact
+      # RUB-446: the artfct-init skill's scripts have their own Node test suite.
+      - name: Test skill scripts
+        run: npm run test:skills
+
+  # The unit and feature suites hold no state a worker can see from another
+  # worker: RefreshDatabase runs them on in-memory SQLite, so ParaTest's
+  # processes are isolated and `--parallel` is safe here. The browser suite is
+  # deliberately not in this job — see pest_browser.
+  pest_unit_feature:
+    name: Pest (unit and feature, parallel)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: artfct
+          POSTGRES_DB: artfct_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d artfct_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          ini-values: opcache.enable_cli=1
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      # The Inertia root view pulls the Vite manifest, so the suite cannot run
+      # before a build.
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run Pest (unit and feature)
+        run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Unit,Feature
 
       - name: Run pgvector integration tests
         env:
           DB_PORT: '55432'
         run: php -d memory_limit=512M vendor/bin/pest --configuration phpunit.pgsql.xml --compact tests/Feature/Indexing/PgVectorIndexTest.php
 
-  release_readiness:
-    name: 'Release readiness: authentication, tenancy and quota'
-    needs:
-      - application
-      - contract_drift
+  # Browser tests start a browser and their own server per worker, so they are
+  # the one suite that cannot share a run with the rest: they get their own job
+  # and their own runner. Only Chromium is installed, and the browser download
+  # is cached — the suite does not use WebKit or Firefox.
+  pest_browser:
+    name: Pest (browser)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Confirm release-critical suites are required
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          ini-values: opcache.enable_cli=1
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run Pest (browser)
+        run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Browser
+
+  # The `application` check is required on `main` and `develop`, so the name and
+  # the job id have to stay exactly as they are. It needs every job that guards
+  # correctness. A job the path filter skipped (mcp_e2e) counts as passing, and
+  # the skip decision itself is mcp_e2e_scope, which is needed too. Only a
+  # `failure` or `cancelled` result fails this gate, which is why it runs with
+  # `if: always()`: the default would hide a skipped-by-upstream result.
+  application:
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - php_static
+      - pest_unit_feature
+      - pest_browser
+      - openapi_lint
+      - contract_drift
+      - mcp_application
+      - mcp_e2e_scope
+      - mcp_e2e
+      - release_readiness
+      - secrets
+      - rust
+
+    steps:
+      - name: Confirm no needed job failed or was cancelled
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo 'Authentication, tenancy, quota and contract checks are required by this gate.'
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          blocking=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
+          if [ -n "$blocking" ]; then
+            echo "Failed or cancelled: $blocking"
+            exit 1
+          fi
+
+  # Release-critical checks that sit outside the PHP suites. It is a separate
+  # named check, so a failure here is visible without opening the aggregate. It
+  # does not need `application`, which needs it: that would be a cycle.
+  release_readiness:
+    name: 'Release readiness: OpenAPI, contract and hosted MCP checks'
+    if: always()
+    needs:
+      - openapi_lint
+      - contract_drift
+      - mcp_application
+      - mcp_e2e_scope
+      - mcp_e2e
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm no release-critical job failed or was cancelled
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          blocking=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
+          if [ -n "$blocking" ]; then
+            echo "Failed or cancelled: $blocking"
+            exit 1
+          fi
 
   secrets:
     runs-on: ubuntu-latest
@@ -259,6 +427,7 @@ jobs:
         with:
           php-version: '8.5'
           tools: composer:v2
+          ini-values: opcache.enable_cli=1
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -298,8 +467,53 @@ jobs:
           tests/Feature/McpConnectionsPageTest.php
           tests/Feature/McpActivityTest.php
 
+  # The MCP end-to-end job boots Postgres, a Worker and Laravel and costs about
+  # six minutes, so a pull request that cannot reach any of that skips it. This
+  # is a skip list, not an allow list: any file outside it, including one this
+  # list has never heard of, still runs the job. Pushes to main and develop
+  # always run it, so a miss here is caught after the merge.
+  mcp_e2e_scope:
+    name: Decide whether the MCP end-to-end job is needed
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Compare the changed files with the skip list
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          skip='^(docs/|resources/js/|resources/css/|tests/Browser/|public/images/|.*\.md$|\.github/workflows/(mcp-live|polis-advisories)\.yml$)'
+          needed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ev "$skip" || true)
+
+          if [ -n "$needed" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            echo "Running: these changed files can reach the MCP stack:"
+            echo "$needed"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'Skipping: every changed file is on the skip list.'
+          fi
+
   mcp_e2e:
     name: MCP local end-to-end (Postgres + Worker + hosted OAuth)
+    needs: mcp_e2e_scope
+    if: needs.mcp_e2e_scope.outputs.run == 'true'
     runs-on: ubuntu-latest
 
     services:
@@ -328,6 +542,7 @@ jobs:
         with:
           php-version: '8.5'
           tools: composer:v2
+          ini-values: opcache.enable_cli=1
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -347,6 +562,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            target
             backend/target
           key: ${{ runner.os }}-mcp-e2e-cargo-${{ hashFiles('Cargo.lock') }}
 

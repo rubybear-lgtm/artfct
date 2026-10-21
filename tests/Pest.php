@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\ExternalIdentity;
 use App\Models\OAuthClient;
 use App\Models\Team;
 use App\Models\User;
@@ -319,4 +320,96 @@ function configureOrgJwt(): void
         'services.org_jwt.worker_base_url' => 'https://worker.test',
         'services.org_jwt.revocation_write_secret' => 'test-revocation-secret',
     ]);
+}
+
+/*
+ * Anything below is loaded by every test process, which is what makes it
+ * usable from more than one test file. A helper or constant declared inside a
+ * test file only exists when that file is loaded, so under `pest --parallel`
+ * — where each worker loads just the files assigned to it — a second file
+ * using it dies with "undefined function/constant". Keep cross-file helpers
+ * here, not in a test file.
+ */
+
+/**
+ * RUB-437: a permanent artifact is versioned under a stable id, so every
+ * Laravel id check, link builder and MCP tool that names an artifact has to
+ * understand the new shape (13-character lowercase base36) without losing the
+ * old one (32-character lowercase hex).
+ */
+const STABLE_ARTIFACT_ID = 'abc123def4567';
+
+/**
+ * Creates a member of the team and links a Slack external identity to them —
+ * the state every slash-command and unfurl test starts from (spec 15).
+ */
+function linkSlackUser(Team $team, TeamRole $role, string $slackUserId): User
+{
+    $user = memberOfTeam($team, $role);
+    ExternalIdentity::create([
+        'user_id' => $user->id,
+        'provider' => 'slack',
+        'external_id' => $slackUserId,
+        'email' => $user->email,
+        'verified_at' => now(),
+    ]);
+
+    return $user;
+}
+
+/**
+ * The console URL the browser tests open to find the seeded RUB-367 artifact.
+ */
+function consoleUrl(Team $team): string
+{
+    return '/settings/teams/'.$team->slug.'/console?q=RUB367&view=list';
+}
+
+/**
+ * Runs $callback with the given environment variables unset or set, in $_ENV,
+ * $_SERVER and the process environment, and restores every one afterwards.
+ *
+ * @param  array<string, string|null>  $variables  null unsets the variable
+ */
+function withEnvironmentVariables(array $variables, Closure $callback): mixed
+{
+    $previous = [];
+
+    foreach ($variables as $name => $value) {
+        $previous[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+
+        if ($value === null) {
+            putenv($name);
+            unset($_ENV[$name], $_SERVER[$name]);
+
+            continue;
+        }
+
+        putenv("{$name}={$value}");
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+
+    try {
+        return $callback();
+    } finally {
+        foreach ($previous as $name => [$processValue, $envValue, $serverValue]) {
+            if ($processValue === false) {
+                putenv($name);
+            } else {
+                putenv("{$name}={$processValue}");
+            }
+
+            if ($envValue === null) {
+                unset($_ENV[$name]);
+            } else {
+                $_ENV[$name] = $envValue;
+            }
+
+            if ($serverValue === null) {
+                unset($_SERVER[$name]);
+            } else {
+                $_SERVER[$name] = $serverValue;
+            }
+        }
+    }
 }

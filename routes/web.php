@@ -2,26 +2,42 @@
 
 use App\Http\Controllers\ArtifactViewerController;
 use App\Http\Controllers\BlogController;
+use App\Http\Controllers\ConnectController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\JwksController;
 use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\PolisWebhookController;
+use App\Http\Controllers\RobotsController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkerEventController;
+use App\Services\Blog\BlogContent;
+use App\Services\Blog\BlogPost;
 use App\Support\AiToolSetup;
 use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn () => Inertia::render('landing', [
+// The homepage links every setup guide and the newest posts so crawlers reach
+// them from `/`, not only from the sitemap (RUB-488).
+Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
     'meta' => [
-        'title' => 'Artfct — what your AI makes, remembered',
-        'description' => 'Share the reports, tables and documents your AI makes, and every AI tool on your team can read them, with sources. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools.',
+        'title' => 'Artfct: shared context and AI artifacts for every agent',
+        'description' => 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.',
     ],
     'flow' => LandingMedia::forPage(),
+    'agentSetupPrompt' => AiToolSetup::forCurrentEnvironment()->agentSetupPrompt(),
+    'connectGuides' => collect(AiToolSetup::forCurrentEnvironment()->guides())
+        ->map(fn (array $guide): array => ['id' => $guide['id'], 'label' => $guide['label']])
+        ->values()
+        ->all(),
+    'latestPosts' => collect($blog->all())
+        ->take(3)
+        ->map(fn (BlogPost $post): array => ['slug' => $post->slug, 'title' => $post->title])
+        ->values()
+        ->all(),
 ]))->name('home');
 
 Route::get('/media/landing/{file}', LandingMediaController::class)
@@ -30,48 +46,21 @@ Route::get('/media/landing/{file}', LandingMediaController::class)
 
 Route::get('/free', fn () => Inertia::render('welcome', [
     'meta' => [
-        'title' => 'artfct — share HTML & markdown instantly',
-        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted by default.',
+        'title' => 'Share an HTML or Markdown file as a private link — Artfct',
+        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted in your browser, and the link expires when it goes unused.',
     ],
     'mcpEndpoint' => url('/mcp'),
 ]))->name('free');
 
 Route::get('/docs', DocsController::class)->name('docs');
 
-// One page per connectable AI tool (spec 12's programmatic surface). The
-// guides come from AiToolSetup, the same source the docs page and
-// /llms-full.txt render from, so a setup step cannot drift between them.
-Route::get('/connect/{tool}', function (string $tool) {
-    $setup = AiToolSetup::forCurrentEnvironment();
-    $guides = collect($setup->guides());
-    $guide = $guides->firstWhere('id', $tool);
-
-    abort_if($guide === null, 404);
-
-    $status = $guide['verified']
-        ? 'The path is verified end to end against staging.'
-        : 'The path is documented; it has not been verified end to end.';
-
-    return Inertia::render('connect-show', [
-        'meta' => [
-            'title' => "Connect {$guide['label']} to Artfct",
-            'description' => "Add Artfct to {$guide['label']} and give it your team's shared store. {$status}",
-        ],
-        'guide' => $guide,
-        'mcpUrl' => $setup->mcpUrl(),
-        'quickInstall' => $setup->quickInstall(),
-        'related' => $guides
-            ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)
-            ->map(fn (array $candidate): array => [
-                'id' => $candidate['id'],
-                'label' => $candidate['label'],
-                'verified' => $candidate['verified'],
-            ])
-            ->values()
-            ->all(),
-        'troubleshooting' => array_slice($setup->troubleshooting(), 0, 3),
-    ]);
-})->where('tool', '[a-z0-9-]+')->name('connect.show');
+// The /connect hub and one page per connectable AI tool. Both read
+// AiToolSetup, the same source the docs page and /llms-full.txt render from,
+// so a setup step cannot drift between them.
+Route::get('/connect', [ConnectController::class, 'index'])->name('connect.index');
+Route::get('/connect/{tool}', [ConnectController::class, 'show'])
+    ->where('tool', '[a-z0-9-]+')
+    ->name('connect.show');
 Route::get('/llms.txt', [LlmsTextController::class, 'index'])->name('llms.index');
 Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.full');
 
@@ -86,6 +75,10 @@ Route::middleware('auth')->group(function () {
 // post list in this file any more.
 Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 
+// Retired posts that search engines still list (RUB-491).
+Route::get('/blog/{retired}', fn () => redirect('/blog', 301))
+    ->whereIn('retired', ['ai-presentations', 'developer-tools', 'mermaid-diagrams']);
+
 Route::get('/blog/{slug}', [BlogController::class, 'show'])
     ->where('slug', '[a-z0-9-]+')
     ->name('blog.show');
@@ -93,6 +86,7 @@ Route::get('/blog/{slug}', [BlogController::class, 'show'])
 // ── sitemap ───────────────────────────────────────────────────────────────────
 
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
+Route::get('/robots.txt', RobotsController::class)->name('robots');
 
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //

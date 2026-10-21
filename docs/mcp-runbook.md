@@ -14,9 +14,10 @@ the connection, and recover from common authentication or policy failures.
   retired (RUB-432); an AI tool that cannot use a hosted server is not
   supported.
 
-The production URL `https://artfct.dev/mcp` is not currently routed to the
-hosted MCP handler; a read-only probe returns 404. Do not use it for the live
-client matrix until the production route is deliberately deployed and verified.
+The production URL `https://artfct.dev/mcp` serves the same hosted handler as
+staging. To check that it is live, send an unauthenticated `POST`: a live
+server answers `401` with a `WWW-Authenticate` header. Run the client matrix
+against the environment you are verifying and record which URL you used.
 
 The hosted endpoint exposes a versioned tool catalog with organization-scoped
 behavior. Sessions are registered in the workspace's MCP connections view.
@@ -187,20 +188,20 @@ whenever a guidance rule or a guided tool description changes.
 Tools that publish or describe an artifact return it as `view_url`. Which URL
 that is depends on the artifact's tier:
 
-- **`secure`** — the app's own open route,
-  `/settings/teams/<org>/console/artifacts/<id>/open`. It authorizes the viewer
-  and only then mints a short-lived signed link to the artifact's isolated
-  origin, so the link is safe to hand to a colleague: it works when that
-  colleague opens it in a browser while signed in to the workspace, and it
-  carries no credential itself. The mint is audited (`artifact.link_minted`,
-  with the actor, the artifact and the expiry) and the token appears in the
-  redirect only — never in the tool result.
-- **`public`** — the artifact's public URL. The Worker serves a public artifact
-  to anyone, so no token is minted for it and no session is needed.
+- **Permanent artifacts (`public`, `team`, `private`)** — the short link
+  `/a/{id}` (or `/a/{id}/v/{n}` for one version). The app's viewer authorizes
+  the visitor: a public artifact opens for anyone, and team or private links
+  send signed-out visitors to sign in and back. For an artifact that needs a
+  credential, the viewer mints a short-lived signed link to the artifact's
+  isolated origin. The mint is audited (`artifact.link_minted`, with the
+  actor, the artifact and the expiry), and the token appears in the redirect
+  only, never in the tool result.
+- **Ephemeral previews** — the Worker's `/p/{id}` URL. These are anonymous
+  KV records with no app row, so the app's open route cannot serve them.
 
-`view_url` replaces the earlier `url` field. An agent should present `view_url` rather than reconstructing a
-`/p/{id}` URL from an artifact id: the raw URL carries no credential, so a
-browser cannot open a secure artifact with it.
+`view_url` replaces the earlier `url` field. An agent should present `view_url`
+rather than building a `/p/{id}` URL from an artifact id. For a permanent
+artifact the `/p/{id}` URL is not the link to hand out.
 
 If a tool call fails with the non-retryable `signed_link_unavailable` code, the
 environment has no signing secret configured, so no openable link exists —

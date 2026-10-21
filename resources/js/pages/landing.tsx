@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
+import { CopyPrompt } from '@/components/connect/copy-prompt';
 import {
     AgentWindow,
     AuthorMessages,
@@ -26,6 +27,8 @@ import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { backgroundPair, randomBackgroundPairs } from '@/lib/backgrounds';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
+import blogRoutes from '@/routes/blog';
+import connectRoutes from '@/routes/connect';
 
 type UseScene = {
     frame: { light: string; dark: string };
@@ -528,6 +531,54 @@ function UseCaseRow({
 
 type FramePair = { light: string; dark: string };
 
+type ConnectGuide = { id: string; label: string };
+
+type LatestPost = { slug: string; title: string };
+
+type LandingProps = {
+    agentSetupPrompt: string;
+    connectGuides: ConnectGuide[];
+    latestPosts: LatestPost[];
+};
+
+/* Questions agent-native teams search for (RUB-494), each with the posts
+   that answer it. Setup links live in "Connect your agent" just below. */
+const GUIDES: {
+    title: string;
+    text: string;
+    posts: { label: string; slug: string }[];
+}[] = [
+    {
+        title: 'Share context between Claude Code and Cursor',
+        text: 'Connect both to the same Artfct workspace. Each one publishes there and searches what the other published.',
+        posts: [
+            {
+                label: 'Stop them contradicting each other',
+                slug: 'stop-ai-tools-contradicting-each-other',
+            },
+        ],
+    },
+    {
+        title: 'Let ChatGPT read what you made in Claude',
+        text: 'Connect both to your Artfct workspace. Share from Claude, and ChatGPT can search for it there.',
+        posts: [],
+    },
+    {
+        title: 'Search your team’s AI artifacts, with sources',
+        text: 'Any connected agent can search by meaning, read the right part and link back to where it came from.',
+        posts: [
+            {
+                label: 'Finding what your AI already made',
+                slug: 'finding-what-your-ai-already-made',
+            },
+            {
+                label: 'What is an AI artifact?',
+                slug: 'what-is-an-ai-artifact',
+            },
+        ],
+    },
+];
+
 const subscribeNothing = () => () => {};
 let framesForThisLoad: FramePair[] | null = null;
 
@@ -539,7 +590,11 @@ function randomFramesOnce(): FramePair[] {
     return framesForThisLoad;
 }
 
-export default function Landing() {
+export default function Landing({
+    agentSetupPrompt,
+    connectGuides,
+    latestPosts,
+}: LandingProps) {
     const story = useStory();
     const frames = useSyncExternalStore(
         subscribeNothing,
@@ -560,6 +615,7 @@ export default function Landing() {
                         <a href="#how">How it works</a>
                         <a href="#use">Use cases</a>
                         <a href="#plans">Pricing</a>
+                        <Link href={connectRoutes.index().url}>Connect</Link>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
                     </div>
@@ -576,6 +632,9 @@ export default function Landing() {
                             <a href="#how">How it works</a>
                             <a href="#use">Use cases</a>
                             <a href="#plans">Pricing</a>
+                            <Link href={connectRoutes.index().url}>
+                                Connect
+                            </Link>
                             <Link href={docs.url()}>Docs</Link>
                             <Link href={blog.url()}>Blog</Link>
                         </div>
@@ -608,14 +667,15 @@ export default function Landing() {
                                 The team knowledge base for every AI tool
                             </div>
                             <h1 className="two">
-                                Unsilo your knowledge.{' '}
-                                <span>Feed every agent.</span>
+                                Every agent sees{' '}
+                                <span>what the others made.</span>
                             </h1>
                             <p className="lede">
-                                Share a report, table or mockup from Claude,
-                                ChatGPT, Cursor or Copilot. Every AI tool on
-                                your team can find it, open it and show where it
-                                came from.
+                                Artfct indexes every AI artifact your agents
+                                publish: reports, specs, tables and mockups.
+                                Claude, Cursor, Codex and ChatGPT can search
+                                across your team’s work, read the right part and
+                                cite where it came from.
                             </p>
                             <div className="cta">
                                 <Button asChild className="btn btn-primary">
@@ -641,25 +701,103 @@ export default function Landing() {
                             Works with the AI tools your team already uses.
                         </div>
                         <div className="names">
-                            <span>
+                            <Link
+                                href={connectRoutes.show('connect-claude').url}
+                            >
                                 <AiToolIcon tool="claude" size={26} />
                                 Claude
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-chatgpt').url}
+                            >
                                 <AiToolIcon tool="chatgpt" size={26} />
                                 ChatGPT
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-vscode').url}
+                            >
                                 <AiToolIcon tool="copilot" size={26} />
                                 Copilot
-                            </span>
-                            <span>
+                            </Link>
+                            <Link
+                                href={connectRoutes.show('connect-cursor').url}
+                            >
                                 <AiToolIcon tool="cursor" size={26} />
                                 Cursor
-                            </span>
-                            <span className="more">and other AI tools</span>
+                            </Link>
+                            <Link
+                                className="more"
+                                href={connectRoutes.show('connect-other').url}
+                            >
+                                and other AI tools
+                            </Link>
                         </div>
                     </div>
+
+                    <section className="guides pad rule" id="guides">
+                        <div className="guide-list">
+                            {GUIDES.map((guide) => (
+                                <div key={guide.title} className="guide">
+                                    <h2>{guide.title}</h2>
+                                    <p>{guide.text}</p>
+                                    {guide.posts.length > 0 && (
+                                        <ul>
+                                            {guide.posts.map((post) => (
+                                                <li key={post.slug}>
+                                                    <Link
+                                                        href={
+                                                            blogRoutes.show(
+                                                                post.slug,
+                                                            ).url
+                                                        }
+                                                    >
+                                                        {post.label}{' '}
+                                                        <span className="arrow">
+                                                            →
+                                                        </span>
+                                                    </Link>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section
+                        className="connect pad rule"
+                        id="connect"
+                        aria-labelledby="connect-title"
+                    >
+                        <h2 id="connect-title">Connect your agent</h2>
+                        <p className="lede">
+                            Paste one prompt into Claude Code, Codex, Cursor,
+                            ChatGPT or any agent you use. It finds the steps for
+                            that app, connects to your team’s workspace and asks
+                            you to approve the sign-in.
+                        </p>
+                        <div className="actions">
+                            <CopyPrompt prompt={agentSetupPrompt} />
+                            <Button asChild className="btn btn-primary">
+                                <Link href={connectRoutes.index().url}>
+                                    Setup guides{' '}
+                                    <span className="arrow">→</span>
+                                </Link>
+                            </Button>
+                        </div>
+                        <ol className="beats">
+                            <li>
+                                <b>Paste</b> into the agent you already use
+                            </li>
+                            <li>
+                                <b>Approve</b> the sign-in in your browser
+                            </li>
+                            <li>
+                                <b>Search</b> what every other agent made
+                            </li>
+                        </ol>
+                    </section>
 
                     <section className="statement pad rule">
                         <h2 className="two">
@@ -856,6 +994,40 @@ export default function Landing() {
                     </section>
                 </main>
 
+                <nav className="sitemap pad" aria-label="Site">
+                    <div>
+                        <h3>Connect</h3>
+                        <ul>
+                            <li>
+                                <Link href={connectRoutes.index().url}>
+                                    All agents
+                                </Link>
+                            </li>
+                            {connectGuides.map((guide) => (
+                                <li key={guide.id}>
+                                    <Link
+                                        href={connectRoutes.show(guide.id).url}
+                                    >
+                                        {guide.label}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Latest</h3>
+                        <ul>
+                            {latestPosts.map((post) => (
+                                <li key={post.slug}>
+                                    <Link href={blogRoutes.show(post.slug).url}>
+                                        {post.title}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </nav>
+
                 <footer className="pad">
                     <div className="l">
                         <span className="logo">Artfct</span>
@@ -864,6 +1036,7 @@ export default function Landing() {
                     <div className="r">
                         <a href="#how">How it works</a>
                         <a href="#plans">Pricing</a>
+                        <Link href={connectRoutes.index().url}>Connect</Link>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
                         <Link href={privacy.url()}>Privacy</Link>

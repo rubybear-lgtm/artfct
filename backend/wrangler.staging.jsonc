@@ -9,8 +9,9 @@
     "main": "build/worker/shim.mjs",
     "compatibility_date": "2026-06-03",
     "build": {
-        // --locked is load-bearing; see backend/wrangler.jsonc for why.
-        "command": "cd backend 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --locked --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
+        // Same command as backend/wrangler.jsonc, which explains it: the build
+        // installs its own Rust toolchain and pins worker-build with --locked.
+        "command": "cd backend 2>/dev/null || true; command -v cargo >/dev/null 2>&1 || (curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --target wasm32-unknown-unknown); . \"$HOME/.cargo/env\" 2>/dev/null || true; PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH cargo install -q worker-build --version 0.8.3 --locked --root ./target/worker-tools && PATH=/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:./target/worker-tools/bin:$PATH worker-build --release",
     },
     "observability": {
         "enabled": true,

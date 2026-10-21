@@ -936,10 +936,10 @@
         gap: 12px;
         font-size: 14px;
     }
-    .landing.landing .strip .names > span:not(.more) {
+    .landing.landing .strip .names > :not(.more) {
         gap: 6px;
     }
-    .landing.landing .strip .names > span:not(.more) svg {
+    .landing.landing .strip .names > :not(.more) svg {
         width: 18px;
         height: 18px;
     }

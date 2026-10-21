@@ -67,8 +67,8 @@ createInertiaApp({
             return appName;
         }
 
-        // Server meta titles already end with the brand ("… — artfct").
-        return /\s—\s*artfct$/i.test(title) ? title : `${title} - ${appName}`;
+        // Add the brand once, and only to a title that does not name it yet.
+        return /artfct/i.test(title) ? title : `${title} — Artfct`;
     },
     progress: {
         color: '#4B5563',

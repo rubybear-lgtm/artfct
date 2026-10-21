@@ -10,7 +10,7 @@ This replaces the earlier Solarized Light / ASCII direction, which suited the fr
 
 Warm, editorial and calm. Think of a well-set page in a quiet reading room: bone-colored paper, charcoal ink, and a single deep red used sparingly. It should feel trustworthy and unhurried, the way a company's shared library feels, never like a terminal or a dashboard.
 
-- **Audience:** business people who use AI tools every day (product managers, analysts, designers, marketers, operations) at companies of about 10 to 200 people; engineers are welcome but secondary. The buyer is the team or department lead who connects the team's AI tools once. Nothing on the page should require technical knowledge.
+- **Audience (2026-10-20):** agent-native teams, such as startups and teams that run many AI agents (Claude, Cursor, Codex, ChatGPT and others) and feel friction sharing work between them. They know the tools; write to them plainly, without dumbing down or showing code.
 - **Density:** generous whitespace, hairline dividers instead of boxed cards, one lifted object per screen (the product demo).
 - **Personality:** confident and plain-spoken. Precision comes from restraint, not decoration.
 - **Not:** retro, developer-flavored, gradient-heavy, or neon. No ASCII art, no terminals, no code blocks, no monospace-heavy UI.
@@ -76,7 +76,7 @@ Purposeful and small; it should clarify what the product does, not decorate.
 
 ## 7. Voice & Content Rules
 
-- Plain language for a non-technical reader. Say "AI tool" in body copy; never "harness", "agent runtime" or "MCP". The hero headline may say "agent" (owner decision, 2026-10-10: "Unsilo your knowledge. Feed every agent."). The place is called the team's "knowledge base"; never "library", "memory" or "brain".
+- Plain language for a technical-but-busy reader. "Agent", "AI tool", "index", "search", "shared context" and tool names are fine; "MCP" only where it helps someone connect. Never "harness", "agent runtime", "multi-hop" or "provenance". Hero (owner decision, 2026-10-20): "Every agent sees what the others made." Don't call the product a "memory" or "brain"; that is the crowded memory-tool category.
 - Never show a terminal, CLI command, JSON, DOM selector, file path or code block on a marketing surface.
 - Define "artifact" once, plainly: any report, table, document or mockup your AI makes.
 - The core promise: what your AI makes is shared to your team and every AI tool on the team can read it, with sources. Sharing is the user's choice, not automatic.

@@ -8,11 +8,15 @@ use App\Http\Controllers\Controller;
 use App\Models\Collection;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
+use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Artifacts\WorkerCredential;
+use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -109,11 +113,29 @@ class CollectionController extends Controller
         return back();
     }
 
-    public function addArtifact(Request $request, Team $team, Collection $collection, CollectionService $collections): RedirectResponse
+    public function addArtifact(Request $request, Team $team, Collection $collection, CollectionService $collections, ArtifactExistence $existence): RedirectResponse
     {
         $this->authorizeEditor($request, $team, $collection);
 
         $validated = $request->validate(['artifact_id' => ['required', 'string', 'max:64']]);
+
+        if (! ArtifactIdShape::isPermanent($validated['artifact_id'])) {
+            throw ValidationException::withMessages(['artifact_id' => __('That is not a valid artifact id.')]);
+        }
+
+        // The same visibility check the API applies, made with this member's own
+        // credential, so an id from another team reads as missing here too.
+        $visibility = $existence->check(WorkerCredential::forOrg($team->slug), $validated['artifact_id']);
+
+        if ($visibility === ArtifactExistence::MISSING) {
+            throw ValidationException::withMessages(['artifact_id' => __('That artifact was not found in this team.')]);
+        }
+
+        if ($visibility === ArtifactExistence::UNAVAILABLE) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't add it right now. Try again in a minute.")]);
+
+            return back();
+        }
 
         $collections->addArtifact($collection, $validated['artifact_id']);
 

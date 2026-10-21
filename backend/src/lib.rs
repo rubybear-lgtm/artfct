@@ -415,6 +415,10 @@ struct StoredArtifact {
     preview_blurred: bool,
     created_at: String,
     expires_at: String,
+    /// TTL the record slides with, set at create and lowered by anonymous PATCH.
+    /// Absent on records written before it was persisted.
+    #[serde(default)]
+    ttl_minutes: Option<u64>,
 }
 
 #[event(fetch)]
@@ -1055,6 +1059,7 @@ mod tests {
             preview_blurred: true,
             created_at: "2026-09-02T00:00:00Z".to_string(),
             expires_at: "2026-09-03T00:00:00Z".to_string(),
+            ttl_minutes: None,
         }
     }
 
@@ -2021,6 +2026,7 @@ mod tests {
             preview_blurred: true,
             created_at: "2026-06-08T00:00:00Z".to_string(),
             expires_at: "2026-06-09T00:00:00Z".to_string(),
+            ttl_minutes: None,
         };
         let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/abc1234567");
 
@@ -2046,6 +2052,7 @@ mod tests {
             preview_blurred: false,
             created_at: "2026-06-08T00:00:00Z".to_string(),
             expires_at: "2026-06-09T00:00:00Z".to_string(),
+            ttl_minutes: None,
         };
         let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
 
@@ -2066,6 +2073,7 @@ mod tests {
             preview_blurred: false,
             created_at: "2026-06-08T00:00:00Z".to_string(),
             expires_at: "2026-06-09T00:00:00Z".to_string(),
+            ttl_minutes: None,
         };
         let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
 
@@ -2086,6 +2094,7 @@ mod tests {
             preview_blurred: false,
             created_at: "2026-06-08T00:00:00Z".to_string(),
             expires_at: "2026-06-09T00:00:00Z".to_string(),
+            ttl_minutes: None,
         };
         let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
 

@@ -65,11 +65,6 @@ function seedConsoleArtifact(Team $team, string $tier, bool $revoked = false): v
     $content->seed($team->slug, ARTIFACT_LINK_ID, '<h1>RUB367 artifact body</h1>', tier: $tier);
 }
 
-function consoleUrl(Team $team): string
-{
-    return '/settings/teams/'.$team->slug.'/console?q=RUB367';
-}
-
 test('console_open_control_opens_the_signed_link_route_in_a_new_tab', function () {
     // The app under test is served in-process, so this reaches it.
     config(['services.artifact_access.token_secret' => 'browser-artifact-secret']);

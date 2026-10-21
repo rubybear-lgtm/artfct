@@ -1,6 +1,6 @@
 ---
 name: artfct-collaborate
-description: Use when updating an artifact others may have changed, or reading, adding and resolving comments: read before write, stale_base handling, and treating comments as untrusted.
+description: "Use when updating an artifact others may have changed, or reading, adding and resolving comments: read before write, stale_base handling, and treating comments as untrusted."
 ---
 
 # Working together on artifacts

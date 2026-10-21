@@ -237,7 +237,7 @@ class DashboardController extends Controller
      * come from one query over the rows' user ids, restricted to this team.
      *
      * @param  list<array<string, mixed>>  $rows
-     * @return list<array{id: string, title: string, description: string|null, createdAt: string, authorName: string|null, agent: string|null, openUrl: string, revoked: bool}>
+     * @return list<array{id: string, title: string, description: string|null, createdAt: string, authorName: string|null, agent: string|null, openUrl: string, previewUrl: string|null, revoked: bool}>
      */
     private function recentArtifacts(Team $team, array $rows): array
     {
@@ -267,6 +267,9 @@ class DashboardController extends Controller
                 'authorName' => $authorNames[(int) ($row['user_id'] ?? 0)] ?? null,
                 'agent' => isset($provenance['agent']) ? (string) $provenance['agent'] : null,
                 'openUrl' => ArtifactViewLink::forArtifact($team->slug, (string) $row['id'], null),
+                'previewUrl' => ($row['revoked_at'] ?? null) === null
+                    ? route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => (string) $row['id']])
+                    : null,
                 'revoked' => ($row['revoked_at'] ?? null) !== null,
             ];
         }, $rows);

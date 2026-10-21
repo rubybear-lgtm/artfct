@@ -80,6 +80,6 @@ test('the landing page renders the redesigned page component', function () {
 test('the crawler fallback carries the new landing headline', function () {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('Every AI on your team, working from the same memory.', false)
+        ->assertSee('Every agent sees what the others made.', false)
         ->assertDontSee('Artfct remembers them', false);
 });

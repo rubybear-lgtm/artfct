@@ -3,9 +3,9 @@
 use Illuminate\Support\Facades\File;
 
 it('uses the framework health route for Railway checks without starting a session', function () {
-    $railway = File::get(base_path('.railway/railway.ts'));
-
-    expect($railway)->toContain('healthcheck: "/up"');
+    foreach (['staging', 'production'] as $environment) {
+        expect(File::get(base_path(".railway/{$environment}.ts")))->toContain('healthcheck: "/up"');
+    }
 
     $this->get('/up')
         ->assertSuccessful()

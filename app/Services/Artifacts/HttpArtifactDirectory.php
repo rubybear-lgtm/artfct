@@ -3,8 +3,7 @@
 namespace App\Services\Artifacts;
 
 use App\Contracts\ArtifactDirectory;
-use App\Models\Team;
-use App\Services\Auth\OrgJwtService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Http;
 
@@ -45,7 +44,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             }
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts", $params);
 
         if ($response->status() === 404) {
@@ -65,7 +64,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             return null;
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}");
 
         // A missing artifact, another org's artifact, and a private artifact
@@ -90,7 +89,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             return ['status' => 'not_found', 'sharing' => null, 'edit_access' => null];
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->patch(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}/sharing", $changes);
 
         if ($response->successful()) {
@@ -120,11 +119,15 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             throw new \Exception('Worker base URL not configured');
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
-            ->patch(
-                rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}",
-                ['revoked_at' => now()->toIso8601String()]
-            );
+        try {
+            $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
+                ->patch(
+                    rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}",
+                    ['revoked_at' => now()->toIso8601String()]
+                );
+        } catch (ConnectionException $exception) {
+            throw new ArtifactServiceUnavailableException('The Worker could not be reached to revoke an artifact.', previous: $exception);
+        }
 
         if ($response->status() === 404) {
             throw new HttpResponseException(response()->json(['error' => 'Artifact not found'], 404));
@@ -132,6 +135,10 @@ final class HttpArtifactDirectory implements ArtifactDirectory
 
         if ($response->status() === 403) {
             throw new HttpResponseException(response()->json(['error' => 'Forbidden'], 403));
+        }
+
+        if (! $response->successful()) {
+            throw new ArtifactServiceUnavailableException("The Worker answered {$response->status()} to a revoke, so it is not confirmed.");
         }
 
         return $response->json() ?: [];
@@ -143,8 +150,12 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             throw new \Exception('Worker base URL not configured');
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
-            ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/export");
+        try {
+            $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
+                ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/export");
+        } catch (ConnectionException $exception) {
+            throw new ArtifactServiceUnavailableException('The Worker could not be reached to export artifacts.', previous: $exception);
+        }
 
         if ($response->status() === 404) {
             throw new HttpResponseException(response()->json(['error' => 'Organization not found'], 404));
@@ -156,6 +167,10 @@ final class HttpArtifactDirectory implements ArtifactDirectory
 
         if ($response->status() === 429) {
             throw new HttpResponseException(response()->json(['error' => 'Rate limited'], 429));
+        }
+
+        if (! $response->successful()) {
+            throw new ArtifactServiceUnavailableException("The Worker answered {$response->status()} to an export, so it is not confirmed.");
         }
 
         return $response->json() ?: ['artifacts' => [], 'blobs' => []];
@@ -171,7 +186,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             return null;
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/blobs/{$sha256}");
 
         if ($response->status() === 404) {
@@ -193,7 +208,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             return null;
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}/versions");
 
         // Another organization's artifact is the same 404 as a missing one, so
@@ -217,7 +232,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             return ['status' => 'not_found', 'version' => null];
         }
 
-        $response = Http::withToken($this->tokenFor($orgSlug))
+        $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->post(rtrim($this->baseUrl, '/')."/v1/artifacts/{$artifactId}/versions/{$version}/restore");
 
         if ($response->successful()) {
@@ -233,29 +248,5 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             409 => ['status' => 'conflict', 'version' => null],
             default => throw new HttpResponseException(response()->json(['error' => 'Artifact service error'], 502)),
         };
-    }
-
-    /**
-     * The credential for a Worker call about `$orgSlug`: the caller's own
-     * bearer token when the request carries one (API callers), otherwise a
-     * short-lived org token minted for the signed-in user with their role in
-     * that team. A user who is not a member of the team gets no credential, so
-     * the Worker never sees a request about a team the user cannot access.
-     */
-    private function tokenFor(string $orgSlug): string
-    {
-        if ($bearer = request()->bearerToken()) {
-            return $bearer;
-        }
-
-        $user = auth()->user();
-        $team = Team::query()->where('slug', $orgSlug)->first();
-        $role = $user !== null && $team !== null ? $user->teamRole($team) : null;
-
-        if ($role === null) {
-            throw new HttpResponseException(response()->json(['error' => 'Forbidden'], 403));
-        }
-
-        return OrgJwtService::default()->mintFor($orgSlug, (string) $user->id, $role)['token'];
     }
 }

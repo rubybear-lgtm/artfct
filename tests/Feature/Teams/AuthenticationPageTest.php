@@ -5,6 +5,7 @@ use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TeamSignIn;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -93,7 +94,9 @@ test('a_connection_cannot_be_removed_while_sso_only_is_enforced', function () {
     $team->forceFill(['auth_mode' => AuthMode::Polis])->save();
     Http::fake();
 
-    test()->actingAs($admin)->delete(route('teams.authentication.connection.destroy', $team))->assertStatus(422);
+    // The admin must hold a Polis sign-in for this team (RUB-458), so the request reaches the SSO-only guard.
+    test()->actingAs($admin)->withSession([TeamSignIn::SESSION_KEY => [$team->id => $admin->id]])
+        ->delete(route('teams.authentication.connection.destroy', $team))->assertStatus(422);
 
     Http::assertNothingSent();
 });

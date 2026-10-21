@@ -173,14 +173,14 @@ test('each published permalink renders its own front matter, SEO meta and title'
             ->where('post.description', $post['description'])
             ->where('post.date', $post['date'])
             ->where('post.tag', $post['tag'])
-            ->where('meta.title', $post['title'].' — artfct')
+            ->where('meta.title', $post['title'].' — Artfct')
             ->where('meta.description', $post['description']));
 
     // The served `<title>`, not only the prop: this is the string the search
     // result is built from, and the one `E12` measures. It is HTML-escaped in
     // the document, so the expectation is escaped the same way rather than
     // weakened.
-    $response->assertSee(e($post['title']).' — artfct', escape: false);
+    $response->assertSee(e($post['title']).' — Artfct', escape: false);
 })->with(fn (): array => collect(publishedBlogMarkdown())
     ->mapWithKeys(fn (array $post): array => [$post['slug'] => [$post]])
     ->all());

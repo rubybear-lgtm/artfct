@@ -284,7 +284,7 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 
 - always: gitleaks secret scan on staged files
 - Rust staged: `cargo fmt --all -- --check`, `cargo check --workspace --locked`, `cargo check -p artfct-backend --target wasm32-unknown-unknown`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p artfct-backend`
-- PHP staged: `vendor/bin/pint --test --format agent`
+- PHP staged: `vendor/bin/pint --parallel --test --format agent`
 - frontend staged: `npm run format:check`, `npm run lint:check`, `npm run types:check`
 
 `composer test` runs config clear + Pint check + Pest; `composer ci:check` runs the full frontend and test suite. A failing hook is a real failure — fix it, do not bypass with `--no-verify`.
@@ -307,7 +307,6 @@ Use the `artfct-staging` MCP server to store what development and sessions produ
 - Group related artifacts with `list_collections`, `create_collection` and `add_collection_artifact` (for example one collection per spec or feature). Reuse an existing collection before creating one.
 - Share the returned `view_url` with the user. Use `get_artifact` for a fresh link.
 - Never put secrets, credentials or customer data in an artifact.
-- `deploy_to_canvas` is deprecated: it creates anonymous expiring artifacts the workspace cannot search. Do not use it for development artifacts.
 
 **When** — publish at the end of the step that produced the artifact (spec agreed, plan approved, investigation concluded), not as an afterthought. This overrides the "documentation files" rule above only for artifact publishing: artfct artifacts are not repository files, so do not also commit them as docs unless asked.
 

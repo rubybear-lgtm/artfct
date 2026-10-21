@@ -200,7 +200,7 @@ export default function Dashboard({
                                     onBusyChange={setBusy}
                                 />
                             ) : (
-                                <div className="grid grid-cols-1 gap-12 min-[800px]:grid-cols-[1.6fr_1fr] min-[800px]:gap-10">
+                                <div className="flex flex-col gap-12">
                                     <RecentArtifacts
                                         teamSlug={home.team.slug}
                                         scope={home.filters.scope}

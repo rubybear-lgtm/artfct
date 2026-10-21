@@ -76,7 +76,7 @@ function seedVersionedConsoleArtifact(Team $team, User $owner, string $artifactI
 
 function versioningConsoleUrl(Team $team): string
 {
-    return '/settings/teams/'.$team->slug.'/console?q=Browser+version+history';
+    return '/settings/teams/'.$team->slug.'/console?q=Browser+version+history&view=list';
 }
 
 test('the console lists History for a live artifact and not for a revoked one', function () {

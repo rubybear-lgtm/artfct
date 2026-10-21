@@ -36,6 +36,8 @@ export interface HomeRecentArtifact {
     authorName: string | null;
     agent: string | null;
     openUrl: string;
+    /** Session-authenticated preview route; null for a revoked artifact. */
+    previewUrl: string | null;
     revoked: boolean;
 }
 

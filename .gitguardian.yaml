@@ -1,0 +1,18 @@
+# GitGuardian exclusions.
+#
+# The Postgres service container in `.github/workflows/ci.yml` and in
+# `scripts/mcp-e2e-stack.sh` is created for the length of one job and thrown
+# away, and its credentials are literals in the workflow by design: a GitHub
+# Actions service container cannot read them from anywhere else without a
+# repository secret that would still have to hold a literal. The scanner reads
+# `POSTGRES_PASSWORD: artfct` as a Generic Password on every PR that declares
+# the block (RUB-454 re-declared it for the split job).
+#
+# Scoped to that value, not to the workflow file, so a real credential in the
+# same file is still reported.
+version: 2
+
+secret:
+  ignored_matches:
+    - name: CI service container password
+      match: artfct

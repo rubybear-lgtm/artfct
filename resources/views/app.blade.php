@@ -27,7 +27,7 @@
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         {{-- OG / social meta --}}
-        <meta property="og:site_name" content="artfct" />
+        <meta property="og:site_name" content="Artfct" />
         <meta property="og:image" content="{{ asset('og-image.png') }}" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
@@ -56,17 +56,29 @@
         <meta property="og:type" content="{{ $blogPost ? 'article' : 'website' }}" />
 
         {{-- structured data --}}
-        <script type="application/ld+json">
-        {
-            "@@context": "https://schema.org",
-            "@type": "WebApplication",
-            "name": "artfct",
-            "url": "https://artfct.dev",
-            "description": "{{ $pageDescription }}",
-            "applicationCategory": "BusinessApplication",
-            "operatingSystem": "Web"
-        }
-        </script>
+        @php
+            $siteJson = json_encode([
+                '@context' => 'https://schema.org',
+                '@graph' => [
+                    [
+                        '@type' => 'WebApplication',
+                        'name' => 'Artfct',
+                        'alternateName' => 'Artfct AI artifacts',
+                        'url' => 'https://artfct.dev',
+                        'description' => $pageDescription,
+                        'applicationCategory' => 'BusinessApplication',
+                        'operatingSystem' => 'Web',
+                    ],
+                    [
+                        '@type' => 'Organization',
+                        'name' => 'Artfct',
+                        'url' => 'https://artfct.dev',
+                        'logo' => asset('apple-touch-icon.png'),
+                    ],
+                ],
+            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+        @endphp
+        <script type="application/ld+json">{!! $siteJson !!}</script>
 
         @if ($blogPost)
             @php
@@ -78,8 +90,8 @@
                     'datePublished' => $blogPost['date'],
                     'image' => asset('og-image.png'),
                     'mainEntityOfPage' => url()->current(),
-                    'author' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
-                    'publisher' => ['@type' => 'Organization', 'name' => 'artfct', 'url' => 'https://artfct.dev'],
+                    'author' => ['@type' => 'Organization', 'name' => 'Artfct', 'url' => 'https://artfct.dev'],
+                    'publisher' => ['@type' => 'Organization', 'name' => 'Artfct', 'url' => 'https://artfct.dev'],
                 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
             @endphp
             <script type="application/ld+json">{!! $blogPostingJson !!}</script>
@@ -93,8 +105,14 @@
     <body class="font-sans antialiased">
         <x-inertia::app />
 
-        {{-- Server-rendered fallback content for crawlers — visible when SSR or JS unavailable.
-             Hidden after Inertia mounts so users see only the React UI. --}}
+        {{-- Fallback content for crawlers that do not run JavaScript, printed only
+             when the SSR render did not happen. With SSR the page itself is in
+             the HTML, and a second copy would add a second H1 and hidden text
+             that differs from what people see (RUB-489). --}}
+        @php
+            $serverRendered = app(\Inertia\Ssr\SsrState::class)->dispatch() !== null;
+        @endphp
+        @unless ($serverRendered)
         <div id="ssr-fallback" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0">
             @php
                 $fallbackMeta = $page['props']['meta'] ?? [];
@@ -103,10 +121,9 @@
 
             @switch($page['component'] ?? '')
                 @case('landing')
-                    <h1>Every AI on your team, working from the same memory.</h1>
+                    <h1>Every agent sees what the others made.</h1>
+                    <p>Artfct indexes every AI artifact your agents publish: reports, specs, tables and mockups. Claude, Cursor, Codex and ChatGPT can search across your team's work, read the right part and cite where it came from.</p>
                     <p>{{ $pageDescription }}</p>
-                    <p>Share the reports, tables, documents and mockups your AI makes. Everything shared is stored and indexed for your team, and every AI tool on the team can read it and cite its sources. You choose what to share. Your artifacts are never used to train AI, and you can export everything any time.</p>
-                    <p>Set up once: sign up, invite your team and add Artfct to your AI tool. Works with Claude, ChatGPT, Copilot, Cursor and other major AI tools. Start with Free, try Team free, or talk about Enterprise.</p>
                     @break
 
                 @case('welcome')
@@ -154,5 +171,6 @@
                 requestAnimationFrame(check);
             })();
         </script>
+        @endunless
     </body>
 </html>

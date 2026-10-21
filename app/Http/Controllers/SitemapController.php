@@ -35,6 +35,8 @@ class SitemapController extends Controller
             ];
         }
 
+        $urls[] = ['loc' => route('connect.index'), 'priority' => '0.8', 'changefreq' => 'monthly'];
+
         foreach (AiToolSetup::forCurrentEnvironment()->guides() as $guide) {
             $urls[] = [
                 'loc' => route('connect.show', ['tool' => $guide['id']]),
