@@ -597,11 +597,6 @@ function Inline({ text }: { text: string }) {
 function GuideSteps({ guide }: { guide: ConnectionGuide }) {
     return (
         <div className="flex flex-col gap-4">
-            {!guide.verified && (
-                <div className="flex flex-wrap gap-2">
-                    <Tag>Not yet tested by us</Tag>
-                </div>
-            )}
             {guide.installLink && (
                 <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" asChild>
@@ -634,20 +629,14 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     </Step>
                 ))}
             </Steps>
-            {!guide.verified && (
-                <Prose>
-                    If these steps do not match what you see, or the tool does
-                    not connect,{' '}
-                    <a
-                        href={`${GITHUB}/issues`}
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        tell us
-                    </a>
-                    .
-                </Prose>
-            )}
+            <Prose>
+                If these steps do not match what you see, or the tool does not
+                connect,{' '}
+                <a href={`${GITHUB}/issues`} target="_blank" rel="noreferrer">
+                    tell us
+                </a>
+                .
+            </Prose>
         </div>
     );
 }

@@ -1,6 +1,6 @@
 ---
 name: artfct-init
-description: Use when the user asks to set up, connect, install, update or review artfct for a project: checks the connection, installs project guidance (AGENTS.md or CLAUDE.md, GUIDELINES.md, DESIGN.md), asks which tool permissions to grant, and stores optional personal preferences or imports team defaults. Safe to re-run.
+description: "Use when the user asks to set up, connect, install, update or review artfct for a project: checks the connection, installs project guidance (AGENTS.md or CLAUDE.md, GUIDELINES.md, DESIGN.md), asks which tool permissions to grant, and stores optional personal preferences or imports team defaults. Safe to re-run."
 ---
 
 # Set up artfct for this project

@@ -1,6 +1,6 @@
 ---
 name: artfct-search
-description: Use when answering from the team library with search_artifacts, read_artifact or get_artifact: phrasing and rephrasing, reading past a snippet, citing id and version, and saying not found.
+description: "Use when answering from the team library with search_artifacts, read_artifact or get_artifact: phrasing and rephrasing, reading past a snippet, citing id and version, and saying not found."
 ---
 
 # Finding and reading from Artfct

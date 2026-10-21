@@ -234,7 +234,7 @@ test('the docs give step-by-step setup for every verified AI tool', function () 
         ->toContain('claude mcp remove artfct');
 });
 
-test('setup guides for tools we have not verified are labelled as untested', function () {
+test('setup guides for tools we have not verified end to end carry their steps without a public untested label', function () {
     $guides = collect((new AiToolSetup('https://artfct.dev'))->guides())->keyBy('id');
 
     expect($guides->where('verified', false)->keys()->all())
@@ -246,8 +246,11 @@ test('setup guides for tools we have not verified are labelled as untested', fun
         ->and(json_decode($guides['connect-windsurf']['steps'][0]['code'], true))->toBe(['mcpServers' => ['artfct' => ['serverUrl' => 'https://artfct.dev/mcp']]]);
 
     expect(file_get_contents(resource_path('js/pages/docs.tsx')))
-        ->toContain('{!guide.verified && (')
-        ->toContain('Not yet tested by us');
+        ->not->toContain('{!guide.verified && (')
+        ->not->toContain('Not yet tested by us');
+
+    expect(file_get_contents(resource_path('js/pages/connect-show.tsx')))
+        ->not->toContain('verified end to end');
 });
 
 test('the documented actions match the tools the server registers', function () {
@@ -298,8 +301,8 @@ test('llms-full.txt carries every setup guide, action and endpoint the docs page
     expect($body)
         ->toContain($setup->quickInstall())
         ->toContain($setup->projectInstructions())
-        ->toContain('### ChatGPT (not yet tested by Artfct)')
-        ->not->toContain('### Codex (not yet tested')
+        ->toContain("### ChatGPT\n")
+        ->not->toContain('not yet tested')
         ->not->toContain('deploy_to_canvas');
 
     foreach ($setup->guides() as $guide) {
@@ -358,4 +361,18 @@ test('the AI tool tabs keep roving focus and arrow-key navigation', function () 
         ->toContain("case 'End':")
         ->toContain("querySelectorAll<HTMLButtonElement>('[role=\"tab\"]')")
         ->toContain('.focus();');
+});
+
+test('every JSON snippet in the setup guides is pretty-printed', function () {
+    $snippets = collect((new AiToolSetup('https://artfct.dev'))->guides())
+        ->flatMap(fn (array $guide): array => collect($guide['steps'])->pluck('code')->filter()->all())
+        ->filter(fn (string $code): bool => str_starts_with(ltrim($code), '{'));
+
+    expect($snippets)->not->toBeEmpty();
+
+    foreach ($snippets as $code) {
+        $pretty = json_encode(json_decode($code, false, flags: JSON_THROW_ON_ERROR), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        expect($code)->toBe($pretty)->toContain("\n    ");
+    }
 });

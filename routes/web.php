@@ -62,14 +62,10 @@ Route::get('/connect/{tool}', function (string $tool) {
 
     abort_if($guide === null, 404);
 
-    $status = $guide['verified']
-        ? 'The path is verified end to end against staging.'
-        : 'The path is documented; it has not been verified end to end.';
-
     return Inertia::render('connect-show', [
         'meta' => [
             'title' => "Connect {$guide['label']} to Artfct",
-            'description' => "Add Artfct to {$guide['label']} and give it your team's shared store. {$status}",
+            'description' => "Add Artfct to {$guide['label']} so it can publish to your team's workspace and search what your other AI tools made.",
         ],
         'guide' => $guide,
         'mcpUrl' => $setup->mcpUrl(),
@@ -79,7 +75,6 @@ Route::get('/connect/{tool}', function (string $tool) {
             ->map(fn (array $candidate): array => [
                 'id' => $candidate['id'],
                 'label' => $candidate['label'],
-                'verified' => $candidate['verified'],
             ])
             ->values()
             ->all(),

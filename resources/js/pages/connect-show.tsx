@@ -25,7 +25,7 @@ interface ConnectShowProps {
     guide: Guide;
     mcpUrl: string;
     quickInstall: string;
-    related: Array<{ id: string; label: string; verified: boolean }>;
+    related: Array<{ id: string; label: string }>;
     troubleshooting: Array<{ name: string; type: string; note: string }>;
 }
 
@@ -68,11 +68,9 @@ export default function ConnectShow({
     related,
     troubleshooting,
 }: ConnectShowProps) {
-    const answer = guide.verified
-        ? guide.label +
-          ' connects to Artfct through a hosted MCP server, and this path is verified end to end.'
-        : guide.label +
-          ' connects to Artfct through a hosted MCP server. This path is documented, but it has not been verified end to end.';
+    const answer =
+        guide.label +
+        ' connects to Artfct through a hosted MCP server: add the address, approve the sign-in in your browser, and it can search and publish to your team’s workspace.';
 
     return (
         <SitePage active="docs">
@@ -187,11 +185,6 @@ export default function ConnectShow({
                                     className="inline-flex items-center gap-2 rounded-[5px] border border-border px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-primary"
                                 >
                                     {tool.label}
-                                    {tool.verified && (
-                                        <span className="text-xs font-normal text-muted-foreground">
-                                            verified
-                                        </span>
-                                    )}
                                 </Link>
                             </li>
                         ))}

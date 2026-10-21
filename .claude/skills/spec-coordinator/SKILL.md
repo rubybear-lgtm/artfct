@@ -1,6 +1,8 @@
 ---
 name: spec-coordinator
 description: This skill should be used when the user asks to "implement spec N", "run spec 3", "coordinate the specs", "build out the spec", or otherwise asks to execute one of the numbered specs in docs/specs/. Invoking this skill is an explicit request to fan out implementer subagents and zero-context review agents — it partitions a spec into non-conflicting work units, delegates implementation, reviews against the spec's literal DoD checklist, runs a mutation check on negative tests, commits per unit, and keeps CHANGELOG.md, DOCUMENTATION.md and README.md current.
+metadata:
+  internal: true
 ---
 
 # Spec Coordinator

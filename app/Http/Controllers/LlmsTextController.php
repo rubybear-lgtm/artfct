@@ -75,7 +75,7 @@ class LlmsTextController extends Controller
         ];
 
         foreach ($setup->guides() as $guide) {
-            $lines[] = "### {$guide['label']}".($guide['verified'] ? '' : ' (not yet tested by Artfct)');
+            $lines[] = "### {$guide['label']}";
             $lines[] = '';
 
             if (isset($guide['intro'])) {
