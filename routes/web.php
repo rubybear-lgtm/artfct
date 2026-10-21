@@ -107,6 +107,7 @@ Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('a
 Route::get('a/{artifactId}/v/{version}', [ArtifactViewerController::class, 'show'])
     ->whereNumber('version')
     ->name('artifacts.version');
+Route::get('a/{artifactId}/freshness', [ArtifactViewerController::class, 'freshness'])->name('artifacts.freshness');
 
 Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');

@@ -14,6 +14,7 @@ use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -96,6 +97,79 @@ final class ArtifactViewerController extends Controller
         }
 
         abort(404);
+    }
+
+    /**
+     * A cheap metadata poll for the viewer shell: the current version and
+     * sharing, or a revoked flag when the artifact stopped resolving. The
+     * shell reloads the iframe only when one of these differs from what it
+     * rendered, instead of the reader refreshing blindly. Nothing about byte
+     * caching changes here: every iframe load still fetches with `no-store`.
+     *
+     * The visibility posture mirrors `show` exactly, so the poll is never an
+     * existence oracle: the signed-in member's own teams first, then the
+     * Worker's public read, then a sign-in redirect for a signed-out visitor
+     * and the same 404 a missing artifact gets for a signed-in one.
+     *
+     * The `revoked: true` answer is confined to a viewer that already saw the
+     * artifact: it needs the `X-Freshness-Known` header the shell sends only
+     * after its first successful poll, plus any team membership — the one
+     * proxy for a still-valid session the viewer would have rendered. A fresh
+     * visitor without the header gets the same 404/sign-in as `show`.
+     */
+    public function freshness(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        PublicArtifactSource $publicArtifacts,
+    ): JsonResponse|RedirectResponse {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+
+        if ($user !== null) {
+            $resolved = $this->findArtifact($user, $artifactId, $artifacts);
+
+            if ($resolved !== null) {
+                [, $artifact] = $resolved;
+
+                return $this->freshnessResponse((int) ($artifact['version'] ?? 1), $artifact['sharing'] ?? null, false);
+            }
+        }
+
+        $public = $publicArtifacts->find($artifactId);
+
+        if ($public !== null) {
+            return $this->freshnessResponse((int) ($public['version'] ?? 1), 'public', false);
+        }
+
+        // A viewer that already rendered this artifact is told it went away,
+        // so the shell can unmount the frame without another blind reload.
+        // The header confines the signal: without it this branch answers
+        // exactly as `show` does, and the id stays unconfirmed.
+        if ($user !== null && $request->header('X-Freshness-Known') === '1' && $user->teams()->exists()) {
+            return $this->freshnessResponse(null, null, true);
+        }
+
+        if ($user === null) {
+            return redirect()->guest(route('login'));
+        }
+
+        abort(404);
+    }
+
+    /**
+     * The ~50-byte poll verdict. `no-store` on the way out, matching the
+     * token responses: a shared cache must never serve a stale verdict.
+     *
+     * @param  int|null  $version  Null only with `revoked: true`.
+     */
+    private function freshnessResponse(?int $version, mixed $sharing, bool $revoked): JsonResponse
+    {
+        return response()
+            ->json(['version' => $version, 'sharing' => $sharing, 'revoked' => $revoked])
+            ->header('Cache-Control', 'no-store')
+            ->header('Pragma', 'no-cache');
     }
 
     /**
