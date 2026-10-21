@@ -140,7 +140,7 @@ final class ArtifactViewerController extends Controller
         $public = $publicArtifacts->find($artifactId);
 
         if ($public !== null) {
-            return $this->freshnessResponse((int) ($public['version'] ?? 1), 'public', false);
+            return $this->freshnessResponse($public['version'], 'public', false);
         }
 
         // A viewer that already rendered this artifact is told it went away,
