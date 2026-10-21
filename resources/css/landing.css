@@ -627,6 +627,32 @@
         border-radius: 999px;
     }
 
+    /* the shared prompt pill takes the landing palette, not the app's */
+    & .connect .copy-prompt-button {
+        border-color: var(--line-strong);
+        background: var(--paper);
+        color: var(--ink);
+    }
+
+    & .connect .copy-prompt-button:hover {
+        border-color: var(--ink-3);
+    }
+
+    & .connect .copy-prompt-mark {
+        border-color: var(--line);
+        background: var(--white);
+    }
+
+    & .connect .copy-prompt-slip {
+        border-color: var(--line);
+        background: var(--paper);
+        color: var(--ink-2);
+    }
+
+    & .connect .copy-prompt-slip > span:first-child {
+        color: var(--ink);
+    }
+
     & .connect .beats {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));

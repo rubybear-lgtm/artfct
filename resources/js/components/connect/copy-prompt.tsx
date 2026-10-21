@@ -10,6 +10,9 @@ const MARKS = ['claude', 'chatgpt', 'cursor', 'copilot'] as const;
  * (AiToolSetup::agentSetupPrompt). Hovering or focusing it lifts a slip with
  * the prompt's opening line, so copying is never blind. When the clipboard is
  * blocked the full prompt opens below the pill to copy by hand.
+ *
+ * The `copy-prompt-*` classes let the landing page, which has its own
+ * palette, recolour it (resources/css/landing.css).
 
  */
 export function CopyPrompt({
@@ -39,7 +42,7 @@ export function CopyPrompt({
                 onClick={copy}
                 data-testid="copy-prompt"
                 className={cn(
-                    'inline-flex h-14 w-full items-center justify-center gap-3.5 rounded-full border pr-6 pl-3.5 text-base font-semibold transition-colors sm:w-auto',
+                    'copy-prompt-button inline-flex h-14 w-full items-center justify-center gap-3.5 rounded-full border pr-6 pl-3.5 text-base font-semibold transition-colors sm:w-auto',
                     'border-border bg-paper text-foreground hover:border-muted-foreground',
                 )}
             >
@@ -47,7 +50,7 @@ export function CopyPrompt({
                     {MARKS.map((mark) => (
                         <span
                             key={mark}
-                            className="-ml-[7px] grid size-8 place-items-center rounded-full border border-border bg-background transition-[margin] duration-300 group-focus-within/prompt:ml-0.5 group-hover/prompt:ml-0.5 first:ml-0 first:group-focus-within/prompt:ml-0 first:group-hover/prompt:ml-0 motion-reduce:transition-none"
+                            className="copy-prompt-mark -ml-[7px] grid size-8 place-items-center rounded-full border border-border bg-background transition-[margin] duration-300 group-focus-within/prompt:ml-0.5 group-hover/prompt:ml-0.5 first:ml-0 first:group-focus-within/prompt:ml-0 first:group-hover/prompt:ml-0 motion-reduce:transition-none"
                         >
                             <AiToolIcon tool={mark} size={18} />
                         </span>
@@ -60,7 +63,7 @@ export function CopyPrompt({
 
             <div
                 aria-hidden="true"
-                className="pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 hidden w-[min(420px,86vw)] -translate-x-1/2 translate-y-2 rounded-[10px] border border-border bg-paper px-4 pt-3.5 pb-3 text-left text-[13.5px] leading-normal text-muted-foreground opacity-0 shadow-[0_18px_40px_-18px_rgba(20,10,10,0.35)] transition duration-200 group-focus-within/prompt:translate-y-0 group-focus-within/prompt:opacity-100 group-hover/prompt:translate-y-0 group-hover/prompt:opacity-100 motion-reduce:transition-none sm:block"
+                className="copy-prompt-slip pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 hidden w-[min(420px,86vw)] -translate-x-1/2 translate-y-2 rounded-[10px] border border-border bg-paper px-4 pt-3.5 pb-3 text-left text-[13.5px] leading-normal text-muted-foreground opacity-0 shadow-[0_18px_40px_-18px_rgba(20,10,10,0.35)] transition duration-200 group-focus-within/prompt:translate-y-0 group-focus-within/prompt:opacity-100 group-hover/prompt:translate-y-0 group-hover/prompt:opacity-100 motion-reduce:transition-none sm:block"
             >
                 <span className="text-foreground">{opening}</span>
                 <span className="mt-1.5 block text-xs">
