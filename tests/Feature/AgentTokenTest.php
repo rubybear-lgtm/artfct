@@ -8,9 +8,13 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Billing\BillingService;
+use App\Services\Billing\FakeUsage;
+use App\Services\Billing\UsageContract;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -302,4 +306,127 @@ test('additional agent tokens can be minted for an existing bot', function () {
     $stored = OrgToken::query()->findOrFail($response->json('id'));
     expect($stored->user_id)->toBe($first['bot']->id)
         ->and($stored->scopes)->toBe([McpScope::ArtifactsRead->value, McpScope::UsageRead->value]);
+});
+
+test('RUB-511 DoD: bot Bearer MCP can create and read an artifact with bot attribution and no seat charge', function () {
+    configureArtifactLinks();
+    Storage::fake('public');
+
+    $team = Team::factory()->create(['slug' => 'hoku-local']);
+    $human = memberOfTeam($team, TeamRole::Admin);
+    $minted = mintAgentToken($team, $human, [
+        McpScope::ArtifactsRead->value,
+        McpScope::ArtifactsDeploy->value,
+    ], ['bot_name' => 'Hoku']);
+
+    expect(app(BillingService::class)->activeSeatCount($team))->toBe(1)
+        ->and($team->memberships()->count())->toBe(2)
+        ->and($minted['bot']->email)->toBeNull()
+        ->and($minted['bot']->is_bot)->toBeTrue();
+
+    $html = '<!doctype html><title>Hoku report</title><p>Bot authored</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'missing_files' => [$sha],
+        ], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'entrypoint' => 'index.html',
+            'created_at' => '2026-10-22T00:00:00Z',
+            'expires_at' => null,
+            'title' => 'Hoku report',
+            'description' => 'Bot authored',
+            'owner_user_id' => (string) $minted['bot']->id,
+        ], 200),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $initialize = agentMcpInitialize($minted['token'])->assertOk();
+    $sessionId = $initialize->headers->get('MCP-Session-Id');
+
+    $connection = test()->withToken($minted['token'])
+        ->withHeader('MCP-Session-Id', $sessionId)
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/call',
+            'params' => ['name' => 'get_connection', 'arguments' => []],
+        ])->assertOk()
+        ->json('result.structuredContent');
+
+    expect($connection['credential_source'])->toBe('agent_token')
+        ->and($connection['agent'])->toBe(['name' => 'Hoku', 'bot' => true])
+        ->and($connection['user_id'])->toBe((string) $minted['bot']->id);
+
+    test()->withToken($minted['token'])
+        ->withHeader('MCP-Session-Id', $sessionId)
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'deploy_artifact',
+                'arguments' => ['html' => $html],
+            ],
+        ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonPath('result.structuredContent.title', 'Hoku report')
+        ->assertJsonPath('result.structuredContent.organization', 'hoku-local');
+
+    test()->withToken($minted['token'])
+        ->withHeader('MCP-Session-Id', $sessionId)
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'get_artifact',
+                'arguments' => ['id' => ARTIFACT_LINK_ID],
+            ],
+        ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonPath('result.structuredContent.title', 'Hoku report')
+        ->assertJsonMissingPath('result.structuredContent.html');
+
+    $png = base64_encode(hex2bin(
+        '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082'
+    ));
+
+    test()->withToken($minted['token'])
+        ->withHeader('MCP-Session-Id', $sessionId)
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'set_avatar',
+                'arguments' => ['image_base64' => $png],
+            ],
+        ])->assertOk()
+        ->assertJsonPath('result.structuredContent.bot.name', 'Hoku')
+        ->assertJsonPath('result.structuredContent.bot.bot', true);
+
+    expect($minted['bot']->fresh()->avatar)->toContain('/storage/avatars/bots/');
+
+    test()->actingAs($human)->get(route('teams.edit', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('members', function ($members) {
+                return collect($members)->contains(
+                    fn ($member): bool => $member['name'] === 'Hoku'
+                        && $member['isBot'] === true
+                        && $member['email'] === null
+                        && is_string($member['avatar'] ?? null),
+                );
+            }));
+
+    expect(app(BillingService::class)->activeSeatCount($team))->toBe(1);
 });
