@@ -396,6 +396,7 @@ test('the_preview_applies_the_private_rule_to_the_system_content_read', function
 
 test('the_slack_slash_command_fails_closed_and_never_surfaces_a_private_artifact', function () {
     useSharingWorkerDirectory();
+    config(['indexing.enabled' => true]);
 
     $team = Team::factory()->create(['slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
     $user = memberOfTeam($team, TeamRole::Member);
@@ -407,12 +408,16 @@ test('the_slack_slash_command_fails_closed_and_never_surfaces_a_private_artifact
         'verified_at' => now(),
     ]);
 
+    // Scored candidates force the Worker metadata fetch (RUB-478). Without a
+    // signed-in viewer there is no credential to mint, so search fails closed
+    // rather than reading the Worker with a credential that could see more.
+    seedSharingVector($team, 'public-1', 'anything searchable');
+    seedSharingVector($team, 'private-1', 'anything searchable');
+
     Http::fake(['worker.test/*' => Http::response(['artifacts' => [sharingWorkerArtifact('public-1', 'Public One')], 'next_cursor' => null])]);
 
-    $response = postSlackCommand(['team_id' => 'T123', 'user_id' => 'U123', 'text' => 'anything']);
+    $response = postSlackCommand(['team_id' => 'T123', 'user_id' => 'U123', 'text' => 'anything searchable']);
 
-    // No signed-in viewer means no credential to mint; the search fails closed
-    // rather than reading the Worker with a credential that could see more.
     expect($response->status())->toBe(403)
         ->and($response->getContent())->not->toContain('Public One')
         ->and($response->getContent())->not->toContain('private-1');
