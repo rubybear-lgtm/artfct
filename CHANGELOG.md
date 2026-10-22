@@ -4,6 +4,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- RUB-444: `deploy_artifact` returns a `warnings` list when published HTML still contains an inline `<script>` (or `onclick=`-style handler). The page is still published — CSP `script-src 'self'` continues to block those scripts — but the tool result now says to move the script into a separate file such as `app.js`. Guidance and the negative Worker CSP assertion from earlier still apply.
+
 ### Added
 
 - RUB-503: agent discovery without Cloudflare's paid features. `/.well-known/mcp/server-card.json` serves an MCP Server Card (SEP-1649/2127) built from `ArtfctServer`, `server.json` and the documented tools. The `NegotiateMarkdown` middleware returns Markdown to requests that prefer `Accept: text/markdown`, with `x-markdown-tokens` and `Vary: Accept`; this covers `/`, `/connect`, every `/connect/{tool}` page, `/blog`, every post and `/docs`. Browsers still get HTML. `AiToolSetup::guideMarkdown()` now renders the guide steps for both these pages and `llms-full.txt`.

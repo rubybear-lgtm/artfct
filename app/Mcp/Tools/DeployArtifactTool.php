@@ -367,6 +367,11 @@ final class DeployArtifactTool extends Tool
             $result['base_version_checked'] = $baseVersion !== null;
         }
 
+        $warnings = $this->inlineScriptWarnings($files);
+        if ($warnings !== []) {
+            $result['warnings'] = $warnings;
+        }
+
         return Response::structured($result);
     }
 
@@ -510,6 +515,52 @@ final class DeployArtifactTool extends Tool
         }
 
         return 'Untitled artifact';
+    }
+
+    /**
+     * Published pages use `script-src 'self'`, so inline scripts never run
+     * (RUB-444). Surface that at publish time instead of letting the page
+     * look broken with no explanation.
+     *
+     * @param  array<string, array{path: string, bytes: string, content_type: string, sha256: string}>  $files
+     * @return list<string>
+     */
+    private function inlineScriptWarnings(array $files): array
+    {
+        foreach ($files as $file) {
+            if (! str_contains(strtolower($file['content_type']), 'text/html')) {
+                continue;
+            }
+
+            if (! $this->htmlContainsBlockedInlineScript($file['bytes'])) {
+                continue;
+            }
+
+            return [
+                'Inline <script> blocks (and onclick= handlers) in '.$file['path'].' do not run on the published page: CSP is script-src \'self\'. Put the script in its own file (for example app.js) and load it with <script src="app.js"></script>. See get_guidance topic publish.',
+            ];
+        }
+
+        return [];
+    }
+
+    private function htmlContainsBlockedInlineScript(string $html): bool
+    {
+        if (preg_match('/\son[a-z]+\s*=/i', $html) === 1) {
+            return true;
+        }
+
+        if (preg_match_all('/<script\b([^>]*)>/i', $html, $matches, PREG_SET_ORDER) === 0) {
+            return false;
+        }
+
+        foreach ($matches as $match) {
+            if (preg_match('/\bsrc\s*=/i', $match[1]) !== 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, mixed> */
