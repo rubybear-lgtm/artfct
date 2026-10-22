@@ -15,11 +15,14 @@ uses(RefreshDatabase::class);
 test('hostile preview content cannot run scripts or load network resources even when opened directly', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
+    $member->switchTeam($team);
     test()->actingAs($member);
     config(['services.artifact_access.token_secret' => null]);
 
     $requests = new ArrayObject;
-    Route::get('/__preview-probe/{kind}', function (string $kind) use ($requests) {
+    // sendBeacon uses POST; scripts/images/styles use GET. Accept both so a
+    // probe hit is recorded instead of a 405 that aborts the Playwright run.
+    Route::match(['GET', 'POST'], '/__preview-probe/{kind}', function (string $kind) use ($requests) {
         $requests[] = $kind;
 
         return response('body { color: red; }')->header('Content-Type', 'text/css');
@@ -73,7 +76,7 @@ test('hostile preview content cannot run scripts or load network resources even 
     Route::get('/__preview-control', fn () => response($html));
     visit('/__preview-control')
         ->assertScript("document.documentElement.dataset.executed === 'yes'");
-    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background');
+    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background', 'beacon');
     $requests->exchangeArray([]);
 
     $previewUrl = route('teams.artifacts.preview', ['team' => $team, 'artifactId' => 'hostile-preview'], absolute: false);
@@ -101,7 +104,11 @@ test('hostile preview content cannot run scripts or load network resources even 
         'name' => 'Hostile document stack',
     ]);
     $collection->artifacts()->create(['artifact_id' => 'hostile-preview', 'added_at' => now()]);
-    $direct->navigate(route('teams.collections.index', $team))->resize(390, 850)->wait(0.2)
+    // Fresh visit so we do not assert against a leftover iframe from the
+    // previous preview-frame page before the collections document lands.
+    visit(route('teams.collections.index', $team))->resize(390, 850)->wait(0.2)
+        ->assertSee('Hostile document stack')
+        ->assertPresent("@collection-toggle-{$collection->id}")
         ->assertScript('document.querySelector("iframe") !== null')
         ->click("@collection-toggle-{$collection->id}")->wait(0.2)
         ->assertScript('document.documentElement.dataset.compromised === undefined')

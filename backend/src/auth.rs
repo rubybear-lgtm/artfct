@@ -226,10 +226,6 @@ pub(crate) fn rate_limit_kv_key_for_token(token_id: &str) -> String {
     format!("{RATE_LIMIT_TOKEN_KV_PREFIX}{token_id}")
 }
 
-#[allow(
-    dead_code,
-    reason = "anonymous rate limiting stays on the existing per-IP WAF rule (spec 07 scope); this key derivation exists so the two namespaces are provably disjoint, exercised by anonymous_path_still_rate_limited_by_ip"
-)]
 pub(crate) fn rate_limit_kv_key_for_ip(ip: &str) -> String {
     format!("{RATE_LIMIT_IP_KV_PREFIX}{ip}")
 }
@@ -239,6 +235,15 @@ pub(crate) fn rate_limit_kv_key_for_ip(ip: &str) -> String {
 /// rejected.
 pub(crate) fn rate_limit_allows(current_count: u32, limit: u32) -> bool {
     current_count < limit
+}
+
+/// Client IP Cloudflare wrote on the request. Missing header falls back to a
+/// shared key so the limiter cannot be skipped by omitting the header (RUB-463).
+pub(crate) fn connecting_ip(req: &Request) -> Result<String> {
+    Ok(req
+        .headers()
+        .get("CF-Connecting-IP")?
+        .unwrap_or_else(|| "unknown".to_string()))
 }
 
 /// Resolves the request's credential end to end: extracts the bearer token,
@@ -308,18 +313,35 @@ pub(crate) async fn cached_jwks(env: &Env) -> Option<Jwks> {
 /// heavy concurrent bursts from the same token, same tradeoff class as the
 /// eventual-consistency window already accepted for revocation.
 pub(crate) async fn check_and_increment_rate_limit(env: &Env, token_id: &str) -> Result<bool> {
+    check_and_increment_rate_limit_key(
+        env,
+        &rate_limit_kv_key_for_token(token_id),
+        RATE_LIMIT_MAX_PER_TOKEN,
+    )
+    .await
+}
+
+/// Per-IP limiter for anonymous ephemeral create/PATCH (RUB-463). Runs in the
+/// Worker so `*--prod` / `*--stg` hosts cannot bypass a WAF rule scoped only to
+/// the apex, and so create/PATCH stay limited when the zone plan only applies
+/// one edge rate-limit rule.
+pub(crate) async fn check_and_increment_ip_rate_limit(env: &Env, ip: &str) -> Result<bool> {
+    check_and_increment_rate_limit_key(env, &rate_limit_kv_key_for_ip(ip), RATE_LIMIT_MAX_PER_IP)
+        .await
+}
+
+async fn check_and_increment_rate_limit_key(env: &Env, key: &str, limit: u32) -> Result<bool> {
     let kv = env.kv(KV_BINDING)?;
-    let key = rate_limit_kv_key_for_token(token_id);
     let current = kv
-        .get(&key)
+        .get(key)
         .text()
         .await?
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(0);
-    if !rate_limit_allows(current, RATE_LIMIT_MAX_PER_TOKEN) {
+    if !rate_limit_allows(current, limit) {
         return Ok(false);
     }
-    kv.put(&key, (current + 1).to_string())?
+    kv.put(key, (current + 1).to_string())?
         .expiration_ttl(RATE_LIMIT_WINDOW_SECONDS)
         .execute()
         .await?;

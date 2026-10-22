@@ -45,8 +45,8 @@ use artifact_routes::{
     ArtifactLookupDecision, ArtifactOrgRow,
 };
 use auth::{
-    authorization_matches, check_and_increment_rate_limit, denylist_kv_key, require_org_scope,
-    resolve_tenant_org, Jwks,
+    authorization_matches, check_and_increment_ip_rate_limit, check_and_increment_rate_limit,
+    connecting_ip, denylist_kv_key, require_org_scope, resolve_tenant_org, Jwks,
 };
 #[cfg(test)]
 use auth::{
@@ -145,6 +145,10 @@ const RATE_LIMIT_IP_KV_PREFIX: &str = "auth:ratelimit:ip:";
 const RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 /// Requests allowed per token per window (spec 07 DoD item 8).
 const RATE_LIMIT_MAX_PER_TOKEN: u32 = 60;
+/// Anonymous create/PATCH requests allowed per IP per window (RUB-463).
+/// Matches the create WAF rule's intended ~60/min budget so `*--prod` /
+/// `*--stg` hosts stay limited even when edge rules are missing or partial.
+const RATE_LIMIT_MAX_PER_IP: u32 = 60;
 /// Token id used for the legacy static `ARTFCT_ORG_TOKEN` credential, which
 /// carries no `jti` of its own.
 const LEGACY_ORG_TOKEN_ID: &str = "legacy-static-org-token";
@@ -3198,6 +3202,16 @@ mod tests {
         assert!(ip_key.starts_with(RATE_LIMIT_IP_KV_PREFIX));
         assert!(!ip_key.starts_with(RATE_LIMIT_TOKEN_KV_PREFIX));
         assert_ne!(ip_key, token_key);
+        // The IP budget matches the create WAF intent so Worker enforcement
+        // covers hosts the edge rule might miss (RUB-463).
+        assert!(!rate_limit_allows(
+            RATE_LIMIT_MAX_PER_IP,
+            RATE_LIMIT_MAX_PER_IP
+        ));
+        assert!(rate_limit_allows(
+            RATE_LIMIT_MAX_PER_IP - 1,
+            RATE_LIMIT_MAX_PER_IP
+        ));
     }
 
     #[test]
