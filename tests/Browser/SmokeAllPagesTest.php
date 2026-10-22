@@ -53,7 +53,7 @@ function notPages(): array
 {
     return [
         'jwks' => 'JSON', 'mcp.server-card' => 'JSON (McpServerCardTest)', 'sitemap' => 'XML', 'robots' => 'plain text (LandingSearchVisibilityTest)',
-        'landing.media' => 'landing animation files (LandingFlowAssetsTest)',
+        'landing.media' => 'retired video route (LandingFlowAssetsTest)',
         'llms.index' => 'plain text for AI tools (DocsTest)', 'llms.full' => 'plain text for AI tools (DocsTest)', 'authenticate' => 'sign-in callback (redirect)',
         'oauth.metadata' => 'OAuth discovery JSON',
         'oauth.resource-metadata' => 'OAuth protected-resource discovery JSON',

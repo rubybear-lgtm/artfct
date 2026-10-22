@@ -17,7 +17,6 @@ use App\Http\Controllers\WorkerEventController;
 use App\Services\Blog\BlogContent;
 use App\Services\Blog\BlogPost;
 use App\Support\AiToolSetup;
-use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -28,7 +27,6 @@ Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
         'title' => 'Artfct: shared context and AI artifacts for every agent',
         'description' => 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.',
     ],
-    'flow' => LandingMedia::forPage(),
     'agentSetupPrompt' => AiToolSetup::forCurrentEnvironment()->agentSetupPrompt(),
     'connectGuides' => collect(AiToolSetup::forCurrentEnvironment()->guides())
         ->map(fn (array $guide): array => ['id' => $guide['id'], 'label' => $guide['label']])
