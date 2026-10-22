@@ -516,10 +516,11 @@ final class DeployArtifactTool extends Tool
     private function provenance(Request $request, ?string $model): array
     {
         $sessionId = $request->sessionId();
+        $agentName = McpContext::agentName();
 
         return [
-            'agent' => null,
-            'agent_raw' => null,
+            'agent' => $agentName,
+            'agent_raw' => $agentName,
             'agent_version' => null,
             'model' => $model,
             'session_id' => $sessionId,
@@ -532,8 +533,8 @@ final class DeployArtifactTool extends Tool
             'client' => 'artfct-remote-mcp',
             'client_version' => '1.0.0',
             'sources' => [
-                'agent' => 'absent',
-                'agent_raw' => 'absent',
+                'agent' => $agentName === null ? 'absent' : 'credential',
+                'agent_raw' => $agentName === null ? 'absent' : 'credential',
                 'agent_version' => 'absent',
                 'model' => $model === null ? 'absent' : 'self_reported',
                 'session_id' => $sessionId === null ? 'absent' : 'process',

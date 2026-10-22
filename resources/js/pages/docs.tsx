@@ -20,12 +20,21 @@ type ConnectionGuide = {
     steps: SetupStep[];
 };
 
+type AgentTokenSetup = {
+    title: string;
+    intro: string;
+    mcpUrl: string;
+    headerExample: string;
+    steps: SetupStep[];
+};
+
 type AiToolSetup = {
     mcpUrl: string;
     llmsUrl: string;
     llmsFullUrl: string;
     quickInstall: string;
     guides: ConnectionGuide[];
+    agentTokenSetup: AgentTokenSetup;
     tools: Array<{ name: string; does: string; permission: string }>;
     permissions: Array<{ name: string; type: string; note: string }>;
     troubleshooting: Array<{ name: string; type: string; note: string }>;
@@ -717,6 +726,10 @@ export default function Docs({ contract, setup }: DocsProps) {
                 { id: 'mcp', label: 'Connect your AI tool' },
                 { id: 'connect-quick', label: 'Set up several tools' },
                 { id: 'connect-check', label: 'Check that it works' },
+                {
+                    id: 'connect-agent-token',
+                    label: 'Connect with a header',
+                },
                 { id: 'connect-tools', label: 'What your AI tool can do' },
                 { id: 'connect-troubleshooting', label: 'Troubleshooting' },
             ],
@@ -863,6 +876,19 @@ export default function Docs({ contract, setup }: DocsProps) {
                             search Artfct for something your team already
                             shared.
                         </Prose>
+
+                        <SubHeading id="connect-agent-token">
+                            {setup.agentTokenSetup.title}
+                        </SubHeading>
+                        <Prose>{setup.agentTokenSetup.intro}</Prose>
+                        <GuideSteps
+                            guide={{
+                                id: 'connect-agent-token',
+                                label: setup.agentTokenSetup.title,
+                                verified: true,
+                                steps: setup.agentTokenSetup.steps,
+                            }}
+                        />
                     </Section>
 
                     <Section
@@ -917,10 +943,15 @@ export default function Docs({ contract, setup }: DocsProps) {
                             its administrator to invite the email address you
                             sign in with. Administrators can see and remove
                             connected tools in team settings under{' '}
-                            <strong>AI tool connections</strong>. Connecting an
-                            AI tool never needs an API token; tokens are only
-                            for your own code calling the REST API below, which
-                            sends one as a bearer token. The{' '}
+                            <strong>AI tool connections</strong>. Most AI tools
+                            sign in with the browser. Bots that only accept a
+                            header use an{' '}
+                            <Link href="#connect-agent-token">
+                                agent token
+                            </Link>{' '}
+                            from <strong>Agent &amp; API tokens</strong>. API
+                            tokens on that same page are for your own code
+                            calling the REST API below. The{' '}
                             <Link href={terms.url()}>terms</Link> and{' '}
                             <Link href={privacy.url()}>privacy policy</Link>{' '}
                             explain how your data is handled.

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\TeamRole;
 use App\Models\McpConnection;
 use App\Models\OrgToken;
@@ -41,16 +42,16 @@ class AuthenticateOrgToken
         }
 
         if (! isset($claims['scope'])) {
-            $claims['scope'] = match (TeamRole::tryFrom($claims['role'])) {
-                TeamRole::Admin, TeamRole::Member => 'artifacts:read artifacts:deploy artifacts:delete comments:write collections:read collections:write usage:read',
-                TeamRole::Viewer => 'artifacts:read collections:read usage:read',
-                default => '',
-            };
+            $claims['scope'] = McpScope::claimForRole(TeamRole::tryFrom($claims['role']));
         }
 
         $orgToken = OrgToken::query()->where('jti', $claims['jti'])->first();
         if ($orgToken !== null && $orgToken->revoked_at !== null) {
             return response()->json(['error' => 'Token revoked'], 401);
+        }
+
+        if ($orgToken !== null && $orgToken->expires_at->isPast()) {
+            return response()->json(['error' => 'Token expired'], 401);
         }
 
         if ($request->is('mcp')) {
@@ -72,8 +73,23 @@ class AuthenticateOrgToken
             return response()->json(['error' => 'Unknown org'], 401);
         }
 
+        if ($orgToken !== null) {
+            $orgToken->forceFill(['last_used_at' => now()])->saveQuietly();
+            $request->attributes->set('org_token', $orgToken);
+
+            if ($orgToken->isAgent()) {
+                $request->attributes->set('agent_token_name', $orgToken->name);
+            }
+        }
+
+        $actorUser = User::query()->whereKey((int) $claims['user_id'])->first();
+        if ($actorUser?->is_bot === true) {
+            $request->attributes->set('agent_token_name', $actorUser->name);
+            $request->attributes->set('actor_is_bot', true);
+        }
+
         if ($request->is('mcp')) {
-            $this->syncHostedConnection($request, $claims, $team, app(AuditLogger::class));
+            $this->syncHostedConnection($request, $claims, $team, app(AuditLogger::class), $orgToken);
         }
 
         $request->attributes->set('org_jwt_team', $team);
@@ -136,18 +152,20 @@ class AuthenticateOrgToken
     /**
      * Keep hosted MCP clients visible and revocable in the same connection
      * registry used by the local CLI. The credential JTI is the stable key;
-     * client-provided metadata is display-only.
+     * client-provided metadata is display-only. Agent tokens prefer the
+     * token name as the connection label so bots show up as "Hoku".
      *
      * @param  array{jti: string, user_id: string, role: string, scope?: string}  $claims
      */
-    private function syncHostedConnection(Request $request, array $claims, Team $team, AuditLogger $auditLogger): void
+    private function syncHostedConnection(Request $request, array $claims, Team $team, AuditLogger $auditLogger, ?OrgToken $orgToken = null): void
     {
         $params = $request->json('params', []);
         $clientInfo = is_array($params) && is_array($params['clientInfo'] ?? null)
             ? $params['clientInfo']
             : [];
+        $agentName = $orgToken?->isAgent() === true ? $this->boundedString($orgToken->name, 100) : null;
         $clientName = $this->boundedString(
-            $clientInfo['name'] ?? $request->header('MCP-Client-Name'),
+            $clientInfo['name'] ?? $request->header('MCP-Client-Name') ?? $agentName,
             100,
         );
         $clientVersion = $this->boundedString($clientInfo['version'] ?? $request->header('MCP-Client-Version'), 50);
@@ -155,7 +173,7 @@ class AuthenticateOrgToken
         $isNew = $connection === null;
 
         if ($isNew) {
-            $clientName ??= $this->boundedString($request->userAgent(), 100) ?? 'unknown-mcp-client';
+            $clientName ??= $agentName ?? $this->boundedString($request->userAgent(), 100) ?? 'unknown-mcp-client';
         }
 
         if ($isNew) {
@@ -165,7 +183,7 @@ class AuthenticateOrgToken
                 'credential_jti' => $claims['jti'],
                 'team_id' => $team->id,
                 'user_id' => User::query()->whereKey((int) $claims['user_id'])->value('id'),
-                'name' => $clientName.' MCP',
+                'name' => $agentName ?? ($clientName.' MCP'),
             ]);
         }
 
@@ -188,6 +206,10 @@ class AuthenticateOrgToken
                 (string) $claims['user_id'],
                 "mcp_connection:{$connection->public_id}",
             );
+        }
+
+        if ($orgToken !== null && $orgToken->mcp_connection_id === null) {
+            $orgToken->forceFill(['mcp_connection_id' => $connection->id])->saveQuietly();
         }
     }
 

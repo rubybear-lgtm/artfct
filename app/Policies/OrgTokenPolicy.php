@@ -23,6 +23,8 @@ class OrgTokenPolicy
      * Determine whether the user can revoke the given token: its own
      * creator always can; anyone else needs the team's member-management
      * permission (spec 07: "member cannot revoke another user's token").
+     * Bot tokens are an exception: any non-viewer human on the team may
+     * revoke them, since bots cannot manage credentials themselves.
      */
     public function revoke(User $user, OrgToken $token): bool
     {
@@ -30,6 +32,15 @@ class OrgTokenPolicy
             return true;
         }
 
-        return $user->hasTeamPermission($token->team, TeamPermission::RemoveMember);
+        if ($user->hasTeamPermission($token->team, TeamPermission::RemoveMember)) {
+            return true;
+        }
+
+        $owner = $token->user;
+
+        return $owner?->is_bot === true
+            && $user->is_bot !== true
+            && $user->belongsToTeam($token->team)
+            && $user->teamRole($token->team) !== TeamRole::Viewer;
     }
 }
