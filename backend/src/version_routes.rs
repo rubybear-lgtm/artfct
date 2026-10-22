@@ -626,8 +626,21 @@ async fn create_version(
         );
     }
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
+    // The bundle lock serialises same-content creates; the per-artifact lock
+    // serialises version-numbering and promotion for this artifact; the org
+    // lock serialises the quota check with the insert (RUB-465).
+    let lock_keys = vec![
+        artifact_lock_key(&artifact.row_id),
+        bundle_lock_key(&artifact_org, content_hash),
+        org_quota_lock_key(&artifact_org),
+    ];
+    let locks = match storage.acquire_content_locks(&lock_keys).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     // The quota gate is the artifact's org, not the editor's: the bytes land in
-    // the owning org's storage.
+    // the owning org's storage. Checked under the org lock.
     if let Some(refusal) = quota_refusal(
         &storage.database,
         env,
@@ -637,19 +650,9 @@ async fn create_version(
     )
     .await?
     {
+        let _ = storage.release_content_locks(&locks).await;
         return Ok(refusal);
     }
-    // The bundle lock serialises same-content creates; the per-artifact lock
-    // serialises version-numbering and promotion for this artifact.
-    let lock_keys = vec![
-        artifact_lock_key(&artifact.row_id),
-        bundle_lock_key(&artifact_org, content_hash),
-    ];
-    let locks = match storage.acquire_content_locks(&lock_keys).await {
-        Ok(locks) => locks,
-        Err(store::StoreError::Contention) => return retryable_contention_response(),
-        Err(error) => return Err(worker::Error::RustError(error.to_string())),
-    };
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -704,8 +707,9 @@ async fn create_version(
         let agent = provenance.get("agent").and_then(Value::as_str);
         let repo_url = provenance.get("repo_url").and_then(Value::as_str);
         let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
-        let title = clipped_text(raw.get("title"), 200);
-        let description = clipped_text(raw.get("description"), 1000);
+        let title = clipped_text(raw.get("title"), crate::validation::MAX_TITLE_CHARS);
+        let description =
+            clipped_text(raw.get("description"), crate::validation::MAX_DESCRIPTION_CHARS);
         let mut statements = vec![
             storage
                 .database
