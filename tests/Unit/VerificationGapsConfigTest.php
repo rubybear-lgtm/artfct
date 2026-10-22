@@ -19,6 +19,7 @@ test('mcp_e2e_skip_list_still_runs_for_guidance_and_runbook_markdown', function 
 
 test('pre_push_builds_production_ssr_before_lint_and_types', function () use ($repoRoot) {
     $hook = file_get_contents($repoRoot.'/.githooks/pre-push');
+    $order = file_get_contents($repoRoot.'/scripts/test-wayfinder-hook-order.sh');
     $buildAt = strpos($hook, 'APP_ENV=production npm run build:ssr');
     $lintAt = strpos($hook, 'npm run lint:check');
     $typesAt = strpos($hook, 'npm run types:check');
@@ -30,7 +31,9 @@ test('pre_push_builds_production_ssr_before_lint_and_types', function () use ($r
         ->and($buildAt)->toBeLessThan($typesAt)
         ->and($hook)->toContain('composer analyse')
         ->and($hook)->toContain('npm run routes:check')
-        ->and($hook)->toContain('npm run test:skills');
+        ->and($hook)->toContain('npm run test:skills')
+        ->and($order)->toContain('assert_before .githooks/pre-push')
+        ->and($order)->toContain('APP_ENV=production npm run build:ssr');
 });
 
 test('pre_commit_treats_routes_controllers_and_skill_scripts_as_frontend', function () use ($repoRoot) {
