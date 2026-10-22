@@ -226,9 +226,11 @@ jobs:
   # the one suite that cannot share a run with the rest: they get their own job
   # and their own runner. Only Chromium is installed, and the browser download
   # is cached — the suite does not use WebKit or Firefox.
+  # Pin 24.04: ubuntu-latest moved to 26.04 and Playwright Chromium rejects it
+  # ("does not support chromium on ubuntu26.04-x64").
   pest_browser:
     name: Pest (browser)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
