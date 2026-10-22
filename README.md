@@ -47,7 +47,7 @@ retired `artfct` command-line app, remove its old `artfct` entry first (`claude 
 
 An AI tool that cannot use a hosted server is not supported. Workspace administrators download an
 organization's permanent artifacts from the console as a zip, and automation uses the REST API
-with an organization token (team settings, **API tokens**).
+with an organization token (team settings, **Agent & API tokens**). Agent tokens on the same page authenticate the hosted MCP endpoint with a Bearer header when a bot cannot use browser OAuth.
 
 The hosted server exposes these tools:
 
