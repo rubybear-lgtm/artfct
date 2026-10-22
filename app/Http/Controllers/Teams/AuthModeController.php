@@ -7,6 +7,7 @@ use App\Enums\AuthMode;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\UpdateAuthModeRequest;
 use App\Models\Team;
+use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Billing\PlanGate;
 use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
@@ -26,7 +27,7 @@ class AuthModeController extends Controller
      * moving back down is always allowed regardless of plan, so a lapsed
      * or downgraded org is never stuck unable to turn SSO back off.
      */
-    public function update(UpdateAuthModeRequest $request, Team $team, AuthModeTransitioner $transitioner, AuditLogger $auditLogger): RedirectResponse
+    public function update(UpdateAuthModeRequest $request, Team $team, AuthModeTransitioner $transitioner, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
         Gate::authorize('changeAuthMode', $team);
 
@@ -52,6 +53,19 @@ class AuthModeController extends Controller
             $transitioner->transition($team, $target, $confirmed);
         } catch (AuthModeTransitionException $exception) {
             throw ValidationException::withMessages(['auth_mode' => $exception->getMessage()]);
+        }
+
+        // AuthKit-minted MCP refresh tokens and org tokens keep working until
+        // revoked; refuse the switch if the Worker denylist write fails so
+        // SSO-only never leaves sessionless AuthKit credentials live (RUB-482).
+        if ($target === AuthMode::Polis && $previous !== AuthMode::Polis) {
+            if (! $tokenRevoker->revokeNonPolisCredentialsForTeam($team)) {
+                $team->forceFill(['auth_mode' => $previous])->save();
+
+                throw ValidationException::withMessages([
+                    'auth_mode' => __('Unable to revoke existing MCP credentials at the Worker. Auth mode was not changed; please retry shortly.'),
+                ]);
+            }
         }
 
         $auditLogger->recordForRequest($request, AuditEventType::AuthModeChanged, $team, (string) $request->user()->id, "{$previous->value} -> {$target->value}");
