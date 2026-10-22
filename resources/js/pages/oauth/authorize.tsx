@@ -48,7 +48,17 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
     destructive: 'Destructive',
 };
 
-export default function Authorize({
+/**
+ * Remount when the authorization request identity changes. Inertia reuses this
+ * page component across /oauth/authorize visits that only differ by query
+ * string; useForm would otherwise keep the abandoned request's state,
+ * code_challenge, and consent_token (RUB-510).
+ */
+export default function Authorize(props: Props) {
+    return <AuthorizeForm key={props.consentToken} {...props} />;
+}
+
+function AuthorizeForm({
     clientId,
     clientName,
     userName,
