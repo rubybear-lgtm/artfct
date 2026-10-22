@@ -639,12 +639,16 @@ async fn create_version(
     {
         return Ok(refusal);
     }
-    // The bundle lock serialises same-content creates; the per-artifact lock
-    // serialises version-numbering and promotion for this artifact.
-    let lock_keys = vec![
-        artifact_lock_key(&artifact.row_id),
-        bundle_lock_key(&artifact_org, content_hash),
-    ];
+    // Manifest content hashes join the artifact/bundle locks so a concurrent
+    // hard-delete cannot observe ref_count 0 and remove R2 bytes this version
+    // is about to claim (RUB-464). Sorted in one acquire_content_locks call.
+    let mut lock_keys: Vec<String> = manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect();
+    lock_keys.push(artifact_lock_key(&artifact.row_id));
+    lock_keys.push(bundle_lock_key(&artifact_org, content_hash));
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
@@ -683,7 +687,7 @@ async fn create_version(
         for file in &manifest.files {
             present.push(
                 storage
-                    .blob_exists(&file.sha256)
+                    .blob_reusable_in_org(&artifact_org, &file.sha256, file.size_bytes)
                     .await
                     .map_err(|error| worker::Error::RustError(error.to_string()))?,
             );
@@ -873,7 +877,9 @@ async fn restore_version(
             403,
         );
     }
-    let locks = match storage
+    // Source must be read under the artifact lock before we know which content
+    // hashes to hold for the refcount bumps (RUB-464).
+    let artifact_only = match storage
         .acquire_content_locks(&[artifact_lock_key(&artifact.row_id)])
         .await
     {
@@ -881,10 +887,51 @@ async fn restore_version(
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
+    let source = match storage
+        .database
+        .prepare(format!(
+            "SELECT {VERSION_COLUMNS} FROM artifact_versions WHERE artifact_row_id = ? AND version = ? AND expires_at IS NULL LIMIT 1"
+        ))
+        .bind(&[
+            JsValue::from_str(&artifact.row_id),
+            JsValue::from_f64(source_version as f64),
+        ]) {
+        Ok(statement) => statement.first::<VersionRow>(None).await?,
+        Err(error) => {
+            let _ = storage.release_content_locks(&artifact_only).await;
+            return Err(error);
+        }
+    };
+    let Some(source) = source else {
+        let _ = storage.release_content_locks(&artifact_only).await;
+        return json_error(ErrorCode::VersionNotFound, "Version not found.", 404);
+    };
+    let source_manifest: PermanentManifest = match serde_json::from_str(&source.manifest) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            let _ = storage.release_content_locks(&artifact_only).await;
+            return Err(worker::Error::RustError(error.to_string()));
+        }
+    };
+    let _ = storage.release_content_locks(&artifact_only).await;
+    // Re-acquire artifact + every source hash in one sorted set before any
+    // refcount change so a concurrent hard-delete cannot drop the blob.
+    let mut lock_keys: Vec<String> = source_manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect();
+    lock_keys.push(artifact_lock_key(&artifact.row_id));
+    let locks = match storage.acquire_content_locks(&lock_keys).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let operation: Result<Response> = async {
         let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-        let source = storage
+        // Re-validate the source is still live under the full lock set.
+        let source_alive = storage
             .database
             .prepare(format!(
                 "SELECT {VERSION_COLUMNS} FROM artifact_versions WHERE artifact_row_id = ? AND version = ? AND expires_at IS NULL LIMIT 1"
@@ -895,7 +942,7 @@ async fn restore_version(
             ])?
             .first::<VersionRow>(None)
             .await?;
-        let Some(source) = source else {
+        let Some(source) = source_alive else {
             return json_error(ErrorCode::VersionNotFound, "Version not found.", 404);
         };
         if source.content_hash == artifact.content_hash {
@@ -923,7 +970,6 @@ async fn restore_version(
             .unwrap_or(0);
         let version = next_version(u32::try_from(highest).ok());
         let version_id = Uuid::new_v4().simple().to_string();
-        let source_manifest: PermanentManifest = serde_json::from_str(&source.manifest)?;
         let mut statements = vec![
             storage
                 .database
