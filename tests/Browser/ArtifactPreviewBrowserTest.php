@@ -19,7 +19,9 @@ test('hostile preview content cannot run scripts or load network resources even 
     config(['services.artifact_access.token_secret' => null]);
 
     $requests = new ArrayObject;
-    Route::get('/__preview-probe/{kind}', function (string $kind) use ($requests) {
+    // sendBeacon uses POST; scripts/images/styles use GET. Accept both so a
+    // probe hit is recorded instead of a 405 that aborts the Playwright run.
+    Route::match(['GET', 'POST'], '/__preview-probe/{kind}', function (string $kind) use ($requests) {
         $requests[] = $kind;
 
         return response('body { color: red; }')->header('Content-Type', 'text/css');
@@ -73,7 +75,7 @@ test('hostile preview content cannot run scripts or load network resources even 
     Route::get('/__preview-control', fn () => response($html));
     visit('/__preview-control')
         ->assertScript("document.documentElement.dataset.executed === 'yes'");
-    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background');
+    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background', 'beacon');
     $requests->exchangeArray([]);
 
     $previewUrl = route('teams.artifacts.preview', ['team' => $team, 'artifactId' => 'hostile-preview'], absolute: false);
