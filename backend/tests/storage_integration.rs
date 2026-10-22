@@ -53,6 +53,67 @@ fn optional_env(name: &str) -> Option<String> {
     env::var(name).ok().filter(|value| !value.is_empty())
 }
 
+fn require_context() -> Result<Context, Box<dyn Error>> {
+    context().ok_or_else(|| {
+        "storage integration env is unset; run via scripts/mcp-e2e-stack.sh (or set ARTFCT_INTEGRATION_*)"
+            .into()
+    })
+}
+
+fn require_member_pair(context: &Context) -> Result<(&str, &str), Box<dyn Error>> {
+    match (
+        context.member_token.as_deref(),
+        context.member2_token.as_deref(),
+    ) {
+        (Some(owner), Some(viewer)) => Ok((owner, viewer)),
+        _ => Err(
+            "ARTFCT_INTEGRATION_MEMBER_TOKEN and ARTFCT_INTEGRATION_MEMBER2_TOKEN are required for this test"
+                .into(),
+        ),
+    }
+}
+
+fn require_member_and_other_org(context: &Context) -> Result<(&str, &str), Box<dyn Error>> {
+    match (
+        context.member_token.as_deref(),
+        context.other_org_token.as_deref(),
+    ) {
+        (Some(owner), Some(other)) => Ok((owner, other)),
+        _ => Err(
+            "ARTFCT_INTEGRATION_MEMBER_TOKEN and ARTFCT_INTEGRATION_OTHER_ORG_TOKEN are required for this test"
+                .into(),
+        ),
+    }
+}
+
+fn require_sharing_actors(context: &Context) -> Result<(&str, &str, &str), Box<dyn Error>> {
+    match (
+        context.member_token.as_deref(),
+        context.member2_token.as_deref(),
+        context.other_org_token.as_deref(),
+    ) {
+        (Some(owner), Some(viewer), Some(other)) => Ok((owner, viewer, other)),
+        _ => Err(
+            "ARTFCT_INTEGRATION_MEMBER_TOKEN, MEMBER2_TOKEN and OTHER_ORG_TOKEN are required for this test"
+                .into(),
+        ),
+    }
+}
+
+fn require_limits_secret(context: &Context) -> Result<&str, Box<dyn Error>> {
+    context
+        .limits_secret
+        .as_deref()
+        .ok_or_else(|| "ARTFCT_LIMITS_WRITE_SECRET is required for this test".into())
+}
+
+fn require_member_token(context: &Context) -> Result<&str, Box<dyn Error>> {
+    context
+        .member_token
+        .as_deref()
+        .ok_or_else(|| "ARTFCT_INTEGRATION_MEMBER_TOKEN is required for this test".into())
+}
+
 fn context() -> Option<Context> {
     let names = [
         "ARTFCT_INTEGRATION_BASE_URL",
@@ -713,9 +774,7 @@ fn count_value(context: &Context, sql: &str, key: &str) -> Result<i64, Box<dyn E
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn an_expired_lock_from_a_crashed_holder_is_reclaimed() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("expired-lock");
     let hash = sha256(&bytes);
@@ -753,9 +812,7 @@ async fn an_expired_lock_from_a_crashed_holder_is_reclaimed() -> Result<(), Box<
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn an_active_lock_reports_contention_without_writing_an_artifact(
 ) -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("active-lock");
     let hash = sha256(&bytes);
@@ -805,9 +862,7 @@ async fn an_active_lock_reports_contention_without_writing_an_artifact(
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn permanent_roundtrip_stores_d1_and_r2() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("roundtrip");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({"agent": "integration", "repo_url": "https://github.com/example/repo", "commit_sha": "abcdef123456", "sources": {"agent": "self_reported"}})).await?;
@@ -832,9 +887,7 @@ async fn permanent_roundtrip_stores_d1_and_r2() -> Result<(), Box<dyn Error>> {
 #[ignore = "requires an isolated local Wrangler Worker and Laravel event receiver"]
 async fn caller_written_request_headers_change_real_anonymous_view_keys(
 ) -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     for name in [
         "ARTFCT_VISITOR_KEY_SECRET",
         "ARTFCT_WORKER_EVENT_SECRET",
@@ -915,9 +968,7 @@ async fn caller_written_request_headers_change_real_anonymous_view_keys(
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("isolated-origin");
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1076,9 +1127,7 @@ async fn signed_link_opens_the_artifact_on_its_isolated_origin() -> Result<(), B
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn signed_entrypoint_cookie_authorizes_bundle_subresources() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let index = b"<!doctype html><script src=\"assets/app.js\"></script>";
     let script = b"console.log('bundle');";
@@ -1142,9 +1191,7 @@ async fn signed_entrypoint_cookie_authorizes_bundle_subresources() -> Result<(),
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn six_megabyte_permanent_file_succeeds() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = vec![b'x'; 6 * 1024 * 1024];
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1163,9 +1210,7 @@ async fn six_megabyte_permanent_file_succeeds() -> Result<(), Box<dyn Error>> {
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn reposting_identical_content_keeps_one_artifact_and_one_blob() -> Result<(), Box<dyn Error>>
 {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("duplicate");
     let (first, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1216,9 +1261,7 @@ async fn reposting_identical_content_keeps_one_artifact_and_one_blob() -> Result
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
 ) -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("concurrent");
 
@@ -1283,9 +1326,7 @@ async fn concurrent_identical_creates_keep_one_artifact_and_one_reference(
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn concurrent_deletes_leave_no_artifact_and_no_orphan_blob() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("concurrent-delete");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1341,9 +1382,7 @@ async fn concurrent_deletes_leave_no_artifact_and_no_orphan_blob() -> Result<(),
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn deleting_a_permanent_artifact_stops_serving_it() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("delete-stops-serving");
     let (id, _hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1390,9 +1429,7 @@ async fn deleting_a_permanent_artifact_stops_serving_it() -> Result<(), Box<dyn 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn create_delete_create_delete_returns_refcount_to_zero() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("refcount-cycle");
 
@@ -1430,9 +1467,7 @@ async fn create_delete_create_delete_returns_refcount_to_zero() -> Result<(), Bo
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn create_raced_with_final_delete_keeps_live_blob() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("create-delete-race");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1502,9 +1537,7 @@ async fn create_raced_with_final_delete_keeps_live_blob() -> Result<(), Box<dyn 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn delete_once_keeps_shared_blob_and_delete_last_removes_it() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let shared = unique_html("delete-shared");
     let extra = unique_html("delete-extra");
@@ -1596,9 +1629,7 @@ async fn delete_once_keeps_shared_blob_and_delete_last_removes_it() -> Result<()
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
 async fn gdpr_erasure_removes_bytes_from_r2() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let shared = unique_html("erasure-shared");
     let first_only = unique_html("erasure-first-only");
@@ -1716,9 +1747,7 @@ async fn gdpr_erasure_removes_bytes_from_r2() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
 async fn orphan_sweep_retries_zero_ref_blob_after_r2_recovers() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("orphan-sweep-retry");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1786,9 +1815,7 @@ async fn orphan_sweep_retries_zero_ref_blob_after_r2_recovers() -> Result<(), Bo
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn provenance_columns_and_complete_json_survive() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("provenance");
     let (id, _) = create_and_upload(&context, &client, &bytes, json!({"agent": "integration-agent", "repo_url": "https://github.com/example/provenance", "commit_sha": "0123456789abcdef", "sources": {"agent": "process", "repo_url": "process", "commit_sha": "process"}, "unknown_tail": {"retained": true}})).await?;
@@ -1806,9 +1833,7 @@ async fn provenance_columns_and_complete_json_survive() -> Result<(), Box<dyn Er
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn export_writes_byte_identical_blobs() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("export");
     let (_, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1838,9 +1863,7 @@ async fn export_writes_byte_identical_blobs() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn export_metadata_round_trips() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("worker-export");
     let (_, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -1871,9 +1894,7 @@ async fn export_metadata_round_trips() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn permanent_mode_requires_auth() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let response = RetryingClient::new()
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({"mode": "permanent"}))
@@ -1887,9 +1908,7 @@ async fn permanent_mode_requires_auth() -> Result<(), Box<dyn Error>> {
 #[ignore = "requires an isolated local Wrangler Worker and scoped JWT fixtures"]
 async fn direct_worker_artifact_writes_enforce_role_and_oauth_scopes() -> Result<(), Box<dyn Error>>
 {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let read_token = env::var("ARTFCT_INTEGRATION_READ_TOKEN")?;
     let deploy_token = env::var("ARTFCT_INTEGRATION_DEPLOY_TOKEN")?;
     let client = RetryingClient::new();
@@ -1962,9 +1981,7 @@ async fn direct_worker_artifact_writes_enforce_role_and_oauth_scopes() -> Result
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let response = RetryingClient::new()
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({"mode": "ephemeral", "manifest": {}}))
@@ -1977,9 +1994,7 @@ async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let created = client
         .post(format!("{}/v1/artifacts", context.base))
@@ -2009,9 +2024,7 @@ async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker and Node/Vite"]
 async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let fixture =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vite-react");
     let output_dir = tempfile::tempdir()?;
@@ -2098,9 +2111,7 @@ async fn real_vite_build_deploys_and_renders() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn incomplete_bundle_returns_404() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let index = b"<script src=\"app.js\"></script>";
     let app = b"console.log('bundle')";
@@ -2133,9 +2144,7 @@ async fn incomplete_bundle_returns_404() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn nested_bundle_asset_uses_manifest_content_type() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let index = b"<h1>bundle</h1>";
     let app = b"console.log('bundle')";
@@ -2183,9 +2192,7 @@ async fn nested_bundle_asset_uses_manifest_content_type() -> Result<(), Box<dyn 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let index = b"<h1>expired</h1>";
     let script = b"console.log('expired')";
@@ -2296,9 +2303,7 @@ async fn expired_incomplete_bundle_is_cleaned_up() -> Result<(), Box<dyn Error>>
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn same_hash_paths_share_one_blob_and_manifest_types() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     // Run-unique bytes: identical across the two paths so the sharing assertion
     // means something, but never bytes an earlier run already stored. This suite
@@ -2387,9 +2392,7 @@ async fn same_hash_paths_share_one_blob_and_manifest_types() -> Result<(), Box<d
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker and Node/Vite"]
 async fn redeploying_changed_bundle_uploads_one_file() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let fixture =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vite-react");
     let output_dir = tempfile::tempdir()?;
@@ -2637,9 +2640,7 @@ fn artifact_row_id(context: &Context, artifact_id: &str) -> Result<String, Box<d
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn new_artifacts_get_a_13_character_stable_id() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("stable-id");
     let created = client
@@ -2664,9 +2665,7 @@ async fn new_artifacts_get_a_13_character_stable_id() -> Result<(), Box<dyn Erro
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn publishing_v2_keeps_the_id_and_serves_new_content() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("versions-alpha");
     let v2 = unique_html("versions-beta");
@@ -2718,9 +2717,7 @@ async fn publishing_v2_keeps_the_id_and_serves_new_content() -> Result<(), Box<d
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn reposting_identical_bytes_creates_no_new_version() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("version-noop");
     let (id, hash) = create_and_upload(&context, &client, &bytes, json!({})).await?;
@@ -2774,9 +2771,7 @@ async fn reposting_identical_bytes_creates_no_new_version() -> Result<(), Box<dy
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn restore_creates_a_new_version() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("restore-alpha");
     let v2 = unique_html("restore-beta");
@@ -2820,9 +2815,7 @@ async fn restore_creates_a_new_version() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker and local R2 storage"]
 async fn old_version_blob_survives_the_orphan_sweep() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("sweep-alpha");
     let v2 = unique_html("sweep-beta");
@@ -2871,9 +2864,7 @@ async fn old_version_blob_survives_the_orphan_sweep() -> Result<(), Box<dyn Erro
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn revoking_revokes_every_version() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("revoke-alpha");
     let v2 = unique_html("revoke-beta");
@@ -2930,9 +2921,7 @@ async fn revoking_revokes_every_version() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn hard_delete_releases_every_version_blob() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("delete-versions-alpha");
     let v2 = unique_html("delete-versions-beta");
@@ -2985,9 +2974,7 @@ async fn hard_delete_releases_every_version_blob() -> Result<(), Box<dyn Error>>
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn legacy_32_character_artifact_accepts_a_new_version() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("legacy-v1");
     let v2 = unique_html("legacy-v2");
@@ -3025,9 +3012,7 @@ async fn legacy_32_character_artifact_accepts_a_new_version() -> Result<(), Box<
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn pending_v2_does_not_replace_v1_until_uploaded() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let v1 = unique_html("pending-alpha");
     let v2 = unique_html("pending-beta");
@@ -3088,8 +3073,8 @@ fn collect_files(
 // ---------------------------------------------------------------------------
 // RUB-438: sharing (private/team/public), edit access and artifact ownership,
 // driven against the live Worker with the extra credentials the stack mints.
-// Every test skips with `Ok(())` when its optional token is absent, so an old
-// state env runs the suite without failing on a stack it predates.
+// Missing optional tokens fail the test (RUB-471): a silent Ok(()) made the
+// suite report green when mcp-e2e-stack failed to mint member credentials.
 // ---------------------------------------------------------------------------
 
 /// One JSON request under an explicit bearer token. The suite's own helpers all
@@ -3310,17 +3295,10 @@ fn token_user_id(token: &str) -> Result<String, Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn private_artifact_is_hidden_from_other_members() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     // The owner is a plain member, not the admin, so "the owner sees it" and
     // "an admin sees it" are two different rules; the viewer is a third user.
-    let (Some(owner_token), Some(viewer_token)) = (
-        context.member_token.as_deref(),
-        context.member2_token.as_deref(),
-    ) else {
-        return Ok(());
-    };
+    let (owner_token, viewer_token) = require_member_pair(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("private-hiding");
     let id =
@@ -3382,9 +3360,7 @@ async fn private_artifact_is_hidden_from_other_members() -> Result<(), Box<dyn E
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn private_artifact_is_never_served_anonymously() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("private-anonymous");
     let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "private", "view")
@@ -3403,12 +3379,8 @@ async fn private_artifact_is_never_served_anonymously() -> Result<(), Box<dyn Er
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn sharing_change_takes_effect_on_next_request() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let Some(owner_token) = context.member_token.as_deref() else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let owner_token = require_member_token(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("sharing-downgrade");
     let id =
@@ -3470,16 +3442,8 @@ async fn sharing_change_takes_effect_on_next_request() -> Result<(), Box<dyn Err
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn only_owner_or_admin_can_change_sharing() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let (Some(owner_token), Some(viewer_token), Some(other_org_token)) = (
-        context.member_token.as_deref(),
-        context.member2_token.as_deref(),
-        context.other_org_token.as_deref(),
-    ) else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let (owner_token, viewer_token, other_org_token) = require_sharing_actors(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("sharing-permission");
     let id =
@@ -3512,12 +3476,8 @@ async fn only_owner_or_admin_can_change_sharing() -> Result<(), Box<dyn Error>> 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn public_sharing_off_downgrades_and_refuses_public() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let Some(secret) = context.limits_secret.as_deref() else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let secret = require_limits_secret(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("public-off");
     let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "public", "view")
@@ -3579,15 +3539,8 @@ async fn public_sharing_off_downgrades_and_refuses_public() -> Result<(), Box<dy
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn team_edit_lets_members_publish_versions() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let (Some(owner_token), Some(publisher_token)) = (
-        context.member_token.as_deref(),
-        context.member2_token.as_deref(),
-    ) else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let (owner_token, publisher_token) = require_member_pair(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("team-edit-v1");
     let id =
@@ -3639,15 +3592,8 @@ async fn team_edit_lets_members_publish_versions() -> Result<(), Box<dyn Error>>
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn public_edit_allows_another_org_to_publish_a_version() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let (Some(owner_token), Some(other_org_token)) = (
-        context.member_token.as_deref(),
-        context.other_org_token.as_deref(),
-    ) else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let (owner_token, other_org_token) = require_member_and_other_org(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("public-edit-v1");
     let id =
@@ -3736,12 +3682,8 @@ async fn public_edit_allows_another_org_to_publish_a_version() -> Result<(), Box
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn owner_backfill_sets_owners() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
-    let Some(secret) = context.limits_secret.as_deref() else {
-        return Ok(());
-    };
+    let context = require_context()?;
+    let secret = require_limits_secret(&context)?;
     let client = RetryingClient::new();
     let bytes = unique_html("owner-backfill");
     let id =
@@ -3783,9 +3725,7 @@ async fn owner_backfill_sets_owners() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn isolated_origin_frames_only_for_the_app() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("isolated-framing");
     let id = create_sharing_artifact(&context, &client, &context.token, &bytes, "public", "view")
@@ -3836,9 +3776,7 @@ async fn isolated_origin_frames_only_for_the_app() -> Result<(), Box<dyn Error>>
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
 async fn old_public_links_and_the_public_read_lead_to_the_viewer() -> Result<(), Box<dyn Error>> {
-    let Some(context) = context() else {
-        return Ok(());
-    };
+    let context = require_context()?;
     let client = RetryingClient::new();
     let bytes = unique_html("short-link-public");
     let (public_id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
