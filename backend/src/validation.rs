@@ -188,8 +188,20 @@ pub(crate) fn validate_permanent_manifest(
     Ok((manifest, store::content_hash(&canonical)))
 }
 
+/// Title / description maxima shared by permanent and ephemeral creates (RUB-465).
+pub(crate) const MAX_TITLE_CHARS: usize = 200;
+pub(crate) const MAX_DESCRIPTION_CHARS: usize = 1000;
+/// Ephemeral thumbnail URLs have no permanent counterpart; keep them short.
+pub(crate) const MAX_THUMBNAIL_CHARS: usize = 2000;
+
 /// A string field trimmed to `max` characters; empty or non-string is `None`.
 pub(crate) fn clipped_text(value: Option<&Value>, max: usize) -> Option<String> {
     let text = value?.as_str()?.trim();
+    (!text.is_empty()).then(|| text.chars().take(max).collect())
+}
+
+/// Same clip as [`clipped_text`] for already-deserialized `Option<String>` fields.
+pub(crate) fn clipped_string(value: Option<String>, max: usize) -> Option<String> {
+    let text = value?.trim().to_string();
     (!text.is_empty()).then(|| text.chars().take(max).collect())
 }

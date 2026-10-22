@@ -353,19 +353,6 @@ pub(crate) async fn upload_permanent_file(
             404,
         );
     };
-    // Quota gate (spec 14): the file's declared size against the owning org's
-    // storage, before its bytes are read or written.
-    if let Some(refusal) = quota_refusal(
-        database,
-        env,
-        &artifact_org,
-        row.expected_size.max(0) as u64,
-        quota::AddKind::Upload,
-    )
-    .await?
-    {
-        return Ok(refusal);
-    }
     let mut lock_keys = serde_json::from_str::<PermanentManifest>(&row.manifest)
         .map(|manifest| {
             manifest
@@ -388,11 +375,28 @@ pub(crate) async fn upload_permanent_file(
         lock_keys =
             org_admin::artifact_version_hashes(database, artifact_id, &artifact_org).await?;
     }
+    // Per-org lock with the quota check so concurrent uploads cannot jointly
+    // exceed storage_bytes (RUB-465).
+    lock_keys.push(org_quota_lock_key(&artifact_org));
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
+    // Quota gate (spec 14): the file's declared size against the owning org's
+    // storage, under the org lock, before its bytes are read or written.
+    if let Some(refusal) = quota_refusal(
+        database,
+        env,
+        &artifact_org,
+        row.expected_size.max(0) as u64,
+        quota::AddKind::Upload,
+    )
+    .await?
+    {
+        let _ = storage.release_content_locks(&locks).await;
+        return Ok(refusal);
+    }
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
             if let Some(version_id) = &row.version_id {
@@ -1804,19 +1808,39 @@ pub(crate) async fn create_permanent_artifact(
         .get("provenance")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
-    let artifact_title = clipped_text(raw.get("title"), 200);
-    let artifact_description = clipped_text(raw.get("description"), 1000);
+    let artifact_title = clipped_text(raw.get("title"), crate::validation::MAX_TITLE_CHARS);
+    let artifact_description = clipped_text(
+        raw.get("description"),
+        crate::validation::MAX_DESCRIPTION_CHARS,
+    );
     let agent = provenance.get("agent").and_then(Value::as_str);
     let repo_url = provenance.get("repo_url").and_then(Value::as_str);
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // RUB-465: a valid credential must not recreate a deleted org. Laravel
+    // provisions the row through org-limits / org-settings pushes.
+    if !crate::org_admin::org_exists(&storage.database, &org).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    // Hold the per-org lock across the public-sharing check, quota decision,
+    // and insert so concurrent creates cannot jointly exceed limits and a
+    // settings downgrade cannot race the insert (RUB-465).
+    let org_key = org_quota_lock_key(&org);
+    let org_lock_owner = match storage.acquire_content_lock(&org_key).await {
+        Ok(owner) => owner,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     // Public sharing can be switched off per org. A missing row means allowed
     // (the 0007 default). Checked before any row is written.
     if !sharing_allowed(
         sharing,
         public_sharing_allowed(&storage.database, &org).await?,
     ) {
+        let _ = storage
+            .release_content_lock(&org_key, &org_lock_owner)
+            .await;
         return json_error(
             ErrorCode::PublicSharingDisabled,
             "This team has turned off public sharing.",
@@ -1824,7 +1848,7 @@ pub(crate) async fn create_permanent_artifact(
         );
     }
     // Quota gate (spec 14): decided from the manifest's declared sizes,
-    // before any lock, row or blob is written.
+    // before any row or blob is written.
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
     if let Some(refusal) = quota_refusal(
         &storage.database,
@@ -1835,6 +1859,9 @@ pub(crate) async fn create_permanent_artifact(
     )
     .await?
     {
+        let _ = storage
+            .release_content_lock(&org_key, &org_lock_owner)
+            .await;
         return Ok(refusal);
     }
     let file_hashes = manifest
@@ -1859,8 +1886,18 @@ pub(crate) async fn create_permanent_artifact(
     let bundle_key = bundle_lock_key(&org, content_hash);
     let bundle_lock = match storage.acquire_content_lock(&bundle_key).await {
         Ok(owner) => (bundle_key, owner),
-        Err(store::StoreError::Contention) => return retryable_contention_response(),
-        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+        Err(store::StoreError::Contention) => {
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
+            return retryable_contention_response();
+        }
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
+            return Err(worker::Error::RustError(error.to_string()));
+        }
     };
     match existing_permanent_by_content(
         &storage,
@@ -1875,14 +1912,21 @@ pub(crate) async fn create_permanent_artifact(
             let release = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
                 .await;
+            let org_release = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
             let response = response?;
             release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+            org_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
             return Ok(response);
         }
         Ok(None) => {}
         Err(error) => {
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
                 .await;
             return Err(error);
         }
@@ -1894,11 +1938,17 @@ pub(crate) async fn create_permanent_artifact(
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
                 .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
             return retryable_contention_response();
         }
         Err(error) => {
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
                 .await;
             return Err(worker::Error::RustError(error.to_string()));
         }
@@ -1933,14 +1983,10 @@ pub(crate) async fn create_permanent_artifact(
         let mut attempt = 0;
         loop {
             attempt += 1;
+            // No INSERT INTO orgs here (RUB-465): the org row must already
+            // exist from a limits/settings push. Creating it from the JWT
+            // recreated deleted teams as empty namespaces with default limits.
             let mut statements = vec![
-                database
-                    .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
-                    .bind(&[
-                        JsValue::from_str(&org),
-                        JsValue::from_str(&org),
-                        JsValue::from_str(&now),
-                    ])?,
                 database
                     .prepare("INSERT OR IGNORE INTO users (id, created_at) VALUES (?, ?)")
                     .bind(&[
@@ -2106,9 +2152,13 @@ pub(crate) async fn create_permanent_artifact(
     let bundle_release = storage
         .release_content_lock(&bundle_lock.0, &bundle_lock.1)
         .await;
+    let org_release = storage
+        .release_content_lock(&org_key, &org_lock_owner)
+        .await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     bundle_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    org_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
     if created && response.status_code() == 201 {
         emit_artifact_created(
             ctx,
