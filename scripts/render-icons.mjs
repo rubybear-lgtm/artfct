@@ -60,6 +60,7 @@ function packPngIco(pngs) {
     });
 
     let writeAt = headerSize;
+
     for (const png of pngs) {
         png.copy(out, writeAt);
         writeAt += png.length;
