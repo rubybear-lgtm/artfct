@@ -59,6 +59,11 @@ class FakeArtifactDirectory implements ArtifactDirectory
         return $this->listCallCount;
     }
 
+    public function requireViewerCredential(string $orgSlug): void
+    {
+        // In-memory fake — no Worker credential gate.
+    }
+
     /**
      * Adds one artifact to the in-memory demo set — for tests (spec 13's
      * search suite in particular) that need artifacts beyond the two

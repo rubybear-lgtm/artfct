@@ -2,12 +2,24 @@
 
 namespace App\Contracts;
 
+use Illuminate\Http\Exceptions\HttpResponseException;
+
 /**
  * Lists, filters, revokes, and exports artifacts from the Worker's D1.
  * Implemented by the real HTTP client and an in-memory fake for tests.
  */
 interface ArtifactDirectory
 {
+    /**
+     * Ensure the caller has a Worker viewer credential for `$orgSlug`.
+     * Does not contact the Worker — only mints (or refuses) the credential.
+     * Search must call this before scoring so a zero-hit path still fails closed
+     * when there is no signed-in viewer / bearer (RUB-478).
+     *
+     * @throws HttpResponseException When no credential can be minted
+     */
+    public function requireViewerCredential(string $orgSlug): void;
+
     /**
      * List artifacts for an organization with optional filtering.
      *

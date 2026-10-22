@@ -24,6 +24,13 @@ final class HttpArtifactDirectory implements ArtifactDirectory
         );
     }
 
+    public function requireViewerCredential(string $orgSlug): void
+    {
+        // Discard the token — minting alone is the fail-closed gate for search
+        // when vector scoring would otherwise skip every Worker list call.
+        WorkerCredential::forOrg($orgSlug);
+    }
+
     public function listArtifacts(
         string $orgSlug,
         array $filters = [],

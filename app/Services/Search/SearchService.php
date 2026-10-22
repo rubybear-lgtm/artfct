@@ -55,6 +55,10 @@ final class SearchService
         string $ip = 'internal',
         string $userAgent = 'search',
     ): array {
+        // Fail closed before scoring: a zero-candidate search must not skip the
+        // viewer-credential gate that used to run on the full-directory list.
+        $this->artifacts->requireViewerCredential($team->slug);
+
         // Laravel-side scopes (collection / artifact type) narrow the vector
         // and lexical queries. Null means org-wide; [] means nothing matches.
         $scopeIds = $this->laravelScopeIds($team, $filters);
