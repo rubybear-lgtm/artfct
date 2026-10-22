@@ -946,9 +946,7 @@ export default function Docs({ contract, setup }: DocsProps) {
                             <strong>AI tool connections</strong>. Most AI tools
                             sign in with the browser. Bots that only accept a
                             header use an{' '}
-                            <Link href="#connect-agent-token">
-                                agent token
-                            </Link>{' '}
+                            <Link href="#connect-agent-token">agent token</Link>{' '}
                             from <strong>Agent &amp; API tokens</strong>. API
                             tokens on that same page are for your own code
                             calling the REST API below. The{' '}

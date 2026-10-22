@@ -166,11 +166,9 @@ export default function Tokens({
 
         if (ttlDays.trim() !== '') {
             const days = Number(ttlDays);
+
             if (Number.isFinite(days) && days > 0) {
-                body.ttl_seconds = Math.min(
-                    Math.round(days * 86400),
-                    31536000,
-                );
+                body.ttl_seconds = Math.min(Math.round(days * 86400), 31536000);
             }
         }
 
@@ -281,9 +279,7 @@ export default function Tokens({
 
                                 <div className="flex flex-wrap items-end gap-3">
                                     <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-                                        <Label htmlFor="token-name">
-                                            Name
-                                        </Label>
+                                        <Label htmlFor="token-name">Name</Label>
                                         <Input
                                             id="token-name"
                                             placeholder={
@@ -523,9 +519,7 @@ export default function Tokens({
                     </code>
                     {created?.kind === 'agent' && (
                         <div className="mt-3 space-y-2 text-sm">
-                            <p className="text-muted-foreground">
-                                MCP URL
-                            </p>
+                            <p className="text-muted-foreground">MCP URL</p>
                             <code className="block overflow-auto rounded-md bg-muted p-2 text-xs break-all">
                                 {created.mcpEndpoint}
                             </code>

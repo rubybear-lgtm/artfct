@@ -402,9 +402,11 @@ export default function TeamEdit({
                                     botScopes.forEach((scope) =>
                                         body.append('scopes[]', scope),
                                     );
+
                                     if (botAvatarFile) {
                                         body.append('avatar', botAvatarFile);
                                     }
+
                                     const response = await fetch(
                                         teamRoutes.bots.store.url({
                                             team: team.slug,
@@ -419,6 +421,7 @@ export default function TeamEdit({
                                         },
                                     );
                                     setBotBusy(false);
+
                                     if (!response.ok) {
                                         const payload = await response
                                             .json()
@@ -428,8 +431,10 @@ export default function TeamEdit({
                                                 payload.errors?.name?.[0] ??
                                                 'Could not add the bot.',
                                         );
+
                                         return;
                                     }
+
                                     const payload = await response.json();
                                     setCreatedBotToken({
                                         name: payload.name,
@@ -504,17 +509,20 @@ export default function TeamEdit({
                                                         scope,
                                                     )}
                                                     onChange={(e) =>
-                                                        setBotScopes((current) =>
-                                                            e.target.checked
-                                                                ? [
-                                                                      ...current,
-                                                                      scope,
-                                                                  ]
-                                                                : current.filter(
-                                                                      (item) =>
-                                                                          item !==
+                                                        setBotScopes(
+                                                            (current) =>
+                                                                e.target.checked
+                                                                    ? [
+                                                                          ...current,
                                                                           scope,
-                                                                  ),
+                                                                      ]
+                                                                    : current.filter(
+                                                                          (
+                                                                              item,
+                                                                          ) =>
+                                                                              item !==
+                                                                              scope,
+                                                                      ),
                                                         )
                                                     }
                                                 />
@@ -698,8 +706,8 @@ export default function TeamEdit({
                                                         canAddBot && (
                                                             <label className="inline-flex cursor-pointer items-center">
                                                                 <span className="sr-only">
-                                                                    Upload avatar
-                                                                    for{' '}
+                                                                    Upload
+                                                                    avatar for{' '}
                                                                     {
                                                                         member.name
                                                                     }
@@ -719,9 +727,13 @@ export default function TeamEdit({
                                                                             e
                                                                                 .target
                                                                                 .files?.[0];
-                                                                        if (!file) {
+
+                                                                        if (
+                                                                            !file
+                                                                        ) {
                                                                             return;
                                                                         }
+
                                                                         const body =
                                                                             new FormData();
                                                                         body.append(
@@ -766,29 +778,36 @@ export default function TeamEdit({
                                                                             e.currentTarget.parentElement?.querySelector(
                                                                                 'input[type="file"]',
                                                                             );
-                                                                        input?.click();
+
+                                                                        if (
+                                                                            input instanceof
+                                                                            HTMLInputElement
+                                                                        ) {
+                                                                            input.click();
+                                                                        }
                                                                     }}
                                                                 >
                                                                     Avatar
                                                                 </Button>
                                                             </label>
                                                         )}
-                                                {(member.isBot
-                                                    ? canAddBot
-                                                    : viewer.canRemoveMember) &&
-                                                    member.id !== viewer.id && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                setRemoving(
-                                                                    member,
-                                                                )
-                                                            }
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    )}
+                                                    {(member.isBot
+                                                        ? canAddBot
+                                                        : viewer.canRemoveMember) &&
+                                                        member.id !==
+                                                            viewer.id && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    setRemoving(
+                                                                        member,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        )}
                                                 </div>
                                             </td>
                                         </tr>
