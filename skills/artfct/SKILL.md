@@ -1,15 +1,15 @@
 ---
 name: artfct
-description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_artifact and deploy_to_canvas MCP tools, tier selection, and best practices for self-contained HTML.
+description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_artifact MCP tool, sharing selection, and best practices for self-contained HTML.
 ---
 
 # artfct — Artifact Deployment Skill
 
-artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. When `deploy_artifact` is available (a signed-in workspace), use it: the artifact is stored in the workspace, searchable and reusable by the team. Otherwise, when `deploy_to_canvas` is available, use it for an anonymous, expiring link. Either way, deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence. `deploy_to_canvas` is deprecated for signed-in workspaces.
+artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. Call `deploy_artifact` when it is available (a signed-in workspace): the artifact is stored in the workspace, searchable and reusable by the team. Deploy instead of emitting raw code blocks — a live URL is more useful than a markdown code fence.
 
 ## When to Deploy
 
-Call `deploy_to_canvas` any time the output is:
+Call `deploy_artifact` any time the output is:
 
 - A data visualization, chart, or dashboard
 - A generated report or summary with styled layout
@@ -21,60 +21,23 @@ When the user says "show me", "preview this", or "make it shareable" — deploy.
 
 ## Deploying
 
-**First, check** whether `mcp__artfct__deploy_to_canvas` is in your available tools.
+**First, check** whether `deploy_artifact` (or `mcp__artfct__deploy_artifact`) is in your available tools. If it is not, tell the user to connect the artfct MCP server (see `references/setup.md`) — do not invent a fallback publish path.
 
-### Option A — MCP (preferred)
-
-Call `deploy_artifact` when it is available (a signed-in workspace), otherwise
-`deploy_to_canvas`:
+Call `deploy_artifact`:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `html` | string | Yes | Complete, valid, self-contained HTML |
-| `sharing` | `"team"` \| `"private"` \| `"public"` | No | `deploy_artifact` only: who can open it; defaults to `team` |
-| `edit_access` | `"view"` \| `"edit"` | No | `deploy_artifact` only: whether the people it is shared with can publish new versions; defaults to `view` |
-| `tier` | `"public"` \| `"secure"` | No | Deprecated alias for `sharing` (`secure` = `team`); `deploy_to_canvas` still uses it |
-| `artifact_id` | string | No | `deploy_artifact` only: publish a new version of this artifact instead of a new one (see below) |
+| `html` | string | Yes* | Complete, valid, self-contained HTML (single-page publishes) |
+| `files` | object | Yes* | Multi-file bundle: relative path → contents (`entrypoint` names the main HTML) |
+| `entrypoint` | string | No | Main HTML path in a bundle; defaults to `index.html` |
+| `title` | string | No | Short name for search and the console (two to four words) |
+| `description` | string | No | One sentence saying what the artifact is for |
+| `sharing` | `"team"` \| `"private"` \| `"public"` | No | Who can open it; defaults to `team` |
+| `edit_access` | `"view"` \| `"edit"` | No | Whether people it is shared with can publish new versions; defaults to `view` |
+| `artifact_id` | string | No | Publish a new version of this artifact instead of a new one |
+| `base_version` | integer | No | Version you built on; required with `artifact_id` when updating (see below) |
 
-### Option B — API fallback (no install required)
-
-When the MCP is not configured, deploy via the REST API using Python's standard library — no dependencies needed:
-
-```python
-import json, urllib.request
-
-html = """PASTE HTML HERE"""
-body = json.dumps({"html": html, "tier": "public"}).encode()
-req = urllib.request.Request(
-    "https://artfct.dev/v1/artifacts",
-    data=body,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req) as r:
-    print(json.loads(r.read())["url"])
-```
-
-Or with curl, writing the HTML to a temp file first:
-
-```sh
-cat > /tmp/_artifact.html << 'HTML'
-PASTE HTML HERE
-HTML
-
-python3 -c "
-import json, urllib.request, sys
-html = open('/tmp/_artifact.html').read()
-body = json.dumps({'html': html, 'tier': 'public'}).encode()
-req = urllib.request.Request('https://artfct.dev/v1/artifacts', data=body, headers={'Content-Type': 'application/json'}, method='POST')
-with urllib.request.urlopen(req) as r: print(json.loads(r.read())['url'])
-"
-```
-
-After a fallback deploy, suggest the MCP for a smoother workflow:
-
-> To deploy directly from your agent next time, add the artfct server in your agent's settings
-> (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
+\* Pass either `html` or `files`, not both. Use `files` for anything interactive, with images, or with fonts (see HTML Requirements).
 
 ### Choosing who can open it
 
@@ -130,12 +93,16 @@ before offering to publish a new version.
 When the user asks to change something already published (in this conversation
 or found with `search_artifacts`), publish the new content as a **new version**:
 call `deploy_artifact` with the same parameters plus `artifact_id` set to the
-artifact's `id`. The id, link, collections and view history stay the same, and
-search moves to the new content. The `tier` is kept from the first publish and
-is ignored on a new version.
+artifact's `id` and `base_version` set to the version you built on (from
+`get_artifact` or `read_artifact`). The id, link, collections and view history
+stay the same, and search moves to the new content. Sharing is kept from the
+first publish unless you pass a new `sharing` value.
 
 - The response carries `version`. `created: false` means the content was
   identical to the current version and nothing changed.
+- `stale_base` means someone changed it since the version you built on. Read
+  the live version with `read_artifact`, merge your change into it, and publish
+  again with the new `base_version`. Do not retry the same publish.
 - `edit_forbidden` means the caller may not update that artifact. Publish it as
   a new artifact instead (call `deploy_artifact` without `artifact_id`) and say so.
 - `version_conflict` is retryable: someone published a version at the same
@@ -147,11 +114,10 @@ Only create a new artifact when the user wants a separate copy.
 
 ## When Not to Deploy
 
-Skip `deploy_to_canvas` when the output is:
+Skip `deploy_artifact` when the output is:
 
 - A plain text answer, list, or code snippet — a code block is more appropriate
 - A file the user intends to download and edit locally (CSV, JSON, PDF) — return the content directly
-- A multi-file project — artfct hosts one HTML file; redirect to a repo or sandbox instead
 - A server-rendered page that requires backend calls to function — artfct is static-only
 
 ## Authoring for Quality
@@ -162,7 +128,7 @@ When generating the HTML payload, apply these defaults:
 
 **Responsiveness:** Include `<meta name="viewport" content="width=device-width, initial-scale=1.0">` on every artifact.
 
-**Typography:** Prefer system fonts (`-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`) when no brand font is specified. Google Fonts are acceptable for non-sensitive artifacts.
+**Typography:** Prefer a system font stack when no brand font is specified. Outside web fonts (including Google Fonts) are blocked on permanent artifacts — put font files in the bundle, or stick to system fonts.
 
 **Color contrast:** Meet WCAG AA minimums — body text at ≥ 4.5:1 contrast ratio against background.
 
@@ -172,12 +138,12 @@ When generating the HTML payload, apply these defaults:
 
 ## Handling Errors
 
-When `deploy_to_canvas` fails:
+When `deploy_artifact` fails:
 
 - **HTML validation error** — the payload contained invalid or empty HTML. Regenerate with a complete `<!DOCTYPE html>` document and retry.
 - **Network/API error** — the artfct API was unreachable. Inform the user and offer to emit the raw HTML as a code block instead.
-- **Size limit exceeded** — inline all large assets as external CDN URLs rather than base64. Base64-encoded images dramatically increase payload size.
-- **MCP not available** — `deploy_to_canvas` is not in the tool list. Use Option B (API fallback) above, then suggest the user connect artfct for future sessions (see `references/setup.md`).
+- **Size limit exceeded** — shrink assets or drop large base64 embeds; for images and libraries, use a `files` bundle instead of inlining.
+- **MCP not available** — `deploy_artifact` is not in the tool list. Ask the user to connect artfct (see `references/setup.md`) rather than inventing another publish path.
 
 ## HTML Requirements
 
@@ -189,7 +155,7 @@ A permanent artifact (`deploy_artifact`) is served with a policy that loads only
 - **Fonts** → a system font stack, or font files in the bundle. Google Fonts and other outside web fonts are blocked
 - **Libraries** → add the library file to the bundle. A CDN `<script src>` is blocked
 
-A page with no script, no images and no outside fonts can be one `html` string; anything else is a bundle. Every file the page uses must be in the bundle: a path that is not in it will 404. `references/html-authoring.md` has the bundle layout and the older single-file form (RUB-444).
+A page with no script, no images and no outside fonts can be one `html` string; anything else is a bundle. Every file the page uses must be in the bundle: a path that is not in it will 404. `references/html-authoring.md` has the bundle layout (RUB-444).
 
 ## The Link You Hand Back
 
@@ -208,13 +174,6 @@ yourself. What it points at depends on the sharing level:
 
 No credential travels in the link, so there is nothing to strip before sharing.
 
-**`deploy_to_canvas` is the exception.** It publishes anonymous, expiring
-artifacts that have no workspace row, so *no* tier of one is addressable through
-the app — the open route could only 404 for it. Its `view_url` is therefore the
-Worker's own `/p/{id}` URL **with the decryption fragment** (`#<shareCode>`), and
-it always opens on the Worker origin. Keep the fragment intact: it is the
-decryption key, and the link shows only a placeholder without it.
-
 Present `view_url` verbatim. Do not shorten it, rewrite it to a direct artifact
 origin, or hand over a token-bearing URL: a raw `/p/{id}` link cannot be opened
 in a browser for a team or private artifact.
@@ -228,20 +187,20 @@ report that rather than inventing a URL.
 After a successful deploy, present the `view_url` clearly:
 
 ```
-Deployed → https://artfct.dev/settings/teams/acme/console/artifacts/4fA8gX9z/open
+Deployed → https://artfct.dev/a/4fA8gX9z
 
-Opens for anyone signed in to acme. Valid until <expiry> after each click.
+Opens for anyone signed in to the team.
 ```
 
-For a public artifact, the link is the artifact's own public URL:
+For a public artifact:
 
 ```
-Deployed → https://artfct.dev/p/4fA8gX9z
+Deployed → https://artfct.dev/a/4fA8gX9z
 
-Public link, no expiry.
+Public link — anyone with it can open it.
 ```
 
 ## Additional Resources
 
-- **`references/html-authoring.md`** — Canonical HTML template, SRI hashes, common library snippets, responsive/accessible defaults
+- **`references/html-authoring.md`** — Bundle layout, canonical HTML template notes, SRI hashes for vendored libraries
 - **`references/setup.md`** — Step-by-step connection instructions for Claude Code, Codex, OpenCode and Antigravity (share with users who need to get set up)
