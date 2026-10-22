@@ -38,7 +38,7 @@ class OrgTokenPolicy
 
         $owner = $token->user;
 
-        return $owner?->is_bot === true
+        return $owner->is_bot === true
             && $user->is_bot !== true
             && $user->belongsToTeam($token->team)
             && $user->teamRole($token->team) !== TeamRole::Viewer;
