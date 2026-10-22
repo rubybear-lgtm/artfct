@@ -4,6 +4,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- RUB-381: secret-redaction coverage for the hosted MCP. Feature tests assert that authorization codes, access tokens and refresh tokens never appear in application logs (authorize, token, MCP bearer, refresh, revoke), client-visible MCP error payloads, activity telemetry, the AI-tool connections page, the agent setup prompt or the homepage. The verification matrix marks `robustness.secret_redaction` covered. The original CLI config-writer half of this acceptance criteria was retired with the local `mcp-server/` package (RUB-432).
+
 ### Added
 
 - RUB-503: agent discovery without Cloudflare's paid features. `/.well-known/mcp/server-card.json` serves an MCP Server Card (SEP-1649/2127) built from `ArtfctServer`, `server.json` and the documented tools. The `NegotiateMarkdown` middleware returns Markdown to requests that prefer `Accept: text/markdown`, with `x-markdown-tokens` and `Vary: Accept`; this covers `/`, `/connect`, every `/connect/{tool}` page, `/blog`, every post and `/docs`. Browsers still get HTML. `AiToolSetup::guideMarkdown()` now renders the guide steps for both these pages and `llms-full.txt`.

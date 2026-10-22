@@ -9,6 +9,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Support\AiToolSetup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -332,25 +333,125 @@ test('OAuth and MCP entry points never write bearer credentials to application l
     app()->forgetInstance('log');
 
     $team = Team::factory()->create();
-    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    $user = mcpAdminOf($team);
+    $verifier = str_repeat('m', 64);
+    configureSigning(testSigningKey());
+    $parameters = oauthParameters(oauthChallenge($verifier));
+
+    // Authorize → code (literal code must never hit logs).
+    $authorization = $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]);
+    parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+    $authorizationCode = $query['code'] ?? '';
+    expect($authorizationCode)->not->toBe('');
+
+    $token = $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $authorizationCode,
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ])->assertOk();
+    $accessToken = $token->json('access_token');
+    $refreshToken = $token->json('refresh_token');
+    expect($accessToken)->not->toBeEmpty()->and($refreshToken)->not->toBeEmpty();
+
+    // Canary code on a rejected exchange (oauth.token_rejected logs run here).
+    $canaryCode = 'canary-oauth-code-RUB381-do-not-log';
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $canaryCode,
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ])->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+
     config(['services.org_jwt.revocation_write_secret' => 'test-revocation-secret']);
     Http::fake();
-    mcpInitialize($tokens['access_token'])->assertOk();
+    mcpInitialize($accessToken)->assertOk();
+    $this->withToken($accessToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'get_usage', 'arguments' => []],
+    ])->assertOk();
 
     $refreshed = $this->postJson('/oauth/token', [
         'grant_type' => 'refresh_token',
-        'refresh_token' => $tokens['refresh_token'],
+        'refresh_token' => $refreshToken,
         'client_id' => 'test-native-client',
     ])->assertOk();
     $this->postJson('/oauth/revoke', ['token' => $refreshed->json('refresh_token')])->assertOk();
 
-    $written = file_get_contents($logPath);
+    $written = (string) file_get_contents($logPath);
     @unlink($logPath);
 
-    expect($written)->not->toContain($tokens['access_token'])
-        ->not->toContain($tokens['refresh_token'])
+    expect($written)->not->toContain($authorizationCode)
+        ->not->toContain($canaryCode)
+        ->not->toContain($accessToken)
+        ->not->toContain($refreshToken)
         ->not->toContain($refreshed->json('access_token'))
         ->not->toContain($refreshed->json('refresh_token'));
+});
+
+test('MCP error payloads and activity telemetry never echo bearer credentials', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $tokens = mcpOAuthTokens($team, mcpAdminOf($team));
+    $accessToken = $tokens['access_token'];
+
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/*' => Http::response([
+            'error' => 'simulated',
+            // If a handler ever echoed the inbound Authorization header into an
+            // upstream body and then surfaced it, this canary would appear in
+            // the client-visible error payload.
+            'authorization' => 'Bearer '.$accessToken,
+            'message' => 'secret leak '.$accessToken,
+        ], 500),
+    ]);
+
+    $errorResponse = $this->withToken($accessToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => ARTIFACT_LINK_ID]],
+    ])->assertOk();
+
+    $payload = (string) $errorResponse->getContent();
+    expect($payload)->not->toContain($accessToken)
+        ->not->toContain($tokens['refresh_token'])
+        ->and($errorResponse->json('result.isError'))->toBeTrue();
+
+    $activity = json_encode(McpActivity::query()->get()->toArray(), JSON_THROW_ON_ERROR);
+    expect($activity)->not->toContain($accessToken)->not->toContain($tokens['refresh_token']);
+});
+
+test('hosted setup surfaces never render a raw OAuth or access token', function () {
+    $team = Team::factory()->create();
+    $user = mcpAdminOf($team);
+    $tokens = mcpOAuthTokens($team, $user);
+    McpConnection::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $user->id,
+        'name' => 'Cursor on laptop',
+    ]);
+
+    $connections = $this->actingAs($user)->get(route('teams.mcp-connections.index', $team))->assertOk();
+    $connectionsBody = (string) $connections->getContent();
+    expect($connectionsBody)->not->toContain($tokens['access_token'])
+        ->not->toContain($tokens['refresh_token']);
+
+    $prompt = AiToolSetup::forCurrentEnvironment()->agentSetupPrompt();
+    expect($prompt)->toContain('Never ask me for a password or a token')
+        ->and($prompt)->not->toContain($tokens['access_token'])
+        ->and($prompt)->not->toContain($tokens['refresh_token'])
+        ->and($prompt)->not->toMatch('/Bearer\s+\S+/');
+
+    $home = $this->get(route('home'))->assertOk();
+    expect((string) $home->getContent())->not->toContain($tokens['access_token'])
+        ->not->toContain($tokens['refresh_token']);
 });
 
 test('a past-due workspace keeps reading artifacts but cannot deploy', function () {
