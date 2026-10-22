@@ -1,59 +1,95 @@
 /**
- * Renders the raster app icons from public/favicon.svg.
+ * Installs the hand-authored Artfct A icon set into public/.
  *
- * favicon.svg covers modern browsers, but iOS home screens still want a PNG
- * and will composite transparency onto black, so the touch icon is drawn on an
- * opaque bone ground. The .ico is left alone; browsers have preferred the SVG
- * for years and regenerating it adds nothing.
+ * The mark is a full-bleed Bone serif "A" on Oxblood. Raster sizes are
+ * committed under scripts/icons/ (the 16px favicon has intentionally
+ * thickened strokes so the crossbar stays visible). This script copies
+ * those PNGs into public/ and packs favicon.ico from the 16 + 32 sources.
+ * It does not rasterize favicon.svg — regenerating from the SVG would
+ * lose the 16px stroke tuning and reintroduce the old inset/Bone padding.
  *
  *   npm run icons
  */
-import { readFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SOURCES = join(ROOT, 'scripts/icons');
+const PUBLIC = join(ROOT, 'public');
 
-/** Bone, matching DESIGN.md. */
-const GROUND = '#f7f5f2';
+/**
+ * Pack one or more PNG buffers into a multi-size .ico (PNG-in-ICO).
+ *
+ * @param {Buffer[]} pngs
+ * @returns {Buffer}
+ */
+function packPngIco(pngs) {
+    const count = pngs.length;
+    const headerSize = 6 + count * 16;
+    let offset = headerSize;
+    const entries = pngs.map((png) => {
+        const width = png.readUInt32BE(16);
+        const height = png.readUInt32BE(20);
+        const entry = {
+            width: width >= 256 ? 0 : width,
+            height: height >= 256 ? 0 : height,
+            bytes: png.length,
+            offset,
+        };
+        offset += png.length;
 
-const TARGETS = [
-    { file: 'apple-touch-icon.png', size: 180, ground: GROUND },
-    { file: 'icon-512.png', size: 512, ground: GROUND },
+        return entry;
+    });
+
+    const out = Buffer.alloc(offset);
+    out.writeUInt16LE(0, 0); // reserved
+    out.writeUInt16LE(1, 2); // type: icon
+    out.writeUInt16LE(count, 4);
+
+    entries.forEach((entry, index) => {
+        const base = 6 + index * 16;
+        out.writeUInt8(entry.width, base);
+        out.writeUInt8(entry.height, base + 1);
+        out.writeUInt8(0, base + 2); // color count
+        out.writeUInt8(0, base + 3); // reserved
+        out.writeUInt16LE(1, base + 4); // planes
+        out.writeUInt16LE(32, base + 6); // bit count
+        out.writeUInt32LE(entry.bytes, base + 8);
+        out.writeUInt32LE(entry.offset, base + 12);
+    });
+
+    let writeAt = headerSize;
+    for (const png of pngs) {
+        png.copy(out, writeAt);
+        writeAt += png.length;
+    }
+
+    return out;
+}
+
+const copies = [
+    { from: 'apple-touch-icon-180.png', to: 'apple-touch-icon.png' },
+    { from: 'icon-512.png', to: 'icon-512.png' },
 ];
 
-const svg = readFileSync(join(ROOT, 'public/favicon.svg'), 'utf8');
-const markUrl = pathToFileURL(join(ROOT, 'public/favicon.svg')).href;
+for (const { from, to } of copies) {
+    copyFileSync(join(SOURCES, from), join(PUBLIC, to));
+    console.log(`Copied public/${to} from scripts/icons/${from}`);
+}
 
-if (!svg.includes('<svg')) {
-    console.error('public/favicon.svg does not look like an SVG.');
+const png16 = readFileSync(join(SOURCES, 'favicon-16.png'));
+const png32 = readFileSync(join(SOURCES, 'favicon-32.png'));
+
+if (png16.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+    console.error('scripts/icons/favicon-16.png is not a PNG.');
     process.exit(1);
 }
 
-const browser = await chromium.launch();
-
-for (const { file, size, ground } of TARGETS) {
-    const page = await browser.newPage({
-        viewport: { width: size, height: size },
-        deviceScaleFactor: 1,
-    });
-
-    // The mark is scaled to 72% of the icon so it keeps a margin on a home
-    // screen, then centred on an opaque ground.
-    const inset = Math.round(size * 0.14);
-    await page.setContent(
-        `<!DOCTYPE html><html><body style="margin:0;width:${size}px;height:${size}px;background:${ground};display:flex;align-items:center;justify-content:center">
-           <img src="${markUrl}" width="${size - inset * 2}" height="${size - inset * 2}" alt="">
-         </body></html>`,
-        { waitUntil: 'load' },
-    );
-
-    await page.screenshot({ path: join(ROOT, 'public', file) });
-    await page.close();
-
-    console.log(`Rendered public/${file} at ${size}x${size}`);
+if (png32.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+    console.error('scripts/icons/favicon-32.png is not a PNG.');
+    process.exit(1);
 }
 
-await browser.close();
+writeFileSync(join(PUBLIC, 'favicon.ico'), packPngIco([png16, png32]));
+console.log('Packed public/favicon.ico from favicon-16.png + favicon-32.png');
