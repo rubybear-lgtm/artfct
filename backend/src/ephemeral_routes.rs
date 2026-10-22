@@ -25,6 +25,17 @@ pub(crate) async fn create_artifact(
         );
     }
 
+    // Anonymous creates must be limited in-Worker: artifact hosts like
+    // `*--prod.artfct.dev` reach this path without the apex WAF rule (RUB-463).
+    let ip = connecting_ip(req)?;
+    if !check_and_increment_ip_rate_limit(env, &ip).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for anonymous artifact creation.",
+            429,
+        );
+    }
+
     let payload = match serde_json::from_value::<CreateArtifactRequest>(raw) {
         Ok(payload) => payload,
         Err(_) => {
@@ -505,6 +516,15 @@ pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) ->
     let artifact_id = path.trim_start_matches("/v1/artifacts/");
     if !is_valid_artifact_id(artifact_id) {
         return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
+    }
+
+    let ip = connecting_ip(req)?;
+    if !check_and_increment_ip_rate_limit(env, &ip).await? {
+        return json_error(
+            ErrorCode::RateLimited,
+            "Rate limit exceeded for anonymous artifact updates.",
+            429,
+        );
     }
 
     #[derive(Deserialize)]
