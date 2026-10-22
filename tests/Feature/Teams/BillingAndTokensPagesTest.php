@@ -68,22 +68,48 @@ test('tokens_page_lists_tokens_without_values_and_gates_creation', function () {
             ->component('teams/tokens')
             ->where('canCreate', true)
             ->where('tokens.0.lastFour', 'ab12')
+            ->where('tokens.0.canRevoke', true)
             ->missing('tokens.0.jti'));
 
     test()->actingAs($viewer)->get(route('teams.tokens.index', $team))
         ->assertInertia(fn (Assert $page) => $page->where('canCreate', false));
 });
 
+test('tokens_page_marks_can_revoke_only_when_the_policy_allows', function () {
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $adminToken = OrgToken::factory()->create(['team_id' => $team->id, 'user_id' => $admin->id, 'name' => 'admin-ci']);
+    $memberToken = OrgToken::factory()->create(['team_id' => $team->id, 'user_id' => $member->id, 'name' => 'member-ci']);
+
+    test()->actingAs($member)->get(route('teams.tokens.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('tokens', fn ($tokens) => collect($tokens)->firstWhere('id', $adminToken->id)['canRevoke'] === false
+                && collect($tokens)->firstWhere('id', $memberToken->id)['canRevoke'] === true));
+
+    test()->actingAs($admin)->get(route('teams.tokens.index', $team))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('tokens', fn ($tokens) => collect($tokens)->every(fn ($token) => $token['canRevoke'] === true)));
+});
+
 test('team_edit_page_carries_owner_and_viewer_permissions', function () {
     $owner = User::factory()->create();
     $team = app(CreateTeam::class)->handle($owner, 'Captain Co');
     $admin = memberOfTeam($team, TeamRole::Admin);
+    $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($owner)->get(route('teams.edit', $team))
         ->assertInertia(fn (Assert $page) => $page->where('viewer.isOwner', true)->where('viewer.canDelete', true)->has('invitations'));
 
     test()->actingAs($admin)->get(route('teams.edit', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('viewer.isOwner', false)->where('viewer.canDelete', false)->where('viewer.canTransfer', false));
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('viewer.isOwner', false)
+            ->where('viewer.canDelete', false)
+            ->where('viewer.canTransfer', false)
+            ->where('permissions.canUpdateTeam', true));
+
+    test()->actingAs($member)->get(route('teams.edit', $team))
+        ->assertInertia(fn (Assert $page) => $page->where('permissions.canUpdateTeam', false));
 });
 
 test('dashboard_reports_first_run_progress_for_the_current_team', function () {

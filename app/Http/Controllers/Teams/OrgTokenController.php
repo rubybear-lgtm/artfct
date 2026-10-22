@@ -41,6 +41,7 @@ class OrgTokenController extends Controller
                 'expiresAt' => $token->expires_at->toIso8601String(),
                 'revokedAt' => $token->revoked_at?->toIso8601String(),
                 'status' => $token->revoked_at !== null ? 'revoked' : ($token->expires_at->isPast() ? 'expired' : 'active'),
+                'canRevoke' => $request->user()->can('revoke', $token),
             ]),
         ]);
     }

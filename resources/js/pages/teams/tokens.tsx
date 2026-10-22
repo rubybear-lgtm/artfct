@@ -38,6 +38,7 @@ interface Token {
     expiresAt: string;
     revokedAt: string | null;
     status: 'active' | 'expired' | 'revoked';
+    canRevoke: boolean;
 }
 
 interface Props {
@@ -235,7 +236,7 @@ export default function Tokens({ team, canCreate, roles, tokens }: Props) {
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {token.status === 'active' &&
-                                                    canCreate && (
+                                                    token.canRevoke && (
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
