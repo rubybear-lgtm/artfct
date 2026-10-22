@@ -42,10 +42,26 @@ class FakeArtifactDirectory implements ArtifactDirectory
      */
     private array $sharingOutcomes = [];
 
+    /** How many times `listArtifacts` has been called — RUB-478 Worker-call budgets. */
+    private int $listCallCount = 0;
+
     public function __construct()
     {
         // Initialize with some demo data
         $this->seedArtifacts();
+    }
+
+    /**
+     * How many Worker list round trips this fake has recorded since construction.
+     */
+    public function listCallCount(): int
+    {
+        return $this->listCallCount;
+    }
+
+    public function requireViewerCredential(string $orgSlug): void
+    {
+        // In-memory fake — no Worker credential gate.
     }
 
     /**
@@ -66,6 +82,7 @@ class FakeArtifactDirectory implements ArtifactDirectory
         ?string $cursor = null,
         int $limit = 50,
     ): array {
+        $this->listCallCount++;
         $items = $this->artifacts;
 
         // Apply filters
@@ -90,7 +107,18 @@ class FakeArtifactDirectory implements ArtifactDirectory
             );
         }
 
+        // Worker `ids` + `live` (RUB-478 search path, ListArtifactsTool collections).
+        if (! empty($filters['ids'])) {
+            $allowed = array_flip(array_filter(explode(',', (string) $filters['ids'])));
+            $items = array_filter($items, fn ($a) => isset($allowed[(string) ($a['id'] ?? '')]));
+        }
+
+        if (($filters['live'] ?? null) === 'true' || ($filters['live'] ?? null) === true) {
+            $items = array_filter($items, fn ($a) => ($a['revoked_at'] ?? null) === null);
+        }
+
         // Cursor-based pagination
+        $items = array_values($items);
         if ($cursor) {
             $items = array_slice($items, (int) $cursor);
         }

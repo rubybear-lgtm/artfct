@@ -419,6 +419,31 @@ test('the_slack_slash_command_fails_closed_and_never_surfaces_a_private_artifact
     Http::assertNothingSent();
 });
 
+test('search_fails_closed_with_zero_vector_hits_when_there_is_no_viewer_credential', function () {
+    useSharingWorkerDirectory();
+    config(['indexing.enabled' => true]);
+
+    $team = Team::factory()->create(['slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
+    $user = memberOfTeam($team, TeamRole::Member);
+    ExternalIdentity::create([
+        'user_id' => $user->id,
+        'provider' => 'slack',
+        'external_id' => 'U123',
+        'email' => $user->email,
+        'verified_at' => now(),
+    ]);
+
+    // No indexed chunks → zero candidates; credential must still be required
+    // before scoring so this path cannot return 200 empty without a viewer.
+    Http::fake(['worker.test/*' => Http::response(['artifacts' => [sharingWorkerArtifact('public-1', 'Public One')], 'next_cursor' => null])]);
+
+    $response = postSlackCommand(['team_id' => 'T123', 'user_id' => 'U123', 'text' => 'no indexed hits for this query']);
+
+    expect($response->status())->toBe(403)
+        ->and($response->getContent())->not->toContain('Public One');
+    Http::assertNothingSent();
+});
+
 test('a_private_artifact_unfurls_as_a_bare_card', function () {
     $team = Team::factory()->create(['slug' => 'privacy-org']);
     /** @var FakeArtifactSharing $sharing */

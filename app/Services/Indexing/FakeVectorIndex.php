@@ -55,28 +55,32 @@ final class FakeVectorIndex implements VectorIndexContract
         return array_slice($matches, 0, $limit);
     }
 
-    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, ?array $artifactIds = null): array
     {
         return $this->distinctArtifacts($this->query($orgId, $queryVector, count($this->allVectorsForOrg($orgId))), $limit, $artifactIds);
     }
 
-    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, ?array $artifactIds = null): array
     {
         return $this->distinctArtifacts($this->queryText($orgId, $query, count($this->allVectorsForOrg($orgId))), $limit, $artifactIds);
     }
 
     /**
      * @param  list<VectorMatch>  $matches
-     * @param  list<string>  $artifactIds
+     * @param  list<string>|null  $artifactIds
      * @return list<VectorMatch>
      */
-    private function distinctArtifacts(array $matches, int $limit, array $artifactIds): array
+    private function distinctArtifacts(array $matches, int $limit, ?array $artifactIds): array
     {
-        $allowed = array_flip($artifactIds);
+        if ($artifactIds === []) {
+            return [];
+        }
+
+        $allowed = $artifactIds === null ? null : array_flip($artifactIds);
         $seen = [];
         foreach ($matches as $match) {
             $id = $match->chunk->artifactId;
-            if (isset($allowed[$id]) && ! isset($seen[$id])) {
+            if (($allowed === null || isset($allowed[$id])) && ! isset($seen[$id])) {
                 $seen[$id] = $match;
             }
         }
