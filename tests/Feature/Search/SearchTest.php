@@ -324,6 +324,10 @@ test('search_under_500ms_at_1k_artifacts', function () {
         seedSearchChunk($team, $id, "content for artifact {$i}");
     }
 
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
     $start = microtime(true);
     $results = app(SearchService::class)->search(
         $team,
@@ -336,4 +340,52 @@ test('search_under_500ms_at_1k_artifacts', function () {
 
     expect($results)->not->toBeEmpty();
     expect($elapsedMs)->toBeLessThan(500);
+    // Candidate budget is max(limit*5, 50) < 200 Worker ids/page → one list call.
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
+});
+
+test('search_worker_calls_stay_bounded_at_10k_artifacts', function () {
+    $team = Team::factory()->create(['slug' => 'bound-org']);
+    for ($i = 0; $i < 10000; $i++) {
+        $id = "bound-artifact-{$i}";
+        seedSearchArtifact($team, $id);
+        seedSearchChunk($team, $id, "content for artifact {$i}");
+    }
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'content for artifact 5000',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->not->toBeEmpty();
+    // Same O(results) bound as the 1k case — must not grow with corpus size.
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
+});
+
+test('empty_laravel_scope_skips_worker_list_calls', function () {
+    $team = Team::factory()->create(['slug' => 'empty-scope-org']);
+    seedSearchArtifact($team, 'scoped-artifact');
+    seedSearchChunk($team, 'scoped-artifact', 'scoped content');
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'scoped content',
+        filters: ['collection' => 'does-not-exist'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->toBeEmpty();
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(0);
 });

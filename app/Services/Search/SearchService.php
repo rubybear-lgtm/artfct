@@ -25,9 +25,15 @@ use Carbon\CarbonImmutable;
  * recency + provenance + usage + canonical-collection ranking, strictly
  * scoped to the caller's org, excluding revoked/inaccessible artifacts,
  * auditing every search.
+ *
+ * Worker metadata is loaded only for scored candidates (`ids` + `live`),
+ * so Worker round trips stay O(results) instead of O(org size) (RUB-478).
  */
 final class SearchService
 {
+    /** The Worker refuses a longer `ids` list on one list call. */
+    private const WORKER_IDS_PAGE = 200;
+
     public function __construct(
         private readonly EmbeddingsContract $embeddings,
         private readonly VectorIndexContract $vectorIndex,
@@ -49,31 +55,32 @@ final class SearchService
         string $ip = 'internal',
         string $userAgent = 'search',
     ): array {
-        $directory = $this->artifactsBySlug($team);
-
-        // spec 16: `collection: "reporting-formats"` scopes results to
-        // exactly that collection's members — resolved before ranking so
-        // an out-of-collection artifact never even reaches the scorer.
-        $collectionArtifactIds = null;
-        if (! empty($filters['collection'])) {
-            $collection = Collection::query()->where('team_id', $team->id)->where('name', $filters['collection'])->first();
-            $collectionArtifactIds = $collection === null ? [] : array_flip($collection->artifactIds());
+        // Laravel-side scopes (collection / artifact type) narrow the vector
+        // and lexical queries. Null means org-wide; [] means nothing matches.
+        $scopeIds = $this->laravelScopeIds($team, $filters);
+        if ($scopeIds === []) {
+            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
         }
 
-        $typeIds = null;
-        if (! empty($filters['artifact_type'])) {
-            $typeIds = array_flip(app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($filters['artifact_type'])));
-        }
+        $queryVector = $this->embeddings->embedQuery($query);
+        $candidateLimit = max($limit * 5, 50);
+        $vectorCandidates = $this->vectorIndex->queryArtifacts($team->slug, $queryVector, $candidateLimit, $scopeIds);
+        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $scopeIds);
+        $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
+        $candidates = array_values(array_filter(
+            $candidates,
+            fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug,
+        ));
 
-        $isAllowed = function (string $id) use ($directory, $filters, $collectionArtifactIds, $typeIds): bool {
+        $candidateIds = array_values(array_unique(array_map(
+            fn (VectorMatch $match): string => $match->chunk->artifactId,
+            $candidates,
+        )));
+        $directory = $this->artifactsByIds($team, $candidateIds);
+
+        $isAllowed = function (string $id) use ($directory, $filters): bool {
             $artifact = $directory[$id] ?? null;
-            if ($artifact === null || $artifact['revoked_at'] !== null) {
-                return false;
-            }
-            if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$id])) {
-                return false;
-            }
-            if ($typeIds !== null && ! isset($typeIds[$id])) {
+            if ($artifact === null || ($artifact['revoked_at'] ?? null) !== null) {
                 return false;
             }
             if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
@@ -91,14 +98,11 @@ final class SearchService
 
             return true;
         };
-        $allowedIds = array_values(array_filter(array_map(strval(...), array_keys($directory)), $isAllowed));
-        $queryVector = $this->embeddings->embedQuery($query);
-        $candidateLimit = max($limit * 5, 50);
-        $vectorCandidates = $this->vectorIndex->queryArtifacts($team->slug, $queryVector, $candidateLimit, $allowedIds);
-        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $allowedIds);
-        $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
-        $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
 
+        $filtered = array_values(array_filter(
+            $candidates,
+            fn (VectorMatch $match): bool => $isAllowed($match->chunk->artifactId),
+        ));
         $filtered = array_slice($filtered, 0, max(20, $limit));
         $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
         $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory));
@@ -129,6 +133,54 @@ final class SearchService
         $this->recordResultsServed($team, $results);
 
         return $results;
+    }
+
+    /**
+     * Collection and artifact-type scopes live in Laravel. Null means no
+     * Laravel scope (search the whole org index); an empty list means the
+     * scope matches nothing and search can return without touching the Worker.
+     *
+     * @param  array{collection?: ?string, artifact_type?: ?string}  $filters
+     * @return list<string>|null
+     */
+    private function laravelScopeIds(Team $team, array $filters): ?array
+    {
+        $ids = null;
+
+        if (! empty($filters['collection'])) {
+            $collection = Collection::query()->where('team_id', $team->id)->where('name', $filters['collection'])->first();
+            $ids = $collection === null ? [] : $collection->artifactIds();
+        }
+
+        if (! empty($filters['artifact_type'])) {
+            $typeIds = app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($filters['artifact_type']));
+            $ids = $ids === null ? $typeIds : array_values(array_intersect($ids, $typeIds));
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @return array<int, SearchResult>
+     */
+    private function finishEmpty(
+        Team $team,
+        string $query,
+        string $actor,
+        string $ip,
+        string $userAgent,
+    ): array {
+        $this->auditLogger->record(
+            AuditEventType::SearchPerformed,
+            $team,
+            $actor,
+            $query,
+            $ip,
+            $userAgent,
+            '0 result(s)',
+        );
+
+        return [];
     }
 
     /**
@@ -199,19 +251,33 @@ final class SearchService
     }
 
     /**
+     * Fetch Worker list rows for the scored candidate ids only. `live=true`
+     * keeps revoked artifacts out; chunking respects the Worker's 200-id cap.
+     *
+     * @param  list<string>  $ids
      * @return array<string, array<string, mixed>> artifact id => directory row
      */
-    private function artifactsBySlug(Team $team): array
+    private function artifactsByIds(Team $team, array $ids): array
     {
-        $cursor = null;
+        if ($ids === []) {
+            return [];
+        }
+
         $byId = [];
-        do {
-            $page = $this->artifacts->listArtifacts($team->slug, [], $cursor, 200);
+        foreach (array_chunk($ids, self::WORKER_IDS_PAGE) as $chunk) {
+            $page = $this->artifacts->listArtifacts(
+                $team->slug,
+                [
+                    'ids' => implode(',', $chunk),
+                    'live' => 'true',
+                ],
+                null,
+                count($chunk),
+            );
             foreach ($page['artifacts'] as $artifact) {
                 $byId[$artifact['id']] = $artifact;
             }
-            $cursor = $page['next_cursor'];
-        } while ($cursor !== null);
+        }
 
         return $byId;
     }
