@@ -34,7 +34,22 @@ class EnsureTermsAccepted
 
     private function isExempt(Request $request): bool
     {
-        return $request->routeIs('terms', 'terms.*', 'privacy', 'logout', 'home', 'docs', 'blog', 'blog.show', 'sitemap', 'jwks')
+        return $request->routeIs(
+            'terms',
+            'terms.*',
+            'privacy',
+            'logout',
+            'home',
+            'docs',
+            'blog',
+            'blog.show',
+            'sitemap',
+            'jwks',
+            // OAuth consent must not be interrupted mid-flow by a terms gate
+            // (RUB-510): the AI tool already sent the user here with PKCE state.
+            'oauth.authorize',
+            'oauth.authorize.approve',
+        )
             || $request->is('internal/*', 'webhooks/*', 'api/*', 'up');
     }
 }

@@ -1,5 +1,5 @@
-import { Head, useForm } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import { Head, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ interface Props {
     codeChallenge: string;
     codeChallengeMethod: string;
     consentToken: string;
+    csrfToken: string;
     team: Team;
     teams: Team[];
 }
@@ -48,6 +49,15 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
     destructive: 'Destructive',
 };
 
+/**
+ * Consent must use a normal HTML form POST, not Inertia's XHR.
+ *
+ * Approve responds with a cross-origin redirect to the AI tool. Inertia turns
+ * that into a 409 + X-Inertia-Location visit that writes sessionStorage before
+ * navigating; in some embedded browsers (Cursor's OAuth window) that write
+ * throws and the visit silently does nothing, so Allow access never leaves
+ * this page (RUB-510). A native form gets a real 302 the browser follows.
+ */
 export default function Authorize({
     clientId,
     clientName,
@@ -59,6 +69,7 @@ export default function Authorize({
     codeChallenge,
     codeChallengeMethod,
     consentToken,
+    csrfToken,
     team,
     teams,
 }: Props) {
@@ -70,23 +81,16 @@ export default function Authorize({
         }
     })();
 
-    const form = useForm({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        scope,
-        state: state ?? '',
-        code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
-        consent_token: consentToken,
-        decision: 'approve',
-        team: team.slug,
-    });
+    const [selectedTeam, setSelectedTeam] = useState(team.slug);
+    const selectedTeamName =
+        teams.find((candidate) => candidate.slug === selectedTeam)?.name ??
+        team.name;
 
-    const submit = (decision: 'approve' | 'deny') => {
-        form.transform((data) => ({ ...data, decision }));
-        form.post('/oauth/authorize');
-    };
+    const pageErrors = usePage().props.errors ?? {};
+    const errorEntries = Object.entries(pageErrors).flatMap(
+        ([field, message]) =>
+            typeof message === 'string' ? ([[field, message]] as const) : [],
+    );
 
     return (
         <>
@@ -94,7 +98,7 @@ export default function Authorize({
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        {clientName} wants to connect to {team.name}
+                        {clientName} wants to connect to {selectedTeamName}
                     </CardTitle>
                     <CardDescription>
                         It will be able to do the things listed below with your
@@ -130,7 +134,7 @@ export default function Authorize({
                         <div className="sm:col-span-2">
                             <div className="font-medium">Team</div>
                             <div className="mt-1 break-words text-muted-foreground">
-                                {team.name}
+                                {selectedTeamName}
                             </div>
                         </div>
                     </div>
@@ -191,64 +195,109 @@ export default function Authorize({
                         </ul>
                     </div>
 
-                    {teams.length > 1 && (
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="team">Team</Label>
-                            <select
-                                id="team"
-                                className="h-10 rounded-md border bg-background px-3 text-sm"
-                                value={form.data.team}
-                                onChange={(event) =>
-                                    form.setData('team', event.target.value)
-                                }
-                            >
-                                {teams.map((candidate) => (
-                                    <option
-                                        key={candidate.slug}
-                                        value={candidate.slug}
-                                    >
-                                        {candidate.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    <p className="text-xs text-muted-foreground">
-                        You can disconnect it any time in AI tool connections.
-                    </p>
-
-                    {Object.keys(form.errors).length > 0 && (
-                        <Alert
-                            variant="destructive"
-                            className="flex flex-col gap-1"
-                        >
-                            {Object.entries(form.errors).map(
-                                ([field, message]) => (
-                                    <p key={field}>{message}</p>
-                                ),
-                            )}
-                        </Alert>
-                    )}
-
                     <form
-                        className="flex flex-col gap-3 sm:flex-row"
-                        onSubmit={(event: FormEvent) => {
-                            event.preventDefault();
-                            submit('approve');
-                        }}
+                        method="post"
+                        action="/oauth/authorize"
+                        className="flex flex-col gap-5"
                     >
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={form.processing}
-                            onClick={() => submit('deny')}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={form.processing}>
-                            Allow access
-                        </Button>
+                        <input type="hidden" name="_token" value={csrfToken} />
+                        <input
+                            type="hidden"
+                            name="client_id"
+                            value={clientId}
+                        />
+                        <input
+                            type="hidden"
+                            name="redirect_uri"
+                            value={redirectUri}
+                        />
+                        <input
+                            type="hidden"
+                            name="response_type"
+                            value="code"
+                        />
+                        <input type="hidden" name="scope" value={scope} />
+                        <input type="hidden" name="state" value={state ?? ''} />
+                        <input
+                            type="hidden"
+                            name="code_challenge"
+                            value={codeChallenge}
+                        />
+                        <input
+                            type="hidden"
+                            name="code_challenge_method"
+                            value={codeChallengeMethod}
+                        />
+                        <input
+                            type="hidden"
+                            name="consent_token"
+                            value={consentToken}
+                        />
+                        {teams.length <= 1 && (
+                            <input
+                                type="hidden"
+                                name="team"
+                                value={selectedTeam}
+                            />
+                        )}
+
+                        {teams.length > 1 && (
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="team">Team</Label>
+                                <select
+                                    id="team"
+                                    name="team"
+                                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                                    value={selectedTeam}
+                                    onChange={(event) =>
+                                        setSelectedTeam(event.target.value)
+                                    }
+                                >
+                                    {teams.map((candidate) => (
+                                        <option
+                                            key={candidate.slug}
+                                            value={candidate.slug}
+                                        >
+                                            {candidate.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <p className="text-xs text-muted-foreground">
+                            You can disconnect it any time in AI tool
+                            connections.
+                        </p>
+
+                        {errorEntries.length > 0 && (
+                            <Alert
+                                variant="destructive"
+                                className="flex flex-col gap-1"
+                            >
+                                {errorEntries.map(([field, message]) => (
+                                    <p key={field}>{message}</p>
+                                ))}
+                            </Alert>
+                        )}
+
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                            <Button
+                                type="submit"
+                                name="decision"
+                                value="deny"
+                                variant="outline"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                name="decision"
+                                value="approve"
+                            >
+                                Allow access
+                            </Button>
+                        </div>
                     </form>
                 </CardContent>
             </Card>
