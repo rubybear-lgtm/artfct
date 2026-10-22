@@ -226,9 +226,11 @@ jobs:
   # the one suite that cannot share a run with the rest: they get their own job
   # and their own runner. Only Chromium is installed, and the browser download
   # is cached — the suite does not use WebKit or Firefox.
+  # Pin 24.04: GitHub's ubuntu-latest rolled to 26.04 and Playwright 1.60 cannot
+  # install Chromium there (`Playwright does not support chromium on ubuntu26.04-x64`).
   pest_browser:
     name: Pest (browser)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -498,13 +500,19 @@ jobs:
             exit 0
           fi
 
+          # Skip frontend-only assets and docs that cannot reach the MCP stack.
+          # Keep resources/guidance/*.md and docs/mcp-runbook.md off the skip
+          # list — get_guidance serves the former and McpVerificationMatrixTest
+          # asserts the latter (RUB-471).
           skip='^(docs/|resources/js/|resources/css/|tests/Browser/|public/images/|.*\.md$|\.github/workflows/(mcp-live|polis-advisories)\.yml$)'
-          needed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ev "$skip" || true)
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          needed=$(printf '%s\n' "$changed" | grep -Ev "$skip" || true)
+          mcp_md=$(printf '%s\n' "$changed" | grep -E '^(resources/guidance/|docs/mcp-runbook\.md$)' || true)
 
-          if [ -n "$needed" ]; then
+          if [ -n "$needed$mcp_md" ]; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
             echo "Running: these changed files can reach the MCP stack:"
-            echo "$needed"
+            printf '%s\n' "$needed" "$mcp_md" | sed '/^$/d'
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
             echo 'Skipping: every changed file is on the skip list.'
