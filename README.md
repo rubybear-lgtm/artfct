@@ -64,6 +64,7 @@ The hosted server exposes these tools:
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
+- `set_avatar` — set the avatar image for the authenticated bot teammate (bots only; humans upload avatars in team settings).
 
 Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request
 only the scopes they need. The dashboard's **MCP connections** page shows the address and lets

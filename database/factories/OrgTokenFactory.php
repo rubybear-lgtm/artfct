@@ -45,6 +45,9 @@ class OrgTokenFactory extends Factory
         ]);
     }
 
+    /**
+     * @param  list<string>|null  $scopes
+     */
     public function agent(?array $scopes = null): static
     {
         return $this->state(fn (array $attributes) => [

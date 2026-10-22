@@ -66,8 +66,8 @@ class OrgTokenController extends Controller
                 'kind' => $token->kind->value,
                 'role' => $token->role->value,
                 'scopes' => $token->scopes ?? [],
-                'botId' => $token->user?->is_bot ? $token->user_id : null,
-                'botName' => $token->user?->is_bot ? $token->user->name : null,
+                'botId' => $token->user->is_bot ? $token->user_id : null,
+                'botName' => $token->user->is_bot ? $token->user->name : null,
                 'lastFour' => $token->last_four,
                 'expiresAt' => $token->expires_at->toIso8601String(),
                 'lastUsedAt' => $token->last_used_at?->toIso8601String(),
@@ -129,7 +129,7 @@ class OrgTokenController extends Controller
                     'name' => $request->validated('name'),
                     'client_name' => $tokenUser->name,
                     'transport' => 'streamable-http',
-                    'scopes' => $scopes ?? [],
+                    'scopes' => $scopes,
                     'expires_at' => $minted['expires_at'],
                 ])->save();
             }

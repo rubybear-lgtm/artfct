@@ -49,7 +49,7 @@ final class SetAvatarTool extends Tool
         ];
     }
 
-    public function handle(Request $request): ResponseFactory
+    public function handle(Request $request): Response|ResponseFactory
     {
         $startedAt = hrtime(true);
         $validated = $request->validate([
