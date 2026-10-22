@@ -49,12 +49,12 @@ class PublicHttpsUrl implements ValidationRule
         }
 
         $parts = parse_url($value);
+        $hostPart = is_array($parts) ? ($parts['host'] ?? null) : null;
 
         if (! is_array($parts)
             || ($parts['scheme'] ?? null) !== 'https'
-            || ! isset($parts['host'])
-            || ! is_string($parts['host'])
-            || $parts['host'] === ''
+            || ! is_string($hostPart)
+            || $hostPart === ''
             || isset($parts['user'])
             || isset($parts['pass'])) {
             $fail('The :attribute must be a public https URL.');
@@ -62,7 +62,7 @@ class PublicHttpsUrl implements ValidationRule
             return;
         }
 
-        $host = strtolower($parts['host']);
+        $host = strtolower($hostPart);
 
         // IPv6 literals arrive as "[::1]"; strip brackets for IP checks.
         if (str_starts_with($host, '[') && str_ends_with($host, ']')) {
