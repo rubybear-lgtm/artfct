@@ -886,7 +886,8 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
         ->assertJsonPath('result.structuredContent.tier', 'secure')
         ->assertJsonPath('result.structuredContent.title', 'Q3 report')
-        ->assertJsonPath('result.structuredContent.organization', $team->slug);
+        ->assertJsonPath('result.structuredContent.organization', $team->slug)
+        ->assertJsonMissingPath('result.structuredContent.warnings');
 
     Http::assertSent(fn ($request): bool => $request->method() === 'POST'
         && str_ends_with((string) $request->url(), '/v1/artifacts')
@@ -896,6 +897,66 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
     Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
         && str_ends_with((string) $request->url(), '/v1/artifacts/'.ARTIFACT_LINK_ID."/files/{$sha}")
         && $request->body() === $html);
+});
+
+test('deploy_artifact warns when single-file html contains an inline script', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $html = '<!doctype html><title>Interactive</title><div id="x"></div><script>document.getElementById("x").textContent="hi"</script>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID);
+
+    expect($response->json('result.isError'))->not->toBeTrue();
+
+    $warnings = $response->json('result.structuredContent.warnings');
+    expect($warnings)->toBeArray()->toHaveCount(1)
+        ->and($warnings[0])->toContain('Inline <script>')
+        ->and($warnings[0])->toContain('app.js')
+        ->and($warnings[0])->toContain('get_guidance');
+});
+
+test('deploy_artifact does not warn when scripts are separate bundle files', function () {
+    configureArtifactLinks();
+
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $page = '<!doctype html><title>Bundle</title><div id="x"></div><script src="app.js"></script>';
+    $js = 'document.getElementById("x").textContent="hi"';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'missing_files' => [hash('sha256', $page), hash('sha256', $js)],
+        ], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['files' => [
+            ['path' => 'index.html', 'content' => $page],
+            ['path' => 'app.js', 'content' => $js],
+        ]]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonMissingPath('result.structuredContent.warnings');
 });
 
 test('deploy_artifact publishes a multi-file bundle and uploads every missing file', function () {
