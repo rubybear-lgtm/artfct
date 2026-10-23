@@ -8,6 +8,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Models\McpConnection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
@@ -516,11 +517,12 @@ final class DeployArtifactTool extends Tool
     private function provenance(Request $request, ?string $model): array
     {
         $sessionId = $request->sessionId();
+        [$agent, $agentVersion, $agentSource] = $this->clientAgent();
 
         return [
-            'agent' => null,
-            'agent_raw' => null,
-            'agent_version' => null,
+            'agent' => $agent,
+            'agent_raw' => $agent,
+            'agent_version' => $agentVersion,
             'model' => $model,
             'session_id' => $sessionId,
             'tool' => 'deploy_artifact',
@@ -532,9 +534,9 @@ final class DeployArtifactTool extends Tool
             'client' => 'artfct-remote-mcp',
             'client_version' => '1.0.0',
             'sources' => [
-                'agent' => 'absent',
-                'agent_raw' => 'absent',
-                'agent_version' => 'absent',
+                'agent' => $agentSource,
+                'agent_raw' => $agentSource,
+                'agent_version' => $agentVersion === null ? 'absent' : $agentSource,
                 'model' => $model === null ? 'absent' : 'self_reported',
                 'session_id' => $sessionId === null ? 'absent' : 'process',
                 'tool' => 'config',
@@ -545,5 +547,37 @@ final class DeployArtifactTool extends Tool
                 'source_path' => 'absent',
             ],
         ];
+    }
+
+    /**
+     * Prefer the hosted connection registry (filled from initialize clientInfo),
+     * then the per-request MCP client headers.
+     *
+     * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
+     */
+    private function clientAgent(): array
+    {
+        $http = McpContext::httpRequest();
+        $connection = $http->attributes->get('mcp_connection');
+
+        if ($connection instanceof McpConnection) {
+            $name = filled($connection->client_name) ? (string) $connection->client_name : null;
+            $version = filled($connection->client_version) ? (string) $connection->client_version : null;
+
+            if ($name !== null) {
+                return [$name, $version, 'client_info'];
+            }
+        }
+
+        $headerName = $http->header('MCP-Client-Name');
+        $headerVersion = $http->header('MCP-Client-Version');
+        $name = is_string($headerName) && trim($headerName) !== '' ? trim($headerName) : null;
+        $version = is_string($headerVersion) && trim($headerVersion) !== '' ? trim($headerVersion) : null;
+
+        if ($name !== null) {
+            return [$name, $version, 'client_info'];
+        }
+
+        return [null, null, 'absent'];
     }
 }

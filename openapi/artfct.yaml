@@ -643,7 +643,8 @@
                       "properties": {
                         "agent": { "type": ["string", "null"] },
                         "repo_url": { "type": ["string", "null"] },
-                        "commit_sha": { "type": ["string", "null"] }
+                        "commit_sha": { "type": ["string", "null"] },
+                        "model": { "type": ["string", "null"] }
                       }
                     },
                     "content": { "type": "string" }
@@ -1697,7 +1698,17 @@
           "created_at": { "type": "string", "format": "date-time" },
           "expires_at": { "type": ["string", "null"], "format": "date-time" },
           "title": { "type": ["string", "null"] },
-          "description": { "type": ["string", "null"] }
+          "description": { "type": ["string", "null"] },
+          "provenance": {
+            "type": "object",
+            "description": "Publishing agent and model when recorded.",
+            "properties": {
+              "agent": { "type": ["string", "null"] },
+              "repo_url": { "type": ["string", "null"] },
+              "commit_sha": { "type": ["string", "null"] },
+              "model": { "type": ["string", "null"] }
+            }
+          }
       }
     },
     "CollectionListResponse": {

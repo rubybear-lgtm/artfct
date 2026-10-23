@@ -136,6 +136,7 @@ final class SearchArtifactsTool extends Tool
                     'agent' => $result->agent,
                     'repo_url' => $result->repoUrl,
                     'commit_sha' => $result->commitSha,
+                    'model' => $result->model,
                 ],
                 // Raw selected-passage reranker relevance, before ordering boosts.
                 'score' => $result->score,

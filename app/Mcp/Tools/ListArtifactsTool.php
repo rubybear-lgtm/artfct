@@ -505,6 +505,7 @@ final class ListArtifactsTool extends Tool
                 'sharing' => $artifact['sharing'] ?? null,
                 'owner' => $owner,
                 'agent' => data_get($artifact, 'provenance.agent'),
+                'model' => data_get($artifact, 'provenance.model'),
                 'version' => $artifact['version'] ?? null,
                 'kind' => $artifact['kind'] ?? null,
                 'artifact_type' => $types[$id] ?? null,

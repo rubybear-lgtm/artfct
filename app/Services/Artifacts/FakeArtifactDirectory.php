@@ -330,6 +330,12 @@ class FakeArtifactDirectory implements ArtifactDirectory
             'entrypoint' => $artifact['entrypoint'] ?? 'index.html',
             'created_at' => $artifact['created_at'] ?? now()->toIso8601String(),
             'expires_at' => null,
+            'provenance' => [
+                'agent' => data_get($artifact, 'provenance.agent'),
+                'repo_url' => data_get($artifact, 'provenance.repo_url'),
+                'commit_sha' => data_get($artifact, 'provenance.commit_sha'),
+                'model' => data_get($artifact, 'provenance.model'),
+            ],
         ];
     }
 

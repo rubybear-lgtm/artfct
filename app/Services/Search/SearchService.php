@@ -229,9 +229,10 @@ final class SearchService
             // surface hands out, whatever the artifact's sharing level.
             url: ArtifactViewLink::forArtifact($team->slug, $match->chunk->artifactId, $artifact['tier'] ?? null),
             snippet: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null),
-            agent: $match->chunk->agent,
+            agent: $match->chunk->agent ?? ($artifact['provenance']['agent'] ?? null),
             repoUrl: $match->chunk->repoUrl,
             commitSha: $match->chunk->commitSha,
+            model: is_string($artifact['provenance']['model'] ?? null) ? $artifact['provenance']['model'] : null,
             score: $match->similarity,
             excerpt: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null, SearchSnippet::EXCERPT_LENGTH),
             version: isset($artifact['version']) ? (int) $artifact['version'] : null,

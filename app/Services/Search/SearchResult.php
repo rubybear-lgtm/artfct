@@ -25,5 +25,6 @@ final readonly class SearchResult
         public ?int $version = null,
         public ?string $updatedAt = null,
         public ?string $artifactType = null,
+        public ?string $model = null,
     ) {}
 }
