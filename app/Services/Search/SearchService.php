@@ -100,14 +100,15 @@ final class SearchService
         $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
 
         $filtered = array_slice($filtered, 0, max(20, $limit));
+        $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
         $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
-        $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory));
+        $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, $titles);
         $filtered = SearchPassageSelection::bestArtifacts($this->reranker->rerank($query, $passages), (float) config('indexing.minimum_search_relevance', 0.05), $query);
 
         $usageScores = $this->usageScoresFor($team, $filtered);
         $canonicalArtifactIds = $this->canonicalArtifactIdsFor($team);
 
-        $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds);
+        $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds, $titles);
         $top = array_slice($ranked, 0, $limit);
 
         $types = app(ArtifactTypeResolver::class)->typesFor($team, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $top));
