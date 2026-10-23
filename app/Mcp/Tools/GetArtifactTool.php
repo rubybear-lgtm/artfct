@@ -55,13 +55,18 @@ final class GetArtifactTool extends Tool
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'get_artifact');
         $validated = $request->validate([
-            'id' => ['required', 'string', 'max:128', function (string $attribute, mixed $value, \Closure $fail): void {
-                if (! is_string($value) || (! ArtifactIdShape::isPermanent($value) && ! ArtifactIdShape::isEphemeral($value))) {
-                    $fail('The :attribute field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters) or a 10-character ephemeral artifact id.');
-                }
-            }],
+            'id' => ['required', 'string', 'max:128'],
             'version' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        if (! ArtifactIdShape::isPermanent($validated['id'])) {
+            app(McpTelemetry::class)->record('get_artifact', 'invalid_request', $startedAt);
+
+            return McpErrorResponse::error(
+                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters).',
+                'invalid_request',
+            );
+        }
 
         $version = isset($validated['version']) ? (int) $validated['version'] : null;
 

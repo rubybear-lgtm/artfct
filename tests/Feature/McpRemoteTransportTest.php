@@ -1343,25 +1343,26 @@ test('a public artifact still gets the short link with no signing secret configu
         ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
-test('an artifact whose id cannot form an isolated hostname is refused rather than linked', function () {
+test('get_artifact rejects a free-tool ephemeral id before contacting the Worker', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake([
-        'worker.test/v1/artifacts/abcdefghij' => Http::response([
-            'id' => 'artifact-123', 'tier' => 'permanent', 'entrypoint' => 'index.html',
-        ], 200),
-    ]);
+    Http::fake();
 
+    // Free-tool KV previews use a 10-character id with no D1 row. MCP only
+    // addresses permanent artifacts, so the id fails closed at validation
+    // rather than round-tripping the Worker (RUB-452).
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'abcdefghij']],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
-        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'invalid_request')
         ->assertJsonMissingPath('result.structuredContent.view_url');
+
+    Http::assertNothingSent();
 });
 
 test('deploy_artifact refuses over-quota workspaces before contacting the Worker', function () {

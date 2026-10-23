@@ -245,7 +245,9 @@ test('every permanent tier is handed the short link, public included', function 
         ->and(ArtifactViewLink::forArtifact('acme', $id, 'secure'))->toBe('https://artfct.dev/a/'.$id)
         ->and(ArtifactViewLink::forArtifact('acme', $id, null))->toBe('https://artfct.dev/a/'.$id)
         ->and(ArtifactViewLink::forArtifact('acme', $id, 'public', null, 2))->toBe('https://artfct.dev/a/'.$id.'/v/2')
-        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral'))->toBe('https://artfct.dev/p/'.$id);
+        // Historical `ephemeral` tier values fall through to the short link;
+        // free-tool KV previews never call this helper (RUB-452).
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral'))->toBe('https://artfct.dev/a/'.$id);
 });
 
 test('the short link stays within the length budget', function () {

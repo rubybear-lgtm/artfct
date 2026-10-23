@@ -15,19 +15,18 @@ namespace App\Services\Artifacts;
  * what makes a link an agent returns work when a member clicks it while signed
  * in, and it is the link that is correct for a public artifact either way.
  *
- * `deploy_to_canvas` is the exception that proves the rule: its artifacts are
- * anonymous KV records with no D1 row, so the open route can only 404 for
- * them. That tool asks for `forAnonymousArtifact()` explicitly — the Worker's
- * own `/p/{id}` URL, which the KV path serves — rather than for the tier rule
- * above, because no tier of a KV artifact is addressable through the app.
+ * Anonymous free-tool previews (Worker KV `ephemeral` tier) are not addressed
+ * here: they have no D1 row, so no app route can resolve them. The free tool
+ * returns the Worker's own `/p/{id}` URL directly and never calls this helper
+ * (RUB-452). The Worker ephemeral path remains intentional.
  */
 final class ArtifactViewLink
 {
     /**
-     * The tiers the Worker serves to anyone, with no credential involved: a
-     * permanent `public` artifact and an anonymous `ephemeral` preview.
+     * The tier the Worker serves to anyone with no credential: a permanent
+     * `public` artifact.
      */
-    public const ANONYMOUS_TIERS = ['public', 'ephemeral'];
+    public const ANONYMOUS_TIERS = ['public'];
 
     /**
      * The Worker's own public URL for `$artifactId`, the same base
@@ -69,15 +68,6 @@ final class ArtifactViewLink
     }
 
     /**
-     * Whether `$tier` is the anonymous KV preview `deploy_to_canvas` publishes:
-     * the only Worker-served tier no app route can resolve from D1.
-     */
-    public static function isEphemeral(?string $tier): bool
-    {
-        return is_string($tier) && strtolower($tier) === 'ephemeral';
-    }
-
-    /**
      * Whether `$tier` is a tier the Worker serves without a credential.
      * Anything else — including a tier the caller could not read — is treated
      * as secure.
@@ -90,35 +80,13 @@ final class ArtifactViewLink
     /**
      * The URL for `$artifactId` in `$teamSlug` under the rule above.
      *
-     * `$workerUrl` is the URL the Worker itself published for an anonymous
-     * artifact (`ARTFCT_PUBLIC_BASE_URL`), when the caller's response carried
-     * one. It wins over this environment's `app.public_base_url` because it is
-     * the artifact's real address: on a staging deployment whose Worker public
-     * base is not the app's, reconstructing from config would hand out a link
-     * to the wrong host.
+     * Every permanent artifact — public included — is handed out as the one
+     * short link and resolved there. Anonymous KV previews never reach this
+     * helper; see the class docblock.
      */
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier, ?string $workerUrl = null, ?int $version = null): string
     {
-        // Only the anonymous KV preview has no D1 row and so no app route that
-        // could resolve it: every permanent artifact, public included, is
-        // handed out as the one short link and resolved there.
-        if (self::isEphemeral($tier)) {
-            return self::forAnonymousArtifact($artifactId, $workerUrl);
-        }
-
         return self::appOpenUrl($teamSlug, $artifactId, $version);
-    }
-
-    /**
-     * The link for an artifact only the Worker can serve: the anonymous KV
-     * record with no D1 row, which is what `deploy_to_canvas` publishes at
-     * every tier it accepts. The app's open route resolves content from D1, so
-     * for such an artifact it is a guaranteed 404 — this URL is the whole link,
-     * and no token is ever minted for it.
-     */
-    public static function forAnonymousArtifact(string $artifactId, ?string $workerUrl = null): string
-    {
-        return is_string($workerUrl) && $workerUrl !== '' ? $workerUrl : self::publicUrl($artifactId);
     }
 
     private static function withPermanentEntrypointSlash(string $artifactId, string $url, ?int $version = null): string

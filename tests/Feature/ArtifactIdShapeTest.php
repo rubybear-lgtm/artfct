@@ -8,7 +8,8 @@ use App\Services\Artifacts\ArtifactIdShape;
  * permanent id looks like. The two permanent shapes are the 13-character
  * lowercase base36 id every new artifact gets and the 32-character lowercase
  * hex id artifacts used before versioning; the ephemeral shape is the
- * 10-character alphanumeric id of an anonymous expiring preview.
+ * 10-character alphanumeric id the free-tool / Worker KV preview still mints
+ * (MCP and the app viewer address only permanent ids — RUB-452).
  */
 
 test('stable ids are exactly 13 lowercase base36 characters', function () {
