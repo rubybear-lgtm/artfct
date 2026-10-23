@@ -125,13 +125,13 @@ export function RecentArtifactCard({
                         href={item.openUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="line-clamp-2 min-w-0 font-semibold break-words hover:text-primary hover:underline"
+                        className="line-clamp-2 min-w-0 font-semibold break-words hover:text-primary hover:underline max-md:block max-md:min-h-11 max-md:py-2"
                     >
                         {rowTitle(item)}
                     </a>
                 ) : (
                     <span
-                        className={`line-clamp-2 min-w-0 font-semibold break-words ${
+                        className={`line-clamp-2 min-w-0 font-semibold break-words max-md:block max-md:min-h-11 max-md:py-2 ${
                             item.revoked ? 'text-muted-foreground' : ''
                         }`}
                     >

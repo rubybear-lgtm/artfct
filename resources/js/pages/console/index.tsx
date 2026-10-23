@@ -606,7 +606,7 @@ export default function ConsoleIndex({
                                         <div className="flex min-w-0 flex-1 flex-col gap-1">
                                             {artifact.revoked_at ? (
                                                 <span
-                                                    className="min-w-0 font-semibold break-words text-muted-foreground"
+                                                    className="min-w-0 font-semibold break-words text-muted-foreground max-md:block max-md:min-h-11 max-md:py-2"
                                                     data-testid="open-artifact-title-disabled"
                                                     title={revokedOpenTooltip}
                                                     aria-disabled="true"
@@ -618,13 +618,13 @@ export default function ConsoleIndex({
                                                     href={openHref(artifact.id)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline"
+                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline max-md:block max-md:min-h-11 max-md:py-2"
                                                     data-testid="open-artifact-title"
                                                 >
                                                     {artifactTitle(artifact)}
                                                 </a>
                                             ) : (
-                                                <span className="min-w-0 font-semibold break-words text-foreground">
+                                                <span className="min-w-0 font-semibold break-words text-foreground max-md:block max-md:min-h-11 max-md:py-2">
                                                     {artifactTitle(artifact)}
                                                 </span>
                                             )}
@@ -777,7 +777,7 @@ export default function ConsoleIndex({
                                         <div className="flex flex-wrap items-center gap-2">
                                             {artifact.revoked_at ? (
                                                 <span
-                                                    className="min-w-0 font-semibold break-words text-muted-foreground"
+                                                    className="min-w-0 font-semibold break-words text-muted-foreground max-md:block max-md:min-h-11 max-md:py-2"
                                                     data-testid="open-artifact-title-disabled"
                                                     title={revokedOpenTooltip}
                                                     aria-disabled="true"
@@ -789,13 +789,13 @@ export default function ConsoleIndex({
                                                     href={openHref(artifact.id)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline"
+                                                    className="min-w-0 font-semibold break-words text-foreground underline-offset-2 hover:text-[var(--accent)] hover:underline max-md:block max-md:min-h-11 max-md:py-2"
                                                     data-testid="open-artifact-title"
                                                 >
                                                     {artifactTitle(artifact)}
                                                 </a>
                                             ) : (
-                                                <span className="min-w-0 font-semibold break-words text-foreground">
+                                                <span className="min-w-0 font-semibold break-words text-foreground max-md:block max-md:min-h-11 max-md:py-2">
                                                     {artifactTitle(artifact)}
                                                 </span>
                                             )}
