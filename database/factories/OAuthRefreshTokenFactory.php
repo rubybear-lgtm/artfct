@@ -26,6 +26,7 @@ class OAuthRefreshTokenFactory extends Factory
             'client_id' => 'test-client',
             'token_hash' => hash('sha256', Str::random(96)),
             'scopes' => ['artifacts:read'],
+            'polis_proven' => false,
             'expires_at' => now()->addDays(30),
             'last_used_at' => null,
             'revoked_at' => null,
