@@ -147,7 +147,7 @@ final class SearchRanking
         $titleLength = mb_strlen($normalizedTitle);
         $maxLength = max($queryLength, $titleLength);
         $minLength = min($queryLength, $titleLength);
-        if ($maxLength === 0 || ($minLength / $maxLength) < 0.85) {
+        if (($minLength / $maxLength) < 0.85) {
             return self::TITLE_MATCH_NONE;
         }
 
