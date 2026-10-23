@@ -34,7 +34,7 @@ final class AddCollectionArtifactTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'toolVersion' => '1.1.0',
+            'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['collections:write'],
             'compatibility' => 'stable',
