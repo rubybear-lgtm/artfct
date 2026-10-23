@@ -11,6 +11,7 @@ use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
+use App\Services\Billing\DailyPublishLimiter;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
 use App\Services\Governance\AuditLogger;
@@ -82,7 +83,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish): Response|ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -142,10 +143,27 @@ final class DeployArtifactTool extends Tool
         }
 
         $team = McpContext::team();
+        $actor = McpContext::actor();
+        ksort($files);
+        $contentFingerprint = hash('sha256', implode("\0", array_map(
+            fn (array $file): string => $file['path'].':'.$file['sha256'],
+            $files,
+        )));
 
         try {
             $quotaService->assertCanCreateArtifact($team, $totalBytes);
-        } catch (QuotaExceededException|BundleTooLargeException $exception) {
+            $dailyPublish->assertCanPublish($team, $actor);
+        } catch (QuotaExceededException $exception) {
+            app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
+
+            return McpErrorResponse::error(
+                $exception->getMessage().' Use get_usage to inspect current limits and usage, then retry after remediation.',
+                $exception->errorCode,
+                false,
+                'get_usage',
+                $exception->details,
+            );
+        } catch (BundleTooLargeException $exception) {
             app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
 
             return McpErrorResponse::error(
@@ -336,11 +354,16 @@ final class DeployArtifactTool extends Tool
             McpContext::httpRequest(),
             AuditEventType::ArtifactDeployed,
             $team,
-            McpContext::actor(),
+            $actor,
             // A version publish is audited against the version, so the log
             // records which publish happened rather than only the artifact.
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
+
+        // Version publishes report `created`; identical-content creates reuse the
+        // fingerprint cache so a no-op republish does not burn the daily cap.
+        $countsTowardDaily = ! $versionPublish || (bool) $created->json('created', true);
+        $dailyPublish->recordPublish($team, $actor, $contentFingerprint, $countsTowardDaily);
 
         $artifactType = app(ArtifactTypeResolver::class)->record(
             $team,
