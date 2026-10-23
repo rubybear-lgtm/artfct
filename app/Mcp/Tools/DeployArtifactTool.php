@@ -144,10 +144,13 @@ final class DeployArtifactTool extends Tool
 
         $team = McpContext::team();
         $actor = McpContext::actor();
-        ksort($files);
+        // Fingerprint from a path-sorted copy so identical bundles match
+        // regardless of input order, without reordering the Worker manifest.
+        $filesForFingerprint = $files;
+        ksort($filesForFingerprint);
         $contentFingerprint = hash('sha256', implode("\0", array_map(
             fn (array $file): string => $file['path'].':'.$file['sha256'],
-            $files,
+            $filesForFingerprint,
         )));
 
         try {
