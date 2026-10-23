@@ -561,12 +561,8 @@ final class DeployArtifactTool extends Tool
         $connection = $http->attributes->get('mcp_connection');
 
         if ($connection instanceof McpConnection) {
-            $name = is_string($connection->client_name) && $connection->client_name !== ''
-                ? $connection->client_name
-                : null;
-            $version = is_string($connection->client_version) && $connection->client_version !== ''
-                ? $connection->client_version
-                : null;
+            $name = filled($connection->client_name) ? (string) $connection->client_name : null;
+            $version = filled($connection->client_version) ? (string) $connection->client_version : null;
 
             if ($name !== null) {
                 return [$name, $version, 'client_info'];
