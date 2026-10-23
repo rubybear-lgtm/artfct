@@ -156,6 +156,8 @@ final class GetArtifactTool extends Tool
             ] + $access);
         }
 
+        $provenance = $response->json('provenance');
+
         return Response::structured([
             'id' => $artifactId,
             'view_url' => $link,
@@ -168,6 +170,14 @@ final class GetArtifactTool extends Tool
             'version' => $response->json('version'),
             'version_count' => $response->json('version_count'),
             'updated_at' => $response->json('updated_at'),
+            'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
+            'model' => is_array($provenance) ? ($provenance['model'] ?? null) : null,
+            'provenance' => [
+                'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
+                'repo_url' => is_array($provenance) ? ($provenance['repo_url'] ?? null) : null,
+                'commit_sha' => is_array($provenance) ? ($provenance['commit_sha'] ?? null) : null,
+                'model' => is_array($provenance) ? ($provenance['model'] ?? null) : null,
+            ],
         ] + $access);
     }
 

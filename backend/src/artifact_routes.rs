@@ -158,6 +158,10 @@ pub(crate) struct ArtifactMetadataRow {
     pub(crate) current_version: i64,
     pub(crate) version_count: i64,
     pub(crate) updated_at: String,
+    pub(crate) agent: Option<String>,
+    pub(crate) repo_url: Option<String>,
+    pub(crate) commit_sha: Option<String>,
+    pub(crate) model: Option<String>,
 }
 
 /// The metadata read's JSON body. `version` is the served version;
@@ -192,6 +196,12 @@ pub(crate) fn build_artifact_metadata_response(
         "expires_at": row.expires_at,
         "title": row.title,
         "description": row.description,
+        "provenance": {
+            "agent": row.agent,
+            "repo_url": row.repo_url,
+            "commit_sha": row.commit_sha,
+            "model": row.model,
+        },
     })
 }
 #[derive(Debug, Deserialize)]
@@ -683,7 +693,7 @@ struct PermanentArtifactRow {
 /// SQL where a mutation test could pass vacuously.
 /// The metadata read must never answer for a revoked artifact: Laravel's
 /// read_artifact and comment surfaces rely on this 404 to hide revoked work.
-const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
+const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at, p.agent AS agent, p.repo_url AS repo_url, p.commit_sha AS commit_sha, json_extract(p.payload, '$.model') AS model FROM artifacts a JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
 
 pub(crate) async fn get_artifact_metadata(
     path: &str,
@@ -1331,6 +1341,7 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
                     "agent": item.agent,
                     "repo_url": item.repo_url,
                     "commit_sha": item.commit_sha,
+                    "model": item.model,
                 },
                 "updated_at": item.updated_at,
                 "version": item.version,
