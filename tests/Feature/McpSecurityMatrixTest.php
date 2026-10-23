@@ -252,12 +252,25 @@ test('malformed JSON-RPC bodies never cause a server error', function (mixed $bo
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
 
-    $response = $this->withToken($token)->call('POST', '/mcp', [], [], [], [
-        'CONTENT_TYPE' => 'application/json',
-        'HTTP_ACCEPT' => 'application/json',
-    ], is_string($body) ? $body : json_encode($body));
+    // postJson applies withToken; raw call() with only CONTENT_TYPE/ACCEPT was
+    // dropping Authorization and only asserting unauthenticated 401s (< 500).
+    if (is_string($body)) {
+        $response = $this->withToken($token)->call('POST', '/mcp', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], $body);
+    } else {
+        $response = $this->withToken($token)->postJson('/mcp', $body);
+    }
 
     expect($response->getStatusCode())->toBeLessThan(500);
+    $payload = json_decode($response->getContent(), true);
+
+    if (is_array($payload) && ! array_is_list($payload) && array_key_exists('jsonrpc', $payload)) {
+        expect($payload['jsonrpc'])->toBe('2.0');
+        expect(array_key_exists('result', $payload) || array_key_exists('error', $payload))->toBeTrue();
+    }
 })->with([
     'not json' => '{{{',
     'empty' => '',
@@ -268,6 +281,7 @@ test('malformed JSON-RPC bodies never cause a server error', function (mixed $bo
     'numeric method' => [['jsonrpc' => '2.0', 'id' => 1, 'method' => 7]],
     'wrong version' => [['jsonrpc' => '1.0', 'id' => 1, 'method' => 'initialize']],
     'params as string' => [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => 'x']],
+    'boolean id' => [['jsonrpc' => '2.0', 'id' => true, 'method' => 'initialize', 'params' => []]],
     'tool name as array' => [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => ['name' => ['x']]]],
     'unknown tool' => [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'nope']]],
     'arguments as string' => [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'get_usage', 'arguments' => 'x']]],
