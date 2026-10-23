@@ -16,9 +16,7 @@ use RuntimeException;
  * to — so an agent's link and the console's link cannot drift apart. Every
  * permanent artifact, `public` included, gets the app's short link: a public
  * one renders for anyone and needs no credential; a secure one is authorized
- * and its token minted there, per click, never handed to the agent. Only the
- * anonymous `ephemeral` preview `deploy_to_canvas` publishes gets the Worker's
- * own `/p/{id}` URL, because no app route can resolve a KV record.
+ * and its token minted there, per click, never handed to the agent.
  *
  * A secure artifact is still refused here, before any link is handed out, in
  * the two cases the app's route could only turn into a dead end:
@@ -53,19 +51,17 @@ final class McpArtifactLink
      * resolves to the app's open route, which is the one link that is safe
      * either way.
      *
-     * `$workerUrl` is the URL the Worker published for the artifact, when the
-     * response carried one. It is used only for an anonymous artifact, where it
-     * is the artifact's real address — see `ArtifactViewLink::forArtifact`.
+     * `$workerUrl` is accepted for call-site compatibility; permanent artifacts
+     * always use the app short link, so it is ignored (RUB-452).
      *
      * `$version` names one published version; omitted, the link resolves to the
      * artifact's current version exactly as before.
      */
     public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null, ?int $version = null): string|Response
     {
-        // Public and ephemeral are the tiers the Worker can serve without a
-        // credential, so no signing secret is required to hand out a link for
-        // one: `forArtifact` gives a public artifact the app's short route and
-        // the ephemeral preview the Worker's own URL.
+        // Public is the tier the Worker can serve without a credential, so no
+        // signing secret is required to hand out a link: `forArtifact` gives it
+        // the app's short route.
         if (ArtifactViewLink::isAnonymous($tier)) {
             return ArtifactViewLink::forArtifact($teamSlug, $artifactId, $tier, $workerUrl, $version);
         }

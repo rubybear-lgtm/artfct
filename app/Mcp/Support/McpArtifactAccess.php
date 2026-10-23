@@ -18,7 +18,7 @@ final class McpArtifactAccess
      */
     public static function denyUnlessVisible(string $artifactId, string $tool, int $startedAt): ?Response
     {
-        if (! ArtifactIdShape::isPermanent($artifactId) && ! ArtifactIdShape::isEphemeral($artifactId)) {
+        if (! ArtifactIdShape::isPermanent($artifactId)) {
             return McpErrorResponse::error('That is not an artifact id.', 'invalid_request');
         }
 
