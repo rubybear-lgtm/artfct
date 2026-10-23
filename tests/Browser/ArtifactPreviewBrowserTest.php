@@ -15,11 +15,15 @@ uses(RefreshDatabase::class);
 test('hostile preview content cannot run scripts or load network resources even when opened directly', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
+    $member->switchTeam($team);
     test()->actingAs($member);
     config(['services.artifact_access.token_secret' => null]);
 
     $requests = new ArrayObject;
-    Route::get('/__preview-probe/{kind}', function (string $kind) use ($requests) {
+    // sendBeacon uses POST; accepting GET+POST keeps the probe honest for every
+    // outbound kind without leaving MethodNotAllowedHttpException on the Pest
+    // browser server (that exception was showing up as a red herring on flakes).
+    Route::match(['GET', 'POST'], '/__preview-probe/{kind}', function (string $kind) use ($requests) {
         $requests[] = $kind;
 
         return response('body { color: red; }')->header('Content-Type', 'text/css');
@@ -73,7 +77,7 @@ test('hostile preview content cannot run scripts or load network resources even 
     Route::get('/__preview-control', fn () => response($html));
     visit('/__preview-control')
         ->assertScript("document.documentElement.dataset.executed === 'yes'");
-    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background');
+    expect($requests->getArrayCopy())->toContain('fetch', 'image', 'script', 'frame', 'style', 'import', 'background', 'beacon');
     $requests->exchangeArray([]);
 
     $previewUrl = route('teams.artifacts.preview', ['team' => $team, 'artifactId' => 'hostile-preview'], absolute: false);
@@ -101,7 +105,11 @@ test('hostile preview content cannot run scripts or load network resources even 
         'name' => 'Hostile document stack',
     ]);
     $collection->artifacts()->create(['artifact_id' => 'hostile-preview', 'added_at' => now()]);
-    $direct->navigate(route('teams.collections.index', $team))->resize(390, 850)->wait(0.2)
+    // `__preview-frame` also has an iframe, so "iframe exists" is not proof the
+    // collections navigation finished. Wait for this page's toggle before click.
+    $direct->navigate(route('teams.collections.index', $team))->resize(390, 850)
+        ->assertSee('Hostile document stack')
+        ->assertPresent("@collection-toggle-{$collection->id}")
         ->assertScript('document.querySelector("iframe") !== null')
         ->click("@collection-toggle-{$collection->id}")->wait(0.2)
         ->assertScript('document.documentElement.dataset.compromised === undefined')
