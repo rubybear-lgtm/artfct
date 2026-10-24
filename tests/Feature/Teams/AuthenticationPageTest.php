@@ -69,7 +69,7 @@ test('non_enterprise_teams_cannot_add_a_connection', function () {
     [$team, $admin] = ssoTeam(Plan::Team);
     Http::fake();
 
-    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://idp.example.com/m'])->assertForbidden();
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://8.8.8.8/m'])->assertForbidden();
 
     Http::assertNothingSent();
 });
@@ -78,10 +78,11 @@ test('an_enterprise_admin_adds_and_removes_a_connection_through_polis', function
     [$team, $admin] = ssoTeam();
     Http::fake(['polis.test/*' => Http::response(['clientID' => 'c'])]);
 
-    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://idp.example.com/m'])->assertRedirect();
+    // Public IP literal: avoids DNS in CI while still exercising PublicHttpsUrl.
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://8.8.8.8/m'])->assertRedirect();
     Http::assertSent(fn ($request) => $request->method() === 'POST'
         && $request['tenant'] === 'acme'
-        && $request['metadataUrl'] === 'https://idp.example.com/m'
+        && $request['metadataUrl'] === 'https://8.8.8.8/m'
         && $request->hasHeader('Authorization', 'Api-Key k'));
 
     test()->actingAs($admin)->delete(route('teams.authentication.connection.destroy', $team))->assertRedirect()
@@ -113,7 +114,22 @@ test('a_non_https_metadata_url_is_rejected', function () {
     [$team, $admin] = ssoTeam();
     Http::fake();
 
-    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'http://idp.example.com/m'])->assertSessionHasErrors('metadata_url');
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'http://8.8.8.8/m'])->assertSessionHasErrors('metadata_url');
+
+    Http::assertNothingSent();
+});
+
+test('cloud_metadata_and_private_metadata_urls_are_rejected_before_polis', function () {
+    [$team, $admin] = ssoTeam();
+    Http::fake();
+
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), [
+        'metadata_url' => 'https://169.254.169.254/latest/meta-data/',
+    ])->assertSessionHasErrors('metadata_url');
+
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), [
+        'metadata_url' => 'https://10.0.0.8/saml/metadata',
+    ])->assertSessionHasErrors('metadata_url');
 
     Http::assertNothingSent();
 });
@@ -122,6 +138,6 @@ test('polis_refusals_are_shown_to_the_admin', function () {
     [$team, $admin] = ssoTeam();
     Http::fake(['polis.test/*' => Http::response(['error' => ['message' => 'EntityID already exists for different tenant']], 500)]);
 
-    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://idp.example.com/m'])
+    test()->actingAs($admin)->post(route('teams.authentication.connection.store', $team), ['metadata_url' => 'https://8.8.8.8/m'])
         ->assertSessionHasErrors(['metadata_url' => 'Polis refused the connection: EntityID already exists for different tenant']);
 });
