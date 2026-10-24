@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Teams;
 use App\Actions\Teams\CreateTeam;
 use App\Actions\Teams\UpgradePersonalTeam;
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
 use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
+use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Rules\TeamName;
@@ -118,11 +120,24 @@ class TeamController extends Controller
                     'name' => $member->name,
                     'email' => $member->email,
                     'avatar' => $member->avatar ?? null,
+                    'isBot' => $member->is_bot,
                     'role' => $membership->role->value,
-                    'role_label' => $membership->role->label(),
+                    'role_label' => $member->is_bot ? 'Bot' : $membership->role->label(),
                     'deactivated' => $member->deactivated_at !== null,
                 ];
             }),
+            'canAddBot' => $user->can('create', [OrgToken::class, $team]),
+            'botScopeOptions' => McpScope::forRole($user->teamRole($team)),
+            'botScopeLabels' => collect(McpScope::cases())
+                ->mapWithKeys(fn (McpScope $scope): array => [$scope->value => $scope->label()])
+                ->all(),
+            'botDefaultScopes' => [
+                McpScope::ArtifactsRead->value,
+                McpScope::ArtifactsDeploy->value,
+                McpScope::CollectionsRead->value,
+                McpScope::UsageRead->value,
+            ],
+            'mcpEndpoint' => url('/mcp'),
             'invitations' => $team->invitations()
                 ->whereNull('accepted_at')
                 ->get()

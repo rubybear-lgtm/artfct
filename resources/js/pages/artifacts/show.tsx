@@ -5,7 +5,7 @@ import {
     PanelRightClose,
     PanelRightOpen,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import ArtifactComments from '@/components/artifact-comments';
 import type { ArtifactComment } from '@/components/artifact-comments';
@@ -77,6 +77,16 @@ function versionLabel(version: number, count: number): string {
     return count > 1 ? `Version ${version} of ${count}` : `Version ${version}`;
 }
 
+/** The freshness poll verdict: what the viewer compares against its props. */
+interface Freshness {
+    version: number | null;
+    sharing: ArtifactSharing | null;
+    revoked: boolean;
+}
+
+/** 45s between polls, ±10s so a fleet of open tabs does not poll in lockstep. */
+const FRESHNESS_INTERVAL_MS = 45_000;
+const FRESHNESS_JITTER_MS = 10_000;
 export default function ArtifactShow({
     publicView,
     canSignInToEdit,
@@ -112,6 +122,136 @@ export default function ArtifactShow({
             { preserveScroll: true },
         );
     };
+
+    /*
+     * The freshness poll: every 45s (±10s jitter) while the tab is visible,
+     * plus once on return from hidden/background, the shell asks the server
+     * for the current (version, sharing) and compares against these props.
+     * A change on the live view reloads through the server — never by
+     * resetting the iframe src, whose ?token= may have expired — while a
+     * pinned older version only gets a banner, and a revoked artifact
+     * unmounts the frame and stops polling. The poll is ~50 bytes of JSON
+     * against one D1 row; the reload it avoids refetches the whole bundle.
+     */
+    const [revokedView, setRevokedView] = useState(false);
+    const [newerAvailable, setNewerAvailable] = useState(false);
+    const knownRef = useRef(false);
+
+    useEffect(() => {
+        // The rendered props are the baseline: a verdict that differs from
+        // them means the artifact changed since this page was served.
+        const baseline = {
+            version: artifact.version,
+            sharing: artifact.sharing,
+        };
+        // Scoped to this effect lifecycle, not the component: a reload
+        // re-runs the effect with fresh props, and the new poll starts
+        // unstopped instead of inheriting the old run's stop.
+        let stopped = false;
+        const poll = async () => {
+            if (stopped || document.visibilityState !== 'visible') {
+                return;
+            }
+
+            const headers: Record<string, string> = {
+                Accept: 'application/json',
+            };
+
+            if (knownRef.current) {
+                headers['X-Freshness-Known'] = '1';
+            }
+
+            let response: Response;
+
+            try {
+                response = await fetch(
+                    artifacts.freshness.url({ artifactId: artifact.id }),
+                    {
+                        headers,
+                        credentials: 'same-origin',
+                    },
+                );
+            } catch {
+                return;
+            }
+
+            // The session went away: stop polling silently and let the next
+            // navigation handle re-auth rather than looping against 401s.
+            if (response.status === 401 || response.status === 419) {
+                stopped = true;
+
+                return;
+            }
+
+            if (!response.ok) {
+                return;
+            }
+
+            let verdict: Freshness;
+
+            try {
+                verdict = (await response.json()) as Freshness;
+            } catch {
+                return;
+            }
+
+            if (verdict.revoked) {
+                stopped = true;
+                setRevokedView(true);
+
+                return;
+            }
+
+            knownRef.current = true;
+
+            if (
+                verdict.version !== baseline.version ||
+                verdict.sharing !== baseline.sharing
+            ) {
+                if (selectedVersion !== null) {
+                    setNewerAvailable(true);
+
+                    return;
+                }
+
+                stopped = true;
+                router.reload();
+            }
+        };
+
+        const schedule = () => {
+            const jitter = (Math.random() * 2 - 1) * FRESHNESS_JITTER_MS;
+
+            return window.setTimeout(() => {
+                void poll().finally(() => {
+                    if (!stopped) {
+                        timer = schedule();
+                    }
+                });
+            }, FRESHNESS_INTERVAL_MS + jitter);
+        };
+
+        let timer = schedule();
+
+        const onReturn = () => {
+            if (document.visibilityState === 'visible') {
+                void poll();
+            }
+        };
+
+        document.addEventListener('visibilitychange', onReturn);
+        window.addEventListener('focus', onReturn);
+
+        return () => {
+            stopped = true;
+            window.clearTimeout(timer);
+            document.removeEventListener('visibilitychange', onReturn);
+            window.removeEventListener('focus', onReturn);
+        };
+        // The baseline closes over the rendered props, so a server reload —
+        // which remounts with fresh props — restarts the poll from the new
+        // baseline, and nothing else needs to.
+    }, [artifact.id, artifact.version, artifact.sharing, selectedVersion]);
 
     const [panelOpen, setPanelOpen] = useState(false);
     const commentCount = comments?.length ?? 0;
@@ -260,15 +400,47 @@ export default function ArtifactShow({
                 </div>
             </header>
 
+            {newerAvailable && selectedVersion !== null && (
+                <div
+                    role="status"
+                    data-testid="newer-version-banner"
+                    className="shrink-0 border-b border-border bg-muted px-3 py-1.5 text-sm"
+                >
+                    A newer version is available.{' '}
+                    <Link
+                        href={artifacts.show.url({ artifactId: artifact.id })}
+                        className="underline underline-offset-4"
+                    >
+                        View the latest version
+                    </Link>
+                </div>
+            )}
+
             <div className="relative flex min-h-0 flex-1">
-                <iframe
-                    src={frameUrl}
-                    title={name}
-                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                    referrerPolicy="no-referrer"
-                    data-testid="artifact-frame"
-                    className="h-full min-w-0 flex-1 border-0 bg-paper"
-                />
+                {revokedView ? (
+                    <div
+                        role="status"
+                        data-testid="artifact-revoked"
+                        className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center"
+                    >
+                        <p className="text-base font-medium">
+                            This artifact is no longer shared.
+                        </p>
+                        <p className="max-w-md text-sm text-muted-foreground">
+                            It was revoked or deleted, so there is nothing to
+                            show here.
+                        </p>
+                    </div>
+                ) : (
+                    <iframe
+                        src={frameUrl}
+                        title={name}
+                        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                        referrerPolicy="no-referrer"
+                        data-testid="artifact-frame"
+                        className="h-full min-w-0 flex-1 border-0 bg-paper"
+                    />
+                )}
 
                 {panelOpen && (
                     <aside

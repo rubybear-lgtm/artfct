@@ -11,6 +11,7 @@
         "POST _boost/browser-logs": "dev-only",
         "GET a/{artifactId}": "public",
         "GET a/{artifactId}/v/{version}": "public",
+        "GET a/{artifactId}/freshness": "public",
         "GET a/{artifactId}/download": "user",
         "PATCH a/{artifactId}/sharing": "user",
         "POST a/{artifactId}/comments": "user",

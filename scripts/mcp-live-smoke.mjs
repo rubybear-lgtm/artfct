@@ -57,6 +57,7 @@ const supportedTools = new Set([
     'list_artifact_comments',
     'add_artifact_comment',
     'resolve_artifact_comment',
+    'set_avatar',
 ]);
 
 const client = {
