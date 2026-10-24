@@ -383,12 +383,19 @@ pub(crate) async fn resolve_artifact(
     }
 
     let kv_store = store::KvArtifactStore::new(env.kv(KV_BINDING)?);
-    let Some(mut stored) = kv_store
-        .get_record::<StoredArtifact>(artifact_id)
+    let Some(raw) = kv_store
+        .get_text(artifact_id)
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?
     else {
         return expired_response();
+    };
+    if is_ephemeral_tombstone(&raw) {
+        return expired_response();
+    }
+    let mut stored: StoredArtifact = match serde_json::from_str(&raw) {
+        Ok(stored) => stored,
+        Err(_) => return expired_response(),
     };
 
     let default_ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES);
@@ -399,6 +406,20 @@ pub(crate) async fn resolve_artifact(
         max_ttl_minutes,
         Utc::now(),
     );
+
+    // Re-read before put: if a delete tombstoned the key while we held the
+    // slid body, do not resurrect it (RUB-464). KV still has no CAS, so this
+    // narrows the race rather than eliminating last-write-wins entirely.
+    let Some(raw_again) = kv_store
+        .get_text(artifact_id)
+        .await
+        .map_err(|error| worker::Error::RustError(error.to_string()))?
+    else {
+        return expired_response();
+    };
+    if is_ephemeral_tombstone(&raw_again) {
+        return expired_response();
+    }
 
     let body = serde_json::to_string(&stored)?;
     kv_store
@@ -528,17 +549,30 @@ pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) ->
         );
     }
 
-    let Some(mut stored) = env
-        .kv(KV_BINDING)?
-        .get(artifact_id)
-        .json::<StoredArtifact>()
-        .await?
-    else {
+    let kv = env.kv(KV_BINDING)?;
+    let Some(raw) = kv.get(artifact_id).text().await? else {
         return json_error(
             ErrorCode::ArtifactNotFound,
             "Artifact not found or expired.",
             404,
         );
+    };
+    if is_ephemeral_tombstone(&raw) {
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or expired.",
+            404,
+        );
+    }
+    let mut stored: StoredArtifact = match serde_json::from_str(&raw) {
+        Ok(stored) => stored,
+        Err(_) => {
+            return json_error(
+                ErrorCode::ArtifactNotFound,
+                "Artifact not found or expired.",
+                404,
+            );
+        }
     };
 
     let default_ttl_minutes = env_u64(env, "ARTFCT_DEFAULT_TTL_MINUTES", DEFAULT_TTL_MINUTES);
@@ -550,9 +584,24 @@ pub(crate) async fn update_artifact(path: &str, req: &mut Request, env: &Env) ->
         Utc::now(),
     );
 
+    // Same re-read as the preview path: refuse to overwrite a tombstone.
+    let Some(raw_again) = kv.get(artifact_id).text().await? else {
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or expired.",
+            404,
+        );
+    };
+    if is_ephemeral_tombstone(&raw_again) {
+        return json_error(
+            ErrorCode::ArtifactNotFound,
+            "Artifact not found or expired.",
+            404,
+        );
+    }
+
     let body = serde_json::to_string(&stored)?;
-    env.kv(KV_BINDING)?
-        .put(artifact_id, body)?
+    kv.put(artifact_id, body)?
         .expiration_ttl(ttl_seconds)
         .execute()
         .await?;

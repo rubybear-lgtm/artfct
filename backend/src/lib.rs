@@ -50,8 +50,8 @@ use auth::{
 };
 #[cfg(test)]
 use auth::{
-    bearer_token, credential_has_scope, decode_org_jwt, extract_bearer_token, parse_jwks,
-    rate_limit_allows, rate_limit_kv_key_for_ip, rate_limit_kv_key_for_token,
+    bearer_token, credential_has_scope, decode_org_jwt, denylist_hit, extract_bearer_token,
+    parse_jwks, rate_limit_allows, rate_limit_kv_key_for_ip, rate_limit_kv_key_for_token,
     resolve_org_credential, CredentialError, JwkKey, OrgCredential, OrgJwtClaims,
 };
 #[cfg(test)]
@@ -419,6 +419,21 @@ struct StoredArtifact {
     /// Absent on records written before it was persisted.
     #[serde(default)]
     ttl_minutes: Option<u64>,
+}
+
+/// Written in place of an ephemeral record on delete so a concurrent GET
+/// cannot resurrect it by sliding TTL (RUB-464). Workers KV has no CAS.
+const EPHEMERAL_TOMBSTONE_JSON: &str = r#"{"tombstone":true}"#;
+/// Keep the tombstone at least as long as the longest anonymous TTL.
+const EPHEMERAL_TOMBSTONE_TTL_SECONDS: u64 = MAX_TTL_MINUTES * 60;
+
+/// Whether a KV value is an ephemeral delete tombstone rather than a live
+/// artifact. Pure so unit tests cover it without a live KV binding.
+pub(crate) fn is_ephemeral_tombstone(raw: &str) -> bool {
+    serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|value| value.get("tombstone").and_then(Value::as_bool))
+        == Some(true)
 }
 
 #[event(fetch)]
@@ -3041,6 +3056,23 @@ mod tests {
         let result = resolve_org_credential(decoded, |jti| jti == "jti-1");
 
         assert_eq!(result, Err(CredentialError::Revoked));
+    }
+
+    #[test]
+    fn denylist_kv_errors_fail_closed() {
+        // RUB-464: a KV error must not map to "not revoked".
+        assert_eq!(denylist_hit(Err(())), Err(CredentialError::UnknownKey));
+        assert_eq!(denylist_hit(Ok(None)), Ok(false));
+        assert_eq!(denylist_hit(Ok(Some("1".to_string()))), Ok(true));
+    }
+
+    #[test]
+    fn ephemeral_tombstone_json_is_recognised() {
+        assert!(is_ephemeral_tombstone(r#"{"tombstone":true}"#));
+        assert!(is_ephemeral_tombstone(r#"{"tombstone": true, "extra": 1}"#));
+        assert!(!is_ephemeral_tombstone(r#"{"tombstone":false}"#));
+        assert!(!is_ephemeral_tombstone(r#"{"body_ciphertext_b64":"x"}"#));
+        assert!(!is_ephemeral_tombstone("not-json"));
     }
 
     #[test]

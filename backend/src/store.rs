@@ -574,6 +574,18 @@ impl KvArtifactStore {
             .map_err(|error| StoreError::Backend(error.to_string()))
     }
 
+    /// Raw text get so callers can distinguish tombstones from live records
+    /// without forcing a `StoredArtifact` deserialize (RUB-464).
+    pub async fn get_text(&self, key: &str) -> Result<Option<String>, StoreError> {
+        let Some(kv) = &self.kv else {
+            return Err(StoreError::Unsupported("binding"));
+        };
+        kv.get(key)
+            .text()
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))
+    }
+
     pub async fn delete_record(&self, key: &str) -> Result<(), StoreError> {
         let Some(kv) = &self.kv else {
             return Err(StoreError::Unsupported("binding"));
@@ -770,6 +782,53 @@ impl D1R2ArtifactStore {
             .await
             .map_err(|error| StoreError::Backend(error.to_string()))?
             .is_some())
+    }
+
+    /// Whether `org` may skip uploading `content_hash`: a live, non-revoked
+    /// artifact of this org already references it at `declared_size`. Global
+    /// R2 presence alone is not enough — that would be a cross-tenant
+    /// existence oracle (RUB-464).
+    pub async fn blob_reusable_in_org(
+        &self,
+        org: &str,
+        content_hash: &str,
+        declared_size: usize,
+    ) -> Result<bool, StoreError> {
+        #[derive(Deserialize)]
+        struct PresenceRow {
+            #[allow(dead_code)]
+            present: i64,
+        }
+        let row = self
+            .database
+            .prepare(
+                "SELECT 1 AS present FROM blobs b \
+                 WHERE b.content_hash = ?1 AND b.size_bytes = ?2 AND ( \
+                   EXISTS ( \
+                     SELECT 1 FROM version_files vf \
+                     JOIN artifact_versions v ON v.id = vf.version_id \
+                     JOIN artifacts a ON a.row_id = v.artifact_row_id \
+                     WHERE vf.content_hash = b.content_hash AND a.org_id = ?3 AND a.revoked_at IS NULL \
+                   ) OR EXISTS ( \
+                     SELECT 1 FROM files f \
+                     JOIN artifacts a ON a.row_id = f.artifact_row_id \
+                     WHERE f.content_hash = b.content_hash AND a.org_id = ?3 AND a.revoked_at IS NULL \
+                   ) \
+                 ) LIMIT 1",
+            )
+            .bind(&[
+                worker::wasm_bindgen::JsValue::from_str(content_hash),
+                worker::wasm_bindgen::JsValue::from_f64(declared_size as f64),
+                worker::wasm_bindgen::JsValue::from_str(org),
+            ])
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .first::<PresenceRow>(None)
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        if row.is_none() {
+            return Ok(false);
+        }
+        self.blob_exists(content_hash).await
     }
 
     pub async fn execute_batch(
