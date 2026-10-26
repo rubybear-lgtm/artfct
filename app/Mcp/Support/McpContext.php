@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Support;
 
+use App\Models\OrgToken;
 use App\Models\Team;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request as HttpRequest;
@@ -52,6 +53,28 @@ final class McpContext
     public static function actor(): string
     {
         return self::claims()['user_id'];
+    }
+
+    /**
+     * The org token that authenticated this request, when the bearer maps to
+     * a stored row (agent tokens and Settings → Tokens API credentials).
+     */
+    public static function orgToken(): ?OrgToken
+    {
+        $token = self::httpRequest()->attributes->get('org_token');
+
+        return $token instanceof OrgToken ? $token : null;
+    }
+
+    /**
+     * Display name for an agent token (e.g. "Hoku"), or null for OAuth /
+     * unscoped API credentials that are not agent tokens.
+     */
+    public static function agentName(): ?string
+    {
+        $name = self::httpRequest()->attributes->get('agent_token_name');
+
+        return is_string($name) && $name !== '' ? $name : null;
     }
 
     public static function httpRequest(): HttpRequest
