@@ -174,7 +174,11 @@ export default function ConsoleIndex({
     );
     const hasActionsColumn =
         isAdmin || canOpenArtifacts || (canCollect && collections.length > 0);
-    const hasActiveFilters = Object.values(localFilters).some(Boolean);
+    // Yours (user_id) is a scope toggle, not a filter — Clear filters must not exit it.
+    const hasActiveFilters = Boolean(
+        localFilters.q || localFilters.repo_url || localFilters.agent,
+    );
+    const yoursOnly = Boolean(localFilters.user_id) && !hasActiveFilters;
     // Known tools are always offered, so narrowing to one tool never hides the
     // others from the list; tools seen on this page and the active filter are added.
     const aiTools = [
@@ -262,14 +266,48 @@ export default function ConsoleIndex({
 
     const clearFilters = () => {
         const cleared: typeof filters = {
-            user_id: null,
+            user_id: localFilters.user_id,
             repo_url: null,
             agent: null,
             q: null,
         };
         setLocalFilters(cleared);
+        setSearchOpen(false);
+        setFiltersOpen(false);
         clearPendingFilterVisit();
         visitWithFilters(cleared);
+    };
+
+    const toggleSearchOpen = () => {
+        if (searchOpen) {
+            const nextFilters = { ...localFilters, q: null };
+            setLocalFilters(nextFilters);
+            clearPendingFilterVisit();
+            visitWithFilters(nextFilters);
+            setSearchOpen(false);
+
+            return;
+        }
+
+        setSearchOpen(true);
+    };
+
+    const toggleFiltersOpen = () => {
+        if (filtersOpen) {
+            const nextFilters = {
+                ...localFilters,
+                repo_url: null,
+                agent: null,
+            };
+            setLocalFilters(nextFilters);
+            clearPendingFilterVisit();
+            visitWithFilters(nextFilters);
+            setFiltersOpen(false);
+
+            return;
+        }
+
+        setFiltersOpen(true);
     };
 
     const handleRevoke = () => {
@@ -329,8 +367,8 @@ export default function ConsoleIndex({
                 <div className="ml-auto flex items-center gap-1">
                     <ToolbarButton
                         label="Search artifacts"
-                        pressed={searchOpen}
-                        onClick={() => setSearchOpen((open) => !open)}
+                        pressed={searchOpen || Boolean(localFilters.q)}
+                        onClick={toggleSearchOpen}
                     >
                         <Search className="size-5" />
                     </ToolbarButton>
@@ -353,8 +391,11 @@ export default function ConsoleIndex({
                     </ToolbarButton>
                     <ToolbarButton
                         label="Filter artifacts"
-                        pressed={filtersOpen}
-                        onClick={() => setFiltersOpen((open) => !open)}
+                        pressed={
+                            filtersOpen ||
+                            Boolean(localFilters.repo_url || localFilters.agent)
+                        }
+                        onClick={toggleFiltersOpen}
                     >
                         <SlidersHorizontal className="size-5" />
                     </ToolbarButton>
@@ -528,6 +569,13 @@ export default function ConsoleIndex({
                                 Clear filters
                             </Button>
                         </EmptyState>
+                    ) : yoursOnly ? (
+                        <EmptyState title="You haven’t shared any artifacts yet">
+                            <p className="text-sm text-muted-foreground">
+                                Artifacts you share will show up here under
+                                Yours.
+                            </p>
+                        </EmptyState>
                     ) : (
                         <EmptyState title="No artifacts yet">
                             <p className="text-sm text-muted-foreground">
@@ -558,10 +606,11 @@ export default function ConsoleIndex({
                                 canCollect &&
                                 collections.length > 0 &&
                                 !artifact.revoked_at;
+                            // Revoked cards have no actions — do not open an empty menu for admins.
                             const hasMenu =
-                                !artifact.revoked_at ||
-                                isAdmin ||
-                                canAddToCollection;
+                                openable ||
+                                canAddToCollection ||
+                                (isAdmin && !artifact.revoked_at);
 
                             return (
                                 <li
@@ -886,7 +935,8 @@ export default function ConsoleIndex({
                                 {hasActionsColumn && (
                                     <div className="flex shrink-0 flex-wrap items-center gap-2 md:pt-0.5">
                                         {canCollect &&
-                                            collections.length > 0 && (
+                                            collections.length > 0 &&
+                                            !artifact.revoked_at && (
                                                 <select
                                                     aria-label={`Add ${artifact.title || artifact.id} to a collection`}
                                                     className="h-8 rounded-md border border-border bg-paper px-2.5 text-xs text-foreground max-md:min-h-[44px] max-md:text-base"

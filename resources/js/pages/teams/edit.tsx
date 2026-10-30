@@ -226,56 +226,58 @@ export default function TeamEdit({
                     </Alert>
                 )}
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Team name</CardTitle>
-                        <CardDescription>
-                            Shown across the app and in invitation emails.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                renameForm.patch(
-                                    TeamController.update.url({
-                                        team: team.slug,
-                                    }),
-                                );
-                            }}
-                            className="flex flex-wrap items-end gap-3"
-                        >
-                            <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-                                <Label htmlFor="team-name">Name</Label>
-                                <Input
-                                    id="team-name"
-                                    name="name"
-                                    value={renameForm.data.name}
-                                    onChange={(e) =>
-                                        renameForm.setData(
-                                            'name',
-                                            e.target.value,
-                                        )
-                                    }
-                                />
-                            </div>
-                            <Button
-                                type="submit"
-                                disabled={renameForm.processing}
+                {permissions.canUpdateTeam && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Team name</CardTitle>
+                            <CardDescription>
+                                Shown across the app and in invitation emails.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <form
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    renameForm.patch(
+                                        TeamController.update.url({
+                                            team: team.slug,
+                                        }),
+                                    );
+                                }}
+                                className="flex flex-wrap items-end gap-3"
                             >
-                                Save name
-                            </Button>
-                        </form>
-                        {renameForm.errors.name && (
-                            <p
-                                role="alert"
-                                className="mt-2 text-sm text-destructive"
-                            >
-                                {renameForm.errors.name}
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
+                                <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                                    <Label htmlFor="team-name">Name</Label>
+                                    <Input
+                                        id="team-name"
+                                        name="name"
+                                        value={renameForm.data.name}
+                                        onChange={(e) =>
+                                            renameForm.setData(
+                                                'name',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={renameForm.processing}
+                                >
+                                    Save name
+                                </Button>
+                            </form>
+                            {renameForm.errors.name && (
+                                <p
+                                    role="alert"
+                                    className="mt-2 text-sm text-destructive"
+                                >
+                                    {renameForm.errors.name}
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {viewer.canUpgrade && (
                     <Card>

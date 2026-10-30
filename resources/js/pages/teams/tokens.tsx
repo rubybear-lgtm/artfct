@@ -41,6 +41,7 @@ interface Token {
     lastUsedAt: string | null;
     revokedAt: string | null;
     status: 'active' | 'expired' | 'revoked';
+    canRevoke: boolean;
 }
 
 interface CreatedToken {
@@ -479,7 +480,7 @@ export default function Tokens({
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {token.status === 'active' &&
-                                                    canCreate && (
+                                                    token.canRevoke && (
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
