@@ -1,4 +1,4 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Bot, Copy } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -243,7 +243,7 @@ export default function Tokens({
                                 onSubmit={create}
                                 className="flex flex-col gap-4"
                             >
-                                <div className="flex flex-wrap gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <Button
                                         type="button"
                                         variant={
@@ -253,6 +253,11 @@ export default function Tokens({
                                         }
                                         size="sm"
                                         disabled={bots.length === 0}
+                                        title={
+                                            bots.length === 0
+                                                ? 'Add a bot on the Members page first'
+                                                : undefined
+                                        }
                                         onClick={() => setKind('agent')}
                                     >
                                         <Bot className="size-4" /> Agent (MCP)
@@ -269,6 +274,19 @@ export default function Tokens({
                                     >
                                         API / CI
                                     </Button>
+                                    {bots.length === 0 && (
+                                        <p className="text-sm text-muted-foreground">
+                                            <Link
+                                                href={teamRoutes.edit.url({
+                                                    team: team.slug,
+                                                })}
+                                                className="underline underline-offset-2 hover:text-foreground"
+                                            >
+                                                Add a bot on the Members page
+                                                first
+                                            </Link>
+                                        </p>
+                                    )}
                                 </div>
                                 {kind === 'agent' && bots.length === 0 && (
                                     <Alert>

@@ -100,6 +100,7 @@ Route::middleware(['auth', EnsureTeamSignIn::class])->group(function () {
         Route::delete('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'destroy'])->name('teams.members.destroy');
 
         Route::post('settings/teams/{team}/bots', [BotTeammateController::class, 'store'])->name('teams.bots.store');
+        Route::post('settings/teams/{team}/bots/{user}/roll', [BotTeammateController::class, 'roll'])->name('teams.bots.roll');
         Route::post('settings/teams/{team}/bots/{user}/avatar', [BotTeammateController::class, 'updateAvatar'])->name('teams.bots.avatar');
         Route::delete('settings/teams/{team}/bots/{user}', [BotTeammateController::class, 'destroy'])->name('teams.bots.destroy');
 
