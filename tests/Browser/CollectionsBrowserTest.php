@@ -82,7 +82,7 @@ test('collection_stacks_show_names_counts_and_canonical_badges', function () {
         ->assertAttribute("@collection-toggle-{$populated->id}", 'aria-expanded', 'false')
         ->assertAttribute("@collection-toggle-{$populated->id}", 'aria-label', 'Show artifacts in Reporting, 2 artifacts')
         ->assertAttribute("@collection-toggle-{$empty->id}", 'aria-expanded', 'false')
-        ->assertAttribute("@collection-toggle-{$populated->id}", 'aria-controls', "collection-panel-{$populated->id}")
+        ->assertAttributeMissing("@collection-toggle-{$populated->id}", 'aria-controls')
         ->assertMissing("@collection-panel-{$populated->id}")
         ->assertMissing("@collection-panel-{$empty->id}")
         ->assertNoJavaScriptErrors();
@@ -171,13 +171,13 @@ test('collection_stacks_fit_a_phone_viewport_and_toggle_by_tap', function () {
     $page->assertNoJavaScriptErrors()
         ->assertScript(<<<'JS'
             (() => {
-                const row = document.querySelector('[data-testid="collection-row-0"]');
+                const grid = document.querySelector('[data-testid="collection-rows"]');
 
-                if (! row) {
+                if (! grid) {
                     return false;
                 }
 
-                const columns = getComputedStyle(row).gridTemplateColumns.split(' ').length;
+                const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
                 const fits = document.documentElement.scrollWidth <= window.innerWidth + 1;
 
                 return columns === 1 && fits;
@@ -318,7 +318,7 @@ test('collection_open_links_use_the_apps_viewer_route_in_a_new_tab', function ()
         ->assertNoJavaScriptErrors();
 });
 
-test('renaming a collection moves its card across grid rows', function () {
+test('renaming a collection moves its card to the front of the grid', function () {
     [$team, $owner] = stacksTeam('Reorder Users', 'reorder-user@example.com');
     foreach (['Alpha', 'Bravo', 'Charlie'] as $name) {
         seedStackCollection($team, $owner->id, $name, []);
@@ -327,10 +327,24 @@ test('renaming a collection moves its card across grid rows', function () {
     test()->actingAs($owner);
 
     $page = visit(stacksUrl($team))->resize(1280, 850);
-    $page->assertScript("document.querySelector('[data-testid=collection-row-1] [data-testid=collection-toggle-{$collection->id}]') !== null")
+    $page->assertScript(<<<JS
+            (() => {
+                const ids = Array.from(document.querySelectorAll('[data-testid^="collection-toggle-"]'))
+                    .map((el) => el.getAttribute('data-testid'));
+
+                return ids.indexOf('collection-toggle-{$collection->id}');
+            })()
+            JS, 3)
         ->click("[data-testid=collection-card-{$collection->id}] button:text-is(\"Rename\")")
         ->fill("#rename-{$collection->id}", '0 renamed')
         ->click('Save name')->waitForText('Collection renamed.')
-        ->assertScript("document.querySelector('[data-testid=collection-row-0] [data-testid=collection-toggle-{$collection->id}]') !== null")
+        ->assertScript(<<<JS
+            (() => {
+                const ids = Array.from(document.querySelectorAll('[data-testid^="collection-toggle-"]'))
+                    .map((el) => el.getAttribute('data-testid'));
+
+                return ids.indexOf('collection-toggle-{$collection->id}');
+            })()
+            JS, 0)
         ->assertNoJavaScriptErrors();
 });

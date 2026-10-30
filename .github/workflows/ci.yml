@@ -526,7 +526,9 @@ jobs:
           POSTGRES_PASSWORD: artfct
           POSTGRES_DB: artfct_e2e
         ports:
-          - 55432:5432
+          # Distinct from the pest_unit_feature pgvector service (55432) so a
+          # reused/dirty runner cannot fail container init with EADDRINUSE.
+          - 55433:5432
         options: >-
           --health-cmd "pg_isready -U artfct -d artfct_e2e"
           --health-interval 2s
@@ -593,7 +595,7 @@ jobs:
         env:
           MCP_E2E_EXTERNAL_POSTGRES: 'true'
           MCP_E2E_DB_HOST: 127.0.0.1
-          MCP_E2E_DB_PORT: '55432'
+          MCP_E2E_DB_PORT: '55433'
           MCP_E2E_DB_DATABASE: artfct_e2e
           MCP_E2E_DB_USERNAME: artfct
           MCP_E2E_DB_PASSWORD: artfct

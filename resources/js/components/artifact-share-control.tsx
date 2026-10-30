@@ -7,6 +7,7 @@ import ArtifactViewerController from '@/actions/App/Http/Controllers/ArtifactVie
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
+    DialogClose,
     DialogContent,
     DialogDescription,
     DialogTitle,
@@ -121,8 +122,20 @@ export default function ArtifactShareControl({
                     Share
                 </Button>
             </DialogTrigger>
-            <DialogContent aria-label="Sharing">
-                <DialogTitle>Share</DialogTitle>
+            <DialogContent aria-label="Sharing" className="relative">
+                <DialogClose asChild>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute top-2 right-2 min-h-11 min-w-11"
+                        aria-label="Close"
+                        data-testid="share-close"
+                    >
+                        <span aria-hidden="true">✕</span>
+                    </Button>
+                </DialogClose>
+                <DialogTitle className="pr-12">Share</DialogTitle>
                 <DialogDescription>
                     Choose who can open this artifact.
                 </DialogDescription>

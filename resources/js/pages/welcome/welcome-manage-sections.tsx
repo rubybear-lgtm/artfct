@@ -1,9 +1,22 @@
+import { useState } from 'react';
+
 import { Button } from '@/components/ui/button';
 import type { CachedLink } from '@/pages/welcome/welcome-cached-links';
 import { timeUntil } from '@/pages/welcome/welcome-cached-links';
 
 const DEFAULT_TTL_MINUTES = 5 * 24 * 60;
 const MAX_TTL_MINUTES = 365 * 24 * 60;
+
+const TTL_PRESETS = [
+    15,
+    60,
+    360,
+    1440,
+    DEFAULT_TTL_MINUTES,
+    10080,
+    43200,
+    MAX_TTL_MINUTES,
+] as const;
 
 export function ManageDeploymentSummary({
     managingLink,
@@ -62,42 +75,93 @@ export function ManageDeploymentDuration({
     isDeletingLink,
     onUpdateTtl,
 }: ManageDeploymentDurationProps) {
+    const [draft, setDraft] = useState(String(newTtlMinutes));
+    const [syncedMinutes, setSyncedMinutes] = useState(newTtlMinutes);
+
+    // Keep the clearable draft aligned when the parent opens another link.
+    if (syncedMinutes !== newTtlMinutes) {
+        setSyncedMinutes(newTtlMinutes);
+        setDraft(String(newTtlMinutes));
+    }
+
+    const commitDraft = () => {
+        if (draft === '') {
+            setDraft(String(DEFAULT_TTL_MINUTES));
+            setNewTtlMinutes(DEFAULT_TTL_MINUTES);
+
+            return;
+        }
+
+        const parsed = Number.parseInt(draft, 10);
+
+        if (Number.isNaN(parsed)) {
+            setDraft(String(DEFAULT_TTL_MINUTES));
+            setNewTtlMinutes(DEFAULT_TTL_MINUTES);
+
+            return;
+        }
+
+        const clamped = Math.min(Math.max(parsed, 1), MAX_TTL_MINUTES);
+        setDraft(String(clamped));
+        setNewTtlMinutes(clamped);
+    };
+
     return (
         <div className="welcome-manage-duration">
-            <label className="welcome-manage-duration-label">
-                <span>adjust duration (minutes from now)</span>
+            <div className="welcome-manage-duration-label">
+                <label htmlFor="welcome-ttl-minutes">
+                    adjust duration (minutes from now)
+                </label>
                 <div className="welcome-manage-duration-controls">
                     <input
+                        id="welcome-ttl-minutes"
                         type="number"
                         min={1}
                         max={MAX_TTL_MINUTES}
-                        value={newTtlMinutes}
-                        onChange={(e) =>
-                            setNewTtlMinutes(
-                                parseInt(e.target.value) || DEFAULT_TTL_MINUTES,
-                            )
-                        }
+                        value={draft}
+                        onChange={(e) => {
+                            const raw = e.target.value;
+                            setDraft(raw);
+
+                            if (raw === '') {
+                                return;
+                            }
+
+                            const parsed = Number.parseInt(raw, 10);
+
+                            if (!Number.isNaN(parsed)) {
+                                setNewTtlMinutes(
+                                    Math.min(
+                                        Math.max(parsed, 1),
+                                        MAX_TTL_MINUTES,
+                                    ),
+                                );
+                            }
+                        }}
+                        onBlur={commitDraft}
                         className="welcome-manage-duration-input"
                     />
+                    <label htmlFor="welcome-ttl-preset" className="sr-only">
+                        Duration preset
+                    </label>
                     <select
+                        id="welcome-ttl-preset"
                         value={
-                            [
-                                15,
-                                60,
-                                360,
-                                1440,
-                                DEFAULT_TTL_MINUTES,
-                                10080,
-                                43200,
-                                MAX_TTL_MINUTES,
-                            ].includes(newTtlMinutes)
+                            (TTL_PRESETS as readonly number[]).includes(
+                                newTtlMinutes,
+                            )
                                 ? newTtlMinutes
                                 : ''
                         }
-                        onChange={(e) =>
-                            e.target.value &&
-                            setNewTtlMinutes(parseInt(e.target.value))
-                        }
+                        onChange={(e) => {
+                            if (!e.target.value) {
+                                return;
+                            }
+
+                            const parsed = Number.parseInt(e.target.value, 10);
+                            setDraft(String(parsed));
+                            setNewTtlMinutes(parsed);
+                        }}
                         className="welcome-manage-duration-select"
                     >
                         <option value="" disabled>
@@ -113,10 +177,13 @@ export function ManageDeploymentDuration({
                         <option value={MAX_TTL_MINUTES}>365 days</option>
                     </select>
                 </div>
-            </label>
+            </div>
 
             <Button
-                onClick={onUpdateTtl}
+                onClick={() => {
+                    commitDraft();
+                    void onUpdateTtl();
+                }}
                 disabled={isUpdatingTtl || isDeletingLink}
                 className="welcome-manage-action welcome-manage-update"
             >

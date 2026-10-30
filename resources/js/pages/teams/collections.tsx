@@ -1,5 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { Fragment, useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
@@ -95,59 +95,6 @@ function artifactCountLabel(count: number): string {
     return `${count} artifacts`;
 }
 
-/** Responsive columns matching the grid below: 1 phone, 2 tablet, 3 desktop. */
-function useColumnCount(): number {
-    const [columns, setColumns] = useState(() => {
-        if (typeof window === 'undefined') {
-            return 1;
-        }
-
-        if (window.innerWidth >= 1024) {
-            return 3;
-        }
-
-        if (window.innerWidth >= 768) {
-            return 2;
-        }
-
-        return 1;
-    });
-
-    useEffect(() => {
-        const update = () => {
-            if (window.innerWidth >= 1024) {
-                setColumns(3);
-            } else if (window.innerWidth >= 768) {
-                setColumns(2);
-            } else {
-                setColumns(1);
-            }
-        };
-
-        update();
-
-        window.addEventListener('resize', update);
-
-        return () => window.removeEventListener('resize', update);
-    }, []);
-
-    return columns;
-}
-
-function chunk<T>(items: T[], size: number): T[][] {
-    if (size <= 1) {
-        return items.map((item) => [item]);
-    }
-
-    const rows: T[][] = [];
-
-    for (let i = 0; i < items.length; i += size) {
-        rows.push(items.slice(i, i + size));
-    }
-
-    return rows;
-}
-
 function StackChevron() {
     return (
         <svg
@@ -185,7 +132,6 @@ function CollectionCard({
     const [artifactId, setArtifactId] = useState('');
     const [renaming, setRenaming] = useState(false);
     const renameForm = useForm({ name: collection.name });
-    const panelId = `collection-panel-${collection.id}`;
     const front = frontPreview(collection);
     const sheets = Math.min(collection.artifactIds.length, 3);
 
@@ -251,7 +197,6 @@ function CollectionCard({
                         type="button"
                         aria-haspopup="dialog"
                         aria-expanded={expanded}
-                        aria-controls={panelId}
                         aria-label={`Show artifacts in ${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
                         data-testid={`collection-toggle-${collection.id}`}
                         onClick={onToggle}
@@ -622,8 +567,6 @@ export default function Collections({
     // visits — which swap props but keep this component mounted — never
     // close what the reader opened, even across reorderings.
     const [openId, setOpenId] = useState<number | null>(null);
-    const columns = useColumnCount();
-    const rows = chunk(collections, columns);
 
     const openCollection = collections.find((c) => c.id === openId);
 
@@ -668,30 +611,26 @@ export default function Collections({
                 </form>
             )}
 
-            <div className="flex flex-col gap-4" data-testid="collection-rows">
+            <div
+                className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                data-testid="collection-rows"
+            >
                 {collections.length === 0 && (
-                    <EmptyState title="No collections yet." />
+                    <div className="col-span-full">
+                        <EmptyState title="No collections yet." />
+                    </div>
                 )}
-                {rows.map((row, rowIndex) => (
-                    <Fragment key={`row-${rowIndex}`}>
-                        <div
-                            className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
-                            data-testid={`collection-row-${rowIndex}`}
-                        >
-                            {row.map((collection) => (
-                                <CollectionCard
-                                    key={collection.id}
-                                    team={team.slug}
-                                    collection={collection}
-                                    expanded={openId === collection.id}
-                                    onToggle={() => setOpenId(collection.id)}
-                                    canEdit={canEdit}
-                                    canPin={canPin}
-                                    artifactOptions={artifactOptions}
-                                />
-                            ))}
-                        </div>
-                    </Fragment>
+                {collections.map((collection) => (
+                    <CollectionCard
+                        key={collection.id}
+                        team={team.slug}
+                        collection={collection}
+                        expanded={openId === collection.id}
+                        onToggle={() => setOpenId(collection.id)}
+                        canEdit={canEdit}
+                        canPin={canPin}
+                        artifactOptions={artifactOptions}
+                    />
                 ))}
             </div>
 
