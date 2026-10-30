@@ -313,6 +313,10 @@ impl HtmlResponseDefinition {
                 ("X-Frame-Options", "DENY"),
                 ("X-Content-Type-Options", "nosniff"),
                 ("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY),
+                // Ephemeral /p/* previews are share links, not marketing pages
+                // (RUB-513). Keep them out of the search index even when a
+                // crawler ignores robots.txt on the apex.
+                ("X-Robots-Tag", "noindex, nofollow"),
             ],
         }
     }
@@ -641,6 +645,7 @@ fn html_response(html: &str, status: u16) -> Result<Response> {
     headers.set("X-Frame-Options", "DENY")?;
     headers.set("X-Content-Type-Options", "nosniff")?;
     headers.set("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY)?;
+    headers.set("X-Robots-Tag", "noindex, nofollow")?;
     Response::from_html(html).map(|response| response.with_headers(headers).with_status(status))
 }
 
@@ -1963,6 +1968,13 @@ mod tests {
         assert_eq!(
             preview.headers[0],
             ("Content-Type", "text/html; charset=utf-8")
+        );
+        assert!(
+            preview
+                .headers
+                .iter()
+                .any(|&(name, value)| name == "X-Robots-Tag" && value == "noindex, nofollow"),
+            "ephemeral previews must stay out of the search index"
         );
         validate_schema(
             &contract,

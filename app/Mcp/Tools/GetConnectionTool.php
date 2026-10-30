@@ -57,14 +57,21 @@ final class GetConnectionTool extends Tool
         $claims = McpContext::claims();
         $team = McpContext::team();
         $httpRequest = McpContext::httpRequest();
+        $orgToken = McpContext::orgToken();
+        $agentName = McpContext::agentName();
+        $isAgentToken = $orgToken?->isAgent() === true;
 
         $response = Response::structured([
             'authenticated' => true,
             'organization' => $team->slug,
             'user_id' => $claims['user_id'],
             'scopes' => preg_split('/\s+/', trim((string) ($claims['scope'] ?? ''))) ?: [],
-            'credential_source' => 'bearer',
-            'client' => $httpRequest->header('MCP-Client-Name'),
+            'credential_source' => $isAgentToken ? 'agent_token' : 'bearer',
+            'agent' => $isAgentToken ? [
+                'name' => $agentName,
+                'bot' => true,
+            ] : null,
+            'client' => $httpRequest->header('MCP-Client-Name') ?? $agentName,
             'session_id' => $request->sessionId(),
             'search' => $this->searchReadiness($team->id),
         ]);

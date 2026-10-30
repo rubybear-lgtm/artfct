@@ -1,5 +1,5 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Copy } from 'lucide-react';
+import { Bot, Copy } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import TeamInvitationController from '@/actions/App/Http/Controllers/Teams/TeamI
 import TeamMemberController from '@/actions/App/Http/Controllers/Teams/TeamMemberController';
 import TeamOwnerController from '@/actions/App/Http/Controllers/Teams/TeamOwnerController';
 import { Alert } from '@/components/ui/alert';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,10 +36,27 @@ import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
+function csrfToken(): string {
+    const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/);
+
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+function memberInitials(name: string): string {
+    return name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? '')
+        .join('');
+}
+
 interface Member {
     id: number;
     name: string;
-    email: string;
+    email: string | null;
+    avatar: string | null;
+    isBot: boolean;
     role: string;
     role_label: string;
     deactivated: boolean;
@@ -91,6 +109,11 @@ interface Props {
         canChangeAuthMode: boolean;
     };
     availableRoles: { value: string; label: string }[];
+    canAddBot: boolean;
+    botScopeOptions: string[];
+    botScopeLabels: Record<string, string>;
+    botDefaultScopes: string[];
+    mcpEndpoint: string;
 }
 
 const selectClass =
@@ -104,6 +127,11 @@ export default function TeamEdit({
     domains,
     permissions,
     availableRoles,
+    canAddBot,
+    botScopeOptions,
+    botScopeLabels,
+    botDefaultScopes,
+    mcpEndpoint,
 }: Props) {
     const inviteForm = useForm({ email: '', role: 'member' });
     const renameForm = useForm({ name: team.name });
@@ -120,6 +148,20 @@ export default function TeamEdit({
         useState<Invitation | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [leaving, setLeaving] = useState(false);
+    const [botName, setBotName] = useState('');
+    const [botScopes, setBotScopes] = useState<string[]>(botDefaultScopes);
+    const [botAvatarFile, setBotAvatarFile] = useState<File | null>(null);
+    const [botBusy, setBotBusy] = useState(false);
+    const [botError, setBotError] = useState<string | null>(null);
+    const [createdBotToken, setCreatedBotToken] = useState<{
+        name: string;
+        token: string;
+        mcpEndpoint: string;
+        authorizationHeader: string;
+    } | null>(null);
+    const [avatarUploadingId, setAvatarUploadingId] = useState<number | null>(
+        null,
+    );
     const { errors } = usePage<SharedProps>().props;
     // Errors already shown next to their field, so they are not repeated here.
     const inlineErrorKeys = ['email', 'domain', 'auth_mode', 'name'];
@@ -337,11 +379,186 @@ export default function TeamEdit({
                     </Card>
                 )}
 
+                {canAddBot && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Add a bot</CardTitle>
+                            <CardDescription>
+                                Give an AI assistant a name on this team. Bots
+                                are free (no seat), need no email, and connect
+                                with a Bearer token at{' '}
+                                <code className="text-xs">{mcpEndpoint}</code>.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <form
+                                className="flex flex-col gap-4"
+                                onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    setBotBusy(true);
+                                    setBotError(null);
+                                    const body = new FormData();
+                                    body.append('name', botName);
+                                    botScopes.forEach((scope) =>
+                                        body.append('scopes[]', scope),
+                                    );
+
+                                    if (botAvatarFile) {
+                                        body.append('avatar', botAvatarFile);
+                                    }
+
+                                    const response = await fetch(
+                                        teamRoutes.bots.store.url({
+                                            team: team.slug,
+                                        }),
+                                        {
+                                            method: 'POST',
+                                            headers: {
+                                                Accept: 'application/json',
+                                                'X-XSRF-TOKEN': csrfToken(),
+                                            },
+                                            body,
+                                        },
+                                    );
+                                    setBotBusy(false);
+
+                                    if (!response.ok) {
+                                        const payload = await response
+                                            .json()
+                                            .catch(() => ({}));
+                                        setBotError(
+                                            payload.message ??
+                                                payload.errors?.name?.[0] ??
+                                                'Could not add the bot.',
+                                        );
+
+                                        return;
+                                    }
+
+                                    const payload = await response.json();
+                                    setCreatedBotToken({
+                                        name: payload.name,
+                                        token: payload.token,
+                                        mcpEndpoint:
+                                            payload.mcp_endpoint ?? mcpEndpoint,
+                                        authorizationHeader:
+                                            payload.authorization_header ??
+                                            `Bearer ${payload.token}`,
+                                    });
+                                    setBotName('');
+                                    setBotAvatarFile(null);
+                                    setBotScopes(botDefaultScopes);
+                                    router.reload({
+                                        only: ['members'],
+                                    });
+                                }}
+                            >
+                                <div className="flex flex-wrap items-end gap-3">
+                                    <div className="flex min-w-56 flex-1 flex-col gap-1.5">
+                                        <Label htmlFor="bot-name">Name</Label>
+                                        <Input
+                                            id="bot-name"
+                                            placeholder="Hoku"
+                                            value={botName}
+                                            onChange={(e) =>
+                                                setBotName(e.target.value)
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="flex min-w-48 flex-col gap-1.5">
+                                        <Label htmlFor="bot-avatar">
+                                            Avatar (optional)
+                                        </Label>
+                                        <Input
+                                            id="bot-avatar"
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            onChange={(e) =>
+                                                setBotAvatarFile(
+                                                    e.target.files?.[0] ?? null,
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <Button
+                                        type="submit"
+                                        disabled={
+                                            botBusy ||
+                                            botName === '' ||
+                                            botScopes.length === 0
+                                        }
+                                    >
+                                        <Bot className="size-4" /> Add bot
+                                    </Button>
+                                </div>
+                                <fieldset className="flex flex-col gap-2">
+                                    <legend className="text-sm font-medium">
+                                        Permissions
+                                    </legend>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {botScopeOptions.map((scope) => (
+                                            <label
+                                                key={scope}
+                                                className="flex items-start gap-2 text-sm"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1"
+                                                    checked={botScopes.includes(
+                                                        scope,
+                                                    )}
+                                                    onChange={(e) =>
+                                                        setBotScopes(
+                                                            (current) =>
+                                                                e.target.checked
+                                                                    ? [
+                                                                          ...current,
+                                                                          scope,
+                                                                      ]
+                                                                    : current.filter(
+                                                                          (
+                                                                              item,
+                                                                          ) =>
+                                                                              item !==
+                                                                              scope,
+                                                                      ),
+                                                        )
+                                                    }
+                                                />
+                                                <span>
+                                                    <span className="font-medium">
+                                                        {scope}
+                                                    </span>
+                                                    <span className="block text-muted-foreground">
+                                                        {botScopeLabels[
+                                                            scope
+                                                        ] ?? scope}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </fieldset>
+                            </form>
+                            {botError && (
+                                <Alert className="mt-3" variant="destructive">
+                                    {botError}
+                                </Alert>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Members</CardTitle>
                         <CardDescription>
-                            {members.length} people on this team.
+                            {members.filter((m) => !m.isBot).length} people
+                            {members.some((m) => m.isBot)
+                                ? ` and ${members.filter((m) => m.isBot).length} bots`
+                                : ''}{' '}
+                            on this team.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -378,23 +595,44 @@ export default function TeamEdit({
                                                 >
                                                     Name
                                                 </span>
-                                                {member.name}
-                                                {member.id === team.ownerId && (
-                                                    <Badge
-                                                        className="ml-2"
-                                                        variant="success"
-                                                    >
-                                                        owner
-                                                    </Badge>
-                                                )}
-                                                {member.deactivated && (
-                                                    <Badge
-                                                        className="ml-2"
-                                                        variant="outline"
-                                                    >
-                                                        deactivated
-                                                    </Badge>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    <Avatar className="size-8">
+                                                        {member.avatar ? (
+                                                            <AvatarImage
+                                                                src={
+                                                                    member.avatar
+                                                                }
+                                                                alt=""
+                                                            />
+                                                        ) : null}
+                                                        <AvatarFallback>
+                                                            {member.isBot ? (
+                                                                <Bot className="size-3.5" />
+                                                            ) : (
+                                                                memberInitials(
+                                                                    member.name,
+                                                                )
+                                                            )}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <span>{member.name}</span>
+                                                    {member.isBot && (
+                                                        <Badge variant="outline">
+                                                            Bot
+                                                        </Badge>
+                                                    )}
+                                                    {member.id ===
+                                                        team.ownerId && (
+                                                        <Badge variant="success">
+                                                            owner
+                                                        </Badge>
+                                                    )}
+                                                    {member.deactivated && (
+                                                        <Badge variant="outline">
+                                                            deactivated
+                                                        </Badge>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2 align-middle break-all max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
                                                 <span
@@ -403,7 +641,9 @@ export default function TeamEdit({
                                                 >
                                                     Email
                                                 </span>
-                                                {member.email}
+                                                {member.isBot
+                                                    ? '—'
+                                                    : member.email}
                                             </td>
                                             <td className="px-3 py-2 align-middle max-md:block max-md:border-0 max-md:px-0 max-md:py-1">
                                                 <span
@@ -412,7 +652,9 @@ export default function TeamEdit({
                                                 >
                                                     Role
                                                 </span>
-                                                {viewer.canUpdateMember ? (
+                                                {member.isBot ? (
+                                                    member.role_label
+                                                ) : viewer.canUpdateMember ? (
                                                     <select
                                                         aria-label={`Role for ${member.name}`}
                                                         className={selectClass}
@@ -459,20 +701,114 @@ export default function TeamEdit({
                                                 >
                                                     Actions
                                                 </span>
-                                                {viewer.canRemoveMember &&
-                                                    member.id !== viewer.id && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                setRemoving(
-                                                                    member,
-                                                                )
-                                                            }
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    )}
+                                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    {member.isBot &&
+                                                        canAddBot && (
+                                                            <label className="inline-flex cursor-pointer items-center">
+                                                                <span className="sr-only">
+                                                                    Upload
+                                                                    avatar for{' '}
+                                                                    {
+                                                                        member.name
+                                                                    }
+                                                                </span>
+                                                                <input
+                                                                    type="file"
+                                                                    accept="image/png,image/jpeg,image/webp"
+                                                                    className="hidden"
+                                                                    disabled={
+                                                                        avatarUploadingId ===
+                                                                        member.id
+                                                                    }
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) => {
+                                                                        const file =
+                                                                            e
+                                                                                .target
+                                                                                .files?.[0];
+
+                                                                        if (
+                                                                            !file
+                                                                        ) {
+                                                                            return;
+                                                                        }
+
+                                                                        const body =
+                                                                            new FormData();
+                                                                        body.append(
+                                                                            'avatar',
+                                                                            file,
+                                                                        );
+                                                                        setAvatarUploadingId(
+                                                                            member.id,
+                                                                        );
+                                                                        router.post(
+                                                                            teamRoutes.bots.avatar.url(
+                                                                                {
+                                                                                    team: team.slug,
+                                                                                    user: member.id,
+                                                                                },
+                                                                            ),
+                                                                            body,
+                                                                            {
+                                                                                forceFormData: true,
+                                                                                preserveScroll: true,
+                                                                                onFinish:
+                                                                                    () =>
+                                                                                        setAvatarUploadingId(
+                                                                                            null,
+                                                                                        ),
+                                                                            },
+                                                                        );
+                                                                    }}
+                                                                />
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    disabled={
+                                                                        avatarUploadingId ===
+                                                                        member.id
+                                                                    }
+                                                                    onClick={(
+                                                                        e,
+                                                                    ) => {
+                                                                        const input =
+                                                                            e.currentTarget.parentElement?.querySelector(
+                                                                                'input[type="file"]',
+                                                                            );
+
+                                                                        if (
+                                                                            input instanceof
+                                                                            HTMLInputElement
+                                                                        ) {
+                                                                            input.click();
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    Avatar
+                                                                </Button>
+                                                            </label>
+                                                        )}
+                                                    {(member.isBot
+                                                        ? canAddBot
+                                                        : viewer.canRemoveMember) &&
+                                                        member.id !==
+                                                            viewer.id && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    setRemoving(
+                                                                        member,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -897,7 +1233,9 @@ export default function TeamEdit({
                 <DialogContent>
                     <DialogTitle>Remove {removing?.name}?</DialogTitle>
                     <DialogDescription>
-                        They lose access to {team.name} immediately.
+                        {removing?.isBot
+                            ? `This bot loses access to ${team.name} and its tokens stop working.`
+                            : `They lose access to ${team.name} immediately.`}
                     </DialogDescription>
                     <div className="mt-5 flex justify-end gap-2">
                         <DialogClose asChild>
@@ -908,18 +1246,68 @@ export default function TeamEdit({
                             onClick={() => {
                                 if (removing) {
                                     router.delete(
-                                        TeamMemberController.destroy.url({
-                                            team: team.slug,
-                                            user: removing.id,
-                                        }),
+                                        removing.isBot
+                                            ? teamRoutes.bots.destroy.url({
+                                                  team: team.slug,
+                                                  user: removing.id,
+                                              })
+                                            : TeamMemberController.destroy.url({
+                                                  team: team.slug,
+                                                  user: removing.id,
+                                              }),
                                     );
                                 }
 
                                 setRemoving(null);
                             }}
                         >
-                            Remove member
+                            {removing?.isBot ? 'Remove bot' : 'Remove member'}
                         </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={createdBotToken !== null}
+                onOpenChange={(open) => !open && setCreatedBotToken(null)}
+            >
+                <DialogContent>
+                    <DialogTitle>
+                        Copy {createdBotToken?.name}&apos;s token now
+                    </DialogTitle>
+                    <DialogDescription>
+                        It will not be shown again. Add it as an Authorization
+                        header on your MCP client.
+                    </DialogDescription>
+                    <code className="mt-4 block max-h-32 overflow-auto rounded-md bg-muted p-3 text-xs break-all">
+                        {createdBotToken?.token}
+                    </code>
+                    <div className="mt-3 space-y-2 text-sm">
+                        <p className="text-muted-foreground">MCP URL</p>
+                        <code className="block overflow-auto rounded-md bg-muted p-2 text-xs break-all">
+                            {createdBotToken?.mcpEndpoint}
+                        </code>
+                        <p className="text-muted-foreground">Header</p>
+                        <code className="block overflow-auto rounded-md bg-muted p-2 text-xs break-all">
+                            Authorization:{' '}
+                            {createdBotToken?.authorizationHeader}
+                        </code>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={async () => {
+                                await navigator.clipboard.writeText(
+                                    createdBotToken?.token ?? '',
+                                );
+                                toast.success('Token copied.');
+                            }}
+                        >
+                            <Copy className="size-4" /> Copy
+                        </Button>
+                        <DialogClose asChild>
+                            <Button>Done</Button>
+                        </DialogClose>
                     </div>
                 </DialogContent>
             </Dialog>

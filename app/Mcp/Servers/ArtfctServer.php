@@ -18,6 +18,7 @@ use App\Mcp\Tools\ListCollectionsTool;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Mcp\Tools\ResolveArtifactCommentTool;
 use App\Mcp\Tools\SearchArtifactsTool;
+use App\Mcp\Tools\SetAvatarTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -59,6 +60,7 @@ final class ArtfctServer extends Server
         CreateCollectionTool::class,
         AddCollectionArtifactTool::class,
         DeleteArtifactTool::class,
+        SetAvatarTool::class,
     ];
 
     protected array $resources = [
