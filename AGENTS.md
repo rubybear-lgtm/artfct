@@ -289,6 +289,10 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 
 `composer test` runs config clear + Pint check + Pest; `composer ci:check` runs the full frontend and test suite. A failing hook is a real failure — fix it, do not bypass with `--no-verify`.
 
+**UI screenshots in PRs (owner rule)** — Any PR that changes user-visible UI (Blade/Inertia/Vue/React components, CSS/Tailwind, layouts, emails, icons, copy) must include before and after screenshots in the PR description: capture them by running the app locally (desktop, and mobile width when layout is affected), and embed them in the PR body. If the PR has no UI changes, write `No UI changes` in the Screenshots section. Do not mark a UI PR ready for review without screenshots.
+
+**Independent Claude review for big PRs (owner rule)** — For any PR with big changes, the agent must request an independent code review from Claude (a separate Claude model reviewer, not the authoring agent reviewing itself) and work with that reviewer, addressing or explicitly answering each finding, until the review comes back clear. Summarize the review rounds and outcome in the PR description. Treat a PR as big when it is roughly 300+ changed lines, spans multiple subsystems, or touches database migrations, auth/security, billing, or public API/MCP surfaces; when unsure, treat it as big.
+
 **Deploying** — `npm run worker:deploy` (wraps `scripts/deploy-worker-version.mjs`); worker routes and bindings live in `backend/wrangler.jsonc`.
 
 **Agent output** — for any visual HTML, publish it with the artfct MCP rather than emitting a code block (see "Storing artifacts with the artfct MCP" below). Deployable skills live in `skills/` (`artfct`, `developer-tools`, `presentation`); Boost-managed skills live in `.agents/skills/`.
