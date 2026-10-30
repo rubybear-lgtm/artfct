@@ -47,34 +47,20 @@ The `li::before` arrow (`→`) and the `h2::after` bar share a color. Override b
 
 ---
 
-## Reveal.js (CDN + SRI)
+## Reveal.js (bundle for deploy_artifact)
 
 Use when the user explicitly asks for fragments, speaker notes, or needs PDF export.
 
+`deploy_artifact` loads only the artifact's own files, so CDN scripts/styles and an inline `Reveal.initialize` are blocked (RUB-444). Publish a bundle: `files` with `index.html`, `reveal.js`, `reveal.css`, the theme CSS and an `init.js` containing `Reveal.initialize({ hash: true });`, loaded with `<script src="init.js"></script>` after `reveal.js`.
+
 ```html
-<link
-  rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css"
-  integrity="sha384-..."
-  crossorigin="anonymous"
->
-<link
-  rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css"
-  integrity="sha384-..."
-  crossorigin="anonymous"
->
-<script
-  src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"
-  integrity="sha384-..."
-  crossorigin="anonymous"
-></script>
-<script>Reveal.initialize({ hash: true });</script>
+<link rel="stylesheet" href="reveal.css">
+<link rel="stylesheet" href="theme-white.css">
+<script src="reveal.js"></script>
+<script src="init.js"></script>
 ```
 
-> Always fetch current SRI hashes from `https://data.jsdelivr.com/v1/packages/npm/reveal.js@5.1.0/integrity` before using. The hashes above are placeholders.
-
-> This setup works when published with `deploy_to_canvas`. A page published with `deploy_artifact` loads only its own files, so the CDN assets and the inline `Reveal.initialize` are blocked there (RUB-444). Publish a bundle instead: `files` with `index.html`, `reveal.js`, `reveal.css`, the theme CSS and an `init.js` containing `Reveal.initialize({ hash: true });`, loaded with `<script src="init.js"></script>` after `reveal.js`.
+Fetch the library files from a pinned Reveal.js release (for example jsDelivr) when building the bundle locally, then include those file contents in `files` — do not leave CDN `<script src>` or `<link href>` tags in the published HTML.
 
 ### Minimal Reveal.js structure
 
