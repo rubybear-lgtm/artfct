@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OrgTokenKind;
 use App\Enums\TeamRole;
 use Carbon\CarbonInterface;
 use Database\Factories\OrgTokenFactory;
@@ -12,8 +13,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * An org-scoped API credential for the REST API or CI (spec 07's
- * `orgToken`). The raw JWT is minted once at creation time and never
+ * An org-scoped credential for the REST API, CI, or an MCP agent bot
+ * (RUB-511). The raw JWT is minted once at creation time and never
  * persisted — this row only ever stores `jti` (the denylist key), a
  * display-only `last_four`, and the claims that were signed into the
  * token, so revocation and auditing don't require the credential itself.
@@ -23,16 +24,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $user_id
  * @property int|null $mcp_connection_id
  * @property string $name
+ * @property OrgTokenKind $kind
  * @property string $jti
  * @property TeamRole $role
+ * @property list<string>|null $scopes
  * @property string $last_four
  * @property CarbonInterface $expires_at
+ * @property CarbonInterface|null $last_used_at
  * @property CarbonInterface|null $revoked_at
  * @property array<int, string>|null $slack_channels
  * @property-read Team $team
  * @property-read User $user
  */
-#[Fillable(['team_id', 'user_id', 'mcp_connection_id', 'name', 'jti', 'role', 'last_four', 'expires_at', 'slack_channels'])]
+#[Fillable(['team_id', 'user_id', 'mcp_connection_id', 'name', 'kind', 'jti', 'role', 'scopes', 'last_four', 'expires_at', 'last_used_at', 'slack_channels'])]
 class OrgToken extends Model
 {
     /** @use HasFactory<OrgTokenFactory> */
@@ -84,6 +88,14 @@ class OrgToken extends Model
     }
 
     /**
+     * Whether this credential is an agent (MCP header-auth) token.
+     */
+    public function isAgent(): bool
+    {
+        return $this->kind->isAgent();
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -91,8 +103,11 @@ class OrgToken extends Model
     protected function casts(): array
     {
         return [
+            'kind' => OrgTokenKind::class,
             'role' => TeamRole::class,
+            'scopes' => 'array',
             'expires_at' => 'datetime',
+            'last_used_at' => 'datetime',
             'revoked_at' => 'datetime',
             'slack_channels' => 'array',
         ];

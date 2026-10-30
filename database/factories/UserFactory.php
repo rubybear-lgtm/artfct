@@ -42,4 +42,18 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * A bot teammate: no email or password, authenticates only with agent tokens.
+     */
+    public function bot(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_bot' => true,
+            'email' => null,
+            'password' => null,
+            'email_verified_at' => null,
+            'remember_token' => null,
+        ]);
+    }
 }

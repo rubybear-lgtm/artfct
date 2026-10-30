@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Teams;
 use App\Actions\Teams\CreateTeam;
 use App\Actions\Teams\UpgradePersonalTeam;
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
+use App\Enums\OrgTokenKind;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
 use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
+use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Rules\TeamName;
@@ -87,6 +90,17 @@ class TeamController extends Controller
     public function edit(Request $request, Team $team): Response
     {
         $user = $request->user();
+        $members = $team->members()->get();
+        $activeBotLastFours = OrgToken::query()
+            ->where('team_id', $team->id)
+            ->where('kind', OrgTokenKind::Agent)
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->whereIn('user_id', $members->where('is_bot', true)->pluck('id'))
+            ->orderByDesc('id')
+            ->get(['user_id', 'last_four'])
+            ->unique('user_id')
+            ->pluck('last_four', 'user_id');
 
         return Inertia::render('teams/edit', [
             'team' => [
@@ -109,7 +123,7 @@ class TeamController extends Controller
                 'canLeave' => $user->can('leave', $team),
                 'canUpgrade' => $user->can('upgrade', $team),
             ],
-            'members' => $team->members()->get()->map(function (User $member) {
+            'members' => $members->map(function (User $member) use ($activeBotLastFours) {
                 /** @var Membership $membership */
                 $membership = $member->getRelation('pivot');
 
@@ -118,11 +132,27 @@ class TeamController extends Controller
                     'name' => $member->name,
                     'email' => $member->email,
                     'avatar' => $member->avatar ?? null,
+                    'isBot' => $member->is_bot,
                     'role' => $membership->role->value,
-                    'role_label' => $membership->role->label(),
+                    'role_label' => $member->is_bot ? 'Bot' : $membership->role->label(),
                     'deactivated' => $member->deactivated_at !== null,
+                    'agentTokenLastFour' => $member->is_bot
+                        ? ($activeBotLastFours[$member->id] ?? null)
+                        : null,
                 ];
             }),
+            'canAddBot' => $user->can('create', [OrgToken::class, $team]),
+            'botScopeOptions' => McpScope::forRole($user->teamRole($team)),
+            'botScopeLabels' => collect(McpScope::cases())
+                ->mapWithKeys(fn (McpScope $scope): array => [$scope->value => $scope->label()])
+                ->all(),
+            'botDefaultScopes' => [
+                McpScope::ArtifactsRead->value,
+                McpScope::ArtifactsDeploy->value,
+                McpScope::CollectionsRead->value,
+                McpScope::UsageRead->value,
+            ],
+            'mcpEndpoint' => url('/mcp'),
             'invitations' => $team->invitations()
                 ->whereNull('accepted_at')
                 ->get()
