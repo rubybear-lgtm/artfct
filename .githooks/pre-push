@@ -9,6 +9,9 @@ set -euo pipefail
 # `npm run build` step that only a full test run exercises. Bypass with
 # `git push --no-verify` when you know what you're doing (e.g. pushing a
 # docs-only branch and want to skip the Rust/PHP gates).
+#
+# Order mirrors `.github/workflows/ci.yml` `php_static` (RUB-471): production
+# `build:ssr` before lint/types, plus analyse / routes:check / skills / audits.
 
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 
@@ -23,20 +26,7 @@ cargo check -p artfct-backend --target wasm32-unknown-unknown --locked
 cargo test --workspace --locked
 echo "✅ Rust workspace checks passed."
 
-echo "🎨 Frontend (format, lint, types, build)..."
-if ! command -v npx &>/dev/null; then
-    echo "❌ npx is not available; ensure Node.js is installed."
-    exit 1
-fi
-php artisan wayfinder:generate --no-interaction
-npm run format:check
-npm run lint:check
-npm run types:check
-# Built the way production builds it (see the CI step of the same name).
-APP_ENV=production npm run build:ssr
-echo "✅ Frontend checks passed."
-
-echo "🐘 PHP (style, full Pest suite against a CI-like .env)..."
+echo "🐘 PHP + frontend (CI php_static order against a CI-like .env)..."
 # CI builds its .env with `cp .env.example .env && php artisan key:generate`, so
 # the suite must pass against exactly that. Running it against a developer's own
 # .env hid a real failure (2026-10-19): a line added to .env.example turned dev
@@ -58,15 +48,44 @@ restore_env() {
 trap restore_env EXIT
 cp .env.example .env
 php artisan key:generate --no-interaction --quiet
+php artisan config:clear --no-interaction --quiet
+
 if [ ! -f vendor/bin/pint ]; then
     echo "❌ vendor/bin/pint not found. Run: composer install"
     exit 1
 fi
+if ! command -v npx &>/dev/null; then
+    echo "❌ npx is not available; ensure Node.js is installed."
+    exit 1
+fi
+
+composer audit --no-interaction
+npm audit --audit-level=critical
 vendor/bin/pint --parallel --test --format agent
+composer analyse
+npm run format:check
+# Built the way Railway builds production: APP_ENV=production and the SSR
+# bundle. Wayfinder generates its route actions from the routes registered
+# under that environment, so lint/types must run after this build — not before
+# under APP_ENV=local (RUB-471).
+APP_ENV=production npm run build:ssr
+npm run lint:check
+npm run types:check
+npm run routes:check
+npm run test:skills
 php -d memory_limit=512M vendor/bin/pest --parallel --compact
+
+# pgvector suite when the e2e Postgres is already up (docker-compose.e2e / CI port).
+if command -v pg_isready &>/dev/null && pg_isready -h 127.0.0.1 -p 55432 -q; then
+    echo "🐘 pgvector integration tests (Postgres on :55432)..."
+    DB_PORT=55432 php -d memory_limit=512M vendor/bin/pest --configuration phpunit.pgsql.xml --compact tests/Feature/Indexing/PgVectorIndexTest.php
+else
+    echo "⏭  Skipping pgvector tests (no Postgres on 127.0.0.1:55432; start docker-compose.e2e.yml to include them)."
+fi
+
 restore_env
 trap - EXIT
-echo "✅ PHP checks passed."
+echo "✅ PHP + frontend checks passed."
 
 if [ "${MCP_E2E_PRE_PUSH:-false}" = "true" ]; then
     echo "🔌 Local MCP end-to-end stack (Postgres + Worker + hosted OAuth)..."
