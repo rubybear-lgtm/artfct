@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\OAuth;
 
 use App\Enums\AuditEventType;
+use App\Enums\AuthMode;
 use App\Enums\McpScope;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -249,6 +250,9 @@ final class AuthorizationServerController extends Controller
             'redirect_uri' => $parameters['redirect_uri'],
             'code_challenge' => $parameters['code_challenge'],
             'scope' => $parameters['scope'],
+            // Captured at consent: AuthKit sessions never set this, so a later
+            // switch to polis can refuse the grant (RUB-482).
+            'polis_proven' => TeamSignIn::provesPolisSignIn($request, $user, $team),
         ], now()->addMinutes(5));
 
         return $this->redirectWith($parameters['redirect_uri'], [
@@ -315,6 +319,17 @@ final class AuthorizationServerController extends Controller
             return $this->tokenError('invalid_grant', 'The authorization is no longer valid.');
         }
 
+        $polisProven = (bool) ($authorization['polis_proven'] ?? false);
+        if ($team->auth_mode === AuthMode::Polis && ! $polisProven) {
+            Log::warning('oauth.token_rejected', [
+                'reason' => 'authkit_grant_on_polis_team',
+                'client_id' => $validated['client_id'],
+                'team_id' => $team->id,
+            ]);
+
+            return $this->tokenError('invalid_grant', 'This organisation only accepts connections made through its single sign-on. Sign in with SSO and approve the connection again.');
+        }
+
         $scopes = $this->scopesForRole($role);
         $requestedScopes = array_values(array_filter(explode(' ', (string) $authorization['scope'])));
         if (array_diff($requestedScopes, $scopes) !== []) {
@@ -338,7 +353,7 @@ final class AuthorizationServerController extends Controller
         ]);
         $connection = $this->createOAuthConnection($team, $user, $validated['client_id'], $minted['jti'], $requestedScopes);
         $orgToken->forceFill(['mcp_connection_id' => $connection->id])->saveQuietly();
-        $refreshToken = $this->createRefreshToken($team, $user, $validated['client_id'], $requestedScopes, $connection);
+        $refreshToken = $this->createRefreshToken($team, $user, $validated['client_id'], $requestedScopes, $connection, $polisProven);
         $auditLogger->recordForRequest(
             $request,
             AuditEventType::TokenCreated,
@@ -532,6 +547,37 @@ final class AuthorizationServerController extends Controller
             return $this->tokenError('invalid_grant', 'The authorization is no longer valid.');
         }
 
+        // AuthKit-origin refresh tokens must not mint access after the team
+        // goes SSO-only, even if the Worker denylist write on transition failed
+        // or auth_mode was flipped without going through the controller (RUB-482).
+        if ($team->auth_mode === AuthMode::Polis && ! $refreshToken->polis_proven) {
+            $connection = $refreshToken->mcpConnection;
+            $tokens = $connection instanceof McpConnection
+                ? $connection->orgTokens()->where('expires_at', '>', now())->get()
+                : $this->legacyOAuthTokens($refreshToken);
+            $workerTokensDenied = $tokenRevoker->denylistTokens($tokens);
+
+            if ($connection instanceof McpConnection) {
+                DB::transaction(function () use ($connection, $tokens, $workerTokensDenied, $revocationRetry): void {
+                    if (! $workerTokensDenied) {
+                        $revocationRetry->persist($tokens);
+                    }
+
+                    $this->revokeConnection($connection);
+                });
+            } else {
+                $this->revokeLegacyOAuthCredentials($refreshToken, $tokens, retryWorkerWrite: ! $workerTokensDenied ? $revocationRetry : null);
+            }
+
+            Log::warning('oauth.token_rejected', [
+                'reason' => 'authkit_refresh_on_polis_team',
+                'client_id' => $validated['client_id'],
+                'team_id' => $team->id,
+            ]);
+
+            return $this->tokenError('invalid_grant', 'This organisation only accepts connections made through its single sign-on. Sign in with SSO and approve the connection again.');
+        }
+
         $scopes = array_values(array_intersect($refreshToken->scopes, $this->scopesForRole($role)));
         if ($scopes === []) {
             return $this->tokenError('invalid_scope', 'The requested scope is no longer available to this account.');
@@ -563,7 +609,7 @@ final class AuthorizationServerController extends Controller
             $connection = $this->createOAuthConnection($team, $user, $validated['client_id'], $minted['jti'], $scopes);
         }
         $orgToken->forceFill(['mcp_connection_id' => $connection->id])->saveQuietly();
-        $newRefreshToken = $this->createRefreshToken($team, $user, $validated['client_id'], $scopes, $connection);
+        $newRefreshToken = $this->createRefreshToken($team, $user, $validated['client_id'], $scopes, $connection, $refreshToken->polis_proven);
 
         $auditLogger->recordForRequest(
             $request,
@@ -585,7 +631,7 @@ final class AuthorizationServerController extends Controller
     }
 
     /** @param list<string> $scopes */
-    private function createRefreshToken(Team $team, User $user, string $clientId, array $scopes, ?McpConnection $connection = null): string
+    private function createRefreshToken(Team $team, User $user, string $clientId, array $scopes, ?McpConnection $connection = null, bool $polisProven = false): string
     {
         $rawToken = Str::random(96);
 
@@ -596,6 +642,7 @@ final class AuthorizationServerController extends Controller
             'client_id' => $clientId,
             'token_hash' => hash('sha256', $rawToken),
             'scopes' => $scopes,
+            'polis_proven' => $polisProven,
             'expires_at' => now()->addDays(self::REFRESH_TOKEN_TTL_DAYS),
         ]);
 
@@ -726,7 +773,8 @@ final class AuthorizationServerController extends Controller
 
     /**
      * A `polis` team admits consent only from a session that signed in through its
-     * Polis IdP (RUB-458). The token exchange carries no session, so only consent is gated.
+     * Polis IdP (RUB-458). Token and refresh carry no session, so they check
+     * `polis_proven` on the stored grant instead (RUB-482).
      */
     private function abortUnlessSignInAdmitted(Request $request, User $user, Team $team): void
     {
