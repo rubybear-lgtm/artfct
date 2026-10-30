@@ -4,6 +4,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- RUB-513: Search Console "not indexed" reasons on artfct.dev. Retired shells `/pricing`, `/signup`, `/app` and `/dashboard` permanently redirect to a live page. Production `robots.txt` disallows `/a/`, `/p/`, `/v1/` and `/login` for every crawler (marketing pages stay allowed). `/a/*` and `/login` send `X-Robots-Tag: noindex, nofollow`, and Worker `/p/*` HTML responses do the same. Sitemap still lists only live marketing URLs.
+
 ### Added
 
 - RUB-499: daily publish caps on `deploy_artifact` (new artifacts and new versions), per user and per workspace, configurable in `config/billing.php`. Identical-content republishes do not consume a slot. Over-limit responses use `quota_exceeded` with `reset_at` (next UTC midnight). Defaults: free 100/user and 300/workspace; team 200/2,000; enterprise 500/10,000.
