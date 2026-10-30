@@ -49,14 +49,23 @@ class FakeArtifactDirectory implements ArtifactDirectory
     }
 
     /**
-     * Adds one artifact to the in-memory demo set — for tests (spec 13's
-     * search suite in particular) that need artifacts beyond the two
-     * built-in seeds.
+     * Adds one artifact to the in-memory demo set, replacing any earlier row
+     * with the same id — for tests (spec 13's search suite in particular)
+     * that need artifacts beyond the two built-in seeds, or that re-seed one
+     * id to simulate a change the Worker would serve on the next read.
      *
      * @param  array<string, mixed>  $artifact
      */
     public function seedArtifact(array $artifact): void
     {
+        foreach ($this->artifacts as $index => $existing) {
+            if (($existing['id'] ?? null) === ($artifact['id'] ?? null)) {
+                $this->artifacts[$index] = $artifact;
+
+                return;
+            }
+        }
+
         $this->artifacts[] = $artifact;
     }
 
@@ -114,6 +123,12 @@ class FakeArtifactDirectory implements ArtifactDirectory
             // Test hook: the Worker answers 404 for a private artifact the
             // caller may not view, so a hidden row reads as absent here too.
             if (($artifact['hidden'] ?? false) === true) {
+                return null;
+            }
+
+            // The Worker answers 404 for a revoked artifact, whatever the
+            // caller could see before; a revoked row reads as absent too.
+            if (($artifact['revoked_at'] ?? null) !== null) {
                 return null;
             }
 

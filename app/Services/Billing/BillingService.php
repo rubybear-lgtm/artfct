@@ -206,7 +206,9 @@ final class BillingService
     public function activeSeatCount(Team $team): int
     {
         return $team->memberships()
-            ->whereHas('user', fn ($query) => $query->whereNull('deactivated_at'))
+            ->whereHas('user', fn ($query) => $query
+                ->whereNull('deactivated_at')
+                ->where('is_bot', false))
             ->when(! config('billing.viewers_billable', true), fn ($query) => $query->where('role', '!=', 'viewer'))
             ->count();
     }
