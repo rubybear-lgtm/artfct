@@ -65,6 +65,7 @@ function notPages(): array
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
         'teams.audit.export' => 'file download', 'console.export' => 'zip download',
         'artifacts.download' => 'file download',
+        'artifacts.freshness' => 'viewer freshness JSON poll (ArtifactViewerTest)',
         'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
 }

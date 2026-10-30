@@ -92,13 +92,15 @@ final class AddArtifactCommentTool extends Tool
 
         $user = User::query()->find((int) McpContext::actor());
         $connection = request()->attributes->get('mcp_connection');
+        $agentName = McpContext::agentName()
+            ?? ($connection instanceof McpConnection ? $connection->client_name : null);
         $comment = ArtifactComment::query()->create([
             'team_id' => $team->id,
             'artifact_id' => $validated['id'],
             'parent_id' => $parentId,
             'author_user_id' => McpContext::actor(),
-            'author_name' => $user?->name,
-            'author_agent' => $connection instanceof McpConnection ? $connection->client_name : null,
+            'author_name' => McpContext::agentName() ?? $user?->name,
+            'author_agent' => $agentName,
             'body' => $validated['body'],
         ]);
 

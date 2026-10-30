@@ -837,14 +837,7 @@ final class AuthorizationServerController extends Controller
     /** @return list<string> */
     private function scopesForRole(TeamRole $role): array
     {
-        return match ($role) {
-            TeamRole::Admin, TeamRole::Member => McpScope::values(),
-            TeamRole::Viewer => [
-                McpScope::ArtifactsRead->value,
-                McpScope::CollectionsRead->value,
-                McpScope::UsageRead->value,
-            ],
-        };
+        return McpScope::forRole($role);
     }
 
     /** @param array<string, string> $parameters */
