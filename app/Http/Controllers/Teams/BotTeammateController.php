@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\CreateBotTeammate;
+use App\Actions\Teams\RollBotAgentToken;
 use App\Enums\AuditEventType;
 use App\Enums\McpScope;
 use App\Enums\TeamRole;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
+use RuntimeException;
 
 class BotTeammateController extends Controller
 {
@@ -97,6 +99,78 @@ class BotTeammateController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Bot teammate added.')]);
 
         return back();
+    }
+
+    /**
+     * Revoke a bot's active agent tokens and mint a replacement shown once.
+     * Tokens are never stored in recoverable form, so rolling is the only way
+     * to get a usable credential after the create dialog is dismissed.
+     */
+    public function roll(
+        Request $request,
+        Team $team,
+        User $user,
+        RollBotAgentToken $rollBotToken,
+        AuditLogger $auditLogger,
+    ): JsonResponse {
+        Gate::authorize('create', [OrgToken::class, $team]);
+        abort_if($request->user()?->is_bot === true, 403);
+        abort_unless($user->is_bot && $user->belongsToTeam($team), 404);
+
+        $validated = $request->validate([
+            'scopes' => ['sometimes', 'array', 'min:1'],
+            'scopes.*' => ['string', Rule::in(McpScope::values())],
+            'ttl_seconds' => ['sometimes', 'integer', 'min:60', 'max:31536000'],
+        ]);
+
+        $scopes = null;
+
+        if (isset($validated['scopes'])) {
+            $scopes = array_values(array_intersect(
+                McpScope::forRole($request->user()->teamRole($team)),
+                $validated['scopes'],
+            ));
+            abort_if($scopes === [], 403, __('You cannot grant scopes beyond your team role.'));
+        }
+
+        try {
+            $rolled = $rollBotToken->handle(
+                $team,
+                $user,
+                $scopes,
+                isset($validated['ttl_seconds']) ? (int) $validated['ttl_seconds'] : null,
+            );
+        } catch (RuntimeException $exception) {
+            abort(503, $exception->getMessage());
+        }
+
+        if ($rolled['revoked_count'] > 0) {
+            $auditLogger->recordForRequest(
+                $request,
+                AuditEventType::TokenRevoked,
+                $team,
+                (string) $request->user()->id,
+                "bot:{$user->id}:rolled",
+            );
+        }
+
+        $auditLogger->recordForRequest(
+            $request,
+            AuditEventType::TokenCreated,
+            $team,
+            (string) $request->user()->id,
+            "token:{$rolled['org_token']->id}",
+        );
+
+        return response()->json([
+            'id' => $rolled['bot']->id,
+            'name' => $rolled['bot']->name,
+            'token' => $rolled['token'],
+            'expires_at' => $rolled['expires_at']->toRfc3339String(),
+            'mcp_endpoint' => url('/mcp'),
+            'authorization_header' => 'Bearer '.$rolled['token'],
+            'revoked_count' => $rolled['revoked_count'],
+        ]);
     }
 
     /**
