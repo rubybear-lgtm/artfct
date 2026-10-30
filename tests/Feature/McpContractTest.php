@@ -148,6 +148,15 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'set_avatar' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
     ];
 
     expect($tools->keys()->all())->toBe(array_keys($expectedContracts));

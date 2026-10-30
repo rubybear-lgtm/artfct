@@ -237,3 +237,106 @@ test('a public artifact renders the thin header with no share or download and a 
         ->assertNoJavaScriptErrors()
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth');
 });
+
+test('a_pinned_version_shows_a_newer_version_banner_after_a_publish', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Freshness', 'viewer-freshness@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 1);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl().'/v/1')
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertMissing('@newer-version-banner');
+
+    // The publish lands after the page rendered; the focus poll sees the new
+    // version and offers the banner without yanking the pinned reader there.
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 2, 'created_at' => now()->toIso8601String(), 'current' => true],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 2);
+
+    $page->script('window.dispatchEvent(new Event("focus"))');
+
+    $page->waitForText('A newer version is available')
+        ->assertVisible('@newer-version-banner')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+test('the_live_viewer_reloads_and_keeps_polling_after_a_publish', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Reload', 'viewer-reload@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Version 1')
+        ->assertVisible('@artifact-frame');
+
+    // The publish lands after the page rendered. The focus poll reloads
+    // through the server, and the reloaded page keeps polling: a second
+    // publish surfaces too, which a stuck stop-flag would swallow.
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 2, 'created_at' => now()->toIso8601String(), 'current' => true],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 2);
+
+    $page->script('window.dispatchEvent(new Event("focus"))');
+
+    $page->waitForText('Version 2 of 2')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 3, 'created_at' => now()->toIso8601String(), 'current' => true],
+        ['version' => 2, 'created_at' => now()->subHour()->toIso8601String(), 'current' => false],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 3);
+
+    $page->script('window.dispatchEvent(new Event("focus"))');
+
+    $page->waitForText('Version 3 of 3')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a_revoked_artifact_unmounts_the_frame_after_a_poll', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Revoked', 'viewer-revoked@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertMissing('@artifact-revoked');
+
+    // The first focus poll marks the viewer known; the revoke lands next, so
+    // the following poll reports revoked and the frame unmounts in place.
+    $page->script('window.dispatchEvent(new Event("focus"))');
+    $page->wait(0.5);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->revokeArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID);
+
+    $page->script('window.dispatchEvent(new Event("focus"))');
+
+    $page->waitForText('no longer shared')
+        ->assertVisible('@artifact-revoked')
+        ->assertMissing('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});

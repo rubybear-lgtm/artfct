@@ -4,9 +4,14 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- RUB-513: Search Console "not indexed" reasons on artfct.dev. Retired shells `/pricing`, `/signup`, `/app` and `/dashboard` permanently redirect to a live page. Production `robots.txt` disallows `/a/`, `/p/`, `/v1/` and `/login` for every crawler (marketing pages stay allowed). `/a/*` and `/login` send `X-Robots-Tag: noindex, nofollow`, and Worker `/p/*` HTML responses do the same. Sitemap still lists only live marketing URLs.
+
 ### Added
 
 - RUB-508: `deploy_artifact` accepts optional `collection` (name or id) so a new publish can land in a workspace collection in one call (requires `collections:write`; ignored on version publishes). `add_collection_artifact` accepts a collection name as well as a numeric id. Tool descriptions clarify that every created collection is listed (no separate "approved" status) and that `canonical` means an admin-pinned search boost.
+- RUB-499: daily publish caps on `deploy_artifact` (new artifacts and new versions), per user and per workspace, configurable in `config/billing.php`. Identical-content republishes do not consume a slot. Over-limit responses use `quota_exceeded` with `reset_at` (next UTC midnight). Defaults: free 100/user and 300/workspace; team 200/2,000; enterprise 500/10,000.
 - RUB-503: agent discovery without Cloudflare's paid features. `/.well-known/mcp/server-card.json` serves an MCP Server Card (SEP-1649/2127) built from `ArtfctServer`, `server.json` and the documented tools. The `NegotiateMarkdown` middleware returns Markdown to requests that prefer `Accept: text/markdown`, with `x-markdown-tokens` and `Vary: Accept`; this covers `/`, `/connect`, every `/connect/{tool}` page, `/blog`, every post and `/docs`. Browsers still get HTML. `AiToolSetup::guideMarkdown()` now renders the guide steps for both these pages and `llms-full.txt`.
 - RUB-500: the Worker answers `GET /robots.txt` on every host it serves, asking all crawlers to stay out (`Disallow: /`, `Content-Signal: search=no, ai-train=no`). Until now the isolated artifact hosts (`*--prod.artfct.dev`, `*--stg.artfct.dev`) got robots.txt only from Cloudflare's zone-wide managed robots.txt. Once this reaches production, that managed setting can be turned off, so the app's own robots.txt (Google-Extended allowed on marketing pages, RUB-487) is the only one on the apex.
 - RUB-486: the hosted server is listed in the official MCP Registry as `dev.artfct/artfct` (https://registry.modelcontextprotocol.io/v0.1/servers?search=dev.artfct/artfct). `server.json` at the repo root is the listing. Ownership of the `dev.artfct` namespace is proven by a `v=MCPv1` TXT record at the artfct.dev apex. To publish a new version, raise `version`, run `mcp-publisher login dns --domain artfct.dev` with the Ed25519 key that matches that record, then run `mcp-publisher publish`.
@@ -57,6 +62,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Fixed
 
+- Critical PHP security release (CVE-2026-109618 and CVE-2026-109619, "php2shell", 2026-10-21): `composer.json` now requires PHP `^8.5.12`. Railpack reads that constraint and builds on the `dunglas/frankenphp:php8.5.12-trixie` image, so every web, scheduler and queue service runs the patched engine once redeployed. Also ran `npm audit fix` (vite 8.0.16 to 8.3.5 clears two high advisories) and refreshed `composer.lock`.
 - RUB-502: `npx skills add rubybear-lgtm/artfct@artfct-init` found nothing: skills.sh parses SKILL.md frontmatter as YAML and skipped artfct-init, artfct-search, artfct-publish and artfct-collaborate because their descriptions held an unquoted colon. They are quoted, `test:skills` checks every skill's frontmatter, and this repo's own `.claude/skills` are marked `metadata.internal` so the public installer lists only the Artfct skills. "(not yet tested by Artfct)" and "verified end to end" no longer appear on `llms-full.txt`, `/docs` or `/connect`; the Claude app had repeated the label to a user.
 - RUB-491: `/blog/developer-tools` and `/blog/mermaid-diagrams`, retired posts Google still lists, now redirect to `/blog` with a 301 like `/blog/ai-presentations`. One constrained route covers all three, so current post slugs are unaffected.
 - RUB-454: `scripts/deploy-worker-version.mjs` installs `worker-build 0.8.3` exactly as `backend/wrangler.jsonc` does, `--locked` included, so the local deploy path resolves the build tool the same way the production build does. The version was already pinned in both; the flag was not.

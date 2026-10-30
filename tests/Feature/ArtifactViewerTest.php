@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Contracts\PublicArtifactSource;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\ArtifactComment;
@@ -9,6 +10,7 @@ use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Artifacts\FakePublicArtifactSource;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -443,4 +445,159 @@ test('the_comment_routes_are_throttled', function () {
     }
 
     test()->actingAs($member)->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => 'one too many'])->assertStatus(429);
+});
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function seedFreshnessPublicArtifact(string $id, array $overrides = []): void
+{
+    /** @var FakePublicArtifactSource $public */
+    $public = app(PublicArtifactSource::class);
+    $public->seed($id, 'freshness-public-org', array_merge([
+        'title' => 'A public freshness report',
+        'description' => 'Anyone with the link.',
+        'version' => 1,
+        'version_count' => 1,
+        'updated_at' => now()->subDay()->toIso8601String(),
+        'edit_access' => 'view',
+    ], $overrides));
+}
+
+test('a_member_polls_the_current_version_and_sharing_as_no_store_json', function () {
+    $team = viewerTeam('freshness-team', 'Freshness Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team', 'version' => 2]);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness');
+
+    $response->assertOk()
+        ->assertExactJson(['version' => 2, 'sharing' => 'team', 'revoked' => false])
+        ->assertHeader('Cache-Control', 'no-store, private');
+});
+
+test('a_freshness_poll_reflects_a_sharing_change_and_a_new_version', function () {
+    $team = viewerTeam('freshness-change-team', 'Freshness Change Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team', 'version' => 1]);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedVersions(ARTIFACT_LINK_ID, [
+        ['version' => 2, 'created_at' => now()->subHour()->toIso8601String(), 'current' => true],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 2);
+
+    // The publish flips sharing and lands a new version; the next poll
+    // reports both. Re-seeding replaces the earlier row by id.
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'private', 'version' => 1]);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness');
+
+    $response->assertOk()
+        ->assertJson(['version' => 2, 'sharing' => 'private', 'revoked' => false]);
+});
+
+test('a_freshness_poll_without_the_known_header_is_a_404_for_a_revoked_artifact', function () {
+    $team = viewerTeam('freshness-revoked-team', 'Freshness Revoked Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'team',
+        'revoked_at' => now()->toIso8601String(),
+    ]);
+
+    // The viewer itself 404s a revoked artifact, and a fresh poll — one that
+    // never saw the artifact — gets the same answer, not a revocation signal.
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertNotFound();
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness')->assertNotFound();
+});
+
+test('a_freshness_poll_with_the_known_header_reports_revoked_for_a_prior_viewer', function () {
+    $team = viewerTeam('freshness-known-team', 'Freshness Known Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'team',
+        'revoked_at' => now()->toIso8601String(),
+    ]);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness', ['X-Freshness-Known' => '1']);
+
+    $response->assertOk()
+        ->assertExactJson(['version' => null, 'sharing' => null, 'revoked' => true])
+        ->assertHeader('Cache-Control', 'no-store, private');
+});
+
+test('a_signed_out_visitor_is_sent_to_sign_in_for_a_team_artifact_poll', function () {
+    $team = viewerTeam('freshness-guest-team', 'Freshness Guest Team');
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    test()->get('/a/'.ARTIFACT_LINK_ID.'/freshness')->assertRedirect(route('login'));
+});
+
+test('a_signed_out_visitor_polls_a_public_artifact_without_a_session', function () {
+    seedFreshnessPublicArtifact(ARTIFACT_LINK_ID, ['version' => 3]);
+
+    $response = test()->get('/a/'.ARTIFACT_LINK_ID.'/freshness');
+
+    $response->assertOk()
+        ->assertExactJson(['version' => 3, 'sharing' => 'public', 'revoked' => false]);
+});
+
+test('a_freshness_poll_for_a_malformed_id_is_a_404', function () {
+    $team = viewerTeam('freshness-malformed-team', 'Freshness Malformed Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->get('/a/short/freshness')->assertNotFound();
+});
+
+test('a_signed_in_non_member_gets_the_same_404_as_a_missing_poll', function () {
+    $victimTeam = Team::factory()->create(['slug' => 'freshness-victim']);
+    $outsiderTeam = Team::factory()->create(['slug' => 'freshness-outsider']);
+    $outsider = memberOfTeam($outsiderTeam, TeamRole::Member);
+
+    // The directory fake serves every org, so pin it to the victim's: the
+    // outsider's own teams must not resolve the artifact.
+    $directory = new class extends FakeArtifactDirectory
+    {
+        public function getArtifact(string $orgSlug, string $artifactId): ?array
+        {
+            return $orgSlug === 'freshness-victim' ? parent::getArtifact($orgSlug, $artifactId) : null;
+        }
+    };
+    $directory->seedArtifact([
+        'id' => ARTIFACT_LINK_ID,
+        'org_id' => $victimTeam->slug,
+        'user_id' => 1,
+        'title' => 'Someone else’s report',
+        'description' => null,
+        'content_hash' => md5(ARTIFACT_LINK_ID),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+    app()->instance(ArtifactDirectory::class, $directory);
+
+    // Without the header this is the same 404 as a missing id; with it the
+    // outsider holds no prior view, but membership alone must not mint an
+    // oracle — the known-viewer branch answers revoked the same for any id
+    // their teams do not resolve, missing or not.
+    test()->actingAs($outsider)->get('/a/'.ARTIFACT_LINK_ID.'/freshness')->assertNotFound();
+    test()->actingAs($outsider)->get('/a/ffffffffffffffffffffffffffffffff/freshness', ['X-Freshness-Known' => '1'])
+        ->assertOk()
+        ->assertExactJson(['version' => null, 'sharing' => null, 'revoked' => true]);
+});
+
+test('a_freshness_poll_mints_no_link_and_writes_no_audit_row', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('freshness-quiet-team', 'Freshness Quiet Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness');
+
+    $response->assertOk();
+
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
 });

@@ -304,6 +304,7 @@ class AiToolSetup
             ['name' => 'add_collection_artifact', 'does' => 'Add an artifact to a collection.', 'permission' => 'collections:write'],
             ['name' => 'get_usage', 'does' => 'Read your team’s storage, limits and indexing status.', 'permission' => 'usage:read'],
             ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, without revealing any credentials.', 'permission' => 'Any'],
+            ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],
         ];
     }
 
@@ -324,16 +325,40 @@ class AiToolSetup
     }
 
     /**
+     * Header-auth path for bots and custom connectors that cannot run a
+     * browser OAuth consent (RUB-511). Kept next to the OAuth guides so
+     * /docs and /llms-full.txt stay the single source of truth.
+     *
+     * @return array{title: string, intro: string, mcpUrl: string, headerExample: string, steps: list<array{text: string, code?: string}>}
+     */
+    public function agentTokenSetup(): array
+    {
+        return [
+            'title' => 'Connect your AI assistant with a header',
+            'intro' => 'Some bots and custom connectors accept a static Authorization header instead of browser sign-in. Create a named agent token in team settings, then paste it into your MCP client.',
+            'mcpUrl' => $this->mcpUrl(),
+            'headerExample' => 'Authorization: Bearer <your-agent-token>',
+            'steps' => [
+                ['text' => 'In Artfct, open Team settings → Members, add a bot (for example Hoku), optionally upload an avatar, and pick the permissions it needs. A token is shown once.'],
+                ['text' => 'Copy the token (it is not shown again). You can mint more tokens for that bot later under Agent & API tokens.'],
+                ['text' => 'In your MCP client, set the server URL to this address:', 'code' => $this->mcpUrl()],
+                ['text' => 'Add this request header, replacing the placeholder with the token you copied:', 'code' => 'Authorization: Bearer <your-agent-token>'],
+                ['text' => 'Ask the assistant which Artfct workspace it is connected to. It should answer with your team’s name. Work it publishes is attributed to the bot with a Bot badge.'],
+            ],
+        ];
+    }
+
+    /**
      * @return list<array{name: string, type: string, note: string}>
      */
     public function troubleshooting(): array
     {
         return [
-            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. OMP: type /mcp, choose artfct and approve the sign-in. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings.'],
-            ['name' => 'Connected to the wrong team', 'type' => 'Sign out, then in', 'note' => 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code or OMP: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page.'],
+            ['name' => 'The sign-in did not open, or access expired', 'type' => 'Sign in again', 'note' => 'Claude Code: type /mcp, choose artfct and select Reconnect. Codex: run codex mcp login artfct. OpenCode: run opencode mcp auth artfct and approve once. OMP: type /mcp, choose artfct and approve the sign-in. Antigravity: type /mcp in agy and choose artfct. Other tools: disconnect and connect artfct again in their settings. Bots using an agent token: create a fresh token in Team settings → Agent & API tokens and update the Authorization header.'],
+            ['name' => 'Connected to the wrong team', 'type' => 'Sign out, then in', 'note' => 'Sign out first (Codex: codex mcp logout artfct. OpenCode: opencode mcp logout artfct. Claude Code or OMP: type /mcp, choose artfct and clear its sign-in). Then sign in again and pick the team on the approval page. Agent tokens only reach the one team they were created for — mint a new token on the team you want.'],
             ['name' => 'The tool cannot reach Artfct', 'type' => 'Check the address', 'note' => "Make sure the address is exactly {$this->mcpUrl()} and that your tool supports remote (HTTP) servers. Tools that can only start programs on your computer cannot connect."],
             ['name' => 'Your tool says it is being rate limited', 'type' => 'Wait a moment', 'note' => 'Wait as long as your tool reports, then try again.'],
-            ['name' => 'An administrator removed or reset the connection', 'type' => 'Sign in again', 'note' => 'Repeat the sign-in step for your tool and approve access again. If you have left the team, ask an administrator to invite you back.'],
+            ['name' => 'An administrator removed or reset the connection', 'type' => 'Sign in again', 'note' => 'Repeat the sign-in step for your tool and approve access again. If you have left the team, ask an administrator to invite you back. If you used an agent token, check whether it was revoked.'],
         ];
     }
 
@@ -451,6 +476,7 @@ class AiToolSetup
             'vscodeInstallLink' => $this->vscodeInstallLink(),
             'vscodeWebInstallLink' => $this->vscodeWebInstallLink(),
             'guides' => $this->guides(),
+            'agentTokenSetup' => $this->agentTokenSetup(),
             'tools' => $this->tools(),
             'permissions' => $this->permissions(),
             'troubleshooting' => $this->troubleshooting(),

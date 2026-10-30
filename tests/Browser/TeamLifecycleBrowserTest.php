@@ -50,7 +50,7 @@ test('billing_and_token_pages_render_without_errors', function () {
         ->assertNoJavaScriptErrors();
 
     visit(route('teams.tokens.index', $team))
-        ->assertSee('API tokens')
+        ->assertSee('Agent & API tokens')
         ->assertSee('Create a token')
         ->assertNoJavaScriptErrors();
 

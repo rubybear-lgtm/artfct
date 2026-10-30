@@ -124,13 +124,14 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.tools.2.name', 'get_connection')
         ->assertJsonPath('result.tools.0.title', 'Publish artifact')
         ->assertJsonPath('result.tools.1.title', 'Search artifacts')
-        ->assertJsonMissingPath('result.tools.15')
+        ->assertJsonPath('result.tools.15.name', 'set_avatar')
+        ->assertJsonMissingPath('result.tools.16')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy')
         ->assertJsonMissingPath('result.nextCursor');
 
     expect(array_column($response->json('result.tools'), 'name'))
-        ->toContain('delete_artifact', 'read_artifact', 'get_guidance', 'resolve_artifact_comment');
+        ->toContain('delete_artifact', 'read_artifact', 'get_guidance', 'resolve_artifact_comment', 'set_avatar');
 });
 
 test('remote MCP negotiates supported protocol versions and rejects unsupported ones', function () {

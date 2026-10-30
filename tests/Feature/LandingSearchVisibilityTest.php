@@ -99,7 +99,8 @@ test('production robots lets Google-Extended read the site but not artifacts', f
         ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
         ->getContent();
 
-    expect($robots)->toContain("User-agent: Google-Extended\nAllow: /\nDisallow: /a/\nDisallow: /p/\nDisallow: /v1/\n")
+    expect($robots)->toContain("User-agent: *\nContent-Signal: search=yes,ai-train=no,use=reference\nAllow: /\nDisallow: /a/\nDisallow: /p/\nDisallow: /v1/\nDisallow: /login\n")
+        ->and($robots)->toContain("User-agent: Google-Extended\nAllow: /\nDisallow: /a/\nDisallow: /p/\nDisallow: /v1/\nDisallow: /login\n")
         ->and($robots)->toContain('Content-Signal: search=yes,ai-train=no,use=reference')
         ->and($robots)->toContain('Sitemap: '.url('/sitemap.xml'))
         ->and($robots)->toMatch('#User-agent: GPTBot\n(User-agent: [^\n]+\n)*Disallow: /\n#')

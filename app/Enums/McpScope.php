@@ -25,6 +25,33 @@ enum McpScope: string
         return array_map(static fn (self $scope): string => $scope->value, self::cases());
     }
 
+    /**
+     * Scopes a team role may grant on OAuth consent, MCP connections, or
+     * agent tokens. Viewers are read-only; everyone else may grant the full set.
+     *
+     * @return list<string>
+     */
+    public static function forRole(?TeamRole $role): array
+    {
+        return match ($role) {
+            TeamRole::Admin, TeamRole::Member => self::values(),
+            default => [
+                self::ArtifactsRead->value,
+                self::CollectionsRead->value,
+                self::UsageRead->value,
+            ],
+        };
+    }
+
+    /**
+     * Space-joined scope claim used when a JWT omits an explicit scope list
+     * and the middleware fills in the role default.
+     */
+    public static function claimForRole(?TeamRole $role): string
+    {
+        return implode(' ', self::forRole($role));
+    }
+
     public function label(): string
     {
         return match ($this) {
