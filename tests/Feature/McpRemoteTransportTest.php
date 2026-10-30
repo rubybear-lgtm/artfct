@@ -865,6 +865,113 @@ test('collection mutations require the explicit write scope and stay organizatio
         ->exists())->toBeTrue();
 });
 
+test('deploy_artifact can add a new artifact to a collection by name in one call', function () {
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create();
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch', 'created_by_user_id' => $user->id]);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $html = '<!doctype html><title>Launch brief</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => $html,
+            'collection' => 'Launch',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonPath('result.structuredContent.collection_id', $collection->id)
+        ->assertJsonPath('result.structuredContent.collection', 'Launch');
+
+    expect(CollectionArtifact::query()
+        ->where('collection_id', $collection->id)
+        ->where('artifact_id', ARTIFACT_LINK_ID)
+        ->exists())->toBeTrue();
+});
+
+test('deploy_artifact refuses an unknown collection before contacting the Worker', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => '<p>x</p>',
+            'collection' => 'Missing',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'collection_not_found');
+
+    Http::assertNothingSent();
+});
+
+test('deploy_artifact with collection requires collections:write', function () {
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create();
+    $user = memberOfTeam($team, TeamRole::Member);
+    Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch', 'created_by_user_id' => $user->id]);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Member, scopes: ['artifacts:deploy'])['token'];
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => '<p>x</p>',
+            'collection' => 'Launch',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true);
+
+    expect(McpActivity::query()->where('team_id', $team->id)->where('tool', 'deploy_artifact')->where('outcome', 'denied')->exists())->toBeTrue();
+    Http::assertNothingSent();
+});
+
+test('add_collection_artifact accepts a collection name', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch']);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response(['id' => 'artifact123', 'tier' => 'secure'], 200),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'add_collection_artifact',
+            'arguments' => ['collection' => 'Launch', 'artifact_id' => 'artifact123'],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.collection_id', $collection->id)
+        ->assertJsonPath('result.structuredContent.collection', 'Launch')
+        ->assertJsonPath('result.structuredContent.artifact_id', 'artifact123');
+
+    expect(CollectionArtifact::query()
+        ->where('collection_id', $collection->id)
+        ->where('artifact_id', 'artifact123')
+        ->exists())->toBeTrue();
+});
+
 test('deploy_artifact publishes a permanent org artifact in two steps', function () {
     configureArtifactLinks();
 

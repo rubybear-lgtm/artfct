@@ -34,6 +34,30 @@ final class CollectionService
         );
     }
 
+    /**
+     * Resolve a workspace collection by numeric id or exact name. Digits try
+     * id first, then name, so a collection literally named "12" still works
+     * when no row has that id.
+     */
+    public function findForTeam(Team $team, string $nameOrId): ?Collection
+    {
+        $nameOrId = trim($nameOrId);
+        if ($nameOrId === '') {
+            return null;
+        }
+
+        $query = Collection::query()->where('team_id', $team->id);
+
+        if (ctype_digit($nameOrId)) {
+            $byId = (clone $query)->where('id', (int) $nameOrId)->first();
+            if ($byId !== null) {
+                return $byId;
+            }
+        }
+
+        return $query->where('name', $nameOrId)->first();
+    }
+
     public function removeArtifact(Collection $collection, string $artifactId): void
     {
         CollectionArtifact::query()
