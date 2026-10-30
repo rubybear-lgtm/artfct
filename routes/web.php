@@ -89,6 +89,15 @@ Route::get('/blog/{slug}', [BlogController::class, 'show'])
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::get('/robots.txt', RobotsController::class)->name('robots');
 
+// Retired marketing URLs Google still requests as 4xx (RUB-513). Send them to
+// the closest live page so the 4xx report clears without inventing pages.
+// GET-only, same shape as the retired blog redirect above, so the isolation
+// matrix keys them as ordinary public GETs.
+Route::get('/pricing', fn () => redirect('/', 301));
+Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));
+Route::get('/app', fn () => redirect('/', 301));
+Route::get('/dashboard', fn () => redirect('/', 301));
+
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //
 // One short route for every sharing level. The viewer is addressed by artifact

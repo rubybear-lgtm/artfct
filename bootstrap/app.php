@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NegotiateMarkdown;
 use App\Http\Middleware\NoIndexOutsideProduction;
+use App\Http\Middleware\NoIndexPrivateSurfaces;
 use App\Http\Middleware\PinRequestScheme;
 use App\Http\Middleware\RequireOrgScope;
 use App\Http\Middleware\SetTeamUrlDefaults;
@@ -56,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             CacheControl::class,
             NoIndexOutsideProduction::class,
+            NoIndexPrivateSurfaces::class,
             AddLinkHeadersForPreloadedAssets::class,
             SetTeamUrlDefaults::class,
             EnsureTermsAccepted::class,
