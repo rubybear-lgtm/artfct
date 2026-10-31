@@ -4,8 +4,13 @@
 //! be served as `application/octet-stream`: the sandboxed viewer iframe has no
 //! `allow-downloads`, so the browser refuses the download and shows a blank
 //! page (RUB-515). Convert to a self-contained HTML document instead.
+//!
+//! MCP `deploy_artifact` stores raw markdown as `text/markdown` under a `.md`
+//! path. This Worker is the sole HTML renderer for that content — matching
+//! Laravel's CommonMark `html_input => strip` by dropping raw HTML events so
+//! shared-origin preview CSP cannot execute injected script.
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 
 const MARKDOWN_CSS: &str = r#"
 :root { color-scheme: light dark; }
@@ -79,10 +84,9 @@ pub(crate) fn content_type_is_markdown(content_type: &str) -> bool {
 /// for a markdown path both qualify when the content type or path says markdown,
 /// including the legacy `application/octet-stream` case for `.md` files.
 ///
-/// Already-stored `text/html` must not be re-wrapped: the Laravel MCP deploy
-/// path keeps a `.md` entrypoint for `kind: markdown` while storing rendered
-/// HTML bytes (RUB-515). Re-running pulldown-cmark on that HTML nested a second
-/// document shell around the page.
+/// Already-stored `text/html` must not be re-wrapped: older MCP publishes kept
+/// a `.md` entrypoint while storing rendered HTML bytes. Re-running
+/// pulldown-cmark on that HTML nested a second document shell around the page.
 pub(crate) fn should_render_markdown(
     content_type: &str,
     entrypoint: &str,
@@ -105,6 +109,23 @@ pub(crate) fn should_render_markdown(
         || path_is_markdown(path)
 }
 
+/// Drop raw HTML events so markdown cannot smuggle scripts/tags into the
+/// rendered page (Laravel CommonMark `html_input => strip`).
+fn strip_raw_html<'a, I>(events: I) -> impl Iterator<Item = Event<'a>>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    events.filter(|event| {
+        !matches!(
+            event,
+            Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::Start(Tag::HtmlBlock)
+                | Event::End(TagEnd::HtmlBlock)
+        )
+    })
+}
+
 /// Convert markdown source to a self-contained HTML document.
 pub(crate) fn render_markdown_document(markdown: &str) -> String {
     let mut options = Options::empty();
@@ -113,7 +134,7 @@ pub(crate) fn render_markdown_document(markdown: &str) -> String {
     options.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(markdown, options);
     let mut body = String::new();
-    html::push_html(&mut body, parser);
+    html::push_html(&mut body, strip_raw_html(parser));
     format!(
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Markdown</title>\n<style>{MARKDOWN_CSS}</style>\n</head>\n<body>\n{body}\n</body>\n</html>"
     )
@@ -172,6 +193,22 @@ mod tests {
     }
 
     #[test]
+    fn text_markdown_content_type_is_rendered_as_html() {
+        let (ctype, body) = maybe_render_markdown_response(
+            "text/markdown; charset=utf-8",
+            "README.md",
+            None,
+            b"# Quarterly\n\n| Region | Revenue |\n| --- | --- |\n| West | 10 |\n".to_vec(),
+        );
+        assert_eq!(ctype, "text/html; charset=utf-8");
+        assert!(!ctype.contains("octet-stream"));
+        let html = String::from_utf8(body).unwrap();
+        assert!(html.contains("<h1>Quarterly</h1>"));
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<td>West</td>"));
+    }
+
+    #[test]
     fn html_entrypoint_unchanged() {
         let original = b"<!doctype html><h1>Hi</h1>".to_vec();
         let (ctype, body) = maybe_render_markdown_response(
@@ -186,8 +223,8 @@ mod tests {
 
     #[test]
     fn pre_rendered_html_with_markdown_path_is_not_double_wrapped() {
-        // MCP deploy_artifact stores rendered HTML under a .md path so list
-        // kind stays markdown. Serving must not run markdown→HTML again.
+        // Older MCP publishes stored rendered HTML under a .md path. Serving
+        // must not run markdown→HTML again.
         let original = b"<!doctype html><html><body><h1>Quarterly</h1><table><tr><td>1</td></tr></table></body></html>".to_vec();
         let (ctype, body) = maybe_render_markdown_response(
             "text/html; charset=utf-8",
@@ -202,5 +239,32 @@ mod tests {
             "README.md",
             None
         ));
+    }
+
+    #[test]
+    fn raw_html_and_inline_script_are_stripped() {
+        let html = render_markdown_document(
+            "# Safe\n\n<script>alert(1)</script>\n\nHello <img src=x onerror=alert(1)>\n\n<div onclick=\"evil()\">x</div>\n",
+        );
+        assert!(html.contains("<h1>Safe</h1>"));
+        assert!(html.contains("Hello"));
+        assert!(
+            !html.contains("<script>"),
+            "raw script tags must be stripped: {html}"
+        );
+        assert!(
+            !html.contains("onerror="),
+            "inline event handlers must be stripped: {html}"
+        );
+        assert!(
+            !html.contains("<img"),
+            "raw img tags must be stripped: {html}"
+        );
+        assert!(
+            !html.contains("<div"),
+            "raw HTML blocks must be stripped: {html}"
+        );
+        assert!(!html.contains("alert(1)"));
+        assert!(!html.contains("evil()"));
     }
 }

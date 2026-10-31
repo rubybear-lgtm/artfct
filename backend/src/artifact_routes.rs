@@ -1,7 +1,8 @@
 use super::*;
 use crate::artifact_origin::{
-    access_token_cookie, access_token_from_cookie, app_frame_ancestor, isolated_artifact_hostname,
+    access_token_cookie, access_token_from_cookie, app_frame_ancestor, legacy_bare_host_decision,
     parse_isolated_hostname, token_opens_private, verified_token_viewer, verify_access_token,
+    LegacyBareHostDecision,
 };
 use crate::markdown::maybe_render_markdown_response;
 use crate::sharing::{
@@ -965,34 +966,28 @@ pub(crate) async fn resolve_permanent_artifact(
     // artifacts to the canonical `<slug>--<id>--prod` host, otherwise 404.
     let origin_suffix = artifact_origin_suffix(env);
     if isolated_access == IsolatedAccess::NotIsolated {
-        if let Some(host) = host.as_deref() {
-            if host.ends_with(origin_suffix.as_str())
-                && parse_isolated_hostname(host, origin_suffix.as_str()).is_none()
-            {
-                if sharing.is_anonymous() {
-                    if let Ok(canonical_host) =
-                        isolated_artifact_hostname(&row.org, artifact_id, origin_suffix.as_str())
-                    {
-                        let path = match (requested_path, version) {
-                            (Some(path), Some(version)) => {
-                                format!("/p/{artifact_id}/v:{version}/{path}")
-                            }
-                            (Some(path), None) => format!("/p/{artifact_id}/{path}"),
-                            (None, Some(version)) => {
-                                format!("/p/{artifact_id}/v:{version}/")
-                            }
-                            (None, None) => format!("/p/{artifact_id}/"),
-                        };
-                        let mut response = Response::empty()?.with_status(301);
-                        response
-                            .headers_mut()
-                            .set("Location", &format!("https://{canonical_host}{path}"))?;
-                        response.headers_mut().set("Cache-Control", "no-store")?;
-                        return Ok(response);
-                    }
-                }
-                return expired_response();
+        let path = match (requested_path, version) {
+            (Some(path), Some(version)) => format!("/p/{artifact_id}/v:{version}/{path}"),
+            (Some(path), None) => format!("/p/{artifact_id}/{path}"),
+            (None, Some(version)) => format!("/p/{artifact_id}/v:{version}/"),
+            (None, None) => format!("/p/{artifact_id}/"),
+        };
+        match legacy_bare_host_decision(
+            host.as_deref(),
+            origin_suffix.as_str(),
+            &row.org,
+            artifact_id,
+            sharing.is_anonymous(),
+            &path,
+        ) {
+            LegacyBareHostDecision::NotLegacy => {}
+            LegacyBareHostDecision::Redirect { location } => {
+                let mut response = Response::empty()?.with_status(301);
+                response.headers_mut().set("Location", &location)?;
+                response.headers_mut().set("Cache-Control", "no-store")?;
+                return Ok(response);
             }
+            LegacyBareHostDecision::NotFound => return expired_response(),
         }
     }
     // RUB-439: an old shared-origin link to a public artifact's entrypoint

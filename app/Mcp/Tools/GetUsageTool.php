@@ -63,10 +63,10 @@ final class GetUsageTool extends Tool
             $team = McpContext::team();
             $currentUsage = $usage->currentUsage($team->slug);
             $quota = $quotaService->status($team);
-            $periodStart = isset($currentUsage['period_start']) && is_string($currentUsage['period_start'])
+            $periodStart = isset($currentUsage['period_start'])
                 ? McpTimestamp::format(Carbon::parse($currentUsage['period_start']))
                 : McpTimestamp::format(now()->startOfMonth());
-            $periodEnd = isset($currentUsage['period_end']) && is_string($currentUsage['period_end'])
+            $periodEnd = isset($currentUsage['period_end'])
                 ? McpTimestamp::format(Carbon::parse($currentUsage['period_end']))
                 : McpTimestamp::format(now()->startOfMonth()->addMonth());
             $response = Response::structured([

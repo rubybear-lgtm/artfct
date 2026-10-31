@@ -75,8 +75,8 @@ use org_admin::{
 };
 use sharing::{EditAccess, Sharing};
 use validation::{
-    clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path, missing_manifest_files,
-    upload_expired, uploaded_file_error, validate_permanent_manifest,
+    clipped_text, coalesce_clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path,
+    missing_manifest_files, upload_expired, uploaded_file_error, validate_permanent_manifest,
 };
 use version_routes::{get_version, parse_version_path, post_version};
 
@@ -1402,6 +1402,33 @@ mod tests {
     }
 
     #[test]
+    fn coalesce_clipped_text_keeps_previous_when_request_omits_field() {
+        // Mirrors version create: omitted title/description must not wipe the
+        // live artifact row (RUB-515 DoD 3).
+        assert_eq!(
+            coalesce_clipped_text(None, 200, Some("Kept title")),
+            Some("Kept title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                Some(&serde_json::json!("   ")),
+                1000,
+                Some("Kept description")
+            ),
+            Some("Kept description".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                Some(&serde_json::json!("New title")),
+                200,
+                Some("Kept title")
+            ),
+            Some("New title".to_string())
+        );
+        assert_eq!(coalesce_clipped_text(None, 200, None), None);
+    }
+
+    #[test]
     fn permanent_mode_requires_auth() {
         assert!(!authorization_matches(None, Some("Bearer token")));
         assert!(!authorization_matches(Some("token"), None));
@@ -2467,17 +2494,69 @@ mod tests {
 
     #[test]
     fn legacy_host_public_redirect_targets_canonical_workspace_host() {
-        // resolve_permanent_artifact 301s public artifacts off the bare
-        // `<id>--prod` host onto `<slug>--<id>--prod` (RUB-515 item 2).
+        // The decision helper used by resolve_permanent_artifact (RUB-515
+        // item 2). Removing that call site while leaving this test would still
+        // fail once the helper itself is deleted; the assertions below pin
+        // Redirect vs NotFound vs NotLegacy for the production branch.
+        use crate::artifact_origin::{legacy_bare_host_decision, LegacyBareHostDecision};
+
         let suffix = "--prod.artfct.dev";
         let artifact_id = "abcdefghijklm";
         let legacy_host = format!("{artifact_id}{suffix}");
-        assert!(parse_isolated_hostname(&legacy_host, suffix).is_none());
-        let canonical = isolated_artifact_hostname("acme", artifact_id, suffix).unwrap();
-        assert_eq!(canonical, format!("acme--{artifact_id}{suffix}"));
-        let location = format!("https://{canonical}/p/{artifact_id}/");
+        let path = format!("/p/{artifact_id}/");
+
+        assert_eq!(
+            legacy_bare_host_decision(Some(&legacy_host), suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::Redirect {
+                location: format!("https://acme--{artifact_id}{suffix}{path}"),
+            }
+        );
+        assert_eq!(
+            legacy_bare_host_decision(
+                Some(&legacy_host),
+                suffix,
+                "acme",
+                artifact_id,
+                false,
+                &path,
+            ),
+            LegacyBareHostDecision::NotFound
+        );
+        assert_eq!(
+            legacy_bare_host_decision(
+                Some(&format!("acme--{artifact_id}{suffix}")),
+                suffix,
+                "acme",
+                artifact_id,
+                true,
+                &path,
+            ),
+            LegacyBareHostDecision::NotLegacy
+        );
+        assert_eq!(
+            legacy_bare_host_decision(Some("artfct.dev"), suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::NotLegacy
+        );
+        assert_eq!(
+            legacy_bare_host_decision(None, suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::NotLegacy
+        );
+
+        let location = match legacy_bare_host_decision(
+            Some(&legacy_host),
+            suffix,
+            "acme",
+            artifact_id,
+            true,
+            &path,
+        ) {
+            LegacyBareHostDecision::Redirect { location } => location,
+            other => panic!("expected redirect, got {other:?}"),
+        };
         assert!(location.starts_with("https://acme--"));
         assert!(!location.contains(&format!("https://{artifact_id}--")));
+        assert!(!location.contains("unsafe-inline"));
+        assert!(!location.contains("unsafe-eval"));
     }
 
     #[test]

@@ -102,7 +102,7 @@ final class AddCollectionArtifactTool extends Tool
     }
 
     /**
-     * @param  array{collection_id?: int, collection?: string, artifact_id: string}  $validated
+     * @param  array{collection_id?: int|null, collection?: string|null, artifact_id: string}  $validated
      */
     private function resolveCollection(CollectionService $collections, array $validated): Collection|Response|null
     {
