@@ -172,6 +172,9 @@ final class DeployArtifactTool extends Tool
 
         $entrypoint = $bundle['entrypoint'];
         $files = $bundle['files'];
+        // Keep original markdown for type inference so a rendered table does
+        // not reclassify a markdown document as `table`.
+        $typeSourceBytes = $files[$entrypoint]['bytes'];
 
         if ($this->isMarkdownPath($entrypoint)) {
             try {
@@ -465,7 +468,7 @@ final class DeployArtifactTool extends Tool
         $artifactType = app(ArtifactTypeResolver::class)->record(
             $team,
             $artifactId,
-            $entryBytes,
+            $typeSourceBytes,
             isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
         );
 
