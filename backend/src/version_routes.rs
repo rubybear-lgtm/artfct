@@ -536,11 +536,7 @@ pub(crate) async fn post_version(
 /// tier/mode (a version never changes the artifact's sharing tier). Title and
 /// description are optional: when omitted, the live artifact's values are kept
 /// (RUB-515).
-const VERSION_METADATA_FIELDS: [&str; 3] = [
-    "thumbnail",
-    "preview_blurred",
-    "provenance",
-];
+const VERSION_METADATA_FIELDS: [&str; 3] = ["thumbnail", "preview_blurred", "provenance"];
 
 fn manifest_error_response(code: ErrorCode) -> Result<Response> {
     let message = match code {
