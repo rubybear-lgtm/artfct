@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Models\ArtifactIndexEntry;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
 use App\Models\Team;
@@ -43,6 +44,17 @@ test('lists only the authenticated teams collections with bounded metadata and c
         'artifact_id' => 'artifact-alpha',
         'added_at' => now(),
     ]);
+    CollectionArtifact::create([
+        'collection_id' => $first->id,
+        'artifact_id' => 'artifact-deleted',
+        'added_at' => now(),
+    ]);
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => 'artifact-alpha',
+    ]);
+    // artifact-deleted keeps a membership row but no index entry, so it must
+    // not inflate artifact_count.
 
     $response = $this->withToken(collectionDirectoryToken($team))
         ->getJson('/api/collections?limit=1')
@@ -52,6 +64,8 @@ test('lists only the authenticated teams collections with bounded metadata and c
         ->assertJsonPath('collections.0.canonical', true)
         ->assertJsonMissingPath('collections.0.artifact_ids')
         ->assertJsonPath('collections.1.name', null);
+
+    expect($response->json('collections.0.created_at'))->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
 
     $cursor = $response->json('next_cursor');
     expect($cursor)->toBeString()->not->toBeEmpty();

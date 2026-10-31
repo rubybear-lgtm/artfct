@@ -14,10 +14,11 @@ final class CollectionDirectory
      *
      * The cursor is opaque to clients, but contains only the stable
      * `(name, id)` ordering key. No artifact IDs or creator identity are
-     * exposed by this directory. `artifact_count` counts current membership
-     * rows. Delete paths must call `CollectionService::forgetArtifact` so
-     * revoked artifacts do not inflate the count (RUB-515). Private
-     * artifacts are included; the value is a count, never an id or title.
+     * exposed by this directory. `artifact_count` counts memberships whose
+     * artifact still has an index entry for this team — deleted artifacts are
+     * purged from `artifact_index_entries` and must not inflate the count
+     * even if a stale membership row remains. Private artifacts are included;
+     * the value is a count, never an id or title.
      *
      * @return array{collections: list<array{id: int, name: string, description: string|null, canonical: bool, artifact_count: int, created_at: string|null, updated_at: string|null}>, next_cursor: string|null}
      */
@@ -27,7 +28,14 @@ final class CollectionDirectory
 
         $query = Collection::query()
             ->where('team_id', $team->id)
-            ->withCount('artifacts')
+            ->withCount(['artifacts as artifacts_count' => function (Builder $query) use ($team): void {
+                $query->whereExists(function ($sub) use ($team): void {
+                    $sub->selectRaw('1')
+                        ->from('artifact_index_entries')
+                        ->whereColumn('artifact_index_entries.artifact_id', 'collection_artifacts.artifact_id')
+                        ->where('artifact_index_entries.team_id', $team->id);
+                });
+            }])
             ->orderBy('name')
             ->orderBy('id');
 
