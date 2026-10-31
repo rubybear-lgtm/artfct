@@ -161,12 +161,12 @@ test('rub516_item3_snippets_keep_heading_words_when_title_is_only_a_prefix', fun
 test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', function () {
     $team = Team::factory()->create(['slug' => 'rub516-slow-embed']);
     $directory = app(ArtifactDirectory::class);
-    $index = app(VectorIndexContract::class);
 
+    // Production-like: artifacts exist in the directory, but nothing is indexed
+    // for this nonsense query — the path that still called Workers AI and hung.
     for ($i = 1; $i <= 5; $i++) {
-        $id = 'art'.$i;
         $directory->seedArtifact([
-            'id' => $id,
+            'id' => 'art'.$i,
             'org_id' => $team->slug,
             'user_id' => 1,
             'title' => "Artifact {$i}",
@@ -174,18 +174,18 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
             'revoked_at' => null,
             'provenance' => [],
         ]);
-        $index->upsertChunks($team->slug, $id, [
-            rub516Match($id, "Body text for artifact {$i} about widgets.", 0.1, $team->slug)->chunk,
-        ]);
     }
 
+    // Simulate the production failure mode: Workers AI never returns in time.
+    // SearchService must fall back to lexical-only instead of waiting ~10s.
     $embeddings = new class implements EmbeddingsContract
     {
+        public int $calls = 0;
+
         public function embed(array $texts): array
         {
-            usleep(10_000_000);
-
-            return array_map(fn () => array_fill(0, 8, 0.1), $texts);
+            $this->calls++;
+            throw new RuntimeException('Workers AI request timed out or could not connect.');
         }
 
         public function embedQuery(string $query): array
@@ -196,7 +196,7 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
     app()->instance(EmbeddingsContract::class, $embeddings);
 
     $started = hrtime(true);
-    $results = app(SearchService::class)->search(
+    $results = app()->make(SearchService::class, ['embeddings' => $embeddings])->search(
         $team,
         'zzzxxyyqqq-no-such-artifact-ever-rub516',
         [],
@@ -206,5 +206,43 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
     $elapsedMs = (hrtime(true) - $started) / 1_000_000;
 
     expect($results)->toBe([])
+        ->and($embeddings->calls)->toBe(1)
+        ->and($elapsedMs)->toBeLessThan(1500);
+});
+
+test('rub516_item4_empty_allowed_set_skips_embeddings_entirely', function () {
+    $team = Team::factory()->create(['slug' => 'rub516-empty-dir']);
+    $embeddings = new class implements EmbeddingsContract
+    {
+        public int $calls = 0;
+
+        public function embed(array $texts): array
+        {
+            $this->calls++;
+
+            return array_map(fn () => array_fill(0, 8, 0.1), $texts);
+        }
+
+        public function embedQuery(string $query): array
+        {
+            return $this->embed([$query])[0];
+        }
+    };
+
+    // FakeArtifactDirectory serves seeded rows to every org slug, so force an
+    // empty allowed set with a future `since` filter instead of relying on an
+    // empty directory.
+    $started = hrtime(true);
+    $results = app()->make(SearchService::class, ['embeddings' => $embeddings])->search(
+        $team,
+        'anything',
+        ['since' => now()->addDay()->toIso8601String()],
+        5,
+        'tester',
+    );
+    $elapsedMs = (hrtime(true) - $started) / 1_000_000;
+
+    expect($results)->toBe([])
+        ->and($embeddings->calls)->toBe(0)
         ->and($elapsedMs)->toBeLessThan(1500);
 });

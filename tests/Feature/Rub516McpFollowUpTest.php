@@ -13,11 +13,12 @@
  * `backend/tests/storage_integration.rs`.
  */
 
+use App\Models\Team;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\UsageContract;
-use App\Models\Team;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 
 /** @return array<string, mixed> */
 function rub516DeployArgs(array $overrides = []): array
@@ -27,7 +28,7 @@ function rub516DeployArgs(array $overrides = []): array
     ], $overrides);
 }
 
-function rub516CallDeploy(string $token, array $arguments): Illuminate\Testing\TestResponse
+function rub516CallDeploy(string $token, array $arguments): TestResponse
 {
     return test()->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0',
@@ -128,6 +129,11 @@ test('rub516_item2_new_artifact_created_true_version_publish_created_false', fun
         ->and($created->json('result.structuredContent.version'))->toBe(1);
 
     Http::fake([
+        'worker.test/v1/artifacts/'.$id => Http::response([
+            'id' => $id,
+            'version' => 1,
+            'updated_at' => '2026-11-01T00:00:00Z',
+        ], 200),
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
             'id' => $id,
             'version' => 2,

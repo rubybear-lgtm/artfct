@@ -102,15 +102,31 @@ final class SearchService
             return true;
         };
         $allowedIds = array_values(array_filter(array_map(strval(...), array_keys($directory)), $isAllowed));
-        $queryVector = $this->embeddings->embedQuery($query);
         $candidateLimit = max($limit * 5, 50);
-        $vectorCandidates = $this->vectorIndex->queryArtifacts($team->slug, $queryVector, $candidateLimit, $allowedIds);
+        $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
+
+        // Empty workspace / fully filtered: skip Workers AI so a no-results
+        // search cannot burn ~10s on an embedding call (RUB-516).
+        if ($allowedIds === []) {
+            $this->auditLogger->record(
+                AuditEventType::SearchPerformed,
+                $team,
+                $actor,
+                $query,
+                $ip,
+                $userAgent,
+                '0 result(s)',
+            );
+
+            return [];
+        }
+
+        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $allowedIds);
         $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $allowedIds);
         $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
         $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
 
         $filtered = array_slice($filtered, 0, max(20, $limit));
-        $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
         $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
         $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, $titles);
         $filtered = SearchPassageSelection::bestArtifacts($this->reranker->rerank($query, $passages), (float) config('indexing.minimum_search_relevance', 0.05), $query);
@@ -127,6 +143,13 @@ final class SearchService
             $top,
         );
 
+        // Returned `score` is displayScore; keep the wire order identical so
+        // clients sorting by score match what they see (RUB-516).
+        usort(
+            $results,
+            fn (SearchResult $a, SearchResult $b): int => $b->score <=> $a->score,
+        );
+
         $this->auditLogger->record(
             AuditEventType::SearchPerformed,
             $team,
@@ -140,6 +163,40 @@ final class SearchService
         $this->recordResultsServed($team, $results);
 
         return $results;
+    }
+
+    /**
+     * Embed the query and run the vector index. On Workers AI timeout or a
+     * connection failure, fall back to lexical-only retrieval so a cold or
+     * hung embedding call cannot push a no-results search past ~1.5s.
+     *
+     * @param  list<string>  $allowedIds
+     * @return array<int, VectorMatch>
+     */
+    private function vectorCandidates(string $orgId, string $query, int $candidateLimit, array $allowedIds): array
+    {
+        try {
+            $queryVector = $this->embeddings->embedQuery($query);
+
+            return $this->vectorIndex->queryArtifacts($orgId, $queryVector, $candidateLimit, $allowedIds);
+        } catch (\Throwable $exception) {
+            if (! $this->isEmbeddingTimeout($exception)) {
+                throw $exception;
+            }
+
+            report($exception);
+
+            return [];
+        }
+    }
+
+    private function isEmbeddingTimeout(\Throwable $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'timed out')
+            || str_contains($message, 'timeout')
+            || str_contains($message, 'could not connect');
     }
 
     /**

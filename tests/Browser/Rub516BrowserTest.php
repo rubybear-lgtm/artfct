@@ -46,12 +46,13 @@ test('rub516_item5_signed_in_member_sees_404_for_deleted_artifact_not_login', fu
         ->assertNoJavaScriptErrors()
         ->assertPathIs('/a/'.RUB516_BROWSER_ARTIFACT_ID)
         ->assertDontSee('Sign in')
-        ->assertDontSee('Log in');
+        ->assertDontSee('Log in')
+        // resources/js/pages/error.tsx 404 copy — not a login redirect.
+        ->assertSee("We couldn't find that page")
+        ->assertSee('The link may be old or mistyped.');
 
-    // Laravel's error page for 404; must not redirect to /login.
     expect($page->script('window.location.pathname'))->toBe('/a/'.RUB516_BROWSER_ARTIFACT_ID)
-        ->and($page->script('document.body.innerText.toLowerCase().includes("not found") || document.title.toLowerCase().includes("404") || document.body.innerText.includes("404")'))
-        ->toBeTrue();
+        ->and($page->script('window.location.pathname.includes("login")'))->toBeFalse();
 });
 
 test('rub516_item6_comment_script_and_onerror_render_escaped', function () {

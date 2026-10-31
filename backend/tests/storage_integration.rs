@@ -2675,7 +2675,8 @@ async fn publishing_v2_keeps_the_id_and_serves_new_content() -> Result<(), Box<d
     let published = publish_version(&context, &client, &id, &v2).await?;
     assert_eq!(published["id"].as_str(), Some(id.as_str()));
     assert_eq!(published["version"], 2, "a second publish is version 2");
-    assert_eq!(published["created"], true);
+    // RUB-516: updating an existing artifact is not a create.
+    assert_eq!(published["created"], false);
     let expected_url = format!("{}/p/{id}/", context.base);
     assert_eq!(published["url"].as_str(), Some(expected_url.as_str()));
 
@@ -2790,7 +2791,7 @@ async fn restore_creates_a_new_version() -> Result<(), Box<dyn Error>> {
     let (status, restored) = post_restore(&context, &client, &id, 1).await?;
     assert_eq!(status, reqwest::StatusCode::CREATED);
     assert_eq!(restored["version"], 3, "restoring v1 publishes a new v3");
-    assert_eq!(restored["created"], true);
+    assert_eq!(restored["created"], false);
 
     let response = client
         .get(format!("{}/v1/artifacts/{id}/versions/3", context.base))

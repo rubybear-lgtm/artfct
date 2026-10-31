@@ -143,7 +143,8 @@ final class SearchArtifactsTool extends Tool
                     'repo_url' => $result->repoUrl,
                     'commit_sha' => $result->commitSha,
                 ],
-                // Raw selected-passage reranker relevance, before ordering boosts.
+                // displayScore from SearchRanking — the same value results are
+                // ordered by (exact/near title bands, then similarity).
                 'score' => $result->score,
             ], $results),
         ];

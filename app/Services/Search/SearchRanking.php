@@ -117,22 +117,25 @@ final class SearchRanking
     }
 
     /**
-     * Score shown to MCP/API callers. Exact title matches get a clear gap over
-     * near-miss semantic hits that otherwise bunch near 1.0 (RUB-515).
+     * Score shown to MCP/API callers — and the value results are ordered by.
+     *
+     * Title-match tiers occupy disjoint bands so an exact title always outranks
+     * a higher raw similarity miss by ≥0.05 (RUB-515/RUB-516). Within a band,
+     * similarity still orders near matches.
      */
     public static function displayScore(float $similarity, string $query, ?string $title): float
     {
+        $similarity = max(0.0, min(1.0, $similarity));
         $tier = self::titleMatchTier($query, $title);
-        // Leave headroom so an exact title match stays ≥0.05 above a near-1.0
-        // semantic miss that would otherwise bunch at the ceiling (RUB-515).
-        $base = $similarity * 0.9;
-        $boost = match ($tier) {
-            self::TITLE_MATCH_EXACT => 0.1,
-            self::TITLE_MATCH_NEAR => 0.05,
-            default => 0.0,
+
+        // Exact: 0.92–1.00, near: 0.80–0.91, none: 0.00–0.79.
+        $score = match ($tier) {
+            self::TITLE_MATCH_EXACT => 0.92 + (0.08 * $similarity),
+            self::TITLE_MATCH_NEAR => 0.80 + (0.11 * $similarity),
+            default => 0.79 * $similarity,
         };
 
-        return round(min(1.0, $base + $boost), 6);
+        return round(min(1.0, $score), 6);
     }
 
     /**

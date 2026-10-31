@@ -431,8 +431,10 @@ final class DeployArtifactTool extends Tool
 
         $tier = $created->json('tier');
         $version = (int) $created->json('version');
-        // New creates always count as created; version publishes use the Worker flag.
-        $wasCreated = $versionPublish ? (bool) $created->json('created') : true;
+        // Product `created` means "brand-new artifact", not "Worker inserted a
+        // version row". Version publishes are always created:false (RUB-516),
+        // even when a legacy Worker still reports created:true on 201.
+        $wasCreated = ! $versionPublish;
 
         app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
         $this->audit->recordForRequest(
@@ -445,9 +447,10 @@ final class DeployArtifactTool extends Tool
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
 
-        // Version publishes report `created`; identical-content creates reuse the
-        // fingerprint cache so a no-op republish does not burn the daily cap.
-        $countsTowardDaily = ! $versionPublish || $wasCreated;
+        // Daily quota: new artifacts always count. Version publishes count only
+        // when the Worker wrote a new version (HTTP 201); identical-content
+        // no-ops return 200 and must not burn the cap.
+        $countsTowardDaily = ! $versionPublish || $created->status() === 201;
         $dailyPublish->recordPublish($team, $actor, $contentFingerprint, $countsTowardDaily);
 
         $artifactType = app(ArtifactTypeResolver::class)->record(
