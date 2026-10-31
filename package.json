@@ -25,6 +25,7 @@
         "worker:deploy:triggers": "cd backend && ../node_modules/.bin/wrangler triggers deploy",
         "waf:rate-limits": "node cloudflare-rate-limits.mjs",
         "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs",
+        "test:release": "node --test scripts/release/*.test.mjs",
         "mcp:live": "node scripts/mcp-live-smoke.mjs",
         "video:wide": "node scripts/render-landing-flow.mjs",
         "video:mobile": "node scripts/render-landing-mobile.mjs",

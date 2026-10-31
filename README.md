@@ -100,6 +100,10 @@ client setup, recovery, policy errors, and incident procedures.
 
 ## Production
 
+Releases to production are a manually triggered GitHub Action. See
+[RELEASING.md](RELEASING.md) for the fast-forward `develop` → `main` flow,
+gates, Railway verification, and smoke checks.
+
 The Laravel site is deployed with Railway. Required production environment:
 
 ```sh
