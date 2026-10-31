@@ -6,9 +6,11 @@ use App\Services\Indexing\VectorMatch;
 use Illuminate\Support\Carbon;
 
 /**
- * Rank by raw reranker relevance bands before applying recency, provenance,
- * usage or canonical signals. Existing boosts break ties among near matches;
- * a materially less relevant document cannot win through popularity alone.
+ * Rank by title-match tier, then raw reranker relevance bands, before applying
+ * recency, provenance, usage or canonical signals. Exact and near-exact titles
+ * (case-insensitive) beat semantic near-misses so a publish-time title search
+ * returns that artifact first. Existing boosts only order near matches within
+ * a 5% relative band among the same title tier.
  */
 final class SearchRanking
 {
@@ -27,24 +29,37 @@ final class SearchRanking
      */
     private const CANONICAL_BOOST = 2.0;
 
+    private const TITLE_MATCH_NONE = 0;
+
+    private const TITLE_MATCH_NEAR = 1;
+
+    private const TITLE_MATCH_EXACT = 2;
+
     /**
      * @param  array<int, VectorMatch>  $candidates
      * @param  array<string, float>  $usageScores  artifact id => `UsageScorer::score()`
      * @param  array<string, bool>  $canonicalArtifactIds  artifact id => true, for ids in a canonical collection
-     * @return array<int, VectorMatch> relevance bands first; existing boosts only order near matches within a 5% relative band
+     * @param  array<string, string|null>  $titles  artifact id => title from the directory
+     * @return array<int, VectorMatch> exact/near-exact title first; then relevance bands; boosts only order near matches within a 5% relative band
      */
-    public static function rank(array $candidates, string $query, array $usageScores = [], array $canonicalArtifactIds = []): array
+    public static function rank(array $candidates, string $query, array $usageScores = [], array $canonicalArtifactIds = [], array $titles = []): array
     {
         $scored = array_map(
             fn (VectorMatch $match): array => [
                 'match' => $match,
+                'title_tier' => self::titleMatchTier($query, $titles[$match->chunk->artifactId] ?? null),
                 'score' => self::combinedScore($match, $query, $usageScores, $canonicalArtifactIds),
                 'relevance_band' => (int) floor(log(max(0.000001, $match->similarity)) / log(1.05)),
             ],
             $candidates,
         );
 
-        usort($scored, fn (array $a, array $b): int => ($b['relevance_band'] <=> $a['relevance_band']) ?: ($b['score'] <=> $a['score']));
+        usort(
+            $scored,
+            fn (array $a, array $b): int => ($b['title_tier'] <=> $a['title_tier'])
+                ?: ($b['relevance_band'] <=> $a['relevance_band'])
+                ?: ($b['score'] <=> $a['score']),
+        );
 
         return array_map(fn (array $entry): VectorMatch => $entry['match'], $scored);
     }
@@ -99,5 +114,54 @@ final class SearchRanking
         }
 
         return (bool) preg_match('/\b'.preg_quote($repoName, '/').'\b/i', $query);
+    }
+
+    /**
+     * Exact (case-insensitive trim) outranks near-exact (punctuation/whitespace
+     * normalized, or ≥90% similar_text on close lengths). Both outrank a
+     * semantic-only hit so usage and canonical boosts cannot bury a title match.
+     */
+    private static function titleMatchTier(string $query, ?string $title): int
+    {
+        $query = trim($query);
+        $title = trim((string) $title);
+        if ($query === '' || $title === '') {
+            return self::TITLE_MATCH_NONE;
+        }
+
+        if (mb_strtolower($query) === mb_strtolower($title)) {
+            return self::TITLE_MATCH_EXACT;
+        }
+
+        $normalizedQuery = self::normalizeTitle($query);
+        $normalizedTitle = self::normalizeTitle($title);
+        if ($normalizedQuery === '' || $normalizedTitle === '') {
+            return self::TITLE_MATCH_NONE;
+        }
+
+        if ($normalizedQuery === $normalizedTitle) {
+            return self::TITLE_MATCH_NEAR;
+        }
+
+        $queryLength = mb_strlen($normalizedQuery);
+        $titleLength = mb_strlen($normalizedTitle);
+        $maxLength = max($queryLength, $titleLength);
+        $minLength = min($queryLength, $titleLength);
+        if (($minLength / $maxLength) < 0.85) {
+            return self::TITLE_MATCH_NONE;
+        }
+
+        similar_text($normalizedQuery, $normalizedTitle, $percent);
+
+        return $percent >= 90.0 ? self::TITLE_MATCH_NEAR : self::TITLE_MATCH_NONE;
+    }
+
+    private static function normalizeTitle(string $value): string
+    {
+        $value = mb_strtolower($value);
+        $value = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 }
