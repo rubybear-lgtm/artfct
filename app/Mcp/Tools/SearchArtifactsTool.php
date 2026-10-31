@@ -6,6 +6,7 @@ use App\Enums\ArtifactType;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Search\CollectionNotFoundException;
 use App\Services\Search\SearchResult;
@@ -126,7 +127,7 @@ final class SearchArtifactsTool extends Tool
                 'title' => $result->title,
                 'artifact_type' => $result->artifactType,
                 'version' => $result->version,
-                'updated_at' => $result->updatedAt,
+                'updated_at' => McpTimestamp::format($result->updatedAt),
                 'description' => $result->description,
                 // Search results are workspace artifacts; the index carries no
                 // tier, so every one of them links through the app's open

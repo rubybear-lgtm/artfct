@@ -422,6 +422,34 @@ test('a_member_comments_replies_and_resolves_on_the_viewer', function () {
     expect($root->fresh()->resolved_at)->not->toBeNull();
 });
 
+test('comment_bodies_with_script_and_onerror_are_escaped_in_the_viewer_html', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('comment-escape-team', 'Comment Escape Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'team',
+        'owner_user_id' => (string) $member->id,
+    ]);
+
+    $payload = '<script>alert(1)</script><img src=x onerror=alert(1)>';
+
+    test()->actingAs($member)
+        ->post('/a/'.ARTIFACT_LINK_ID.'/comments', ['body' => $payload])
+        ->assertRedirect('/a/'.ARTIFACT_LINK_ID);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertOk();
+    $props = viewerProps($response);
+
+    // Stored and passed to the client as plain text — React text nodes escape
+    // on render (asserted in the browser suite). The document must not embed
+    // the comment as a live script tag outside the JSON page payload.
+    expect($props['comments'][0]['body'])->toBe($payload);
+
+    $html = $response->getContent();
+    expect(substr_count($html, '<script>alert(1)</script>'))->toBe(0);
+});
+
 test('a_comment_on_an_artifact_the_member_cannot_see_is_a_404_and_stores_nothing', function () {
     configureArtifactLinks();
 

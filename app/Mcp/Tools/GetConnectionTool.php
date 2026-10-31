@@ -7,7 +7,6 @@ use App\Mcp\Support\McpTelemetry;
 use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -90,15 +89,20 @@ final class GetConnectionTool extends Tool
      */
     private function searchReadiness(int $teamId): array
     {
-        $entries = ArtifactIndexEntry::query()->where('team_id', $teamId);
-        $lastIndexedAt = $entries->max('extracted_at');
+        // Read the latest row so `extracted_at` moves as soon as indexing
+        // writes a new entry (RUB-515 item 6), not a stale aggregate cache.
+        $latest = ArtifactIndexEntry::query()
+            ->where('team_id', $teamId)
+            ->orderByDesc('extracted_at')
+            ->orderByDesc('id')
+            ->first();
 
         return [
             'enabled' => (bool) config('indexing.enabled'),
-            'indexed_artifacts' => $entries->count(),
-            'last_indexed_at' => $lastIndexedAt === null
+            'indexed_artifacts' => ArtifactIndexEntry::query()->where('team_id', $teamId)->count(),
+            'last_indexed_at' => $latest === null
                 ? null
-                : McpTimestamp::format(Carbon::parse($lastIndexedAt)),
+                : McpTimestamp::format($latest->extracted_at),
         ];
     }
 

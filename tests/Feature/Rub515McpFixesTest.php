@@ -127,7 +127,7 @@ test('get_connection last_indexed_at uses the shared UTC Z timestamp format', fu
         ->json('result.structuredContent.search');
 
     expect($search['last_indexed_at'])->toBe(McpTimestamp::format($latest->extracted_at))
-        ->and($search['last_indexed_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
+        ->and($search['last_indexed_at'])->toMatch(McpTimestamp::PATTERN);
 });
 
 test('collection service forgetArtifact drops memberships across the team', function () {

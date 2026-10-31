@@ -199,6 +199,25 @@ test('list_artifacts reports an unknown collection without calling the Worker', 
     Http::assertNothingSent();
 });
 
+test('list_artifacts returns invalid_cursor for a garbage cursor instead of restarting at page 1', function () {
+    $team = Team::factory()->create(['slug' => 'rub-515-list-garbage-cursor']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*' => Http::response([
+            'artifacts' => [listArtifactsWorkerItem()],
+            'next_cursor' => null,
+        ]),
+    ]);
+
+    callListArtifacts($token, ['cursor' => '%%%not-valid-base64%%%'])
+        ->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'invalid_cursor');
+
+    Http::assertNothingSent();
+});
+
 test('list_artifacts caps a collection at the 200 most recently added artifacts and says so', function () {
     $team = Team::factory()->create(['slug' => 'rub-440-collection-cap']);
     $token = remoteMcpToken($team);

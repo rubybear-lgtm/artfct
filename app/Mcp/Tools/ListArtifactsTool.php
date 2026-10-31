@@ -8,6 +8,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\Team;
@@ -518,8 +519,8 @@ final class ListArtifactsTool extends Tool
                 'version' => $artifact['version'] ?? null,
                 'kind' => $artifact['kind'] ?? null,
                 'artifact_type' => $types[$id] ?? null,
-                'created_at' => $artifact['created_at'] ?? null,
-                'updated_at' => $artifact['updated_at'] ?? null,
+                'created_at' => $this->timestamp($artifact['created_at'] ?? null),
+                'updated_at' => $this->timestamp($artifact['updated_at'] ?? null),
                 'view_count' => $row['view_count'],
                 'can_edit' => (bool) ($artifact['can_edit'] ?? false),
             ];
@@ -616,6 +617,22 @@ final class ListArtifactsTool extends Tool
             'private' => 'private',
             default => null,
         };
+    }
+
+    /**
+     * Normalize Worker timestamps to the shared MCP Zulu shape.
+     */
+    private function timestamp(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return McpTimestamp::format($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
