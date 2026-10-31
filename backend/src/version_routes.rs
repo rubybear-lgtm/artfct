@@ -704,9 +704,9 @@ async fn create_version(
         let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
         // Omitted title/description keep the live artifact's values so a
         // version publish that only changes content does not wipe metadata.
-        let title = clipped_text(raw.get("title"), 200).or_else(|| artifact.title.clone());
+        let title = coalesce_clipped_text(raw.get("title"), 200, artifact.title.as_deref());
         let description =
-            clipped_text(raw.get("description"), 1000).or_else(|| artifact.description.clone());
+            coalesce_clipped_text(raw.get("description"), 1000, artifact.description.as_deref());
         let mut statements = vec![
             storage
                 .database
@@ -1267,5 +1267,54 @@ mod tests {
             "UNIQUE constraint failed: artifacts.id"
         ));
         assert!(!is_version_conflict("FOREIGN KEY constraint failed"));
+    }
+
+    #[test]
+    fn omitted_title_and_description_coalesce_from_live_artifact() {
+        // The create_version bind path uses coalesce_clipped_text against the
+        // live row. A body without those keys must keep prior D1 values.
+        let live = LiveArtifactRow {
+            row_id: "row-1".to_string(),
+            org_id: "acme".to_string(),
+            content_hash: "a".repeat(64),
+            current_version: 1,
+            user_id: Some("owner".to_string()),
+            tier: "secure".to_string(),
+            edit_access: "edit".to_string(),
+            title: Some("Kept title".to_string()),
+            description: Some("Kept description".to_string()),
+        };
+        let body = serde_json::json!({
+            "thumbnail": "https://artfct.dev/og-image.svg",
+            "preview_blurred": false,
+            "provenance": {},
+            "manifest": {"entrypoint": "index.html", "files": []}
+        });
+        assert!(!body.as_object().unwrap().contains_key("title"));
+        assert!(!body.as_object().unwrap().contains_key("description"));
+        assert_eq!(
+            coalesce_clipped_text(body.get("title"), 200, live.title.as_deref()),
+            Some("Kept title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(body.get("description"), 1000, live.description.as_deref()),
+            Some("Kept description".to_string())
+        );
+        let with_override = serde_json::json!({
+            "title": "New title",
+            "description": "New description"
+        });
+        assert_eq!(
+            coalesce_clipped_text(with_override.get("title"), 200, live.title.as_deref()),
+            Some("New title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                with_override.get("description"),
+                1000,
+                live.description.as_deref()
+            ),
+            Some("New description".to_string())
+        );
     }
 }

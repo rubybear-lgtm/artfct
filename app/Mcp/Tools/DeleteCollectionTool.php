@@ -89,7 +89,7 @@ final class DeleteCollectionTool extends Tool
     }
 
     /**
-     * @param  array{collection_id?: int, collection?: string}  $validated
+     * @param  array{collection_id?: int|null, collection?: string|null}  $validated
      */
     private function resolveCollection(CollectionService $collections, array $validated): Collection|Response|null
     {

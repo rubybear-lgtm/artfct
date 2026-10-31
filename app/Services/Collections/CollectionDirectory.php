@@ -17,7 +17,9 @@ final class CollectionDirectory
      * exposed by this directory. `artifact_count` counts memberships whose
      * artifact still has an index entry for this team — deleted artifacts are
      * purged from `artifact_index_entries` and must not inflate the count
-     * even if a stale membership row remains. Private artifacts are included;
+     * even if a stale membership row remains. Until indexing finishes, a brand-
+     * new membership may briefly undercount (index lag); after one indexing
+     * cycle the count matches live members. Private artifacts are included;
      * the value is a count, never an id or title.
      *
      * @return array{collections: list<array{id: int, name: string, description: string|null, canonical: bool, artifact_count: int, created_at: string|null, updated_at: string|null}>, next_cursor: string|null}

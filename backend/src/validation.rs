@@ -195,3 +195,13 @@ pub(crate) fn clipped_text(value: Option<&Value>, max: usize) -> Option<String> 
     let text = value?.as_str()?.trim();
     (!text.is_empty()).then(|| text.chars().take(max).collect())
 }
+
+/// Version publish: an omitted / empty request field keeps the previous value
+/// so a content-only update does not wipe title or description (RUB-515).
+pub(crate) fn coalesce_clipped_text(
+    request_value: Option<&Value>,
+    max: usize,
+    previous: Option<&str>,
+) -> Option<String> {
+    clipped_text(request_value, max).or_else(|| previous.map(str::to_string))
+}

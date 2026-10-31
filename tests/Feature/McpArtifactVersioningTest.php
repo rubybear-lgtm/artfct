@@ -587,7 +587,7 @@ test('deploy_artifact always returns created and version for a new artifact', fu
         ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 });
 
-test('deploy_artifact converts markdown entrypoint to HTML bytes with markdown path', function () {
+test('deploy_artifact stores markdown entrypoint as text/markdown for Worker render', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create(['slug' => 'rub-515-markdown']);
@@ -612,15 +612,17 @@ test('deploy_artifact converts markdown entrypoint to HTML bytes with markdown p
         ->and($response->json('result.structuredContent.created'))->toBeTrue()
         ->and($response->json('result.structuredContent.artifact_type'))->toBe('document');
 
-    Http::assertSent(function (Request $request): bool {
+    Http::assertSent(function (Request $request) use ($markdown): bool {
         if ($request->method() !== 'POST' || ! str_ends_with((string) $request->url(), '/v1/artifacts')) {
             return false;
         }
         $file = $request['manifest']['files'][0];
 
+        // Raw markdown bytes + text/markdown; the Worker renders to HTML.
         return $request['manifest']['entrypoint'] === 'README.md'
             && $file['path'] === 'README.md'
-            && $file['content_type'] === 'text/html; charset=utf-8'
+            && $file['content_type'] === 'text/markdown; charset=utf-8'
+            && $file['sha256'] === hash('sha256', $markdown)
             && ! isset($request['missing_files']);
     });
 });

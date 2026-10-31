@@ -19,7 +19,6 @@ use App\Services\Billing\QuotaService;
 use App\Services\Collections\CollectionService;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ExtractionHeuristics;
-use App\Services\MarkdownRenderer;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -99,7 +98,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections, MarkdownRenderer $markdown): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): Response|ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -155,7 +154,8 @@ final class DeployArtifactTool extends Tool
 
         // Choice (RUB-515): reject markdown in `html` rather than convert it.
         // Agents must use `files` + `entrypoint: README.md` so list kind stays
-        // `markdown` while the stored entrypoint bytes are rendered HTML.
+        // `markdown`. Raw markdown is stored as text/markdown; the Worker is
+        // the sole HTML renderer (strips raw HTML on serve).
         if ($hasHtml && ExtractionHeuristics::looksLikeMarkdown(trim($validated['html']))) {
             return McpErrorResponse::error(
                 'The `html` parameter expects HTML, not markdown. Publish markdown with `files` and `entrypoint` set to a `.md` path such as `README.md`.',
@@ -173,25 +173,9 @@ final class DeployArtifactTool extends Tool
 
         $entrypoint = $bundle['entrypoint'];
         $files = $bundle['files'];
-        // Keep original markdown for type inference so a rendered table does
-        // not reclassify a markdown document as `table`.
+        // Markdown entrypoints keep raw bytes (and text/markdown) for type
+        // inference and Worker-side render — never pre-render to HTML here.
         $typeSourceBytes = $files[$entrypoint]['bytes'];
-
-        if ($this->isMarkdownPath($entrypoint)) {
-            try {
-                $rendered = $markdown->toFullDocument($files[$entrypoint]['bytes']);
-            } catch (RuntimeException $exception) {
-                return McpErrorResponse::error($exception->getMessage(), 'payload_too_large');
-            }
-            // Keep the .md path (list kind stays markdown) but store rendered
-            // HTML with a text/html content type so the Worker serves a page.
-            $files[$entrypoint] = [
-                'path' => $entrypoint,
-                'bytes' => $rendered,
-                'content_type' => self::CONTENT_TYPE,
-                'sha256' => hash('sha256', $rendered),
-            ];
-        }
 
         $totalBytes = 0;
         foreach ($files as $file) {
@@ -615,11 +599,6 @@ final class DeployArtifactTool extends Tool
     private function contentTypeFor(string $path): string
     {
         return self::CONTENT_TYPES[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
-    }
-
-    private function isMarkdownPath(string $path): bool
-    {
-        return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['md', 'markdown'], true);
     }
 
     /**

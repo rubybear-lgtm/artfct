@@ -144,10 +144,10 @@ final class ReadArtifactTool extends Tool
 
         $title = $entry->title ?? $response->json('title');
         $title = is_string($title) ? $title : null;
-        $text = is_string($entry->extracted_text) ? $entry->extracted_text : '';
+        $text = $entry->extracted_text;
         // Indexing already strips a leading title; do it again so older rows
         // and a title that only appears as a prefix still avoid duplication.
-        if (is_string($title) && $title !== '' && str_starts_with(ltrim($text), $title)) {
+        if ($title !== null && $title !== '' && str_starts_with(ltrim($text), $title)) {
             $text = trim(mb_substr(ltrim($text), mb_strlen($title)));
         }
 
@@ -211,8 +211,9 @@ final class ReadArtifactTool extends Tool
 
     /**
      * Prefer provenance on the metadata response. Worker GET /v1/artifacts/{id}
-     * currently omits it (NOTE for worker agent: add provenance there), so fall
-     * back to the version record's agent when the index version is known.
+     * now includes agent/repo_url/commit_sha (METADATA_BY_ID_SQL). Fall back to
+     * the version record only when metadata has no agent and an index version
+     * is known — for older Workers or sparse provenance rows.
      *
      * @return array{agent: mixed, repo_url: mixed, commit_sha: mixed}|null
      */
