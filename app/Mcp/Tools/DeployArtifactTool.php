@@ -8,6 +8,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\Collection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
@@ -308,7 +309,7 @@ final class DeployArtifactTool extends Tool
                         'base_version' => $baseVersion,
                         'live_version' => $liveVersion,
                         'current_version' => $liveVersion,
-                        'updated_at' => $live->json('updated_at'),
+                        'updated_at' => McpTimestamp::format($live->json('updated_at')),
                     ],
                 );
             }
