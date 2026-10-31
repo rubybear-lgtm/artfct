@@ -37,8 +37,8 @@ final class IndexingService
             $title = $result->title;
             $headings = $result->headings;
         } elseif (ExtractionHeuristics::looksLikeMarkdown($html)) {
-            // Deploy converts markdown entrypoints to HTML before storage, but
-            // a direct index of raw markdown must not keep `#` / `|---|`.
+            // MCP stores raw markdown as text/markdown; the Worker renders HTML
+            // on serve. Indexing must still strip `#` / `|---|` from the source.
             $text = ExtractionHeuristics::plainTextFromMarkdown($html);
             $title = ExtractionHeuristics::titleFromMarkdown($html);
             $headings = ExtractionHeuristics::headingsFromMarkdown($html);

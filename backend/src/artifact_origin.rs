@@ -39,8 +39,8 @@ pub(crate) enum LegacyBareHostDecision {
 }
 
 /// Pure redirect/404 rule used by `resolve_permanent_artifact` for the bare
-/// `<id>--prod` host. Deleting the call site without updating these tests
-/// fails the suite (RUB-515 item 2).
+/// `<id>--prod` host (RUB-515 item 2). Unit tests pin this helper's decisions;
+/// the production call site in `artifact_routes` must keep calling it.
 pub(crate) fn legacy_bare_host_decision(
     host: Option<&str>,
     origin_suffix: &str,

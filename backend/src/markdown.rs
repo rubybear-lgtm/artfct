@@ -7,10 +7,11 @@
 //!
 //! MCP `deploy_artifact` stores raw markdown as `text/markdown` under a `.md`
 //! path. This Worker is the sole HTML renderer for that content — matching
-//! Laravel's CommonMark `html_input => strip` by dropping raw HTML events so
-//! shared-origin preview CSP cannot execute injected script.
+//! Laravel's CommonMark `html_input => strip` and `allow_unsafe_links => false`
+//! so shared-origin preview CSP cannot execute injected script or follow
+//! `javascript:` / `data:` destinations.
 
-use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag, TagEnd};
 
 const MARKDOWN_CSS: &str = r#"
 :root { color-scheme: light dark; }
@@ -109,20 +110,67 @@ pub(crate) fn should_render_markdown(
         || path_is_markdown(path)
 }
 
-/// Drop raw HTML events so markdown cannot smuggle scripts/tags into the
-/// rendered page (Laravel CommonMark `html_input => strip`).
-fn strip_raw_html<'a, I>(events: I) -> impl Iterator<Item = Event<'a>>
+/// Match League CommonMark `allow_unsafe_links => false`: empty the destination
+/// for javascript / vbscript / data / file schemes (any casing / leading space).
+pub(crate) fn is_unsafe_url(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let Some((scheme, _rest)) = lower.split_once(':') else {
+        return false;
+    };
+    // Relative paths like `./foo:bar` or `C:\...` are not schemes we strip;
+    // only a leading alpha scheme without a slash before the colon.
+    if scheme.is_empty() || scheme.contains('/') || scheme.contains('\\') {
+        return false;
+    }
+    matches!(scheme, "javascript" | "vbscript" | "data" | "file")
+}
+
+fn sanitize_destination(url: CowStr<'_>) -> CowStr<'_> {
+    if is_unsafe_url(&url) {
+        CowStr::Borrowed("")
+    } else {
+        url
+    }
+}
+
+/// Drop raw HTML and neutralize unsafe link/image destinations (Laravel
+/// CommonMark `html_input => strip` + `allow_unsafe_links => false`).
+fn sanitize_markdown_events<'a, I>(events: I) -> impl Iterator<Item = Event<'a>>
 where
     I: Iterator<Item = Event<'a>>,
 {
-    events.filter(|event| {
-        !matches!(
-            event,
-            Event::Html(_)
-                | Event::InlineHtml(_)
-                | Event::Start(Tag::HtmlBlock)
-                | Event::End(TagEnd::HtmlBlock)
-        )
+    events.filter_map(|event| match event {
+        Event::Html(_)
+        | Event::InlineHtml(_)
+        | Event::Start(Tag::HtmlBlock)
+        | Event::End(TagEnd::HtmlBlock) => None,
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Some(Event::Start(Tag::Link {
+            link_type,
+            dest_url: sanitize_destination(dest_url),
+            title,
+            id,
+        })),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Some(Event::Start(Tag::Image {
+            link_type,
+            dest_url: sanitize_destination(dest_url),
+            title,
+            id,
+        })),
+        other => Some(other),
     })
 }
 
@@ -134,7 +182,7 @@ pub(crate) fn render_markdown_document(markdown: &str) -> String {
     options.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(markdown, options);
     let mut body = String::new();
-    html::push_html(&mut body, strip_raw_html(parser));
+    html::push_html(&mut body, sanitize_markdown_events(parser));
     format!(
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Markdown</title>\n<style>{MARKDOWN_CSS}</style>\n</head>\n<body>\n{body}\n</body>\n</html>"
     )
@@ -266,5 +314,77 @@ mod tests {
         );
         assert!(!html.contains("alert(1)"));
         assert!(!html.contains("evil()"));
+    }
+
+    #[test]
+    fn unsafe_link_and_image_destinations_are_emptied() {
+        assert!(is_unsafe_url("javascript:alert(1)"));
+        assert!(is_unsafe_url(" JavaScript:alert(1)"));
+        assert!(is_unsafe_url("data:text/html,<script>alert(1)</script>"));
+        assert!(is_unsafe_url("data:image/svg+xml,<svg>"));
+        assert!(is_unsafe_url("vbscript:msgbox(1)"));
+        assert!(is_unsafe_url("file:///etc/passwd"));
+        assert!(!is_unsafe_url("https://artfct.dev"));
+        assert!(!is_unsafe_url("/relative/path"));
+        assert!(!is_unsafe_url("#heading"));
+        assert!(!is_unsafe_url("mailto:hello@example.com"));
+
+        let html = render_markdown_document(
+            "# Links\n\n[bad](javascript:alert(1))\n\n[ok](https://artfct.dev)\n\n![x](data:image/png;base64,AAAA)\n\n![y](https://artfct.dev/og-image.svg)\n\n[html](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)\n",
+        );
+        assert!(html.contains("<h1>Links</h1>"), "{html}");
+        assert!(
+            !html.contains("javascript:"),
+            "javascript destinations must be emptied: {html}"
+        );
+        assert!(
+            !html.contains("data:image"),
+            "data: image destinations must be emptied: {html}"
+        );
+        assert!(
+            !html.contains("data:text/html"),
+            "data: text/html destinations must be emptied: {html}"
+        );
+        assert!(html.contains("href=\"https://artfct.dev\""), "{html}");
+        assert!(
+            html.contains("src=\"https://artfct.dev/og-image.svg\""),
+            "{html}"
+        );
+        assert!(html.contains("<a href=\"\">bad</a>"), "{html}");
+        assert!(html.contains("<img src=\"\" alt=\"x\""), "{html}");
+        assert!(html.contains("<a href=\"\">html</a>"), "{html}");
+    }
+
+    #[test]
+    fn browser_fixture_matches_worker_renderer() {
+        // tests/Browser/Rub515BrowserTest.php serves this fixture. If the
+        // Worker renderer changes, regenerate with UPDATE_RUB515_FIXTURE=1 —
+        // do not hand-edit the browser HTML independently.
+        let source = include_str!("../../tests/Fixtures/rub515-markdown-source.md");
+        let fixture_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/Fixtures/rub515-markdown-rendered.html"
+        );
+        let rendered = render_markdown_document(source);
+        if std::env::var_os("UPDATE_RUB515_FIXTURE").is_some() {
+            std::fs::write(fixture_path, &rendered).expect("write markdown fixture");
+        }
+        let expected = std::fs::read_to_string(fixture_path).expect("read markdown fixture");
+        assert_eq!(
+            rendered, expected,
+            "regenerate tests/Fixtures/rub515-markdown-rendered.html with UPDATE_RUB515_FIXTURE=1"
+        );
+        assert!(rendered.contains("<h1>Hello</h1>"));
+        assert!(rendered.contains("<table>"));
+        assert!(!rendered.contains("application/octet-stream"));
+
+        let (ctype, body) = maybe_render_markdown_response(
+            "text/markdown; charset=utf-8",
+            "README.md",
+            None,
+            source.as_bytes().to_vec(),
+        );
+        assert_eq!(ctype, "text/html; charset=utf-8");
+        assert_eq!(String::from_utf8(body).unwrap(), expected);
     }
 }
