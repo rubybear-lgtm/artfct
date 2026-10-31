@@ -21,6 +21,8 @@ pub(crate) fn normalized_content_type(value: &str) -> String {
         value.as_str(),
         "text/html"
             | "text/html; charset=utf-8"
+            | "text/markdown"
+            | "text/markdown; charset=utf-8"
             | "text/css"
             | "text/javascript"
             | "application/javascript"

@@ -5,10 +5,6 @@ use super::*;
 /// `ARTIFACT_ORIGIN_SUFFIX` in production, see `artifact_origin_suffix`).
 /// Pure function over the slug/id character-set rules already enforced by
 /// spec 3 (`store::hostname_label`).
-#[allow(
-    dead_code,
-    reason = "minted by the control plane, not this Worker; exercised directly by hostname_derives_from_slug_and_id"
-)]
 pub(crate) fn isolated_artifact_hostname(
     tenant_slug: &str,
     artifact_id: &str,

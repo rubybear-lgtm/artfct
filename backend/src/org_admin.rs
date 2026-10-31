@@ -58,19 +58,20 @@ pub(crate) async fn load_org_limits(
 /// D1 is the source of truth: storage counts each distinct `content_hash`
 /// once per org across *every* version (`version_files`, invariant 3 — old
 /// versions are still stored), not just the current copy in `files`; the
-/// period count is artifacts created this UTC month (a soft-deleted artifact
-/// still counts; a hard delete would drop it).
+/// period count is live artifacts created this UTC month. Soft-deleted
+/// (revoked) artifacts are excluded so `get_usage.artifacts.used` drops after
+/// delete (RUB-515).
 pub(crate) async fn load_org_usage(
     database: &worker::D1Database,
     org: &str,
 ) -> Result<quota::OrgUsage> {
     let storage = database
-        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? GROUP BY vf.content_hash)")
+        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? AND a.revoked_at IS NULL GROUP BY vf.content_hash)")
         .bind(&[JsValue::from_str(org)])?
         .first::<CountRow>(None)
         .await?;
     let artifacts = database
-        .prepare("SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ?")
+        .prepare("SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ? AND revoked_at IS NULL")
         .bind(&[
             JsValue::from_str(org),
             JsValue::from_str(&quota::month_start(Utc::now())),
