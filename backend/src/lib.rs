@@ -18,6 +18,7 @@ mod artifact_routes;
 mod auth;
 mod ephemeral_routes;
 mod governance_routes;
+mod markdown;
 mod org_admin;
 mod preview;
 mod sharing;
@@ -1550,6 +1551,18 @@ mod tests {
     }
 
     #[test]
+    fn markdown_content_type_is_allowed() {
+        assert_eq!(
+            normalized_content_type("text/markdown; charset=utf-8"),
+            "text/markdown; charset=utf-8"
+        );
+        assert_eq!(
+            normalized_content_type("text/markdown"),
+            "text/markdown"
+        );
+    }
+
+    #[test]
     fn unknown_content_type_served_with_nosniff() {
         assert_eq!(
             normalized_content_type("application/x-private"),
@@ -1691,6 +1704,9 @@ mod tests {
                 current_version: 2,
                 version_count: 2,
                 updated_at: "2026-09-03T00:00:00Z".to_string(),
+                agent: Some("cursor".to_string()),
+                repo_url: None,
+                commit_sha: None,
             },
             &viewer,
         );
@@ -2401,12 +2417,10 @@ mod tests {
 
     #[test]
     fn free_tier_permanent_artifact_keeps_preview_csp() {
-        // A non-isolated /p/{id} request — free-tier and legacy shared-origin
-        // behavior — must keep the exact pre-spec-05 CSP, even for a
-        // manifest that would derive a tighter isolated CSP (e.g. it
-        // declares no external_origins, which alone would yield a
-        // restrictive `default-src 'self'`). Isolation opts artifacts in;
-        // it must never silently opt an existing one in by omission.
+        // Shared-origin artfct.dev/p/{id} (not an artifact host) still uses
+        // the pre-spec-05 preview CSP. The legacy `<id>--prod` host is closed
+        // separately in resolve_permanent_artifact (RUB-515) and never reaches
+        // this header path with served content.
         let manifest = permanent_manifest(vec![], false);
         let headers = permanent_file_response_headers("text/html", &manifest, false, None);
         let csp = headers
@@ -2416,6 +2430,45 @@ mod tests {
             .expect("Content-Security-Policy header present");
         assert_eq!(csp, PREVIEW_CONTENT_SECURITY_POLICY);
         assert_ne!(csp, isolated_content_security_policy(&manifest));
+    }
+
+    #[test]
+    fn isolated_host_csp_has_strict_script_src_and_frame_ancestors() {
+        let manifest = permanent_manifest(vec![], false);
+        let headers = permanent_file_response_headers(
+            "text/html",
+            &manifest,
+            true,
+            Some("https://artfct.dev"),
+        );
+        let csp = headers
+            .iter()
+            .find(|(name, _)| *name == "Content-Security-Policy")
+            .map(|(_, value)| value.as_str())
+            .expect("Content-Security-Policy header present");
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("frame-ancestors https://artfct.dev"));
+        // style-src may keep 'unsafe-inline' for authored CSS; script-src must not.
+        let script_src = csp_directive(csp, "script-src");
+        assert_eq!(script_src, vec!["'self'"]);
+        assert!(!script_src.iter().any(|part| part.contains("unsafe-inline")));
+        assert!(!script_src.iter().any(|part| *part == "'unsafe-eval'"));
+    }
+
+    #[test]
+    fn legacy_host_without_workspace_slug_does_not_parse_as_isolated() {
+        // `<id>--prod.artfct.dev` strips to `<id>` and has no `slug--id` form.
+        assert_eq!(
+            parse_isolated_hostname("abcdefghijklm--prod.artfct.dev", "--prod.artfct.dev"),
+            None
+        );
+        assert_eq!(
+            parse_isolated_hostname(
+                "acme--abcdefghijklm--prod.artfct.dev",
+                "--prod.artfct.dev"
+            ),
+            Some(("acme".to_string(), "abcdefghijklm".to_string()))
+        );
     }
 
     #[test]
