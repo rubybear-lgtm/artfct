@@ -64,6 +64,8 @@ The hosted server exposes these tools:
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
+- `remove_collection_artifact` — remove an artifact from a collection by id or name (`collections:write`).
+- `delete_collection` — delete a collection by id or name (`collections:write`); artifacts themselves are not deleted.
 - `set_avatar` — set the avatar image for the authenticated bot teammate (bots only; humans upload avatars in team settings).
 
 Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request

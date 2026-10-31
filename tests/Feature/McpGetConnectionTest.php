@@ -1,5 +1,6 @@
 <?php
 
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
 use App\Models\Team;
 
@@ -41,7 +42,7 @@ test('get_connection reports search enabled with indexed artifacts', function ()
 
     expect($search['enabled'])->toBeTrue()
         ->and($search['indexed_artifacts'])->toBe(3)
-        ->and($search['last_indexed_at'])->toBe($latest->extracted_at->toIso8601String());
+        ->and($search['last_indexed_at'])->toBe(McpTimestamp::format($latest->extracted_at));
 });
 
 test('get_connection reports search enabled with nothing indexed', function () {

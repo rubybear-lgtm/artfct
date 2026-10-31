@@ -15,6 +15,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
     $expectedContracts = [
         'deploy_artifact' => [
             'scopes' => ['artifacts:deploy'],
+            'toolVersion' => '1.1.0',
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
@@ -139,6 +140,24 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'remove_collection_artifact' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'delete_collection' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => true,
+                'openWorldHint' => false,
+            ],
+        ],
         'delete_artifact' => [
             'scopes' => ['artifacts:delete'],
             'annotations' => [
@@ -175,7 +194,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
             ->and($annotations)->toBe($contract['annotations'])
             ->and($metadata)->toMatchArray([
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.0.0',
+                'toolVersion' => $contract['toolVersion'] ?? '1.0.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => $contract['scopes'],
                 'compatibility' => $contract['compatibility'] ?? 'stable',

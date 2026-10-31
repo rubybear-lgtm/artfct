@@ -54,7 +54,11 @@ test('the guidance text names only tools and fields that exist', function () {
         $text = ArtifactGuidance::topic($topic)['text'];
         preg_match_all('/`([a-z]+(?:_[a-z]+)+)`/', $text, $matches);
         $mentionedTools = array_filter($matches[1], fn (string $name): bool => str_ends_with($name, '_artifact')
-            || str_ends_with($name, '_artifacts') || str_ends_with($name, '_artifact_comments') || str_ends_with($name, '_artifact_comment'));
+            || str_ends_with($name, '_artifacts')
+            || str_ends_with($name, '_artifact_comments')
+            || str_ends_with($name, '_artifact_comment')
+            || str_ends_with($name, '_collection')
+            || str_ends_with($name, '_collections'));
 
         foreach ($mentionedTools as $name) {
             expect($tools)->toContain($name);

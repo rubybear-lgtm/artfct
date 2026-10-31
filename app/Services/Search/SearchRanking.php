@@ -117,11 +117,30 @@ final class SearchRanking
     }
 
     /**
+     * Score shown to MCP/API callers. Exact title matches get a clear gap over
+     * near-miss semantic hits that otherwise bunch near 1.0 (RUB-515).
+     */
+    public static function displayScore(float $similarity, string $query, ?string $title): float
+    {
+        $tier = self::titleMatchTier($query, $title);
+        // Leave headroom so an exact title match stays ≥0.05 above a near-1.0
+        // semantic miss that would otherwise bunch at the ceiling (RUB-515).
+        $base = $similarity * 0.9;
+        $boost = match ($tier) {
+            self::TITLE_MATCH_EXACT => 0.1,
+            self::TITLE_MATCH_NEAR => 0.05,
+            default => 0.0,
+        };
+
+        return round(min(1.0, $base + $boost), 6);
+    }
+
+    /**
      * Exact (case-insensitive trim) outranks near-exact (punctuation/whitespace
      * normalized, or ≥90% similar_text on close lengths). Both outrank a
      * semantic-only hit so usage and canonical boosts cannot bury a title match.
      */
-    private static function titleMatchTier(string $query, ?string $title): int
+    public static function titleMatchTier(string $query, ?string $title): int
     {
         $query = trim($query);
         $title = trim((string) $title);

@@ -170,7 +170,17 @@ final class ListArtifactsTool extends Tool
         }
 
         $url = rtrim($workerBaseUrl, '/')."/v1/orgs/{$team->slug}/artifacts";
-        $incoming = $this->decodeCursor($validated['cursor'] ?? null);
+        $cursorInput = $validated['cursor'] ?? null;
+        if (is_string($cursorInput) && $cursorInput !== '') {
+            $incoming = $this->decodeCursor($cursorInput);
+            if ($incoming === null) {
+                app(McpTelemetry::class)->record('list_artifacts', 'invalid_cursor', $startedAt);
+
+                return McpErrorResponse::error('The list_artifacts cursor is invalid.', 'invalid_cursor');
+            }
+        } else {
+            $incoming = null;
+        }
 
         if ($sort === 'most_viewed') {
             $result = $this->listMostViewed($url, $team, $baseParams, $incoming, $limit, $notes, $startedAt);
