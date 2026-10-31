@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. `artifact_count` counts only artifacts that still exist (deleted artifacts are excluded). Returns bounded metadata and an opaque cursor, never the collection contents.')]
+#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. `artifact_count` counts only artifacts that still exist (deleted artifacts are excluded, including stale membership rows). Returns bounded metadata and an opaque cursor, never the collection contents.')]
 #[Name('list_collections')]
 #[Title('List collections')]
 #[IsReadOnly]
