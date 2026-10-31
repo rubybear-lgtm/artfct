@@ -151,22 +151,22 @@ test('A6: FAILED or CRASHED fails and names the service', async () => {
                 const serviceId = variables.input.serviceId;
                 const status = serviceId === 'svc-queue' ? terminal : 'DEPLOYING';
 
-            return {
-                deployments: {
-                    edges: [
-                        {
-                            node: {
-                                id: `dep-${serviceId}`,
-                                status,
-                                createdAt: '2026-10-31T00:00:00.000Z',
-                                meta: { commitHash: releaseSha },
+                return {
+                    deployments: {
+                        edges: [
+                            {
+                                node: {
+                                    id: `dep-${serviceId}`,
+                                    status,
+                                    createdAt: '2026-10-31T00:00:00.000Z',
+                                    meta: { commitHash: releaseSha },
+                                },
                             },
-                        },
-                    ],
-                },
-            };
-        },
-    });
+                        ],
+                    },
+                };
+            },
+        });
 
         assert.equal(result.ok, false);
         assert.equal(result.code, 'deploy_failed');
