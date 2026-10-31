@@ -2472,6 +2472,21 @@ mod tests {
     }
 
     #[test]
+    fn legacy_host_public_redirect_targets_canonical_workspace_host() {
+        // resolve_permanent_artifact 301s public artifacts off the bare
+        // `<id>--prod` host onto `<slug>--<id>--prod` (RUB-515 item 2).
+        let suffix = "--prod.artfct.dev";
+        let artifact_id = "abcdefghijklm";
+        let legacy_host = format!("{artifact_id}{suffix}");
+        assert!(parse_isolated_hostname(&legacy_host, suffix).is_none());
+        let canonical = isolated_artifact_hostname("acme", artifact_id, suffix).unwrap();
+        assert_eq!(canonical, format!("acme--{artifact_id}{suffix}"));
+        let location = format!("https://{canonical}/p/{artifact_id}/");
+        assert!(location.starts_with("https://acme--"));
+        assert!(!location.contains(&format!("https://{artifact_id}--")));
+    }
+
+    #[test]
     fn csp_defaults_to_self_when_nothing_declared() {
         let manifest = permanent_manifest(vec![], false);
         let csp = isolated_content_security_policy(&manifest);

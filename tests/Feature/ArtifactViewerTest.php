@@ -540,6 +540,30 @@ test('a_freshness_poll_without_the_known_header_is_a_404_for_a_revoked_artifact'
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness')->assertNotFound();
 });
 
+test('comment_bodies_keep_raw_html_in_props_for_the_client_to_escape', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('comment-escape-team', 'Comment Escape Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    ArtifactComment::query()->create([
+        'team_id' => $team->id,
+        'artifact_id' => ARTIFACT_LINK_ID,
+        'author_user_id' => (string) $member->id,
+        'author_name' => $member->name,
+        'body' => '<script>window.__xss=1</script><img src=x onerror=alert(1)>plain note',
+        'parent_id' => null,
+    ]);
+
+    $props = viewerProps(test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertOk());
+
+    expect($props['comments'][0]['body'])
+        ->toContain('<script>')
+        ->toContain('onerror=')
+        ->toContain('plain note');
+});
+
 test('a_signed_in_member_gets_404_not_login_for_a_deleted_artifact', function () {
     $team = viewerTeam('deleted-viewer-team', 'Deleted Viewer Team');
     $member = memberOfTeam($team, TeamRole::Member);
