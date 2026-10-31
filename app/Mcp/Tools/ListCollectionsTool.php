@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List approved artifact collections in the authenticated workspace. Returns bounded collection metadata and an opaque cursor, never the collection contents.')]
+#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. Returns bounded metadata and an opaque cursor, never the collection contents.')]
 #[Name('list_collections')]
 #[Title('List collections')]
 #[IsReadOnly]
@@ -38,7 +38,7 @@ final class ListCollectionsTool extends Tool
             'requiredScopes' => ['collections:read'],
             'compatibility' => 'stable',
             'examples' => [[
-                'description' => 'List approved workspace collections.',
+                'description' => 'List workspace collections.',
                 'arguments' => ['limit' => 20],
             ]],
         ],

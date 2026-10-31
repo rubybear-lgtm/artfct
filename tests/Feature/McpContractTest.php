@@ -249,8 +249,9 @@ test('deploy_artifact advertises bundle input and does not require html', functi
         ->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')
         ->toArray()['inputSchema'];
 
-    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint'])
+    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint', 'collection'])
         ->and($schema['properties']['files']['type'])->toContain('array')
         ->and($schema['properties']['files']['items']['required'])->toBe(['path', 'content'])
-        ->and($schema['required'] ?? [])->not->toContain('html');
+        ->and($schema['required'] ?? [])->not->toContain('html')
+        ->and($schema['required'] ?? [])->not->toContain('collection');
 });

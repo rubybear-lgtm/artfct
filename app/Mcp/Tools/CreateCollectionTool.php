@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Create an organization-scoped artifact collection. Requires the explicit collections:write scope and never grants access to artifacts outside the workspace.')]
+#[Description('Create an organization-scoped artifact collection. Requires collections:write and never grants access to artifacts outside the workspace. New collections are not canonical (`canonical: false`); only an admin can pin one so its members get a search ranking boost.')]
 #[Name('create_collection')]
 #[Title('Create collection')]
 #[IsReadOnly(false)]
@@ -39,7 +39,7 @@ final class CreateCollectionTool extends Tool
             'requiredScopes' => ['collections:write'],
             'compatibility' => 'stable',
             'examples' => [[
-                'description' => 'Create a named collection for approved artifacts.',
+                'description' => 'Create a named collection for related artifacts.',
                 'arguments' => ['name' => 'Reporting formats'],
             ]],
         ],

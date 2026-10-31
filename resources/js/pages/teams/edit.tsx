@@ -51,6 +51,19 @@ function memberInitials(name: string): string {
         .join('');
 }
 
+function errorMessageFromBody(payload: unknown, fallback: string): string {
+    if (!payload || typeof payload !== 'object') {
+        return fallback;
+    }
+
+    const body = payload as {
+        message?: string;
+        errors?: { name?: string[] };
+    };
+
+    return body.message ?? body.errors?.name?.[0] ?? fallback;
+}
+
 interface Member {
     id: number;
     name: string;
@@ -60,6 +73,8 @@ interface Member {
     role: string;
     role_label: string;
     deactivated: boolean;
+    /** Last four of the active agent JWT, or null when none / not a bot. */
+    agentTokenLastFour: string | null;
 }
 
 interface Invitation {
@@ -159,6 +174,8 @@ export default function TeamEdit({
         mcpEndpoint: string;
         authorizationHeader: string;
     } | null>(null);
+    const [rollingBot, setRollingBot] = useState<Member | null>(null);
+    const [rollBusy, setRollBusy] = useState(false);
     const [avatarUploadingId, setAvatarUploadingId] = useState<number | null>(
         null,
     );
@@ -397,60 +414,83 @@ export default function TeamEdit({
                                     e.preventDefault();
                                     setBotBusy(true);
                                     setBotError(null);
-                                    const body = new FormData();
-                                    body.append('name', botName);
-                                    botScopes.forEach((scope) =>
-                                        body.append('scopes[]', scope),
-                                    );
+
+                                    const headers: Record<string, string> = {
+                                        Accept: 'application/json',
+                                        'X-XSRF-TOKEN': csrfToken(),
+                                    };
+                                    let body: BodyInit;
 
                                     if (botAvatarFile) {
-                                        body.append('avatar', botAvatarFile);
+                                        const formData = new FormData();
+                                        formData.append('name', botName);
+                                        botScopes.forEach((scope) =>
+                                            formData.append('scopes[]', scope),
+                                        );
+                                        formData.append(
+                                            'avatar',
+                                            botAvatarFile,
+                                        );
+                                        body = formData;
+                                    } else {
+                                        headers['Content-Type'] =
+                                            'application/json';
+                                        body = JSON.stringify({
+                                            name: botName,
+                                            scopes: botScopes,
+                                        });
                                     }
 
-                                    const response = await fetch(
-                                        teamRoutes.bots.store.url({
-                                            team: team.slug,
-                                        }),
-                                        {
-                                            method: 'POST',
-                                            headers: {
-                                                Accept: 'application/json',
-                                                'X-XSRF-TOKEN': csrfToken(),
+                                    try {
+                                        const response = await fetch(
+                                            teamRoutes.bots.store.url({
+                                                team: team.slug,
+                                            }),
+                                            {
+                                                method: 'POST',
+                                                headers,
+                                                body,
                                             },
-                                            body,
-                                        },
-                                    );
-                                    setBotBusy(false);
-
-                                    if (!response.ok) {
-                                        const payload = await response
-                                            .json()
-                                            .catch(() => ({}));
-                                        setBotError(
-                                            payload.message ??
-                                                payload.errors?.name?.[0] ??
-                                                'Could not add the bot.',
                                         );
 
-                                        return;
-                                    }
+                                        if (!response.ok) {
+                                            const payload = await response
+                                                .json()
+                                                .catch(() => null);
+                                            setBotError(
+                                                errorMessageFromBody(
+                                                    payload,
+                                                    `Could not add the bot (HTTP ${response.status}).`,
+                                                ),
+                                            );
 
-                                    const payload = await response.json();
-                                    setCreatedBotToken({
-                                        name: payload.name,
-                                        token: payload.token,
-                                        mcpEndpoint:
-                                            payload.mcp_endpoint ?? mcpEndpoint,
-                                        authorizationHeader:
-                                            payload.authorization_header ??
-                                            `Bearer ${payload.token}`,
-                                    });
-                                    setBotName('');
-                                    setBotAvatarFile(null);
-                                    setBotScopes(botDefaultScopes);
-                                    router.reload({
-                                        only: ['members'],
-                                    });
+                                            return;
+                                        }
+
+                                        const payload = await response.json();
+                                        setCreatedBotToken({
+                                            name: payload.name,
+                                            token: payload.token,
+                                            mcpEndpoint:
+                                                payload.mcp_endpoint ??
+                                                mcpEndpoint,
+                                            authorizationHeader:
+                                                payload.authorization_header ??
+                                                `Bearer ${payload.token}`,
+                                        });
+                                        setBotName('');
+                                        setBotAvatarFile(null);
+                                        setBotScopes(botDefaultScopes);
+                                        router.reload({
+                                            only: ['members'],
+                                        });
+                                    } catch {
+                                        setBotError(
+                                            'Could not reach the server. Check your connection and try again.',
+                                        );
+                                    } finally {
+                                        setBotBusy(false);
+                                    }
                                 }}
                             >
                                 <div className="flex flex-wrap items-end gap-3">
@@ -704,92 +744,126 @@ export default function TeamEdit({
                                                 <div className="flex flex-wrap items-center justify-end gap-2">
                                                     {member.isBot &&
                                                         canAddBot && (
-                                                            <label className="inline-flex cursor-pointer items-center">
-                                                                <span className="sr-only">
-                                                                    Upload
-                                                                    avatar for{' '}
-                                                                    {
-                                                                        member.name
-                                                                    }
-                                                                </span>
-                                                                <input
-                                                                    type="file"
-                                                                    accept="image/png,image/jpeg,image/webp"
-                                                                    className="hidden"
-                                                                    disabled={
-                                                                        avatarUploadingId ===
-                                                                        member.id
-                                                                    }
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) => {
-                                                                        const file =
-                                                                            e
-                                                                                .target
-                                                                                .files?.[0];
-
-                                                                        if (
-                                                                            !file
-                                                                        ) {
-                                                                            return;
+                                                            <>
+                                                                {member.agentTokenLastFour ? (
+                                                                    <span
+                                                                        className="text-xs text-muted-foreground"
+                                                                        title="Agent tokens are shown only when created or rolled. The raw token is never stored."
+                                                                    >
+                                                                        Token
+                                                                        ends in
+                                                                        …
+                                                                        {
+                                                                            member.agentTokenLastFour
                                                                         }
-
-                                                                        const body =
-                                                                            new FormData();
-                                                                        body.append(
-                                                                            'avatar',
-                                                                            file,
-                                                                        );
-                                                                        setAvatarUploadingId(
-                                                                            member.id,
-                                                                        );
-                                                                        router.post(
-                                                                            teamRoutes.bots.avatar.url(
-                                                                                {
-                                                                                    team: team.slug,
-                                                                                    user: member.id,
-                                                                                },
-                                                                            ),
-                                                                            body,
-                                                                            {
-                                                                                forceFormData: true,
-                                                                                preserveScroll: true,
-                                                                                onFinish:
-                                                                                    () =>
-                                                                                        setAvatarUploadingId(
-                                                                                            null,
-                                                                                        ),
-                                                                            },
-                                                                        );
-                                                                    }}
-                                                                />
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground">
+                                                                        No
+                                                                        active
+                                                                        token
+                                                                    </span>
+                                                                )}
                                                                 <Button
                                                                     type="button"
                                                                     variant="ghost"
                                                                     size="sm"
-                                                                    disabled={
-                                                                        avatarUploadingId ===
-                                                                        member.id
+                                                                    onClick={() =>
+                                                                        setRollingBot(
+                                                                            member,
+                                                                        )
                                                                     }
-                                                                    onClick={(
-                                                                        e,
-                                                                    ) => {
-                                                                        const input =
-                                                                            e.currentTarget.parentElement?.querySelector(
-                                                                                'input[type="file"]',
-                                                                            );
-
-                                                                        if (
-                                                                            input instanceof
-                                                                            HTMLInputElement
-                                                                        ) {
-                                                                            input.click();
-                                                                        }
-                                                                    }}
                                                                 >
-                                                                    Avatar
+                                                                    Roll token
                                                                 </Button>
-                                                            </label>
+                                                                <label className="inline-flex cursor-pointer items-center">
+                                                                    <span className="sr-only">
+                                                                        Upload
+                                                                        avatar
+                                                                        for{' '}
+                                                                        {
+                                                                            member.name
+                                                                        }
+                                                                    </span>
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/png,image/jpeg,image/webp"
+                                                                        className="hidden"
+                                                                        disabled={
+                                                                            avatarUploadingId ===
+                                                                            member.id
+                                                                        }
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) => {
+                                                                            const file =
+                                                                                e
+                                                                                    .target
+                                                                                    .files?.[0];
+
+                                                                            if (
+                                                                                !file
+                                                                            ) {
+                                                                                return;
+                                                                            }
+
+                                                                            const body =
+                                                                                new FormData();
+                                                                            body.append(
+                                                                                'avatar',
+                                                                                file,
+                                                                            );
+                                                                            setAvatarUploadingId(
+                                                                                member.id,
+                                                                            );
+                                                                            router.post(
+                                                                                teamRoutes.bots.avatar.url(
+                                                                                    {
+                                                                                        team: team.slug,
+                                                                                        user: member.id,
+                                                                                    },
+                                                                                ),
+                                                                                body,
+                                                                                {
+                                                                                    forceFormData: true,
+                                                                                    preserveScroll: true,
+                                                                                    onFinish:
+                                                                                        () =>
+                                                                                            setAvatarUploadingId(
+                                                                                                null,
+                                                                                            ),
+                                                                                },
+                                                                            );
+                                                                        }}
+                                                                    />
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        disabled={
+                                                                            avatarUploadingId ===
+                                                                            member.id
+                                                                        }
+                                                                        onClick={(
+                                                                            e,
+                                                                        ) => {
+                                                                            const input =
+                                                                                e.currentTarget.parentElement?.querySelector(
+                                                                                    'input[type="file"]',
+                                                                                );
+
+                                                                            if (
+                                                                                input instanceof
+                                                                                HTMLInputElement
+                                                                            ) {
+                                                                                input.click();
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        Avatar
+                                                                    </Button>
+                                                                </label>
+                                                            </>
                                                         )}
                                                     {(member.isBot
                                                         ? canAddBot
@@ -1266,6 +1340,83 @@ export default function TeamEdit({
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog
+                open={rollingBot !== null}
+                onOpenChange={(open) => {
+                    if (!open && !rollBusy) {
+                        setRollingBot(null);
+                    }
+                }}
+                title={`Roll ${rollingBot?.name}'s token?`}
+                description={
+                    <>
+                        The current token stops working immediately. A new one
+                        is shown once — we never store the raw token, so this is
+                        the only way to get it again.
+                    </>
+                }
+                confirmLabel="Roll token"
+                cancelLabel="Keep current"
+                processing={rollBusy}
+                onConfirm={async () => {
+                    if (!rollingBot) {
+                        return;
+                    }
+
+                    setRollBusy(true);
+
+                    try {
+                        const response = await fetch(
+                            teamRoutes.bots.roll.url({
+                                team: team.slug,
+                                user: rollingBot.id,
+                            }),
+                            {
+                                method: 'POST',
+                                headers: {
+                                    Accept: 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-XSRF-TOKEN': csrfToken(),
+                                },
+                                body: '{}',
+                            },
+                        );
+
+                        if (!response.ok) {
+                            const payload = await response
+                                .json()
+                                .catch(() => null);
+                            toast.error(
+                                errorMessageFromBody(
+                                    payload,
+                                    `Could not roll the token (HTTP ${response.status}).`,
+                                ),
+                            );
+
+                            return;
+                        }
+
+                        const payload = await response.json();
+                        setRollingBot(null);
+                        setCreatedBotToken({
+                            name: payload.name,
+                            token: payload.token,
+                            mcpEndpoint: payload.mcp_endpoint ?? mcpEndpoint,
+                            authorizationHeader:
+                                payload.authorization_header ??
+                                `Bearer ${payload.token}`,
+                        });
+                        router.reload({ only: ['members'] });
+                    } catch {
+                        toast.error(
+                            'Could not reach the server. Check your connection and try again.',
+                        );
+                    } finally {
+                        setRollBusy(false);
+                    }
+                }}
+            />
 
             <Dialog
                 open={createdBotToken !== null}
