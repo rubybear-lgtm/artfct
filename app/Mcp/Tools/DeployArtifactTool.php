@@ -8,11 +8,14 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Models\Collection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
+use App\Services\Billing\DailyPublishLimiter;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
+use App\Services\Collections\CollectionService;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
@@ -33,7 +36,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. Inline `<script>` blocks and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. Inline `<script>` blocks and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; it is ignored when publishing a new version with `artifact_id`. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[Title('Publish artifact')]
 #[IsReadOnly(false)]
@@ -52,8 +55,12 @@ final class DeployArtifactTool extends Tool
             'requiredScopes' => ['artifacts:deploy'],
             'compatibility' => 'stable',
             'examples' => [[
-                'description' => 'Publish a generated report to the team so it can be found and reused.',
-                'arguments' => ['html' => '<!doctype html><title>Q3 report</title><p>Summary</p>', 'sharing' => 'team'],
+                'description' => 'Publish a report into an existing collection in one call.',
+                'arguments' => [
+                    'html' => '<!doctype html><title>Q3 report</title><p>Summary</p>',
+                    'sharing' => 'team',
+                    'collection' => 'Launch',
+                ],
             ]],
         ],
     ];
@@ -82,7 +89,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): Response|ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -103,6 +110,7 @@ final class DeployArtifactTool extends Tool
             'title' => ['nullable', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
+            'collection' => ['nullable', 'string', 'max:100'],
         ]);
 
         $artifactIdInput = $validated['artifact_id'] ?? null;
@@ -113,6 +121,20 @@ final class DeployArtifactTool extends Tool
         $baseVersion = isset($validated['base_version']) ? (int) $validated['base_version'] : null;
         if ($baseVersion !== null && ! $versionPublish) {
             return McpErrorResponse::error('`base_version` only applies when `artifact_id` is given.', 'invalid_request');
+        }
+
+        // Collection membership only applies to a new artifact; a version
+        // publish keeps the existing collections and ignores this field.
+        $targetCollection = null;
+        $collectionInput = isset($validated['collection']) ? trim($validated['collection']) : '';
+        if ($collectionInput !== '' && ! $versionPublish) {
+            McpContext::requireScope('collections:write', 'deploy_artifact');
+            $targetCollection = $collections->findForTeam(McpContext::team(), $collectionInput);
+            if ($targetCollection === null) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'collection_not_found', $startedAt);
+
+                return McpErrorResponse::error('That collection was not found in the authenticated workspace. Pass its id or exact name from list_collections, or create it first with create_collection.', 'collection_not_found', false, 'list_collections');
+            }
         }
 
         $hasHtml = isset($validated['html']) && trim($validated['html']) !== '';
@@ -142,10 +164,30 @@ final class DeployArtifactTool extends Tool
         }
 
         $team = McpContext::team();
+        $actor = McpContext::actor();
+        // Fingerprint from a path-sorted copy so identical bundles match
+        // regardless of input order, without reordering the Worker manifest.
+        $filesForFingerprint = $files;
+        ksort($filesForFingerprint);
+        $contentFingerprint = hash('sha256', implode("\0", array_map(
+            fn (array $file): string => $file['path'].':'.$file['sha256'],
+            $filesForFingerprint,
+        )));
 
         try {
             $quotaService->assertCanCreateArtifact($team, $totalBytes);
-        } catch (QuotaExceededException|BundleTooLargeException $exception) {
+            $dailyPublish->assertCanPublish($team, $actor);
+        } catch (QuotaExceededException $exception) {
+            app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
+
+            return McpErrorResponse::error(
+                $exception->getMessage().' Use get_usage to inspect current limits and usage, then retry after remediation.',
+                $exception->errorCode,
+                false,
+                'get_usage',
+                $exception->details,
+            );
+        } catch (BundleTooLargeException $exception) {
             app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
 
             return McpErrorResponse::error(
@@ -336,11 +378,16 @@ final class DeployArtifactTool extends Tool
             McpContext::httpRequest(),
             AuditEventType::ArtifactDeployed,
             $team,
-            McpContext::actor(),
+            $actor,
             // A version publish is audited against the version, so the log
             // records which publish happened rather than only the artifact.
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
+
+        // Version publishes report `created`; identical-content creates reuse the
+        // fingerprint cache so a no-op republish does not burn the daily cap.
+        $countsTowardDaily = ! $versionPublish || (bool) $created->json('created', true);
+        $dailyPublish->recordPublish($team, $actor, $contentFingerprint, $countsTowardDaily);
 
         $artifactType = app(ArtifactTypeResolver::class)->record(
             $team,
@@ -348,6 +395,23 @@ final class DeployArtifactTool extends Tool
             $entryBytes,
             isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
         );
+
+        if ($targetCollection instanceof Collection) {
+            try {
+                $collections->addArtifact($targetCollection, $artifactId);
+            } catch (\Throwable $exception) {
+                report($exception);
+                app(McpTelemetry::class)->record('deploy_artifact', 'collection_mutation_failed', $startedAt, $artifactId);
+
+                return McpErrorResponse::error(
+                    'The artifact was published, but it could not be added to that collection. Retry with add_collection_artifact.',
+                    'collection_mutation_failed',
+                    true,
+                    'add_collection_artifact',
+                    ['id' => $artifactId, 'collection_id' => $targetCollection->id],
+                );
+            }
+        }
 
         $result = [
             'id' => $artifactId,
@@ -361,6 +425,11 @@ final class DeployArtifactTool extends Tool
             'title' => $title,
             'organization' => $team->slug,
         ];
+
+        if ($targetCollection instanceof Collection) {
+            $result['collection_id'] = $targetCollection->id;
+            $result['collection'] = $targetCollection->name;
+        }
 
         if ($versionPublish) {
             $result['created'] = (bool) $created->json('created');
@@ -395,6 +464,7 @@ final class DeployArtifactTool extends Tool
             'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title.')->nullable(),
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
+            'collection' => $schema->string()->max(100)->description('Optional workspace collection name or numeric id. On a new publish, adds the artifact to that collection (requires collections:write). Ignored when publishing a new version with `artifact_id`.')->nullable(),
         ];
     }
 

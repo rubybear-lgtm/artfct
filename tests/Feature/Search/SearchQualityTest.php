@@ -104,6 +104,26 @@ test('relevance bands prevent popularity and canonical boosts displacing direct 
     expect(SearchRanking::rank([$exact, $close], 'design', [], ['exact' => true])[0]->chunk->artifactId)->toBe('exact');
 });
 
+test('exact and near-exact title matches rank above a slightly higher semantic score with usage and canonical boosts', function () {
+    $launch = qualityMatch('launch', 'Artfct launch plan body about go-to-market.', 0.99826);
+    $prospects = qualityMatch('prospects', 'Design partner prospects table and outreach notes.', 0.99799);
+    $titles = [
+        'launch' => 'Artfct launch plan',
+        'prospects' => 'Design partner prospects',
+    ];
+    $usage = ['launch' => 1000.0];
+    $canonical = ['launch' => true];
+
+    expect(SearchRanking::rank([$launch, $prospects], 'Design partner prospects', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'design partner prospects', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'Design partner prospects!', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'Artfct launch plan', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('launch');
+});
+
 test('snippets show the relevant body and preserve complete words with escaped whitespace normalized', function () {
     $title = 'How we stopped our AI tools from contradicting each other';
     $text = $title.' Home Reports Contact Subscribe '.$title.' Decision and rationale Conflicting answers came from stale local copies of the launch brief. The team published one approved brief with a visible revision history. '.str_repeat('Unrelated footer wording. ', 20);
