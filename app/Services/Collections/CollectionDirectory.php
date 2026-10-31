@@ -2,6 +2,7 @@
 
 namespace App\Services\Collections;
 
+use App\Mcp\Support\McpTimestamp;
 use App\Models\Collection;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,8 +14,10 @@ final class CollectionDirectory
      *
      * The cursor is opaque to clients, but contains only the stable
      * `(name, id)` ordering key. No artifact IDs or creator identity are
-     * exposed by this directory. `artifact_count` counts every member of the
-     * collection, private artifacts included; it is a count, never an id or title.
+     * exposed by this directory. `artifact_count` counts current membership
+     * rows. Delete paths must call `CollectionService::forgetArtifact` so
+     * revoked artifacts do not inflate the count (RUB-515). Private
+     * artifacts are included; the value is a count, never an id or title.
      *
      * @return array{collections: list<array{id: int, name: string, description: string|null, canonical: bool, artifact_count: int, created_at: string|null, updated_at: string|null}>, next_cursor: string|null}
      */
@@ -48,8 +51,8 @@ final class CollectionDirectory
             'description' => $collection->description,
             'canonical' => $collection->canonical,
             'artifact_count' => (int) $collection->artifacts_count,
-            'created_at' => $collection->created_at?->toIso8601String(),
-            'updated_at' => $collection->updated_at?->toIso8601String(),
+            'created_at' => McpTimestamp::format($collection->created_at),
+            'updated_at' => McpTimestamp::format($collection->updated_at),
         ])->values()->all();
 
         $last = $page->last();
@@ -64,6 +67,8 @@ final class CollectionDirectory
 
     /**
      * @return array{name: string, id: int}|null
+     *
+     * @throws InvalidCollectionCursorException
      */
     private function decodeCursor(?string $cursor): ?array
     {
@@ -75,7 +80,7 @@ final class CollectionDirectory
         $normalized .= str_repeat('=', (4 - strlen($normalized) % 4) % 4);
         $decoded = base64_decode($normalized, true);
         if ($decoded === false) {
-            abort(422, 'The collection cursor is invalid.');
+            throw new InvalidCollectionCursorException;
         }
 
         $payload = json_decode($decoded, true);
@@ -84,7 +89,7 @@ final class CollectionDirectory
             || ! is_int($payload['id'] ?? null)
             || $payload['id'] < 1
         ) {
-            abort(422, 'The collection cursor is invalid.');
+            throw new InvalidCollectionCursorException;
         }
 
         return ['name' => $payload['name'], 'id' => $payload['id']];

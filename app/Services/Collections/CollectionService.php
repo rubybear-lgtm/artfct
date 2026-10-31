@@ -67,6 +67,27 @@ final class CollectionService
     }
 
     /**
+     * Drop every membership for an artifact across one team's collections
+     * (for example after the artifact itself was deleted).
+     */
+    public function forgetArtifact(Team $team, string $artifactId): void
+    {
+        CollectionArtifact::query()
+            ->whereIn('collection_id', Collection::query()->where('team_id', $team->id)->select('id'))
+            ->where('artifact_id', $artifactId)
+            ->delete();
+    }
+
+    /**
+     * Delete a collection and its memberships. Any member who can create
+     * collections may delete them (spec 16: kept deliberately thin).
+     */
+    public function delete(Collection $collection): void
+    {
+        $collection->delete();
+    }
+
+    /**
      * @throws AuthorizationException when `$user`
      *                                lacks the
      *                                `pinCanonicalCollection`

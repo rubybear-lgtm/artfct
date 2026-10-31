@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Services\Artifacts\ArtifactIdShape;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
@@ -52,8 +53,17 @@ final class DeleteArtifactTool extends Tool
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:delete', 'delete_artifact');
         $validated = $request->validate([
-            'id' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9]+$/'],
+            'id' => ['required', 'string', 'max:128'],
         ]);
+
+        if (! ArtifactIdShape::isPermanent($validated['id']) && ! ArtifactIdShape::isEphemeral($validated['id'])) {
+            app(McpTelemetry::class)->record('delete_artifact', 'invalid_request', $startedAt);
+
+            return McpErrorResponse::error(
+                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters) or a 10-character ephemeral artifact id.',
+                'invalid_request',
+            );
+        }
 
         $workerBaseUrl = config('services.worker.base_url');
         if (! is_string($workerBaseUrl) || $workerBaseUrl === '') {

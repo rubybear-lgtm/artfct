@@ -5,6 +5,7 @@ namespace App\Services\Artifacts;
 use App\Enums\ArtifactType;
 use App\Models\ArtifactTypeAssignment;
 use App\Models\Team;
+use App\Services\Indexing\ExtractionHeuristics;
 
 /**
  * Decides and stores an artifact's type: the publisher's declared type wins,
@@ -17,6 +18,12 @@ final class ArtifactTypeResolver
      */
     public function infer(string $html): ArtifactType
     {
+        // Markdown (including a .md entrypoint before HTML conversion) is a
+        // document, not "other".
+        if (ExtractionHeuristics::looksLikeMarkdown($html)) {
+            return ArtifactType::Document;
+        }
+
         $lower = strtolower($html);
         $tables = substr_count($lower, '<table');
         $headings = preg_match_all('/<h[1-3][\s>]/', $lower);
