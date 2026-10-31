@@ -1,0 +1,185 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+    assertRequiredChecksSucceeded,
+    isIgnoredCheck,
+} from './ci-checks.mjs';
+
+test('A5: Railway preview / deploy statuses are ignored', () => {
+    assert.equal(
+        isIgnoredCheck({
+            context: 'artfct - web',
+            name: 'artfct - web',
+        }),
+        true,
+    );
+    assert.equal(
+        isIgnoredCheck({
+            context: 'artfct - staging-web',
+            name: 'artfct - staging-web',
+        }),
+        true,
+    );
+    assert.equal(
+        isIgnoredCheck({
+            name: 'Railway Preview',
+            appSlug: 'railway',
+        }),
+        true,
+    );
+    assert.equal(
+        isIgnoredCheck({
+            name: 'Pest (browser)',
+            appSlug: 'github-actions',
+        }),
+        false,
+    );
+    assert.equal(
+        isIgnoredCheck({
+            name: 'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+            appSlug: 'github-actions',
+        }),
+        false,
+    );
+});
+
+test('A3: rejects when one required check failed and names it', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        timeoutMs: 1,
+        pollIntervalMs: 1,
+        sleep: async () => {},
+        now: () => 0,
+        listCheckRuns: async () => [
+            {
+                name: 'Pest (browser)',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+                status: 'completed',
+                conclusion: 'failure',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'application',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+        ],
+        listCommitStatuses: async () => [
+            { context: 'artfct - web', state: 'pending' },
+        ],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'checks_failed');
+    assert.deepEqual(result.failed, [
+        'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+    ]);
+    assert.match(
+        result.message,
+        /MCP local end-to-end \(Postgres \+ Worker \+ hosted OAuth\)/,
+    );
+});
+
+test('A4: waits for a pending check then rejects and names it', async () => {
+    let now = 0;
+    let polls = 0;
+    const sleeps = [];
+
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        timeoutMs: 100,
+        pollIntervalMs: 25,
+        sleep: async (ms) => {
+            sleeps.push(ms);
+            now += ms;
+        },
+        now: () => now,
+        listCheckRuns: async () => {
+            polls += 1;
+            return [
+                {
+                    name: 'Pest (browser)',
+                    status: 'in_progress',
+                    conclusion: null,
+                    appSlug: 'github-actions',
+                },
+                {
+                    name: 'application',
+                    status: 'completed',
+                    conclusion: 'success',
+                    appSlug: 'github-actions',
+                },
+            ];
+        },
+        listCommitStatuses: async () => [],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'checks_pending_timeout');
+    assert.ok(polls >= 2, `expected multiple polls, got ${polls}`);
+    assert.ok(sleeps.length >= 1, 'expected to wait between polls');
+    assert.deepEqual(result.pending, ['Pest (browser)']);
+    assert.match(result.message, /Pest \(browser\)/);
+});
+
+test('A5: all required checks green are accepted; Railway statuses ignored', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        timeoutMs: 1,
+        pollIntervalMs: 1,
+        sleep: async () => {},
+        now: () => 0,
+        listCheckRuns: async () => [
+            {
+                name: 'Pest (browser)',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'application',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'Release readiness: OpenAPI, contract and hosted MCP checks',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+            },
+            {
+                name: 'Workers Builds: artfct-engine-staging',
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'cloudflare-workers-and-pages',
+            },
+        ],
+        listCommitStatuses: async () => [
+            { context: 'artfct - staging-web', state: 'success' },
+            { context: 'artfct - web', state: 'failure' },
+        ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(
+        result.checks.every((c) => c.conclusion === 'success' || c.conclusion === 'skipped'),
+    );
+    assert.equal(
+        result.checks.some((c) => /artfct -/i.test(c.name)),
+        false,
+    );
+});
