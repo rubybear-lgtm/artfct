@@ -712,6 +712,12 @@ fn artifact_lock_key(row_id: &str) -> String {
     format!("artifact:{row_id}")
 }
 
+/// Serialises quota checks and org-settings writes for one org (RUB-465).
+/// Namespaced like the other lock keys so it never equals a file hash.
+pub(crate) fn org_quota_lock_key(org: &str) -> String {
+    format!("org:{org}:quota")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1398,6 +1404,34 @@ mod tests {
         assert_eq!(clipped_text(Some(&serde_json::json!("   ")), 10), None);
         assert_eq!(clipped_text(Some(&serde_json::json!(5)), 10), None);
         assert_eq!(clipped_text(None, 10), None);
+    }
+
+    #[test]
+    fn clipped_string_matches_clipped_text_for_deserialized_fields() {
+        use crate::validation::clipped_string;
+        assert_eq!(
+            clipped_string(Some("  Title  ".to_string()), 200),
+            Some("Title".to_string())
+        );
+        assert_eq!(
+            clipped_string(Some("abcdef".to_string()), 3),
+            Some("abc".to_string())
+        );
+        assert_eq!(clipped_string(Some("   ".to_string()), 10), None);
+        assert_eq!(clipped_string(None, 10), None);
+        // Multi-megabyte anonymous metadata must not survive into KV (RUB-465).
+        let oversized = "x".repeat(crate::validation::MAX_TITLE_CHARS + 50);
+        let clipped = clipped_string(Some(oversized), crate::validation::MAX_TITLE_CHARS).unwrap();
+        assert_eq!(clipped.chars().count(), crate::validation::MAX_TITLE_CHARS);
+    }
+
+    #[test]
+    fn org_quota_lock_key_cannot_collide_with_a_file_hash() {
+        let org = "acme";
+        let key = org_quota_lock_key(org);
+        assert_eq!(key, "org:acme:quota");
+        assert!(!key.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_ne!(key, "a".repeat(64));
     }
 
     #[test]

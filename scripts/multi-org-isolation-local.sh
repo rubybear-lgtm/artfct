@@ -23,6 +23,12 @@ open(t+'/jwks.json','w').write(json.dumps(d['jwks']));open(t+'/a','w').write(d['
 PY
 curl -sf -X POST -H 'Authorization: Bearer jw' -H 'content-type: application/json' -d @"$TMP/jwks.json" "$W/v1/internal/jwks" >/dev/null
 TA=$(cat "$TMP/a"); TB=$(cat "$TMP/b"); fail=0
+# RUB-465: permanent creates require a pre-existing org row (provisioned by limits).
+for org in iso-a iso-b; do
+  curl -sf -X POST -H 'Authorization: Bearer lim' -H 'content-type: application/json' \
+    -d "{\"org\":\"$org\",\"storage_bytes\":5368709120,\"artifacts_per_month\":1000,\"bundle_ceiling_bytes\":10485760,\"read_only\":false}" \
+    "$W/v1/internal/org-limits" >/dev/null
+done
 mk() { X="content-$1"; SX=$(printf '%s' "$X" | shasum -a 256 | cut -d' ' -f1)
   ID=$(curl -s -X POST -H "Authorization: Bearer $2" -H 'content-type: application/json' -d "{\"mode\":\"permanent\",\"tier\":\"secure\",\"title\":\"t\",\"description\":\"d\",\"thumbnail\":\"\",\"preview_blurred\":false,\"provenance\":{},\"manifest\":{\"entrypoint\":\"index.html\",\"external_origins\":[],\"files\":[{\"path\":\"index.html\",\"sha256\":\"$SX\",\"size_bytes\":${#X},\"content_type\":\"text/html\"}]}}" "$W/v1/artifacts" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
   curl -s -o /dev/null -X PUT -H "Authorization: Bearer $2" --data-binary "$X" "$W/v1/artifacts/$ID/files/$SX"; echo "$ID"; }

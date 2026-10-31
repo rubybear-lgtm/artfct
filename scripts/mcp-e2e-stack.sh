@@ -172,6 +172,19 @@ up() {
         }
     " >/dev/null
 
+    # RUB-465: permanent creates require a pre-existing Worker org row. Seed is
+    # --laravel-only, so push limits (which INSERT OR IGNORE the org) for both.
+    echo "==> Provisioning Worker org rows for $ORG_A_SLUG and $ORG_B_SLUG" >&2
+    php artisan tinker --execute "
+        \$writer = App\Services\Billing\OrgLimitsWriter::default();
+        foreach (['${ORG_A_SLUG}', '${ORG_B_SLUG}'] as \$slug) {
+            \$team = App\Models\Team::where('slug', \$slug)->firstOrFail();
+            if (! \$writer->push(\$team)) {
+                throw new RuntimeException('org-limits push failed for ' . \$slug);
+            }
+        }
+    " >/dev/null
+
     # A long-lived org JWT for the Rust storage/provenance integration
     # tests (backend/tests/storage_integration.rs) — real production-path checks against a
     # live Worker that `cargo test` otherwise silently skips

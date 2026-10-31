@@ -120,9 +120,26 @@ pub(crate) async fn create_artifact(
         }
     };
 
-    let title = normalize_metadata_value(payload.title, DEFAULT_ARTIFACT_TITLE);
-    let description = normalize_metadata_value(payload.description, DEFAULT_ARTIFACT_DESCRIPTION);
-    let thumbnail = normalize_metadata_value(payload.thumbnail, DEFAULT_ARTIFACT_THUMBNAIL);
+    // Same maxima as the permanent path (RUB-465): anonymous KV must not
+    // accept multi-megabyte title/description/thumbnail strings.
+    let title = normalize_metadata_value(
+        crate::validation::clipped_string(payload.title, crate::validation::MAX_TITLE_CHARS),
+        DEFAULT_ARTIFACT_TITLE,
+    );
+    let description = normalize_metadata_value(
+        crate::validation::clipped_string(
+            payload.description,
+            crate::validation::MAX_DESCRIPTION_CHARS,
+        ),
+        DEFAULT_ARTIFACT_DESCRIPTION,
+    );
+    let thumbnail = normalize_metadata_value(
+        crate::validation::clipped_string(
+            payload.thumbnail,
+            crate::validation::MAX_THUMBNAIL_CHARS,
+        ),
+        DEFAULT_ARTIFACT_THUMBNAIL,
+    );
 
     let stored = StoredArtifact {
         body_ciphertext_b64: payload.body_ciphertext_b64,

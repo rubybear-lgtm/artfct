@@ -84,6 +84,9 @@ pub(crate) async fn load_org_usage(
 }
 
 /// `Ok(None)` when the add is allowed, else the refusal response.
+///
+/// Callers that increment usage must hold [`org_quota_lock_key`] for `org`
+/// across this check and the write that consumes the quota (RUB-465).
 pub(crate) async fn quota_refusal(
     database: &worker::D1Database,
     env: &Env,
@@ -108,6 +111,42 @@ pub(crate) async fn quota_refusal(
         )
         .map(Some),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgIdRow {
+    #[allow(dead_code)]
+    id: String,
+}
+
+/// Whether `org` already has a row. Permanent writes require this — a JWT must
+/// not mint an org that Laravel has not provisioned (RUB-465).
+pub(crate) async fn org_exists(database: &worker::D1Database, org: &str) -> Result<bool> {
+    Ok(database
+        .prepare("SELECT id FROM orgs WHERE slug = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgIdRow>(None)
+        .await?
+        .is_some())
+}
+
+/// Ensures the org row exists so limits/settings pushes can provision a team
+/// before any artifact write (RUB-465). Idempotent.
+pub(crate) async fn ensure_org_row(
+    database: &worker::D1Database,
+    org: &str,
+    now: &str,
+) -> Result<()> {
+    database
+        .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
+        .bind(&[
+            JsValue::from_str(org),
+            JsValue::from_str(org),
+            JsValue::from_str(now),
+        ])?
+        .run()
+        .await?;
+    Ok(())
 }
 
 pub(crate) fn quota_error_response(
@@ -157,21 +196,40 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
     if let Err(message) = store::validate_slug(&payload.org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    let database = env.d1("ARTIFACTS_DB")?;
-    database
-        .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
-        .bind(&[
-            JsValue::from_str(&payload.org),
-            JsValue::from_f64(payload.storage_bytes as f64),
-            JsValue::from_f64(payload.artifacts_per_month as f64),
-            JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
-            JsValue::from_f64(f64::from(u8::from(payload.read_only))),
-            JsValue::from_str(&Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)),
-        ])?
-        .run()
-        .await?;
-    JsonResponseDefinition::json(serde_json::json!({"org": payload.org}), 200)
-        .into_worker_response()
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    let org_key = org_quota_lock_key(&payload.org);
+    let org_owner = match storage.acquire_content_lock(&org_key).await {
+        Ok(owner) => owner,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let operation: Result<Response> = async {
+        // Provision the org row here so a JWT cannot recreate a deleted team
+        // by writing artifacts first (RUB-465).
+        ensure_org_row(&storage.database, &payload.org, &now).await?;
+        storage
+            .database
+            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+            .bind(&[
+                JsValue::from_str(&payload.org),
+                JsValue::from_f64(payload.storage_bytes as f64),
+                JsValue::from_f64(payload.artifacts_per_month as f64),
+                JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
+                JsValue::from_f64(f64::from(u8::from(payload.read_only))),
+                JsValue::from_str(&now),
+            ])?
+            .run()
+            .await?;
+        JsonResponseDefinition::json(serde_json::json!({"org": payload.org}), 200)
+            .into_worker_response()
+    }
+    .await;
+    let release = storage.release_content_lock(&org_key, &org_owner).await;
+    let response = operation?;
+    release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(response)
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,48 +273,66 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
     if let Err(message) = store::validate_slug(&payload.org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
-    let database = env.d1("ARTIFACTS_DB")?;
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    // Selected before the update so the response names exactly the artifacts
-    // being downgraded. The update repeats the same predicate in one batch with
-    // the settings upsert, so it can never leave a public artifact behind.
-    let downgraded = if payload.public_sharing_allowed {
-        Vec::new()
-    } else {
-        database
-            .prepare("SELECT a.id AS id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND a.tier = 'public' AND a.revoked_at IS NULL")
-            .bind(&[JsValue::from_str(&payload.org)])?
-            .all()
-            .await?
-            .results::<DowngradedRow>()?
-            .into_iter()
-            .map(|row| row.id)
-            .collect::<Vec<_>>()
+    let storage =
+        store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // Serialise with permanent creates so a public create cannot pass its
+    // re-check and insert after this settings batch (RUB-465).
+    let org_key = org_quota_lock_key(&payload.org);
+    let org_owner = match storage.acquire_content_lock(&org_key).await {
+        Ok(owner) => owner,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
-    let mut statements = vec![database
-        .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
-        .bind(&[
-            JsValue::from_str(&payload.org),
-            JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
-            JsValue::from_str(&now),
-        ])?];
-    if !payload.public_sharing_allowed {
-        statements.push(
+    let database = &storage.database;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let operation: Result<Response> = async {
+        ensure_org_row(database, &payload.org, &now).await?;
+        // Selected before the update so the response names exactly the artifacts
+        // being downgraded. The update repeats the same predicate in one batch with
+        // the settings upsert, so it can never leave a public artifact behind.
+        let downgraded = if payload.public_sharing_allowed {
+            Vec::new()
+        } else {
             database
-                .prepare("UPDATE artifacts SET tier = 'secure' WHERE org_id = (SELECT id FROM orgs WHERE slug = ?) AND tier = 'public' AND revoked_at IS NULL")
-                .bind(&[JsValue::from_str(&payload.org)])?,
-        );
+                .prepare("SELECT a.id AS id FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE o.slug = ? AND a.tier = 'public' AND a.revoked_at IS NULL")
+                .bind(&[JsValue::from_str(&payload.org)])?
+                .all()
+                .await?
+                .results::<DowngradedRow>()?
+                .into_iter()
+                .map(|row| row.id)
+                .collect::<Vec<_>>()
+        };
+        let mut statements = vec![database
+            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
+            .bind(&[
+                JsValue::from_str(&payload.org),
+                JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
+                JsValue::from_str(&now),
+            ])?];
+        if !payload.public_sharing_allowed {
+            statements.push(
+                database
+                    .prepare("UPDATE artifacts SET tier = 'secure' WHERE org_id = (SELECT id FROM orgs WHERE slug = ?) AND tier = 'public' AND revoked_at IS NULL")
+                    .bind(&[JsValue::from_str(&payload.org)])?,
+            );
+        }
+        database.batch(statements).await?;
+        JsonResponseDefinition::json(
+            OrgSettingsWriteResponse {
+                org: payload.org.clone(),
+                public_sharing_allowed: payload.public_sharing_allowed,
+                downgraded,
+            },
+            200,
+        )
+        .into_worker_response()
     }
-    database.batch(statements).await?;
-    JsonResponseDefinition::json(
-        OrgSettingsWriteResponse {
-            org: payload.org,
-            public_sharing_allowed: payload.public_sharing_allowed,
-            downgraded,
-        },
-        200,
-    )
-    .into_worker_response()
+    .await;
+    let release = storage.release_content_lock(&org_key, &org_owner).await;
+    let response = operation?;
+    release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(response)
 }
 
 /// Splits `/v1/internal/orgs/{org}/owner-backfill` into `org`.

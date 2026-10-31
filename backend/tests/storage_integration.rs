@@ -428,12 +428,45 @@ fn bundle_payload(files: &[(&str, &[u8], &str)], entrypoint: &str) -> Value {
     })
 }
 
+/// RUB-465: permanent creates require an org row. When the limits secret is
+/// available, push default limits (which INSERT OR IGNORE the org) before the
+/// first create against a fresh Worker D1.
+async fn ensure_org_provisioned(
+    context: &Context,
+    client: &RetryingClient,
+) -> Result<(), Box<dyn Error>> {
+    let Some(secret) = context.limits_secret.as_deref() else {
+        return Ok(());
+    };
+    let (status, body) = internal_post(
+        context,
+        client,
+        secret,
+        "/v1/internal/org-limits",
+        json!({
+            "org": context.org,
+            "storage_bytes": 5_368_709_120u64,
+            "artifacts_per_month": 1000,
+            "bundle_ceiling_bytes": 10_485_760,
+            "read_only": false,
+        }),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "org-limits provision failed: {body}"
+    );
+    Ok(())
+}
+
 async fn create_and_upload_bundle(
     context: &Context,
     client: &RetryingClient,
     files: &[(&str, &[u8], &str)],
     entrypoint: &str,
 ) -> Result<String, Box<dyn Error>> {
+    ensure_org_provisioned(context, client).await?;
     let response = client
         .post(format!("{}/v1/artifacts", context.base))
         .bearer_auth(&context.token)
@@ -496,6 +529,7 @@ async fn deploy_directory(
     client: &RetryingClient,
     directory: &std::path::Path,
 ) -> Result<(String, usize), Box<dyn Error>> {
+    ensure_org_provisioned(context, client).await?;
     let mut collected = Vec::new();
     collect_files(directory, directory, &mut collected)?;
     let files: Vec<(&str, &[u8], &str)> = collected
@@ -551,6 +585,7 @@ async fn create_and_upload_payload(
     bytes: &[u8],
     payload: Value,
 ) -> Result<(String, String), Box<dyn Error>> {
+    ensure_org_provisioned(context, client).await?;
     let hash = sha256(bytes);
     let created = client
         .post(format!("{}/v1/artifacts", context.base))
@@ -3145,6 +3180,7 @@ async fn create_sharing_artifact(
     sharing: &str,
     edit_access: &str,
 ) -> Result<String, Box<dyn Error>> {
+    ensure_org_provisioned(context, client).await?;
     let payload = sharing_payload(bytes, sharing, edit_access);
     let (status, body) = send_json(
         client
