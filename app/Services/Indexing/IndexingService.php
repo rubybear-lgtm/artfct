@@ -36,11 +36,19 @@ final class IndexingService
             $text = $result->text;
             $title = $result->title;
             $headings = $result->headings;
+        } elseif (ExtractionHeuristics::looksLikeMarkdown($html)) {
+            // Deploy converts markdown entrypoints to HTML before storage, but
+            // a direct index of raw markdown must not keep `#` / `|---|`.
+            $text = ExtractionHeuristics::plainTextFromMarkdown($html);
+            $title = ExtractionHeuristics::titleFromMarkdown($html);
+            $headings = ExtractionHeuristics::headingsFromMarkdown($html);
         } else {
             $text = ExtractionHeuristics::visibleText($html);
-            $title = null;
-            $headings = [];
+            $title = ExtractionHeuristics::titleFromHtml($html);
+            $headings = ExtractionHeuristics::headingsFromHtml($html);
         }
+
+        $text = ExtractionHeuristics::withoutLeadingTitle($text, $title);
 
         $values = [
             'rendered' => $rendered,

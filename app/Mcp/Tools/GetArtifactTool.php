@@ -139,13 +139,15 @@ final class GetArtifactTool extends Tool
         app(McpTelemetry::class)->record('get_artifact', 'success', $startedAt, $validated['id']);
 
         if ($versionResponse !== null) {
+            // Prefer the named version's own timestamp, not the live artifact's.
+            $versionUpdatedAt = $versionResponse->json('updated_at') ?? $versionResponse->json('created_at');
+
             return Response::structured([
                 'id' => $artifactId,
                 'view_url' => $link,
-                'tier' => $tier,
                 'version' => (int) $versionResponse->json('version'),
                 'version_count' => $response->json('version_count'),
-                'updated_at' => $response->json('updated_at'),
+                'updated_at' => $versionUpdatedAt,
                 'title' => $versionResponse->json('title'),
                 'description' => $versionResponse->json('description'),
                 'created_at' => $versionResponse->json('created_at'),
@@ -159,7 +161,6 @@ final class GetArtifactTool extends Tool
         return Response::structured([
             'id' => $artifactId,
             'view_url' => $link,
-            'tier' => $tier,
             'entrypoint' => $response->json('entrypoint'),
             'created_at' => $response->json('created_at'),
             'expires_at' => $response->json('expires_at'),

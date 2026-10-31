@@ -5,9 +5,11 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\User;
 use App\Services\Collections\CollectionService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -62,6 +64,10 @@ final class CreateCollectionTool extends Tool
                 $validated['name'],
                 $validated['description'] ?? null,
             );
+        } catch (UniqueConstraintViolationException) {
+            app(McpTelemetry::class)->record('create_collection', 'conflict', $startedAt);
+
+            return McpErrorResponse::error('A collection with that name already exists in this workspace.', 'collection_already_exists');
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('create_collection', 'error', $startedAt);
@@ -77,8 +83,8 @@ final class CreateCollectionTool extends Tool
             'description' => $collection->description,
             'canonical' => $collection->canonical,
             'artifact_count' => 0,
-            'created_at' => $collection->created_at?->toIso8601String(),
-            'updated_at' => $collection->updated_at?->toIso8601String(),
+            'created_at' => McpTimestamp::format($collection->created_at),
+            'updated_at' => McpTimestamp::format($collection->updated_at),
         ]);
     }
 
