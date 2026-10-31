@@ -160,7 +160,21 @@ test('search returns the selected passage raw relevance rather than the combined
     $reranker->shouldReceive('rerank')->once()->andReturn([$intro]);
     app()->instance(RerankerContract::class, $reranker);
     $result = app(SearchService::class)->search($team, 'readiness', [], 5, 'tester')[0];
-    expect($result->score)->toBe(0.85)->and($result->snippet)->toContain('authorized operation');
+    // displayScore stretches raw similarity; title "Credential readiness" is not an exact query match.
+    expect($result->score)->toBe(SearchRanking::displayScore(0.85, 'readiness', 'Credential readiness'))
+        ->and($result->snippet)->toContain('authorized operation');
+});
+
+test('exact title display scores leave a clear gap over a near-1.0 semantic miss', function () {
+    $titles = [
+        'prospects' => 'Design partner prospects',
+        'launch' => 'Artfct launch plan',
+    ];
+    $exact = SearchRanking::displayScore(0.998, 'Design partner prospects', $titles['prospects']);
+    $miss = SearchRanking::displayScore(0.998, 'Design partner prospects', $titles['launch']);
+    expect($exact - $miss)->toBeGreaterThanOrEqual(0.05)
+        ->and(SearchSnippet::make(';;;', 'query', null))->toBe('')
+        ->and(mb_strlen(SearchSnippet::make(str_repeat('Useful body text about partners. ', 5), 'partners', null)))->toBeGreaterThanOrEqual(40);
 });
 
 test('model weak confidence requires corroborating query terms rather than one ambiguous noun', function () {

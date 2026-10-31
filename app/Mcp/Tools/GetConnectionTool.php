@@ -4,6 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Carbon;
@@ -95,7 +96,9 @@ final class GetConnectionTool extends Tool
         return [
             'enabled' => (bool) config('indexing.enabled'),
             'indexed_artifacts' => $entries->count(),
-            'last_indexed_at' => $lastIndexedAt === null ? null : Carbon::parse($lastIndexedAt)->toIso8601String(),
+            'last_indexed_at' => $lastIndexedAt === null
+                ? null
+                : McpTimestamp::format(Carbon::parse($lastIndexedAt)),
         ];
     }
 

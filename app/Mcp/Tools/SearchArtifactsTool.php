@@ -7,6 +7,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Search\CollectionNotFoundException;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
 use App\Support\ClientIp;
@@ -98,6 +99,10 @@ final class SearchArtifactsTool extends Tool
                 ip: ClientIp::for($httpRequest),
                 userAgent: $httpRequest->userAgent() ?? 'mcp',
             );
+        } catch (CollectionNotFoundException $exception) {
+            app(McpTelemetry::class)->record('search_artifacts', 'collection_not_found', $startedAt);
+
+            return McpErrorResponse::error($exception->getMessage(), 'collection_not_found');
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('search_artifacts', 'error', $startedAt);
@@ -115,7 +120,7 @@ final class SearchArtifactsTool extends Tool
             return McpErrorResponse::error('The artifact search service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
-        $response = Response::structured([
+        $payload = [
             'results' => array_map(fn (SearchResult $result): array => [
                 'id' => $result->id,
                 'title' => $result->title,
@@ -140,11 +145,15 @@ final class SearchArtifactsTool extends Tool
                 // Raw selected-passage reranker relevance, before ordering boosts.
                 'score' => $result->score,
             ], $results),
-        ]);
+        ];
+
+        if ($results === []) {
+            $payload['hint'] = 'No artifacts matched. Try fewer filters, a broader query, or list_collections / list_artifacts to confirm what is in this workspace.';
+        }
 
         app(McpTelemetry::class)->record('search_artifacts', 'success', $startedAt);
 
-        return $response;
+        return Response::structured($payload);
     }
 
     /**
@@ -159,7 +168,7 @@ final class SearchArtifactsTool extends Tool
             'repo' => $schema->string()->max(500)->description('Optional exact repository URL.')->nullable(),
             'agent' => $schema->string()->max(100)->description('Optional agent identity filter.')->nullable(),
             'since' => $schema->string()->description('Optional ISO-8601 date/time lower bound.')->nullable(),
-            'collection' => $schema->string()->max(100)->description('Optional collection name.')->nullable(),
+            'collection' => $schema->string()->max(100)->description('Optional collection name or numeric id. Unknown collections return collection_not_found (same as list_artifacts).')->nullable(),
             'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Optional type filter: report, table, document, mockup, slide_deck, dashboard or other.')->nullable(),
             'changed_since' => $schema->string()->description('Optional ISO-8601 time: only artifacts updated at or after it, to find sources that changed since you last read them.')->nullable(),
             'limit' => $schema->integer()->description('Maximum number of results, from 1 to 50.')->nullable(),

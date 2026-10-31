@@ -512,6 +512,20 @@ test('a_freshness_poll_without_the_known_header_is_a_404_for_a_revoked_artifact'
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness')->assertNotFound();
 });
 
+test('a_signed_in_member_gets_404_not_login_for_a_deleted_artifact', function () {
+    $team = viewerTeam('deleted-viewer-team', 'Deleted Viewer Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'team',
+        'revoked_at' => now()->toIso8601String(),
+    ]);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID);
+
+    $response->assertNotFound();
+    expect($response->headers->get('Location'))->toBeNull();
+});
+
 test('a_freshness_poll_with_the_known_header_reports_revoked_for_a_prior_viewer', function () {
     $team = viewerTeam('freshness-known-team', 'Freshness Known Team');
     $member = memberOfTeam($team, TeamRole::Member);

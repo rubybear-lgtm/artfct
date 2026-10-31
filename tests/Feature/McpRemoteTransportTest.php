@@ -5,6 +5,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Mcp\Support\ArtifactGuidance;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\AuditEvent;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
@@ -124,14 +125,22 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.tools.2.name', 'get_connection')
         ->assertJsonPath('result.tools.0.title', 'Publish artifact')
         ->assertJsonPath('result.tools.1.title', 'Search artifacts')
-        ->assertJsonPath('result.tools.15.name', 'set_avatar')
-        ->assertJsonMissingPath('result.tools.16')
+        ->assertJsonPath('result.tools.17.name', 'set_avatar')
+        ->assertJsonMissingPath('result.tools.18')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy')
         ->assertJsonMissingPath('result.nextCursor');
 
     expect(array_column($response->json('result.tools'), 'name'))
-        ->toContain('delete_artifact', 'read_artifact', 'get_guidance', 'resolve_artifact_comment', 'set_avatar');
+        ->toContain(
+            'delete_artifact',
+            'read_artifact',
+            'get_guidance',
+            'resolve_artifact_comment',
+            'remove_collection_artifact',
+            'delete_collection',
+            'set_avatar',
+        );
 });
 
 test('remote MCP negotiates supported protocol versions and rejects unsupported ones', function () {
@@ -484,7 +493,7 @@ test('remote MCP can permanently delete an artifact with the destructive scope',
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
-        'worker.test/v1/artifacts/artifact123' => Http::response('', 204),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response('', 204),
     ]);
 
     $response = $this->withToken($token)->postJson('/mcp', [
@@ -493,15 +502,15 @@ test('remote MCP can permanently delete an artifact with the destructive scope',
         'method' => 'tools/call',
         'params' => [
             'name' => 'delete_artifact',
-            'arguments' => ['id' => 'artifact123'],
+            'arguments' => ['id' => ARTIFACT_LINK_ID],
         ],
     ])->assertOk();
 
-    $response->assertJsonPath('result.structuredContent.id', 'artifact123')
+    $response->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
         ->assertJsonPath('result.structuredContent.deleted', true);
 
     Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-        && $request->url() === 'https://worker.test/v1/artifacts/artifact123');
+        && $request->url() === 'https://worker.test/v1/artifacts/'.ARTIFACT_LINK_ID);
 
     expect(McpActivity::query()
         ->where('team_id', $team->id)
@@ -691,8 +700,8 @@ test('remote usage returns customer-safe quota and render totals', function () {
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.organization', $team->slug)
         ->assertJsonPath('result.structuredContent.period.name', 'current')
-        ->assertJsonPath('result.structuredContent.period.starts_at', now()->startOfMonth()->toIso8601String())
-        ->assertJsonPath('result.structuredContent.period.resets_at', now()->startOfMonth()->addMonth()->toIso8601String())
+        ->assertJsonPath('result.structuredContent.period.starts_at', McpTimestamp::format(now()->startOfMonth()))
+        ->assertJsonPath('result.structuredContent.period.resets_at', McpTimestamp::format(now()->startOfMonth()->addMonth()))
         ->assertJsonPath('result.structuredContent.storage.used_bytes', 800)
         ->assertJsonPath('result.structuredContent.artifacts.used', 4)
         ->assertJsonPath('result.structuredContent.render_minutes.used', 12)
@@ -992,7 +1001,8 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
-        ->assertJsonPath('result.structuredContent.tier', 'secure')
+        ->assertJsonMissingPath('result.structuredContent.tier')
+        ->assertJsonPath('result.structuredContent.sharing', 'team')
         ->assertJsonPath('result.structuredContent.title', 'Q3 report')
         ->assertJsonPath('result.structuredContent.organization', $team->slug);
 
@@ -1197,7 +1207,8 @@ test('deploy_artifact hands a public artifact the one short link without a token
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('worker.test')
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('staging.artfct.dev')
         ->and($response->getContent())->not->toContain('token=')
-        ->and($response->json('result.structuredContent.tier'))->toBe('public');
+        ->and($response->json('result.structuredContent.sharing'))->toBe('public')
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 });
 
 test('get_artifact hands a secure artifact the apps own open route', function () {

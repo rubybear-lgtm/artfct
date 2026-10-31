@@ -5,9 +5,11 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Services\Billing\QuotaService;
 use App\Services\Billing\UsageContract;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -61,8 +63,12 @@ final class GetUsageTool extends Tool
             $team = McpContext::team();
             $currentUsage = $usage->currentUsage($team->slug);
             $quota = $quotaService->status($team);
-            $periodStart = $currentUsage['period_start'] ?? now()->startOfMonth()->toIso8601String();
-            $periodEnd = $currentUsage['period_end'] ?? now()->startOfMonth()->addMonth()->toIso8601String();
+            $periodStart = isset($currentUsage['period_start']) && is_string($currentUsage['period_start'])
+                ? McpTimestamp::format(Carbon::parse($currentUsage['period_start']))
+                : McpTimestamp::format(now()->startOfMonth());
+            $periodEnd = isset($currentUsage['period_end']) && is_string($currentUsage['period_end'])
+                ? McpTimestamp::format(Carbon::parse($currentUsage['period_end']))
+                : McpTimestamp::format(now()->startOfMonth()->addMonth());
             $response = Response::structured([
                 'organization' => $team->slug,
                 'period' => [
