@@ -13,31 +13,23 @@ uses(RefreshDatabase::class);
  * RUB-515 browser evidence: markdown renders as HTML (h1 + table) inside a
  * sandboxed viewer frame, and comment bodies with HTML are escaped in the UI.
  *
- * The HTML body matches `backend/src/markdown.rs::render_markdown_document`
- * for `# Hello` + a two-column table (locked by Worker unit tests). Serving
- * uses text/html; never application/octet-stream.
+ * The HTML body is `tests/Fixtures/rub515-markdown-rendered.html`, which
+ * `backend/src/markdown.rs::browser_fixture_matches_worker_renderer` asserts
+ * equals `render_markdown_document` of `rub515-markdown-source.md` (including
+ * the `text/markdown` → `text/html` serve path). Regenerating requires
+ * UPDATE_RUB515_FIXTURE=1 on that Rust test — not a hand-written stub.
  */
 const RUB515_BROWSER_ARTIFACT_ID = 'mdk123abc4567';
 
 test('a_markdown_document_renders_h1_and_table_inside_a_sandboxed_viewer_frame', function () {
-    $rendered = <<<'HTML'
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Markdown</title>
-</head>
-<body>
-<h1>Hello</h1>
-<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>
-</body>
-</html>
-HTML;
-
-    expect($rendered)->toContain('<h1>Hello</h1>')
+    $source = file_get_contents(base_path('tests/Fixtures/rub515-markdown-source.md'));
+    $rendered = file_get_contents(base_path('tests/Fixtures/rub515-markdown-rendered.html'));
+    expect($source)->toContain('# Hello')
+        ->and($rendered)->toContain('<h1>Hello</h1>')
         ->and($rendered)->toContain('<table>')
-        ->and($rendered)->not->toContain('application/octet-stream');
+        ->and($rendered)->toContain('<td>1</td>')
+        ->and($rendered)->not->toContain('application/octet-stream')
+        ->and($rendered)->toStartWith('<!doctype html>');
 
     Route::get('/__rub515-markdown', fn () => response($rendered, 200, [
         'Content-Type' => 'text/html; charset=utf-8',
@@ -56,7 +48,8 @@ HTML;
     $direct->assertOk()
         ->assertHeader('Content-Type', 'text/html; charset=utf-8')
         ->assertHeaderMissing('Content-Disposition');
-    expect($direct->headers->get('Content-Type'))->not->toContain('octet-stream');
+    expect($direct->headers->get('Content-Type'))->not->toContain('octet-stream')
+        ->and($direct->getContent())->toBe($rendered);
 
     visit('/__rub515-markdown')
         ->assertNoJavaScriptErrors()
