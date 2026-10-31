@@ -29,10 +29,12 @@ export function createRailwayGraphql(options) {
         });
 
         const payload = await response.json();
+
         if (!response.ok || payload.errors?.length) {
             const message = payload.errors
                 ? JSON.stringify(payload.errors)
                 : `HTTP ${response.status}`;
+
             throw new Error(`Railway GraphQL error: ${message}`);
         }
 

@@ -13,10 +13,13 @@ test('smoke accepts health 200 and matching tools/list from code catalog', async
         expectedTools: expected,
         fetchImpl: async (url, init) => {
             calls.push({ url: String(url), init });
+
             if (String(url).endsWith('/up')) {
                 return new Response('ok', { status: 200 });
             }
+
             const body = JSON.parse(String(init?.body ?? '{}'));
+
             if (body.method === 'initialize') {
                 return new Response(
                     JSON.stringify({
@@ -33,6 +36,7 @@ test('smoke accepts health 200 and matching tools/list from code catalog', async
                     },
                 );
             }
+
             return new Response(
                 JSON.stringify({
                     jsonrpc: '2.0',
@@ -54,9 +58,11 @@ test('smoke accepts health 200 and matching tools/list from code catalog', async
     const authHeaders = calls
         .map((call) => {
             const headers = call.init?.headers;
+
             if (!headers || typeof headers !== 'object') {
                 return '';
             }
+
             return String(
                 /** @type {Record<string, string>} */ (headers).Authorization ??
                     '',
@@ -75,7 +81,9 @@ test('smoke rejects health non-200 before calling MCP', async () => {
             if (String(url).endsWith('/up')) {
                 return new Response('nope', { status: 503 });
             }
+
             mcpCalls += 1;
+
             return new Response('{}', { status: 200 });
         },
     });

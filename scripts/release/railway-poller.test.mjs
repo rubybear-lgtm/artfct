@@ -41,6 +41,7 @@ test('A6: succeeds only when web, queue and scheduler SUCCESS for the release co
                     { id: 'svc-scheduler', name: 'scheduler' },
                 ]);
             }
+
             if (query.includes('deployments(')) {
                 const serviceId = variables.input.serviceId;
                 const metaSha =
@@ -49,6 +50,7 @@ test('A6: succeeds only when web, queue and scheduler SUCCESS for the release co
                     serviceId === 'svc-scheduler'
                         ? releaseSha
                         : oldSha;
+
                 return {
                     deployments: {
                         edges: [
@@ -64,6 +66,7 @@ test('A6: succeeds only when web, queue and scheduler SUCCESS for the release co
                     },
                 };
             }
+
             throw new Error(`unexpected query: ${query}`);
         },
     });
@@ -87,9 +90,11 @@ test('A6: an older-commit SUCCESS deploy does not count', async () => {
         sleep: async () => {},
         now: (() => {
             let t = 0;
+
             return () => {
                 const current = t;
                 t += 20;
+
                 return current;
             };
         })(),
@@ -101,6 +106,7 @@ test('A6: an older-commit SUCCESS deploy does not count', async () => {
                     { id: 'svc-scheduler', name: 'scheduler' },
                 ]);
             }
+
             return {
                 deployments: {
                     edges: [
@@ -124,24 +130,27 @@ test('A6: an older-commit SUCCESS deploy does not count', async () => {
 });
 
 test('A6: FAILED or CRASHED fails and names the service', async () => {
-    const result = await waitForProductionDeployments({
-        commitSha: releaseSha,
-        projectId,
-        environmentId,
-        pollIntervalMs: 1,
-        timeoutMs: 50,
-        sleep: async () => {},
-        now: () => 0,
-        graphql: async (query, variables) => {
-            if (query.includes('project(')) {
-                return projectPayload([
-                    { id: 'svc-web', name: 'web' },
-                    { id: 'svc-queue', name: 'queue' },
-                    { id: 'svc-scheduler', name: 'scheduler' },
-                ]);
-            }
-            const serviceId = variables.input.serviceId;
-            const status = serviceId === 'svc-queue' ? 'FAILED' : 'DEPLOYING';
+    for (const terminal of ['FAILED', 'CRASHED']) {
+        const result = await waitForProductionDeployments({
+            commitSha: releaseSha,
+            projectId,
+            environmentId,
+            pollIntervalMs: 1,
+            timeoutMs: 50,
+            sleep: async () => {},
+            now: () => 0,
+            graphql: async (query, variables) => {
+                if (query.includes('project(')) {
+                    return projectPayload([
+                        { id: 'svc-web', name: 'web' },
+                        { id: 'svc-queue', name: 'queue' },
+                        { id: 'svc-scheduler', name: 'scheduler' },
+                    ]);
+                }
+
+                const serviceId = variables.input.serviceId;
+                const status = serviceId === 'svc-queue' ? terminal : 'DEPLOYING';
+
             return {
                 deployments: {
                     edges: [
@@ -159,9 +168,10 @@ test('A6: FAILED or CRASHED fails and names the service', async () => {
         },
     });
 
-    assert.equal(result.ok, false);
-    assert.equal(result.code, 'deploy_failed');
-    assert.equal(result.service, 'queue');
-    assert.match(result.message, /queue/i);
-    assert.match(result.message, /FAILED|CRASHED/i);
+        assert.equal(result.ok, false);
+        assert.equal(result.code, 'deploy_failed');
+        assert.equal(result.service, 'queue');
+        assert.match(result.message, /queue/i);
+        assert.match(result.message, new RegExp(terminal));
+    }
 });

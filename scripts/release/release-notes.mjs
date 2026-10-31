@@ -12,6 +12,7 @@ export function formatReleaseTag(date) {
     const day = date.getUTCDate().toString().padStart(2, '0');
     const hour = date.getUTCHours().toString().padStart(2, '0');
     const minute = date.getUTCMinutes().toString().padStart(2, '0');
+
     return `release-${year}${month}${day}-${hour}${minute}`;
 }
 

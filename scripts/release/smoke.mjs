@@ -28,6 +28,7 @@ export async function runProductionSmoke(options) {
     }
 
     const health = await fetchImpl(healthUrl, { method: 'GET', redirect: 'manual' });
+
     if (health.status !== 200) {
         return {
             ok: false,
@@ -42,6 +43,7 @@ export async function runProductionSmoke(options) {
         capabilities: {},
         clientInfo: { name: 'artfct-release-smoke', version: '1.0.0' },
     });
+
     if (!initialize.ok) {
         return initialize;
     }
@@ -55,6 +57,7 @@ export async function runProductionSmoke(options) {
         'tools/list',
         {},
     );
+
     if (!toolsList.ok) {
         return toolsList;
     }
@@ -101,6 +104,7 @@ async function mcpRpc(fetchImpl, mcpUrl, token, sessionId, method, params) {
         'Content-Type': 'application/json',
         'MCP-Protocol-Version': '2025-03-26',
     };
+
     if (sessionId) {
         headers['Mcp-Session-Id'] = sessionId;
     }
@@ -130,6 +134,7 @@ async function mcpRpc(fetchImpl, mcpUrl, token, sessionId, method, params) {
         sessionId;
 
     const payload = await readJsonRpc(response);
+
     if (payload.error) {
         return {
             ok: false,
@@ -158,6 +163,7 @@ async function readJsonRpc(response) {
             .filter((line) => line.startsWith('data:'))
             .map((line) => line.slice(5).trim())
             .filter(Boolean);
+
         for (const line of dataLines.reverse()) {
             try {
                 return JSON.parse(line);
@@ -165,6 +171,7 @@ async function readJsonRpc(response) {
                 // keep scanning
             }
         }
+
         throw new Error('No JSON-RPC payload in SSE response');
     }
 

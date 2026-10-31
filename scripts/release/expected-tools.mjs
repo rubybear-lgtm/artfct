@@ -20,6 +20,7 @@ export function readExpectedMcpToolNames(
     const toolsBlock = source.match(
         /protected\s+array\s+\$tools\s*=\s*\[([\s\S]*?)\];/,
     );
+
     if (!toolsBlock) {
         throw new Error(`Could not find $tools array in ${serverPath}`);
     }
@@ -27,19 +28,23 @@ export function readExpectedMcpToolNames(
     const classNames = [...toolsBlock[1].matchAll(/([A-Za-z0-9_]+)::class/g)].map(
         (match) => match[1],
     );
+
     if (classNames.length === 0) {
         throw new Error(`No tool classes found in ${serverPath}`);
     }
 
     /** @type {string[]} */
     const names = [];
+
     for (const className of classNames) {
         const toolPath = resolve(root, `app/Mcp/Tools/${className}.php`);
         const toolSource = readFileSync(toolPath, 'utf8');
         const named = toolSource.match(/#\[Name\(\s*'([^']+)'\s*\)\]/);
+
         if (!named) {
             throw new Error(`Missing #[Name('…')] on ${toolPath}`);
         }
+
         names.push(named[1]);
     }
 

@@ -4,6 +4,45 @@
  */
 
 /**
+ * @param {string} message
+ * @param {string} repo
+ * @returns {Array<{ number: number, title: string, url: string }>}
+ */
+export function prsFromCommitMessage(message, repo) {
+    /** @type {Array<{ number: number, title: string, url: string }>} */
+    const found = [];
+    const mergeMatch = message.match(/Merge pull request #(\d+)/);
+
+    if (mergeMatch) {
+        const number = Number(mergeMatch[1]);
+        const titleLine = message.split('\n').slice(1).join(' ').trim();
+
+        found.push({
+            number,
+            title: titleLine || `PR #${number}`,
+            url: `https://github.com/${repo}/pull/${number}`,
+        });
+    }
+
+    const squashMatch = message.match(/\(#(\d+)\)\s*$/m);
+
+    if (squashMatch) {
+        const number = Number(squashMatch[1]);
+        const title = message
+            .split('\n')[0]
+            .replace(/\s*\(#\d+\)\s*$/, '');
+
+        found.push({
+            number,
+            title,
+            url: `https://github.com/${repo}/pull/${number}`,
+        });
+    }
+
+    return found;
+}
+
+/**
  * @param {{
  *   token: string,
  *   repo: string,
@@ -31,6 +70,7 @@ export function createGithubClient(options) {
 
         if (!response.ok) {
             const body = await response.text();
+
             throw new Error(
                 `GitHub API ${init.method ?? 'GET'} ${path} failed: HTTP ${response.status} ${body.slice(0, 500)}`,
             );
@@ -43,31 +83,53 @@ export function createGithubClient(options) {
         return response.json();
     }
 
+    /**
+     * @param {Array<{ commit?: { message?: string } }>} commits
+     * @param {Map<number, { number: number, title: string, url: string }>} prs
+     */
+    function collectPrs(commits, prs) {
+        for (const commit of commits) {
+            const message = commit.commit?.message ?? '';
+
+            for (const pr of prsFromCommitMessage(message, options.repo)) {
+                prs.set(pr.number, pr);
+            }
+        }
+    }
+
     return {
         /**
          * @param {string} sha
          */
         async listCheckRuns(sha) {
-            /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string }>} */
+            /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string, startedAt?: string | null, completedAt?: string | null, id?: number }>} */
             const runs = [];
             let page = 1;
+
             while (true) {
                 const payload = await request(
                     `/commits/${encodeURIComponent(sha)}/check-runs?per_page=100&page=${page}`,
                 );
+
                 for (const run of payload.check_runs ?? []) {
                     runs.push({
                         name: run.name,
                         status: run.status,
                         conclusion: run.conclusion,
                         appSlug: run.app?.slug,
+                        startedAt: run.started_at ?? null,
+                        completedAt: run.completed_at ?? null,
+                        id: run.id,
                     });
                 }
+
                 if ((payload.check_runs ?? []).length < 100) {
                     break;
                 }
+
                 page += 1;
             }
+
             return runs;
         },
 
@@ -78,9 +140,11 @@ export function createGithubClient(options) {
             const payload = await request(
                 `/commits/${encodeURIComponent(sha)}/status`,
             );
+
             return (payload.statuses ?? []).map((status) => ({
                 context: status.context,
                 state: status.state,
+                updatedAt: status.updated_at ?? null,
             }));
         },
 
@@ -88,39 +152,35 @@ export function createGithubClient(options) {
          * @param {{ fromRef: string | null, toSha: string }} range
          */
         async listMergedPrs(range) {
-            const comparePath = range.fromRef
-                ? `/compare/${encodeURIComponent(range.fromRef)}...${encodeURIComponent(range.toSha)}`
-                : null;
-
             /** @type {Map<number, { number: number, title: string, url: string }>} */
             const prs = new Map();
 
-            if (comparePath) {
-                const compare = await request(comparePath);
-                for (const commit of compare.commits ?? []) {
-                    const message = commit.commit?.message ?? '';
-                    const mergeMatch = message.match(
-                        /Merge pull request #(\d+)/,
+            if (range.fromRef) {
+                const compare = await request(
+                    `/compare/${encodeURIComponent(range.fromRef)}...${encodeURIComponent(range.toSha)}`,
+                );
+
+                collectPrs(compare.commits ?? [], prs);
+            } else {
+                // First annotated release: walk recent commits on the tip.
+                let page = 1;
+
+                while (page <= 5) {
+                    const commits = await request(
+                        `/commits?sha=${encodeURIComponent(range.toSha)}&per_page=100&page=${page}`,
                     );
-                    if (mergeMatch) {
-                        const number = Number(mergeMatch[1]);
-                        const titleLine = message.split('\n').slice(1).join(' ').trim();
-                        prs.set(number, {
-                            number,
-                            title: titleLine || `PR #${number}`,
-                            url: `https://github.com/${options.repo}/pull/${number}`,
-                        });
+
+                    if (!Array.isArray(commits) || commits.length === 0) {
+                        break;
                     }
-                    const squashMatch = message.match(/\(#(\d+)\)\s*$/m);
-                    if (squashMatch) {
-                        const number = Number(squashMatch[1]);
-                        const title = message.split('\n')[0].replace(/\s*\(#\d+\)\s*$/, '');
-                        prs.set(number, {
-                            number,
-                            title,
-                            url: `https://github.com/${options.repo}/pull/${number}`,
-                        });
+
+                    collectPrs(commits, prs);
+
+                    if (commits.length < 100) {
+                        break;
                     }
+
+                    page += 1;
                 }
             }
 
@@ -156,5 +216,6 @@ export function maskSecret(value, write = console.log) {
     if (!value) {
         return;
     }
+
     write(`::add-mask::${value}`);
 }

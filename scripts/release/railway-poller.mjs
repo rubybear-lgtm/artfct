@@ -14,7 +14,9 @@ export function commitShaFromMeta(meta) {
     if (!meta || typeof meta !== 'object') {
         return null;
     }
+
     const record = /** @type {Record<string, unknown>} */ (meta);
+
     for (const key of [
         'commitHash',
         'commitSha',
@@ -23,10 +25,12 @@ export function commitShaFromMeta(meta) {
         'SHA',
     ]) {
         const value = record[key];
+
         if (typeof value === 'string' && value.length > 0) {
             return value;
         }
     }
+
     return null;
 }
 
@@ -38,6 +42,7 @@ function shaMatches(expected, actual) {
     if (!actual) {
         return false;
     }
+
     return (
         actual === expected ||
         expected.startsWith(actual) ||
@@ -88,8 +93,10 @@ export async function waitForProductionDeployments(options) {
     );
     /** @type {Map<string, string>} */
     const idByName = new Map();
+
     for (const name of serviceNames) {
         const match = services.find((service) => service.name === name);
+
         if (!match) {
             return {
                 ok: false,
@@ -98,6 +105,7 @@ export async function waitForProductionDeployments(options) {
                 message: `Railway production service "${name}" was not found in project ${options.projectId}.`,
             };
         }
+
         idByName.set(name, match.id);
     }
 
@@ -169,6 +177,7 @@ export async function waitForProductionDeployments(options) {
 
         const allSuccess = serviceNames.every((name) => {
             const row = snapshot.find((entry) => entry.name === name);
+
             return row?.status === 'SUCCESS' && shaMatches(options.commitSha, row.commitSha ?? null);
         });
 
@@ -188,6 +197,7 @@ export async function waitForProductionDeployments(options) {
             const waiting = snapshot
                 .filter((row) => row.status !== 'SUCCESS')
                 .map((row) => row.name);
+
             return {
                 ok: false,
                 code: 'deploy_timeout',

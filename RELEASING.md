@@ -21,9 +21,13 @@ What the Action does:
 1. Confirms the commit is on `develop`.
 2. Confirms `main` is an ancestor of that commit (fast-forward only; never a
    force push).
-3. Waits for required GitHub Actions checks on that exact commit (including
-   Pest browser and the MCP e2e job). Pending checks time out as failure.
-   Railway preview/deploy statuses are ignored.
+3. Waits for required GitHub Actions checks on that exact commit. Pest
+   (browser), the MCP e2e job, and `application` must be present; browser and
+   `application` must be `success`, and MCP e2e must be `success` or
+   `skipped` (path filter). Other non-Railway checks on the commit must also
+   succeed. Pending checks time out as failure. Railway preview/deploy
+   statuses (`artfct - …`) are ignored. When GitHub retried a check, only the
+   latest attempt per name counts.
 4. Unless `dry_run`: fast-forwards `main` (`git push origin <sha>:main`),
    creates an annotated tag `release-YYYYMMDD-HHMM` (UTC), and opens a GitHub
    Release whose notes list PRs since the previous `release-*` tag.

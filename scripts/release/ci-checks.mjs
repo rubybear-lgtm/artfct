@@ -4,16 +4,22 @@
 
 const RAILWAY_CONTEXT = /^artfct\s*-/i;
 const RAILWAY_NAME = /railway/i;
-const IGNORED_APPS = new Set([
-    'railway',
-    'railway-app',
-    'cloudflare-workers-and-pages',
-    'gitguardian',
-]);
+const RAILWAY_APPS = new Set(['railway', 'railway-app']);
+
+/**
+ * Check names that must appear and conclude successfully (or skipped for the
+ * path-filtered MCP e2e job) before a release may proceed.
+ */
+export const REQUIRED_CHECK_NAMES = [
+    'Pest (browser)',
+    'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+    'application',
+];
 
 /**
  * Railway deploy statuses / PR preview checks are ignored so a production
- * release is not blocked by (or waiting on) Railway itself.
+ * release is not blocked by (or waiting on) Railway itself. Other apps
+ * (Workers Builds, GitGuardian, …) are still evaluated when present.
  *
  * @param {{ name?: string, context?: string, appSlug?: string }} check
  * @returns {boolean}
@@ -23,17 +29,74 @@ export function isIgnoredCheck(check) {
     const context = check.context ?? '';
     const appSlug = (check.appSlug ?? '').toLowerCase();
 
-    if (appSlug && IGNORED_APPS.has(appSlug)) {
+    if (appSlug && RAILWAY_APPS.has(appSlug)) {
         return true;
     }
+
     if (RAILWAY_CONTEXT.test(context) || RAILWAY_CONTEXT.test(name)) {
         return true;
     }
+
     if (RAILWAY_NAME.test(name) || RAILWAY_NAME.test(context)) {
         return true;
     }
 
     return false;
+}
+
+/**
+ * Keep the newest check run per name (GitHub returns every attempt).
+ *
+ * @template {{ name: string, startedAt?: string | null, completedAt?: string | null, id?: number | string }} T
+ * @param {T[]} checks
+ * @returns {T[]}
+ */
+export function latestChecksByName(checks) {
+    /** @type {Map<string, T>} */
+    const latest = new Map();
+
+    for (const check of checks) {
+        const previous = latest.get(check.name);
+
+        if (!previous) {
+            latest.set(check.name, check);
+            continue;
+        }
+
+        const previousTs = timestampForCheck(previous);
+        const nextTs = timestampForCheck(check);
+
+        if (nextTs >= previousTs) {
+            latest.set(check.name, check);
+        }
+    }
+
+    return [...latest.values()];
+}
+
+/**
+ * @param {{ startedAt?: string | null, completedAt?: string | null, id?: number | string }} check
+ */
+function timestampForCheck(check) {
+    const raw = check.completedAt || check.startedAt;
+
+    if (raw) {
+        const parsed = Date.parse(raw);
+
+        if (!Number.isNaN(parsed)) {
+            return parsed;
+        }
+    }
+
+    if (typeof check.id === 'number') {
+        return check.id;
+    }
+
+    if (typeof check.id === 'string' && /^\d+$/.test(check.id)) {
+        return Number(check.id);
+    }
+
+    return 0;
 }
 
 /**
@@ -63,25 +126,39 @@ function isPending(check) {
  * }} check
  */
 function isAcceptable(check) {
-    return (
-        check.conclusion === 'success' ||
-        check.conclusion === 'skipped' ||
-        check.conclusion === 'neutral'
-    );
+    if (check.conclusion === 'success') {
+        return true;
+    }
+
+    // Path-filtered MCP e2e is skipped on purpose; treat that as acceptable.
+    if (
+        check.name ===
+            'MCP local end-to-end (Postgres + Worker + hosted OAuth)' &&
+        check.conclusion === 'skipped'
+    ) {
+        return true;
+    }
+
+    return false;
 }
 
 /**
  * @param {{
  *   sha: string,
+ *   requiredCheckNames?: string[],
  *   listCheckRuns: (sha: string) => Promise<Array<{
  *     name: string,
  *     status: string,
  *     conclusion: string | null,
  *     appSlug?: string,
+ *     startedAt?: string | null,
+ *     completedAt?: string | null,
+ *     id?: number | string,
  *   }>>,
  *   listCommitStatuses?: (sha: string) => Promise<Array<{
  *     context: string,
  *     state: string,
+ *     updatedAt?: string | null,
  *   }>>,
  *   sleep?: (ms: number) => Promise<void>,
  *   now?: () => number,
@@ -90,15 +167,19 @@ function isAcceptable(check) {
  * }} options
  */
 export async function assertRequiredChecksSucceeded(options) {
-    const sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const sleep =
+        options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     const now = options.now ?? Date.now;
     const pollIntervalMs = options.pollIntervalMs ?? 15_000;
     const timeoutMs = options.timeoutMs ?? 30 * 60_000;
+    const requiredNames = options.requiredCheckNames ?? REQUIRED_CHECK_NAMES;
     const started = now();
 
     while (true) {
-        const checkRuns = (await options.listCheckRuns(options.sha)).filter(
-            (check) => !isIgnoredCheck(check),
+        const checkRuns = latestChecksByName(
+            (await options.listCheckRuns(options.sha)).filter(
+                (check) => !isIgnoredCheck(check),
+            ),
         );
         const statuses = options.listCommitStatuses
             ? (await options.listCommitStatuses(options.sha)).filter(
@@ -110,7 +191,7 @@ export async function assertRequiredChecksSucceeded(options) {
               )
             : [];
 
-        /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string }>} */
+        /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string, startedAt?: string | null, completedAt?: string | null, id?: number | string }>} */
         const normalizedStatuses = statuses.map((status) => ({
             name: status.context,
             status:
@@ -126,9 +207,10 @@ export async function assertRequiredChecksSucceeded(options) {
                         ? null
                         : status.state,
             appSlug: undefined,
+            completedAt: status.updatedAt ?? null,
         }));
 
-        const all = [...checkRuns, ...normalizedStatuses];
+        const all = latestChecksByName([...checkRuns, ...normalizedStatuses]);
         const pending = all.filter(isPending).map((c) => c.name);
         const failed = all
             .filter((c) => !isPending(c) && !isAcceptable(c))
@@ -136,6 +218,7 @@ export async function assertRequiredChecksSucceeded(options) {
 
         if (failed.length > 0) {
             const uniqueFailed = [...new Set(failed)];
+
             return {
                 ok: false,
                 code: 'checks_failed',
@@ -145,6 +228,21 @@ export async function assertRequiredChecksSucceeded(options) {
         }
 
         if (pending.length === 0) {
+            const present = new Set(all.map((c) => c.name));
+            const missing = requiredNames.filter((name) => !present.has(name));
+
+            if (all.length === 0 || missing.length > 0) {
+                return {
+                    ok: false,
+                    code: 'checks_missing',
+                    failed: missing.length > 0 ? missing : requiredNames,
+                    message:
+                        all.length === 0
+                            ? `No required CI checks found on ${options.sha}. Expected at least: ${requiredNames.join(', ')}.`
+                            : `Required CI check(s) missing on ${options.sha}: ${missing.join(', ')}.`,
+                };
+            }
+
             return {
                 ok: true,
                 checks: all.map((c) => ({
@@ -156,6 +254,7 @@ export async function assertRequiredChecksSucceeded(options) {
 
         if (now() - started >= timeoutMs) {
             const uniquePending = [...new Set(pending)];
+
             return {
                 ok: false,
                 code: 'checks_pending_timeout',

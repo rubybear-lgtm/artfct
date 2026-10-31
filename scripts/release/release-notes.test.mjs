@@ -29,6 +29,7 @@ test('A7: release notes list PRs since the previous tag from fixture history', (
         listMergedPrs: ({ fromRef, toSha }) => {
             assert.equal(fromRef, 'release-20261030-1200');
             assert.equal(toSha, 'abcdef');
+
             return prs;
         },
     });
@@ -49,6 +50,7 @@ test('A7: first release (no previous tag) still lists PRs and uses the UTC tag',
         listMergedPrs: ({ fromRef, toSha }) => {
             assert.equal(fromRef, null);
             assert.equal(toSha, 'abcdef');
+
             return [
                 {
                     number: 1,

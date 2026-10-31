@@ -13,6 +13,7 @@ function gitStub(map) {
     return (args) => {
         const key = args.join(' ');
         const hit = map[key];
+
         if (!hit) {
             throw new Error(`unexpected git args: ${key}`);
         }
@@ -50,12 +51,15 @@ test('A2: rejects a non-fast-forward with a fix-it message and does not push', (
     const calls = [];
     const runGit = (args) => {
         calls.push(args.join(' '));
+
         if (args.join(' ') === 'merge-base --is-ancestor refs/remotes/origin/main abc123') {
             return { status: 1, stdout: '', stderr: '' };
         }
+
         if (args.join(' ') === 'rev-parse --verify abc123^{commit}') {
             return { status: 0, stdout: 'abc123\n', stderr: '' };
         }
+
         throw new Error(`unexpected git args: ${args.join(' ')}`);
     };
 
