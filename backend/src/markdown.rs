@@ -126,10 +126,7 @@ pub(crate) fn maybe_render_markdown_response(
         return (content_type.to_string(), bytes);
     };
     let html = render_markdown_document(markdown);
-    (
-        "text/html; charset=utf-8".to_string(),
-        html.into_bytes(),
-    )
+    ("text/html; charset=utf-8".to_string(), html.into_bytes())
 }
 
 #[cfg(test)]

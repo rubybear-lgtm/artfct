@@ -1556,10 +1556,7 @@ mod tests {
             normalized_content_type("text/markdown; charset=utf-8"),
             "text/markdown; charset=utf-8"
         );
-        assert_eq!(
-            normalized_content_type("text/markdown"),
-            "text/markdown"
-        );
+        assert_eq!(normalized_content_type("text/markdown"), "text/markdown");
     }
 
     #[test]
@@ -2452,7 +2449,7 @@ mod tests {
         let script_src = csp_directive(csp, "script-src");
         assert_eq!(script_src, vec!["'self'"]);
         assert!(!script_src.iter().any(|part| part.contains("unsafe-inline")));
-        assert!(!script_src.iter().any(|part| *part == "'unsafe-eval'"));
+        assert!(!script_src.contains(&"'unsafe-eval'"));
     }
 
     #[test]
@@ -2463,10 +2460,7 @@ mod tests {
             None
         );
         assert_eq!(
-            parse_isolated_hostname(
-                "acme--abcdefghijklm--prod.artfct.dev",
-                "--prod.artfct.dev"
-            ),
+            parse_isolated_hostname("acme--abcdefghijklm--prod.artfct.dev", "--prod.artfct.dev"),
             Some(("acme".to_string(), "abcdefghijklm".to_string()))
         );
     }

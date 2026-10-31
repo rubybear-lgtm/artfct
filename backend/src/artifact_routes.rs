@@ -1079,12 +1079,8 @@ pub(crate) async fn resolve_permanent_artifact(
         return expired_response();
     };
     let bytes = body.bytes().await?;
-    let (serve_content_type, serve_bytes) = maybe_render_markdown_response(
-        &row.content_type,
-        &row.entrypoint,
-        requested_path,
-        bytes,
-    );
+    let (serve_content_type, serve_bytes) =
+        maybe_render_markdown_response(&row.content_type, &row.entrypoint, requested_path, bytes);
     let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest).unwrap_or_else(|_| {
         PermanentManifest {
             entrypoint: row.entrypoint.clone(),
