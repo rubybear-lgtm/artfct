@@ -20,7 +20,11 @@ final class SearchSnippet
             $text = ltrim(mb_substr($text, $repeatedTitle + mb_strlen($title)));
         }
         if (mb_strlen($text) <= $maxLength) {
-            return $text;
+            return self::ensureSubstantial(
+                preg_match('/\p{L}|\p{N}/u', $text) === 1 ? $text : '',
+                $text,
+                $maxLength,
+            );
         }
         $terms = self::terms($query);
         preg_match_all('/[.!?]\s+/u', $text, $boundaries, PREG_OFFSET_CAPTURE);
@@ -60,7 +64,30 @@ final class SearchSnippet
             $excerpt = rtrim($excerpt).'…';
         }
 
-        return ($bestStart > 0 ? '… ' : '').$excerpt;
+        $snippet = ($bestStart > 0 ? '… ' : '').$excerpt;
+
+        return self::ensureSubstantial($snippet, $text, $maxLength);
+    }
+
+    /**
+     * Drop punctuation-only excerpts and stretch short ones to at least 40
+     * characters of real text when the source passage is long enough (RUB-515).
+     */
+    private static function ensureSubstantial(string $snippet, string $text, int $maxLength): string
+    {
+        $hasRealText = static fn (string $value): bool => preg_match('/\p{L}|\p{N}/u', $value) === 1;
+        $letterCount = static fn (string $value): int => mb_strlen((string) preg_replace('/[^\p{L}\p{N}]+/u', '', $value));
+
+        if (! $hasRealText($snippet) || ($letterCount($snippet) < 40 && $letterCount($text) >= 40)) {
+            $fallback = mb_substr($text, 0, max($maxLength, 80));
+            if (mb_strlen($text) > mb_strlen($fallback)) {
+                $fallback = rtrim(preg_replace('/\s+\S*$/u', '', $fallback) ?? $fallback).'…';
+            }
+
+            return $hasRealText($fallback) ? $fallback : '';
+        }
+
+        return $snippet;
     }
 
     /** @return list<string> */

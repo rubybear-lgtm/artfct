@@ -128,7 +128,7 @@ test('search_artifacts filters by type and changed_since and returns version and
     expect(array_column($byType, 'id'))->toBe(['new-table'])
         ->and($byType[0]['artifact_type'])->toBe('table')
         ->and($byType[0]['version'])->toBe(2)
-        ->and($byType[0]['updated_at'])->toBe('2026-10-10T00:00:00+00:00');
+        ->and($byType[0]['updated_at'])->toBe('2026-10-10T00:00:00Z');
 
     $changed = callTypedTool($token, 'search_artifacts', ['query' => 'quarterly revenue overview', 'changed_since' => '2026-10-01T00:00:00Z'])->assertOk()->json('result.structuredContent.results');
     expect(array_column($changed, 'id'))->toBe(['new-table']);

@@ -18,6 +18,7 @@ uuid = { version = "1", features = ["v4", "js"] }
 worker = { version = "0.8", features = ["d1"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
 getrandom = { version = "0.2", features = ["js"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

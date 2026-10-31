@@ -6,6 +6,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Collections\CollectionDirectory;
+use App\Services\Collections\InvalidCollectionCursorException;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
@@ -20,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. Returns bounded metadata and an opaque cursor, never the collection contents.')]
+#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. `artifact_count` counts only artifacts that still exist (deleted artifacts are excluded, including stale membership rows). Returns bounded metadata and an opaque cursor, never the collection contents.')]
 #[Name('list_collections')]
 #[Title('List collections')]
 #[IsReadOnly]
@@ -63,6 +64,10 @@ final class ListCollectionsTool extends Tool
                 $validated['cursor'] ?? null,
                 (int) ($validated['limit'] ?? 20),
             );
+        } catch (InvalidCollectionCursorException $exception) {
+            app(McpTelemetry::class)->record('list_collections', 'invalid_cursor', $startedAt);
+
+            return McpErrorResponse::error($exception->getMessage(), 'invalid_cursor');
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('list_collections', 'error', $startedAt);

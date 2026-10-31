@@ -18,6 +18,7 @@ mod artifact_routes;
 mod auth;
 mod ephemeral_routes;
 mod governance_routes;
+mod markdown;
 mod org_admin;
 mod preview;
 mod sharing;
@@ -74,8 +75,8 @@ use org_admin::{
 };
 use sharing::{EditAccess, Sharing};
 use validation::{
-    clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path, missing_manifest_files,
-    upload_expired, uploaded_file_error, validate_permanent_manifest,
+    clipped_text, coalesce_clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path,
+    missing_manifest_files, upload_expired, uploaded_file_error, validate_permanent_manifest,
 };
 use version_routes::{get_version, parse_version_path, post_version};
 
@@ -1401,6 +1402,33 @@ mod tests {
     }
 
     #[test]
+    fn coalesce_clipped_text_keeps_previous_when_request_omits_field() {
+        // Mirrors version create: omitted title/description must not wipe the
+        // live artifact row (RUB-515 DoD 3).
+        assert_eq!(
+            coalesce_clipped_text(None, 200, Some("Kept title")),
+            Some("Kept title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                Some(&serde_json::json!("   ")),
+                1000,
+                Some("Kept description")
+            ),
+            Some("Kept description".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                Some(&serde_json::json!("New title")),
+                200,
+                Some("Kept title")
+            ),
+            Some("New title".to_string())
+        );
+        assert_eq!(coalesce_clipped_text(None, 200, None), None);
+    }
+
+    #[test]
     fn permanent_mode_requires_auth() {
         assert!(!authorization_matches(None, Some("Bearer token")));
         assert!(!authorization_matches(Some("token"), None));
@@ -1550,6 +1578,15 @@ mod tests {
     }
 
     #[test]
+    fn markdown_content_type_is_allowed() {
+        assert_eq!(
+            normalized_content_type("text/markdown; charset=utf-8"),
+            "text/markdown; charset=utf-8"
+        );
+        assert_eq!(normalized_content_type("text/markdown"), "text/markdown");
+    }
+
+    #[test]
     fn unknown_content_type_served_with_nosniff() {
         assert_eq!(
             normalized_content_type("application/x-private"),
@@ -1691,6 +1728,9 @@ mod tests {
                 current_version: 2,
                 version_count: 2,
                 updated_at: "2026-09-03T00:00:00Z".to_string(),
+                agent: Some("cursor".to_string()),
+                repo_url: None,
+                commit_sha: None,
             },
             &viewer,
         );
@@ -2401,12 +2441,10 @@ mod tests {
 
     #[test]
     fn free_tier_permanent_artifact_keeps_preview_csp() {
-        // A non-isolated /p/{id} request — free-tier and legacy shared-origin
-        // behavior — must keep the exact pre-spec-05 CSP, even for a
-        // manifest that would derive a tighter isolated CSP (e.g. it
-        // declares no external_origins, which alone would yield a
-        // restrictive `default-src 'self'`). Isolation opts artifacts in;
-        // it must never silently opt an existing one in by omission.
+        // Shared-origin artfct.dev/p/{id} (not an artifact host) still uses
+        // the pre-spec-05 preview CSP. The legacy `<id>--prod` host is closed
+        // separately in resolve_permanent_artifact (RUB-515) and never reaches
+        // this header path with served content.
         let manifest = permanent_manifest(vec![], false);
         let headers = permanent_file_response_headers("text/html", &manifest, false, None);
         let csp = headers
@@ -2416,6 +2454,109 @@ mod tests {
             .expect("Content-Security-Policy header present");
         assert_eq!(csp, PREVIEW_CONTENT_SECURITY_POLICY);
         assert_ne!(csp, isolated_content_security_policy(&manifest));
+    }
+
+    #[test]
+    fn isolated_host_csp_has_strict_script_src_and_frame_ancestors() {
+        let manifest = permanent_manifest(vec![], false);
+        let headers = permanent_file_response_headers(
+            "text/html",
+            &manifest,
+            true,
+            Some("https://artfct.dev"),
+        );
+        let csp = headers
+            .iter()
+            .find(|(name, _)| *name == "Content-Security-Policy")
+            .map(|(_, value)| value.as_str())
+            .expect("Content-Security-Policy header present");
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("frame-ancestors https://artfct.dev"));
+        // style-src may keep 'unsafe-inline' for authored CSS; script-src must not.
+        let script_src = csp_directive(csp, "script-src");
+        assert_eq!(script_src, vec!["'self'"]);
+        assert!(!script_src.iter().any(|part| part.contains("unsafe-inline")));
+        assert!(!script_src.contains(&"'unsafe-eval'"));
+    }
+
+    #[test]
+    fn legacy_host_without_workspace_slug_does_not_parse_as_isolated() {
+        // `<id>--prod.artfct.dev` strips to `<id>` and has no `slug--id` form.
+        assert_eq!(
+            parse_isolated_hostname("abcdefghijklm--prod.artfct.dev", "--prod.artfct.dev"),
+            None
+        );
+        assert_eq!(
+            parse_isolated_hostname("acme--abcdefghijklm--prod.artfct.dev", "--prod.artfct.dev"),
+            Some(("acme".to_string(), "abcdefghijklm".to_string()))
+        );
+    }
+
+    #[test]
+    fn legacy_host_public_redirect_targets_canonical_workspace_host() {
+        // The decision helper used by resolve_permanent_artifact (RUB-515
+        // item 2). Removing that call site while leaving this test would still
+        // fail once the helper itself is deleted; the assertions below pin
+        // Redirect vs NotFound vs NotLegacy for the production branch.
+        use crate::artifact_origin::{legacy_bare_host_decision, LegacyBareHostDecision};
+
+        let suffix = "--prod.artfct.dev";
+        let artifact_id = "abcdefghijklm";
+        let legacy_host = format!("{artifact_id}{suffix}");
+        let path = format!("/p/{artifact_id}/");
+
+        assert_eq!(
+            legacy_bare_host_decision(Some(&legacy_host), suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::Redirect {
+                location: format!("https://acme--{artifact_id}{suffix}{path}"),
+            }
+        );
+        assert_eq!(
+            legacy_bare_host_decision(
+                Some(&legacy_host),
+                suffix,
+                "acme",
+                artifact_id,
+                false,
+                &path,
+            ),
+            LegacyBareHostDecision::NotFound
+        );
+        assert_eq!(
+            legacy_bare_host_decision(
+                Some(&format!("acme--{artifact_id}{suffix}")),
+                suffix,
+                "acme",
+                artifact_id,
+                true,
+                &path,
+            ),
+            LegacyBareHostDecision::NotLegacy
+        );
+        assert_eq!(
+            legacy_bare_host_decision(Some("artfct.dev"), suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::NotLegacy
+        );
+        assert_eq!(
+            legacy_bare_host_decision(None, suffix, "acme", artifact_id, true, &path,),
+            LegacyBareHostDecision::NotLegacy
+        );
+
+        let location = match legacy_bare_host_decision(
+            Some(&legacy_host),
+            suffix,
+            "acme",
+            artifact_id,
+            true,
+            &path,
+        ) {
+            LegacyBareHostDecision::Redirect { location } => location,
+            other => panic!("expected redirect, got {other:?}"),
+        };
+        assert!(location.starts_with("https://acme--"));
+        assert!(!location.contains(&format!("https://{artifact_id}--")));
+        assert!(!location.contains("unsafe-inline"));
+        assert!(!location.contains("unsafe-eval"));
     }
 
     #[test]

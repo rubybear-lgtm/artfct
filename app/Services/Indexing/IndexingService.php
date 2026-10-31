@@ -36,11 +36,19 @@ final class IndexingService
             $text = $result->text;
             $title = $result->title;
             $headings = $result->headings;
+        } elseif (ExtractionHeuristics::looksLikeMarkdown($html)) {
+            // MCP stores raw markdown as text/markdown; the Worker renders HTML
+            // on serve. Indexing must still strip `#` / `|---|` from the source.
+            $text = ExtractionHeuristics::plainTextFromMarkdown($html);
+            $title = ExtractionHeuristics::titleFromMarkdown($html);
+            $headings = ExtractionHeuristics::headingsFromMarkdown($html);
         } else {
             $text = ExtractionHeuristics::visibleText($html);
-            $title = null;
-            $headings = [];
+            $title = ExtractionHeuristics::titleFromHtml($html);
+            $headings = ExtractionHeuristics::headingsFromHtml($html);
         }
+
+        $text = ExtractionHeuristics::withoutLeadingTitle($text, $title);
 
         $values = [
             'rendered' => $rendered,

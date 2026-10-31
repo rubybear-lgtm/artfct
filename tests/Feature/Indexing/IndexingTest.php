@@ -88,8 +88,42 @@ test('static_artifact_indexes_without_render', function () {
     $entry = app(IndexingService::class)->indexArtifact($team, 'artifact-static', $html, []);
 
     expect($entry->rendered)->toBeFalse();
-    expect($entry->extracted_text)->toContain('Quarterly Report');
+    // Title is stored separately; extracted text must not lead with a duplicate.
+    expect($entry->title)->toBe('Quarterly Report')
+        ->and($entry->headings)->toBe(['Quarterly Report'])
+        ->and($entry->extracted_text)->toContain('Revenue was strong')
+        ->and($entry->extracted_text)->not->toStartWith('Quarterly Report');
     expect($renderer->callCount)->toBe(0);
+});
+
+test('static_html_extracts_h1_and_h2_headings_without_browser_rendering', function () {
+    $team = Team::factory()->create();
+    $html = '<html><body><h1>Launch plan</h1><h2>Timeline</h2><p>'.str_repeat('Ship the beta to design partners next week. ', 3).'</p></body></html>';
+
+    $entry = app(IndexingService::class)->indexArtifact($team, 'artifact-headings', $html, []);
+
+    expect($entry->rendered)->toBeFalse()
+        ->and($entry->headings)->toBe(['Launch plan', 'Timeline'])
+        ->and($entry->title)->toBe('Launch plan');
+});
+
+test('markdown_indexes_as_plain_text_with_headings_and_no_markup', function () {
+    $team = Team::factory()->create();
+    $markdown = "# Design partners\n\n## Pipeline\n\n| Name | Stage |\n| --- | --- |\n| Acme | Pilot |\n\nNext steps for the team.";
+
+    /** @var FakeRenderer $renderer */
+    $renderer = app(RendererContract::class);
+
+    $entry = app(IndexingService::class)->indexArtifact($team, 'artifact-md', $markdown, []);
+
+    expect($entry->rendered)->toBeFalse()
+        ->and($renderer->callCount)->toBe(0)
+        ->and($entry->title)->toBe('Design partners')
+        ->and($entry->headings)->toBe(['Design partners', 'Pipeline'])
+        ->and($entry->extracted_text)->toContain('Acme')
+        ->and($entry->extracted_text)->toContain('Next steps')
+        ->and($entry->extracted_text)->not->toContain('#')
+        ->and($entry->extracted_text)->not->toContain('|---');
 });
 
 test('indexing_does_not_block_deploy', function () {
@@ -305,6 +339,16 @@ test('extraction_heuristics_needs_render_for_hydration_shell', function () {
 test('extraction_heuristics_skips_render_for_real_content', function () {
     $html = '<html><body><h1>Report</h1><p>'.str_repeat('Real static content. ', 5).'</p></body></html>';
     expect(ExtractionHeuristics::needsRender($html))->toBeFalse();
+});
+
+test('extraction_heuristics_detects_markdown_and_strips_markup', function () {
+    $markdown = "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
+
+    expect(ExtractionHeuristics::looksLikeMarkdown($markdown))->toBeTrue()
+        ->and(ExtractionHeuristics::needsRender($markdown))->toBeFalse()
+        ->and(ExtractionHeuristics::plainTextFromMarkdown($markdown))->not->toContain('#')
+        ->and(ExtractionHeuristics::plainTextFromMarkdown($markdown))->not->toContain('---')
+        ->and(ExtractionHeuristics::headingsFromMarkdown($markdown))->toBe(['Title']);
 });
 
 test('chunker_splits_long_text_with_overlap', function () {

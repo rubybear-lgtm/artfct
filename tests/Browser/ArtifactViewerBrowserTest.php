@@ -3,6 +3,7 @@
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Models\ArtifactComment;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -310,6 +311,36 @@ test('the_live_viewer_reloads_and_keeps_polling_after_a_publish', function () {
     $page->waitForText('Version 3 of 3')
         ->assertVisible('@artifact-frame')
         ->assertNoJavaScriptErrors();
+});
+
+test('comment_bodies_with_script_and_onerror_render_escaped', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Comment Escape', 'viewer-comment-escape@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+
+    ArtifactComment::query()->create([
+        'team_id' => $team->id,
+        'artifact_id' => VIEWER_BROWSER_ARTIFACT_ID,
+        'parent_id' => null,
+        'author_user_id' => (string) $owner->id,
+        'author_name' => $owner->name,
+        'body' => '<script>alert(1)</script><img src=x onerror=alert(1)>',
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->click('@artifact-panel-toggle')
+        ->assertVisible('@artifact-comments')
+        ->assertSee('<script>alert(1)</script>')
+        ->assertSee('onerror=alert(1)');
+
+    expect($page->script('document.querySelector("[data-testid=\\"artifact-comments\\"] script")'))
+        ->toBeNull();
+    expect($page->script('document.querySelector("[data-testid=\\"artifact-comments\\"]").innerHTML.includes("&lt;script&gt;")'))
+        ->toBeTrue();
 });
 
 test('a_revoked_artifact_unmounts_the_frame_after_a_poll', function () {

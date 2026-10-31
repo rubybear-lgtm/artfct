@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Mcp\Support\McpTimestamp;
 use Database\Factories\ArtifactCommentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -46,19 +47,24 @@ class ArtifactComment extends Model
      * The shape tools and pages return. The body is data written by other
      * people or agents and is marked as such wherever it is shown to a model.
      *
+     * Replies inherit the root's resolved state when `$threadRoot` is passed
+     * (RUB-515: include_resolved returns whole threads with one resolution).
+     *
      * @return array<string, mixed>
      */
-    public function toThreadItem(): array
+    public function toThreadItem(?self $threadRoot = null): array
     {
+        $resolutionSource = $threadRoot ?? $this;
+
         return [
             'id' => $this->id,
             'parent_id' => $this->parent_id,
             'author' => $this->author_name,
             'agent' => $this->author_agent,
             'body' => $this->body,
-            'created_at' => $this->created_at->toIso8601String(),
-            'resolved' => $this->resolved_at !== null,
-            'resolved_at' => $this->resolved_at?->toIso8601String(),
+            'created_at' => McpTimestamp::format($this->created_at),
+            'resolved' => $resolutionSource->resolved_at !== null,
+            'resolved_at' => McpTimestamp::format($resolutionSource->resolved_at),
         ];
     }
 }

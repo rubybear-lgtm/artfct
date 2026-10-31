@@ -5,10 +5,6 @@ use super::*;
 /// `ARTIFACT_ORIGIN_SUFFIX` in production, see `artifact_origin_suffix`).
 /// Pure function over the slug/id character-set rules already enforced by
 /// spec 3 (`store::hostname_label`).
-#[allow(
-    dead_code,
-    reason = "minted by the control plane, not this Worker; exercised directly by hostname_derives_from_slug_and_id"
-)]
 pub(crate) fn isolated_artifact_hostname(
     tenant_slug: &str,
     artifact_id: &str,
@@ -27,6 +23,50 @@ pub(crate) fn parse_isolated_hostname(host: &str, suffix: &str) -> Option<(Strin
     let (slug, artifact_id) = label.split_once("--")?;
     (!slug.is_empty() && !artifact_id.is_empty())
         .then(|| (slug.to_string(), artifact_id.to_string()))
+}
+
+/// Decision for a request whose Host looks like an artifact origin but is not
+/// a valid isolated hostname — the legacy bare `<id>--prod.artfct.dev` form
+/// (RUB-515). Never serve content there with the weak preview CSP.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LegacyBareHostDecision {
+    /// Not a bare legacy host — continue normal serving.
+    NotLegacy,
+    /// Public artifact: 301 to the canonical `<slug>--<id>--prod` host.
+    Redirect { location: String },
+    /// Team/private (or unbuildable canonical host): 404, never serve.
+    NotFound,
+}
+
+/// Pure redirect/404 rule used by `resolve_permanent_artifact` for the bare
+/// `<id>--prod` host (RUB-515 item 2). Unit tests pin this helper's decisions;
+/// the production call site in `artifact_routes` must keep calling it.
+pub(crate) fn legacy_bare_host_decision(
+    host: Option<&str>,
+    origin_suffix: &str,
+    org_slug: &str,
+    artifact_id: &str,
+    is_public: bool,
+    request_path: &str,
+) -> LegacyBareHostDecision {
+    let Some(host) = host else {
+        return LegacyBareHostDecision::NotLegacy;
+    };
+    if !host.ends_with(origin_suffix) {
+        return LegacyBareHostDecision::NotLegacy;
+    }
+    if parse_isolated_hostname(host, origin_suffix).is_some() {
+        return LegacyBareHostDecision::NotLegacy;
+    }
+    if !is_public {
+        return LegacyBareHostDecision::NotFound;
+    }
+    match isolated_artifact_hostname(org_slug, artifact_id, origin_suffix) {
+        Ok(canonical_host) => LegacyBareHostDecision::Redirect {
+            location: format!("https://{canonical_host}{request_path}"),
+        },
+        Err(_) => LegacyBareHostDecision::NotFound,
+    }
 }
 
 /// HMAC-signed hex signature over `<artifact_id>.<expires_at_unix>`.

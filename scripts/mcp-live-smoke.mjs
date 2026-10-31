@@ -51,6 +51,8 @@ const supportedTools = new Set([
     'list_collections',
     'create_collection',
     'add_collection_artifact',
+    'remove_collection_artifact',
+    'delete_collection',
     'delete_artifact',
     'read_artifact',
     'get_guidance',
@@ -311,6 +313,41 @@ async function assertTenantIsolation(
         ownerMutation.result?.isError !== true,
         'Organization A could not add its own artifact to its own collection: ' +
             describeResult(ownerMutation),
+    );
+
+    const ownerRemove = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'remove_collection_artifact',
+        arguments: {
+            collection_id: ownerCollectionId,
+            artifact_id: artifactId,
+        },
+    });
+    assert(
+        ownerRemove.result?.isError !== true &&
+            ownerRemove.result?.structuredContent?.removed === true,
+        'Organization A could not remove its own artifact from its collection: ' +
+            describeResult(ownerRemove),
+    );
+
+    const ownerDelete = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'delete_collection',
+        arguments: { collection_id: ownerCollectionId },
+    });
+    assert(
+        ownerDelete.result?.isError !== true &&
+            ownerDelete.result?.structuredContent?.deleted === true,
+        'Organization A could not delete its own collection: ' +
+            describeResult(ownerDelete),
+    );
+
+    const missingDelete = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'delete_collection',
+        arguments: { collection_id: ownerCollectionId },
+    });
+    assert(
+        missingDelete.result?.isError === true,
+        'delete_collection should error when the collection is already gone: ' +
+            describeResult(missingDelete),
     );
 }
 

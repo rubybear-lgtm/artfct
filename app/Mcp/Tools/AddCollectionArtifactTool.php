@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Models\Collection;
 use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -21,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Add an artifact to a workspace collection by collection id or name. Requires collections:write and is idempotent; it never changes artifact content or cross-organization visibility. "Approved" is not a separate status — every collection a member created is listed and writable.')]
+#[Description('Add an artifact to a workspace collection by collection id or name. Requires collections:write and is idempotent; it never changes artifact content or cross-organization visibility. You may pass collection_id, collection (name), or both; if both are given and they resolve to different collections, the call fails with a validation error and writes nothing. If both resolve to the same collection, it succeeds.')]
 #[Name('add_collection_artifact')]
 #[Title('Add artifact to collection')]
 #[IsReadOnly(false)]
@@ -69,10 +70,12 @@ final class AddCollectionArtifactTool extends Tool
             return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
-        $lookup = isset($validated['collection_id'])
-            ? (string) $validated['collection_id']
-            : trim((string) $validated['collection']);
-        $collection = $collections->findForTeam(McpContext::team(), $lookup);
+        $collection = $this->resolveCollection($collections, $validated);
+        if ($collection instanceof Response) {
+            app(McpTelemetry::class)->record('add_collection_artifact', 'invalid_request', $startedAt);
+
+            return $collection;
+        }
 
         if ($collection === null) {
             app(McpTelemetry::class)->record('add_collection_artifact', 'collection_not_found', $startedAt);
@@ -98,12 +101,41 @@ final class AddCollectionArtifactTool extends Tool
         ]);
     }
 
+    /**
+     * @param  array{collection_id?: int|null, collection?: string|null, artifact_id: string}  $validated
+     */
+    private function resolveCollection(CollectionService $collections, array $validated): Collection|Response|null
+    {
+        $team = McpContext::team();
+        $hasId = array_key_exists('collection_id', $validated) && $validated['collection_id'] !== null;
+        $name = isset($validated['collection']) ? trim((string) $validated['collection']) : '';
+        $hasName = $name !== '';
+
+        if ($hasId && $hasName) {
+            $byId = $collections->findForTeam($team, (string) $validated['collection_id']);
+            $byName = $collections->findForTeam($team, $name);
+
+            if ($byId === null || $byName === null || $byId->id !== $byName->id) {
+                return McpErrorResponse::error(
+                    'collection_id and collection refer to different collections. Pass one, or make sure both match.',
+                    'invalid_request',
+                );
+            }
+
+            return $byId;
+        }
+
+        $lookup = $hasId ? (string) $validated['collection_id'] : $name;
+
+        return $collections->findForTeam($team, $lookup);
+    }
+
     /** @return array<string, Type> */
     public function schema(JsonSchema $schema): array
     {
         return [
-            'collection_id' => $schema->integer()->min(1)->description('Numeric collection id from list_collections or create_collection. Give this or `collection`, not neither.')->nullable(),
-            'collection' => $schema->string()->min(1)->max(100)->description('Collection name or numeric id (exact name match). Prefer the name when you have it. Give this or `collection_id`, not neither.')->nullable(),
+            'collection_id' => $schema->integer()->min(1)->description('Numeric collection id from list_collections or create_collection. Give this, `collection`, or both when they match. If both are given and disagree, the call fails without writing.')->nullable(),
+            'collection' => $schema->string()->min(1)->max(100)->description('Collection name or numeric id (exact name match). Prefer the name when you have it. Give this, `collection_id`, or both when they match. If both are given and disagree, the call fails without writing.')->nullable(),
             'artifact_id' => $schema->string()->min(1)->max(128)->description('The artifact ID to add.')->required(),
         ];
     }

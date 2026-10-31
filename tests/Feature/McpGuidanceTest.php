@@ -33,10 +33,16 @@ test('get_guidance returns each topic with the live types and limits', function 
 test('an unknown guidance topic is refused', function () {
     $token = remoteMcpToken(Team::factory()->create());
 
-    test()->withToken($token)->postJson('/mcp', [
+    $response = test()->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'get_guidance', 'arguments' => ['topic' => '../../.env']],
     ])->assertOk()->assertJsonPath('result.isError', true);
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('invalid_request')
+        ->and($response->json('result.content.0.text'))->toContain('Allowed topics:')
+        ->and($response->json('result.content.0.text'))->toContain('publish')
+        ->and($response->json('result.content.0.text'))->toContain('search')
+        ->and($response->json('result.content.0.text'))->toContain('collaborate');
 });
 
 test('the guidance text names only tools and fields that exist', function () {
@@ -48,7 +54,11 @@ test('the guidance text names only tools and fields that exist', function () {
         $text = ArtifactGuidance::topic($topic)['text'];
         preg_match_all('/`([a-z]+(?:_[a-z]+)+)`/', $text, $matches);
         $mentionedTools = array_filter($matches[1], fn (string $name): bool => str_ends_with($name, '_artifact')
-            || str_ends_with($name, '_artifacts') || str_ends_with($name, '_artifact_comments') || str_ends_with($name, '_artifact_comment'));
+            || str_ends_with($name, '_artifacts')
+            || str_ends_with($name, '_artifact_comments')
+            || str_ends_with($name, '_artifact_comment')
+            || str_ends_with($name, '_collection')
+            || str_ends_with($name, '_collections'));
 
         foreach ($mentionedTools as $name) {
             expect($tools)->toContain($name);
@@ -99,8 +109,12 @@ test('deploy_artifact tells agents inline scripts do not run', function () {
     $server->start();
     $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')->toArray();
 
-    expect($tool['description'])->toContain('Inline `<script>` blocks and resources from other sites do not load')
-        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts or outside resources');
+    expect($tool['description'])->toContain('Inline `<script>` blocks')
+        ->and($tool['description'])->toContain('resources from other sites do not load')
+        ->and($tool['description'])->toContain('README.md')
+        ->and($tool['description'])->toContain('base_version_checked')
+        ->and($tool['description'])->toContain('onclick=')
+        ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts');
 });
 
 test('get_guidance names its own guidance version like the guided tools', function () {

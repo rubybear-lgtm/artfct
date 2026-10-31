@@ -1,8 +1,10 @@
 use super::*;
 use crate::artifact_origin::{
-    access_token_cookie, access_token_from_cookie, app_frame_ancestor, parse_isolated_hostname,
-    token_opens_private, verified_token_viewer, verify_access_token,
+    access_token_cookie, access_token_from_cookie, app_frame_ancestor, legacy_bare_host_decision,
+    parse_isolated_hostname, token_opens_private, verified_token_viewer, verify_access_token,
+    LegacyBareHostDecision,
 };
+use crate::markdown::maybe_render_markdown_response;
 use crate::sharing::{
     self, can_change_sharing, can_publish_version, can_view, sharing_allowed, EditAccess, Sharing,
     Viewer,
@@ -158,6 +160,9 @@ pub(crate) struct ArtifactMetadataRow {
     pub(crate) current_version: i64,
     pub(crate) version_count: i64,
     pub(crate) updated_at: String,
+    pub(crate) agent: Option<String>,
+    pub(crate) repo_url: Option<String>,
+    pub(crate) commit_sha: Option<String>,
 }
 
 /// The metadata read's JSON body. `version` is the served version;
@@ -176,6 +181,15 @@ pub(crate) fn build_artifact_metadata_response(
         viewer,
         true,
     );
+    let provenance = if row.agent.is_some() || row.repo_url.is_some() || row.commit_sha.is_some() {
+        serde_json::json!({
+            "agent": row.agent,
+            "repo_url": row.repo_url,
+            "commit_sha": row.commit_sha,
+        })
+    } else {
+        Value::Null
+    };
     serde_json::json!({
         "id": row.id,
         "tier": row.tier,
@@ -192,6 +206,7 @@ pub(crate) fn build_artifact_metadata_response(
         "expires_at": row.expires_at,
         "title": row.title,
         "description": row.description,
+        "provenance": provenance,
     })
 }
 #[derive(Debug, Deserialize)]
@@ -683,7 +698,7 @@ struct PermanentArtifactRow {
 /// SQL where a mutation test could pass vacuously.
 /// The metadata read must never answer for a revoked artifact: Laravel's
 /// read_artifact and comment surfaces rely on this 404 to hide revoked work.
-const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
+const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at, p.agent AS agent, p.repo_url AS repo_url, p.commit_sha AS commit_sha FROM artifacts a JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
 
 pub(crate) async fn get_artifact_metadata(
     path: &str,
@@ -945,6 +960,36 @@ pub(crate) async fn resolve_permanent_artifact(
         now,
         &artifact_origin_suffix(env),
     );
+    // RUB-515: the legacy host `<id>--prod.artfct.dev` (no workspace slug)
+    // matches the Worker route but is not a valid isolated hostname. Never
+    // serve content there with the weak preview CSP — redirect public
+    // artifacts to the canonical `<slug>--<id>--prod` host, otherwise 404.
+    let origin_suffix = artifact_origin_suffix(env);
+    if isolated_access == IsolatedAccess::NotIsolated {
+        let path = match (requested_path, version) {
+            (Some(path), Some(version)) => format!("/p/{artifact_id}/v:{version}/{path}"),
+            (Some(path), None) => format!("/p/{artifact_id}/{path}"),
+            (None, Some(version)) => format!("/p/{artifact_id}/v:{version}/"),
+            (None, None) => format!("/p/{artifact_id}/"),
+        };
+        match legacy_bare_host_decision(
+            host.as_deref(),
+            origin_suffix.as_str(),
+            &row.org,
+            artifact_id,
+            sharing.is_anonymous(),
+            &path,
+        ) {
+            LegacyBareHostDecision::NotLegacy => {}
+            LegacyBareHostDecision::Redirect { location } => {
+                let mut response = Response::empty()?.with_status(301);
+                response.headers_mut().set("Location", &location)?;
+                response.headers_mut().set("Cache-Control", "no-store")?;
+                return Ok(response);
+            }
+            LegacyBareHostDecision::NotFound => return expired_response(),
+        }
+    }
     // RUB-439: an old shared-origin link to a public artifact's entrypoint
     // lands on the app's viewer. Subresources, isolated hosts, ephemeral
     // artifacts and every non-public level keep their behaviour.
@@ -1029,6 +1074,8 @@ pub(crate) async fn resolve_permanent_artifact(
         return expired_response();
     };
     let bytes = body.bytes().await?;
+    let (serve_content_type, serve_bytes) =
+        maybe_render_markdown_response(&row.content_type, &row.entrypoint, requested_path, bytes);
     let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest).unwrap_or_else(|_| {
         PermanentManifest {
             entrypoint: row.entrypoint.clone(),
@@ -1037,11 +1084,11 @@ pub(crate) async fn resolve_permanent_artifact(
             unsafe_eval: false,
         }
     });
-    let mut response = Response::from_bytes(bytes)?.with_status(200);
+    let mut response = Response::from_bytes(serve_bytes)?.with_status(200);
     let is_isolated = isolated_access == IsolatedAccess::Authorized;
     let frame_ancestor = app_frame_ancestor(env);
     for (name, value) in permanent_file_response_headers(
-        &row.content_type,
+        &serve_content_type,
         &manifest,
         is_isolated,
         frame_ancestor.as_deref(),

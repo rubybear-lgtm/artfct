@@ -45,14 +45,19 @@ final class GetGuidanceTool extends Tool
 
     public function handle(Request $request): Response|ResponseFactory
     {
+        // Accept any string first so an unknown topic can list the allowed
+        // values instead of Laravel's generic `in:` validation message.
         $validated = $request->validate([
-            'topic' => ['required', 'string', 'in:'.implode(',', ArtifactGuidance::TOPICS)],
+            'topic' => ['required', 'string', 'max:100'],
         ]);
 
         $guidance = ArtifactGuidance::topic($validated['topic']);
 
         if ($guidance === null) {
-            return McpErrorResponse::error('Unknown guidance topic.', 'invalid_request');
+            return McpErrorResponse::error(
+                'Unknown guidance topic. Allowed topics: '.implode(', ', ArtifactGuidance::TOPICS).'.',
+                'invalid_request',
+            );
         }
 
         return Response::structured($guidance);
