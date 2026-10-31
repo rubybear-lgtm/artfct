@@ -6,6 +6,9 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Collections\CollectionService;
+use App\Services\Indexing\ArtifactTextPurger;
+use App\Services\Indexing\IndexingService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Http;
@@ -48,7 +51,7 @@ final class DeleteArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request, CollectionService $collections, IndexingService $indexer): Response|ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:delete', 'delete_artifact');
@@ -98,6 +101,18 @@ final class DeleteArtifactTool extends Tool
             app(McpTelemetry::class)->record('delete_artifact', 'error', $startedAt, $validated['id']);
 
             return McpErrorResponse::error('The artifact service could not delete that artifact.', 'artifact_deletion_failed', $response->serverError());
+        }
+
+        // Drop memberships and the search index immediately so list_collections
+        // and get_connection.search reflect the delete without waiting for the
+        // Worker webhook (ArtifactDeletedHandler also purges).
+        $team = McpContext::team();
+        try {
+            $collections->forgetArtifact($team, $validated['id']);
+            $indexer->removeFromIndex($team, $validated['id']);
+            ArtifactTextPurger::purgeEverything($team, $validated['id']);
+        } catch (\Throwable $exception) {
+            report($exception);
         }
 
         app(McpTelemetry::class)->record('delete_artifact', 'success', $startedAt, $validated['id']);

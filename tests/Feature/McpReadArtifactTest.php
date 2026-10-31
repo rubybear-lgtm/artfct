@@ -1,5 +1,6 @@
 <?php
 
+use App\Mcp\Servers\ArtfctServer;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
@@ -7,6 +8,7 @@ use App\Models\Team;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
+use Laravel\Mcp\Server\Transport\FakeTransporter;
 
 /*
  * RUB-443 item 1: `read_artifact` returns the indexed, extracted text of one
@@ -217,4 +219,63 @@ test('read_artifact says reading is not enabled when indexing is off', function 
     $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
 
     expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('search_not_configured');
+});
+
+test('read_artifact returns headings provenance and strips a duplicated title', function () {
+    $team = Team::factory()->create(['slug' => 'rub-515-read-meta']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test', 'indexing.enabled' => true]);
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => READ_ARTIFACT_ID,
+        'extracted_text' => 'Migration plan The cutover happens on Friday.',
+        'title' => 'Migration plan',
+        'headings' => ['Overview', 'Timeline'],
+        'version' => 3,
+    ]);
+    // Worker metadata omits provenance; fall back to the version record.
+    // Exact URL stubs must not use a prefix that also matches /versions/N.
+    Http::fake(function (Request $request) {
+        $url = $request->url();
+        if (str_ends_with($url, '/versions/3')) {
+            return Http::response([
+                'version' => 3,
+                'agent' => 'claude-code',
+                'title' => 'Migration plan',
+                'created_at' => '2026-10-01T00:00:00Z',
+                'created_by' => 'user_1',
+                'current' => true,
+                'restored_from' => null,
+                'description' => null,
+                'content_hash' => str_repeat('a', 64),
+            ], 200);
+        }
+
+        if (str_ends_with($url, '/v1/artifacts/'.READ_ARTIFACT_ID)) {
+            return Http::response([
+                'id' => READ_ARTIFACT_ID,
+                'title' => 'Migration plan',
+                'version' => 3,
+            ], 200);
+        }
+
+        return Http::response(['error' => 'unexpected'], 500);
+    });
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['headings'])->toBe(['Overview', 'Timeline'])
+        ->and($content['provenance']['agent'])->toBe('claude-code')
+        ->and($content['title'])->toBe('Migration plan')
+        ->and($content['content']['text'])->toBe('The cutover happens on Friday.')
+        ->and($content['content']['text'])->not->toStartWith('Migration plan');
+});
+
+test('read_artifact documents that only the indexed version can be read', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'read_artifact')->toArray();
+
+    expect($tool['description'])->toContain('last indexed version')
+        ->and(json_encode($tool['inputSchema']))->toContain('older versions are not available');
 });
