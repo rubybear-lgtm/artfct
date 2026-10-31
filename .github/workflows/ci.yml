@@ -284,6 +284,50 @@ jobs:
       - name: Run Pest (browser)
         run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Browser
 
+  # RUB-517: gate/poller/notes unit tests for the manual production release
+  # Action. Kept outside php_static so a Node-only change is cheap to re-run.
+  release_scripts:
+    name: Release scripts (Node)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Test release scripts
+        run: node --test scripts/release/*.test.mjs
+
+  # RUB-517: keep workflow YAML valid; actionlint must stay in CI.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: '1.7.7'
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint
+          actionlint -version
+
+      - name: Lint workflows
+        run: actionlint -color
+
   # The `application` check is required on `main` and `develop`, so the name and
   # the job id have to stay exactly as they are. It needs every job that guards
   # correctness. A job the path filter skipped (mcp_e2e) counts as passing, and
@@ -303,6 +347,8 @@ jobs:
       - mcp_e2e_scope
       - mcp_e2e
       - release_readiness
+      - release_scripts
+      - actionlint
       - secrets
       - rust
 
