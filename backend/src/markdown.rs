@@ -78,22 +78,30 @@ pub(crate) fn content_type_is_markdown(content_type: &str) -> bool {
 /// Entrypoint navigations (`requested_path` is `None`) and explicit requests
 /// for a markdown path both qualify when the content type or path says markdown,
 /// including the legacy `application/octet-stream` case for `.md` files.
+///
+/// Already-stored `text/html` must not be re-wrapped: the Laravel MCP deploy
+/// path keeps a `.md` entrypoint for `kind: markdown` while storing rendered
+/// HTML bytes (RUB-515). Re-running pulldown-cmark on that HTML nested a second
+/// document shell around the page.
 pub(crate) fn should_render_markdown(
     content_type: &str,
     entrypoint: &str,
     requested_path: Option<&str>,
 ) -> bool {
+    let base = content_type
+        .split(';')
+        .next()
+        .unwrap_or(content_type)
+        .trim();
+    if base.eq_ignore_ascii_case("text/html") {
+        return false;
+    }
     let path = requested_path.unwrap_or(entrypoint);
     if !path_is_markdown(path) && !content_type_is_markdown(content_type) {
         return false;
     }
     content_type_is_markdown(content_type)
-        || content_type
-            .split(';')
-            .next()
-            .unwrap_or(content_type)
-            .trim()
-            .eq_ignore_ascii_case("application/octet-stream")
+        || base.eq_ignore_ascii_case("application/octet-stream")
         || path_is_markdown(path)
 }
 
@@ -174,5 +182,25 @@ mod tests {
         );
         assert_eq!(ctype, "text/html; charset=utf-8");
         assert_eq!(body, original);
+    }
+
+    #[test]
+    fn pre_rendered_html_with_markdown_path_is_not_double_wrapped() {
+        // MCP deploy_artifact stores rendered HTML under a .md path so list
+        // kind stays markdown. Serving must not run markdown→HTML again.
+        let original = b"<!doctype html><html><body><h1>Quarterly</h1><table><tr><td>1</td></tr></table></body></html>".to_vec();
+        let (ctype, body) = maybe_render_markdown_response(
+            "text/html; charset=utf-8",
+            "README.md",
+            None,
+            original.clone(),
+        );
+        assert_eq!(ctype, "text/html; charset=utf-8");
+        assert_eq!(body, original);
+        assert!(!should_render_markdown(
+            "text/html; charset=utf-8",
+            "README.md",
+            None
+        ));
     }
 }
