@@ -128,6 +128,9 @@ test('rub516_item2_new_artifact_created_true_version_publish_created_false', fun
         ->and($created->json('result.structuredContent.created'))->toBeTrue()
         ->and($created->json('result.structuredContent.version'))->toBe(1);
 
+    // Stub the pre-fix Worker shape (created:true on a version row) so this
+    // create→update path fails on 3b3c392 and proves the Laravel override.
+    // Worker-side created:false is covered by backend/tests/storage_integration.rs.
     Http::fake([
         'worker.test/v1/artifacts/'.$id => Http::response([
             'id' => $id,
@@ -138,9 +141,7 @@ test('rub516_item2_new_artifact_created_true_version_publish_created_false', fun
             'id' => $id,
             'version' => 2,
             'url' => "https://worker.test/p/{$id}/",
-            // Fixed Worker semantics: a content-changing version publish is not
-            // a newly created artifact (RUB-516 item 2 / storage_integration).
-            'created' => false,
+            'created' => true,
             'missing_files' => [],
             'tier' => 'secure',
             'sharing' => 'team',
