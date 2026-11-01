@@ -1201,8 +1201,14 @@ pub(crate) async fn delete_artifact(
         return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
     }
 
+    // Tombstone instead of a bare delete so a concurrent GET that already
+    // read the record cannot put it back with a fresh TTL (RUB-464).
     store::KvArtifactStore::new(env.kv(KV_BINDING)?)
-        .delete_record(artifact_id)
+        .put_record(
+            artifact_id,
+            EPHEMERAL_TOMBSTONE_JSON,
+            EPHEMERAL_TOMBSTONE_TTL_SECONDS,
+        )
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
     build_delete_response().into_worker_response()
@@ -1471,13 +1477,15 @@ fn permanent_tier_from_database(value: &str) -> ArtifactTier {
 /// defensive `(org_id, id)` conflict fallback so both look the same to the
 /// caller.
 ///
-/// `missing_files` is computed from blob existence rather than assumed empty —
-/// an artifact whose earlier upload was interrupted still tells the client what
-/// to send. `tier` and `version` come from the stored row, never from the
-/// request: re-posting a bundle must not be able to relabel the artifact.
+/// `missing_files` is computed from org-scoped blob reuse rather than global
+/// R2 presence (RUB-464) — an artifact whose earlier upload was interrupted
+/// still tells the client what to send. `tier` and `version` come from the
+/// stored row, never from the request: re-posting a bundle must not be able to
+/// relabel the artifact.
 async fn existing_artifact_response(
     storage: &store::D1R2ArtifactStore,
     env: &Env,
+    org: &str,
     row: &ExistingArtifactRow,
 ) -> Result<Response> {
     let existing_manifest: PermanentManifest = serde_json::from_str(&row.manifest)?;
@@ -1485,7 +1493,7 @@ async fn existing_artifact_response(
     for file in &existing_manifest.files {
         present.push(
             storage
-                .blob_exists(&file.sha256)
+                .blob_reusable_in_org(org, &file.sha256, file.size_bytes)
                 .await
                 .map_err(|error| worker::Error::RustError(error.to_string()))?,
         );
@@ -1566,7 +1574,7 @@ pub(crate) async fn existing_permanent_response(
     };
 
     Ok(Some(
-        existing_artifact_response(storage, env, &existing).await?,
+        existing_artifact_response(storage, env, org, &existing).await?,
     ))
 }
 
@@ -1918,7 +1926,7 @@ pub(crate) async fn create_permanent_artifact(
     .await
     {
         Ok(Some(existing)) => {
-            let response = existing_artifact_response(&storage, env, &existing).await;
+            let response = existing_artifact_response(&storage, env, &org, &existing).await;
             let release = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
                 .await;
@@ -1960,9 +1968,10 @@ pub(crate) async fn create_permanent_artifact(
     let operation: Result<Response> = async {
         let mut existing = Vec::with_capacity(manifest.files.len());
         for file in &manifest.files {
+            // Org-scoped reuse only — global R2 presence is not an oracle (RUB-464).
             existing.push(
                 storage
-                    .blob_exists(&file.sha256)
+                    .blob_reusable_in_org(&org, &file.sha256, file.size_bytes)
                     .await
                     .map_err(|error| worker::Error::RustError(error.to_string()))?,
             );
