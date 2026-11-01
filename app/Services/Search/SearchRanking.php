@@ -139,6 +139,32 @@ final class SearchRanking
     }
 
     /**
+     * Make display scores non-increasing along an already-ranked result list.
+     *
+     * Rank order can prefer a lower-similarity repo/canonical hit over a
+     * semantic-only miss; capping later scores keeps wire `score` order
+     * identical to that ranking without re-sorting (RUB-516).
+     *
+     * @param  list<float>  $scores
+     * @return list<float>
+     */
+    public static function alignScoresWithOrder(array $scores): array
+    {
+        $previous = null;
+        $aligned = [];
+
+        foreach ($scores as $score) {
+            if ($previous !== null && $score > $previous) {
+                $score = round(max(0.0, $previous - 0.000001), 6);
+            }
+            $aligned[] = $score;
+            $previous = $score;
+        }
+
+        return $aligned;
+    }
+
+    /**
      * Exact (case-insensitive trim) outranks near-exact (punctuation/whitespace
      * normalized, or ≥90% similar_text on close lengths). Both outrank a
      * semantic-only hit so usage and canonical boosts cannot bury a title match.

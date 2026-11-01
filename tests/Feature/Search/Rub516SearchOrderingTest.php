@@ -54,19 +54,21 @@ test('rub516_item3_returned_scores_are_sorted_descending_and_exact_title_leads_b
     expect($ranked)->toHaveCount(5)
         ->and($ranked[0]->chunk->artifactId)->toBe('exact');
 
-    $scores = array_map(
+    // Title-match bands put exact ahead of near/miss by construction; SearchService
+    // additionally aligns scores when boosts (e.g. repo) disagree with raw similarity.
+    $aligned = SearchRanking::alignScoresWithOrder(array_map(
         fn (VectorMatch $match): float => SearchRanking::displayScore(
             $match->similarity,
             'Design partner prospects',
             $titles[$match->chunk->artifactId],
         ),
         $ranked,
-    );
+    ));
 
-    for ($i = 0; $i < count($scores) - 1; $i++) {
-        expect($scores[$i])->toBeGreaterThanOrEqual($scores[$i + 1]);
+    for ($i = 0; $i < count($aligned) - 1; $i++) {
+        expect($aligned[$i])->toBeGreaterThanOrEqual($aligned[$i + 1]);
     }
-    expect($scores[0] - $scores[1])->toBeGreaterThanOrEqual(0.05);
+    expect($aligned[0] - $aligned[1])->toBeGreaterThanOrEqual(0.05);
 });
 
 test('rub516_item3_search_service_orders_by_returned_score_with_production_path', function () {

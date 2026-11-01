@@ -143,11 +143,39 @@ final class SearchService
             $top,
         );
 
-        // Returned `score` is displayScore; keep the wire order identical so
-        // clients sorting by score match what they see (RUB-516).
-        usort(
+        // Rank order already accounts for title tier, relevance, and boosts
+        // (repo / usage / canonical). Raw displayScore can disagree when a
+        // lower-similarity repo match outranks a semantic-only hit — do not
+        // re-sort; instead keep ranked order and make returned scores
+        // non-increasing so wire order matches score order (RUB-516).
+        $alignedScores = SearchRanking::alignScoresWithOrder(
+            array_map(fn (SearchResult $result): float => $result->score, $results),
+        );
+        $results = array_map(
+            function (SearchResult $result, int $index) use ($alignedScores): SearchResult {
+                $score = $alignedScores[$index];
+                if ($score === $result->score) {
+                    return $result;
+                }
+
+                return new SearchResult(
+                    id: $result->id,
+                    title: $result->title,
+                    description: $result->description,
+                    url: $result->url,
+                    snippet: $result->snippet,
+                    agent: $result->agent,
+                    repoUrl: $result->repoUrl,
+                    commitSha: $result->commitSha,
+                    score: $score,
+                    excerpt: $result->excerpt,
+                    version: $result->version,
+                    updatedAt: $result->updatedAt,
+                    artifactType: $result->artifactType,
+                );
+            },
             $results,
-            fn (SearchResult $a, SearchResult $b): int => $b->score <=> $a->score,
+            array_keys($results),
         );
 
         $this->auditLogger->record(
