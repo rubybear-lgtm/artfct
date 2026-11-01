@@ -12,11 +12,24 @@ final class SearchSnippet
     {
         $text = trim(preg_replace('/\s+/u', ' ', str_replace(['\\r\\n', '\\n', '\\t'], ' ', $text)) ?? $text);
         $title = trim((string) $title);
+        // Strip a leading title when it is a standalone prefix (end/punctuation)
+        // or when the title repeats later (nav crumb + repeated heading). Do not
+        // strip when the title is only the start of a longer heading such as
+        // "hoku-test-md Title Table…" (RUB-516).
         while ($title !== '' && str_starts_with($text, $title)) {
-            $text = ltrim(mb_substr($text, mb_strlen($title)));
+            $rest = ltrim(mb_substr($text, mb_strlen($title)));
+            $titleRepeatsLater = $rest !== '' && mb_strpos($rest, $title) !== false;
+            if ($rest === '' || preg_match('/^[\.\:\-\—\–\,\;\!\?]/u', $rest) === 1 || $titleRepeatsLater) {
+                $text = ltrim($rest, " \t.-—–:;");
+
+                continue;
+            }
+            break;
         }
         $repeatedTitle = $title === '' ? false : mb_strpos($text, $title);
-        if ($repeatedTitle !== false && $repeatedTitle < $maxLength && ! preg_match('/[.!?]/u', mb_substr($text, 0, $repeatedTitle))) {
+        // Skip offset 0 — the leading loop already decided that prefix is part
+        // of a longer heading and must be kept.
+        if ($repeatedTitle !== false && $repeatedTitle > 0 && $repeatedTitle < $maxLength && ! preg_match('/[.!?]/u', mb_substr($text, 0, $repeatedTitle))) {
             $text = ltrim(mb_substr($text, $repeatedTitle + mb_strlen($title)));
         }
         if (mb_strlen($text) <= $maxLength) {

@@ -4,11 +4,17 @@ namespace App\Mcp\Support;
 
 use App\Models\McpConnection;
 use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
 
 final class McpErrorResponse
 {
     /**
      * Build a customer-safe MCP error with stable machine-readable metadata.
+     *
+     * Errors expose both content `_meta.artfct` (legacy clients) and top-level
+     * `structuredContent` with `code` plus any detail fields (RUB-516). Laravel
+     * MCP only attaches `structuredContent` on a ResponseFactory, so this
+     * returns a factory wrapping an error Response rather than a bare error.
      *
      * @param  array<string, mixed>  $details  extra machine-readable fields, such as the live version on a conflict
      */
@@ -18,7 +24,7 @@ final class McpErrorResponse
         bool $retryable = false,
         ?string $nextAction = null,
         array $details = [],
-    ): Response {
+    ): ResponseFactory {
         $meta = [
             'errorCode' => $errorCode,
             'retryable' => $retryable,
@@ -39,6 +45,16 @@ final class McpErrorResponse
             $meta['protocolVersion'] = $connection->protocol_version;
         }
 
-        return Response::error($message)->withMeta('artfct', $meta);
+        $structured = array_merge([
+            'code' => $errorCode,
+            'retryable' => $retryable,
+        ], $details);
+
+        if ($nextAction !== null) {
+            $structured['next_action'] = $nextAction;
+        }
+
+        return Response::make(Response::error($message)->withMeta('artfct', $meta))
+            ->withStructuredContent($structured);
     }
 }

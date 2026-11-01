@@ -24,17 +24,22 @@ final class RealEmbeddings implements EmbeddingsContract
 
     public function embedQuery(string $query): array
     {
-        return $this->request(['text' => [$query], 'instruction' => self::QUERY_INSTRUCTION])[0];
+        // Search must stay snappy when Workers AI is cold or hung (RUB-516
+        // saw a 10.8s no-results call). Document indexing keeps the longer
+        // default timeout on embed().
+        $timeout = max(1, (int) config('indexing.embed_query_timeout_seconds', 1));
+
+        return $this->request(['text' => [$query], 'instruction' => self::QUERY_INSTRUCTION], $timeout)[0];
     }
 
     /**
      * @param  array{text: array<int, string>, instruction?: string}  $body
      * @return array<int, array<int, float>>
      */
-    private function request(array $body): array
+    private function request(array $body, int $timeout = 30): array
     {
         $model = config('services.cloudflare.embeddings_model');
-        $result = $this->client->post("ai/run/{$model}", $body);
+        $result = $this->client->post("ai/run/{$model}", $body, $timeout);
         $vectors = is_array($result) ? ($result['data'] ?? null) : null;
         if (! is_array($vectors) || ! array_is_list($vectors) || count($vectors) !== count($body['text'])) {
             throw new RuntimeException('Workers AI returned an unexpected embedding count.');

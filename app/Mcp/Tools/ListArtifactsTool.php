@@ -65,7 +65,7 @@ final class ListArtifactsTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'list_artifacts');
@@ -189,7 +189,7 @@ final class ListArtifactsTool extends Tool
             $result = $this->listSorted($url, $team, $baseParams, $sort, $incoming, $limit, $startedAt);
         }
 
-        if ($result instanceof Response) {
+        if ($result instanceof ResponseFactory) {
             return $result;
         }
 
@@ -206,7 +206,7 @@ final class ListArtifactsTool extends Tool
      *
      * @param  array<string, mixed>  $baseParams
      * @param  array<string, mixed>|null  $incoming
-     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|Response
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|ResponseFactory
      */
     private function listSorted(
         string $url,
@@ -216,7 +216,7 @@ final class ListArtifactsTool extends Tool
         ?array $incoming,
         int $limit,
         int $startedAt,
-    ): array|Response {
+    ): array|ResponseFactory {
         $workerSort = match ($sort) {
             'created' => 'created_desc',
             'title' => 'title_asc',
@@ -269,7 +269,7 @@ final class ListArtifactsTool extends Tool
      * @param  array<string, mixed>  $baseParams
      * @param  array<string, mixed>|null  $incoming
      * @param  list<string>  $notes
-     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|Response
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|ResponseFactory
      */
     private function listMostViewed(
         string $url,
@@ -279,7 +279,7 @@ final class ListArtifactsTool extends Tool
         int $limit,
         array &$notes,
         int $startedAt,
-    ): array|Response {
+    ): array|ResponseFactory {
         $fetched = [];
         $cursor = null;
         $truncated = false;
@@ -525,7 +525,7 @@ final class ListArtifactsTool extends Tool
                 'can_edit' => (bool) ($artifact['can_edit'] ?? false),
             ];
 
-            if ($link instanceof Response) {
+            if ($link instanceof ResponseFactory) {
                 $item['view_url'] = null;
                 $item['link_error'] = McpArtifactLink::ERROR_CODE;
             } else {
@@ -638,7 +638,7 @@ final class ListArtifactsTool extends Tool
     /**
      * Map a failed Worker response, or null when the response succeeded.
      */
-    private function failure(HttpResponse $response, int $startedAt): ?Response
+    private function failure(HttpResponse $response, int $startedAt): ?ResponseFactory
     {
         if ($response->successful()) {
             return null;

@@ -43,7 +43,7 @@ final class GetGuidanceTool extends Tool
         ],
     ];
 
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         // Accept any string first so an unknown topic can list the allowed
         // values instead of Laravel's generic `in:` validation message.

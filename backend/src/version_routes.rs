@@ -815,8 +815,11 @@ async fn create_version(
                 &credential.user_id,
             );
         }
+        // `created` means "brand-new artifact", not "this request inserted a
+        // version row". Version publishes always report false (RUB-516); HTTP
+        // 201 still tells callers a new version was written vs a 200 no-op.
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, missing_files, tier, sharing),
+            build_version_response(artifact_id, &base_url, version, false, missing_files, tier, sharing),
             201,
         )
         .into_worker_response()
@@ -1009,7 +1012,7 @@ async fn restore_version(
             &credential.user_id,
         );
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, Vec::new(), tier, sharing),
+            build_version_response(artifact_id, &base_url, version, false, Vec::new(), tier, sharing),
             201,
         )
         .into_worker_response()

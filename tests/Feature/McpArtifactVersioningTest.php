@@ -37,7 +37,7 @@ test('deploy_artifact with artifact_id publishes a new version through the versi
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
-            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [$sha],
+            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => false, 'missing_files' => [$sha],
             'tier' => 'secure', 'sharing' => 'team',
         ], 201),
         'worker.test/v1/artifacts/'.$id.'/files/*' => Http::response('', 204),
@@ -52,7 +52,7 @@ test('deploy_artifact with artifact_id publishes a new version through the versi
     expect($response->json('result.isError'))->toBeFalse()
         ->and($response->json('result.structuredContent.id'))->toBe($id)
         ->and($response->json('result.structuredContent.version'))->toBe(2)
-        ->and($response->json('result.structuredContent.created'))->toBeTrue()
+        ->and($response->json('result.structuredContent.created'))->toBeFalse()
         // A new version never changes sharing, so the response's sharing is
         // what is reported. `tier` is no longer returned.
         ->and($response->json('result.structuredContent.sharing'))->toBe('team')
@@ -516,7 +516,7 @@ test('deploy_artifact version publish omits title description so previous values
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
-            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => false, 'missing_files' => [],
             'tier' => 'secure', 'sharing' => 'team',
         ], 201),
     ]);
@@ -525,7 +525,7 @@ test('deploy_artifact version publish omits title description so previous values
     $response = deployWithBase($token, ['html' => $html, 'artifact_id' => $id])->assertOk();
 
     expect($response->json('result.isError'))->toBeFalse()
-        ->and($response->json('result.structuredContent.created'))->toBeTrue()
+        ->and($response->json('result.structuredContent.created'))->toBeFalse()
         ->and($response->json('result.structuredContent.version'))->toBe(2);
 
     Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
@@ -546,7 +546,7 @@ test('deploy_artifact version publish sends title and description only when prov
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
-            'id' => $id, 'version' => 3, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'id' => $id, 'version' => 3, 'url' => "https://worker.test/p/{$id}/", 'created' => false, 'missing_files' => [],
             'tier' => 'secure', 'sharing' => 'team',
         ], 201),
     ]);
@@ -678,7 +678,7 @@ test('deploy_artifact publishes when base_version matches the live version', fun
     Http::fake([
         'worker.test/v1/artifacts/'.$id => Http::response(['id' => $id, 'version' => 4], 200),
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
-            'id' => $id, 'version' => 5, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'id' => $id, 'version' => 5, 'url' => "https://worker.test/p/{$id}/", 'created' => false, 'missing_files' => [],
             'tier' => 'secure', 'sharing' => 'team',
         ], 201),
     ]);
@@ -688,6 +688,7 @@ test('deploy_artifact publishes when base_version matches the live version', fun
 
     expect($response->json('result.isError'))->toBeFalse()
         ->and($response->json('result.structuredContent.version'))->toBe(5)
+        ->and($response->json('result.structuredContent.created'))->toBeFalse()
         ->and($response->json('result.structuredContent.base_version_checked'))->toBeTrue();
 });
 
@@ -700,7 +701,7 @@ test('deploy_artifact without base_version still publishes and says the base was
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
         'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
-            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => true, 'missing_files' => [],
+            'id' => $id, 'version' => 2, 'url' => "https://worker.test/p/{$id}/", 'created' => false, 'missing_files' => [],
             'tier' => 'secure', 'sharing' => 'team',
         ], 201),
     ]);

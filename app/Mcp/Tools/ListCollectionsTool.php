@@ -48,7 +48,7 @@ final class ListCollectionsTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, CollectionDirectory $directory): Response|ResponseFactory
+    public function handle(Request $request, CollectionDirectory $directory): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('collections:read', 'list_collections');

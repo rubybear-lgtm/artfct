@@ -45,7 +45,7 @@ final class DeleteCollectionTool extends Tool
         ],
     ];
 
-    public function handle(Request $request, CollectionService $collections): Response|ResponseFactory
+    public function handle(Request $request, CollectionService $collections): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('collections:write', 'delete_collection');
@@ -55,7 +55,7 @@ final class DeleteCollectionTool extends Tool
         ]);
 
         $collection = $this->resolveCollection($collections, $validated);
-        if ($collection instanceof Response) {
+        if ($collection instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('delete_collection', 'invalid_request', $startedAt);
 
             return $collection;
@@ -91,7 +91,7 @@ final class DeleteCollectionTool extends Tool
     /**
      * @param  array{collection_id?: int|null, collection?: string|null}  $validated
      */
-    private function resolveCollection(CollectionService $collections, array $validated): Collection|Response|null
+    private function resolveCollection(CollectionService $collections, array $validated): Collection|ResponseFactory|null
     {
         $team = McpContext::team();
         $hasId = array_key_exists('collection_id', $validated) && $validated['collection_id'] !== null;
