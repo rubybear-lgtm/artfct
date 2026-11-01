@@ -57,7 +57,7 @@ final class ReadArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'read_artifact');

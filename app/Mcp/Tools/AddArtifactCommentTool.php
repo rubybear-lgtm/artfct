@@ -51,7 +51,7 @@ final class AddArtifactCommentTool extends Tool
         ],
     ];
 
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('comments:write', 'add_artifact_comment');

@@ -54,7 +54,7 @@ final class SearchArtifactsTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, SearchService $search): Response|ResponseFactory
+    public function handle(Request $request, SearchService $search): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'search_artifacts');

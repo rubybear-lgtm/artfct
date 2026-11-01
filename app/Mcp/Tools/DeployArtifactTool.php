@@ -98,7 +98,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -423,7 +423,7 @@ final class DeployArtifactTool extends Tool
         $artifactId = (string) $created->json('id');
         $link = McpArtifactLink::forArtifact($team->slug, $artifactId, $created->json('tier'), $created->json('url'));
 
-        if ($link instanceof Response) {
+        if ($link instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('deploy_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $artifactId);
 
             return $link;

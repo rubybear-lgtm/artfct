@@ -51,7 +51,7 @@ final class DeleteArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, CollectionService $collections, IndexingService $indexer): Response|ResponseFactory
+    public function handle(Request $request, CollectionService $collections, IndexingService $indexer): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:delete', 'delete_artifact');

@@ -47,7 +47,7 @@ final class CreateCollectionTool extends Tool
         ],
     ];
 
-    public function handle(Request $request, CollectionService $collections): Response|ResponseFactory
+    public function handle(Request $request, CollectionService $collections): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('collections:write', 'create_collection');
