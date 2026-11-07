@@ -58,8 +58,8 @@ node --test scripts/staging/*.test.mjs
 
 SHA verification talks to Railway with `RAILWAY_API_TOKEN` (staging
 environment secrets) and requires `staging-web`, `staging-queue`, and
-`staging-scheduler` `SUCCESS` for that commit. Production `web` /
-`queue` / `scheduler` SUCCESS is never a fallback.
+`staging-scheduler` to be `SUCCESS` or `SLEEPING` for that commit.
+Production `web` / `queue` / `scheduler` is never a fallback.
 
 ## Evidence requirements
 
