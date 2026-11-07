@@ -93,7 +93,10 @@ The smoke check validates protocol/session continuity, the exact tool catalog,
 usage reset metadata, collection discovery, and cross-organization artifact
 isolation. The same check is available as the manual `mcp-live` GitHub Actions workflow.
 Keep the credentials in the staging environment secrets; never commit them or
-put them in ordinary pull-request CI.
+put them in ordinary pull-request CI. Production and Railway PR preview URLs are
+rejected before the smoke runs (RUB-518). Opt-in SHA-checked staging acceptance
+is the separate **Staging acceptance** workflow — not a universal PR gate. See
+[STAGING.md](STAGING.md).
 
 See [the MCP launch runbook](docs/mcp-runbook.md) for supported
 client setup, recovery, policy errors, and incident procedures.

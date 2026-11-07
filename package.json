@@ -14,6 +14,7 @@
         "types:check": "tsc --noEmit",
         "routes:check": "node scripts/check-wayfinder-routes.mjs",
         "test:skills": "node skills/artfct-init/scripts/run-tests.mjs",
+        "test:staging": "node --test scripts/staging/*.test.mjs",
         "worker:whoami": "wrangler whoami",
         "worker:kv:create": "cd backend && ../node_modules/.bin/wrangler kv namespace create ARTIFACTS_KV",
         "worker:dev": "cd backend && ../node_modules/.bin/wrangler dev",

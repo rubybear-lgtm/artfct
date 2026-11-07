@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
     STAGING_BASE_URL,
+    assertSmokeBaseUrl,
     assertStagingOnlyBaseUrl,
     classifyDeployTarget,
     normalizeBaseUrl,
@@ -75,4 +76,24 @@ test('non-staging artfct subdomains are unknown and rejected', () => {
     const result = assertStagingOnlyBaseUrl('https://canary.artfct.dev');
     assert.equal(result.ok, false);
     assert.equal(result.code, 'unknown_target');
+});
+
+test('local e2e loopback is allowed for smoke but not for staging acceptance', () => {
+    assert.equal(classifyDeployTarget('http://127.0.0.1:8080'), 'local');
+    const smoke = assertSmokeBaseUrl('http://127.0.0.1:8080');
+    assert.equal(smoke.ok, true);
+    assert.equal(smoke.target, 'local');
+    assert.equal(smoke.baseUrl, 'http://127.0.0.1:8080');
+
+    const acceptance = assertStagingOnlyBaseUrl('http://127.0.0.1:8080');
+    assert.equal(acceptance.ok, false);
+    assert.equal(acceptance.code, 'local_forbidden');
+});
+
+test('smoke entry also rejects production and preview hosts', () => {
+    assert.equal(assertSmokeBaseUrl('https://artfct.dev').ok, false);
+    assert.equal(
+        assertSmokeBaseUrl('https://web-artfct-pr-103.up.railway.app').ok,
+        false,
+    );
 });
