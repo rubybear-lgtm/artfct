@@ -107,15 +107,16 @@ export async function runStagingAcceptance(options) {
 
     if (options.skipSha) {
         return {
-            ok: true,
-            step: 'complete',
+            ok: false,
+            step: 'sha',
+            code: 'sha_skipped',
             skippedSha: true,
+            message:
+                'SHA verification was skipped. That is never acceptance proof that the intended commit is live on staging.',
             policy,
             policySummary: summarizeAcceptancePath(policy),
             target,
             auth,
-            warning:
-                'SHA verification skipped. Do not treat this as proof the intended commit is live on staging.',
         };
     }
 

@@ -62,6 +62,14 @@ test('staging-acceptance.yml is opt-in, verifies SHA, and never triggers on ever
     assert.match(workflow, /scripts\/staging\/accept\.mjs/);
     assert.doesNotMatch(workflow, /up\.railway\.app/);
     assert.doesNotMatch(workflow, /web-artfct-pr-/);
+    // Default dispatch stays read-only: smoke requires explicit mutation auth.
+    assert.match(
+        workflow,
+        /if:\s*\$\{\{\s*inputs\.run_smoke\s*&&\s*inputs\.authorize_mutations\s*\}\}/,
+    );
+    assert.match(workflow, /run_smoke requires authorize_mutations=true/);
+    assert.match(workflow, /args\+=\(--mutating\)/);
+    assert.match(workflow, /ACCEPT_SHA:\s*\$\{\{\s*inputs\.sha\s*\}\}/);
 });
 
 test('ci.yml runs staging script tests and actionlint without renaming application', () => {

@@ -37,13 +37,17 @@ Risk classification helpers live in `scripts/staging/policy.mjs`.
 Manual workflows only (never on every PR):
 
 1. **Staging acceptance** — Actions → “Staging acceptance”
-   - `sha`: exact commit that must be live on staging (`develop` deploy)
+   - `sha`: exact commit that must be live on staging (`develop` deploy; at
+     least 12 hex chars). `SLEEPING` staging-web counts as deployed.
    - `base_url`: must be `https://staging.artfct.dev`
-   - `authorize_mutations`: default `false` (read-only). Set `true` only with
-     explicit authorization to mutate shared staging.
-   - optional hosted MCP smoke after SHA verification
+   - `authorize_mutations`: default `false` (read-only SHA check). Required
+     before any shared-staging mutation.
+   - `run_smoke`: default `false`. Hosted MCP smoke mutates staging, so it
+     only runs when both `run_smoke` and `authorize_mutations` are true.
 2. **mcp-live** — hosted MCP smoke only; the workflow rejects production and
-   Railway preview hosts before running `scripts/mcp-live-smoke.mjs`.
+   Railway preview hosts before running `scripts/mcp-live-smoke.mjs`. That
+   workflow is inherently mutating; prefer Staging acceptance for SHA-gated
+   read-only checks.
 
 Local checks:
 
