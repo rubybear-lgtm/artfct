@@ -15,6 +15,7 @@ test('staging service names never include production web/queue/scheduler', () =>
         'staging-queue',
         'staging-scheduler',
     ]);
+
     for (const name of PRODUCTION_SERVICE_NAMES) {
         assert.equal(STAGING_SERVICE_NAMES.includes(name), false);
     }

@@ -69,6 +69,7 @@ export function evaluateStagingAcceptanceNeed(options = {}) {
 
     if (options.force) {
         reasons.push('force flag requested staging acceptance');
+
         return {
             warranted: true,
             path: /** @type {const} */ ('staging-acceptance'),
@@ -79,6 +80,7 @@ export function evaluateStagingAcceptanceNeed(options = {}) {
 
     if ((options.labels ?? []).some((label) => /staging|live-acceptance/i.test(label))) {
         reasons.push('PR label requested staging acceptance');
+
         return {
             warranted: true,
             path: /** @type {const} */ ('staging-acceptance'),

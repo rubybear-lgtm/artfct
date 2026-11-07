@@ -263,6 +263,7 @@ Options:
   --force                    mark staging acceptance as warranted
   --skip-sha                 do not claim SHA verification (explicit)
 `);
+
         return 0;
     }
 
@@ -298,10 +299,12 @@ Options:
 
     if (!result.ok) {
         console.error(JSON.stringify(result, null, 2));
+
         return 1;
     }
 
     console.log(JSON.stringify(result, null, 2));
+
     return 0;
 }
 
