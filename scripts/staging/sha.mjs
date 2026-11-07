@@ -13,7 +13,35 @@ export const STAGING_SERVICE_NAMES = [
 
 export const PRODUCTION_SERVICE_NAMES = ['web', 'queue', 'scheduler'];
 
+/** Deployed revisions that may sleep after idle (Railway sleepApplication). */
+export const DEPLOYED_OK_STATUSES = new Set(['SUCCESS', 'SLEEPING']);
+
 const TERMINAL_FAILURE = new Set(['FAILED', 'CRASHED']);
+
+/** Minimum hex prefix length accepted for a commit match. */
+export const MIN_SHA_PREFIX_LENGTH = 12;
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function normalizeSha(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    return value.trim().toLowerCase();
+}
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isValidShaInput(value) {
+    const sha = normalizeSha(value);
+
+    return /^[0-9a-f]{12,64}$/.test(sha);
+}
 
 /**
  * @param {unknown} meta
@@ -44,19 +72,23 @@ export function commitShaFromMeta(meta) {
 }
 
 /**
+ * Exact match, or prefix match only when both sides are long enough.
+ *
  * @param {string} expected
  * @param {string | null | undefined} actual
  */
 export function shaMatches(expected, actual) {
-    if (!actual) {
+    const left = normalizeSha(expected);
+    const right = normalizeSha(actual);
+
+    if (
+        left.length < MIN_SHA_PREFIX_LENGTH ||
+        right.length < MIN_SHA_PREFIX_LENGTH
+    ) {
         return false;
     }
 
-    return (
-        actual === expected ||
-        expected.startsWith(actual) ||
-        actual.startsWith(expected)
-    );
+    return left === right || left.startsWith(right) || right.startsWith(left);
 }
 
 /**
@@ -70,7 +102,7 @@ export function shaMatches(expected, actual) {
  * }} options
  */
 export function assertStagingDeploymentSha(options) {
-    const expectedSha = (options.expectedSha ?? '').trim();
+    const expectedSha = normalizeSha(options.expectedSha);
 
     if (!expectedSha) {
         return {
@@ -78,6 +110,15 @@ export function assertStagingDeploymentSha(options) {
             code: 'missing_sha',
             message:
                 'expectedSha is required. Staging acceptance must verify an exact commit.',
+        };
+    }
+
+    if (!isValidShaInput(expectedSha)) {
+        return {
+            ok: false,
+            code: 'invalid_sha',
+            message: `expectedSha must be a hex commit of at least ${MIN_SHA_PREFIX_LENGTH} characters.`,
+            expectedSha,
         };
     }
 
@@ -107,11 +148,11 @@ export function assertStagingDeploymentSha(options) {
             };
         }
 
-        if (deployment.status !== 'SUCCESS') {
+        if (!DEPLOYED_OK_STATUSES.has(deployment.status)) {
             return {
                 ok: false,
                 code: 'deploy_not_ready',
-                message: `Staging service ${serviceName} status is ${deployment.status}; need SUCCESS for ${expectedSha}.`,
+                message: `Staging service ${serviceName} status is ${deployment.status}; need SUCCESS or SLEEPING for ${expectedSha}.`,
                 serviceName,
                 status: deployment.status,
             };

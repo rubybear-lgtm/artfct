@@ -15,15 +15,15 @@ on:
         type: string
         default: https://staging.artfct.dev
       authorize_mutations:
-        description: Allow mutating shared staging (default read-only)
+        description: Allow mutating shared staging (required for smoke)
         required: false
         type: boolean
         default: false
       run_smoke:
-        description: Run hosted MCP smoke after SHA verification
+        description: Run hosted MCP smoke (requires authorize_mutations; mutates staging)
         required: false
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: read
@@ -74,16 +74,27 @@ jobs:
       - name: Verify staging SHA and authorization
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          ACCEPT_SHA: ${{ inputs.sha }}
+          ACCEPT_BASE_URL: ${{ inputs.base_url }}
+          AUTHORIZE_MUTATIONS: ${{ inputs.authorize_mutations }}
+          RUN_SMOKE: ${{ inputs.run_smoke }}
         run: |
           set -euo pipefail
-          args=(--sha "${{ inputs.sha }}" --base-url "${{ inputs.base_url }}" --environment-name staging --force)
-          if [ "${{ inputs.authorize_mutations }}" = "true" ]; then
+          args=(--sha "$ACCEPT_SHA" --base-url "$ACCEPT_BASE_URL" --environment-name staging --force)
+          if [ "$AUTHORIZE_MUTATIONS" = "true" ]; then
             args+=(--authorize-mutations)
+          fi
+          if [ "$RUN_SMOKE" = "true" ]; then
+            if [ "$AUTHORIZE_MUTATIONS" != "true" ]; then
+              echo "run_smoke requires authorize_mutations=true because mcp-live-smoke mutates shared staging."
+              exit 1
+            fi
+            args+=(--mutating)
           fi
           node scripts/staging/accept.mjs "${args[@]}"
 
       - name: Run hosted MCP smoke suite
-        if: ${{ inputs.run_smoke }}
+        if: ${{ inputs.run_smoke && inputs.authorize_mutations }}
         env:
           MCP_LIVE_BASE_URL: ${{ inputs.base_url }}
           MCP_LIVE_TOKEN_A: ${{ secrets.MCP_LIVE_TOKEN_A }}
