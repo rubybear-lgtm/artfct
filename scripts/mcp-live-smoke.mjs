@@ -10,10 +10,12 @@ import { assertSmokeBaseUrl } from './staging/target.mjs';
  * non-interactive CI runs working. OAuth tokens live in memory only.
  */
 const smokeTarget = assertSmokeBaseUrl(requiredEnv('MCP_LIVE_BASE_URL'));
+
 if (!smokeTarget.ok) {
     console.error(smokeTarget.message);
     process.exit(1);
 }
+
 const baseUrl = smokeTarget.baseUrl;
 
 // Check the advertised origin before spending any OAuth work on it. A drifted
