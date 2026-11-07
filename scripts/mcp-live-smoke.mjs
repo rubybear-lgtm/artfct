@@ -2,12 +2,19 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 
+import { assertSmokeBaseUrl } from './staging/target.mjs';
+
 /**
  * Credentials come from OAuth (PKCE, browser consent per organization) unless
  * both MCP_LIVE_TOKEN_A and MCP_LIVE_TOKEN_B are set, which keeps
  * non-interactive CI runs working. OAuth tokens live in memory only.
  */
-const baseUrl = requiredEnv('MCP_LIVE_BASE_URL').replace(/\/$/, '');
+const smokeTarget = assertSmokeBaseUrl(requiredEnv('MCP_LIVE_BASE_URL'));
+if (!smokeTarget.ok) {
+    console.error(smokeTarget.message);
+    process.exit(1);
+}
+const baseUrl = smokeTarget.baseUrl;
 
 // Check the advertised origin before spending any OAuth work on it. A drifted
 // APP_URL/OAUTH_ISSUER still serves this metadata with a 200 and still issues

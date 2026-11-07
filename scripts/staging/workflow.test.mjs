@@ -45,8 +45,8 @@ test('mcp-live.yml is dispatch-only, staging-environment gated, and validates th
     assert.match(workflow, /environment:\s*staging/);
     assert.match(workflow, /scripts\/staging\/assert-target\.mjs/);
     assert.match(workflow, /scripts\/mcp-live-smoke\.mjs/);
-    assert.doesNotMatch(workflow, /artfct\.dev(?!\s)/); // default may mention staging only
     assert.match(workflow, /staging\.artfct\.dev/);
+    assert.doesNotMatch(workflow, /https:\/\/(?:www\.)?artfct\.dev(?:\/|"|'|\s|$)/);
 });
 
 test('staging-acceptance.yml is opt-in, verifies SHA, and never triggers on every PR', () => {
