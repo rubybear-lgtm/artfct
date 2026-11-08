@@ -125,3 +125,88 @@ test('smoke check reports an unreachable endpoint', async () => {
     assert.equal(result.ok, false);
     assert.match(result.message, /unreachable/);
 });
+
+const productionScope = {
+    projectToken: { projectId: 'p1', environmentId: 'prod-env' },
+};
+
+/**
+ * @param {{ scope?: unknown, scopeError?: Error }} options
+ */
+function projectTokenGraphql(options) {
+    return async (query) => {
+        if (query.includes('projectToken')) {
+            if (options.scopeError) {
+                throw options.scopeError;
+            }
+
+            return options.scope;
+        }
+
+        return projectWith(['web', 'queue', 'scheduler']);
+    };
+}
+
+test('project token bound to production passes the scope check', async () => {
+    const result = await checkRailwayCredentials({
+        graphql: projectTokenGraphql({ scope: productionScope }),
+        projectId: 'p1',
+        environmentId: 'prod-env',
+        verifyProjectToken: true,
+        serviceNames,
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('a staging project token in the production secret is rejected', async () => {
+    const result = await checkRailwayCredentials({
+        graphql: projectTokenGraphql({
+            scope: {
+                projectToken: { projectId: 'p1', environmentId: 'staging-env' },
+            },
+        }),
+        projectId: 'p1',
+        environmentId: 'prod-env',
+        verifyProjectToken: true,
+        serviceNames,
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /staging-env/);
+    assert.match(result.message, /prod-env/);
+});
+
+test('a project token Railway rejects reports the scope query error', async () => {
+    const result = await checkRailwayCredentials({
+        graphql: projectTokenGraphql({
+            scopeError: new Error('Railway GraphQL error: Not Authorized'),
+        }),
+        projectId: 'p1',
+        environmentId: 'prod-env',
+        verifyProjectToken: true,
+        serviceNames,
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /rejected the project token/);
+});
+
+test('the scope query is skipped for account tokens', async () => {
+    /** @type {string[]} */
+    const queries = [];
+    const result = await checkRailwayCredentials({
+        graphql: async (query) => {
+            queries.push(query);
+
+            return projectWith(['web', 'queue', 'scheduler']);
+        },
+        projectId: 'p1',
+        environmentId: 'prod-env',
+        verifyProjectToken: false,
+        serviceNames,
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(queries.every((query) => !query.includes('projectToken')));
+});

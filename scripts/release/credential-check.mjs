@@ -9,11 +9,15 @@
 
 /**
  * Confirms the Railway token can read the production project, using the
- * query the deploy poller runs first.
+ * query the deploy poller runs first. For a project token it also confirms
+ * the token is bound to the production project and environment, so a staging
+ * token pasted into the production secret is caught.
  *
  * @param {{
  *   graphql?: (query: string, variables?: Record<string, unknown>) => Promise<any>,
  *   projectId: string,
+ *   environmentId?: string,
+ *   verifyProjectToken?: boolean,
  *   serviceNames: string[],
  * }} options
  * @returns {Promise<{ ok: boolean, message: string }>}
@@ -25,6 +29,36 @@ export async function checkRailwayCredentials(options) {
             message:
                 'RAILWAY_API_TOKEN is empty. Check the secret name the workflow reads (RAILWAY_API_TOKEN_PRODUCTION).',
         };
+    }
+
+    if (options.verifyProjectToken && options.environmentId) {
+        try {
+            const scope = await options.graphql(
+                `query TokenScope {
+      projectToken {
+        projectId
+        environmentId
+      }
+    }`,
+            );
+
+            if (
+                scope?.projectToken?.projectId !== options.projectId ||
+                scope?.projectToken?.environmentId !== options.environmentId
+            ) {
+                return {
+                    ok: false,
+                    message: `Railway project token is bound to project ${scope?.projectToken?.projectId} / environment ${scope?.projectToken?.environmentId}, not the production project ${options.projectId} / environment ${options.environmentId}.`,
+                };
+            }
+        } catch (error) {
+            return {
+                ok: false,
+                message: `Railway rejected the project token: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            };
+        }
     }
 
     let data;

@@ -7,7 +7,8 @@
  *
  * Env:
  *   GITHUB_TOKEN / GH_TOKEN — GitHub API (checks, PRs, release)
- *   RAILWAY_API_TOKEN — Railway GraphQL (deploy poll)
+ *   RAILWAY_API_TOKEN — Railway project token (Project-Access-Token header);
+ *     set RAILWAY_API_TOKEN_KIND=bearer to use an account token instead
  *   ARTFCT_SMOKE_BOT_TOKEN — production MCP Bearer smoke
  *   GITHUB_REPOSITORY — owner/repo (default rubybear-lgtm/artfct)
  *   GITHUB_STEP_SUMMARY — optional job summary path
@@ -315,6 +316,9 @@ async function main() {
                 ? createRailwayGraphql({ token: process.env.RAILWAY_API_TOKEN })
                 : undefined,
             projectId: RAILWAY_PROJECT_ID,
+            environmentId: RAILWAY_PRODUCTION_ENVIRONMENT_ID,
+            verifyProjectToken:
+                (process.env.RAILWAY_API_TOKEN_KIND || 'project') === 'project',
             serviceNames: PRODUCTION_SERVICE_NAMES,
         });
         const smokeCheck = await checkSmokeCredentials({

@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { railwayAuthHeaders } from '../release/railway-api.mjs';
 import { assertMutationAuthorized } from './authorize.mjs';
 import {
     evaluateStagingAcceptanceNeed,
@@ -167,7 +168,7 @@ async function railwayGraphql(token, query, variables = {}) {
     const response = await fetch('https://backboard.railway.com/graphql/v2', {
         method: 'POST',
         headers: {
-            Authorization: `Bearer ${token}`,
+            ...railwayAuthHeaders(token),
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ query, variables }),
