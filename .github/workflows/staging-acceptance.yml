@@ -51,7 +51,7 @@ jobs:
 
       - name: Mask secrets
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_STAGING }}
           MCP_LIVE_TOKEN_A: ${{ secrets.MCP_LIVE_TOKEN_A }}
           MCP_LIVE_TOKEN_B: ${{ secrets.MCP_LIVE_TOKEN_B }}
         run: |
@@ -73,7 +73,7 @@ jobs:
 
       - name: Verify staging SHA and authorization
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_STAGING }}
           ACCEPT_SHA: ${{ inputs.sha }}
           ACCEPT_BASE_URL: ${{ inputs.base_url }}
           AUTHORIZE_MUTATIONS: ${{ inputs.authorize_mutations }}

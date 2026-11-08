@@ -47,7 +47,7 @@ jobs:
 
       - name: Mask secrets
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_PRODUCTION }}
           ARTFCT_SMOKE_BOT_TOKEN: ${{ secrets.ARTFCT_SMOKE_BOT_TOKEN }}
           RELEASE_PUSH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
         run: |
@@ -73,7 +73,7 @@ jobs:
         env:
           # GITHUB_TOKEN is used for checks/releases; push uses the checkout token above.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_PRODUCTION }}
           ARTFCT_SMOKE_BOT_TOKEN: ${{ secrets.ARTFCT_SMOKE_BOT_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |

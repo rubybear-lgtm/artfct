@@ -73,8 +73,9 @@ last conventional promotion of this workflow, or a tiny workflow-only PR into
 
 Repo secrets used by the Action (set by a repo admin; not committed):
 
-- `RAILWAY_API_TOKEN` — Railway GraphQL token with read access to production
-  deployments.
+- `RAILWAY_API_TOKEN_PRODUCTION` — Railway GraphQL token with read access to production
+  deployments. Exposed to the script as `RAILWAY_API_TOKEN`; staging acceptance reads
+  `RAILWAY_API_TOKEN_STAGING` the same way.
 - `ARTFCT_SMOKE_BOT_TOKEN` — bot Bearer token that can call production MCP
   `initialize` / `tools/list`.
 - `RELEASE_PUSH_TOKEN` (optional) — fine-grained PAT or similar that can push
