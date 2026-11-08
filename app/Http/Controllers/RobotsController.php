@@ -13,7 +13,8 @@ use Illuminate\Http\Response;
  * Search and AI search crawlers may read the public site. AI training
  * crawlers may not, with one exception: Google-Extended may read the
  * marketing pages so Gemini can cite them, but never artifact content.
- * Anything other than production asks every crawler to stay out.
+ * Artifact, API and sign-in paths are disallowed for every crawler
+ * (RUB-513). Anything other than production asks every crawler to stay out.
  */
 class RobotsController extends Controller
 {
@@ -53,14 +54,23 @@ class RobotsController extends Controller
             return "User-agent: *\nDisallow: /\n";
         }
 
+        // Artifact, API and sign-in paths are never marketing pages. Disallow
+        // them for every crawler (RUB-513) so Google spends crawl budget on
+        // the sitemap instead of shared /a/ links and dead app shells.
+        $privateDisallows = array_map(
+            fn (string $path): string => "Disallow: {$path}",
+            [...self::ARTIFACT_PATHS, '/login'],
+        );
+
         $lines = [
             'User-agent: *',
             'Content-Signal: search=yes,ai-train=no,use=reference',
             'Allow: /',
+            ...$privateDisallows,
             '',
             'User-agent: Google-Extended',
             'Allow: /',
-            ...array_map(fn (string $path): string => "Disallow: {$path}", self::ARTIFACT_PATHS),
+            ...$privateDisallows,
             '',
         ];
 

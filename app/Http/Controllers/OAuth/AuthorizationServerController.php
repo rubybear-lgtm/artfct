@@ -202,6 +202,8 @@ final class AuthorizationServerController extends Controller
             'codeChallenge' => $parameters['code_challenge'],
             'codeChallengeMethod' => $parameters['code_challenge_method'],
             'consentToken' => $this->consentToken($parameters),
+            // Native form POST needs the session CSRF token in the body (RUB-510).
+            'csrfToken' => csrf_token(),
             'team' => ['id' => $team->slug, 'name' => $team->name, 'slug' => $team->slug],
             'teams' => $user->teams()->get(['teams.id', 'teams.name', 'teams.slug'])->map(fn (Team $candidate): array => [
                 'id' => $candidate->slug,
@@ -885,23 +887,18 @@ final class AuthorizationServerController extends Controller
     /** @return list<string> */
     private function scopesForRole(TeamRole $role): array
     {
-        return match ($role) {
-            TeamRole::Admin, TeamRole::Member => McpScope::values(),
-            TeamRole::Viewer => [
-                McpScope::ArtifactsRead->value,
-                McpScope::CollectionsRead->value,
-                McpScope::UsageRead->value,
-            ],
-        };
+        return McpScope::forRole($role);
     }
 
     /** @param array<string, string> $parameters */
     /**
-     * Send the browser to the client's redirect URI. The consent page submits
-     * through Inertia's XHR, and an XHR cannot follow a redirect to another
-     * origin (CORS), so Inertia requests get a 409 location visit instead.
-     */
-    /**
+     * Send the browser to the client's redirect URI.
+     *
+     * The consent form posts as a normal browser navigation (RUB-510), so this
+     * is usually a cross-origin 302. If a client still posts with Inertia
+     * headers, `Inertia::location` answers 409 + X-Inertia-Location instead —
+     * an XHR cannot follow a redirect to another origin.
+     *
      * @param  array<string, string|null>  $parameters
      */
     private function redirectWith(string $redirectUri, array $parameters): SymfonyResponse

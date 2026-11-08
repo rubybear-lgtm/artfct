@@ -21,7 +21,10 @@ final class QuotaExceededException extends RuntimeException
      */
     public string $errorCode = 'quota_exceeded';
 
-    public function __construct(string $reason)
+    /**
+     * @param  array<string, mixed>  $details  machine-readable fields (e.g. daily reset_at)
+     */
+    public function __construct(string $reason, public readonly array $details = [])
     {
         parent::__construct($reason);
     }
