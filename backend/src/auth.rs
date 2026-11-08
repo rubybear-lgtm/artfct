@@ -283,14 +283,27 @@ pub(crate) async fn resolve_request_credential(
     let audience = env_string(env, "ARTFCT_JWT_AUDIENCE", "artfct-engine");
     let claims = decode_org_jwt(token, &jwks, now, &issuer, &audience)?;
     let jti = claims.jti.clone();
-    let denylisted = kv
+    // Fail closed on KV errors (RUB-464): a revoked JWT must not authenticate
+    // because the denylist was briefly unreachable. JWKS reads already deny.
+    let denylist_value = kv
         .get(&denylist_kv_key(&jti))
         .text()
         .await
-        .ok()
-        .flatten()
-        .is_some();
+        .map_err(|_| CredentialError::UnknownKey)?;
+    let denylisted = denylist_hit(Ok(denylist_value))?;
     resolve_org_credential(claims, |candidate_jti| candidate_jti == jti && denylisted)
+}
+
+/// Whether the denylist KV get indicates a hit. `Err` is fail-closed so a
+/// transient KV failure cannot revive a revoked credential (RUB-464).
+pub(crate) fn denylist_hit(
+    result: std::result::Result<Option<String>, ()>,
+) -> std::result::Result<bool, CredentialError> {
+    match result {
+        Ok(Some(_)) => Ok(true),
+        Ok(None) => Ok(false),
+        Err(()) => Err(CredentialError::UnknownKey),
+    }
 }
 
 /// Reads the JWKS from KV. No fetch fallback: publishing/refreshing the
