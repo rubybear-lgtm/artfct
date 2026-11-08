@@ -122,7 +122,7 @@ export default function ArtifactShareControl({
                     Share
                 </Button>
             </DialogTrigger>
-            <DialogContent aria-label="Sharing" className="relative">
+            <DialogContent aria-label="Sharing" className="fixed">
                 <DialogClose asChild>
                     <Button
                         type="button"

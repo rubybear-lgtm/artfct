@@ -65,7 +65,7 @@ interface ManageDeploymentDurationProps {
     setNewTtlMinutes: (minutes: number) => void;
     isUpdatingTtl: boolean;
     isDeletingLink: boolean;
-    onUpdateTtl: () => void | Promise<void>;
+    onUpdateTtl: (ttlMinutes?: number) => void | Promise<void>;
 }
 
 export function ManageDeploymentDuration({
@@ -84,26 +84,17 @@ export function ManageDeploymentDuration({
         setDraft(String(newTtlMinutes));
     }
 
-    const commitDraft = () => {
-        if (draft === '') {
-            setDraft(String(DEFAULT_TTL_MINUTES));
-            setNewTtlMinutes(DEFAULT_TTL_MINUTES);
-
-            return;
-        }
-
+    /** Applies the draft and returns the value now in effect. */
+    const commitDraft = (): number => {
         const parsed = Number.parseInt(draft, 10);
+        const committed = Number.isNaN(parsed)
+            ? DEFAULT_TTL_MINUTES
+            : Math.min(Math.max(parsed, 1), MAX_TTL_MINUTES);
 
-        if (Number.isNaN(parsed)) {
-            setDraft(String(DEFAULT_TTL_MINUTES));
-            setNewTtlMinutes(DEFAULT_TTL_MINUTES);
+        setDraft(String(committed));
+        setNewTtlMinutes(committed);
 
-            return;
-        }
-
-        const clamped = Math.min(Math.max(parsed, 1), MAX_TTL_MINUTES);
-        setDraft(String(clamped));
-        setNewTtlMinutes(clamped);
+        return committed;
     };
 
     return (
@@ -181,8 +172,7 @@ export function ManageDeploymentDuration({
 
             <Button
                 onClick={() => {
-                    commitDraft();
-                    void onUpdateTtl();
+                    void onUpdateTtl(commitDraft());
                 }}
                 disabled={isUpdatingTtl || isDeletingLink}
                 className="welcome-manage-action welcome-manage-update"

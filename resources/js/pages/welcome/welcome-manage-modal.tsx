@@ -18,7 +18,7 @@ interface WelcomeManageModalProps {
     modalError: string | null;
     modalSuccess: boolean;
     onClose: () => void;
-    onUpdateTtl: () => void | Promise<void>;
+    onUpdateTtl: (ttlMinutes?: number) => void | Promise<void>;
     onDeleteLink: () => void | Promise<void>;
 }
 
@@ -39,10 +39,10 @@ export function WelcomeManageModal({
         'update' | 'delete' | null
     >(null);
 
-    const handleUpdateTtl = (): void | Promise<void> => {
+    const handleUpdateTtl = (ttlMinutes?: number): void | Promise<void> => {
         setFailedAction('update');
 
-        return onUpdateTtl();
+        return onUpdateTtl(ttlMinutes);
     };
 
     const handleDeleteLink = (): void | Promise<void> => {
