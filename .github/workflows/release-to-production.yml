@@ -1,0 +1,87 @@
+name: Release to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA to release (defaults to current develop HEAD)
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: Evaluate every gate and report what would happen without pushing or tagging
+        required: false
+        type: boolean
+        default: false
+
+# Only one release at a time; never cancel an in-flight release.
+concurrency:
+  group: release-to-production
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  checks: read
+  statuses: read
+
+jobs:
+  release:
+    name: Release to production
+    runs-on: ubuntu-latest
+    # Checks wait up to ~30m, then Railway up to ~30m (Release readiness), plus smoke.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          # Prefer a fine-grained PAT when branch protection blocks GITHUB_TOKEN.
+          # Falls back to GITHUB_TOKEN when RELEASE_PUSH_TOKEN is unset.
+          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Mask secrets
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          ARTFCT_SMOKE_BOT_TOKEN: ${{ secrets.ARTFCT_SMOKE_BOT_TOKEN }}
+          RELEASE_PUSH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          mask() {
+            if [ -n "${1:-}" ]; then
+              echo "::add-mask::$1"
+              echo "::add-mask::Bearer $1"
+            fi
+          }
+          mask "$RAILWAY_API_TOKEN"
+          mask "$ARTFCT_SMOKE_BOT_TOKEN"
+          mask "$RELEASE_PUSH_TOKEN"
+
+      - name: Configure git identity
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release gates and (unless dry_run) fast-forward main
+        id: release
+        env:
+          # GITHUB_TOKEN is used for checks/releases; push uses the checkout token above.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          ARTFCT_SMOKE_BOT_TOKEN: ${{ secrets.ARTFCT_SMOKE_BOT_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          args=(--sha "${{ inputs.sha }}")
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          # Fast-forward only: scripts/release/release.mjs runs
+          # `git push origin <sha>:main` (never a forced push).
+          node scripts/release/release.mjs "${args[@]}"
