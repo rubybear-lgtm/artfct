@@ -45,6 +45,23 @@ export function isIgnoredCheck(check) {
 }
 
 /**
+ * The Action that is running the gate is itself a check run on the commit it
+ * was dispatched from. When that commit is also the release SHA, waiting for
+ * "all checks finished" would wait for this very run until the timeout.
+ *
+ * @param {{ detailsUrl?: string | null }} check
+ * @param {string | undefined} ownRunId
+ * @returns {boolean}
+ */
+export function isOwnRun(check, ownRunId) {
+    if (!ownRunId || !check.detailsUrl) {
+        return false;
+    }
+
+    return check.detailsUrl.includes(`/actions/runs/${ownRunId}/`);
+}
+
+/**
  * Keep the newest check run per name (GitHub returns every attempt).
  *
  * @template {{ name: string, startedAt?: string | null, completedAt?: string | null, id?: number | string }} T
@@ -160,6 +177,7 @@ function isAcceptable(check) {
  *     state: string,
  *     updatedAt?: string | null,
  *   }>>,
+ *   ownRunId?: string,
  *   sleep?: (ms: number) => Promise<void>,
  *   now?: () => number,
  *   pollIntervalMs?: number,
@@ -178,7 +196,9 @@ export async function assertRequiredChecksSucceeded(options) {
     while (true) {
         const checkRuns = latestChecksByName(
             (await options.listCheckRuns(options.sha)).filter(
-                (check) => !isIgnoredCheck(check),
+                (check) =>
+                    !isIgnoredCheck(check) &&
+                    !isOwnRun(check, options.ownRunId),
             ),
         );
         const statuses = options.listCommitStatuses

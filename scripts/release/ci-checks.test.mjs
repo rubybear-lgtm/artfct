@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
     assertRequiredChecksSucceeded,
     isIgnoredCheck,
+    isOwnRun,
     latestChecksByName,
 } from './ci-checks.mjs';
 
@@ -346,4 +347,80 @@ test('A5: a failed non-Railway check is rejected', async () => {
     assert.equal(result.ok, false);
     assert.equal(result.code, 'checks_failed');
     assert.deepEqual(result.failed, ['Workers Builds: artfct-engine']);
+});
+
+test("the running Action's own check run is not waited on", async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        ownRunId: '777',
+        timeoutMs: 1,
+        pollIntervalMs: 1,
+        sleep: async () => {},
+        now: (() => {
+            let tick = 0;
+
+            return () => tick++;
+        })(),
+        listCheckRuns: async () => [
+            ...['Pest (browser)', 'application'].map((name) => ({
+                name,
+                status: 'completed',
+                conclusion: 'success',
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/100/job/1',
+            })),
+            {
+                name: 'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+                status: 'completed',
+                conclusion: 'skipped',
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/100/job/2',
+            },
+            {
+                name: 'Release to production',
+                status: 'in_progress',
+                conclusion: null,
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/777/job/9',
+            },
+        ],
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('another release run that is still pending is still waited on', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        ownRunId: '777',
+        timeoutMs: 1,
+        pollIntervalMs: 1,
+        sleep: async () => {},
+        now: (() => {
+            let tick = 0;
+
+            return () => tick++;
+        })(),
+        listCheckRuns: async () => [
+            {
+                name: 'Release to production',
+                status: 'in_progress',
+                conclusion: null,
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/778/job/9',
+            },
+        ],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'checks_pending_timeout');
+});
+
+test('isOwnRun matches only the exact run id path segment', () => {
+    const url = 'https://github.com/o/r/actions/runs/1234/job/5';
+
+    assert.equal(isOwnRun({ detailsUrl: url }, '1234'), true);
+    assert.equal(isOwnRun({ detailsUrl: url }, '234'), false);
+    assert.equal(isOwnRun({ detailsUrl: url }, undefined), false);
+    assert.equal(isOwnRun({}, '1234'), false);
 });

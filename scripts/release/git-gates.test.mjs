@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+    assertCommitAheadOfMain,
     assertCommitOnDevelop,
     assertFastForwardPossible,
 } from './git-gates.mjs';
@@ -112,4 +113,32 @@ test('A5 git half: accepts when the commit is on develop and main can fast-forwa
         }),
     });
     assert.equal(resultFf.ok, true);
+});
+
+test('rejects releasing the commit main already points at', () => {
+    const result = assertCommitAheadOfMain({
+        sha: 'abc123',
+        runGit: gitStub({
+            'rev-parse --verify refs/remotes/origin/main^{commit}': {
+                stdout: 'abc123\n',
+            },
+        }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'nothing_to_release');
+    assert.match(result.message, /Nothing to release/);
+});
+
+test('accepts a commit ahead of main', () => {
+    const result = assertCommitAheadOfMain({
+        sha: 'def456',
+        runGit: gitStub({
+            'rev-parse --verify refs/remotes/origin/main^{commit}': {
+                stdout: 'abc123\n',
+            },
+        }),
+    });
+
+    assert.equal(result.ok, true);
 });

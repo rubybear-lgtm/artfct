@@ -20,8 +20,10 @@ What the Action does:
 
 1. Confirms the commit is on `develop`.
 2. Confirms `main` is an ancestor of that commit (fast-forward only; never a
-   force push).
-3. Waits for required GitHub Actions checks on that exact commit. Pest
+   force push), and that `main` does not already point at it. Releasing the
+   commit `main` is on fails with "Nothing to release".
+3. Waits for required GitHub Actions checks on that exact commit. The Action's
+   own run is excluded from the wait. Pest
    (browser), the MCP e2e job, and `application` must be present; browser and
    `application` must be `success`, and MCP e2e must be `success` or
    `skipped` (path filter). Other non-Railway checks on the commit must also

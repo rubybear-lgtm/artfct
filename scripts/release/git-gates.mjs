@@ -77,3 +77,30 @@ export function assertFastForwardPossible(options) {
 
     return { ok: true };
 }
+
+/**
+ * Releasing the commit main already points at would push nothing, tag a commit
+ * that is already released and (with the Action's own check run pending on it)
+ * only produce a confusing wait.
+ *
+ * @param {{
+ *   sha: string,
+ *   mainRef?: string,
+ *   runGit: (args: string[]) => { status: number, stdout: string, stderr: string },
+ * }} options
+ * @returns {{ ok: true } | { ok: false, code: string, message: string }}
+ */
+export function assertCommitAheadOfMain(options) {
+    const mainRef = options.mainRef ?? 'refs/remotes/origin/main';
+    const main = options.runGit(['rev-parse', '--verify', `${mainRef}^{commit}`]);
+
+    if (main.status === 0 && main.stdout.trim() === options.sha) {
+        return {
+            ok: false,
+            code: 'nothing_to_release',
+            message: `Nothing to release: main (${mainRef}) already points at ${options.sha}. Merge a change to develop first, then release that commit.`,
+        };
+    }
+
+    return { ok: true };
+}
