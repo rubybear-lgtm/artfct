@@ -330,7 +330,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return (
         <div className="flex min-h-screen flex-col bg-background text-foreground">
             <header className="sticky top-0 z-30 border-b border-border bg-background/94 backdrop-blur-md">
-                <div className="mx-auto flex h-[68px] max-w-[1120px] min-w-0 items-center gap-2 px-4 md:gap-4 md:px-5">
+                <div className="mx-auto flex h-[68px] max-w-[1120px] min-w-0 items-center gap-2 px-4 md:gap-4 md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                     <Link
                         href={
                             team
@@ -545,7 +545,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         data-testid="admin-subnav"
                         className="hidden border-t border-border bg-muted/35 md:block"
                     >
-                        <div className="mx-auto max-w-[1120px] overflow-x-auto px-5">
+                        <div className="mx-auto max-w-[1120px] overflow-x-auto px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                             <nav className="flex w-max items-center gap-x-5 text-[13px] font-medium whitespace-nowrap">
                                 {adminSubNav.map((item) => (
                                     <Link
@@ -713,7 +713,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </header>
 
             {team && quota && banner && (
-                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5">
+                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                     <Alert
                         variant={quota.exceeded ? 'warning' : 'default'}
                         role="status"
@@ -735,7 +735,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </div>
             )}
             {team?.paymentStatus === 'past_due' && (
-                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5">
+                <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                     <Alert variant="warning" role="status">
                         Payment is past due. New artifacts are blocked; existing
                         ones keep serving.{' '}
@@ -755,11 +755,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </div>
             )}
 
-            <main className="mx-auto w-full max-w-[1120px] min-w-0 flex-1 px-4 py-8 md:px-5 md:py-12">
+            <main className="mx-auto w-full max-w-[1120px] min-w-0 flex-1 px-4 py-8 md:px-5 md:py-12 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                 {children}
             </main>
             <footer className="border-t border-border">
-                <div className="mx-auto flex max-w-[1120px] min-w-0 flex-wrap items-baseline justify-between gap-4 px-4 py-7 text-sm text-muted-foreground md:px-5 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:min-w-11 max-md:[&_a]:items-center">
+                <div className="mx-auto flex max-w-[1120px] min-w-0 flex-wrap items-baseline justify-between gap-4 px-4 py-7 text-sm text-muted-foreground md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px] max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:min-w-11 max-md:[&_a]:items-center">
                     <div className="flex items-baseline gap-3">
                         <span className="font-serif text-xl font-medium tracking-[-0.02em] text-foreground">
                             Artfct

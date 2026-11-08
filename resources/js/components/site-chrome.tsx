@@ -72,7 +72,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
 
     return (
         <header className="sticky top-0 z-20 border-b border-border bg-background/94 backdrop-blur-md">
-            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-[14px] sm:gap-6 sm:px-5 sm:py-[16px]">
+            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-[14px] sm:gap-6 sm:px-5 sm:py-[16px] xl:max-w-[1280px] 2xl:max-w-[1480px]">
                 <Wordmark />
                 <nav
                     aria-label="Site"
@@ -171,7 +171,7 @@ export function SiteHeader({ active }: { active?: SiteSection }) {
 export function SiteFooter() {
     return (
         <footer className="border-t border-border">
-            <div className="mx-auto flex max-w-[1120px] flex-wrap items-baseline justify-between gap-4 px-5 py-7 text-sm text-muted-foreground">
+            <div className="mx-auto flex max-w-[1120px] flex-wrap items-baseline justify-between gap-4 px-5 py-7 text-sm text-muted-foreground xl:max-w-[1280px] 2xl:max-w-[1480px]">
                 <div className="flex items-baseline gap-3">
                     <Wordmark className="text-xl text-foreground" />
                     <span>© {new Date().getFullYear()} Artfct</span>
