@@ -8,6 +8,28 @@ test('the landing page hero stage plays the whole story', function () {
         ->assertScript('document.querySelectorAll(\'[data-testid="landing-flow"] .fs-win\').length', 1);
 });
 
+test('the landing_page root class follows client navigation', function () {
+    $page = visit('/');
+
+    $page->assertScript(
+        'document.documentElement.classList.contains("landing-page")',
+        true,
+    );
+
+    $page->navigate('/free')
+        ->assertScript(
+            'document.documentElement.classList.contains("landing-page")',
+            false,
+        );
+
+    $page->navigate('/')
+        ->assertScript(
+            'document.documentElement.classList.contains("landing-page")',
+            true,
+        )
+        ->assertNoJavaScriptErrors();
+});
+
 test('the headline and the whole hero stage fit one laptop screen', function () {
     visit('/')
         ->resize(1440, 800)

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
 import { backgroundSrc, HERO_DARK, STORY_DARK } from '@/lib/backgrounds';
+import { useTheme } from '@/lib/theme';
 
 import { caption, CONTENT } from '../../../remotion/timeline';
 
@@ -632,10 +633,12 @@ export function useStory(): Story {
     );
     const [active, setActive] = useState(-1);
     const activeRef = useRef(-1);
+    const kickRef = useRef<(() => void) | null>(null);
 
     const start = (i: number) => {
         playing.current[i] = true;
         startedAt.current[i] = performance.now();
+        kickRef.current?.();
     };
 
     useEffect(() => {
@@ -645,6 +648,7 @@ export function useStory(): Story {
 
         let raf = 0;
         const tick = (now: number) => {
+            raf = 0;
             const vh = window.innerHeight;
             const rects = els.current.map((el) => el?.getBoundingClientRect());
             const resets: number[] = [];
@@ -664,7 +668,8 @@ export function useStory(): Story {
                 const off = visible < 0.15;
 
                 if (on && !playing.current[i]) {
-                    start(i);
+                    playing.current[i] = true;
+                    startedAt.current[i] = now;
                 }
 
                 if (off && playing.current[i]) {
@@ -704,11 +709,33 @@ export function useStory(): Story {
                 setProgress(next);
             }
 
-            raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
+            // Keep the loop only while something is still animating (RUB-476).
+            const stillAnimating = next.some(
+                (v, i) => playing.current[i] && v < 1,
+            );
 
-        return () => cancelAnimationFrame(raf);
+            if (stillAnimating) {
+                raf = requestAnimationFrame(tick);
+            }
+        };
+
+        const schedule = () => {
+            if (raf === 0) {
+                raf = requestAnimationFrame(tick);
+            }
+        };
+
+        kickRef.current = schedule;
+        schedule();
+        window.addEventListener('scroll', schedule, { passive: true });
+        window.addEventListener('resize', schedule);
+
+        return () => {
+            kickRef.current = null;
+            cancelAnimationFrame(raf);
+            window.removeEventListener('scroll', schedule);
+            window.removeEventListener('resize', schedule);
+        };
     }, [reduced]);
 
     const register = (index: number) => (el: HTMLElement | null) => {
@@ -716,6 +743,22 @@ export function useStory(): Story {
     };
 
     return { reduced, progress, register, replay: start, active };
+}
+
+function useResolvedDark(): boolean {
+    const [theme] = useTheme();
+    const systemDark = useSyncExternalStore(
+        (onStoreChange) => {
+            const media = window.matchMedia('(prefers-color-scheme: dark)');
+            media.addEventListener('change', onStoreChange);
+
+            return () => media.removeEventListener('change', onStoreChange);
+        },
+        () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+        () => false,
+    );
+
+    return theme === 'dark' || (theme === 'system' && systemDark);
 }
 
 const view = (i: number, p: number) => {
@@ -739,6 +782,8 @@ export function StoryStage({ story }: { story: Story }) {
     const p = story.reduced ? 1 : story.progress[0];
     const chapter = Math.min(3, Math.floor(p * 4));
     const local = story.reduced ? 1 : p * 4 - chapter;
+    const dark = useResolvedDark();
+    const heroArt = dark ? HERO_ART_DARK : HERO_ART;
 
     return (
         <div
@@ -747,20 +792,34 @@ export function StoryStage({ story }: { story: Story }) {
             data-testid="landing-flow"
         >
             <div className="story-art" role="img" aria-label={STORY_ALT}>
-                <img className="a-sage" src={HERO_ART.sage} alt="" />
-                <img className="a-burst" src={HERO_ART.burst} alt="" />
-                <img className="a-clay" src={HERO_ART.clay} alt="" />
-                <img className="a-ox" src={HERO_ART.ox} alt="" />
-                {(['sage', 'burst', 'clay', 'ox'] as const).map((name) => (
-                    <span
-                        key={name}
-                        className={`a-${name} dark-art`}
-                        style={{
-                            backgroundImage: `url(${HERO_ART_DARK[name]})`,
-                        }}
-                        aria-hidden="true"
-                    />
-                ))}
+                <img
+                    className="a-sage"
+                    src={heroArt.sage}
+                    alt=""
+                    loading="eager"
+                    decoding="async"
+                />
+                <img
+                    className="a-burst"
+                    src={heroArt.burst}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                />
+                <img
+                    className="a-clay"
+                    src={heroArt.clay}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                />
+                <img
+                    className="a-ox"
+                    src={heroArt.ox}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                />
                 <div className="story-win">
                     <div className="fs-win">
                         <div
