@@ -1,12 +1,15 @@
 name: mcp-live
 
+# Manual hosted MCP smoke against staging only (RUB-518). Not a PR gate.
+# Production and Railway PR preview URLs are rejected before the smoke runs.
 on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: Hosted MCP base URL, for example https://staging.artfct.dev
+        description: Hosted MCP base URL (must be https://staging.artfct.dev)
         required: true
         type: string
+        default: https://staging.artfct.dev
 
 permissions:
   contents: read
@@ -27,6 +30,11 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: '22'
+
+      - name: Assert staging-only target
+        env:
+          MCP_LIVE_BASE_URL: ${{ inputs.base_url }}
+        run: node scripts/staging/assert-target.mjs
 
       - name: Run hosted MCP smoke suite
         env:

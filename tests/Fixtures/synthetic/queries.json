@@ -76,6 +76,34 @@
       ]
     },
     {
+      "query": "Billing dashboard — August 2026",
+      "expected_keys": [
+        "billing-dashboard-aug"
+      ],
+      "note": "exact title (RUB-507)"
+    },
+    {
+      "query": "On-call handoff runbook",
+      "expected_keys": [
+        "oncall-handoff-runbook"
+      ],
+      "note": "exact title (RUB-507)"
+    },
+    {
+      "query": "Incident postmortem — July checkout outage",
+      "expected_keys": [
+        "incident-2026-07-postmortem"
+      ],
+      "note": "exact title (RUB-507)"
+    },
+    {
+      "query": "Customer health scorecard",
+      "expected_keys": [
+        "customer-health-scorecard"
+      ],
+      "note": "exact title casing variant (RUB-507)"
+    },
+    {
       "query": "board deck for the quarter",
       "expected_keys": [
         "quarterly-board-deck"

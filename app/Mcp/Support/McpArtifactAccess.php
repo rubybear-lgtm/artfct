@@ -4,7 +4,7 @@ namespace App\Mcp\Support;
 
 use App\Services\Artifacts\ArtifactIdShape;
 use Illuminate\Support\Facades\Http;
-use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
 
 /**
  * "Can this caller see this artifact?", answered by the Worker with the
@@ -14,9 +14,9 @@ use Laravel\Mcp\Response;
 final class McpArtifactAccess
 {
     /**
-     * @return Response|null null when the caller may see the artifact
+     * @return ResponseFactory|null null when the caller may see the artifact
      */
-    public static function denyUnlessVisible(string $artifactId, string $tool, int $startedAt): ?Response
+    public static function denyUnlessVisible(string $artifactId, string $tool, int $startedAt): ?ResponseFactory
     {
         if (! ArtifactIdShape::isPermanent($artifactId) && ! ArtifactIdShape::isEphemeral($artifactId)) {
             return McpErrorResponse::error('That is not an artifact id.', 'invalid_request');

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Teams;
 use App\Enums\AuditEventType;
 use App\Enums\McpScope;
 use App\Enums\TeamPermission;
-use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
@@ -22,9 +21,6 @@ use Inertia\Response;
 
 class McpConnectionController extends Controller
 {
-    /** @var list<string> */
-    private const SUPPORTED_SCOPES = ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'comments:write', 'collections:read', 'collections:write', 'usage:read'];
-
     /** @var list<string> */
     private const DEFAULT_SCOPES = ['artifacts:read', 'collections:read', 'usage:read'];
 
@@ -65,7 +61,7 @@ class McpConnectionController extends Controller
             'team' => ['slug' => $team->slug, 'name' => $team->name],
             'mcpEndpoint' => url('/mcp'),
             'oauthMetadataUrl' => url('/.well-known/oauth-protected-resource'),
-            'scopeOptions' => $this->allowedScopesForRole($request->user()->teamRole($team)),
+            'scopeOptions' => McpScope::forRole($request->user()->teamRole($team)),
             'scopeLabels' => collect(McpScope::cases())
                 ->mapWithKeys(fn (McpScope $scope): array => [$scope->value => $scope->label()])
                 ->all(),
@@ -127,11 +123,11 @@ class McpConnectionController extends Controller
         $validated = $request->validate([
             'client_name' => ['required', 'string', 'max:100'],
             'scopes' => ['sometimes', 'array', 'min:1'],
-            'scopes.*' => ['string', Rule::in(self::SUPPORTED_SCOPES)],
+            'scopes.*' => ['string', Rule::in(McpScope::values())],
         ]);
 
         $scopes = array_values(array_intersect(
-            $this->allowedScopesForRole($request->user()->teamRole($team)),
+            McpScope::forRole($request->user()->teamRole($team)),
             $validated['scopes'] ?? self::DEFAULT_SCOPES,
         ));
 
@@ -242,20 +238,5 @@ class McpConnectionController extends Controller
         });
 
         return true;
-    }
-
-    /**
-     * The scopes a person may attach to a connection: never more than their
-     * own role carries, and read-only for viewers. Mirrors the capping the
-     * API's registration path applies (`Api\McpConnectionController`).
-     *
-     * @return list<string>
-     */
-    private function allowedScopesForRole(?TeamRole $role): array
-    {
-        return match ($role) {
-            TeamRole::Admin, TeamRole::Member => self::SUPPORTED_SCOPES,
-            default => ['artifacts:read', 'collections:read', 'usage:read'],
-        };
     }
 }
