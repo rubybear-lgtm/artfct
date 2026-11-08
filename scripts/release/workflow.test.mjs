@@ -62,3 +62,28 @@ test('B11: tokens are passed via env and masked; never echoed as values', () => 
     assert.doesNotMatch(yaml, /echo\s+"\$\{?RAILWAY_API_TOKEN\}?"/);
     assert.doesNotMatch(yaml, /echo\s+"\$\{?ARTFCT_SMOKE_BOT_TOKEN\}?"/);
 });
+
+test('ci.yml keeps release_scripts and staging_scripts under application; readiness on main push', () => {
+    const ci = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
+
+    assert.match(ci, /^\s+release_scripts:\s*$/m);
+    assert.match(ci, /^\s+staging_scripts:\s*$/m);
+    assert.match(ci, /^\s+actionlint:\s*$/m);
+    assert.match(ci, /^\s+application:\s*$/m);
+    assert.match(ci, /^\s+secrets:\s*$/m);
+    assert.match(ci, /^\s+rust:\s*$/m);
+    assert.match(
+        ci,
+        /name:\s*'Release readiness: OpenAPI, contract and hosted MCP checks'/,
+    );
+    assert.match(
+        ci,
+        /needs:[\s\S]*release_scripts[\s\S]*staging_scripts[\s\S]*actionlint[\s\S]*secrets[\s\S]*rust/,
+    );
+    assert.match(ci, /node --test scripts\/release\/\*\.test\.mjs/);
+    assert.match(ci, /node --test scripts\/staging\/\*\.test\.mjs/);
+    assert.match(
+        ci,
+        /^on:\n(?:[ \t]+.+\n)*?[ \t]+push:\n(?:[ \t]+.+\n)*?[ \t]+branches:\n(?:[ \t]+.+\n)*?[ \t]+-\s+main\b/m,
+    );
+});
