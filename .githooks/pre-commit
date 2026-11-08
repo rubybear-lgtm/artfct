@@ -81,7 +81,7 @@ for FILE in "${STAGED_FILES[@]}"; do
     esac
 
     case "$FILE" in
-        resources/*.ts|resources/*.tsx|resources/*.js|resources/*.jsx|resources/*.css|package.json|package-lock.json|tsconfig.json|eslint.*|prettier.*)
+        resources/*.ts|resources/*.tsx|resources/*.js|resources/*.jsx|resources/*.css|package.json|package-lock.json|tsconfig.json|eslint.*|prettier.*|routes/*.php|app/Http/Controllers/*|scripts/*.mjs|skills/*.mjs|skills/*/*.mjs)
             HAS_FRONTEND=true
             ;;
     esac

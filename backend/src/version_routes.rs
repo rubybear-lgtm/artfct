@@ -81,6 +81,8 @@ pub(crate) struct LiveArtifactRow {
     pub(crate) user_id: Option<String>,
     pub(crate) tier: String,
     pub(crate) edit_access: String,
+    pub(crate) title: Option<String>,
+    pub(crate) description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -302,7 +304,7 @@ async fn live_artifact(
     artifact_id: &str,
 ) -> Result<Option<LiveArtifactRow>> {
     database
-        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<LiveArtifactRow>(None)
         .await
@@ -415,7 +417,7 @@ pub(crate) async fn version_target(
         return Ok(select_version_target(same_org, None, viewer));
     }
     let other_org = database
-        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<LiveArtifactRow>(None)
         .await?;
@@ -531,14 +533,10 @@ pub(crate) async fn post_version(
 }
 
 /// Required version metadata fields, matching the create body apart from the
-/// tier/mode (a version never changes the artifact's sharing tier).
-const VERSION_METADATA_FIELDS: [&str; 5] = [
-    "title",
-    "description",
-    "thumbnail",
-    "preview_blurred",
-    "provenance",
-];
+/// tier/mode (a version never changes the artifact's sharing tier). Title and
+/// description are optional: when omitted, the live artifact's values are kept
+/// (RUB-515).
+const VERSION_METADATA_FIELDS: [&str; 3] = ["thumbnail", "preview_blurred", "provenance"];
 
 fn manifest_error_response(code: ErrorCode) -> Result<Response> {
     let message = match code {
@@ -628,12 +626,18 @@ async fn create_version(
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
     // The bundle lock serialises same-content creates; the per-artifact lock
     // serialises version-numbering and promotion for this artifact; the org
-    // lock serialises the quota check with the insert (RUB-465).
-    let lock_keys = vec![
-        artifact_lock_key(&artifact.row_id),
-        bundle_lock_key(&artifact_org, content_hash),
-        org_quota_lock_key(&artifact_org),
-    ];
+    // lock serialises the quota check with the insert (RUB-465). Manifest
+    // content hashes join them so a concurrent hard-delete cannot observe
+    // ref_count 0 and remove R2 bytes this version is about to claim
+    // (RUB-464). All keys go through one acquire_content_locks call.
+    let mut lock_keys: Vec<String> = manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect();
+    lock_keys.push(artifact_lock_key(&artifact.row_id));
+    lock_keys.push(bundle_lock_key(&artifact_org, content_hash));
+    lock_keys.push(org_quota_lock_key(&artifact_org));
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
@@ -686,7 +690,7 @@ async fn create_version(
         for file in &manifest.files {
             present.push(
                 storage
-                    .blob_exists(&file.sha256)
+                    .blob_reusable_in_org(&artifact_org, &file.sha256, file.size_bytes)
                     .await
                     .map_err(|error| worker::Error::RustError(error.to_string()))?,
             );
@@ -707,9 +711,18 @@ async fn create_version(
         let agent = provenance.get("agent").and_then(Value::as_str);
         let repo_url = provenance.get("repo_url").and_then(Value::as_str);
         let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
-        let title = clipped_text(raw.get("title"), crate::validation::MAX_TITLE_CHARS);
-        let description =
-            clipped_text(raw.get("description"), crate::validation::MAX_DESCRIPTION_CHARS);
+        // Omitted title/description keep the live artifact's values so a
+        // version publish that only changes content does not wipe metadata.
+        let title = coalesce_clipped_text(
+            raw.get("title"),
+            crate::validation::MAX_TITLE_CHARS,
+            artifact.title.as_deref(),
+        );
+        let description = coalesce_clipped_text(
+            raw.get("description"),
+            crate::validation::MAX_DESCRIPTION_CHARS,
+            artifact.description.as_deref(),
+        );
         let mut statements = vec![
             storage
                 .database
@@ -818,8 +831,11 @@ async fn create_version(
                 &credential.user_id,
             );
         }
+        // `created` means "brand-new artifact", not "this request inserted a
+        // version row". Version publishes always report false (RUB-516); HTTP
+        // 201 still tells callers a new version was written vs a 200 no-op.
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, missing_files, tier, sharing),
+            build_version_response(artifact_id, &base_url, version, false, missing_files, tier, sharing),
             201,
         )
         .into_worker_response()
@@ -877,7 +893,9 @@ async fn restore_version(
             403,
         );
     }
-    let locks = match storage
+    // Source must be read under the artifact lock before we know which content
+    // hashes to hold for the refcount bumps (RUB-464).
+    let artifact_only = match storage
         .acquire_content_locks(&[artifact_lock_key(&artifact.row_id)])
         .await
     {
@@ -885,10 +903,51 @@ async fn restore_version(
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
+    let source = match storage
+        .database
+        .prepare(format!(
+            "SELECT {VERSION_COLUMNS} FROM artifact_versions WHERE artifact_row_id = ? AND version = ? AND expires_at IS NULL LIMIT 1"
+        ))
+        .bind(&[
+            JsValue::from_str(&artifact.row_id),
+            JsValue::from_f64(source_version as f64),
+        ]) {
+        Ok(statement) => statement.first::<VersionRow>(None).await?,
+        Err(error) => {
+            let _ = storage.release_content_locks(&artifact_only).await;
+            return Err(error);
+        }
+    };
+    let Some(source) = source else {
+        let _ = storage.release_content_locks(&artifact_only).await;
+        return json_error(ErrorCode::VersionNotFound, "Version not found.", 404);
+    };
+    let source_manifest: PermanentManifest = match serde_json::from_str(&source.manifest) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            let _ = storage.release_content_locks(&artifact_only).await;
+            return Err(worker::Error::RustError(error.to_string()));
+        }
+    };
+    let _ = storage.release_content_locks(&artifact_only).await;
+    // Re-acquire artifact + every source hash in one sorted set before any
+    // refcount change so a concurrent hard-delete cannot drop the blob.
+    let mut lock_keys: Vec<String> = source_manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect();
+    lock_keys.push(artifact_lock_key(&artifact.row_id));
+    let locks = match storage.acquire_content_locks(&lock_keys).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let operation: Result<Response> = async {
         let base_url = env_string(env, "ARTFCT_PUBLIC_BASE_URL", DEFAULT_BASE_URL);
-        let source = storage
+        // Re-validate the source is still live under the full lock set.
+        let source_alive = storage
             .database
             .prepare(format!(
                 "SELECT {VERSION_COLUMNS} FROM artifact_versions WHERE artifact_row_id = ? AND version = ? AND expires_at IS NULL LIMIT 1"
@@ -899,7 +958,7 @@ async fn restore_version(
             ])?
             .first::<VersionRow>(None)
             .await?;
-        let Some(source) = source else {
+        let Some(source) = source_alive else {
             return json_error(ErrorCode::VersionNotFound, "Version not found.", 404);
         };
         if source.content_hash == artifact.content_hash {
@@ -927,7 +986,6 @@ async fn restore_version(
             .unwrap_or(0);
         let version = next_version(u32::try_from(highest).ok());
         let version_id = Uuid::new_v4().simple().to_string();
-        let source_manifest: PermanentManifest = serde_json::from_str(&source.manifest)?;
         let mut statements = vec![
             storage
                 .database
@@ -1012,7 +1070,7 @@ async fn restore_version(
             &credential.user_id,
         );
         JsonResponseDefinition::json(
-            build_version_response(artifact_id, &base_url, version, true, Vec::new(), tier, sharing),
+            build_version_response(artifact_id, &base_url, version, false, Vec::new(), tier, sharing),
             201,
         )
         .into_worker_response()
@@ -1141,6 +1199,8 @@ mod tests {
                 user_id: Some("owner".to_string()),
                 tier: tier.to_string(),
                 edit_access: edit_access.to_string(),
+                title: Some("Kept title".to_string()),
+                description: Some("Kept description".to_string()),
             }
         }
         fn viewer<'a>(user_id: &'a str, role: &'a str) -> Viewer<'a> {
@@ -1268,5 +1328,54 @@ mod tests {
             "UNIQUE constraint failed: artifacts.id"
         ));
         assert!(!is_version_conflict("FOREIGN KEY constraint failed"));
+    }
+
+    #[test]
+    fn omitted_title_and_description_coalesce_from_live_artifact() {
+        // The create_version bind path uses coalesce_clipped_text against the
+        // live row. A body without those keys must keep prior D1 values.
+        let live = LiveArtifactRow {
+            row_id: "row-1".to_string(),
+            org_id: "acme".to_string(),
+            content_hash: "a".repeat(64),
+            current_version: 1,
+            user_id: Some("owner".to_string()),
+            tier: "secure".to_string(),
+            edit_access: "edit".to_string(),
+            title: Some("Kept title".to_string()),
+            description: Some("Kept description".to_string()),
+        };
+        let body = serde_json::json!({
+            "thumbnail": "https://artfct.dev/og-image.svg",
+            "preview_blurred": false,
+            "provenance": {},
+            "manifest": {"entrypoint": "index.html", "files": []}
+        });
+        assert!(!body.as_object().unwrap().contains_key("title"));
+        assert!(!body.as_object().unwrap().contains_key("description"));
+        assert_eq!(
+            coalesce_clipped_text(body.get("title"), 200, live.title.as_deref()),
+            Some("Kept title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(body.get("description"), 1000, live.description.as_deref()),
+            Some("Kept description".to_string())
+        );
+        let with_override = serde_json::json!({
+            "title": "New title",
+            "description": "New description"
+        });
+        assert_eq!(
+            coalesce_clipped_text(with_override.get("title"), 200, live.title.as_deref()),
+            Some("New title".to_string())
+        );
+        assert_eq!(
+            coalesce_clipped_text(
+                with_override.get("description"),
+                1000,
+                live.description.as_deref()
+            ),
+            Some("New description".to_string())
+        );
     }
 }

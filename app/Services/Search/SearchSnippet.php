@@ -12,15 +12,32 @@ final class SearchSnippet
     {
         $text = trim(preg_replace('/\s+/u', ' ', str_replace(['\\r\\n', '\\n', '\\t'], ' ', $text)) ?? $text);
         $title = trim((string) $title);
+        // Strip a leading title when it is a standalone prefix (end/punctuation)
+        // or when the title repeats later (nav crumb + repeated heading). Do not
+        // strip when the title is only the start of a longer heading such as
+        // "hoku-test-md Title Table…" (RUB-516).
         while ($title !== '' && str_starts_with($text, $title)) {
-            $text = ltrim(mb_substr($text, mb_strlen($title)));
+            $rest = ltrim(mb_substr($text, mb_strlen($title)));
+            $titleRepeatsLater = $rest !== '' && mb_strpos($rest, $title) !== false;
+            if ($rest === '' || preg_match('/^[\.\:\-\—\–\,\;\!\?]/u', $rest) === 1 || $titleRepeatsLater) {
+                $text = ltrim($rest, " \t.-—–:;");
+
+                continue;
+            }
+            break;
         }
         $repeatedTitle = $title === '' ? false : mb_strpos($text, $title);
-        if ($repeatedTitle !== false && $repeatedTitle < $maxLength && ! preg_match('/[.!?]/u', mb_substr($text, 0, $repeatedTitle))) {
+        // Skip offset 0 — the leading loop already decided that prefix is part
+        // of a longer heading and must be kept.
+        if ($repeatedTitle !== false && $repeatedTitle > 0 && $repeatedTitle < $maxLength && ! preg_match('/[.!?]/u', mb_substr($text, 0, $repeatedTitle))) {
             $text = ltrim(mb_substr($text, $repeatedTitle + mb_strlen($title)));
         }
         if (mb_strlen($text) <= $maxLength) {
-            return $text;
+            return self::ensureSubstantial(
+                preg_match('/\p{L}|\p{N}/u', $text) === 1 ? $text : '',
+                $text,
+                $maxLength,
+            );
         }
         $terms = self::terms($query);
         preg_match_all('/[.!?]\s+/u', $text, $boundaries, PREG_OFFSET_CAPTURE);
@@ -60,7 +77,30 @@ final class SearchSnippet
             $excerpt = rtrim($excerpt).'…';
         }
 
-        return ($bestStart > 0 ? '… ' : '').$excerpt;
+        $snippet = ($bestStart > 0 ? '… ' : '').$excerpt;
+
+        return self::ensureSubstantial($snippet, $text, $maxLength);
+    }
+
+    /**
+     * Drop punctuation-only excerpts and stretch short ones to at least 40
+     * characters of real text when the source passage is long enough (RUB-515).
+     */
+    private static function ensureSubstantial(string $snippet, string $text, int $maxLength): string
+    {
+        $hasRealText = static fn (string $value): bool => preg_match('/\p{L}|\p{N}/u', $value) === 1;
+        $letterCount = static fn (string $value): int => mb_strlen((string) preg_replace('/[^\p{L}\p{N}]+/u', '', $value));
+
+        if (! $hasRealText($snippet) || ($letterCount($snippet) < 40 && $letterCount($text) >= 40)) {
+            $fallback = mb_substr($text, 0, max($maxLength, 80));
+            if (mb_strlen($text) > mb_strlen($fallback)) {
+                $fallback = rtrim(preg_replace('/\s+\S*$/u', '', $fallback) ?? $fallback).'…';
+            }
+
+            return $hasRealText($fallback) ? $fallback : '';
+        }
+
+        return $snippet;
     }
 
     /** @return list<string> */

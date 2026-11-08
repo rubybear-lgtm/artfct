@@ -1,5 +1,6 @@
 <?php
 
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
 use App\Models\Team;
 
@@ -41,7 +42,30 @@ test('get_connection reports search enabled with indexed artifacts', function ()
 
     expect($search['enabled'])->toBeTrue()
         ->and($search['indexed_artifacts'])->toBe(3)
-        ->and($search['last_indexed_at'])->toBe($latest->extracted_at->toIso8601String());
+        ->and($search['last_indexed_at'])->toBe(McpTimestamp::format($latest->extracted_at))
+        ->and($search['last_indexed_at'])->toMatch(McpTimestamp::PATTERN);
+});
+
+test('get_connection last_indexed_at moves after a newer index entry is written', function () {
+    config(['indexing.enabled' => true]);
+    $team = Team::factory()->create();
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'extracted_at' => '2026-10-18 12:00:00',
+    ]);
+
+    $before = connectionSearchBlock($team)['last_indexed_at'];
+
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'extracted_at' => '2026-10-19 15:30:00',
+    ]);
+
+    $after = connectionSearchBlock($team)['last_indexed_at'];
+
+    expect($before)->toBe('2026-10-18T12:00:00Z')
+        ->and($after)->toBe('2026-10-19T15:30:00Z')
+        ->and($after)->toMatch(McpTimestamp::PATTERN);
 });
 
 test('get_connection reports search enabled with nothing indexed', function () {
@@ -60,4 +84,11 @@ test('get_connection reports search disabled', function () {
     $team = Team::factory()->create();
 
     expect(connectionSearchBlock($team)['enabled'])->toBeFalse();
+});
+
+test('McpTimestamp emits only the shared ISO 8601 Zulu shape', function () {
+    expect(McpTimestamp::format('2026-10-18 12:00:00'))->toBe('2026-10-18T12:00:00Z')
+        ->and(McpTimestamp::format('2026-10-18T12:00:00.618+00:00'))->toBe('2026-10-18T12:00:00Z')
+        ->and(McpTimestamp::format(null))->toBeNull()
+        ->and(McpTimestamp::format('2026-10-18T12:00:00Z'))->toMatch(McpTimestamp::PATTERN);
 });

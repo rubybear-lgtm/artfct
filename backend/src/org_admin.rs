@@ -55,22 +55,31 @@ pub(crate) async fn load_org_limits(
     })
 }
 
+/// Storage usage: distinct content hashes across live (non-revoked) versions.
+/// Exposed for tests so removing `revoked_at IS NULL` fails the suite (RUB-515).
+pub(crate) const ORG_STORAGE_USAGE_SQL: &str = "SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? AND a.revoked_at IS NULL GROUP BY vf.content_hash)";
+
+/// Period artifact count for live (non-revoked) rows only.
+pub(crate) const ORG_ARTIFACTS_PERIOD_USAGE_SQL: &str =
+    "SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ? AND revoked_at IS NULL";
+
 /// D1 is the source of truth: storage counts each distinct `content_hash`
 /// once per org across *every* version (`version_files`, invariant 3 — old
 /// versions are still stored), not just the current copy in `files`; the
-/// period count is artifacts created this UTC month (a soft-deleted artifact
-/// still counts; a hard delete would drop it).
+/// period count is live artifacts created this UTC month. Soft-deleted
+/// (revoked) artifacts are excluded so `get_usage.artifacts.used` drops after
+/// delete (RUB-515).
 pub(crate) async fn load_org_usage(
     database: &worker::D1Database,
     org: &str,
 ) -> Result<quota::OrgUsage> {
     let storage = database
-        .prepare("SELECT COALESCE(SUM(size), 0) AS value FROM (SELECT vf.content_hash, MAX(vf.size_bytes) AS size FROM version_files vf JOIN artifact_versions v ON v.id = vf.version_id JOIN artifacts a ON a.row_id = v.artifact_row_id WHERE a.org_id = ? GROUP BY vf.content_hash)")
+        .prepare(ORG_STORAGE_USAGE_SQL)
         .bind(&[JsValue::from_str(org)])?
         .first::<CountRow>(None)
         .await?;
     let artifacts = database
-        .prepare("SELECT COUNT(*) AS value FROM artifacts WHERE org_id = ? AND created_at >= ?")
+        .prepare(ORG_ARTIFACTS_PERIOD_USAGE_SQL)
         .bind(&[
             JsValue::from_str(org),
             JsValue::from_str(&quota::month_start(Utc::now())),
@@ -81,6 +90,34 @@ pub(crate) async fn load_org_usage(
         storage_bytes: storage.map_or(0, |row| row.value.max(0) as u64),
         artifacts_this_period: artifacts.map_or(0, |row| row.value.max(0) as u64),
     })
+}
+
+#[cfg(test)]
+mod usage_sql_tests {
+    use super::{ORG_ARTIFACTS_PERIOD_USAGE_SQL, ORG_STORAGE_USAGE_SQL};
+
+    #[test]
+    fn usage_sql_excludes_revoked_artifacts() {
+        assert!(
+            ORG_STORAGE_USAGE_SQL.contains("a.revoked_at IS NULL"),
+            "storage usage must ignore revoked artifacts: {ORG_STORAGE_USAGE_SQL}"
+        );
+        assert!(
+            ORG_ARTIFACTS_PERIOD_USAGE_SQL.contains("revoked_at IS NULL"),
+            "period count must ignore revoked artifacts: {ORG_ARTIFACTS_PERIOD_USAGE_SQL}"
+        );
+        // Removing either filter would make get_usage.artifacts.used stick after delete.
+        assert_eq!(
+            ORG_STORAGE_USAGE_SQL.matches("revoked_at IS NULL").count(),
+            1
+        );
+        assert_eq!(
+            ORG_ARTIFACTS_PERIOD_USAGE_SQL
+                .matches("revoked_at IS NULL")
+                .count(),
+            1
+        );
+    }
 }
 
 /// `Ok(None)` when the add is allowed, else the refusal response.
