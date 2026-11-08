@@ -8,6 +8,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - RUB-381: secret-redaction coverage for the hosted MCP. Feature tests assert that authorization codes, access tokens and refresh tokens never appear in application logs (authorize, token, MCP bearer, refresh, revoke), client-visible MCP error payloads, activity telemetry, the AI-tool connections page, the agent setup prompt or the homepage. The verification matrix marks `robustness.secret_redaction` covered. The original CLI config-writer half of this acceptance criteria was retired with the local `mcp-server/` package (RUB-432).
 
+- RUB-444: `deploy_artifact` returns a `warnings` list when published HTML still contains an inline `<script>` (or `onclick=`-style handler). The page is still published — CSP `script-src 'self'` continues to block those scripts — but the tool result now says to move the script into a separate file such as `app.js`. Guidance and the negative Worker CSP assertion from earlier still apply.
+
 ### Fixed
 
 - RUB-513: Search Console "not indexed" reasons on artfct.dev. Retired shells `/pricing`, `/signup`, `/app` and `/dashboard` permanently redirect to a live page. Production `robots.txt` disallows `/a/`, `/p/`, `/v1/` and `/login` for every crawler (marketing pages stay allowed). `/a/*` and `/login` send `X-Robots-Tag: noindex, nofollow`, and Worker `/p/*` HTML responses do the same. Sitemap still lists only live marketing URLs.
