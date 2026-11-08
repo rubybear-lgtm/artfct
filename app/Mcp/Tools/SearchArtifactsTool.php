@@ -142,6 +142,7 @@ final class SearchArtifactsTool extends Tool
                     'agent' => $result->agent,
                     'repo_url' => $result->repoUrl,
                     'commit_sha' => $result->commitSha,
+                    'model' => $result->model,
                 ],
                 // displayScore from SearchRanking — the same value results are
                 // ordered by (exact/near title bands, then similarity).

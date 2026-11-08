@@ -10,6 +10,7 @@ use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Mcp\Support\McpTimestamp;
 use App\Models\Collection;
+use App\Models\McpConnection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
@@ -676,12 +677,12 @@ final class DeployArtifactTool extends Tool
     private function provenance(Request $request, ?string $model): array
     {
         $sessionId = $request->sessionId();
-        $agentName = McpContext::agentName();
+        [$agent, $agentVersion, $agentSource] = $this->publishingAgent();
 
         return [
-            'agent' => $agentName,
-            'agent_raw' => $agentName,
-            'agent_version' => null,
+            'agent' => $agent,
+            'agent_raw' => $agent,
+            'agent_version' => $agentVersion,
             'model' => $model,
             'session_id' => $sessionId,
             'tool' => 'deploy_artifact',
@@ -693,9 +694,9 @@ final class DeployArtifactTool extends Tool
             'client' => 'artfct-remote-mcp',
             'client_version' => '1.0.0',
             'sources' => [
-                'agent' => $agentName === null ? 'absent' : 'credential',
-                'agent_raw' => $agentName === null ? 'absent' : 'credential',
-                'agent_version' => 'absent',
+                'agent' => $agentSource,
+                'agent_raw' => $agentSource,
+                'agent_version' => $agentVersion === null ? 'absent' : $agentSource,
                 'model' => $model === null ? 'absent' : 'self_reported',
                 'session_id' => $sessionId === null ? 'absent' : 'process',
                 'tool' => 'config',
@@ -706,5 +707,55 @@ final class DeployArtifactTool extends Tool
                 'source_path' => 'absent',
             ],
         ];
+    }
+
+    /**
+     * The agent recorded as the publisher. An agent token's name is set by a
+     * workspace admin and authenticated, so it wins; the self-reported MCP
+     * client identity is only the fallback when the credential names no agent.
+     *
+     * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
+     */
+    private function publishingAgent(): array
+    {
+        $credentialName = McpContext::agentName();
+
+        if ($credentialName !== null) {
+            return [$credentialName, null, 'credential'];
+        }
+
+        return $this->clientAgent();
+    }
+
+    /**
+     * Prefer the hosted connection registry (filled from initialize clientInfo),
+     * then the per-request MCP client headers.
+     *
+     * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
+     */
+    private function clientAgent(): array
+    {
+        $http = McpContext::httpRequest();
+        $connection = $http->attributes->get('mcp_connection');
+
+        if ($connection instanceof McpConnection) {
+            $name = filled($connection->client_name) ? (string) $connection->client_name : null;
+            $version = filled($connection->client_version) ? (string) $connection->client_version : null;
+
+            if ($name !== null) {
+                return [$name, $version, 'client_info'];
+            }
+        }
+
+        $headerName = $http->header('MCP-Client-Name');
+        $headerVersion = $http->header('MCP-Client-Version');
+        $name = is_string($headerName) && trim($headerName) !== '' ? trim($headerName) : null;
+        $version = is_string($headerVersion) && trim($headerVersion) !== '' ? trim($headerVersion) : null;
+
+        if ($name !== null) {
+            return [$name, $version, 'client_info'];
+        }
+
+        return [null, null, 'absent'];
     }
 }

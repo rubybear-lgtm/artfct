@@ -643,7 +643,8 @@
                       "properties": {
                         "agent": { "type": ["string", "null"] },
                         "repo_url": { "type": ["string", "null"] },
-                        "commit_sha": { "type": ["string", "null"] }
+                        "commit_sha": { "type": ["string", "null"] },
+                        "model": { "type": ["string", "null"] }
                       }
                     },
                     "content": { "type": "string" }
@@ -1705,7 +1706,8 @@
             "properties": {
               "agent": { "type": ["string", "null"] },
               "repo_url": { "type": ["string", "null"] },
-              "commit_sha": { "type": ["string", "null"] }
+              "commit_sha": { "type": ["string", "null"] },
+              "model": { "type": ["string", "null"] }
             }
           }
       }
