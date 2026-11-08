@@ -20,12 +20,19 @@ import { fileURLToPath } from 'node:url';
 
 import { assertRequiredChecksSucceeded } from './ci-checks.mjs';
 import {
+    checkRailwayCredentials,
+    checkSmokeCredentials,
+} from './credential-check.mjs';
+import {
     assertCommitOnDevelop,
     assertFastForwardPossible,
 } from './git-gates.mjs';
 import { createGithubClient, maskSecret } from './github.mjs';
 import { createRailwayGraphql } from './railway-api.mjs';
-import { waitForProductionDeployments } from './railway-poller.mjs';
+import {
+    PRODUCTION_SERVICE_NAMES,
+    waitForProductionDeployments,
+} from './railway-poller.mjs';
 import { buildReleaseNotes } from './release-notes.mjs';
 import { runProductionSmoke } from './smoke.mjs';
 
@@ -290,11 +297,42 @@ async function main() {
     );
 
     if (options.dryRun) {
+        const railwayCheck = await checkRailwayCredentials({
+            graphql: process.env.RAILWAY_API_TOKEN
+                ? createRailwayGraphql({ token: process.env.RAILWAY_API_TOKEN })
+                : undefined,
+            projectId: RAILWAY_PROJECT_ID,
+            serviceNames: PRODUCTION_SERVICE_NAMES,
+        });
+        const smokeCheck = await checkSmokeCredentials({
+            token: process.env.ARTFCT_SMOKE_BOT_TOKEN,
+        });
+
+        summaryLines.push(
+            '',
+            '## Credentials',
+            '',
+            `- Railway: ${railwayCheck.ok ? '✅' : '❌'} ${railwayCheck.message}`,
+            `- Smoke bot: ${smokeCheck.ok ? '✅' : '❌'} ${smokeCheck.message}`,
+        );
+
+        if (!railwayCheck.ok || !smokeCheck.ok) {
+            summaryLines.push(
+                '',
+                '## Dry run failed: credentials',
+                '',
+                'A real release would fast-forward main and then fail on these. Fix the secrets and re-run.',
+            );
+            writeSummary(summaryLines.join('\n'));
+            log('Dry run failed: credentials are not usable.', 'error');
+            process.exit(1);
+        }
+
         summaryLines.push(
             '',
             '## Dry run',
             '',
-            'All gates evaluated. No push, tag, GitHub Release, Railway poll, or smoke test was performed.',
+            'All gates and credentials evaluated. No push, tag, GitHub Release, Railway deploy poll, or full smoke test was performed.',
             '',
             'Would run:',
             '',

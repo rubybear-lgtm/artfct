@@ -14,7 +14,7 @@ Inputs:
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `sha` | current `develop` HEAD | Exact commit to release. Must be reachable from `develop`. |
-| `dry_run` | `false` | Run every gate and print the plan; push and tag nothing. |
+| `dry_run` | `false` | Run every gate, check the Railway and smoke-bot credentials with read-only calls, and print the plan; push and tag nothing. A bad or missing secret fails the dry run. |
 
 What the Action does:
 
@@ -38,7 +38,8 @@ What the Action does:
    `app/Mcp/Servers/ArtfctServer.php`).
 7. Writes a job summary with rollback pointers (previous release tag/commit).
 
-Local dry-run of the gates (no push):
+Local dry-run of the gates and credentials (no push). It needs the Railway and
+smoke-bot tokens exported as `RAILWAY_API_TOKEN` and `ARTFCT_SMOKE_BOT_TOKEN`:
 
 ```sh
 GITHUB_TOKEN=$(gh auth token) \
