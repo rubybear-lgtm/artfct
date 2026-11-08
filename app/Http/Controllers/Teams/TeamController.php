@@ -6,6 +6,7 @@ use App\Actions\Teams\CreateTeam;
 use App\Actions\Teams\UpgradePersonalTeam;
 use App\Enums\AuditEventType;
 use App\Enums\McpScope;
+use App\Enums\OrgTokenKind;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -89,6 +90,17 @@ class TeamController extends Controller
     public function edit(Request $request, Team $team): Response
     {
         $user = $request->user();
+        $members = $team->members()->get();
+        $activeBotLastFours = OrgToken::query()
+            ->where('team_id', $team->id)
+            ->where('kind', OrgTokenKind::Agent)
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->whereIn('user_id', $members->where('is_bot', true)->pluck('id'))
+            ->orderByDesc('id')
+            ->get(['user_id', 'last_four'])
+            ->unique('user_id')
+            ->pluck('last_four', 'user_id');
 
         return Inertia::render('teams/edit', [
             'team' => [
@@ -111,7 +123,7 @@ class TeamController extends Controller
                 'canLeave' => $user->can('leave', $team),
                 'canUpgrade' => $user->can('upgrade', $team),
             ],
-            'members' => $team->members()->get()->map(function (User $member) {
+            'members' => $members->map(function (User $member) use ($activeBotLastFours) {
                 /** @var Membership $membership */
                 $membership = $member->getRelation('pivot');
 
@@ -124,6 +136,9 @@ class TeamController extends Controller
                     'role' => $membership->role->value,
                     'role_label' => $member->is_bot ? 'Bot' : $membership->role->label(),
                     'deactivated' => $member->deactivated_at !== null,
+                    'agentTokenLastFour' => $member->is_bot
+                        ? ($activeBotLastFours[$member->id] ?? null)
+                        : null,
                 ];
             }),
             'canAddBot' => $user->can('create', [OrgToken::class, $team]),

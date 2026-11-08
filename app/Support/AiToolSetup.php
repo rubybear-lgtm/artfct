@@ -302,6 +302,8 @@ class AiToolSetup
             ['name' => 'list_collections', 'does' => 'List your team’s collections.', 'permission' => 'collections:read'],
             ['name' => 'create_collection', 'does' => 'Create a collection.', 'permission' => 'collections:write'],
             ['name' => 'add_collection_artifact', 'does' => 'Add an artifact to a collection.', 'permission' => 'collections:write'],
+            ['name' => 'remove_collection_artifact', 'does' => 'Remove an artifact from a collection. The artifact itself stays published.', 'permission' => 'collections:write'],
+            ['name' => 'delete_collection', 'does' => 'Delete a collection. Artifacts in it are not deleted.', 'permission' => 'collections:write'],
             ['name' => 'get_usage', 'does' => 'Read your team’s storage, limits and indexing status.', 'permission' => 'usage:read'],
             ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, without revealing any credentials.', 'permission' => 'Any'],
             ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],

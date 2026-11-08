@@ -35,11 +35,33 @@ test('a member can add a bot teammate without email and receive a token once', f
         ->and(OrgToken::query()->where('user_id', $bot->id)->where('kind', OrgTokenKind::Agent)->exists())->toBeTrue();
 });
 
+test('creating a bot without an avatar accepts application/json', function () {
+    configureOrgJwt();
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)
+        ->withHeaders(['Content-Type' => 'application/json', 'Accept' => 'application/json'])
+        ->postJson(route('teams.bots.store', $team), [
+            'name' => 'JsonBot',
+            'scopes' => [McpScope::ArtifactsRead->value],
+        ])
+        ->assertCreated()
+        ->assertJsonPath('name', 'JsonBot');
+
+    expect(User::query()->where('name', 'JsonBot')->where('is_bot', true)->exists())->toBeTrue();
+});
+
 test('bots appear on the members page with a bot flag and no email', function () {
+    configureOrgJwt();
     $team = Team::factory()->create();
     $admin = memberOfTeam($team, TeamRole::Admin);
-    $bot = User::factory()->bot()->create(['name' => 'Hoku']);
-    $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Member]);
+    $created = test()->actingAs($admin)->postJson(route('teams.bots.store', $team), [
+        'name' => 'Hoku',
+        'scopes' => [McpScope::ArtifactsRead->value],
+    ])->assertCreated();
+
+    $lastFour = substr((string) $created->json('token'), -4);
 
     test()->actingAs($admin)->get(route('teams.edit', $team))
         ->assertOk()
@@ -48,13 +70,76 @@ test('bots appear on the members page with a bot flag and no email', function ()
             ->where('canAddBot', true)
             ->has('mcpEndpoint')
             ->has('members')
-            ->where('members', function ($members) {
+            ->where('members', function ($members) use ($lastFour) {
                 return collect($members)->contains(
                     fn ($member): bool => $member['name'] === 'Hoku'
                         && $member['isBot'] === true
-                        && $member['email'] === null,
+                        && $member['email'] === null
+                        && $member['agentTokenLastFour'] === $lastFour,
                 );
             }));
+});
+
+test('rolling a bot token revokes the old credential and returns a new one once', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create(['slug' => 'roll-bot-team']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $created = test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
+        'name' => 'Hoku',
+        'scopes' => [McpScope::ArtifactsRead->value, McpScope::UsageRead->value],
+    ])->assertCreated();
+
+    $oldToken = $created->json('token');
+    $bot = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+    $oldTokenId = OrgToken::query()->where('user_id', $bot->id)->value('id');
+
+    $rolled = test()->actingAs($member)->postJson(route('teams.bots.roll', [$team, $bot]))
+        ->assertOk();
+
+    expect($rolled->json('token'))->toBeString()->not->toBeEmpty()
+        ->and($rolled->json('token'))->not->toBe($oldToken)
+        ->and($rolled->json('revoked_count'))->toBe(1)
+        ->and(OrgToken::query()->whereKey($oldTokenId)->value('revoked_at'))->not->toBeNull();
+
+    $initialize = test()->withToken($rolled->json('token'))->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertOk();
+
+    test()->withToken($rolled->json('token'))
+        ->withHeader('MCP-Session-Id', $initialize->headers->get('MCP-Session-Id'))
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/call',
+            'params' => ['name' => 'get_connection', 'arguments' => []],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.credential_source', 'agent_token');
+
+    test()->withToken($oldToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => ['protocolVersion' => '2025-11-25'],
+    ])->assertUnauthorized();
+});
+
+test('tokens page lists bots so the agent tab can explain an empty state', function () {
+    $team = Team::factory()->create();
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->get(route('teams.tokens.index', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('teams/tokens')
+            ->where('bots', []));
 });
 
 test('bots do not count toward billed seats', function () {

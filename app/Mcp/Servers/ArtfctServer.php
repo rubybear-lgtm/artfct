@@ -7,6 +7,7 @@ use App\Mcp\Tools\AddArtifactCommentTool;
 use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
 use App\Mcp\Tools\DeleteArtifactTool;
+use App\Mcp\Tools\DeleteCollectionTool;
 use App\Mcp\Tools\DeployArtifactTool;
 use App\Mcp\Tools\GetArtifactTool;
 use App\Mcp\Tools\GetConnectionTool;
@@ -16,6 +17,7 @@ use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
 use App\Mcp\Tools\ReadArtifactTool;
+use App\Mcp\Tools\RemoveCollectionArtifactTool;
 use App\Mcp\Tools\ResolveArtifactCommentTool;
 use App\Mcp\Tools\SearchArtifactsTool;
 use App\Mcp\Tools\SetAvatarTool;
@@ -59,6 +61,8 @@ final class ArtfctServer extends Server
         ListCollectionsTool::class,
         CreateCollectionTool::class,
         AddCollectionArtifactTool::class,
+        RemoveCollectionArtifactTool::class,
+        DeleteCollectionTool::class,
         DeleteArtifactTool::class,
         SetAvatarTool::class,
     ];

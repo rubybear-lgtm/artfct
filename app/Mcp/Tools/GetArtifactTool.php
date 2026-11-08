@@ -6,6 +6,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -50,7 +51,7 @@ final class GetArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'get_artifact');
@@ -130,7 +131,7 @@ final class GetArtifactTool extends Tool
         // is built from this environment's public base.
         $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null, null, $version);
 
-        if ($link instanceof Response) {
+        if ($link instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('get_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $validated['id']);
 
             return $link;
@@ -139,16 +140,18 @@ final class GetArtifactTool extends Tool
         app(McpTelemetry::class)->record('get_artifact', 'success', $startedAt, $validated['id']);
 
         if ($versionResponse !== null) {
+            // Prefer the named version's own timestamp, not the live artifact's.
+            $versionUpdatedAt = $versionResponse->json('updated_at') ?? $versionResponse->json('created_at');
+
             return Response::structured([
                 'id' => $artifactId,
                 'view_url' => $link,
-                'tier' => $tier,
                 'version' => (int) $versionResponse->json('version'),
                 'version_count' => $response->json('version_count'),
-                'updated_at' => $response->json('updated_at'),
+                'updated_at' => McpTimestamp::format($versionUpdatedAt),
                 'title' => $versionResponse->json('title'),
                 'description' => $versionResponse->json('description'),
-                'created_at' => $versionResponse->json('created_at'),
+                'created_at' => McpTimestamp::format($versionResponse->json('created_at')),
                 'created_by' => $versionResponse->json('created_by'),
                 'agent' => $versionResponse->json('agent'),
                 'current' => $versionResponse->json('current'),
@@ -156,18 +159,27 @@ final class GetArtifactTool extends Tool
             ] + $access);
         }
 
+        $provenance = $response->json('provenance');
+
         return Response::structured([
             'id' => $artifactId,
             'view_url' => $link,
-            'tier' => $tier,
             'entrypoint' => $response->json('entrypoint'),
-            'created_at' => $response->json('created_at'),
-            'expires_at' => $response->json('expires_at'),
+            'created_at' => McpTimestamp::format($response->json('created_at')),
+            'expires_at' => McpTimestamp::format($response->json('expires_at')),
             'title' => $response->json('title'),
             'description' => $response->json('description'),
             'version' => $response->json('version'),
             'version_count' => $response->json('version_count'),
-            'updated_at' => $response->json('updated_at'),
+            'updated_at' => McpTimestamp::format($response->json('updated_at')),
+            'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
+            'model' => is_array($provenance) ? ($provenance['model'] ?? null) : null,
+            'provenance' => [
+                'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
+                'repo_url' => is_array($provenance) ? ($provenance['repo_url'] ?? null) : null,
+                'commit_sha' => is_array($provenance) ? ($provenance['commit_sha'] ?? null) : null,
+                'model' => is_array($provenance) ? ($provenance['model'] ?? null) : null,
+            ],
         ] + $access);
     }
 

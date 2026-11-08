@@ -86,6 +86,8 @@ pub struct ArtifactListItem {
     pub agent: Option<String>,
     pub repo_url: Option<String>,
     pub commit_sha: Option<String>,
+    /// Self-reported model from the provenance payload JSON, when present.
+    pub model: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
     pub created_at: String,
@@ -933,7 +935,8 @@ impl D1R2ArtifactStore {
         };
         let query = format!(
             "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-             p.agent, p.repo_url, p.commit_sha, a.title, a.description, \
+             p.agent, p.repo_url, p.commit_sha, json_extract(p.payload, '$.model') AS model, \
+             a.title, a.description, \
              a.tier, a.user_id, a.edit_access, a.entrypoint, a.expires_at, \
              a.current_version, COALESCE(a.updated_at, a.created_at) AS updated_at, \
              (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
@@ -1001,7 +1004,8 @@ impl D1R2ArtifactStore {
             .database
             .prepare(
                 "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-                 p.agent, p.repo_url, p.commit_sha, a.tier, a.user_id, a.edit_access, \
+                 p.agent, p.repo_url, p.commit_sha, json_extract(p.payload, '$.model') AS model, \
+                 a.tier, a.user_id, a.edit_access, \
                  a.entrypoint, a.expires_at, a.current_version, \
                  COALESCE(a.updated_at, a.created_at) AS updated_at, \
                  (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
@@ -1306,6 +1310,8 @@ struct D1ListRow {
     repo_url: Option<String>,
     commit_sha: Option<String>,
     #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
     title: Option<String>,
     #[serde(default)]
     description: Option<String>,
@@ -1342,6 +1348,7 @@ impl From<D1ListRow> for ArtifactListItem {
             agent: row.agent,
             repo_url: row.repo_url,
             commit_sha: row.commit_sha,
+            model: row.model,
             title: row.title,
             description: row.description,
             created_at: row.created_at,
@@ -2040,6 +2047,7 @@ mod tests {
             agent: None,
             repo_url: None,
             commit_sha: None,
+            model: None,
             title: title.map(str::to_string),
             description: None,
             created_at: created_at.to_string(),

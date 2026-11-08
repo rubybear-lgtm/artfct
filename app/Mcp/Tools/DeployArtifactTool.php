@@ -8,13 +8,18 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
+use App\Models\Collection;
+use App\Models\McpConnection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
 use App\Services\Billing\DailyPublishLimiter;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
+use App\Services\Collections\CollectionService;
 use App\Services\Governance\AuditLogger;
+use App\Services\Indexing\ExtractionHeuristics;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -34,7 +39,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. Inline `<script>` blocks and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. The workspace can then search, retrieve, collect and count it. Re-publishing identical content returns the same artifact. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[Title('Publish artifact')]
 #[IsReadOnly(false)]
@@ -48,13 +53,23 @@ final class DeployArtifactTool extends Tool
         'artfct' => [
             'contractVersion' => '1.0.0',
             'guidanceVersion' => '1.1.0',
-            'toolVersion' => '1.0.0',
+            'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
             'compatibility' => 'stable',
             'examples' => [[
-                'description' => 'Publish a generated report to the team so it can be found and reused.',
-                'arguments' => ['html' => '<!doctype html><title>Q3 report</title><p>Summary</p>', 'sharing' => 'team'],
+                'description' => 'Publish a report into an existing collection in one call.',
+                'arguments' => [
+                    'html' => '<!doctype html><title>Q3 report</title><p>Summary</p>',
+                    'sharing' => 'team',
+                    'collection' => 'Launch',
+                ],
+            ], [
+                'description' => 'Publish markdown via files so list kind stays markdown.',
+                'arguments' => [
+                    'files' => [['path' => 'README.md', 'content' => "# Notes\n\nHello"]],
+                    'entrypoint' => 'README.md',
+                ],
             ]],
         ],
     ];
@@ -69,6 +84,7 @@ final class DeployArtifactTool extends Tool
 
     private const CONTENT_TYPES = [
         'html' => 'text/html; charset=utf-8', 'htm' => 'text/html; charset=utf-8',
+        'md' => 'text/markdown; charset=utf-8', 'markdown' => 'text/markdown; charset=utf-8',
         'css' => 'text/css', 'js' => 'text/javascript', 'mjs' => 'text/javascript',
         'json' => 'application/json', 'wasm' => 'application/wasm', 'svg' => 'image/svg+xml',
         'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif',
@@ -83,7 +99,7 @@ final class DeployArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -104,6 +120,7 @@ final class DeployArtifactTool extends Tool
             'title' => ['nullable', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
+            'collection' => ['nullable', 'string', 'max:100'],
         ]);
 
         $artifactIdInput = $validated['artifact_id'] ?? null;
@@ -116,10 +133,35 @@ final class DeployArtifactTool extends Tool
             return McpErrorResponse::error('`base_version` only applies when `artifact_id` is given.', 'invalid_request');
         }
 
+        // Collection membership only applies to a new artifact; a version
+        // publish keeps the existing collections and ignores this field.
+        $targetCollection = null;
+        $collectionInput = isset($validated['collection']) ? trim($validated['collection']) : '';
+        if ($collectionInput !== '' && ! $versionPublish) {
+            McpContext::requireScope('collections:write', 'deploy_artifact');
+            $targetCollection = $collections->findForTeam(McpContext::team(), $collectionInput);
+            if ($targetCollection === null) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'collection_not_found', $startedAt);
+
+                return McpErrorResponse::error('That collection was not found in the authenticated workspace. Pass its id or exact name from list_collections, or create it first with create_collection.', 'collection_not_found', false, 'list_collections');
+            }
+        }
+
         $hasHtml = isset($validated['html']) && trim($validated['html']) !== '';
         $hasFiles = ! empty($validated['files']);
         if ($hasHtml === $hasFiles) {
             return McpErrorResponse::error('Provide either `html` (one document) or `files` (a bundle), not both and not neither.', 'invalid_request');
+        }
+
+        // Choice (RUB-515): reject markdown in `html` rather than convert it.
+        // Agents must use `files` + `entrypoint: README.md` so list kind stays
+        // `markdown`. Raw markdown is stored as text/markdown; the Worker is
+        // the sole HTML renderer (strips raw HTML on serve).
+        if ($hasHtml && ExtractionHeuristics::looksLikeMarkdown(trim($validated['html']))) {
+            return McpErrorResponse::error(
+                'The `html` parameter expects HTML, not markdown. Publish markdown with `files` and `entrypoint` set to a `.md` path such as `README.md`.',
+                'invalid_request',
+            );
         }
 
         $bundle = $hasFiles
@@ -132,11 +174,16 @@ final class DeployArtifactTool extends Tool
 
         $entrypoint = $bundle['entrypoint'];
         $files = $bundle['files'];
+        // Markdown entrypoints keep raw bytes (and text/markdown) for type
+        // inference and Worker-side render — never pre-render to HTML here.
+        $typeSourceBytes = $files[$entrypoint]['bytes'];
+
         $totalBytes = 0;
         foreach ($files as $file) {
             $totalBytes += strlen($file['bytes']);
         }
         $entryBytes = $files[$entrypoint]['bytes'];
+        $warnings = $this->contentWarnings($files);
 
         if ($totalBytes < 1 || $totalBytes > ($hasFiles ? self::MAX_BUNDLE_BYTES : self::MAX_HTML_BYTES)) {
             return McpErrorResponse::error($hasFiles ? 'The bundle must be between 1 byte and 8 MB in total.' : 'The HTML payload must be between 1 byte and 1 MB.', 'payload_too_large');
@@ -188,8 +235,14 @@ final class DeployArtifactTool extends Tool
 
         $baseUrl = rtrim($workerBaseUrl, '/');
         $token = McpContext::httpRequest()->bearerToken();
-        $title = $validated['title'] ?? $this->extractTitle($entryBytes);
-        $description = $validated['description'] ?? $title;
+        $titleProvided = array_key_exists('title', $validated);
+        $descriptionProvided = array_key_exists('description', $validated);
+        $title = $titleProvided
+            ? ($validated['title'] ?? $this->extractTitle($entryBytes))
+            : $this->extractTitle($entryBytes);
+        $description = $descriptionProvided
+            ? ($validated['description'] ?? $title)
+            : $title;
 
         if ($baseVersion !== null) {
             // Read-before-write: refuse when the live version moved on since the
@@ -216,6 +269,18 @@ final class DeployArtifactTool extends Tool
             }
 
             $liveVersion = (int) $live->json('version');
+            if ($baseVersion > $liveVersion) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'invalid_request', $startedAt, $artifactIdInput);
+
+                return McpErrorResponse::error(
+                    "base_version {$baseVersion} is ahead of the live version {$liveVersion}. Read the live version with read_artifact or get_artifact, then publish with that version as base_version.",
+                    'invalid_request',
+                    false,
+                    'get_artifact',
+                    ['artifact_id' => $artifactIdInput, 'base_version' => $baseVersion, 'live_version' => $liveVersion],
+                );
+            }
+
             if ($liveVersion !== $baseVersion) {
                 app(McpTelemetry::class)->record('deploy_artifact', 'stale_base', $startedAt, $artifactIdInput);
 
@@ -224,15 +289,19 @@ final class DeployArtifactTool extends Tool
                     'stale_base',
                     false,
                     'read_artifact',
-                    ['artifact_id' => $artifactIdInput, 'base_version' => $baseVersion, 'current_version' => $liveVersion, 'updated_at' => $live->json('updated_at')],
+                    [
+                        'artifact_id' => $artifactIdInput,
+                        'base_version' => $baseVersion,
+                        'live_version' => $liveVersion,
+                        'current_version' => $liveVersion,
+                        'updated_at' => McpTimestamp::format($live->json('updated_at')),
+                    ],
                 );
             }
         }
 
         try {
             $payload = [
-                'title' => $title,
-                'description' => $description,
                 'thumbnail' => 'https://artfct.dev/og-image.svg',
                 'preview_blurred' => false,
                 'manifest' => [
@@ -247,6 +316,18 @@ final class DeployArtifactTool extends Tool
                 ],
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ];
+
+            // Version publishes omit title/description unless the caller sent
+            // them, so a previous description is not wiped by a title fallback.
+            // NOTE for worker agent: version create must treat missing title/
+            // description as "keep previous" (coalesce from the live artifact),
+            // not store NULL and overwrite the artifact row.
+            if (! $versionPublish || $titleProvided) {
+                $payload['title'] = $title;
+            }
+            if (! $versionPublish || $descriptionProvided) {
+                $payload['description'] = $description;
+            }
 
             // A new version keeps the artifact's existing sharing, so those
             // fields are deliberately absent from a version request.
@@ -343,7 +424,7 @@ final class DeployArtifactTool extends Tool
         $artifactId = (string) $created->json('id');
         $link = McpArtifactLink::forArtifact($team->slug, $artifactId, $created->json('tier'), $created->json('url'));
 
-        if ($link instanceof Response) {
+        if ($link instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('deploy_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $artifactId);
 
             return $link;
@@ -351,6 +432,10 @@ final class DeployArtifactTool extends Tool
 
         $tier = $created->json('tier');
         $version = (int) $created->json('version');
+        // Product `created` means "brand-new artifact", not "Worker inserted a
+        // version row". Version publishes are always created:false (RUB-516),
+        // even when a legacy Worker still reports created:true on 201.
+        $wasCreated = ! $versionPublish;
 
         app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
         $this->audit->recordForRequest(
@@ -363,33 +448,57 @@ final class DeployArtifactTool extends Tool
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
         );
 
-        // Version publishes report `created`; identical-content creates reuse the
-        // fingerprint cache so a no-op republish does not burn the daily cap.
-        $countsTowardDaily = ! $versionPublish || (bool) $created->json('created', true);
+        // Daily quota: new artifacts always count. Version publishes count only
+        // when the Worker wrote a new version (HTTP 201); identical-content
+        // no-ops return 200 and must not burn the cap.
+        $countsTowardDaily = ! $versionPublish || $created->status() === 201;
         $dailyPublish->recordPublish($team, $actor, $contentFingerprint, $countsTowardDaily);
 
         $artifactType = app(ArtifactTypeResolver::class)->record(
             $team,
             $artifactId,
-            $entryBytes,
+            $typeSourceBytes,
             isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
         );
+
+        if ($targetCollection instanceof Collection) {
+            try {
+                $collections->addArtifact($targetCollection, $artifactId);
+            } catch (\Throwable $exception) {
+                report($exception);
+                app(McpTelemetry::class)->record('deploy_artifact', 'collection_mutation_failed', $startedAt, $artifactId);
+
+                return McpErrorResponse::error(
+                    'The artifact was published, but it could not be added to that collection. Retry with add_collection_artifact.',
+                    'collection_mutation_failed',
+                    true,
+                    'add_collection_artifact',
+                    ['id' => $artifactId, 'collection_id' => $targetCollection->id],
+                );
+            }
+        }
 
         $result = [
             'id' => $artifactId,
             'artifact_type' => $artifactType->value,
             'view_url' => $link,
-            // `tier` is the deprecated alias, kept for one release; `sharing`
-            // is the name to use.
-            'tier' => $tier,
             'sharing' => $this->sharingFromResponse($created->json('sharing'), is_string($tier) ? $tier : null),
             'version' => $version,
+            'created' => $wasCreated,
             'title' => $title,
             'organization' => $team->slug,
         ];
 
+        if ($warnings !== []) {
+            $result['warnings'] = $warnings;
+        }
+
+        if ($targetCollection instanceof Collection) {
+            $result['collection_id'] = $targetCollection->id;
+            $result['collection'] = $targetCollection->name;
+        }
+
         if ($versionPublish) {
-            $result['created'] = (bool) $created->json('created');
             $result['base_version_checked'] = $baseVersion !== null;
         }
 
@@ -404,23 +513,24 @@ final class DeployArtifactTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'html' => $schema->string()->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document, without inline scripts or outside resources (they do not load; put scripts, images and fonts in `files`). Give this or `files`, not both.')->nullable(),
+            'html' => $schema->string()->max(self::MAX_HTML_BYTES)->description('A self-contained HTML document, without inline scripts, onclick handlers, data: images or outside resources (they do not load; put scripts, images and fonts in `files`). Markdown is refused here — use `files` with `entrypoint: README.md` instead. Give this or `files`, not both.')->nullable(),
             'files' => $schema->array()->items($schema->object([
-                'path' => $schema->string()->max(255)->description('Relative path inside the bundle, e.g. `index.html` or `assets/app.css`. No leading slash, `..` or backslashes.')->required(),
+                'path' => $schema->string()->max(255)->description('Relative path inside the bundle, e.g. `index.html`, `README.md` or `assets/app.css`. No leading slash, `..` or backslashes.')->required(),
                 'content' => $schema->string()->description('The file content.')->required(),
                 'encoding' => $schema->string()->enum(['utf8', 'base64'])->description('How `content` is encoded: utf8 (default, for text) or base64 (for images, fonts and other binary files).')->nullable(),
                 'content_type' => $schema->string()->max(100)->description('Optional media type; inferred from the file extension when omitted.')->nullable(),
-            ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. Pages reference other files by relative path.')->nullable(),
-            'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`.')->nullable(),
-            'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact.')->nullable(),
+            ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. For markdown, include a `.md`/`.markdown` entrypoint such as `README.md`. Pages reference other files by relative path.')->nullable(),
+            'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`. Use `README.md` (or another `.md`/`.markdown` path) to publish markdown.')->nullable(),
+            'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact. Omitted title, description, sharing, edit_access and collection keep their previous values.')->nullable(),
             'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('What this is: report, table, document, mockup, slide_deck, dashboard or other. Optional; inferred from the content when omitted, and a later version keeps a type you declared.')->nullable(),
-            'base_version' => $schema->integer()->min(1)->description('With `artifact_id`: the version your change is built on (from get_artifact or read_artifact). If the artifact has moved on, nothing is published and a stale_base error returns the live version so you can read it, merge and publish again.')->nullable(),
+            'base_version' => $schema->integer()->min(1)->description('Optional. With `artifact_id`: the version your change is built on (from get_artifact or read_artifact). When omitted, the publish overwrites without a conflict check and the response sets base_version_checked to false. When given and the artifact has moved on, nothing is published and a stale_base error returns live_version so you can read it, merge and publish again. A base_version ahead of the live version is rejected as invalid_request.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Who can open it: team (default, everyone on your team), private (only you and team admins) or public (anyone with the link). A version published with `artifact_id` never changes sharing.')->nullable(),
             'edit_access' => $schema->string()->enum(['view', 'edit'])->description('Whether the people it is shared with can publish new versions. Defaults to view. A version published with `artifact_id` never changes it.')->nullable(),
-            'tier' => $schema->string()->enum(['public', 'secure'])->description('Deprecated, use sharing.')->nullable(),
-            'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title.')->nullable(),
-            'description' => $schema->string()->max(1000)->description('Optional summary used in search results.')->nullable(),
+            'tier' => $schema->string()->enum(['public', 'secure'])->description('Deprecated alias for sharing on input only; use sharing. Not returned in the response.')->nullable(),
+            'title' => $schema->string()->max(200)->description('Optional title; defaults to the document title on create. On a version publish, omit to keep the previous title.')->nullable(),
+            'description' => $schema->string()->max(1000)->description('Optional summary used in search results. On a version publish, omit to keep the previous description.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
+            'collection' => $schema->string()->max(100)->description('Optional workspace collection name or numeric id. On a new publish, adds the artifact to that collection (requires collections:write). Ignored when publishing a new version with `artifact_id` (membership is kept).')->nullable(),
         ];
     }
 
@@ -495,6 +605,26 @@ final class DeployArtifactTool extends Tool
         return self::CONTENT_TYPES[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
     }
 
+    /**
+     * @param  array<string, array{path: string, bytes: string, content_type: string, sha256: string}>  $files
+     * @return list<string>
+     */
+    private function contentWarnings(array $files): array
+    {
+        $warnings = [];
+        $joined = implode("\n", array_map(fn (array $file): string => $file['bytes'], $files));
+
+        if (preg_match('/onclick\s*=/i', $joined) === 1) {
+            $warnings[] = 'This content includes `onclick=` handlers, which do not run on the served page. Move interactivity into a separate `.js` file in `files`.';
+        }
+
+        if (preg_match('/data:image\//i', $joined) === 1) {
+            $warnings[] = 'This content includes `data:image` URIs, which are blocked on the served page. Put images in `files` and reference them by relative path.';
+        }
+
+        return $warnings;
+    }
+
     /** The sharing a deprecated `tier` alias names, or null when it names none. */
     private function sharingForTier(?string $tier): ?string
     {
@@ -535,6 +665,11 @@ final class DeployArtifactTool extends Tool
             }
         }
 
+        $heading = ExtractionHeuristics::titleFromHtml($html);
+        if ($heading !== null) {
+            return Str::limit($heading, 200, '');
+        }
+
         return 'Untitled artifact';
     }
 
@@ -542,12 +677,12 @@ final class DeployArtifactTool extends Tool
     private function provenance(Request $request, ?string $model): array
     {
         $sessionId = $request->sessionId();
-        $agentName = McpContext::agentName();
+        [$agent, $agentVersion, $agentSource] = $this->publishingAgent();
 
         return [
-            'agent' => $agentName,
-            'agent_raw' => $agentName,
-            'agent_version' => null,
+            'agent' => $agent,
+            'agent_raw' => $agent,
+            'agent_version' => $agentVersion,
             'model' => $model,
             'session_id' => $sessionId,
             'tool' => 'deploy_artifact',
@@ -559,9 +694,9 @@ final class DeployArtifactTool extends Tool
             'client' => 'artfct-remote-mcp',
             'client_version' => '1.0.0',
             'sources' => [
-                'agent' => $agentName === null ? 'absent' : 'credential',
-                'agent_raw' => $agentName === null ? 'absent' : 'credential',
-                'agent_version' => 'absent',
+                'agent' => $agentSource,
+                'agent_raw' => $agentSource,
+                'agent_version' => $agentVersion === null ? 'absent' : $agentSource,
                 'model' => $model === null ? 'absent' : 'self_reported',
                 'session_id' => $sessionId === null ? 'absent' : 'process',
                 'tool' => 'config',
@@ -572,5 +707,55 @@ final class DeployArtifactTool extends Tool
                 'source_path' => 'absent',
             ],
         ];
+    }
+
+    /**
+     * The agent recorded as the publisher. An agent token's name is set by a
+     * workspace admin and authenticated, so it wins; the self-reported MCP
+     * client identity is only the fallback when the credential names no agent.
+     *
+     * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
+     */
+    private function publishingAgent(): array
+    {
+        $credentialName = McpContext::agentName();
+
+        if ($credentialName !== null) {
+            return [$credentialName, null, 'credential'];
+        }
+
+        return $this->clientAgent();
+    }
+
+    /**
+     * Prefer the hosted connection registry (filled from initialize clientInfo),
+     * then the per-request MCP client headers.
+     *
+     * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
+     */
+    private function clientAgent(): array
+    {
+        $http = McpContext::httpRequest();
+        $connection = $http->attributes->get('mcp_connection');
+
+        if ($connection instanceof McpConnection) {
+            $name = filled($connection->client_name) ? (string) $connection->client_name : null;
+            $version = filled($connection->client_version) ? (string) $connection->client_version : null;
+
+            if ($name !== null) {
+                return [$name, $version, 'client_info'];
+            }
+        }
+
+        $headerName = $http->header('MCP-Client-Name');
+        $headerVersion = $http->header('MCP-Client-Version');
+        $name = is_string($headerName) && trim($headerName) !== '' ? trim($headerName) : null;
+        $version = is_string($headerVersion) && trim($headerVersion) !== '' ? trim($headerVersion) : null;
+
+        if ($name !== null) {
+            return [$name, $version, 'client_info'];
+        }
+
+        return [null, null, 'absent'];
     }
 }

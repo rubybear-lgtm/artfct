@@ -531,7 +531,11 @@ final class ArtifactViewerController extends Controller
         foreach ($teams as $team) {
             $artifact = $artifacts->getArtifact($team->slug, $artifactId);
 
-            if ($artifact !== null) {
+            // A deleted/revoked artifact must 404 for a signed-in member the
+            // same way a missing id does — never a login redirect (RUB-515).
+            // The Worker normally answers 404 already; this also covers a row
+            // that still carries revoked_at.
+            if ($artifact !== null && ($artifact['revoked_at'] ?? null) === null) {
                 return [$team, $artifact];
             }
         }
