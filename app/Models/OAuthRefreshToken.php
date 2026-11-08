@@ -20,11 +20,12 @@ use Illuminate\Support\Carbon;
  * @property string $client_id
  * @property string $token_hash
  * @property list<string> $scopes
+ * @property bool $polis_proven
  * @property Carbon $expires_at
  * @property Carbon|null $last_used_at
  * @property Carbon|null $revoked_at
  */
-#[Fillable(['team_id', 'user_id', 'mcp_connection_id', 'client_id', 'token_hash', 'scopes', 'expires_at', 'last_used_at', 'revoked_at'])]
+#[Fillable(['team_id', 'user_id', 'mcp_connection_id', 'client_id', 'token_hash', 'scopes', 'polis_proven', 'expires_at', 'last_used_at', 'revoked_at'])]
 class OAuthRefreshToken extends Model
 {
     protected $table = 'oauth_refresh_tokens';
@@ -59,6 +60,7 @@ class OAuthRefreshToken extends Model
     {
         return [
             'scopes' => 'array',
+            'polis_proven' => 'boolean',
             'expires_at' => 'datetime',
             'last_used_at' => 'datetime',
             'revoked_at' => 'datetime',

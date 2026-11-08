@@ -5,6 +5,7 @@ namespace App\Mcp\Support;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
 use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
 use RuntimeException;
 
 /**
@@ -60,7 +61,7 @@ final class McpArtifactLink
      * `$version` names one published version; omitted, the link resolves to the
      * artifact's current version exactly as before.
      */
-    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null, ?int $version = null): string|Response
+    public static function forArtifact(string $teamSlug, string $artifactId, ?string $tier = null, ?string $workerUrl = null, ?int $version = null): string|ResponseFactory
     {
         // Public and ephemeral are the tiers the Worker can serve without a
         // credential, so no signing secret is required to hand out a link for

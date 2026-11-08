@@ -8,6 +8,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\Team;
@@ -64,7 +65,7 @@ final class ListArtifactsTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'list_artifacts');
@@ -170,7 +171,17 @@ final class ListArtifactsTool extends Tool
         }
 
         $url = rtrim($workerBaseUrl, '/')."/v1/orgs/{$team->slug}/artifacts";
-        $incoming = $this->decodeCursor($validated['cursor'] ?? null);
+        $cursorInput = $validated['cursor'] ?? null;
+        if (is_string($cursorInput) && $cursorInput !== '') {
+            $incoming = $this->decodeCursor($cursorInput);
+            if ($incoming === null) {
+                app(McpTelemetry::class)->record('list_artifacts', 'invalid_cursor', $startedAt);
+
+                return McpErrorResponse::error('The list_artifacts cursor is invalid.', 'invalid_cursor');
+            }
+        } else {
+            $incoming = null;
+        }
 
         if ($sort === 'most_viewed') {
             $result = $this->listMostViewed($url, $team, $baseParams, $incoming, $limit, $notes, $startedAt);
@@ -178,7 +189,7 @@ final class ListArtifactsTool extends Tool
             $result = $this->listSorted($url, $team, $baseParams, $sort, $incoming, $limit, $startedAt);
         }
 
-        if ($result instanceof Response) {
+        if ($result instanceof ResponseFactory) {
             return $result;
         }
 
@@ -195,7 +206,7 @@ final class ListArtifactsTool extends Tool
      *
      * @param  array<string, mixed>  $baseParams
      * @param  array<string, mixed>|null  $incoming
-     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|Response
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|ResponseFactory
      */
     private function listSorted(
         string $url,
@@ -205,7 +216,7 @@ final class ListArtifactsTool extends Tool
         ?array $incoming,
         int $limit,
         int $startedAt,
-    ): array|Response {
+    ): array|ResponseFactory {
         $workerSort = match ($sort) {
             'created' => 'created_desc',
             'title' => 'title_asc',
@@ -258,7 +269,7 @@ final class ListArtifactsTool extends Tool
      * @param  array<string, mixed>  $baseParams
      * @param  array<string, mixed>|null  $incoming
      * @param  list<string>  $notes
-     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|Response
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: string|null}|ResponseFactory
      */
     private function listMostViewed(
         string $url,
@@ -268,7 +279,7 @@ final class ListArtifactsTool extends Tool
         int $limit,
         array &$notes,
         int $startedAt,
-    ): array|Response {
+    ): array|ResponseFactory {
         $fetched = [];
         $cursor = null;
         $truncated = false;
@@ -509,13 +520,13 @@ final class ListArtifactsTool extends Tool
                 'version' => $artifact['version'] ?? null,
                 'kind' => $artifact['kind'] ?? null,
                 'artifact_type' => $types[$id] ?? null,
-                'created_at' => $artifact['created_at'] ?? null,
-                'updated_at' => $artifact['updated_at'] ?? null,
+                'created_at' => $this->timestamp($artifact['created_at'] ?? null),
+                'updated_at' => $this->timestamp($artifact['updated_at'] ?? null),
                 'view_count' => $row['view_count'],
                 'can_edit' => (bool) ($artifact['can_edit'] ?? false),
             ];
 
-            if ($link instanceof Response) {
+            if ($link instanceof ResponseFactory) {
                 $item['view_url'] = null;
                 $item['link_error'] = McpArtifactLink::ERROR_CODE;
             } else {
@@ -610,9 +621,25 @@ final class ListArtifactsTool extends Tool
     }
 
     /**
+     * Normalize Worker timestamps to the shared MCP Zulu shape.
+     */
+    private function timestamp(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return McpTimestamp::format($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Map a failed Worker response, or null when the response succeeded.
      */
-    private function failure(HttpResponse $response, int $startedAt): ?Response
+    private function failure(HttpResponse $response, int $startedAt): ?ResponseFactory
     {
         if ($response->successful()) {
             return null;

@@ -2,12 +2,21 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 
+import { assertSmokeBaseUrl } from './staging/target.mjs';
+
 /**
  * Credentials come from OAuth (PKCE, browser consent per organization) unless
  * both MCP_LIVE_TOKEN_A and MCP_LIVE_TOKEN_B are set, which keeps
  * non-interactive CI runs working. OAuth tokens live in memory only.
  */
-const baseUrl = requiredEnv('MCP_LIVE_BASE_URL').replace(/\/$/, '');
+const smokeTarget = assertSmokeBaseUrl(requiredEnv('MCP_LIVE_BASE_URL'));
+
+if (!smokeTarget.ok) {
+    console.error(smokeTarget.message);
+    process.exit(1);
+}
+
+const baseUrl = smokeTarget.baseUrl;
 
 // Check the advertised origin before spending any OAuth work on it. A drifted
 // APP_URL/OAUTH_ISSUER still serves this metadata with a 200 and still issues
@@ -51,12 +60,15 @@ const supportedTools = new Set([
     'list_collections',
     'create_collection',
     'add_collection_artifact',
+    'remove_collection_artifact',
+    'delete_collection',
     'delete_artifact',
     'read_artifact',
     'get_guidance',
     'list_artifact_comments',
     'add_artifact_comment',
     'resolve_artifact_comment',
+    'set_avatar',
 ]);
 
 const client = {
@@ -310,6 +322,41 @@ async function assertTenantIsolation(
         ownerMutation.result?.isError !== true,
         'Organization A could not add its own artifact to its own collection: ' +
             describeResult(ownerMutation),
+    );
+
+    const ownerRemove = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'remove_collection_artifact',
+        arguments: {
+            collection_id: ownerCollectionId,
+            artifact_id: artifactId,
+        },
+    });
+    assert(
+        ownerRemove.result?.isError !== true &&
+            ownerRemove.result?.structuredContent?.removed === true,
+        'Organization A could not remove its own artifact from its collection: ' +
+            describeResult(ownerRemove),
+    );
+
+    const ownerDelete = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'delete_collection',
+        arguments: { collection_id: ownerCollectionId },
+    });
+    assert(
+        ownerDelete.result?.isError !== true &&
+            ownerDelete.result?.structuredContent?.deleted === true,
+        'Organization A could not delete its own collection: ' +
+            describeResult(ownerDelete),
+    );
+
+    const missingDelete = await rpc(ownerToken, ownerSession, 'tools/call', {
+        name: 'delete_collection',
+        arguments: { collection_id: ownerCollectionId },
+    });
+    assert(
+        missingDelete.result?.isError === true,
+        'delete_collection should error when the collection is already gone: ' +
+            describeResult(missingDelete),
     );
 }
 

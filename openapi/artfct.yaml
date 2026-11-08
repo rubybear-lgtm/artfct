@@ -1682,7 +1682,7 @@
       },
     "ArtifactMetadata": {
         "type": "object",
-        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at", "sharing", "edit_access", "owner_user_id", "can_edit", "can_change_sharing"],
+        "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at", "sharing", "edit_access", "owner_user_id", "can_edit", "can_change_sharing", "provenance"],
         "properties": {
           "id": { "type": "string" },
           "tier": { "type": "string", "enum": ["public", "secure", "private", "ephemeral"] },
@@ -1700,8 +1700,9 @@
           "title": { "type": ["string", "null"] },
           "description": { "type": ["string", "null"] },
           "provenance": {
-            "type": "object",
-            "description": "Publishing agent and model when recorded.",
+            "description": "Publishing agent metadata when present; null when the artifact has no provenance row.",
+            "type": ["object", "null"],
+            "additionalProperties": false,
             "properties": {
               "agent": { "type": ["string", "null"] },
               "repo_url": { "type": ["string", "null"] },

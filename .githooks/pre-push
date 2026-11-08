@@ -9,8 +9,41 @@ set -euo pipefail
 # `npm run build` step that only a full test run exercises. Bypass with
 # `git push --no-verify` when you know what you're doing (e.g. pushing a
 # docs-only branch and want to skip the Rust/PHP gates).
+#
+# The one built-in exception: a push that changes only release/CI plumbing
+# (see scripts/pre-push-scope.sh) runs just the Node tests for those scripts,
+# because no PHP, Rust or frontend test reads those files.
 
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
+
+# Git passes the refs being pushed on stdin; read them before anything else.
+push_refs="$(cat)"
+repository_root="$(git rev-parse --show-toplevel)"
+cd "$repository_root"
+
+push_scope="full"
+if [ -f scripts/pre-push-scope.sh ]; then
+    push_scope="$(bash scripts/pre-push-scope.sh <<< "$push_refs" || echo full)"
+fi
+
+if [ "$push_scope" = "light" ]; then
+    echo "⚡ Only release/CI plumbing changed; running its Node tests instead of the full workspace."
+    npm run test:release --silent
+    npm run test:staging --silent
+    if command -v actionlint &>/dev/null; then
+        actionlint
+    else
+        echo "⏭  actionlint not installed; CI runs it."
+    fi
+    echo "✅ All pre-push checks passed."
+    exit 0
+fi
+
+# Fail before the slow Rust step if a fresh checkout or worktree has no dependencies.
+if [ ! -f vendor/autoload.php ] || [ ! -d node_modules ]; then
+    echo "❌ vendor/ or node_modules/ is missing. Run: composer install && npm ci"
+    exit 1
+fi
 
 echo "🦀 Rust workspace (fmt, clippy, wasm target, tests)..."
 if ! command -v cargo &>/dev/null; then
