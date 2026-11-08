@@ -86,6 +86,8 @@ pub struct ArtifactListItem {
     pub agent: Option<String>,
     pub repo_url: Option<String>,
     pub commit_sha: Option<String>,
+    /// Self-reported model from the provenance payload JSON, when present.
+    pub model: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
     pub created_at: String,
@@ -574,6 +576,18 @@ impl KvArtifactStore {
             .map_err(|error| StoreError::Backend(error.to_string()))
     }
 
+    /// Raw text get so callers can distinguish tombstones from live records
+    /// without forcing a `StoredArtifact` deserialize (RUB-464).
+    pub async fn get_text(&self, key: &str) -> Result<Option<String>, StoreError> {
+        let Some(kv) = &self.kv else {
+            return Err(StoreError::Unsupported("binding"));
+        };
+        kv.get(key)
+            .text()
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))
+    }
+
     pub async fn delete_record(&self, key: &str) -> Result<(), StoreError> {
         let Some(kv) = &self.kv else {
             return Err(StoreError::Unsupported("binding"));
@@ -772,6 +786,53 @@ impl D1R2ArtifactStore {
             .is_some())
     }
 
+    /// Whether `org` may skip uploading `content_hash`: a live, non-revoked
+    /// artifact of this org already references it at `declared_size`. Global
+    /// R2 presence alone is not enough — that would be a cross-tenant
+    /// existence oracle (RUB-464).
+    pub async fn blob_reusable_in_org(
+        &self,
+        org: &str,
+        content_hash: &str,
+        declared_size: usize,
+    ) -> Result<bool, StoreError> {
+        #[derive(Deserialize)]
+        struct PresenceRow {
+            #[allow(dead_code)]
+            present: i64,
+        }
+        let row = self
+            .database
+            .prepare(
+                "SELECT 1 AS present FROM blobs b \
+                 WHERE b.content_hash = ?1 AND b.size_bytes = ?2 AND ( \
+                   EXISTS ( \
+                     SELECT 1 FROM version_files vf \
+                     JOIN artifact_versions v ON v.id = vf.version_id \
+                     JOIN artifacts a ON a.row_id = v.artifact_row_id \
+                     WHERE vf.content_hash = b.content_hash AND a.org_id = ?3 AND a.revoked_at IS NULL \
+                   ) OR EXISTS ( \
+                     SELECT 1 FROM files f \
+                     JOIN artifacts a ON a.row_id = f.artifact_row_id \
+                     WHERE f.content_hash = b.content_hash AND a.org_id = ?3 AND a.revoked_at IS NULL \
+                   ) \
+                 ) LIMIT 1",
+            )
+            .bind(&[
+                worker::wasm_bindgen::JsValue::from_str(content_hash),
+                worker::wasm_bindgen::JsValue::from_f64(declared_size as f64),
+                worker::wasm_bindgen::JsValue::from_str(org),
+            ])
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .first::<PresenceRow>(None)
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        if row.is_none() {
+            return Ok(false);
+        }
+        self.blob_exists(content_hash).await
+    }
+
     pub async fn execute_batch(
         &self,
         statements: Vec<worker::d1::D1PreparedStatement>,
@@ -933,7 +994,8 @@ impl D1R2ArtifactStore {
         };
         let query = format!(
             "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-             p.agent, p.repo_url, p.commit_sha, a.title, a.description, \
+             p.agent, p.repo_url, p.commit_sha, json_extract(p.payload, '$.model') AS model, \
+             a.title, a.description, \
              a.tier, a.user_id, a.edit_access, a.entrypoint, a.expires_at, \
              a.current_version, COALESCE(a.updated_at, a.created_at) AS updated_at, \
              (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
@@ -1001,7 +1063,8 @@ impl D1R2ArtifactStore {
             .database
             .prepare(
                 "SELECT a.id, o.slug AS org, a.content_hash, a.created_at, a.revoked_at, \
-                 p.agent, p.repo_url, p.commit_sha, a.tier, a.user_id, a.edit_access, \
+                 p.agent, p.repo_url, p.commit_sha, json_extract(p.payload, '$.model') AS model, \
+                 a.tier, a.user_id, a.edit_access, \
                  a.entrypoint, a.expires_at, a.current_version, \
                  COALESCE(a.updated_at, a.created_at) AS updated_at, \
                  (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.artifact_row_id = a.row_id) AS size_bytes \
@@ -1306,6 +1369,8 @@ struct D1ListRow {
     repo_url: Option<String>,
     commit_sha: Option<String>,
     #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
     title: Option<String>,
     #[serde(default)]
     description: Option<String>,
@@ -1342,6 +1407,7 @@ impl From<D1ListRow> for ArtifactListItem {
             agent: row.agent,
             repo_url: row.repo_url,
             commit_sha: row.commit_sha,
+            model: row.model,
             title: row.title,
             description: row.description,
             created_at: row.created_at,
@@ -2040,6 +2106,7 @@ mod tests {
             agent: None,
             repo_url: None,
             commit_sha: None,
+            model: None,
             title: title.map(str::to_string),
             description: None,
             created_at: created_at.to_string(),

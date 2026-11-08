@@ -95,6 +95,31 @@ test('an anonymous visitor of an unknown id is sent to sign in, not told it is m
     test()->get('/a/'.SHORT_LINK_LEGACY_ID)->assertRedirect(route('login'));
 });
 
+test('a signed-in team member gets 404 not login for a deleted artifact', function () {
+    $team = Team::factory()->create(['slug' => 'short-deleted']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedArtifact([
+        'id' => SHORT_LINK_ID,
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'title' => 'Deleted report',
+        'description' => null,
+        'content_hash' => md5(SHORT_LINK_ID),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => now()->toIso8601String(),
+        'sharing' => 'team',
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    $response = test()->actingAs($member)->get('/a/'.SHORT_LINK_ID);
+
+    $response->assertNotFound();
+    expect($response->headers->get('Location'))->toBeNull();
+});
+
 test('a signed-in non-member gets the same 404 as a random id', function () {
     $victimTeam = Team::factory()->create(['slug' => 'short-victim']);
 
@@ -245,7 +270,9 @@ test('every permanent tier is handed the short link, public included', function 
         ->and(ArtifactViewLink::forArtifact('acme', $id, 'secure'))->toBe('https://artfct.dev/a/'.$id)
         ->and(ArtifactViewLink::forArtifact('acme', $id, null))->toBe('https://artfct.dev/a/'.$id)
         ->and(ArtifactViewLink::forArtifact('acme', $id, 'public', null, 2))->toBe('https://artfct.dev/a/'.$id.'/v/2')
-        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral'))->toBe('https://artfct.dev/p/'.$id);
+        // Historical `ephemeral` tier values fall through to the short link;
+        // free-tool KV previews never call this helper (RUB-452).
+        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral'))->toBe('https://artfct.dev/a/'.$id);
 });
 
 test('the short link stays within the length budget', function () {

@@ -47,7 +47,7 @@ retired `artfct` command-line app, remove its old `artfct` entry first (`claude 
 
 An AI tool that cannot use a hosted server is not supported. Workspace administrators download an
 organization's permanent artifacts from the console as a zip, and automation uses the REST API
-with an organization token (team settings, **API tokens**).
+with an organization token (team settings, **Agent & API tokens**). Agent tokens on the same page authenticate the hosted MCP endpoint with a Bearer header when a bot cannot use browser OAuth.
 
 The hosted server exposes these tools:
 
@@ -64,6 +64,9 @@ The hosted server exposes these tools:
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
 - `add_collection_artifact` — add an artifact to an organization-scoped collection.
+- `remove_collection_artifact` — remove an artifact from a collection by id or name (`collections:write`).
+- `delete_collection` — delete a collection by id or name (`collections:write`); artifacts themselves are not deleted.
+- `set_avatar` — set the avatar image for the authenticated bot teammate (bots only; humans upload avatars in team settings).
 
 Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request
 only the scopes they need. The dashboard's **MCP connections** page shows the address and lets
@@ -90,12 +93,19 @@ The smoke check validates protocol/session continuity, the exact tool catalog,
 usage reset metadata, collection discovery, and cross-organization artifact
 isolation. The same check is available as the manual `mcp-live` GitHub Actions workflow.
 Keep the credentials in the staging environment secrets; never commit them or
-put them in ordinary pull-request CI.
+put them in ordinary pull-request CI. Production and Railway PR preview URLs are
+rejected before the smoke runs (RUB-518). Opt-in SHA-checked staging acceptance
+is the separate **Staging acceptance** workflow — not a universal PR gate. See
+[STAGING.md](STAGING.md).
 
 See [the MCP launch runbook](docs/mcp-runbook.md) for supported
 client setup, recovery, policy errors, and incident procedures.
 
 ## Production
+
+Releases to production are a manually triggered GitHub Action. See
+[RELEASING.md](RELEASING.md) for the fast-forward `develop` → `main` flow,
+gates, Railway verification, and smoke checks.
 
 The Laravel site is deployed with Railway. Required production environment:
 

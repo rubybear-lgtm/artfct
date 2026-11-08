@@ -1,6 +1,9 @@
 <?php
 
 use App\Actions\Teams\CreateTeam;
+use App\Enums\PaymentStatus;
+use App\Enums\Plan;
+use App\Enums\TeamRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -131,4 +134,254 @@ test('the consent form completes a native client login by handing an authorizati
         ->assertJsonPath('organization', $team->slug)
         ->assertJsonPath('scope', 'artifacts:read artifacts:deploy collections:read collections:write usage:read')
         ->assertJsonStructure(['access_token', 'refresh_token']);
+});
+
+test('an invited Member clicking Allow access is redirected to the client callback with a code that can call MCP', function () {
+    // RUB-510: owner on a paid Team plan invites a Member who also has a
+    // personal team. The Member signs in, sees consent for the owned workspace,
+    // and Allow access must leave /oauth/authorize for the client callback
+    // (Inertia answers the XHR with 409 + X-Inertia-Location; the browser
+    // follow is what production failed to do).
+    $owner = User::factory()->create(['name' => 'Workspace Owner']);
+    $team = app(CreateTeam::class)->handle($owner, 'Shared Workspace');
+    $team->forceFill([
+        'plan' => Plan::Team,
+        'payment_status' => PaymentStatus::Active,
+        'stripe_subscription_id' => 'sub_browser_team',
+    ])->save();
+
+    $member = User::factory()->create([
+        'name' => 'Invited Teammate',
+        'email' => 'teammate@example.com',
+        'terms_version' => config('legal.terms_version'),
+        'terms_accepted_at' => now(),
+    ]);
+    $personalTeam = app(CreateTeam::class)->handle($member, "{$member->name}'s Team", isPersonal: true);
+
+    $invitation = $team->invitations()->create([
+        'email' => $member->email,
+        'role' => TeamRole::Member,
+        'invited_by' => $owner->id,
+        'expires_at' => now()->addDays(3),
+    ]);
+    test()->actingAs($member)->post(route('invitations.accept', $invitation))->assertRedirect();
+    $member->switchTeam($personalTeam);
+
+    test()->actingAs($member);
+
+    $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
+    $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
+    $verifier = str_repeat('m', 64);
+    $state = 'member-browser-state';
+
+    $parameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
+        'state' => $state,
+        'code_challenge' => oauthChallenge($verifier),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+
+    $page = visit('/oauth/authorize?'.$parameters)
+        ->assertSee('Test native client wants to connect to Shared Workspace')
+        ->assertSee('Invited Teammate')
+        ->assertSee('Shared Workspace')
+        ->assertNoJavaScriptErrors();
+
+    $page->click('Allow access');
+
+    $page->assertHostIs('127.0.0.1')
+        ->assertPortIs($callbackPort)
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('state', $state)
+        ->assertQueryStringHas('code');
+
+    parse_str((string) parse_url($page->url(), PHP_URL_QUERY), $callbackQuery);
+
+    configureSigning(testSigningKey());
+
+    $issued = $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $callbackQuery['code'],
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'code_verifier' => $verifier,
+    ])->assertOk()
+        ->assertJsonPath('token_type', 'Bearer')
+        ->assertJsonPath('organization', $team->slug)
+        ->assertJsonStructure(['access_token', 'refresh_token']);
+
+    $initialize = $this->withToken($issued->json('access_token'))->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'initialize',
+        'params' => [
+            'protocolVersion' => '2025-11-25',
+            'clientInfo' => ['name' => 'member-browser-oauth', 'version' => '1.0.0'],
+        ],
+    ])->assertOk();
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer '.$issued->json('access_token'),
+        'MCP-Session-Id' => (string) $initialize->headers->get('MCP-Session-Id'),
+    ])->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 2,
+        'method' => 'tools/list',
+        'params' => [],
+    ])->assertOk()
+        ->assertJsonPath('result.tools.0.name', 'deploy_artifact');
+});
+
+test('an invited Member who abandons one authorize URL then Allows a second is redirected with the second state', function () {
+    // Fresh production repro (RUB-510): Allow after a second authorize visit
+    // reloaded consent with the *first* visit's state/code_challenge. The
+    // browser must follow through to the callback carrying only the second
+    // state — including across an Inertia same-component navigation that can
+    // leave useForm holding the abandoned request.
+    $owner = User::factory()->create(['name' => 'Retry Owner']);
+    $team = app(CreateTeam::class)->handle($owner, 'Retry Workspace');
+    $team->forceFill([
+        'plan' => Plan::Team,
+        'payment_status' => PaymentStatus::Active,
+        'stripe_subscription_id' => 'sub_browser_retry',
+    ])->save();
+
+    $member = User::factory()->create([
+        'name' => 'Retry Teammate',
+        'email' => 'retry-teammate@example.com',
+        'terms_version' => config('legal.terms_version'),
+        'terms_accepted_at' => now(),
+    ]);
+    $personalTeam = app(CreateTeam::class)->handle($member, "{$member->name}'s Team", isPersonal: true);
+    $invitation = $team->invitations()->create([
+        'email' => $member->email,
+        'role' => TeamRole::Member,
+        'invited_by' => $owner->id,
+        'expires_at' => now()->addDays(3),
+    ]);
+    test()->actingAs($member)->post(route('invitations.accept', $invitation))->assertRedirect();
+    $member->switchTeam($personalTeam);
+    test()->actingAs($member);
+
+    $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
+    $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
+
+    $abandonedVerifier = str_repeat('a', 64);
+    $abandonedState = '303218582_2NiJm4ypAbandoned';
+    $secondVerifier = str_repeat('b', 64);
+    $secondState = 'fresh-second-authorize-state';
+
+    $abandonedParameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy',
+        'state' => $abandonedState,
+        'code_challenge' => oauthChallenge($abandonedVerifier),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+    $secondParameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy collections:read',
+        'state' => $secondState,
+        'code_challenge' => oauthChallenge($secondVerifier),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+
+    $page = visit('/oauth/authorize?'.$abandonedParameters)
+        ->assertSee('Retry Workspace')
+        ->assertNoJavaScriptErrors();
+
+    $page->navigate('/oauth/authorize?'.$secondParameters)
+        ->assertSee('Retry Workspace')
+        ->assertQueryStringHas('state', $secondState)
+        ->assertNoJavaScriptErrors();
+
+    $page->click('Allow access');
+
+    $page->assertHostIs('127.0.0.1')
+        ->assertPortIs($callbackPort)
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('state', $secondState)
+        ->assertQueryStringHas('code');
+
+    parse_str((string) parse_url($page->url(), PHP_URL_QUERY), $callbackQuery);
+    expect($callbackQuery['state'] ?? null)->toBe($secondState)
+        ->and($callbackQuery['state'] ?? null)->not->toBe($abandonedState);
+
+    configureSigning(testSigningKey());
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $callbackQuery['code'],
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'code_verifier' => $secondVerifier,
+    ])->assertOk()
+        ->assertJsonPath('organization', $team->slug);
+});
+
+test('the team owner clicking Allow access remains a working control for the same consent handoff', function () {
+    $owner = User::factory()->create(['name' => 'Control Owner']);
+    $team = app(CreateTeam::class)->handle($owner, 'Control Workspace');
+    $team->forceFill([
+        'plan' => Plan::Team,
+        'payment_status' => PaymentStatus::Active,
+        'stripe_subscription_id' => 'sub_browser_owner',
+    ])->save();
+
+    test()->actingAs($owner);
+
+    $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
+    $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
+    $verifier = str_repeat('o', 64);
+    $state = 'owner-control-state';
+
+    $parameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy collections:read collections:write usage:read',
+        'state' => $state,
+        'code_challenge' => oauthChallenge($verifier),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+
+    $page = visit('/oauth/authorize?'.$parameters)
+        ->assertSee('Test native client wants to connect to Control Workspace')
+        ->assertNoJavaScriptErrors();
+
+    $page->click('Allow access');
+
+    $page->assertHostIs('127.0.0.1')
+        ->assertPortIs($callbackPort)
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('state', $state)
+        ->assertQueryStringHas('code');
+
+    parse_str((string) parse_url($page->url(), PHP_URL_QUERY), $callbackQuery);
+
+    configureSigning(testSigningKey());
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $callbackQuery['code'],
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'code_verifier' => $verifier,
+    ])->assertOk()
+        ->assertJsonPath('organization', $team->slug)
+        ->assertJsonStructure(['access_token']);
 });

@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 
 /*
- * RUB-443 item 5: threaded comments on an artifact through MCP. Visibility is
- * the Worker's (called with the caller's token); comment text is returned
- * marked untrusted; writing needs its own scope.
+ * RUB-443 item 5 / RUB-515: threaded comments on an artifact through MCP.
+ * Visibility is the Worker's (called with the caller's token); comment text
+ * is returned marked untrusted; writing needs its own scope.
  */
 
 const COMMENTED_ARTIFACT_ID = 'cmt0000000a1b';
@@ -78,6 +78,97 @@ test('resolving a thread hides it by default and reopening brings it back', func
 
     callCommentTool($token, 'resolve_artifact_comment', ['id' => COMMENTED_ARTIFACT_ID, 'comment_id' => $root->id, 'resolved' => false])->assertOk();
     expect(callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID])->json('result.structuredContent.comments'))->toHaveCount(1);
+});
+
+test('resolved threads hide replies unless include_resolved is true, and replies report the root resolved state', function () {
+    $team = Team::factory()->create(['slug' => 'rub-515-resolved-thread']);
+    $token = remoteMcpToken($team);
+    fakeCommentedArtifact();
+    $root = ArtifactComment::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => COMMENTED_ARTIFACT_ID,
+        'body' => 'root question',
+        'resolved_at' => now()->subMinute(),
+        'resolved_by' => '1',
+    ]);
+    ArtifactComment::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => COMMENTED_ARTIFACT_ID,
+        'parent_id' => $root->id,
+        'body' => 'reply under resolved root',
+        'resolved_at' => null,
+    ]);
+    $openRoot = ArtifactComment::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => COMMENTED_ARTIFACT_ID,
+        'body' => 'still open',
+    ]);
+
+    $open = callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID])
+        ->assertOk()
+        ->json('result.structuredContent.comments');
+
+    expect(array_column($open, 'body'))->toBe(['still open'])
+        ->and(collect($open)->pluck('id')->all())->toBe([$openRoot->id]);
+
+    $all = callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID, 'include_resolved' => true])
+        ->assertOk()
+        ->json('result.structuredContent.comments');
+
+    $bodies = array_column($all, 'body');
+    expect($bodies)->toContain('root question', 'reply under resolved root', 'still open');
+
+    $reply = collect($all)->firstWhere('body', 'reply under resolved root');
+    expect($reply['resolved'])->toBeTrue()
+        ->and($reply['resolved_at'])->toBeString()
+        ->and($reply['resolved_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
+});
+
+test('re-resolving an already resolved comment leaves resolved_at and resolved_by unchanged', function () {
+    $team = Team::factory()->create(['slug' => 'rub-515-reresolve']);
+    $token = remoteMcpToken($team);
+    fakeCommentedArtifact();
+    $resolvedAt = now()->subHour()->microseconds(0);
+    $root = ArtifactComment::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => COMMENTED_ARTIFACT_ID,
+        'resolved_at' => $resolvedAt,
+        'resolved_by' => 'original-actor',
+    ]);
+
+    $first = callCommentTool($token, 'resolve_artifact_comment', ['id' => COMMENTED_ARTIFACT_ID, 'comment_id' => $root->id])
+        ->assertOk()
+        ->json('result.structuredContent');
+
+    $root->refresh();
+    expect($root->resolved_by)->toBe('original-actor')
+        ->and($root->resolved_at?->equalTo($resolvedAt))->toBeTrue()
+        ->and($first['resolved'])->toBeTrue();
+
+    callCommentTool($token, 'resolve_artifact_comment', ['id' => COMMENTED_ARTIFACT_ID, 'comment_id' => $root->id, 'resolved' => false])->assertOk();
+    $root->refresh();
+    expect($root->resolved_at)->toBeNull()->and($root->resolved_by)->toBeNull();
+
+    callCommentTool($token, 'resolve_artifact_comment', ['id' => COMMENTED_ARTIFACT_ID, 'comment_id' => $root->id, 'resolved' => false])->assertOk();
+    $root->refresh();
+    expect($root->resolved_at)->toBeNull()->and($root->resolved_by)->toBeNull();
+});
+
+test('comment timestamps use the shared UTC Z format', function () {
+    $team = Team::factory()->create(['slug' => 'rub-515-comment-ts']);
+    $token = remoteMcpToken($team);
+    fakeCommentedArtifact();
+    ArtifactComment::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => COMMENTED_ARTIFACT_ID,
+        'created_at' => now(),
+    ]);
+
+    $comment = callCommentTool($token, 'list_artifact_comments', ['id' => COMMENTED_ARTIFACT_ID])
+        ->assertOk()
+        ->json('result.structuredContent.comments.0');
+
+    expect($comment['created_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
 });
 
 test('an artifact the caller cannot see reads as not found for every comment tool', function (string $tool, array $arguments) {

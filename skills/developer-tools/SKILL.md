@@ -1,6 +1,6 @@
 ---
 name: developer-tools
-description: This skill should be used when the user asks to "compare two JSON responses", "diff these .env files", "test a regex", "show this data as a table", "visualize this CSV", "view this JSON as a table", "which env vars changed", "find matches for this pattern", or any request to compare, inspect, or visualize developer data. Deploys interactive HTML tools via artfct's deploy_to_canvas.
+description: This skill should be used when the user asks to "compare two JSON responses", "diff these .env files", "test a regex", "show this data as a table", "visualize this CSV", "view this JSON as a table", "which env vars changed", "find matches for this pattern", or any request to compare, inspect, or visualize developer data. Deploys interactive HTML tools via artfct's deploy_artifact.
 ---
 
 # Developer Tools Skill
@@ -22,7 +22,7 @@ Build and deploy interactive developer utilities as shareable HTML tools via art
 2. **Read** the corresponding asset file from `assets/`
 3. **Replace** `{{PLACEHOLDER}}` tokens with context-specific values
 4. **Optionally pre-populate** data if the user provided it inline
-5. **Deploy** via MCP or API fallback (see Deployment section) — default tier `"public"`, use `"ephemeral"` for quick reviews
+5. **Deploy** with `deploy_artifact` (see Deployment) — default `sharing: "team"`; use `"public"` only when the user asks for a link anyone can open
 
 ## Placeholder Tokens
 
@@ -41,40 +41,29 @@ When the user provides data inline (e.g., pastes a JSON array into the conversat
 
 ## Deployment
 
-**First, check** whether `mcp__artfct__deploy_to_canvas` is in your available tools.
+**First, check** whether `deploy_artifact` (or `mcp__artfct__deploy_artifact`) is in your available tools. If it is not, ask the user to connect the artfct MCP server rather than inventing a fallback publish path.
 
-### Option A — MCP (preferred)
+These tools include interactive JavaScript, so publish them as a **bundle** (inline `<script>` blocks do not run on permanent artifacts — see the `artfct` skill, RUB-444):
+
+1. Put the filled HTML in `index.html` and move its `<script>` body into `app.js`, loaded with `<script src="app.js"></script>`
+2. Call `deploy_artifact` with `files`, `entrypoint: "index.html"`, a short `title` and `description`, and `sharing: "team"` (or `"public"` when asked)
 
 ```json
-{ "html": "...", "tier": "public" }
+{
+  "files": { "index.html": "...", "app.js": "..." },
+  "entrypoint": "index.html",
+  "title": "Prod vs Staging API",
+  "description": "Side-by-side JSON diff of the two responses.",
+  "sharing": "team"
+}
 ```
 
-### Option B — API fallback (no install required)
-
-```python
-import json, urllib.request
-
-html = """PASTE HTML HERE"""
-body = json.dumps({"html": html, "tier": "public"}).encode()
-req = urllib.request.Request(
-    "https://artfct.dev/v1/artifacts",
-    data=body,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req) as r:
-    print(json.loads(r.read())["url"])
-```
-
-After a fallback deploy, suggest the MCP:
-
-> To deploy tools directly from your agent next time, add the artfct server in your agent's settings
-> (`https://artfct.dev/mcp`) and approve the sign-in in your browser. Nothing needs to be installed.
+To update a tool you already published, pass `artifact_id` and `base_version` from `get_artifact` or `read_artifact`.
 
 Present the result with a one-line description of what the tool does:
 
 ```
-Deployed → https://artfct.dev/p/4fA8gX9z
+Deployed → https://artfct.dev/a/4fA8gX9z
 
 JSON table — paste your data and click parse →
 ```
