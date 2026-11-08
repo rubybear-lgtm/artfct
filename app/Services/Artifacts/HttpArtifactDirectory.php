@@ -64,7 +64,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
         // instead of failing the search.
         if ($response->status() === 422 && str_contains((string) ($params['ids'] ?? ''), ',')) {
             $artifacts = [];
-            foreach (explode(',', (string) $params['ids']) as $id) {
+            foreach (array_filter(explode(',', (string) $params['ids']), fn (string $id): bool => $id !== '') as $id) {
                 $single = $this->listArtifacts($orgSlug, [...$filters, 'ids' => $id], null, 1);
                 array_push($artifacts, ...$single['artifacts']);
             }

@@ -453,3 +453,56 @@ test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', f
 
     expect($results)->toBe([])->and($embeddings->calls)->toBe(0);
 });
+
+test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function () {
+    $team = Team::factory()->create(['slug' => 'crowded-org']);
+
+    // 60 indexed passages the Worker does not list for this viewer (another
+    // member's private artifacts: chunks, but no directory rows) outrank the
+    // one visible artifact. With 50 candidate slots they would take them all.
+    for ($i = 0; $i < 60; $i++) {
+        seedSearchChunk($team, "hidden-{$i}", 'shared roadmap notes');
+    }
+    seedSearchArtifact($team, 'visible-1');
+    seedSearchChunk($team, 'visible-1', 'shared roadmap notes');
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect(array_map(fn ($result) => $result->id, $results))->toBe(['visible-1']);
+    // First pass (50 ids, one call) plus the widened pass for the ids not yet seen.
+    expect($directory->listCallCount() - $listCallsBefore)->toBeLessThanOrEqual(2);
+});
+
+test('a_search_with_enough_visible_candidates_does_not_widen', function () {
+    $team = Team::factory()->create(['slug' => 'no-widen-org']);
+
+    for ($i = 0; $i < 80; $i++) {
+        seedSearchArtifact($team, "open-{$i}");
+        seedSearchChunk($team, "open-{$i}", 'shared roadmap notes');
+    }
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->not->toBeEmpty();
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
+});

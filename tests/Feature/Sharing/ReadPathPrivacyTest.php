@@ -477,6 +477,33 @@ test('search_drops_a_malformed_indexed_id_instead_of_failing_the_whole_search', 
         ->and($response->json('result.structuredContent.results.0.id'))->toBe('public-1');
 });
 
+test('the_ids_retry_never_sends_an_unfiltered_request_for_an_empty_id', function () {
+    useSharingWorkerDirectory();
+
+    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    test()->actingAs($member);
+
+    $unfiltered = 0;
+    Http::fake(['worker.test/*' => function (Request $request) use (&$unfiltered) {
+        $ids = (string) ($request->data()['ids'] ?? '');
+
+        if ($ids === '') {
+            $unfiltered++;
+        }
+
+        // A list with more than one id is rejected whole; single ids resolve.
+        return str_contains($ids, ',')
+            ? Http::response(['error' => ['code' => 'validation_failed']], 422)
+            : Http::response(['artifacts' => [sharingWorkerArtifact($ids)], 'next_cursor' => null]);
+    }]);
+
+    $page = app(ArtifactDirectory::class)->listArtifacts('privacy-org', ['ids' => 'one,,two', 'live' => 'true'], null, 3);
+
+    expect(array_column($page['artifacts'], 'id'))->toBe(['one', 'two'])
+        ->and($unfiltered)->toBe(0);
+});
+
 test('the_credential_gate_does_nothing_when_no_worker_is_configured', function () {
     config(['services.worker.base_url' => null]);
 

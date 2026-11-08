@@ -34,6 +34,11 @@ final class SearchService
     /** The Worker refuses a longer `ids` list on one list call. */
     private const WORKER_IDS_PAGE = 200;
 
+    /** One widening pass when hidden rows crowd visible ones out of the candidates. */
+    private const WIDEN_FACTOR = 4;
+
+    private const WIDENED_CANDIDATE_CAP = 1000;
+
     public function __construct(
         private readonly EmbeddingsContract $embeddings,
         private readonly VectorIndexContract $vectorIndex,
@@ -94,20 +99,25 @@ final class SearchService
         }
 
         $candidateLimit = max($limit * 5, 50);
-        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $retrievalIds);
-        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $retrievalIds);
-        $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
-        $candidates = array_values(array_filter(
-            $candidates,
-            fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug,
-        ));
+        [$vectorCandidates, $lexicalCandidates, $candidates] = $this->retrieveCandidates($team, $query, $candidateLimit, $retrievalIds);
 
         if ($directory === null) {
-            $candidateIds = array_values(array_unique(array_map(
-                fn (VectorMatch $match): string => $match->chunk->artifactId,
-                $candidates,
-            )));
-            $directory = $this->artifactsByIds($team, $candidateIds);
+            $directory = $this->artifactsByIds($team, $this->candidateArtifactIds($candidates));
+
+            // Retrieval ranks every indexed passage, including ones the Worker
+            // hides from this viewer (other members' private artifacts, revoked
+            // rows). When a full candidate list leaves too few visible
+            // artifacts, widen it once rather than return a short result.
+            $widenedLimit = min($candidateLimit * self::WIDEN_FACTOR, self::WIDENED_CANDIDATE_CAP);
+            if (
+                $widenedLimit > $candidateLimit
+                && (count($vectorCandidates) >= $candidateLimit || count($lexicalCandidates) >= $candidateLimit)
+                && $this->visibleArtifactCount($candidates, $directory, $filters) < $limit
+            ) {
+                [$vectorCandidates, $lexicalCandidates, $candidates] = $this->retrieveCandidates($team, $query, $widenedLimit, $retrievalIds);
+                $unseen = array_values(array_diff($this->candidateArtifactIds($candidates), array_keys($directory)));
+                $directory = [...$directory, ...$this->artifactsByIds($team, $unseen)];
+            }
         }
         $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
 
@@ -341,6 +351,51 @@ final class SearchService
             ->all();
 
         return array_fill_keys($ids, true);
+    }
+
+    /**
+     * Vector + lexical retrieval fused into one candidate list for the org.
+     *
+     * @param  list<string>|null  $scopeIds
+     * @return array{0: array<int, VectorMatch>, 1: array<int, VectorMatch>, 2: array<int, VectorMatch>} vector, lexical, fused candidates
+     */
+    private function retrieveCandidates(Team $team, string $query, int $candidateLimit, ?array $scopeIds): array
+    {
+        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $scopeIds);
+        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $scopeIds);
+        $candidates = array_values(array_filter(
+            ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates),
+            fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug,
+        ));
+
+        return [$vectorCandidates, $lexicalCandidates, $candidates];
+    }
+
+    /**
+     * @param  array<int, VectorMatch>  $candidates
+     * @return list<string>
+     */
+    private function candidateArtifactIds(array $candidates): array
+    {
+        return array_values(array_unique(array_map(
+            fn (VectorMatch $match): string => $match->chunk->artifactId,
+            $candidates,
+        )));
+    }
+
+    /**
+     * Distinct candidate artifacts the viewer can see and the filters keep.
+     *
+     * @param  array<int, VectorMatch>  $candidates
+     * @param  array<string, array<string, mixed>>  $directory
+     * @param  array<string, mixed>  $filters
+     */
+    private function visibleArtifactCount(array $candidates, array $directory, array $filters): int
+    {
+        return count(array_filter(
+            $this->candidateArtifactIds($candidates),
+            fn (string $id): bool => $this->passesDirectoryFilters($directory[$id] ?? null, $filters),
+        ));
     }
 
     /**
