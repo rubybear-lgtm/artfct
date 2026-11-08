@@ -444,6 +444,49 @@ test('search_fails_closed_with_zero_vector_hits_when_there_is_no_viewer_credenti
     Http::assertNothingSent();
 });
 
+test('search_drops_a_malformed_indexed_id_instead_of_failing_the_whole_search', function () {
+    useSharingWorkerDirectory();
+    config(['indexing.enabled' => true]);
+
+    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
+
+    seedSharingVector($team, 'public-1', 'quarterly revenue dashboard');
+    seedSharingVector($team, 'not a permanent id', 'quarterly revenue dashboard');
+
+    // The Worker answers 422 for a whole `ids` list that holds a non-permanent id.
+    Http::fake(['worker.test/*' => function (Request $request) {
+        $ids = (string) ($request->data()['ids'] ?? '');
+
+        if (str_contains($ids, 'not a permanent id')) {
+            return Http::response(['error' => ['code' => 'validation_failed']], 422);
+        }
+
+        return Http::response(['artifacts' => [sharingWorkerArtifact('public-1', 'Public One')], 'next_cursor' => null]);
+    }]);
+
+    $response = test()->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'search_artifacts', 'arguments' => ['query' => 'quarterly revenue dashboard']],
+    ]);
+
+    $response->assertOk();
+    expect($response->json('result.isError'))->not->toBeTrue()
+        ->and($response->json('result.structuredContent.results'))->toHaveCount(1)
+        ->and($response->json('result.structuredContent.results.0.id'))->toBe('public-1');
+});
+
+test('the_credential_gate_does_nothing_when_no_worker_is_configured', function () {
+    config(['services.worker.base_url' => null]);
+
+    // Every read answers empty without a Worker, so there is nothing to gate
+    // and no credential to mint for an unauthenticated caller.
+    HttpArtifactDirectory::default()->requireViewerCredential('privacy-org');
+
+    expect(true)->toBeTrue();
+});
+
 test('a_private_artifact_unfurls_as_a_bare_card', function () {
     $team = Team::factory()->create(['slug' => 'privacy-org']);
     /** @var FakeArtifactSharing $sharing */

@@ -218,7 +218,7 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
         ->and($elapsedMs)->toBeLessThan(1500);
 });
 
-test('rub516_item4_empty_allowed_set_skips_embeddings_entirely', function () {
+test('rub516_item4_empty_workspace_skips_embeddings_entirely', function () {
     $team = Team::factory()->create(['slug' => 'rub516-empty-dir']);
     $embeddings = new class implements EmbeddingsContract
     {

@@ -26,6 +26,11 @@ final class HttpArtifactDirectory implements ArtifactDirectory
 
     public function requireViewerCredential(string $orgSlug): void
     {
+        // Nothing to gate when no Worker is configured: every read answers empty.
+        if (! $this->baseUrl) {
+            return;
+        }
+
         // Discard the token — minting alone is the fail-closed gate for search
         // when vector scoring would otherwise skip every Worker list call.
         WorkerCredential::forOrg($orgSlug);
@@ -53,6 +58,23 @@ final class HttpArtifactDirectory implements ArtifactDirectory
 
         $response = Http::withToken(WorkerCredential::forOrg($orgSlug))
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts", $params);
+
+        // The Worker answers 422 for the whole `ids` list when any id is not a
+        // permanent artifact id. Retry id by id so one malformed id is dropped
+        // instead of failing the search.
+        if ($response->status() === 422 && str_contains((string) ($params['ids'] ?? ''), ',')) {
+            $artifacts = [];
+            foreach (explode(',', (string) $params['ids']) as $id) {
+                $single = $this->listArtifacts($orgSlug, [...$filters, 'ids' => $id], null, 1);
+                array_push($artifacts, ...($single['artifacts'] ?? []));
+            }
+
+            return ['artifacts' => $artifacts, 'next_cursor' => null];
+        }
+
+        if ($response->status() === 422 && isset($params['ids'])) {
+            return ['artifacts' => [], 'next_cursor' => null];
+        }
 
         if ($response->status() === 404) {
             throw new HttpResponseException(response()->json(['error' => 'Organization not found'], 404));

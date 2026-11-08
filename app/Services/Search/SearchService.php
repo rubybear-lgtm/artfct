@@ -72,42 +72,46 @@ final class SearchService
             return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
         }
 
+        // Filters that only the Worker's metadata can answer (repo, agent, since,
+        // changed_since) must narrow retrieval *before* the candidate cut, or a
+        // narrow filter over a large org returns too few results. Those searches
+        // read the directory first, as before RUB-478; unfiltered searches stay
+        // bounded to their scored candidates.
+        $directory = null;
+        $retrievalIds = $scopeIds;
+        if ($this->filtersNeedDirectory($filters)) {
+            $directory = $this->artifactsBySlug($team);
+            $scopeLookup = $scopeIds === null ? null : array_flip($scopeIds);
+            $retrievalIds = array_values(array_filter(
+                array_map(strval(...), array_keys($directory)),
+                fn (string $id): bool => ($scopeLookup === null || isset($scopeLookup[$id]))
+                    && $this->passesDirectoryFilters($directory[$id], $filters),
+            ));
+
+            if ($retrievalIds === []) {
+                return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
+            }
+        }
+
         $candidateLimit = max($limit * 5, 50);
-        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $scopeIds);
-        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $scopeIds);
+        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $retrievalIds);
+        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $retrievalIds);
         $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
         $candidates = array_values(array_filter(
             $candidates,
             fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug,
         ));
 
-        $candidateIds = array_values(array_unique(array_map(
-            fn (VectorMatch $match): string => $match->chunk->artifactId,
-            $candidates,
-        )));
-        $directory = $this->artifactsByIds($team, $candidateIds);
+        if ($directory === null) {
+            $candidateIds = array_values(array_unique(array_map(
+                fn (VectorMatch $match): string => $match->chunk->artifactId,
+                $candidates,
+            )));
+            $directory = $this->artifactsByIds($team, $candidateIds);
+        }
         $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
 
-        $isAllowed = function (string $id) use ($directory, $filters): bool {
-            $artifact = $directory[$id] ?? null;
-            if ($artifact === null || ($artifact['revoked_at'] ?? null) !== null) {
-                return false;
-            }
-            if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
-                return false;
-            }
-            if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
-                return false;
-            }
-            if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
-                return false;
-            }
-            if (! empty($filters['since']) && CarbonImmutable::parse($artifact['created_at'])->lt(CarbonImmutable::parse($filters['since']))) {
-                return false;
-            }
-
-            return true;
-        };
+        $isAllowed = fn (string $id): bool => $this->passesDirectoryFilters($directory[$id] ?? null, $filters);
 
         $filtered = array_values(array_filter(
             $candidates,
@@ -337,6 +341,66 @@ final class SearchService
             ->all();
 
         return array_fill_keys($ids, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function filtersNeedDirectory(array $filters): bool
+    {
+        return ! empty($filters['repo'])
+            || ! empty($filters['agent'])
+            || ! empty($filters['since'])
+            || ! empty($filters['changed_since']);
+    }
+
+    /**
+     * Whether a directory row survives the Worker-metadata filters. A missing
+     * row (foreign, deleted, not live) or a revoked one never does.
+     *
+     * @param  array<string, mixed>|null  $artifact
+     * @param  array<string, mixed>  $filters
+     */
+    private function passesDirectoryFilters(?array $artifact, array $filters): bool
+    {
+        if ($artifact === null || ($artifact['revoked_at'] ?? null) !== null) {
+            return false;
+        }
+        if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
+            return false;
+        }
+        if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
+            return false;
+        }
+        if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
+            return false;
+        }
+        if (! empty($filters['since']) && CarbonImmutable::parse($artifact['created_at'])->lt(CarbonImmutable::parse($filters['since']))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Every directory row for the org, paged. Only searches that filter on
+     * Worker metadata need the whole directory.
+     *
+     * @return array<string, array<string, mixed>> artifact id => directory row
+     */
+    private function artifactsBySlug(Team $team): array
+    {
+        $cursor = null;
+        $byId = [];
+        do {
+            $page = $this->artifacts->listArtifacts($team->slug, [], $cursor, 200);
+            foreach ($page['artifacts'] as $artifact) {
+                $byId[$artifact['id']] = $artifact;
+            }
+            $cursor = $page['next_cursor'];
+        } while ($cursor !== null);
+
+        return $byId;
     }
 
     /**

@@ -394,3 +394,62 @@ test('empty_laravel_scope_skips_worker_list_calls', function () {
     expect($results)->toBeEmpty();
     expect($directory->listCallCount() - $listCallsBefore)->toBe(0);
 });
+
+test('a_narrow_repo_filter_over_a_large_org_still_finds_its_matches', function () {
+    $team = Team::factory()->create(['slug' => 'narrow-filter-org']);
+
+    // Far more equally relevant artifacts than the candidate limit (50) in one
+    // repo, and two in another. The filter must narrow retrieval first; applied
+    // after the candidate cut the two target artifacts fall outside the top 50.
+    for ($i = 0; $i < 130; $i++) {
+        seedSearchArtifact($team, "misc-{$i}");
+        seedSearchChunk($team, "misc-{$i}", 'shared roadmap notes');
+    }
+    foreach (['target-1', 'target-2'] as $id) {
+        seedSearchArtifact($team, $id, ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/target', 'commit_sha' => 'cafe']]);
+        seedSearchChunk($team, $id, 'shared roadmap notes');
+    }
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: ['repo' => 'https://github.com/acme/target'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect(array_map(fn ($result) => $result->id, $results))->toEqualCanonicalizing(['target-1', 'target-2']);
+});
+
+test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', function () {
+    $team = Team::factory()->create(['slug' => 'empty-filter-org']);
+    seedSearchArtifact($team, 'only-one');
+    seedSearchChunk($team, 'only-one', 'some content');
+
+    $embeddings = new class implements EmbeddingsContract
+    {
+        public int $calls = 0;
+
+        public function embed(array $texts): array
+        {
+            $this->calls++;
+
+            return array_map(fn () => array_fill(0, 8, 0.1), $texts);
+        }
+
+        public function embedQuery(string $query): array
+        {
+            return $this->embed([$query])[0];
+        }
+    };
+
+    $results = app()->make(SearchService::class, ['embeddings' => $embeddings])->search(
+        $team,
+        query: 'some content',
+        filters: ['agent' => 'an-agent-nobody-used'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->toBe([])->and($embeddings->calls)->toBe(0);
+});
