@@ -50,6 +50,16 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
 };
 
 /**
+ * Remount when the authorization request identity changes. Inertia reuses this
+ * page component across /oauth/authorize visits that only differ by query
+ * string; local state such as the selected team would otherwise carry over
+ * from the abandoned request (RUB-510).
+ */
+export default function Authorize(props: Props) {
+    return <AuthorizeForm key={props.consentToken} {...props} />;
+}
+
+/**
  * Consent must use a normal HTML form POST, not Inertia's XHR.
  *
  * Approve responds with a cross-origin redirect to the AI tool. Inertia turns
@@ -58,7 +68,7 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
  * throws and the visit silently does nothing, so Allow access never leaves
  * this page (RUB-510). A native form gets a real 302 the browser follows.
  */
-export default function Authorize({
+function AuthorizeForm({
     clientId,
     clientName,
     userName,
