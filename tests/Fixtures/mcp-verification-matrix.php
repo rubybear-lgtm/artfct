@@ -157,10 +157,7 @@ return [
     ],
     'robustness.fuzz_property' => [
         'surface' => 'robustness',
-        'gap' => [
-            'issue' => 'RUB-382',
-            'reason' => 'deferred, not impossible: it needs a generated-input dependency (proptest, or equivalent) added and locked, which is a repo toolchain decision rather than something to slip in beside a test.',
-        ],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpFuzzPropertyTest.php', 'name' => 'arbitrary JSON-RPC envelopes against /mcp never 500 and stay well-formed when JSON'],
     ],
     'robustness.secret_persistence' => [
         'surface' => 'robustness',
