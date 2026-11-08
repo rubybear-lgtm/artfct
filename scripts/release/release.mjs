@@ -24,6 +24,7 @@ import {
     checkSmokeCredentials,
 } from './credential-check.mjs';
 import {
+    assertCommitAheadOfMain,
     assertCommitOnDevelop,
     assertFastForwardPossible,
 } from './git-gates.mjs';
@@ -252,11 +253,23 @@ async function main() {
 
     summaryLines.push('- Gate: main can fast-forward ✅');
 
+    const ahead = assertCommitAheadOfMain({ sha, runGit });
+
+    if (!ahead.ok) {
+        summaryLines.push('', '## Gate failed: nothing to release', '', ahead.message);
+        writeSummary(summaryLines.join('\n'));
+
+        throw new Error(ahead.message);
+    }
+
+    summaryLines.push('- Gate: commit is ahead of main ✅');
+
     log(`Waiting for required CI checks on ${sha}`);
     const checks = await assertRequiredChecksSucceeded({
         sha,
         listCheckRuns: (target) => github.listCheckRuns(target),
         listCommitStatuses: (target) => github.listCommitStatuses(target),
+        ownRunId: process.env.GITHUB_RUN_ID,
         timeoutMs: Number(process.env.RELEASE_CHECKS_TIMEOUT_MS ?? 30 * 60_000),
         pollIntervalMs: Number(process.env.RELEASE_CHECKS_POLL_MS ?? 15_000),
     });

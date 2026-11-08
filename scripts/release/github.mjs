@@ -102,7 +102,7 @@ export function createGithubClient(options) {
          * @param {string} sha
          */
         async listCheckRuns(sha) {
-            /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string, startedAt?: string | null, completedAt?: string | null, id?: number }>} */
+            /** @type {Array<{ name: string, status: string, conclusion: string | null, appSlug?: string, detailsUrl?: string | null, startedAt?: string | null, completedAt?: string | null, id?: number }>} */
             const runs = [];
             let page = 1;
 
@@ -117,6 +117,7 @@ export function createGithubClient(options) {
                         status: run.status,
                         conclusion: run.conclusion,
                         appSlug: run.app?.slug,
+                        detailsUrl: run.details_url ?? null,
                         startedAt: run.started_at ?? null,
                         completedAt: run.completed_at ?? null,
                         id: run.id,
