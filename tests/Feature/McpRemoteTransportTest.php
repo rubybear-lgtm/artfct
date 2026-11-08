@@ -1042,7 +1042,7 @@ test('deploy_artifact warns when single-file html contains an inline script', fu
 
     $warnings = $response->json('result.structuredContent.warnings');
     expect($warnings)->toBeArray()->toHaveCount(1)
-        ->and($warnings[0])->toContain('Inline <script>')
+        ->and($warnings[0])->toContain('Inline `<script>`')
         ->and($warnings[0])->toContain('app.js')
         ->and($warnings[0])->toContain('get_guidance');
 });
