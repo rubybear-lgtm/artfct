@@ -341,7 +341,7 @@ jobs:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
           set -euo pipefail
-          curl -sSfL \
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
             | tar -xz -C /usr/local/bin actionlint
           actionlint -version
@@ -428,9 +428,12 @@ jobs:
         env:
           GITLEAKS_VERSION: '8.21.2'
         run: |
-          curl -sSfL \
+          set -euo pipefail
+          # Retry transient CDN/gateway failures (HTTP 504 on e69349d secrets job).
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
 
       - name: Scan for secrets
         run: gitleaks detect --no-banner --exit-code 1
