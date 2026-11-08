@@ -3,8 +3,37 @@
  */
 
 /**
+ * Railway project tokens authenticate with the `Project-Access-Token` header;
+ * account, workspace and OAuth tokens use `Authorization: Bearer`. The repo
+ * secrets are project tokens, so that is the default. Set
+ * RAILWAY_API_TOKEN_KIND=bearer to run the scripts locally with an account
+ * token.
+ *
+ * @param {string} token
+ * @param {string} [kind]
+ * @returns {Record<string, string>}
+ */
+export function railwayAuthHeaders(
+    token,
+    kind = process.env.RAILWAY_API_TOKEN_KIND || 'project',
+) {
+    if (kind === 'project') {
+        return { 'Project-Access-Token': token };
+    }
+
+    if (kind === 'bearer') {
+        return { Authorization: `Bearer ${token}` };
+    }
+
+    throw new Error(
+        `Unknown RAILWAY_API_TOKEN_KIND "${kind}". Use "project" or "bearer".`,
+    );
+}
+
+/**
  * @param {{
  *   token: string,
+ *   tokenKind?: string,
  *   endpoint?: string,
  *   fetchImpl?: typeof fetch,
  * }} options
@@ -22,7 +51,7 @@ export function createRailwayGraphql(options) {
         const response = await fetchImpl(endpoint, {
             method: 'POST',
             headers: {
-                Authorization: `Bearer ${options.token}`,
+                ...railwayAuthHeaders(options.token, options.tokenKind),
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ query, variables }),
