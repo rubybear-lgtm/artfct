@@ -444,6 +444,9 @@ jobs:
       - name: Test Wayfinder hook ordering
         run: bash scripts/test-wayfinder-hook-order.sh
 
+      - name: Test pre-push scope decisions
+        run: bash scripts/test-pre-push-scope.sh
+
   rust:
     runs-on: ubuntu-latest
 

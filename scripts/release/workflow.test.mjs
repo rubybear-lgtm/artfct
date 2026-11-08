@@ -52,7 +52,7 @@ test('B11: tokens are passed via env and masked; never echoed as values', () => 
     assert.match(source, /maskSecret\(process\.env\.ARTFCT_SMOKE_BOT_TOKEN\)/);
     assert.match(
         yaml,
-        /RAILWAY_API_TOKEN:\s*\$\{\{\s*secrets\.RAILWAY_API_TOKEN\s*\}\}/,
+        /RAILWAY_API_TOKEN:\s*\$\{\{\s*secrets\.RAILWAY_API_TOKEN_PRODUCTION\s*\}\}/,
     );
     assert.match(
         yaml,
