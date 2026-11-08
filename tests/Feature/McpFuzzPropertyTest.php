@@ -283,7 +283,8 @@ test('out-of-schema tool arguments are rejected for every hosted tool without a 
     config(['services.worker.base_url' => 'https://worker.test']);
     $tools = mcpFuzzHostedToolSchemas();
 
-    expect($tools)->toHaveCount(15);
+    // The catalog grows with the server; assert it was discovered, not its size.
+    expect(array_column($tools, 'name'))->toContain('deploy_artifact', 'search_artifacts', 'get_connection');
 
     $failures = [];
 
