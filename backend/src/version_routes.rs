@@ -624,8 +624,27 @@ async fn create_version(
         );
     }
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
+    // The bundle lock serialises same-content creates; the per-artifact lock
+    // serialises version-numbering and promotion for this artifact; the org
+    // lock serialises the quota check with the insert (RUB-465). Manifest
+    // content hashes join them so a concurrent hard-delete cannot observe
+    // ref_count 0 and remove R2 bytes this version is about to claim
+    // (RUB-464). All keys go through one acquire_content_locks call.
+    let mut lock_keys: Vec<String> = manifest
+        .files
+        .iter()
+        .map(|file| file.sha256.clone())
+        .collect();
+    lock_keys.push(artifact_lock_key(&artifact.row_id));
+    lock_keys.push(bundle_lock_key(&artifact_org, content_hash));
+    lock_keys.push(org_quota_lock_key(&artifact_org));
+    let locks = match storage.acquire_content_locks(&lock_keys).await {
+        Ok(locks) => locks,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     // The quota gate is the artifact's org, not the editor's: the bytes land in
-    // the owning org's storage.
+    // the owning org's storage. Checked under the org lock.
     if let Some(refusal) = quota_refusal(
         &storage.database,
         env,
@@ -635,23 +654,9 @@ async fn create_version(
     )
     .await?
     {
+        let _ = storage.release_content_locks(&locks).await;
         return Ok(refusal);
     }
-    // Manifest content hashes join the artifact/bundle locks so a concurrent
-    // hard-delete cannot observe ref_count 0 and remove R2 bytes this version
-    // is about to claim (RUB-464). Sorted in one acquire_content_locks call.
-    let mut lock_keys: Vec<String> = manifest
-        .files
-        .iter()
-        .map(|file| file.sha256.clone())
-        .collect();
-    lock_keys.push(artifact_lock_key(&artifact.row_id));
-    lock_keys.push(bundle_lock_key(&artifact_org, content_hash));
-    let locks = match storage.acquire_content_locks(&lock_keys).await {
-        Ok(locks) => locks,
-        Err(store::StoreError::Contention) => return retryable_contention_response(),
-        Err(error) => return Err(worker::Error::RustError(error.to_string())),
-    };
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -708,9 +713,16 @@ async fn create_version(
         let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
         // Omitted title/description keep the live artifact's values so a
         // version publish that only changes content does not wipe metadata.
-        let title = coalesce_clipped_text(raw.get("title"), 200, artifact.title.as_deref());
-        let description =
-            coalesce_clipped_text(raw.get("description"), 1000, artifact.description.as_deref());
+        let title = coalesce_clipped_text(
+            raw.get("title"),
+            crate::validation::MAX_TITLE_CHARS,
+            artifact.title.as_deref(),
+        );
+        let description = coalesce_clipped_text(
+            raw.get("description"),
+            crate::validation::MAX_DESCRIPTION_CHARS,
+            artifact.description.as_deref(),
+        );
         let mut statements = vec![
             storage
                 .database
