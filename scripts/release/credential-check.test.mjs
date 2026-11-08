@@ -89,10 +89,11 @@ test('smoke check sends only initialize and passes on 2xx', async () => {
         token: 'smoke-token',
         fetchImpl: async (_url, init) => {
             methods.push(JSON.parse(String(init?.body)).method);
-            assert.equal(
-                /** @type {Record<string, string>} */ (init?.headers).Authorization,
-                'Bearer smoke-token',
+            const headers = /** @type {Record<string, string>} */ (
+                init?.headers ?? {}
             );
+
+            assert.equal(headers.Authorization, 'Bearer smoke-token');
 
             return new Response('{}', { status: 200 });
         },
