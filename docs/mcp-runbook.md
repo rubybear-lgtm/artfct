@@ -43,9 +43,19 @@ own instructions and are labelled "Not yet tested by us". Set `verified` only
 once a client's run is recorded under "Client compatibility" below; the guides
 are pinned by `tests/Feature/DocsTest.php`.
 
-For CI or other non-interactive environments, mint an organization token on
-**Settings → Tokens** and inject it through the CI secret store. Organization
-tokens authenticate REST API calls; they are not an MCP connection.
+### Agent tokens (header auth, no browser)
+
+Bots and custom connectors that accept a static `Authorization: Bearer`
+header (for example Grok Bot) skip OAuth. A team member mints a named **agent
+token** on **Settings → Agent & API tokens**, chooses the same scopes as
+OAuth, and pastes the token into the client once. The credential is bound to
+that member and that one team; revoking it returns `401` on the next MCP
+request. Actions are attributed to the token name with a bot indicator.
+Details: `/docs#connect-agent-token` and `AiToolSetup::agentTokenSetup()`.
+
+For CI or other non-interactive **REST** environments, mint an **API** token
+on the same page and inject it through the CI secret store. API tokens
+authenticate REST calls; agent tokens are the MCP header-auth path.
 
 ## OAuth and organization context
 

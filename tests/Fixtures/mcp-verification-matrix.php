@@ -157,10 +157,7 @@ return [
     ],
     'robustness.fuzz_property' => [
         'surface' => 'robustness',
-        'gap' => [
-            'issue' => 'RUB-382',
-            'reason' => 'deferred, not impossible: it needs a generated-input dependency (proptest, or equivalent) added and locked, which is a repo toolchain decision rather than something to slip in beside a test.',
-        ],
+        'evidence' => ['kind' => 'php', 'file' => 'tests/Feature/McpFuzzPropertyTest.php', 'name' => 'arbitrary JSON-RPC envelopes against /mcp never 500 and stay well-formed when JSON'],
     ],
     'robustness.secret_persistence' => [
         'surface' => 'robustness',
@@ -168,10 +165,15 @@ return [
     ],
     'robustness.secret_redaction' => [
         'surface' => 'robustness',
-        'gap' => [
-            'issue' => 'RUB-381',
-            'reason' => 'Storage and error bodies are covered, but nothing asserts a credential is absent from logs, traces, or the artifacts and records the hosted server writes.',
+        'evidence' => [
+            'kind' => 'php',
+            'file' => 'tests/Feature/McpSecurityMatrixTest.php',
+            'name' => 'OAuth and MCP entry points never write bearer credentials to application logs',
         ],
+        // Companion coverage in the same file: error/activity payloads and
+        // hosted setup surfaces (connections page, agent setup prompt, home).
+        // The CLI config-writer half of the original acceptance criteria was
+        // retired with mcp-server/ (RUB-432 / 9e1a654).
     ],
 
     // ── Load ──────────────────────────────────────────────────────────────

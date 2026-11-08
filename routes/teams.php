@@ -11,6 +11,7 @@ use App\Http\Controllers\Teams\AuditLogController;
 use App\Http\Controllers\Teams\AuthenticationController;
 use App\Http\Controllers\Teams\AuthModeController;
 use App\Http\Controllers\Teams\BillingController;
+use App\Http\Controllers\Teams\BotTeammateController;
 use App\Http\Controllers\Teams\CollectionController;
 use App\Http\Controllers\Teams\GovernanceController;
 use App\Http\Controllers\Teams\GovernancePageController;
@@ -97,6 +98,11 @@ Route::middleware(['auth', EnsureTeamSignIn::class])->group(function () {
 
         Route::patch('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'update'])->name('teams.members.update');
         Route::delete('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'destroy'])->name('teams.members.destroy');
+
+        Route::post('settings/teams/{team}/bots', [BotTeammateController::class, 'store'])->name('teams.bots.store');
+        Route::post('settings/teams/{team}/bots/{user}/roll', [BotTeammateController::class, 'roll'])->name('teams.bots.roll');
+        Route::post('settings/teams/{team}/bots/{user}/avatar', [BotTeammateController::class, 'updateAvatar'])->name('teams.bots.avatar');
+        Route::delete('settings/teams/{team}/bots/{user}', [BotTeammateController::class, 'destroy'])->name('teams.bots.destroy');
 
         Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->middleware('throttle:invitations')->name('teams.invitations.store');
         Route::post('settings/teams/{team}/invitations/{invitation}/resend', [TeamInvitationController::class, 'resend'])->middleware('throttle:invitations')->name('teams.invitations.resend');

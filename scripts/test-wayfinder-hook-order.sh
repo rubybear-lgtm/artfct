@@ -17,16 +17,28 @@ assert_before() {
     fi
 }
 
-for hook in .githooks/pre-commit .githooks/pre-push; do
-    assert_before "$hook" \
-        'php artisan wayfinder:generate --no-interaction' \
-        'npm run format:check'
-    assert_before "$hook" \
-        'php artisan wayfinder:generate --no-interaction' \
-        'npm run lint:check'
-    assert_before "$hook" \
-        'php artisan wayfinder:generate --no-interaction' \
-        'npm run types:check'
-done
+# pre-commit: generate Wayfinder before any frontend check that imports it.
+assert_before .githooks/pre-commit \
+    'php artisan wayfinder:generate --no-interaction' \
+    'npm run format:check'
+assert_before .githooks/pre-commit \
+    'php artisan wayfinder:generate --no-interaction' \
+    'npm run lint:check'
+assert_before .githooks/pre-commit \
+    'php artisan wayfinder:generate --no-interaction' \
+    'npm run types:check'
 
-echo "Wayfinder generation precedes local frontend hook checks."
+# pre-push mirrors CI php_static (RUB-471): production build:ssr generates
+# Wayfinder under APP_ENV=production, then lint/types consume those files.
+# A local-only wayfinder:generate before lint can pass pre-push and fail CI.
+assert_before .githooks/pre-push \
+    'APP_ENV=production npm run build:ssr' \
+    'npm run lint:check'
+assert_before .githooks/pre-push \
+    'APP_ENV=production npm run build:ssr' \
+    'npm run types:check'
+assert_before .githooks/pre-push \
+    'APP_ENV=production npm run build:ssr' \
+    'npm run routes:check'
+
+echo "Wayfinder generation precedes frontend hook checks (pre-commit generate; pre-push production build)."

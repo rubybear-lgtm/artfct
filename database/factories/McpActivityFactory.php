@@ -22,7 +22,7 @@ class McpActivityFactory extends Factory
             'team_id' => Team::factory(),
             'credential_jti' => fake()->uuid(),
             'actor' => (string) fake()->numberBetween(1, 1000),
-            'tool' => fake()->randomElement(['get_connection', 'search_artifacts', 'deploy_to_canvas']),
+            'tool' => fake()->randomElement(['get_connection', 'search_artifacts', 'deploy_artifact']),
             'artifact_id' => null,
             'transport' => 'streamable_http',
             'request_id' => fake()->uuid(),
