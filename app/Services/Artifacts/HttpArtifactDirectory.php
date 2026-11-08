@@ -66,7 +66,7 @@ final class HttpArtifactDirectory implements ArtifactDirectory
             $artifacts = [];
             foreach (explode(',', (string) $params['ids']) as $id) {
                 $single = $this->listArtifacts($orgSlug, [...$filters, 'ids' => $id], null, 1);
-                array_push($artifacts, ...($single['artifacts'] ?? []));
+                array_push($artifacts, ...$single['artifacts']);
             }
 
             return ['artifacts' => $artifacts, 'next_cursor' => null];
