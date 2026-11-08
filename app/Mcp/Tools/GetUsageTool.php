@@ -54,7 +54,7 @@ final class GetUsageTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService, UsageContract $usage): Response|ResponseFactory
+    public function handle(Request $request, QuotaService $quotaService, UsageContract $usage): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('usage:read', 'get_usage');

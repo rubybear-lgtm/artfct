@@ -110,6 +110,82 @@ test('deploy_artifact returns quota_exceeded with reset_at when the daily user c
     Http::assertSentCount(2);
 });
 
+test('version publish with worker 200 identical-content no-op does not burn a daily slot', function () {
+    // RUB-516: after created became always-false on versions, quota must key
+    // off HTTP 201 (new version written), not the created flag.
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+    config(['billing.plans.free.daily_publish' => ['per_user' => 2, 'per_workspace' => 100]]);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $id = ARTIFACT_LINK_ID;
+    $htmlV1 = '<!doctype html><title>Daily</title><p>v1</p>';
+    $htmlNoop = '<!doctype html><title>Daily</title><p>noop</p>';
+    $shaV1 = hash('sha256', $htmlV1);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    app()->bind(UsageContract::class, FakeUsage::class);
+    $limiter = app(DailyPublishLimiter::class);
+
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => $id,
+            'version' => 1,
+            'url' => 'https://worker.test/p/'.$id,
+            'tier' => 'secure',
+            'missing_files' => [$shaV1],
+        ], 201),
+        'worker.test/v1/artifacts/'.$id.'/files/*' => Http::response('', 204),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $htmlV1]],
+    ])->assertOk()->assertJsonPath('result.structuredContent.id', $id);
+
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id => Http::response([
+            'id' => $id,
+            'version' => 1,
+            'updated_at' => '2026-11-01T00:00:00Z',
+        ], 200),
+        'worker.test/v1/artifacts/'.$id.'/versions' => Http::response([
+            'id' => $id,
+            'version' => 1,
+            'url' => 'https://worker.test/p/'.$id,
+            'created' => false,
+            'missing_files' => [],
+            'tier' => 'secure',
+            'sharing' => 'team',
+        ], 200),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => [
+            'name' => 'deploy_artifact',
+            'arguments' => [
+                'html' => $htmlNoop,
+                'artifact_id' => $id,
+                'base_version' => 1,
+            ],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', false)
+        ->assertJsonPath('result.structuredContent.created', false);
+
+    // Count must still be 1 (create only). Cap 1 refuses; cap 2 still allows.
+    // If the 200 no-op had counted, cap 2 would already be exhausted.
+    config(['billing.plans.free.daily_publish' => ['per_user' => 1, 'per_workspace' => 100]]);
+    expect(fn () => $limiter->assertCanPublish($team, (string) $user->id))
+        ->toThrow(QuotaExceededException::class);
+
+    config(['billing.plans.free.daily_publish' => ['per_user' => 2, 'per_workspace' => 100]]);
+    $limiter->assertCanPublish($team, (string) $user->id);
+});
+
 test('daily publish counters reset at the next UTC midnight', function () {
     config(['billing.plans.free.daily_publish' => ['per_user' => 1, 'per_workspace' => 100]]);
     $team = Team::factory()->create(['plan' => Plan::Free]);

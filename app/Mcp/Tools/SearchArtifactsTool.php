@@ -54,7 +54,7 @@ final class SearchArtifactsTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, SearchService $search): Response|ResponseFactory
+    public function handle(Request $request, SearchService $search): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'search_artifacts');
@@ -143,7 +143,8 @@ final class SearchArtifactsTool extends Tool
                     'repo_url' => $result->repoUrl,
                     'commit_sha' => $result->commitSha,
                 ],
-                // Raw selected-passage reranker relevance, before ordering boosts.
+                // displayScore from SearchRanking — the same value results are
+                // ordered by (exact/near title bands, then similarity).
                 'score' => $result->score,
             ], $results),
         ];

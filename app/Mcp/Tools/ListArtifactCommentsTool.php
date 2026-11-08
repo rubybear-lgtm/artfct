@@ -47,7 +47,7 @@ final class ListArtifactCommentsTool extends Tool
         ],
     ];
 
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'list_artifact_comments');

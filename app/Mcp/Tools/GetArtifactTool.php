@@ -51,7 +51,7 @@ final class GetArtifactTool extends Tool
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request): Response|ResponseFactory
+    public function handle(Request $request): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:read', 'get_artifact');
@@ -131,7 +131,7 @@ final class GetArtifactTool extends Tool
         // is built from this environment's public base.
         $link = McpArtifactLink::forArtifact(McpContext::team()->slug, $artifactId, is_string($tier) ? $tier : null, null, $version);
 
-        if ($link instanceof Response) {
+        if ($link instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('get_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $validated['id']);
 
             return $link;
