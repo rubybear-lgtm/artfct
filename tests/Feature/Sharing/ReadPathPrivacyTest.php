@@ -419,6 +419,101 @@ test('the_slack_slash_command_fails_closed_and_never_surfaces_a_private_artifact
     Http::assertNothingSent();
 });
 
+test('search_fails_closed_with_zero_vector_hits_when_there_is_no_viewer_credential', function () {
+    useSharingWorkerDirectory();
+    config(['indexing.enabled' => true]);
+
+    $team = Team::factory()->create(['slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
+    $user = memberOfTeam($team, TeamRole::Member);
+    ExternalIdentity::create([
+        'user_id' => $user->id,
+        'provider' => 'slack',
+        'external_id' => 'U123',
+        'email' => $user->email,
+        'verified_at' => now(),
+    ]);
+
+    // No indexed chunks → zero candidates; credential must still be required
+    // before scoring so this path cannot return 200 empty without a viewer.
+    Http::fake(['worker.test/*' => Http::response(['artifacts' => [sharingWorkerArtifact('public-1', 'Public One')], 'next_cursor' => null])]);
+
+    $response = postSlackCommand(['team_id' => 'T123', 'user_id' => 'U123', 'text' => 'no indexed hits for this query']);
+
+    expect($response->status())->toBe(403)
+        ->and($response->getContent())->not->toContain('Public One');
+    Http::assertNothingSent();
+});
+
+test('search_drops_a_malformed_indexed_id_instead_of_failing_the_whole_search', function () {
+    useSharingWorkerDirectory();
+    config(['indexing.enabled' => true]);
+
+    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
+
+    seedSharingVector($team, 'public-1', 'quarterly revenue dashboard');
+    seedSharingVector($team, 'not a permanent id', 'quarterly revenue dashboard');
+
+    // The Worker answers 422 for a whole `ids` list that holds a non-permanent id.
+    Http::fake(['worker.test/*' => function (Request $request) {
+        $ids = (string) ($request->data()['ids'] ?? '');
+
+        if (str_contains($ids, 'not a permanent id')) {
+            return Http::response(['error' => ['code' => 'validation_failed']], 422);
+        }
+
+        return Http::response(['artifacts' => [sharingWorkerArtifact('public-1', 'Public One')], 'next_cursor' => null]);
+    }]);
+
+    $response = test()->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'search_artifacts', 'arguments' => ['query' => 'quarterly revenue dashboard']],
+    ]);
+
+    $response->assertOk();
+    expect($response->json('result.isError'))->not->toBeTrue()
+        ->and($response->json('result.structuredContent.results'))->toHaveCount(1)
+        ->and($response->json('result.structuredContent.results.0.id'))->toBe('public-1');
+});
+
+test('the_ids_retry_never_sends_an_unfiltered_request_for_an_empty_id', function () {
+    useSharingWorkerDirectory();
+
+    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    test()->actingAs($member);
+
+    $unfiltered = 0;
+    Http::fake(['worker.test/*' => function (Request $request) use (&$unfiltered) {
+        $ids = (string) ($request->data()['ids'] ?? '');
+
+        if ($ids === '') {
+            $unfiltered++;
+        }
+
+        // A list with more than one id is rejected whole; single ids resolve.
+        return str_contains($ids, ',')
+            ? Http::response(['error' => ['code' => 'validation_failed']], 422)
+            : Http::response(['artifacts' => [sharingWorkerArtifact($ids)], 'next_cursor' => null]);
+    }]);
+
+    $page = app(ArtifactDirectory::class)->listArtifacts('privacy-org', ['ids' => 'one,,two', 'live' => 'true'], null, 3);
+
+    expect(array_column($page['artifacts'], 'id'))->toBe(['one', 'two'])
+        ->and($unfiltered)->toBe(0);
+});
+
+test('the_credential_gate_does_nothing_when_no_worker_is_configured', function () {
+    config(['services.worker.base_url' => null]);
+
+    // Every read answers empty without a Worker, so there is nothing to gate
+    // and no credential to mint for an unauthenticated caller.
+    HttpArtifactDirectory::default()->requireViewerCredential('privacy-org');
+
+    expect(true)->toBeTrue();
+});
+
 test('a_private_artifact_unfurls_as_a_bare_card', function () {
     $team = Team::factory()->create(['slug' => 'privacy-org']);
     /** @var FakeArtifactSharing $sharing */

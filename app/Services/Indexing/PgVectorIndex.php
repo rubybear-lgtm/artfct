@@ -114,15 +114,18 @@ final class PgVectorIndex implements VectorIndexContract
         return '{'.implode(',', array_map(fn (string $value): string => '"'.addcslashes($value, '"\\').'"', $values)).'}';
     }
 
-    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, ?array $artifactIds = null): array
     {
         $team = $this->team($orgId);
         if ($team === null || $limit <= 0 || $artifactIds === []) {
             return [];
         }
         $ranked = ArtifactChunk::query()
-            ->where('team_id', $team->id)->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)])
-            ->select('*')->selectVectorDistance('embedding', $queryVector, as: 'distance')
+            ->where('team_id', $team->id);
+        if ($artifactIds !== null) {
+            $ranked->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)]);
+        }
+        $ranked->select('*')->selectVectorDistance('embedding', $queryVector, as: 'distance')
             ->selectRaw('row_number() OVER (PARTITION BY artifact_id ORDER BY embedding <=> ?::vector, id) AS position', ['['.implode(',', $queryVector).']']);
 
         return ArtifactChunk::query()->fromSub($ranked, 'artifact_chunks')
@@ -130,14 +133,17 @@ final class PgVectorIndex implements VectorIndexContract
             ->map(fn (ArtifactChunk $row): VectorMatch => new VectorMatch($this->toChunk($row, $orgId), 1.0 - (float) $row->getAttribute('distance')))->all();
     }
 
-    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, ?array $artifactIds = null): array
     {
         $team = $this->team($orgId);
         if ($team === null || trim($query) === '' || $limit <= 0 || $artifactIds === []) {
             return [];
         }
-        $ranked = ArtifactChunk::query()->where('team_id', $team->id)->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)])
-            ->select('*')->whereFullText('search_text', $query, ['language' => 'simple'])
+        $ranked = ArtifactChunk::query()->where('team_id', $team->id);
+        if ($artifactIds !== null) {
+            $ranked->whereRaw('artifact_id = ANY(?::text[])', [self::textArray($artifactIds)]);
+        }
+        $ranked->select('*')->whereFullText('search_text', $query, ['language' => 'simple'])
             ->selectRaw("ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) AS lexical_score", [$query])
             ->selectRaw("row_number() OVER (PARTITION BY artifact_id ORDER BY ts_rank(to_tsvector('simple', search_text), plainto_tsquery('simple', ?)) DESC, id) AS position", [$query]);
 
@@ -163,6 +169,13 @@ final class PgVectorIndex implements VectorIndexContract
             ->whereIn('id', DB::query()->fromSub($positions, 'first_chunks')->select('id')->where('position', '<=', $perArtifact))
             ->orderBy('id')->get()
             ->map(fn (ArtifactChunk $row): VectorChunk => $this->toChunk($row, $orgId))->all();
+    }
+
+    public function hasIndexedChunks(string $orgId): bool
+    {
+        $team = $this->team($orgId);
+
+        return $team !== null && ArtifactChunk::query()->where('team_id', $team->id)->exists();
     }
 
     public function allVectorsForOrg(string $orgId): array

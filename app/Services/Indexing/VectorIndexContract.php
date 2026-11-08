@@ -39,17 +39,20 @@ interface VectorIndexContract
     /**
      * Nearest passage per authorized artifact, with the limit applied after deduplication.
      *
+     * `$artifactIds`: `null` searches the whole org index; `[]` matches nothing;
+     * a non-empty list restricts retrieval to those ids (collection / type scopes).
+     *
      * @param  array<int, float>  $queryVector
-     * @param  list<string>  $artifactIds
+     * @param  list<string>|null  $artifactIds
      * @return list<VectorMatch>
      */
-    public function queryArtifacts(string $orgId, array $queryVector, int $limit, array $artifactIds): array;
+    public function queryArtifacts(string $orgId, array $queryVector, int $limit, ?array $artifactIds = null): array;
 
     /**
-     * @param  list<string>  $artifactIds
+     * @param  list<string>|null  $artifactIds
      * @return list<VectorMatch>
      */
-    public function queryTextArtifacts(string $orgId, string $query, int $limit, array $artifactIds): array;
+    public function queryTextArtifacts(string $orgId, string $query, int $limit, ?array $artifactIds = null): array;
 
     /**
      * Bounded introductory passages for already-authorized artifact candidates.
@@ -58,6 +61,12 @@ interface VectorIndexContract
      * @return list<VectorChunk>
      */
     public function firstChunks(string $orgId, array $artifactIds, int $perArtifact): array;
+
+    /**
+     * Whether any passage is indexed for the org. Lets search skip the
+     * embedding call for a workspace that has nothing to retrieve (RUB-516).
+     */
+    public function hasIndexedChunks(string $orgId): bool;
 
     /**
      * Every vector currently stored for one org — direct inspection, for

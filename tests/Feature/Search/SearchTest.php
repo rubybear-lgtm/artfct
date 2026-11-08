@@ -4,6 +4,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
+use App\Models\Collection;
 use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -324,6 +325,10 @@ test('search_under_500ms_at_1k_artifacts', function () {
         seedSearchChunk($team, $id, "content for artifact {$i}");
     }
 
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
     $start = microtime(true);
     $results = app(SearchService::class)->search(
         $team,
@@ -336,4 +341,175 @@ test('search_under_500ms_at_1k_artifacts', function () {
 
     expect($results)->not->toBeEmpty();
     expect($elapsedMs)->toBeLessThan(500);
+    // Candidate budget is max(limit*5, 50) < 200 Worker ids/page → one list call.
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
+});
+
+test('search_worker_calls_stay_bounded_at_10k_artifacts', function () {
+    $team = Team::factory()->create(['slug' => 'bound-org']);
+    for ($i = 0; $i < 10000; $i++) {
+        $id = "bound-artifact-{$i}";
+        seedSearchArtifact($team, $id);
+        seedSearchChunk($team, $id, "content for artifact {$i}");
+    }
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'content for artifact 5000',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->not->toBeEmpty();
+    // Same O(results) bound as the 1k case — must not grow with corpus size.
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
+});
+
+test('empty_laravel_scope_skips_worker_list_calls', function () {
+    $team = Team::factory()->create(['slug' => 'empty-scope-org']);
+    seedSearchArtifact($team, 'scoped-artifact');
+    seedSearchChunk($team, 'scoped-artifact', 'scoped content');
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    // An existing collection with no members is an empty scope. (An unknown
+    // collection is an error instead, RUB-515.)
+    Collection::factory()->create(['team_id' => $team->id, 'name' => 'empty-collection']);
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'scoped content',
+        filters: ['collection' => 'empty-collection'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->toBeEmpty();
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(0);
+});
+
+test('a_narrow_repo_filter_over_a_large_org_still_finds_its_matches', function () {
+    $team = Team::factory()->create(['slug' => 'narrow-filter-org']);
+
+    // Far more equally relevant artifacts than the candidate limit (50) in one
+    // repo, and two in another. The filter must narrow retrieval first; applied
+    // after the candidate cut the two target artifacts fall outside the top 50.
+    for ($i = 0; $i < 130; $i++) {
+        seedSearchArtifact($team, "misc-{$i}");
+        seedSearchChunk($team, "misc-{$i}", 'shared roadmap notes');
+    }
+    foreach (['target-1', 'target-2'] as $id) {
+        seedSearchArtifact($team, $id, ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/target', 'commit_sha' => 'cafe']]);
+        seedSearchChunk($team, $id, 'shared roadmap notes');
+    }
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: ['repo' => 'https://github.com/acme/target'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect(array_map(fn ($result) => $result->id, $results))->toEqualCanonicalizing(['target-1', 'target-2']);
+});
+
+test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', function () {
+    $team = Team::factory()->create(['slug' => 'empty-filter-org']);
+    seedSearchArtifact($team, 'only-one');
+    seedSearchChunk($team, 'only-one', 'some content');
+
+    $embeddings = new class implements EmbeddingsContract
+    {
+        public int $calls = 0;
+
+        public function embed(array $texts): array
+        {
+            $this->calls++;
+
+            return array_map(fn () => array_fill(0, 8, 0.1), $texts);
+        }
+
+        public function embedQuery(string $query): array
+        {
+            return $this->embed([$query])[0];
+        }
+    };
+
+    $results = app()->make(SearchService::class, ['embeddings' => $embeddings])->search(
+        $team,
+        query: 'some content',
+        filters: ['agent' => 'an-agent-nobody-used'],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->toBe([])->and($embeddings->calls)->toBe(0);
+});
+
+test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function () {
+    $team = Team::factory()->create(['slug' => 'crowded-org']);
+
+    // Indexed passages the Worker does not list for this viewer (another
+    // member's private artifacts: chunks, but no directory rows) crowd the
+    // 50 candidate slots; the second visible artifact sits beyond them.
+    for ($i = 0; $i < 30; $i++) {
+        seedSearchChunk($team, "hidden-{$i}", 'shared roadmap notes');
+    }
+    // One visible artifact inside the first 50 (so the first pass keeps a row
+    // the merge must preserve) and one beyond it that only the widened pass sees.
+    seedSearchArtifact($team, 'visible-early');
+    seedSearchChunk($team, 'visible-early', 'shared roadmap notes');
+    for ($i = 30; $i < 100; $i++) {
+        seedSearchChunk($team, "hidden-{$i}", 'shared roadmap notes');
+    }
+    seedSearchArtifact($team, 'visible-late');
+    seedSearchChunk($team, 'visible-late', 'shared roadmap notes');
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect(array_map(fn ($result) => $result->id, $results))->toEqualCanonicalizing(['visible-early', 'visible-late']);
+    // First pass (50 ids, one call) plus the widened pass for the ids not yet seen.
+    expect($directory->listCallCount() - $listCallsBefore)->toBeLessThanOrEqual(2);
+});
+
+test('a_search_with_enough_visible_candidates_does_not_widen', function () {
+    $team = Team::factory()->create(['slug' => 'no-widen-org']);
+
+    for ($i = 0; $i < 80; $i++) {
+        seedSearchArtifact($team, "open-{$i}");
+        seedSearchChunk($team, "open-{$i}", 'shared roadmap notes');
+    }
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $listCallsBefore = $directory->listCallCount();
+
+    $results = app(SearchService::class)->search(
+        $team,
+        query: 'shared roadmap notes',
+        filters: [],
+        limit: 5,
+        actor: 'tester',
+    );
+
+    expect($results)->not->toBeEmpty();
+    expect($directory->listCallCount() - $listCallsBefore)->toBe(1);
 });

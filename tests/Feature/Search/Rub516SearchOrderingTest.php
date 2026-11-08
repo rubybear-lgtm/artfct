@@ -178,6 +178,12 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
         ]);
     }
 
+    // Production-like: the workspace has indexed passages, so the query is
+    // embedded; none of them match the nonsense query.
+    app(VectorIndexContract::class)->upsertChunks($team->slug, 'art1', [
+        new VectorChunk('Quarterly planning notes', [1.0], 'art1', $team->slug, now()->toIso8601String(), null, null, null),
+    ]);
+
     // Simulate the production failure mode: Workers AI never returns in time.
     // SearchService must fall back to lexical-only instead of waiting ~10s.
     $embeddings = new class implements EmbeddingsContract
@@ -212,7 +218,7 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
         ->and($elapsedMs)->toBeLessThan(1500);
 });
 
-test('rub516_item4_empty_allowed_set_skips_embeddings_entirely', function () {
+test('rub516_item4_empty_workspace_skips_embeddings_entirely', function () {
     $team = Team::factory()->create(['slug' => 'rub516-empty-dir']);
     $embeddings = new class implements EmbeddingsContract
     {
@@ -231,9 +237,9 @@ test('rub516_item4_empty_allowed_set_skips_embeddings_entirely', function () {
         }
     };
 
-    // FakeArtifactDirectory serves seeded rows to every org slug, so force an
-    // empty allowed set with a future `since` filter instead of relying on an
-    // empty directory.
+    // Nothing is indexed for this workspace (RUB-478 no longer loads the whole
+    // directory, so "empty" is decided from the index), so the query must not
+    // be embedded at all.
     $started = hrtime(true);
     $results = app()->make(SearchService::class, ['embeddings' => $embeddings])->search(
         $team,

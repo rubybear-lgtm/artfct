@@ -54,6 +54,8 @@ test('artifact candidate budgets deduplicate before limiting and scope both retr
             ->and(array_unique(array_map(fn ($match) => $match->chunk->orgId, $matches)))->toBe(['org-a']);
         expect($index->$method('org-a', $query, 1, ['answer'])[0]->chunk->artifactId)->toBe('answer');
         expect($index->$method('org-a', $query, 2, []))->toBe([]);
+        // null = org-wide (RUB-478); still never returns another org's rows.
+        expect(array_map(fn ($match) => $match->chunk->artifactId, $index->$method('org-a', $query, 2, null)))->toBe(['large', 'answer']);
     }
 })->group('pgsql');
 

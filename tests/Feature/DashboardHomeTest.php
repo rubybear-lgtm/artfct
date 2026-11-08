@@ -199,6 +199,8 @@ test('a_failing_directory_still_renders_the_dashboard_with_a_recent_error', func
 
     app()->instance(ArtifactDirectory::class, new class implements ArtifactDirectory
     {
+        public function requireViewerCredential(string $orgSlug): void {}
+
         public function listArtifacts(string $orgSlug, array $filters = [], ?string $cursor = null, int $limit = 50): array
         {
             throw new RuntimeException('directory down');

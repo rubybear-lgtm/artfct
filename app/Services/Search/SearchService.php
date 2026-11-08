@@ -25,9 +25,20 @@ use Carbon\CarbonImmutable;
  * recency + provenance + usage + canonical-collection ranking, strictly
  * scoped to the caller's org, excluding revoked/inaccessible artifacts,
  * auditing every search.
+ *
+ * Worker metadata is loaded only for scored candidates (`ids` + `live`),
+ * so Worker round trips stay O(results) instead of O(org size) (RUB-478).
  */
 final class SearchService
 {
+    /** The Worker refuses a longer `ids` list on one list call. */
+    private const WORKER_IDS_PAGE = 200;
+
+    /** One widening pass when hidden rows crowd visible ones out of the candidates. */
+    private const WIDEN_FACTOR = 4;
+
+    private const WIDENED_CANDIDATE_CAP = 1000;
+
     public function __construct(
         private readonly EmbeddingsContract $embeddings,
         private readonly VectorIndexContract $vectorIndex,
@@ -49,83 +60,74 @@ final class SearchService
         string $ip = 'internal',
         string $userAgent = 'search',
     ): array {
-        $directory = $this->artifactsBySlug($team);
+        // Fail closed before scoring: a zero-candidate search must not skip the
+        // viewer-credential gate that used to run on the full-directory list.
+        $this->artifacts->requireViewerCredential($team->slug);
 
-        // spec 16: `collection: "reporting-formats"` scopes results to
-        // exactly that collection's members — resolved before ranking so
-        // an out-of-collection artifact never even reaches the scorer.
-        // RUB-515: unknown collection is an error (same as list_artifacts),
-        // not an empty result set. Accept name or numeric id.
-        $collectionArtifactIds = null;
-        if (! empty($filters['collection'])) {
-            $lookup = trim((string) $filters['collection']);
-            $collectionQuery = Collection::query()->where('team_id', $team->id);
-            $collection = ctype_digit($lookup)
-                ? (clone $collectionQuery)->where('id', (int) $lookup)->first()
-                    ?? (clone $collectionQuery)->where('name', $lookup)->first()
-                : $collectionQuery->where('name', $lookup)->first();
-            if ($collection === null) {
-                throw new CollectionNotFoundException('That collection was not found in the authenticated workspace.');
-            }
-            $collectionArtifactIds = array_flip($collection->artifactIds());
+        // Laravel-side scopes (collection / artifact type) narrow the vector
+        // and lexical queries. Null means org-wide; [] means nothing matches.
+        $scopeIds = $this->laravelScopeIds($team, $filters);
+        if ($scopeIds === []) {
+            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
         }
 
-        $typeIds = null;
-        if (! empty($filters['artifact_type'])) {
-            $typeIds = array_flip(app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($filters['artifact_type'])));
+        // Nothing indexed for this workspace: skip Workers AI so a no-results
+        // search cannot burn seconds on an embedding call (RUB-516).
+        if (! $this->vectorIndex->hasIndexedChunks($team->slug)) {
+            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
         }
 
-        $isAllowed = function (string $id) use ($directory, $filters, $collectionArtifactIds, $typeIds): bool {
-            $artifact = $directory[$id] ?? null;
-            if ($artifact === null || $artifact['revoked_at'] !== null) {
-                return false;
-            }
-            if ($collectionArtifactIds !== null && ! isset($collectionArtifactIds[$id])) {
-                return false;
-            }
-            if ($typeIds !== null && ! isset($typeIds[$id])) {
-                return false;
-            }
-            if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
-                return false;
-            }
-            if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
-                return false;
-            }
-            if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
-                return false;
-            }
-            if (! empty($filters['since']) && CarbonImmutable::parse($artifact['created_at'])->lt(CarbonImmutable::parse($filters['since']))) {
-                return false;
-            }
+        // Filters that only the Worker's metadata can answer (repo, agent, since,
+        // changed_since) must narrow retrieval *before* the candidate cut, or a
+        // narrow filter over a large org returns too few results. Those searches
+        // read the directory first, as before RUB-478; unfiltered searches stay
+        // bounded to their scored candidates.
+        $directory = null;
+        $retrievalIds = $scopeIds;
+        if ($this->filtersNeedDirectory($filters)) {
+            $directory = $this->artifactsBySlug($team);
+            $scopeLookup = $scopeIds === null ? null : array_flip($scopeIds);
+            $retrievalIds = array_values(array_filter(
+                array_map(strval(...), array_keys($directory)),
+                fn (string $id): bool => ($scopeLookup === null || isset($scopeLookup[$id]))
+                    && $this->passesDirectoryFilters($directory[$id], $filters),
+            ));
 
-            return true;
-        };
-        $allowedIds = array_values(array_filter(array_map(strval(...), array_keys($directory)), $isAllowed));
+            if ($retrievalIds === []) {
+                return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
+            }
+        }
+
         $candidateLimit = max($limit * 5, 50);
+        [$vectorCandidates, $lexicalCandidates, $candidates] = $this->retrieveCandidates($team, $query, $candidateLimit, $retrievalIds);
+
+        if ($directory === null) {
+            $directory = $this->artifactsByIds($team, $this->candidateArtifactIds($candidates));
+
+            // Retrieval ranks every indexed passage, including ones the Worker
+            // hides from this viewer (other members' private artifacts, revoked
+            // rows). When a full candidate list leaves too few visible
+            // artifacts, widen it once rather than return a short result.
+            $widenedLimit = min($candidateLimit * self::WIDEN_FACTOR, self::WIDENED_CANDIDATE_CAP);
+            if (
+                $widenedLimit > $candidateLimit
+                && (count($vectorCandidates) >= $candidateLimit || count($lexicalCandidates) >= $candidateLimit)
+                && $this->visibleArtifactCount($candidates, $directory, $filters) < $limit
+            ) {
+                [$vectorCandidates, $lexicalCandidates, $candidates] = $this->retrieveCandidates($team, $query, $widenedLimit, $retrievalIds);
+                $unseen = array_values(array_diff($this->candidateArtifactIds($candidates), array_keys($directory)));
+                // array_replace, not a spread: a spread renumbers integer-like keys.
+                $directory = array_replace($directory, $this->artifactsByIds($team, $unseen));
+            }
+        }
         $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
 
-        // Empty workspace / fully filtered: skip Workers AI so a no-results
-        // search cannot burn ~10s on an embedding call (RUB-516).
-        if ($allowedIds === []) {
-            $this->auditLogger->record(
-                AuditEventType::SearchPerformed,
-                $team,
-                $actor,
-                $query,
-                $ip,
-                $userAgent,
-                '0 result(s)',
-            );
+        $isAllowed = fn (string $id): bool => $this->passesDirectoryFilters($directory[$id] ?? null, $filters);
 
-            return [];
-        }
-
-        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $allowedIds);
-        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $allowedIds);
-        $candidates = ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates);
-        $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
-
+        $filtered = array_values(array_filter(
+            $candidates,
+            fn (VectorMatch $match): bool => $isAllowed($match->chunk->artifactId),
+        ));
         $filtered = array_slice($filtered, 0, max(20, $limit));
         $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
         $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, $titles);
@@ -194,19 +196,77 @@ final class SearchService
     }
 
     /**
+     * Collection and artifact-type scopes live in Laravel. Null means no
+     * Laravel scope (search the whole org index); an empty list means the
+     * scope matches nothing and search can return without touching the Worker.
+     *
+     * @param  array{collection?: ?string, artifact_type?: ?string}  $filters
+     * @return list<string>|null
+     */
+    private function laravelScopeIds(Team $team, array $filters): ?array
+    {
+        $ids = null;
+
+        if (! empty($filters['collection'])) {
+            // RUB-515: an unknown collection is an error (same as list_artifacts),
+            // not an empty result set. Accept a name or a numeric id.
+            $lookup = trim((string) $filters['collection']);
+            $collectionQuery = Collection::query()->where('team_id', $team->id);
+            $collection = ctype_digit($lookup)
+                ? (clone $collectionQuery)->where('id', (int) $lookup)->first()
+                    ?? (clone $collectionQuery)->where('name', $lookup)->first()
+                : $collectionQuery->where('name', $lookup)->first();
+            if ($collection === null) {
+                throw new CollectionNotFoundException('That collection was not found in the authenticated workspace.');
+            }
+            $ids = $collection->artifactIds();
+        }
+
+        if (! empty($filters['artifact_type'])) {
+            $typeIds = app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($filters['artifact_type']));
+            $ids = $ids === null ? $typeIds : array_values(array_intersect($ids, $typeIds));
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @return array<int, SearchResult>
+     */
+    private function finishEmpty(
+        Team $team,
+        string $query,
+        string $actor,
+        string $ip,
+        string $userAgent,
+    ): array {
+        $this->auditLogger->record(
+            AuditEventType::SearchPerformed,
+            $team,
+            $actor,
+            $query,
+            $ip,
+            $userAgent,
+            '0 result(s)',
+        );
+
+        return [];
+    }
+
+    /**
      * Embed the query and run the vector index. On Workers AI timeout or a
      * connection failure, fall back to lexical-only retrieval so a cold or
      * hung embedding call cannot push a no-results search past ~1.5s.
      *
-     * @param  list<string>  $allowedIds
+     * @param  list<string>|null  $scopeIds
      * @return array<int, VectorMatch>
      */
-    private function vectorCandidates(string $orgId, string $query, int $candidateLimit, array $allowedIds): array
+    private function vectorCandidates(string $orgId, string $query, int $candidateLimit, ?array $scopeIds): array
     {
         try {
             $queryVector = $this->embeddings->embedQuery($query);
 
-            return $this->vectorIndex->queryArtifacts($orgId, $queryVector, $candidateLimit, $allowedIds);
+            return $this->vectorIndex->queryArtifacts($orgId, $queryVector, $candidateLimit, $scopeIds);
         } catch (\Throwable $exception) {
             if (! $this->isEmbeddingTimeout($exception)) {
                 throw $exception;
@@ -295,6 +355,93 @@ final class SearchService
     }
 
     /**
+     * Vector + lexical retrieval fused into one candidate list for the org.
+     *
+     * @param  list<string>|null  $scopeIds
+     * @return array{0: array<int, VectorMatch>, 1: array<int, VectorMatch>, 2: array<int, VectorMatch>} vector, lexical, fused candidates
+     */
+    private function retrieveCandidates(Team $team, string $query, int $candidateLimit, ?array $scopeIds): array
+    {
+        $vectorCandidates = $this->vectorCandidates($team->slug, $query, $candidateLimit, $scopeIds);
+        $lexicalCandidates = $this->vectorIndex->queryTextArtifacts($team->slug, $query, $candidateLimit, $scopeIds);
+        $candidates = array_values(array_filter(
+            ReciprocalRankFusion::combine($vectorCandidates, $lexicalCandidates),
+            fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug,
+        ));
+
+        return [$vectorCandidates, $lexicalCandidates, $candidates];
+    }
+
+    /**
+     * @param  array<int, VectorMatch>  $candidates
+     * @return list<string>
+     */
+    private function candidateArtifactIds(array $candidates): array
+    {
+        return array_values(array_unique(array_map(
+            fn (VectorMatch $match): string => $match->chunk->artifactId,
+            $candidates,
+        )));
+    }
+
+    /**
+     * Distinct candidate artifacts the viewer can see and the filters keep.
+     *
+     * @param  array<int, VectorMatch>  $candidates
+     * @param  array<string, array<string, mixed>>  $directory
+     * @param  array<string, mixed>  $filters
+     */
+    private function visibleArtifactCount(array $candidates, array $directory, array $filters): int
+    {
+        return count(array_filter(
+            $this->candidateArtifactIds($candidates),
+            fn (string $id): bool => $this->passesDirectoryFilters($directory[$id] ?? null, $filters),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function filtersNeedDirectory(array $filters): bool
+    {
+        return ! empty($filters['repo'])
+            || ! empty($filters['agent'])
+            || ! empty($filters['since'])
+            || ! empty($filters['changed_since']);
+    }
+
+    /**
+     * Whether a directory row survives the Worker-metadata filters. A missing
+     * row (foreign, deleted, not live) or a revoked one never does.
+     *
+     * @param  array<string, mixed>|null  $artifact
+     * @param  array<string, mixed>  $filters
+     */
+    private function passesDirectoryFilters(?array $artifact, array $filters): bool
+    {
+        if ($artifact === null || ($artifact['revoked_at'] ?? null) !== null) {
+            return false;
+        }
+        if (! empty($filters['changed_since']) && CarbonImmutable::parse($artifact['updated_at'] ?? $artifact['created_at'])->lt(CarbonImmutable::parse($filters['changed_since']))) {
+            return false;
+        }
+        if (! empty($filters['repo']) && ($artifact['provenance']['repo_url'] ?? null) !== $filters['repo']) {
+            return false;
+        }
+        if (! empty($filters['agent']) && ($artifact['provenance']['agent'] ?? null) !== $filters['agent']) {
+            return false;
+        }
+        if (! empty($filters['since']) && CarbonImmutable::parse($artifact['created_at'])->lt(CarbonImmutable::parse($filters['since']))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Every directory row for the org, paged. Only searches that filter on
+     * Worker metadata need the whole directory.
+     *
      * @return array<string, array<string, mixed>> artifact id => directory row
      */
     private function artifactsBySlug(Team $team): array
@@ -308,6 +455,38 @@ final class SearchService
             }
             $cursor = $page['next_cursor'];
         } while ($cursor !== null);
+
+        return $byId;
+    }
+
+    /**
+     * Fetch Worker list rows for the scored candidate ids only. `live=true`
+     * keeps revoked artifacts out; chunking respects the Worker's 200-id cap.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, array<string, mixed>> artifact id => directory row
+     */
+    private function artifactsByIds(Team $team, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $byId = [];
+        foreach (array_chunk($ids, self::WORKER_IDS_PAGE) as $chunk) {
+            $page = $this->artifacts->listArtifacts(
+                $team->slug,
+                [
+                    'ids' => implode(',', $chunk),
+                    'live' => 'true',
+                ],
+                null,
+                count($chunk),
+            );
+            foreach ($page['artifacts'] as $artifact) {
+                $byId[$artifact['id']] = $artifact;
+            }
+        }
 
         return $byId;
     }

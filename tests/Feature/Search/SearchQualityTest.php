@@ -34,6 +34,7 @@ test('large documents cannot exhaust the distinct artifact retrieval budget or a
         expect(array_map(fn ($match) => $match->chunk->artifactId, $matches))->toBe(['large', 'answer']);
         expect($index->$method('zz-quality', $query, 1, ['answer'])[0]->chunk->artifactId)->toBe('answer');
         expect($index->$method('zz-quality', $query, 5, []))->toBe([]);
+        expect(array_map(fn ($match) => $match->chunk->artifactId, $index->$method('zz-quality', $query, 2, null)))->toBe(['large', 'answer']);
     }
 });
 
