@@ -237,6 +237,17 @@ Check these before touching storage, request routing, identity, cryptography, or
 
 **Stage coverage is not flow coverage**, and an entry point with no test is invisible to every other check.
 
+## Staging vs production (RUB-518)
+
+Artfct has **only staging and production**. There are no PR preview environments for acceptance.
+
+- **Default:** required isolated CI on the PR (`application`, Pest browser, MCP contract/e2e, Release readiness, secrets, rust). No staging credentials and no Railway preview status are required for ordinary PRs.
+- **When warranted:** live verification uses **staging only** (`https://staging.artfct.dev`), checks the **exact SHA**, fails closed on missing/invalid target/config, never falls back to production, and does not mutate shared staging unless explicitly authorized (`authorize_mutations`).
+- **Not a universal gate:** docs/copy/low-risk PRs stay on isolated CI; say why staging was skipped or leave live verification pending. Do not create a PR preview to fill the gap, and do not claim green static tests prove deployed behavior.
+- **Operational leftover:** native Railway `prDeploys` / empty `artfct-pr-*` shells are tracked in RUB-519; repository CI/IaC does not disable that project setting.
+
+Details: `STAGING.md`, `scripts/staging/`, workflows `mcp-live.yml` and `staging-acceptance.yml`.
+
 ## Design Context
 
 ### Users
