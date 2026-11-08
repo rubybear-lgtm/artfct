@@ -7,6 +7,8 @@ use App\Jobs\IndexArtifactJob;
 use App\Jobs\ProcessWorkerEvent;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
+use App\Models\Collection;
+use App\Models\CollectionArtifact;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -114,6 +116,29 @@ test('artifact_deleted_event_removes_only_its_org_index_and_is_idempotent', func
         ->and(ArtifactIndexEntry::query()->where('team_id', $teamB->id)->where('artifact_id', $artifactId)->exists())->toBeTrue()
         ->and($index->allVectorsForOrg($teamA->slug))->toBeEmpty()
         ->and($index->allVectorsForOrg($teamB->slug))->toHaveCount(1);
+});
+
+test('artifact_deleted_event_forgets_collection_memberships_for_that_team', function () {
+    Queue::fake();
+    $team = Team::factory()->create(['slug' => 'delete-collections']);
+    $other = Team::factory()->create(['slug' => 'keep-collections']);
+    $artifactId = 'delcoll1234567';
+    $mine = Collection::factory()->create(['team_id' => $team->id]);
+    $theirs = Collection::factory()->create(['team_id' => $other->id]);
+    CollectionArtifact::create(['collection_id' => $mine->id, 'artifact_id' => $artifactId, 'added_at' => now()]);
+    CollectionArtifact::create(['collection_id' => $theirs->id, 'artifact_id' => $artifactId, 'added_at' => now()]);
+
+    $event = [
+        'id' => (string) Str::uuid(),
+        'type' => 'artifact.deleted',
+        'org_id' => $team->slug,
+        'data' => ['artifact_id' => $artifactId],
+    ];
+    postWorkerEvent($event)->assertStatus(202);
+    Queue::pushed(ProcessWorkerEvent::class)->first()->handle(app(WorkerEventHandlers::class));
+
+    expect(CollectionArtifact::query()->where('collection_id', $mine->id)->where('artifact_id', $artifactId)->exists())->toBeFalse()
+        ->and(CollectionArtifact::query()->where('collection_id', $theirs->id)->where('artifact_id', $artifactId)->exists())->toBeTrue();
 });
 
 test('event_for_foreign_org_artifact_dispatches_nothing', function () {

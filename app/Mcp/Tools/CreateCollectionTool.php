@@ -5,9 +5,11 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\User;
 use App\Services\Collections\CollectionService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -21,7 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Create an organization-scoped artifact collection. Requires the explicit collections:write scope and never grants access to artifacts outside the workspace.')]
+#[Description('Create an organization-scoped artifact collection. Requires collections:write and never grants access to artifacts outside the workspace. New collections are not canonical (`canonical: false`); only an admin can pin one so its members get a search ranking boost.')]
 #[Name('create_collection')]
 #[Title('Create collection')]
 #[IsReadOnly(false)]
@@ -39,7 +41,7 @@ final class CreateCollectionTool extends Tool
             'requiredScopes' => ['collections:write'],
             'compatibility' => 'stable',
             'examples' => [[
-                'description' => 'Create a named collection for approved artifacts.',
+                'description' => 'Create a named collection for related artifacts.',
                 'arguments' => ['name' => 'Reporting formats'],
             ]],
         ],
@@ -62,6 +64,10 @@ final class CreateCollectionTool extends Tool
                 $validated['name'],
                 $validated['description'] ?? null,
             );
+        } catch (UniqueConstraintViolationException) {
+            app(McpTelemetry::class)->record('create_collection', 'conflict', $startedAt);
+
+            return McpErrorResponse::error('A collection with that name already exists in this workspace.', 'collection_already_exists');
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('create_collection', 'error', $startedAt);
@@ -77,8 +83,8 @@ final class CreateCollectionTool extends Tool
             'description' => $collection->description,
             'canonical' => $collection->canonical,
             'artifact_count' => 0,
-            'created_at' => $collection->created_at?->toIso8601String(),
-            'updated_at' => $collection->updated_at?->toIso8601String(),
+            'created_at' => McpTimestamp::format($collection->created_at),
+            'updated_at' => McpTimestamp::format($collection->updated_at),
         ]);
     }
 

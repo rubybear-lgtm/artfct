@@ -6,6 +6,7 @@ use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -139,16 +140,18 @@ final class GetArtifactTool extends Tool
         app(McpTelemetry::class)->record('get_artifact', 'success', $startedAt, $validated['id']);
 
         if ($versionResponse !== null) {
+            // Prefer the named version's own timestamp, not the live artifact's.
+            $versionUpdatedAt = $versionResponse->json('updated_at') ?? $versionResponse->json('created_at');
+
             return Response::structured([
                 'id' => $artifactId,
                 'view_url' => $link,
-                'tier' => $tier,
                 'version' => (int) $versionResponse->json('version'),
                 'version_count' => $response->json('version_count'),
-                'updated_at' => $response->json('updated_at'),
+                'updated_at' => McpTimestamp::format($versionUpdatedAt),
                 'title' => $versionResponse->json('title'),
                 'description' => $versionResponse->json('description'),
-                'created_at' => $versionResponse->json('created_at'),
+                'created_at' => McpTimestamp::format($versionResponse->json('created_at')),
                 'created_by' => $versionResponse->json('created_by'),
                 'agent' => $versionResponse->json('agent'),
                 'current' => $versionResponse->json('current'),
@@ -159,15 +162,14 @@ final class GetArtifactTool extends Tool
         return Response::structured([
             'id' => $artifactId,
             'view_url' => $link,
-            'tier' => $tier,
             'entrypoint' => $response->json('entrypoint'),
-            'created_at' => $response->json('created_at'),
-            'expires_at' => $response->json('expires_at'),
+            'created_at' => McpTimestamp::format($response->json('created_at')),
+            'expires_at' => McpTimestamp::format($response->json('expires_at')),
             'title' => $response->json('title'),
             'description' => $response->json('description'),
             'version' => $response->json('version'),
             'version_count' => $response->json('version_count'),
-            'updated_at' => $response->json('updated_at'),
+            'updated_at' => McpTimestamp::format($response->json('updated_at')),
         ] + $access);
     }
 

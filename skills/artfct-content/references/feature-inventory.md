@@ -77,7 +77,7 @@ Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 des
 ### The connection
 
 - One way in: the hosted OAuth MCP server at `/mcp`. The CLI and local stdio server were retired in RUB-432 and must not be described as available.
-- **Fifteen advertised tools**, and the catalog fits one page so a client that ignores paging does not silently lose any: `deploy_artifact`, `search_artifacts`, `read_artifact`, `list_artifacts`, `get_artifact`, `get_guidance`, `get_connection`, `get_usage`, `list_artifact_comments`, `add_artifact_comment`, `resolve_artifact_comment`, `list_collections`, `create_collection`, `add_collection_artifact`, `delete_artifact`. A sixteenth, `deploy_to_canvas`, is **deprecated** — it makes anonymous expiring artifacts the workspace cannot search. Never recommend it, and never count it among the supported fifteen.
+- **Fifteen advertised tools**, and the catalog fits one page so a client that ignores paging does not silently lose any: `deploy_artifact`, `search_artifacts`, `read_artifact`, `list_artifacts`, `get_artifact`, `get_guidance`, `get_connection`, `get_usage`, `list_artifact_comments`, `add_artifact_comment`, `resolve_artifact_comment`, `list_collections`, `create_collection`, `add_collection_artifact`, `delete_artifact`. Do not invent or recommend any other publish tool.
 - Quick install across tools: `npx add-mcp@latest <mcp-url> --name artfct --global`.
 - An agent skill for publishing well: `npx skills add rubybear-lgtm/artfct@artfct`.
 - Machine-readable docs at `/llms.txt` and `/llms-full.txt`; the docs page and `llms-full.txt` render from the same PHP source, so they cannot drift.

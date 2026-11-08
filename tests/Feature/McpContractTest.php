@@ -15,6 +15,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
     $expectedContracts = [
         'deploy_artifact' => [
             'scopes' => ['artifacts:deploy'],
+            'toolVersion' => '1.1.0',
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
@@ -139,12 +140,39 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'remove_collection_artifact' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'delete_collection' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => true,
+                'openWorldHint' => false,
+            ],
+        ],
         'delete_artifact' => [
             'scopes' => ['artifacts:delete'],
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
                 'destructiveHint' => true,
+                'openWorldHint' => false,
+            ],
+        ],
+        'set_avatar' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
                 'openWorldHint' => false,
             ],
         ],
@@ -166,7 +194,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
             ->and($annotations)->toBe($contract['annotations'])
             ->and($metadata)->toMatchArray([
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.0.0',
+                'toolVersion' => $contract['toolVersion'] ?? '1.0.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => $contract['scopes'],
                 'compatibility' => $contract['compatibility'] ?? 'stable',
@@ -240,8 +268,9 @@ test('deploy_artifact advertises bundle input and does not require html', functi
         ->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')
         ->toArray()['inputSchema'];
 
-    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint'])
+    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint', 'collection'])
         ->and($schema['properties']['files']['type'])->toContain('array')
         ->and($schema['properties']['files']['items']['required'])->toBe(['path', 'content'])
-        ->and($schema['required'] ?? [])->not->toContain('html');
+        ->and($schema['required'] ?? [])->not->toContain('html')
+        ->and($schema['required'] ?? [])->not->toContain('collection');
 });

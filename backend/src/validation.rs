@@ -21,6 +21,8 @@ pub(crate) fn normalized_content_type(value: &str) -> String {
         value.as_str(),
         "text/html"
             | "text/html; charset=utf-8"
+            | "text/markdown"
+            | "text/markdown; charset=utf-8"
             | "text/css"
             | "text/javascript"
             | "application/javascript"
@@ -192,4 +194,14 @@ pub(crate) fn validate_permanent_manifest(
 pub(crate) fn clipped_text(value: Option<&Value>, max: usize) -> Option<String> {
     let text = value?.as_str()?.trim();
     (!text.is_empty()).then(|| text.chars().take(max).collect())
+}
+
+/// Version publish: an omitted / empty request field keeps the previous value
+/// so a content-only update does not wipe title or description (RUB-515).
+pub(crate) fn coalesce_clipped_text(
+    request_value: Option<&Value>,
+    max: usize,
+    previous: Option<&str>,
+) -> Option<String> {
+    clipped_text(request_value, max).or_else(|| previous.map(str::to_string))
 }

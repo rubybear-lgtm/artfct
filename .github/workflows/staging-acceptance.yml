@@ -1,0 +1,108 @@
+name: Staging acceptance
+
+# Opt-in only (RUB-518). Not a universal PR gate. Staging is the only
+# non-production live target; Railway PR previews are never used here.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact commit SHA that must be live on staging
+        required: true
+        type: string
+      base_url:
+        description: Staging base URL (must be https://staging.artfct.dev)
+        required: false
+        type: string
+        default: https://staging.artfct.dev
+      authorize_mutations:
+        description: Allow mutating shared staging (required for smoke)
+        required: false
+        type: boolean
+        default: false
+      run_smoke:
+        description: Run hosted MCP smoke (requires authorize_mutations; mutates staging)
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-acceptance
+  cancel-in-progress: false
+
+jobs:
+  staging_acceptance:
+    name: Staging acceptance (SHA + optional smoke)
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Mask secrets
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_STAGING }}
+          MCP_LIVE_TOKEN_A: ${{ secrets.MCP_LIVE_TOKEN_A }}
+          MCP_LIVE_TOKEN_B: ${{ secrets.MCP_LIVE_TOKEN_B }}
+        run: |
+          set -euo pipefail
+          mask() {
+            if [ -n "${1:-}" ]; then
+              echo "::add-mask::$1"
+              echo "::add-mask::Bearer $1"
+            fi
+          }
+          mask "$RAILWAY_API_TOKEN"
+          mask "$MCP_LIVE_TOKEN_A"
+          mask "$MCP_LIVE_TOKEN_B"
+
+      - name: Assert staging-only target
+        env:
+          MCP_LIVE_BASE_URL: ${{ inputs.base_url }}
+        run: node scripts/staging/assert-target.mjs
+
+      - name: Verify staging SHA and authorization
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN_STAGING }}
+          ACCEPT_SHA: ${{ inputs.sha }}
+          ACCEPT_BASE_URL: ${{ inputs.base_url }}
+          AUTHORIZE_MUTATIONS: ${{ inputs.authorize_mutations }}
+          RUN_SMOKE: ${{ inputs.run_smoke }}
+        run: |
+          set -euo pipefail
+          args=(--sha "$ACCEPT_SHA" --base-url "$ACCEPT_BASE_URL" --environment-name staging --force)
+          if [ "$AUTHORIZE_MUTATIONS" = "true" ]; then
+            args+=(--authorize-mutations)
+          fi
+          if [ "$RUN_SMOKE" = "true" ]; then
+            if [ "$AUTHORIZE_MUTATIONS" != "true" ]; then
+              echo "run_smoke requires authorize_mutations=true because mcp-live-smoke mutates shared staging."
+              exit 1
+            fi
+            args+=(--mutating)
+          fi
+          node scripts/staging/accept.mjs "${args[@]}"
+
+      - name: Run hosted MCP smoke suite
+        if: ${{ inputs.run_smoke && inputs.authorize_mutations }}
+        env:
+          MCP_LIVE_BASE_URL: ${{ inputs.base_url }}
+          MCP_LIVE_TOKEN_A: ${{ secrets.MCP_LIVE_TOKEN_A }}
+          MCP_LIVE_TOKEN_B: ${{ secrets.MCP_LIVE_TOKEN_B }}
+          MCP_LIVE_EXPECTED_ORG_A: ${{ vars.MCP_LIVE_EXPECTED_ORG_A }}
+          MCP_LIVE_EXPECTED_ORG_B: ${{ vars.MCP_LIVE_EXPECTED_ORG_B }}
+          MCP_LIVE_PRIVATE_ARTIFACT_A: ${{ vars.MCP_LIVE_PRIVATE_ARTIFACT_A }}
+        run: |
+          set -euo pipefail
+          node scripts/staging/assert-target.mjs
+          node scripts/mcp-live-smoke.mjs

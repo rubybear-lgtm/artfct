@@ -54,10 +54,20 @@ final class SearchService
         // spec 16: `collection: "reporting-formats"` scopes results to
         // exactly that collection's members — resolved before ranking so
         // an out-of-collection artifact never even reaches the scorer.
+        // RUB-515: unknown collection is an error (same as list_artifacts),
+        // not an empty result set. Accept name or numeric id.
         $collectionArtifactIds = null;
         if (! empty($filters['collection'])) {
-            $collection = Collection::query()->where('team_id', $team->id)->where('name', $filters['collection'])->first();
-            $collectionArtifactIds = $collection === null ? [] : array_flip($collection->artifactIds());
+            $lookup = trim((string) $filters['collection']);
+            $collectionQuery = Collection::query()->where('team_id', $team->id);
+            $collection = ctype_digit($lookup)
+                ? (clone $collectionQuery)->where('id', (int) $lookup)->first()
+                    ?? (clone $collectionQuery)->where('name', $lookup)->first()
+                : $collectionQuery->where('name', $lookup)->first();
+            if ($collection === null) {
+                throw new CollectionNotFoundException('That collection was not found in the authenticated workspace.');
+            }
+            $collectionArtifactIds = array_flip($collection->artifactIds());
         }
 
         $typeIds = null;
@@ -100,14 +110,15 @@ final class SearchService
         $filtered = array_values(array_filter($candidates, fn (VectorMatch $match): bool => $match->chunk->orgId === $team->slug && $isAllowed($match->chunk->artifactId)));
 
         $filtered = array_slice($filtered, 0, max(20, $limit));
+        $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);
         $introductions = $this->vectorIndex->firstChunks($team->slug, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $filtered), 2);
-        $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory));
+        $passages = SearchPassageSelection::expand($filtered, $introductions, [...$vectorCandidates, ...$lexicalCandidates], $query, $titles);
         $filtered = SearchPassageSelection::bestArtifacts($this->reranker->rerank($query, $passages), (float) config('indexing.minimum_search_relevance', 0.05), $query);
 
         $usageScores = $this->usageScoresFor($team, $filtered);
         $canonicalArtifactIds = $this->canonicalArtifactIdsFor($team);
 
-        $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds);
+        $ranked = SearchRanking::rank($filtered, $query, $usageScores, $canonicalArtifactIds, $titles);
         $top = array_slice($ranked, 0, $limit);
 
         $types = app(ArtifactTypeResolver::class)->typesFor($team, array_map(fn (VectorMatch $match): string => $match->chunk->artifactId, $top));
@@ -232,7 +243,7 @@ final class SearchService
             agent: $match->chunk->agent,
             repoUrl: $match->chunk->repoUrl,
             commitSha: $match->chunk->commitSha,
-            score: $match->similarity,
+            score: SearchRanking::displayScore($match->similarity, $query, $artifact['title'] ?? null),
             excerpt: SearchSnippet::make($match->chunk->text, $query, $artifact['title'] ?? null, SearchSnippet::EXCERPT_LENGTH),
             version: isset($artifact['version']) ? (int) $artifact['version'] : null,
             updatedAt: $artifact['updated_at'] ?? $artifact['created_at'] ?? null,

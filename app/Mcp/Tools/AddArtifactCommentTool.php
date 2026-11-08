@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Add a comment to an artifact the caller can see, or reply to an existing comment with parent_id. Requires the comments:write scope. Plain text only, up to 4000 characters.')]
+#[Description('Add a comment to an artifact the caller can see, or reply to an existing comment with parent_id. Threads are one level deep: a reply to a reply is attached to the root thread (parent_id becomes the root\'s id). Requires the comments:write scope. Plain text only, up to 4000 characters.')]
 #[Name('add_artifact_comment')]
 #[Title('Comment on artifact')]
 #[IsReadOnly(false)]
@@ -74,6 +74,7 @@ final class AddArtifactCommentTool extends Tool
         }
 
         $parentId = $validated['parent_id'] ?? null;
+        $threadRoot = null;
         if ($parentId !== null) {
             $parent = ArtifactComment::query()
                 ->where('team_id', $team->id)
@@ -85,26 +86,37 @@ final class AddArtifactCommentTool extends Tool
             }
 
             // Threads are one level deep: a reply to a reply joins the root thread.
-            $parentId = $parent->parent_id ?? $parent->id;
+            if ($parent->parent_id !== null) {
+                $threadRoot = ArtifactComment::query()
+                    ->where('team_id', $team->id)
+                    ->where('artifact_id', $validated['id'])
+                    ->find($parent->parent_id) ?? $parent;
+                $parentId = $threadRoot->id;
+            } else {
+                $threadRoot = $parent;
+                $parentId = $parent->id;
+            }
         }
 
         RateLimiter::hit($key, 60);
 
         $user = User::query()->find((int) McpContext::actor());
         $connection = request()->attributes->get('mcp_connection');
+        $agentName = McpContext::agentName()
+            ?? ($connection instanceof McpConnection ? $connection->client_name : null);
         $comment = ArtifactComment::query()->create([
             'team_id' => $team->id,
             'artifact_id' => $validated['id'],
             'parent_id' => $parentId,
             'author_user_id' => McpContext::actor(),
-            'author_name' => $user?->name,
-            'author_agent' => $connection instanceof McpConnection ? $connection->client_name : null,
+            'author_name' => McpContext::agentName() ?? $user?->name,
+            'author_agent' => $agentName,
             'body' => $validated['body'],
         ]);
 
         app(McpTelemetry::class)->record('add_artifact_comment', 'success', $startedAt, $validated['id']);
 
-        return Response::structured($comment->toThreadItem() + ['artifact_id' => $validated['id']]);
+        return Response::structured($comment->toThreadItem($threadRoot) + ['artifact_id' => $validated['id']]);
     }
 
     /**
@@ -115,7 +127,7 @@ final class AddArtifactCommentTool extends Tool
         return [
             'id' => $schema->string()->min(1)->max(128)->description('The artifact ID.')->required(),
             'body' => $schema->string()->min(1)->max(ArtifactComment::MAX_BODY_LENGTH)->description('The comment, as plain text.')->required(),
-            'parent_id' => $schema->integer()->min(1)->description('The comment to reply to; omit to start a new thread.')->nullable(),
+            'parent_id' => $schema->integer()->min(1)->description('The comment to reply to; omit to start a new thread. A reply to a reply is attached to the root.')->nullable(),
         ];
     }
 }

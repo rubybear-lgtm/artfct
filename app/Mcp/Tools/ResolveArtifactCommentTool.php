@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Mark a comment thread resolved, or reopen it with resolved set to false. Requires the comments:write scope and access to the artifact.')]
+#[Description('Mark a comment thread resolved, or reopen it with resolved set to false. Requires the comments:write scope and access to the artifact. Re-resolving an already resolved thread, or reopening an already open one, is a no-op and leaves resolved_at and resolved_by unchanged.')]
 #[Name('resolve_artifact_comment')]
 #[Title('Resolve comment thread')]
 #[IsReadOnly(false)]
@@ -73,14 +73,19 @@ final class ResolveArtifactCommentTool extends Tool
         // Resolving applies to the whole thread, so replies close with the root.
         $root = $comment->parent_id !== null ? ArtifactComment::query()->where('team_id', McpContext::team()->id)->where('artifact_id', $validated['id'])->find($comment->parent_id) ?? $comment : $comment;
         $resolved = $validated['resolved'] ?? true;
-        $root->forceFill([
-            'resolved_at' => $resolved ? now() : null,
-            'resolved_by' => $resolved ? McpContext::actor() : null,
-        ])->save();
+        $alreadyResolved = $root->resolved_at !== null;
+
+        // Re-resolve / re-open is a no-op so resolved_at / resolved_by stay put.
+        if ($resolved !== $alreadyResolved) {
+            $root->forceFill([
+                'resolved_at' => $resolved ? now() : null,
+                'resolved_by' => $resolved ? McpContext::actor() : null,
+            ])->save();
+        }
 
         app(McpTelemetry::class)->record('resolve_artifact_comment', 'success', $startedAt, $validated['id']);
 
-        return Response::structured($root->toThreadItem() + ['artifact_id' => $validated['id']]);
+        return Response::structured($root->fresh()->toThreadItem() + ['artifact_id' => $validated['id']]);
     }
 
     /**
