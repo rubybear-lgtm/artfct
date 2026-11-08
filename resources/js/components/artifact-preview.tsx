@@ -24,9 +24,10 @@ interface ArtifactPreviewProps {
  * The frame only mounts while the preview is near the viewport
  * (IntersectionObserver with a ~200px margin) and scales a fixed 1024px-wide
  * document down to the container width measured with a ResizeObserver,
- * clipped to an 8:5 window. Sandboxed with no permissions, no referrer, out of
- * the tab order, and pointer-transparent, so embedded content can never capture
- * input or navigate the page.
+ * clipped to an 8:5 window. Layout uses aspect-ratio so the first paint does
+ * not jump from a 640px-tall guess (RUB-477). Sandboxed with no permissions,
+ * no referrer, out of the tab order, and pointer-transparent, so embedded
+ * content can never capture input or navigate the page.
  */
 export function ArtifactPreview({
     previewUrl,
@@ -38,7 +39,7 @@ export function ArtifactPreview({
     const [nearViewport, setNearViewport] = useState(
         () => typeof IntersectionObserver === 'undefined',
     );
-    const [scale, setScale] = useState(1);
+    const [scale, setScale] = useState(0);
 
     useEffect(() => {
         const node = containerRef.current;
@@ -91,18 +92,15 @@ export function ArtifactPreview({
         return () => observer.disconnect();
     }, []);
 
-    const height = Math.max(
-        1,
-        Math.round(ARTIFACT_PREVIEW_DOCUMENT_HEIGHT * scale),
-    );
-
     return (
         <div
             ref={containerRef}
-            className={cn('w-full overflow-hidden bg-muted', className)}
-            style={{ height }}
+            className={cn(
+                'aspect-[8/5] w-full overflow-hidden bg-muted',
+                className,
+            )}
         >
-            {nearViewport ? (
+            {nearViewport && scale > 0 ? (
                 <div
                     aria-hidden={decorative ? true : undefined}
                     className="pointer-events-none origin-top-left"

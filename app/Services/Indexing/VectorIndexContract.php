@@ -63,6 +63,12 @@ interface VectorIndexContract
     public function firstChunks(string $orgId, array $artifactIds, int $perArtifact): array;
 
     /**
+     * Whether any passage is indexed for the org. Lets search skip the
+     * embedding call for a workspace that has nothing to retrieve (RUB-516).
+     */
+    public function hasIndexedChunks(string $orgId): bool;
+
+    /**
      * Every vector currently stored for one org — direct inspection, for
      * the isolation test (`tenant_index_contains_no_foreign_vectors`) and
      * nothing else; a real Vectorize deployment wouldn't expose a "dump

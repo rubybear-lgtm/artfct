@@ -191,8 +191,9 @@ test('the MCP docs explain workspace terminology and first-time access', functio
         ->toContain('AI tool connections')
         ->toContain('Artfct asks you to create')
         ->toContain('ask its administrator to invite')
-        ->toContain('Connecting an AI tool never needs an API token')
-        ->toContain('sends one as a bearer token')
+        ->toContain('agent token')
+        ->toContain('Agent &amp; API tokens')
+        ->toContain('connect-agent-token')
         ->toContain('This address belongs to the site you are reading now')
         ->toContain('login.url()')
         ->toContain('terms.url()')
@@ -321,6 +322,13 @@ test('llms-full.txt carries every setup guide, action and endpoint the docs page
                 expect($body)->toContain($line);
             }
         }
+    }
+
+    $agentToken = $setup->agentTokenSetup();
+    expect($body)->toContain("### {$agentToken['title']}")
+        ->toContain($agentToken['intro']);
+    foreach ($agentToken['steps'] as $step) {
+        expect($body)->toContain($step['text']);
     }
 
     foreach ([...$setup->tools(), ...$setup->permissions(), ...$setup->troubleshooting(), ...$setup->skills()] as $row) {

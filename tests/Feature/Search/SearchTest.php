@@ -4,6 +4,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
+use App\Models\Collection;
 use App\Models\SearchResultServed;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -378,10 +379,14 @@ test('empty_laravel_scope_skips_worker_list_calls', function () {
     $directory = app(ArtifactDirectory::class);
     $listCallsBefore = $directory->listCallCount();
 
+    // An existing collection with no members is an empty scope. (An unknown
+    // collection is an error instead, RUB-515.)
+    Collection::factory()->create(['team_id' => $team->id, 'name' => 'empty-collection']);
+
     $results = app(SearchService::class)->search(
         $team,
         query: 'scoped content',
-        filters: ['collection' => 'does-not-exist'],
+        filters: ['collection' => 'empty-collection'],
         limit: 5,
         actor: 'tester',
     );

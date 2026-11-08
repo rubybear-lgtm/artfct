@@ -34,6 +34,7 @@ test('hybrid_search_reranks_only_accessible_candidates_in_the_calling_org', func
         ]);
     }
     $index = Mockery::mock(VectorIndexContract::class);
+    $index->shouldReceive('hasIndexedChunks')->once()->with($team->slug)->andReturn(true);
     // Org-wide retrieval (null scope); Worker `live` + missing directory rows
     // drop revoked / foreign / deleted before rerank (RUB-478).
     $index->shouldReceive('queryArtifacts')->once()->with($team->slug, Mockery::type('array'), 50, null)->andReturn([

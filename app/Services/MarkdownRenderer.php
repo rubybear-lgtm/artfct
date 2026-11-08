@@ -9,6 +9,12 @@ use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
 use League\CommonMark\MarkdownConverter;
 
+/**
+ * CommonMark HTML renderer used by unit tests and non-MCP surfaces.
+ * MCP `deploy_artifact` stores raw markdown; the Cloudflare Worker renders
+ * HTML on serve (RUB-515). Keep `html_input => strip` and
+ * `allow_unsafe_links => false` in sync with `backend/src/markdown.rs`.
+ */
 final class MarkdownRenderer
 {
     public const int MAX_OUTPUT_BYTES = 1_048_576;

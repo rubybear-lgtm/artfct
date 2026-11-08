@@ -171,6 +171,13 @@ final class PgVectorIndex implements VectorIndexContract
             ->map(fn (ArtifactChunk $row): VectorChunk => $this->toChunk($row, $orgId))->all();
     }
 
+    public function hasIndexedChunks(string $orgId): bool
+    {
+        $team = $this->team($orgId);
+
+        return $team !== null && ArtifactChunk::query()->where('team_id', $team->id)->exists();
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         $team = $this->team($orgId);

@@ -191,12 +191,19 @@ export function SearchBlock({
                                         id="home-search-collection"
                                         value={draft.collection}
                                         disabled={!indexingEnabled}
-                                        onChange={(event) =>
-                                            setDraft({
+                                        onChange={(event) => {
+                                            const next = {
                                                 ...draft,
                                                 collection: event.target.value,
-                                            })
-                                        }
+                                            };
+                                            setDraft(next);
+                                            visit(
+                                                dashboardParams(
+                                                    next,
+                                                    filters.scope,
+                                                ),
+                                            );
+                                        }}
                                         className="rounded-md border border-border bg-background px-2 py-2 text-sm disabled:opacity-50 max-md:min-h-[44px] max-md:text-base"
                                     >
                                         <option value="">
@@ -228,12 +235,19 @@ export function SearchBlock({
                                     type="date"
                                     value={draft.since}
                                     disabled={!indexingEnabled}
-                                    onChange={(event) =>
-                                        setDraft({
+                                    onChange={(event) => {
+                                        const next = {
                                             ...draft,
                                             since: event.target.value,
-                                        })
-                                    }
+                                        };
+                                        setDraft(next);
+                                        visit(
+                                            dashboardParams(
+                                                next,
+                                                filters.scope,
+                                            ),
+                                        );
+                                    }}
                                     className="w-40"
                                 />
                             </div>

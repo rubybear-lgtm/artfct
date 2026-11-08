@@ -1,6 +1,8 @@
 # Railway configuration
 
 > **One file per environment (RUB-466).** `staging.ts` describes only the staging environment and `production.ts` only production. There is no default `railway.ts`, so `railway config plan|apply` without `--file` fails instead of picking one. Applying `staging.ts` to production would plan deleting production `web`, `queue`, `scheduler`, `Postgres-tsII` and its volume. Use `scripts/railway-config.sh <staging|production> <plan|apply>`: it refuses to run unless the linked environment (`railway status`) matches the file. Switch with `railway environment <name>`. `production.ts` was pulled from the live environment and its plan is clean.
+>
+> **No PR preview environments in this repo (RUB-518).** These IaC files must stay staging + production only. Do not add preview services, preview volumes, or PR environment definitions here. Native Railway automatic PR provisioning (`prDeploys`) is a project dashboard setting outside this repository; turning it off and deleting leftover `artfct-pr-*` shells is tracked in RUB-519 and is not accomplished by applying these files.
 
 This project defines its Railway infrastructure in code.
 
@@ -54,4 +56,5 @@ railway config apply
 - Use `replicas` for scaling; advanced placement can still specify region names.
 - Use `group("Name", [resources])` to keep large projects organized on the Railway canvas.
 - Secrets imported from Railway are rendered as `preserve()` so existing values are retained without writing secret values to source. Use `railway config pull --omit-preserved-variables` for a smaller import. `railway config pull --include-variables` decrypts and inlines non-sealed values (including secrets that were never sealed).
+- Never `preserve()` database connection URLs for app services. Use a typed reference (`PostgresTsII.env.DATABASE_URL` in production, `Postgres.env.DATABASE_URL` / `PostgresXPCc.env.DATABASE_URL` in staging). Railway only deploys dependency databases in PR environments (and only waits on them in a batch deploy) when the variable is a cross-service reference like `${{Postgres-tsII.DATABASE_URL}}`. A preserved or literal `DB_URL` leaves `Postgres-tsII` with no deployment while web/queue still resolve `postgres-tsii.railway.internal` and fail DNS.
 - `railway config migrate` finds every `railway.json` / `railway.toml` in the repository and writes them into this one file.

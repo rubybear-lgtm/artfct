@@ -6,6 +6,7 @@ use App\Enums\AuditEventType;
 use App\Enums\AuthMode;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Rules\PublicHttpsUrl;
 use App\Services\Billing\PlanGate;
 use App\Services\Governance\AuditLogger;
 use App\Services\Identity\AuthModeTransitioner;
@@ -60,7 +61,9 @@ class AuthenticationController extends Controller
         Gate::authorize('changeAuthMode', $team);
         abort_unless(PlanGate::isEnterprise($team), 403, __('Enterprise SSO is an Enterprise feature.'));
 
-        $validated = $request->validate(['metadata_url' => ['required', 'url:https', 'max:2048']]);
+        $validated = $request->validate([
+            'metadata_url' => ['required', 'url:https', 'max:2048', new PublicHttpsUrl],
+        ]);
 
         try {
             $polis->createSamlConnection($team->slug, $validated['metadata_url'], route('sso.authenticate', ['team' => $team->slug]));

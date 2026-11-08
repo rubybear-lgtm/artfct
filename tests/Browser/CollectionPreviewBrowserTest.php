@@ -45,7 +45,7 @@ test('collection previews scale and stay inside their cards at all four widths',
     test()->actingAs($user);
 
     $page = visit(route('teams.collections.index', $team))->resize($width, 850)->wait(0.2);
-    $page->assertScript("getComputedStyle(document.querySelector('[data-testid=collection-row-0]')).gridTemplateColumns.split(' ').length", $columns)
+    $page->assertScript("getComputedStyle(document.querySelector('[data-testid=collection-rows]')).gridTemplateColumns.split(' ').length", $columns)
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth')
         ->assertScript('document.querySelectorAll("iframe").length', 1)
         ->assertScript('document.querySelector("iframe").getAttribute("aria-hidden")', 'true')

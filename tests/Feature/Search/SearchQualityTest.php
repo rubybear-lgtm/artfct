@@ -105,6 +105,26 @@ test('relevance bands prevent popularity and canonical boosts displacing direct 
     expect(SearchRanking::rank([$exact, $close], 'design', [], ['exact' => true])[0]->chunk->artifactId)->toBe('exact');
 });
 
+test('exact and near-exact title matches rank above a slightly higher semantic score with usage and canonical boosts', function () {
+    $launch = qualityMatch('launch', 'Artfct launch plan body about go-to-market.', 0.99826);
+    $prospects = qualityMatch('prospects', 'Design partner prospects table and outreach notes.', 0.99799);
+    $titles = [
+        'launch' => 'Artfct launch plan',
+        'prospects' => 'Design partner prospects',
+    ];
+    $usage = ['launch' => 1000.0];
+    $canonical = ['launch' => true];
+
+    expect(SearchRanking::rank([$launch, $prospects], 'Design partner prospects', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'design partner prospects', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'Design partner prospects!', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('prospects');
+    expect(SearchRanking::rank([$launch, $prospects], 'Artfct launch plan', $usage, $canonical, $titles)[0]->chunk->artifactId)
+        ->toBe('launch');
+});
+
 test('snippets show the relevant body and preserve complete words with escaped whitespace normalized', function () {
     $title = 'How we stopped our AI tools from contradicting each other';
     $text = $title.' Home Reports Contact Subscribe '.$title.' Decision and rationale Conflicting answers came from stale local copies of the launch brief. The team published one approved brief with a visible revision history. '.str_repeat('Unrelated footer wording. ', 20);
@@ -141,7 +161,115 @@ test('search returns the selected passage raw relevance rather than the combined
     $reranker->shouldReceive('rerank')->once()->andReturn([$intro]);
     app()->instance(RerankerContract::class, $reranker);
     $result = app(SearchService::class)->search($team, 'readiness', [], 5, 'tester')[0];
-    expect($result->score)->toBe(0.85)->and($result->snippet)->toContain('authorized operation');
+    // displayScore stretches raw similarity; title "Credential readiness" is not an exact query match.
+    expect($result->score)->toBe(SearchRanking::displayScore(0.85, 'readiness', 'Credential readiness'))
+        ->and($result->snippet)->toContain('authorized operation');
+});
+
+test('exact title display scores leave a clear gap over a near-1.0 semantic miss', function () {
+    $titles = [
+        'prospects' => 'Design partner prospects',
+        'launch' => 'Artfct launch plan',
+    ];
+    $exact = SearchRanking::displayScore(0.998, 'Design partner prospects', $titles['prospects']);
+    $miss = SearchRanking::displayScore(0.998, 'Design partner prospects', $titles['launch']);
+    expect($exact - $miss)->toBeGreaterThanOrEqual(0.05)
+        ->and(SearchSnippet::make(';;;', 'query', null))->toBe('')
+        ->and(mb_strlen(SearchSnippet::make(str_repeat('Useful body text about partners. ', 5), 'partners', null)))->toBeGreaterThanOrEqual(40);
+});
+
+test('a five-artifact fixture ranks the exact title first with a score gap', function () {
+    $titles = [
+        'prospects' => 'Design partner prospects',
+        'launch' => 'Artfct launch plan',
+        'billing' => 'Billing dashboard notes',
+        'onboarding' => 'Vendor onboarding matrix',
+        'recruiting' => 'Recruiting connector rollout',
+    ];
+    $matches = [
+        qualityMatch('launch', 'Go-to-market launch plan body about partners.', 0.998),
+        qualityMatch('prospects', 'Design partner prospects table and outreach notes for the sales team.', 0.997),
+        qualityMatch('billing', 'Billing dashboard notes about invoices and usage.', 0.6),
+        qualityMatch('onboarding', 'Vendor onboarding matrix checklist steps.', 0.55),
+        qualityMatch('recruiting', 'Recruiting connector rollout stages.', 0.5),
+    ];
+    $ranked = SearchRanking::rank($matches, 'Design partner prospects', ['launch' => 1000], ['launch' => true], $titles);
+    expect($ranked)->toHaveCount(5)
+        ->and($ranked[0]->chunk->artifactId)->toBe('prospects');
+
+    $gap = SearchRanking::displayScore($ranked[0]->similarity, 'Design partner prospects', $titles['prospects'])
+        - SearchRanking::displayScore($ranked[1]->similarity, 'Design partner prospects', $titles[$ranked[1]->chunk->artifactId]);
+    expect($gap)->toBeGreaterThanOrEqual(0.05);
+});
+
+test('search quality fixture ranks exact title first with score gap and substantial snippets', function () {
+    $team = Team::factory()->create(['slug' => 'zz-quality-fixture']);
+    $directory = app(ArtifactDirectory::class);
+    $index = app(VectorIndexContract::class);
+
+    $artifacts = [
+        'prospects' => ['title' => 'Design partner prospects', 'text' => 'Design partner prospects. Outreach notes for design partners, trial accounts, and feedback cadence across the first cohort.'],
+        'launch' => ['title' => 'Artfct launch plan', 'text' => 'Artfct launch plan. Go-to-market timeline, launch channels, and the messaging brief for the public release.'],
+        'billing' => ['title' => 'Billing dashboard', 'text' => 'Billing dashboard. Monthly invoice reconciliation, failed payment retries, and finance review checkpoints.'],
+        'retention' => ['title' => 'Retention review', 'text' => 'Retention review. Cohort retention curves, churn drivers, and the interventions that moved week-four retention.'],
+        'onboarding' => ['title' => 'Onboarding checklist', 'text' => 'Onboarding checklist. First-week setup steps, invite flows, and the MCP connection verification checklist.'],
+    ];
+
+    foreach ($artifacts as $id => $meta) {
+        $directory->seedArtifact([
+            'id' => $id,
+            'org_id' => $team->slug,
+            'user_id' => 1,
+            'title' => $meta['title'],
+            'created_at' => now()->toIso8601String(),
+            'revoked_at' => null,
+            'provenance' => [],
+        ]);
+        $index->upsertChunks($team->slug, $id, [qualityMatch($id, $meta['text'], 0.99, $team->slug)->chunk]);
+    }
+
+    $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Design partners']);
+    app(CollectionService::class)->addArtifact($collection, 'prospects');
+    app(CollectionService::class)->addArtifact($collection, 'launch');
+
+    $reranker = Mockery::mock(RerankerContract::class);
+    $reranker->shouldReceive('rerank')->andReturnUsing(function (string $query, array $passages): array {
+        return array_map(
+            fn (VectorMatch $match): VectorMatch => new VectorMatch($match->chunk, 0.998),
+            $passages,
+        );
+    });
+    app()->instance(RerankerContract::class, $reranker);
+
+    $results = app(SearchService::class)->search($team, 'Design partner prospects', [], 5, 'tester');
+    expect($results)->toHaveCount(5)
+        ->and($results[0]->id)->toBe('prospects')
+        ->and($results[0]->score - $results[1]->score)->toBeGreaterThanOrEqual(0.05);
+
+    foreach ($results as $result) {
+        expect(mb_strlen($result->snippet))->toBeGreaterThanOrEqual(40)
+            ->and(preg_match('/\p{L}|\p{N}/u', $result->snippet))->toBe(1);
+    }
+
+    $scoped = app(SearchService::class)->search(
+        $team,
+        'Design partner prospects',
+        ['collection' => 'Design partners'],
+        5,
+        'tester',
+    );
+    expect($scoped)->not->toBeEmpty()
+        ->and($scoped[0]->id)->toBe('prospects')
+        ->and(array_column($scoped, 'id'))->toEqualCanonicalizing(['prospects', 'launch']);
+
+    $byId = app(SearchService::class)->search(
+        $team,
+        'Design partner prospects',
+        ['collection' => (string) $collection->id],
+        5,
+        'tester',
+    );
+    expect($byId[0]->id)->toBe('prospects');
 });
 
 test('model weak confidence requires corroborating query terms rather than one ambiguous noun', function () {

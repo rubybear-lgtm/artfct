@@ -203,6 +203,8 @@ const upsertRateLimits = async (apiToken) => {
                 '!!! WARNING: ARTIFACT RATE LIMITS PARTIALLY APPLIED !!!',
                 `Cloudflare only allows ${appliedRules.length} rate-limit rule for ${zoneName} on this plan.`,
                 `NOT APPLIED (these routes have no WAF limit): ${notApplied.join(', ')}`,
+                'Worker-side per-IP limits still cover anonymous POST/PATCH /v1/artifacts (RUB-463).',
+                'Preview (GET /p/*) stays edge-only — upgrade the plan or apply rules manually.',
                 '',
             ].join('\n'),
         );

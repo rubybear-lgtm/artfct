@@ -1,8 +1,10 @@
 use super::*;
 use crate::artifact_origin::{
-    access_token_cookie, access_token_from_cookie, app_frame_ancestor, parse_isolated_hostname,
-    token_opens_private, verified_token_viewer, verify_access_token,
+    access_token_cookie, access_token_from_cookie, app_frame_ancestor, legacy_bare_host_decision,
+    parse_isolated_hostname, token_opens_private, verified_token_viewer, verify_access_token,
+    LegacyBareHostDecision,
 };
+use crate::markdown::maybe_render_markdown_response;
 use crate::sharing::{
     self, can_change_sharing, can_publish_version, can_view, sharing_allowed, EditAccess, Sharing,
     Viewer,
@@ -158,6 +160,10 @@ pub(crate) struct ArtifactMetadataRow {
     pub(crate) current_version: i64,
     pub(crate) version_count: i64,
     pub(crate) updated_at: String,
+    pub(crate) agent: Option<String>,
+    pub(crate) repo_url: Option<String>,
+    pub(crate) commit_sha: Option<String>,
+    pub(crate) model: Option<String>,
 }
 
 /// The metadata read's JSON body. `version` is the served version;
@@ -176,6 +182,20 @@ pub(crate) fn build_artifact_metadata_response(
         viewer,
         true,
     );
+    let provenance = if row.agent.is_some()
+        || row.repo_url.is_some()
+        || row.commit_sha.is_some()
+        || row.model.is_some()
+    {
+        serde_json::json!({
+            "agent": row.agent,
+            "repo_url": row.repo_url,
+            "commit_sha": row.commit_sha,
+            "model": row.model,
+        })
+    } else {
+        Value::Null
+    };
     serde_json::json!({
         "id": row.id,
         "tier": row.tier,
@@ -192,6 +212,7 @@ pub(crate) fn build_artifact_metadata_response(
         "expires_at": row.expires_at,
         "title": row.title,
         "description": row.description,
+        "provenance": provenance,
     })
 }
 #[derive(Debug, Deserialize)]
@@ -353,19 +374,6 @@ pub(crate) async fn upload_permanent_file(
             404,
         );
     };
-    // Quota gate (spec 14): the file's declared size against the owning org's
-    // storage, before its bytes are read or written.
-    if let Some(refusal) = quota_refusal(
-        database,
-        env,
-        &artifact_org,
-        row.expected_size.max(0) as u64,
-        quota::AddKind::Upload,
-    )
-    .await?
-    {
-        return Ok(refusal);
-    }
     let mut lock_keys = serde_json::from_str::<PermanentManifest>(&row.manifest)
         .map(|manifest| {
             manifest
@@ -388,11 +396,28 @@ pub(crate) async fn upload_permanent_file(
         lock_keys =
             org_admin::artifact_version_hashes(database, artifact_id, &artifact_org).await?;
     }
+    // Per-org lock with the quota check so concurrent uploads cannot jointly
+    // exceed storage_bytes (RUB-465).
+    lock_keys.push(org_quota_lock_key(&artifact_org));
     let locks = match storage.acquire_content_locks(&lock_keys).await {
         Ok(locks) => locks,
         Err(store::StoreError::Contention) => return retryable_contention_response(),
         Err(error) => return Err(worker::Error::RustError(error.to_string())),
     };
+    // Quota gate (spec 14): the file's declared size against the owning org's
+    // storage, under the org lock, before its bytes are read or written.
+    if let Some(refusal) = quota_refusal(
+        database,
+        env,
+        &artifact_org,
+        row.expected_size.max(0) as u64,
+        quota::AddKind::Upload,
+    )
+    .await?
+    {
+        let _ = storage.release_content_locks(&locks).await;
+        return Ok(refusal);
+    }
     if upload_expired(row.expires_at.as_deref(), Utc::now()) {
         let cleanup: Result<Response> = async {
             if let Some(version_id) = &row.version_id {
@@ -683,7 +708,7 @@ struct PermanentArtifactRow {
 /// SQL where a mutation test could pass vacuously.
 /// The metadata read must never answer for a revoked artifact: Laravel's
 /// read_artifact and comment surfaces rely on this 404 to hide revoked work.
-const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
+const METADATA_BY_ID_SQL: &str = "SELECT a.id AS id, o.slug AS org_id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.entrypoint AS entrypoint, a.created_at AS created_at, a.expires_at AS expires_at, a.title AS title, a.description AS description, a.current_version AS current_version, (SELECT COUNT(*) FROM artifact_versions v WHERE v.artifact_row_id = a.row_id AND v.expires_at IS NULL) AS version_count, COALESCE(a.updated_at, a.created_at) AS updated_at, p.agent AS agent, p.repo_url AS repo_url, p.commit_sha AS commit_sha, json_extract(p.payload, '$.model') AS model FROM artifacts a JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1";
 
 pub(crate) async fn get_artifact_metadata(
     path: &str,
@@ -945,6 +970,36 @@ pub(crate) async fn resolve_permanent_artifact(
         now,
         &artifact_origin_suffix(env),
     );
+    // RUB-515: the legacy host `<id>--prod.artfct.dev` (no workspace slug)
+    // matches the Worker route but is not a valid isolated hostname. Never
+    // serve content there with the weak preview CSP — redirect public
+    // artifacts to the canonical `<slug>--<id>--prod` host, otherwise 404.
+    let origin_suffix = artifact_origin_suffix(env);
+    if isolated_access == IsolatedAccess::NotIsolated {
+        let path = match (requested_path, version) {
+            (Some(path), Some(version)) => format!("/p/{artifact_id}/v:{version}/{path}"),
+            (Some(path), None) => format!("/p/{artifact_id}/{path}"),
+            (None, Some(version)) => format!("/p/{artifact_id}/v:{version}/"),
+            (None, None) => format!("/p/{artifact_id}/"),
+        };
+        match legacy_bare_host_decision(
+            host.as_deref(),
+            origin_suffix.as_str(),
+            &row.org,
+            artifact_id,
+            sharing.is_anonymous(),
+            &path,
+        ) {
+            LegacyBareHostDecision::NotLegacy => {}
+            LegacyBareHostDecision::Redirect { location } => {
+                let mut response = Response::empty()?.with_status(301);
+                response.headers_mut().set("Location", &location)?;
+                response.headers_mut().set("Cache-Control", "no-store")?;
+                return Ok(response);
+            }
+            LegacyBareHostDecision::NotFound => return expired_response(),
+        }
+    }
     // RUB-439: an old shared-origin link to a public artifact's entrypoint
     // lands on the app's viewer. Subresources, isolated hosts, ephemeral
     // artifacts and every non-public level keep their behaviour.
@@ -1029,6 +1084,8 @@ pub(crate) async fn resolve_permanent_artifact(
         return expired_response();
     };
     let bytes = body.bytes().await?;
+    let (serve_content_type, serve_bytes) =
+        maybe_render_markdown_response(&row.content_type, &row.entrypoint, requested_path, bytes);
     let manifest = serde_json::from_str::<PermanentManifest>(&row.manifest).unwrap_or_else(|_| {
         PermanentManifest {
             entrypoint: row.entrypoint.clone(),
@@ -1037,11 +1094,11 @@ pub(crate) async fn resolve_permanent_artifact(
             unsafe_eval: false,
         }
     });
-    let mut response = Response::from_bytes(bytes)?.with_status(200);
+    let mut response = Response::from_bytes(serve_bytes)?.with_status(200);
     let is_isolated = isolated_access == IsolatedAccess::Authorized;
     let frame_ancestor = app_frame_ancestor(env);
     for (name, value) in permanent_file_response_headers(
-        &row.content_type,
+        &serve_content_type,
         &manifest,
         is_isolated,
         frame_ancestor.as_deref(),
@@ -1154,8 +1211,14 @@ pub(crate) async fn delete_artifact(
         return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
     }
 
+    // Tombstone instead of a bare delete so a concurrent GET that already
+    // read the record cannot put it back with a fresh TTL (RUB-464).
     store::KvArtifactStore::new(env.kv(KV_BINDING)?)
-        .delete_record(artifact_id)
+        .put_record(
+            artifact_id,
+            EPHEMERAL_TOMBSTONE_JSON,
+            EPHEMERAL_TOMBSTONE_TTL_SECONDS,
+        )
         .await
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
     build_delete_response().into_worker_response()
@@ -1331,6 +1394,7 @@ pub(crate) async fn list_org_artifacts(path: &str, req: &Request, env: &Env) -> 
                     "agent": item.agent,
                     "repo_url": item.repo_url,
                     "commit_sha": item.commit_sha,
+                    "model": item.model,
                 },
                 "updated_at": item.updated_at,
                 "version": item.version,
@@ -1424,13 +1488,15 @@ fn permanent_tier_from_database(value: &str) -> ArtifactTier {
 /// defensive `(org_id, id)` conflict fallback so both look the same to the
 /// caller.
 ///
-/// `missing_files` is computed from blob existence rather than assumed empty —
-/// an artifact whose earlier upload was interrupted still tells the client what
-/// to send. `tier` and `version` come from the stored row, never from the
-/// request: re-posting a bundle must not be able to relabel the artifact.
+/// `missing_files` is computed from org-scoped blob reuse rather than global
+/// R2 presence (RUB-464) — an artifact whose earlier upload was interrupted
+/// still tells the client what to send. `tier` and `version` come from the
+/// stored row, never from the request: re-posting a bundle must not be able to
+/// relabel the artifact.
 async fn existing_artifact_response(
     storage: &store::D1R2ArtifactStore,
     env: &Env,
+    org: &str,
     row: &ExistingArtifactRow,
 ) -> Result<Response> {
     let existing_manifest: PermanentManifest = serde_json::from_str(&row.manifest)?;
@@ -1438,7 +1504,7 @@ async fn existing_artifact_response(
     for file in &existing_manifest.files {
         present.push(
             storage
-                .blob_exists(&file.sha256)
+                .blob_reusable_in_org(org, &file.sha256, file.size_bytes)
                 .await
                 .map_err(|error| worker::Error::RustError(error.to_string()))?,
         );
@@ -1519,7 +1585,7 @@ pub(crate) async fn existing_permanent_response(
     };
 
     Ok(Some(
-        existing_artifact_response(storage, env, &existing).await?,
+        existing_artifact_response(storage, env, org, &existing).await?,
     ))
 }
 
@@ -1804,19 +1870,39 @@ pub(crate) async fn create_permanent_artifact(
         .get("provenance")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
-    let artifact_title = clipped_text(raw.get("title"), 200);
-    let artifact_description = clipped_text(raw.get("description"), 1000);
+    let artifact_title = clipped_text(raw.get("title"), crate::validation::MAX_TITLE_CHARS);
+    let artifact_description = clipped_text(
+        raw.get("description"),
+        crate::validation::MAX_DESCRIPTION_CHARS,
+    );
     let agent = provenance.get("agent").and_then(Value::as_str);
     let repo_url = provenance.get("repo_url").and_then(Value::as_str);
     let commit_sha = provenance.get("commit_sha").and_then(Value::as_str);
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
+    // RUB-465: a valid credential must not recreate a deleted org. Laravel
+    // provisions the row through org-limits / org-settings pushes.
+    if !crate::org_admin::org_exists(&storage.database, &org).await? {
+        return json_error(ErrorCode::ArtifactNotFound, "Organization not found.", 404);
+    }
+    // Hold the per-org lock across the public-sharing check, quota decision,
+    // and insert so concurrent creates cannot jointly exceed limits and a
+    // settings downgrade cannot race the insert (RUB-465).
+    let org_key = org_quota_lock_key(&org);
+    let org_lock_owner = match storage.acquire_content_lock(&org_key).await {
+        Ok(owner) => owner,
+        Err(store::StoreError::Contention) => return retryable_contention_response(),
+        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+    };
     // Public sharing can be switched off per org. A missing row means allowed
     // (the 0007 default). Checked before any row is written.
     if !sharing_allowed(
         sharing,
         public_sharing_allowed(&storage.database, &org).await?,
     ) {
+        let _ = storage
+            .release_content_lock(&org_key, &org_lock_owner)
+            .await;
         return json_error(
             ErrorCode::PublicSharingDisabled,
             "This team has turned off public sharing.",
@@ -1824,7 +1910,7 @@ pub(crate) async fn create_permanent_artifact(
         );
     }
     // Quota gate (spec 14): decided from the manifest's declared sizes,
-    // before any lock, row or blob is written.
+    // before any row or blob is written.
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
     if let Some(refusal) = quota_refusal(
         &storage.database,
@@ -1835,6 +1921,9 @@ pub(crate) async fn create_permanent_artifact(
     )
     .await?
     {
+        let _ = storage
+            .release_content_lock(&org_key, &org_lock_owner)
+            .await;
         return Ok(refusal);
     }
     let file_hashes = manifest
@@ -1859,8 +1948,18 @@ pub(crate) async fn create_permanent_artifact(
     let bundle_key = bundle_lock_key(&org, content_hash);
     let bundle_lock = match storage.acquire_content_lock(&bundle_key).await {
         Ok(owner) => (bundle_key, owner),
-        Err(store::StoreError::Contention) => return retryable_contention_response(),
-        Err(error) => return Err(worker::Error::RustError(error.to_string())),
+        Err(store::StoreError::Contention) => {
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
+            return retryable_contention_response();
+        }
+        Err(error) => {
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
+            return Err(worker::Error::RustError(error.to_string()));
+        }
     };
     match existing_permanent_by_content(
         &storage,
@@ -1871,18 +1970,25 @@ pub(crate) async fn create_permanent_artifact(
     .await
     {
         Ok(Some(existing)) => {
-            let response = existing_artifact_response(&storage, env, &existing).await;
+            let response = existing_artifact_response(&storage, env, &org, &existing).await;
             let release = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
                 .await;
+            let org_release = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
             let response = response?;
             release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+            org_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
             return Ok(response);
         }
         Ok(None) => {}
         Err(error) => {
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
                 .await;
             return Err(error);
         }
@@ -1894,11 +2000,17 @@ pub(crate) async fn create_permanent_artifact(
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
                 .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
             return retryable_contention_response();
         }
         Err(error) => {
             let _ = storage
                 .release_content_lock(&bundle_lock.0, &bundle_lock.1)
+                .await;
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
                 .await;
             return Err(worker::Error::RustError(error.to_string()));
         }
@@ -1913,9 +2025,10 @@ pub(crate) async fn create_permanent_artifact(
     let operation: Result<Response> = async {
         let mut existing = Vec::with_capacity(manifest.files.len());
         for file in &manifest.files {
+            // Org-scoped reuse only — global R2 presence is not an oracle (RUB-464).
             existing.push(
                 storage
-                    .blob_exists(&file.sha256)
+                    .blob_reusable_in_org(&org, &file.sha256, file.size_bytes)
                     .await
                     .map_err(|error| worker::Error::RustError(error.to_string()))?,
             );
@@ -1933,14 +2046,10 @@ pub(crate) async fn create_permanent_artifact(
         let mut attempt = 0;
         loop {
             attempt += 1;
+            // No INSERT INTO orgs here (RUB-465): the org row must already
+            // exist from a limits/settings push. Creating it from the JWT
+            // recreated deleted teams as empty namespaces with default limits.
             let mut statements = vec![
-                database
-                    .prepare("INSERT OR IGNORE INTO orgs (id, slug, created_at) VALUES (?, ?, ?)")
-                    .bind(&[
-                        JsValue::from_str(&org),
-                        JsValue::from_str(&org),
-                        JsValue::from_str(&now),
-                    ])?,
                 database
                     .prepare("INSERT OR IGNORE INTO users (id, created_at) VALUES (?, ?)")
                     .bind(&[
@@ -2106,9 +2215,13 @@ pub(crate) async fn create_permanent_artifact(
     let bundle_release = storage
         .release_content_lock(&bundle_lock.0, &bundle_lock.1)
         .await;
+    let org_release = storage
+        .release_content_lock(&org_key, &org_lock_owner)
+        .await;
     let response = operation?;
     release_result.map_err(|error| worker::Error::RustError(error.to_string()))?;
     bundle_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
+    org_release.map_err(|error| worker::Error::RustError(error.to_string()))?;
     if created && response.status_code() == 201 {
         emit_artifact_created(
             ctx,

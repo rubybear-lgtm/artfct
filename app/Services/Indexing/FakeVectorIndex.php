@@ -98,6 +98,17 @@ final class FakeVectorIndex implements VectorIndexContract
         return $chunks;
     }
 
+    public function hasIndexedChunks(string $orgId): bool
+    {
+        foreach ($this->byOrg[$orgId] ?? [] as $chunks) {
+            if ($chunks !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function allVectorsForOrg(string $orgId): array
     {
         return array_merge(...array_values($this->byOrg[$orgId] ?? [[]]));

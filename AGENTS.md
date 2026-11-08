@@ -237,6 +237,17 @@ Check these before touching storage, request routing, identity, cryptography, or
 
 **Stage coverage is not flow coverage**, and an entry point with no test is invisible to every other check.
 
+## Staging vs production (RUB-518)
+
+Artfct has **only staging and production**. There are no PR preview environments for acceptance.
+
+- **Default:** required isolated CI on the PR (`application`, Pest browser, MCP contract/e2e, Release readiness, secrets, rust). No staging credentials and no Railway preview status are required for ordinary PRs.
+- **When warranted:** live verification uses **staging only** (`https://staging.artfct.dev`), checks the **exact SHA**, fails closed on missing/invalid target/config, never falls back to production, and does not mutate shared staging unless explicitly authorized (`authorize_mutations`).
+- **Not a universal gate:** docs/copy/low-risk PRs stay on isolated CI; say why staging was skipped or leave live verification pending. Do not create a PR preview to fill the gap, and do not claim green static tests prove deployed behavior.
+- **Operational leftover:** native Railway `prDeploys` / empty `artfct-pr-*` shells are tracked in RUB-519; repository CI/IaC does not disable that project setting.
+
+Details: `STAGING.md`, `scripts/staging/`, workflows `mcp-live.yml` and `staging-acceptance.yml`.
+
 ## Design Context
 
 ### Users
@@ -290,6 +301,8 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 `composer test` runs config clear + Pint check + Pest; `composer ci:check` runs the full frontend and test suite. A failing hook is a real failure — fix it, do not bypass with `--no-verify`.
 
 **UI screenshots in PRs (owner rule)** — Any PR that changes user-visible UI (Blade/Inertia/Vue/React components, CSS/Tailwind, layouts, emails, icons, copy) must include before and after screenshots in the PR description: capture them by running the app locally (desktop, and mobile width when layout is affected), and embed them in the PR body. If the PR has no UI changes, write `No UI changes` in the Screenshots section. Do not mark a UI PR ready for review without screenshots.
+
+**Independent agent review for big PRs (owner rule)** — For any PR with big changes, the authoring agent must start a new, independent Cursor agent to review the PR (a fresh agent with no shared context, not the authoring agent reviewing itself), then address or explicitly answer each finding and re-request review from that reviewer until it comes back clear. Summarize the review rounds and outcome in the PR description. Treat a PR as big when it is roughly 300+ changed lines, spans multiple subsystems, or touches database migrations, auth/security, billing, or public API/MCP surfaces; when unsure, treat it as big.
 
 **Deploying** — `npm run worker:deploy` (wraps `scripts/deploy-worker-version.mjs`); worker routes and bindings live in `backend/wrangler.jsonc`.
 

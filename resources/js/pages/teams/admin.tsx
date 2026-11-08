@@ -46,9 +46,9 @@ export default function TeamAdmin({
         },
         {
             key: 'tokens',
-            title: 'API tokens',
+            title: 'Agent & API tokens',
             description:
-                'Create and revoke the tokens your scripts use to share artifacts.',
+                'Create agent tokens for AI assistants and API tokens for your scripts.',
             href: teamRoutes.tokens.index.url({ team: team.slug }),
         },
         {

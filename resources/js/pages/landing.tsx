@@ -1,13 +1,6 @@
 import { Link } from '@inertiajs/react';
 import type { CSSProperties, RefObject } from 'react';
-import {
-    useEffect,
-    useId,
-    useLayoutEffect,
-    useRef,
-    useState,
-    useSyncExternalStore,
-} from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
 import { CopyPrompt } from '@/components/connect/copy-prompt';
@@ -25,7 +18,7 @@ import { StorySteps, StoryStage, useStory } from '@/components/home/story';
 import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
-import { backgroundPair, randomBackgroundPairs } from '@/lib/backgrounds';
+import { backgroundPair } from '@/lib/backgrounds';
 import { blog, docs, free, home, login, privacy, terms } from '@/routes';
 import blogRoutes from '@/routes/blog';
 import connectRoutes from '@/routes/connect';
@@ -456,13 +449,7 @@ function UseSceneWindows({ scene }: { scene: UseScene }) {
     );
 }
 
-function UseCaseRow({
-    useCase,
-    frame,
-}: {
-    useCase: UseCase;
-    frame?: { light: string; dark: string };
-}) {
+function UseCaseRow({ useCase }: { useCase: UseCase }) {
     const row = useRef<HTMLElement>(null);
     const [armed, setArmed] = useState(false);
     const [seen, setSeen] = useState(false);
@@ -522,14 +509,10 @@ function UseCaseRow({
                 <h3>{useCase.title}</h3>
                 <p>{useCase.text}</p>
             </div>
-            <UseSceneWindows
-                scene={frame ? { ...useCase.scene, frame } : useCase.scene}
-            />
+            <UseSceneWindows scene={useCase.scene} />
         </article>
     );
 }
-
-type FramePair = { light: string; dark: string };
 
 type ConnectGuide = { id: string; label: string };
 
@@ -579,30 +562,24 @@ const GUIDES: {
     },
 ];
 
-const subscribeNothing = () => () => {};
-let framesForThisLoad: FramePair[] | null = null;
-
-/** A different set of backgrounds on every page load. The server renders the
- * defaults, and the browser swaps to the random set after hydrating. */
-function randomFramesOnce(): FramePair[] {
-    framesForThisLoad ??= randomBackgroundPairs(USE_CASES.length);
-
-    return framesForThisLoad;
-}
-
 export default function Landing({
     agentSetupPrompt,
     connectGuides,
     latestPosts,
 }: LandingProps) {
     const story = useStory();
-    const frames = useSyncExternalStore(
-        subscribeNothing,
-        randomFramesOnce,
-        () => null,
-    );
     const navMenu = useRef<HTMLDetailsElement>(null);
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
+
+    // Keep :root.landing-page in sync on client navigations (RUB-476). Blade
+    // only sets it on the first server render of this component.
+    useEffect(() => {
+        document.documentElement.classList.add('landing-page');
+
+        return () => {
+            document.documentElement.classList.remove('landing-page');
+        };
+    }, []);
 
     return (
         <div className="landing">
@@ -885,11 +862,10 @@ export default function Landing({
                             </p>
                         </div>
                         <div className="usecases">
-                            {USE_CASES.map((useCase, index) => (
+                            {USE_CASES.map((useCase) => (
                                 <UseCaseRow
                                     key={useCase.role}
                                     useCase={useCase}
-                                    frame={frames?.[index]}
                                 />
                             ))}
                         </div>

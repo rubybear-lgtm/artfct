@@ -21,6 +21,11 @@ interface Props {
     className?: string;
 }
 
+type PendingAction =
+    | { kind: 'comment' }
+    | { kind: 'reply'; rootId: number }
+    | { kind: 'resolve'; commentId: number };
+
 function formatWhen(value: string): string {
     const date = new Date(value);
 
@@ -43,29 +48,50 @@ export default function ArtifactComments({
 }: Props) {
     const [body, setBody] = useState('');
     const [replyTo, setReplyTo] = useState<number | null>(null);
-    const [reply, setReply] = useState('');
+    const [replies, setReplies] = useState<Record<number, string>>({});
+    const [pending, setPending] = useState<PendingAction | null>(null);
 
     const roots = items.filter((comment) => comment.parent_id === null);
     const repliesTo = (id: number) =>
         items.filter((comment) => comment.parent_id === id);
 
-    const post = (text: string, parentId: number | null, done: () => void) => {
-        if (text.trim() === '') {
+    const busy = pending !== null;
+
+    const post = (
+        text: string,
+        parentId: number | null,
+        action: PendingAction,
+        done: () => void,
+    ) => {
+        if (text.trim() === '' || busy) {
             return;
         }
 
+        setPending(action);
         router.post(
             comments.store.url(artifactId),
             { body: text, parent_id: parentId },
-            { preserveScroll: true, onSuccess: done },
+            {
+                preserveScroll: true,
+                onSuccess: done,
+                onFinish: () => setPending(null),
+            },
         );
     };
 
     const toggleResolved = (comment: ArtifactComment) => {
+        if (busy) {
+            return;
+        }
+
+        setPending({ kind: 'resolve', commentId: comment.id });
         router.patch(
             comments.resolve.url({ artifactId, commentId: comment.id }),
             { resolved: !comment.resolved },
-            { preserveScroll: true },
+            {
+                preserveScroll: true,
+                onFinish: () => setPending(null),
+            },
         );
     };
 
@@ -105,10 +131,11 @@ export default function ArtifactComments({
                             </div>
                         ))}
 
-                        <div className="mt-2 flex gap-3 text-sm">
+                        <div className="mt-2 flex flex-wrap gap-3">
                             <button
                                 type="button"
-                                className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                                className="inline-flex min-h-11 items-center text-base text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-50"
+                                disabled={busy}
                                 onClick={() =>
                                     setReplyTo(
                                         replyTo === root.id ? null : root.id,
@@ -119,7 +146,8 @@ export default function ArtifactComments({
                             </button>
                             <button
                                 type="button"
-                                className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                                className="inline-flex min-h-11 items-center text-base text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-50"
+                                disabled={busy}
                                 onClick={() => toggleResolved(root)}
                             >
                                 {root.resolved ? 'Reopen' : 'Resolve'}
@@ -131,24 +159,43 @@ export default function ArtifactComments({
                                 className="mt-3 flex flex-col gap-2"
                                 onSubmit={(event) => {
                                     event.preventDefault();
-                                    post(reply, root.id, () => {
-                                        setReply('');
-                                        setReplyTo(null);
-                                    });
+                                    post(
+                                        replies[root.id] ?? '',
+                                        root.id,
+                                        { kind: 'reply', rootId: root.id },
+                                        () => {
+                                            setReplies((current) => {
+                                                const next = { ...current };
+                                                delete next[root.id];
+
+                                                return next;
+                                            });
+                                            setReplyTo(null);
+                                        },
+                                    );
                                 }}
                             >
                                 <textarea
-                                    value={reply}
+                                    value={replies[root.id] ?? ''}
                                     onChange={(event) =>
-                                        setReply(event.target.value)
+                                        setReplies((current) => ({
+                                            ...current,
+                                            [root.id]: event.target.value,
+                                        }))
                                     }
                                     maxLength={4000}
                                     rows={2}
                                     aria-label="Reply"
-                                    className="w-full rounded-md border border-border bg-transparent p-2 text-sm"
+                                    disabled={busy}
+                                    className="w-full rounded-md border border-border bg-transparent p-2 text-base"
                                 />
                                 <div>
-                                    <Button type="submit" size="sm">
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        className="min-h-11"
+                                        disabled={busy}
+                                    >
                                         Reply
                                     </Button>
                                 </div>
@@ -162,7 +209,7 @@ export default function ArtifactComments({
                 className="mt-4 flex flex-col gap-2"
                 onSubmit={(event) => {
                     event.preventDefault();
-                    post(body, null, () => setBody(''));
+                    post(body, null, { kind: 'comment' }, () => setBody(''));
                 }}
             >
                 <textarea
@@ -172,10 +219,16 @@ export default function ArtifactComments({
                     rows={3}
                     aria-label="Add a comment"
                     placeholder="Add a comment"
-                    className="w-full rounded-md border border-border bg-transparent p-2 text-sm"
+                    disabled={busy}
+                    className="w-full rounded-md border border-border bg-transparent p-2 text-base"
                 />
                 <div>
-                    <Button type="submit" size="sm">
+                    <Button
+                        type="submit"
+                        size="sm"
+                        className="min-h-11"
+                        disabled={busy}
+                    >
                         Comment
                     </Button>
                 </div>
