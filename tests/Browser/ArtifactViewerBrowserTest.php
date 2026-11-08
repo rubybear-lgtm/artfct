@@ -135,7 +135,27 @@ test('public_is_disabled_with_a_note_when_the_team_turned_public_links_off', fun
         ->assertVisible('@share-control')
         ->click('@share-control')
         ->assertSee('Your team has turned off public links')
-        ->assertDisabled('@share-option-public');
+        ->assertDisabled('@share-option-public')
+        ->assertVisible('@share-close')
+        ->click('@share-close')
+        ->assertMissing('@share-option-public');
+});
+
+test('the_share_dialog_stays_fixed_to_the_viewport', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Share Fixed', 'viewer-share-fixed@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->click('@share-control')
+        ->assertVisible('@share-close');
+
+    // A `relative` class on the dialog content silently drops `fixed` through
+    // tailwind-merge, which pushes it below the fold while the overlay stays put.
+    expect($page->script('getComputedStyle(document.querySelector(\'[role="dialog"]\')).position'))->toBe('fixed');
 });
 
 test('the_version_picker_offers_every_version_when_there_is_more_than_one', function () {

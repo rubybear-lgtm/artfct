@@ -282,59 +282,66 @@ export function useWelcomeController() {
         };
     }, [closeManageModal, managingLink]);
 
-    const handleUpdateTtl = useCallback(async () => {
-        if (!managingLink) {
-            return;
-        }
-
-        setIsUpdatingTtl(true);
-        setModalError(null);
-        setModalSuccess(false);
-
-        try {
-            const response = await fetch(
-                `${WORKER_URL}/v1/artifacts/${managingLink.id}`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ttl_minutes: newTtlMinutes }),
-                },
-            );
-
-            if (!response.ok) {
-                const body = (await response.json().catch(() => ({}))) as {
-                    error?: string;
-                };
-
-                throw new Error(
-                    body.error ?? `server error ${response.status}`,
-                );
+    const handleUpdateTtl = useCallback(
+        async (ttlMinutes: number = newTtlMinutes) => {
+            if (!managingLink) {
+                return;
             }
 
-            const data = (await response.json()) as {
-                expires_at: string;
-            };
+            setIsUpdatingTtl(true);
+            setModalError(null);
+            setModalSuccess(false);
 
-            saveCachedLinks((previous) =>
-                previous.map((link) =>
-                    link.id === managingLink.id
-                        ? { ...link, expiresAt: data.expires_at }
-                        : link,
-                ),
-            );
-            setManagingLink((previous) =>
-                previous ? { ...previous, expiresAt: data.expires_at } : null,
-            );
-            setModalSuccess(true);
-            setTimeout(() => setModalSuccess(false), 3000);
-        } catch (error) {
-            setModalError(
-                error instanceof Error ? error.message : 'failed to update TTL',
-            );
-        } finally {
-            setIsUpdatingTtl(false);
-        }
-    }, [managingLink, newTtlMinutes, saveCachedLinks]);
+            try {
+                const response = await fetch(
+                    `${WORKER_URL}/v1/artifacts/${managingLink.id}`,
+                    {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ttl_minutes: ttlMinutes }),
+                    },
+                );
+
+                if (!response.ok) {
+                    const body = (await response.json().catch(() => ({}))) as {
+                        error?: string;
+                    };
+
+                    throw new Error(
+                        body.error ?? `server error ${response.status}`,
+                    );
+                }
+
+                const data = (await response.json()) as {
+                    expires_at: string;
+                };
+
+                saveCachedLinks((previous) =>
+                    previous.map((link) =>
+                        link.id === managingLink.id
+                            ? { ...link, expiresAt: data.expires_at }
+                            : link,
+                    ),
+                );
+                setManagingLink((previous) =>
+                    previous
+                        ? { ...previous, expiresAt: data.expires_at }
+                        : null,
+                );
+                setModalSuccess(true);
+                setTimeout(() => setModalSuccess(false), 3000);
+            } catch (error) {
+                setModalError(
+                    error instanceof Error
+                        ? error.message
+                        : 'failed to update TTL',
+                );
+            } finally {
+                setIsUpdatingTtl(false);
+            }
+        },
+        [managingLink, newTtlMinutes, saveCachedLinks],
+    );
 
     const handleDeleteLink = useCallback(async () => {
         if (
