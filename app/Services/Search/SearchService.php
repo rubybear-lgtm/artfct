@@ -116,7 +116,8 @@ final class SearchService
             ) {
                 [$vectorCandidates, $lexicalCandidates, $candidates] = $this->retrieveCandidates($team, $query, $widenedLimit, $retrievalIds);
                 $unseen = array_values(array_diff($this->candidateArtifactIds($candidates), array_keys($directory)));
-                $directory = [...$directory, ...$this->artifactsByIds($team, $unseen)];
+                // array_replace, not a spread: a spread renumbers integer-like keys.
+                $directory = array_replace($directory, $this->artifactsByIds($team, $unseen));
             }
         }
         $titles = array_map(fn (array $artifact): ?string => $artifact['title'] ?? null, $directory);

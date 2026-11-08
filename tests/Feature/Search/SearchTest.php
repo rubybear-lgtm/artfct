@@ -457,14 +457,21 @@ test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', f
 test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function () {
     $team = Team::factory()->create(['slug' => 'crowded-org']);
 
-    // 60 indexed passages the Worker does not list for this viewer (another
-    // member's private artifacts: chunks, but no directory rows) outrank the
-    // one visible artifact. With 50 candidate slots they would take them all.
-    for ($i = 0; $i < 60; $i++) {
+    // Indexed passages the Worker does not list for this viewer (another
+    // member's private artifacts: chunks, but no directory rows) crowd the
+    // 50 candidate slots; the second visible artifact sits beyond them.
+    for ($i = 0; $i < 30; $i++) {
         seedSearchChunk($team, "hidden-{$i}", 'shared roadmap notes');
     }
-    seedSearchArtifact($team, 'visible-1');
-    seedSearchChunk($team, 'visible-1', 'shared roadmap notes');
+    // One visible artifact inside the first 50 (so the first pass keeps a row
+    // the merge must preserve) and one beyond it that only the widened pass sees.
+    seedSearchArtifact($team, 'visible-early');
+    seedSearchChunk($team, 'visible-early', 'shared roadmap notes');
+    for ($i = 30; $i < 100; $i++) {
+        seedSearchChunk($team, "hidden-{$i}", 'shared roadmap notes');
+    }
+    seedSearchArtifact($team, 'visible-late');
+    seedSearchChunk($team, 'visible-late', 'shared roadmap notes');
 
     /** @var FakeArtifactDirectory $directory */
     $directory = app(ArtifactDirectory::class);
@@ -478,7 +485,7 @@ test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function (
         actor: 'tester',
     );
 
-    expect(array_map(fn ($result) => $result->id, $results))->toBe(['visible-1']);
+    expect(array_map(fn ($result) => $result->id, $results))->toEqualCanonicalizing(['visible-early', 'visible-late']);
     // First pass (50 ids, one call) plus the widened pass for the ids not yet seen.
     expect($directory->listCallCount() - $listCallsBefore)->toBeLessThanOrEqual(2);
 });
