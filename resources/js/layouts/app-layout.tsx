@@ -200,7 +200,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               },
               {
                   href: teamRoutes.tokens.index.url({ team: team.slug }),
-                  label: 'API tokens',
+                  label: 'Agent & API tokens',
                   exact: false,
               },
               {
@@ -282,7 +282,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   {
                       href: teamRoutes.tokens.index.url({ team: team.slug }),
                       key: 'tokens',
-                      label: 'API tokens',
+                      label: 'Agent & API tokens',
                   },
                   {
                       href: teamRoutes.billing.show.url({ team: team.slug }),
@@ -498,7 +498,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                     )
                                                 }
                                             >
-                                                API tokens
+                                                Agent & API tokens
                                             </DropdownMenuItem>
                                         )}
                                         <DropdownMenuItem

@@ -4,9 +4,9 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpTelemetry;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Carbon;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -57,14 +57,21 @@ final class GetConnectionTool extends Tool
         $claims = McpContext::claims();
         $team = McpContext::team();
         $httpRequest = McpContext::httpRequest();
+        $orgToken = McpContext::orgToken();
+        $agentName = McpContext::agentName();
+        $isAgentToken = $orgToken?->isAgent() === true;
 
         $response = Response::structured([
             'authenticated' => true,
             'organization' => $team->slug,
             'user_id' => $claims['user_id'],
             'scopes' => preg_split('/\s+/', trim((string) ($claims['scope'] ?? ''))) ?: [],
-            'credential_source' => 'bearer',
-            'client' => $httpRequest->header('MCP-Client-Name'),
+            'credential_source' => $isAgentToken ? 'agent_token' : 'bearer',
+            'agent' => $isAgentToken ? [
+                'name' => $agentName,
+                'bot' => true,
+            ] : null,
+            'client' => $httpRequest->header('MCP-Client-Name') ?? $agentName,
             'session_id' => $request->sessionId(),
             'search' => $this->searchReadiness($team->id),
         ]);
@@ -82,13 +89,20 @@ final class GetConnectionTool extends Tool
      */
     private function searchReadiness(int $teamId): array
     {
-        $entries = ArtifactIndexEntry::query()->where('team_id', $teamId);
-        $lastIndexedAt = $entries->max('extracted_at');
+        // Read the latest row so `extracted_at` moves as soon as indexing
+        // writes a new entry (RUB-515 item 6), not a stale aggregate cache.
+        $latest = ArtifactIndexEntry::query()
+            ->where('team_id', $teamId)
+            ->orderByDesc('extracted_at')
+            ->orderByDesc('id')
+            ->first();
 
         return [
             'enabled' => (bool) config('indexing.enabled'),
-            'indexed_artifacts' => $entries->count(),
-            'last_indexed_at' => $lastIndexedAt === null ? null : Carbon::parse($lastIndexedAt)->toIso8601String(),
+            'indexed_artifacts' => ArtifactIndexEntry::query()->where('team_id', $teamId)->count(),
+            'last_indexed_at' => $latest === null
+                ? null
+                : McpTimestamp::format($latest->extracted_at),
         ];
     }
 

@@ -29,6 +29,28 @@ ORG_A_SLUG="zz-mcp-e2e"
 ORG_B_SLUG="zz-mcp-e2e-b"
 ADMIN_EMAIL="admin@northwind.example"
 
+# Mint an org JWT via tinker. Fail loudly on empty output (RUB-471): swallowing
+# tinker stderr and `tail -1` used to leave blank INTEGRATION_* tokens so the
+# Rust sharing tests silently `Ok(())`-skipped and CI stayed green.
+mint_org_jwt() {
+    local name="$1"
+    local php="$2"
+    local token
+    local output
+    if ! output=$(php artisan tinker --execute "$php" 2>&1); then
+        echo "❌ Failed to mint ${name}:" >&2
+        echo "$output" >&2
+        return 1
+    fi
+    token=$(printf '%s\n' "$output" | tail -1 | tr -d '[:space:]')
+    if [ -z "$token" ] || [ "${#token}" -lt 20 ]; then
+        echo "❌ ${name} mint produced an empty or too-short token:" >&2
+        echo "$output" >&2
+        return 1
+    fi
+    printf '%s' "$token"
+}
+
 up() {
     mkdir -p "$STATE_DIR"
 
@@ -176,27 +198,27 @@ up() {
     # tests (backend/tests/storage_integration.rs) — real production-path checks against a
     # live Worker that `cargo test` otherwise silently skips
     # (#[ignore]d) because nothing sets up a Worker + token for them.
-    INTEGRATION_TOKEN=$(php artisan tinker --execute "
+    INTEGRATION_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_TOKEN "
         \$team = App\Models\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
         \$admin = App\Models\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
         echo App\Services\Auth\OrgJwtService::default()->mint(\$team, \$admin, App\Enums\TeamRole::Admin, 3600)['token'];
-    " 2>/dev/null | tail -1)
+    ")
     echo "ARTFCT_INTEGRATION_TOKEN=$INTEGRATION_TOKEN" >> "$STATE_DIR/env"
-    INTEGRATION_READ_TOKEN=$(php artisan tinker --execute "
+    INTEGRATION_READ_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_READ_TOKEN "
         \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
         \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
         echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Viewer, 3600, ['artifacts:read'])['token'];
-    " 2>/dev/null | tail -1)
-    INTEGRATION_DEPLOY_TOKEN=$(php artisan tinker --execute "
+    ")
+    INTEGRATION_DEPLOY_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_DEPLOY_TOKEN "
         \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
         \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
         echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Member, 3600, ['artifacts:deploy'])['token'];
-    " 2>/dev/null | tail -1)
+    ")
     echo "ARTFCT_INTEGRATION_READ_TOKEN=$INTEGRATION_READ_TOKEN" >> "$STATE_DIR/env"
     echo "ARTFCT_INTEGRATION_DEPLOY_TOKEN=$INTEGRATION_DEPLOY_TOKEN" >> "$STATE_DIR/env"
     # A plain Member of ORG_A, so the sharing tests can have an owner who is
     # not an admin, and a second plain member as the non-owner viewer.
-    INTEGRATION_MEMBER_TOKEN=$(php artisan tinker --execute "
+    INTEGRATION_MEMBER_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_MEMBER_TOKEN "
         \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
         \$member = App\\Models\\User::firstOrCreate(
             ['email' => 'e2e-member@example.test'],
@@ -206,9 +228,9 @@ up() {
             \$team->memberships()->create(['user_id' => \$member->id, 'role' => App\\Enums\\TeamRole::Member]);
         }
         echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$member, App\\Enums\\TeamRole::Member, 3600)['token'];
-    " 2>/dev/null | tail -1)
+    ")
     echo "ARTFCT_INTEGRATION_MEMBER_TOKEN=$INTEGRATION_MEMBER_TOKEN" >> "$STATE_DIR/env"
-    INTEGRATION_MEMBER2_TOKEN=$(php artisan tinker --execute "
+    INTEGRATION_MEMBER2_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_MEMBER2_TOKEN "
         \$team = App\\Models\\Team::where('slug', '${ORG_A_SLUG}')->firstOrFail();
         \$member = App\\Models\\User::firstOrCreate(
             ['email' => 'e2e-member2@example.test'],
@@ -218,15 +240,15 @@ up() {
             \$team->memberships()->create(['user_id' => \$member->id, 'role' => App\\Enums\\TeamRole::Member]);
         }
         echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$member, App\\Enums\\TeamRole::Member, 3600)['token'];
-    " 2>/dev/null | tail -1)
+    ")
     echo "ARTFCT_INTEGRATION_MEMBER2_TOKEN=$INTEGRATION_MEMBER2_TOKEN" >> "$STATE_DIR/env"
     # An admin of ORG_B (the admin above already belongs to it), for the
     # cross-org refusals and the public + edit write.
-    INTEGRATION_OTHER_ORG_TOKEN=$(php artisan tinker --execute "
+    INTEGRATION_OTHER_ORG_TOKEN=$(mint_org_jwt ARTFCT_INTEGRATION_OTHER_ORG_TOKEN "
         \$team = App\\Models\\Team::where('slug', '${ORG_B_SLUG}')->firstOrFail();
         \$admin = App\\Models\\User::where('email', '${ADMIN_EMAIL}')->firstOrFail();
         echo App\\Services\\Auth\\OrgJwtService::default()->mint(\$team, \$admin, App\\Enums\\TeamRole::Admin, 3600)['token'];
-    " 2>/dev/null | tail -1)
+    ")
     echo "ARTFCT_INTEGRATION_OTHER_ORG_TOKEN=$INTEGRATION_OTHER_ORG_TOKEN" >> "$STATE_DIR/env"
     # The app origin an isolated response may be framed by (the Worker gets the
     # same value as ARTFCT_APP_ORIGIN), for the frame-ancestors assertion.

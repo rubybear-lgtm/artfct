@@ -20,8 +20,9 @@ test('hostile preview content cannot run scripts or load network resources even 
     config(['services.artifact_access.token_secret' => null]);
 
     $requests = new ArrayObject;
-    // sendBeacon uses POST; scripts/images/styles use GET. Accept both so a
-    // probe hit is recorded instead of a 405 that aborts the Playwright run.
+    // sendBeacon uses POST; accepting GET+POST keeps the probe honest for every
+    // outbound kind without leaving MethodNotAllowedHttpException on the Pest
+    // browser server (that exception was showing up as a red herring on flakes).
     Route::match(['GET', 'POST'], '/__preview-probe/{kind}', function (string $kind) use ($requests) {
         $requests[] = $kind;
 
@@ -104,9 +105,9 @@ test('hostile preview content cannot run scripts or load network resources even 
         'name' => 'Hostile document stack',
     ]);
     $collection->artifacts()->create(['artifact_id' => 'hostile-preview', 'added_at' => now()]);
-    // Fresh visit so we do not assert against a leftover iframe from the
-    // previous preview-frame page before the collections document lands.
-    visit(route('teams.collections.index', $team))->resize(390, 850)->wait(0.2)
+    // `__preview-frame` also has an iframe, so "iframe exists" is not proof the
+    // collections navigation finished. Wait for this page's toggle before click.
+    $direct->navigate(route('teams.collections.index', $team))->resize(390, 850)
         ->assertSee('Hostile document stack')
         ->assertPresent("@collection-toggle-{$collection->id}")
         ->assertScript('document.querySelector("iframe") !== null')

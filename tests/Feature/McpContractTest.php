@@ -15,6 +15,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
     $expectedContracts = [
         'deploy_artifact' => [
             'scopes' => ['artifacts:deploy'],
+            'toolVersion' => '1.1.0',
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
@@ -139,12 +140,39 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
                 'openWorldHint' => false,
             ],
         ],
+        'remove_collection_artifact' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        'delete_collection' => [
+            'scopes' => ['collections:write'],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => true,
+                'openWorldHint' => false,
+            ],
+        ],
         'delete_artifact' => [
             'scopes' => ['artifacts:delete'],
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
                 'destructiveHint' => true,
+                'openWorldHint' => false,
+            ],
+        ],
+        'set_avatar' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
                 'openWorldHint' => false,
             ],
         ],
@@ -166,7 +194,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
             ->and($annotations)->toBe($contract['annotations'])
             ->and($metadata)->toMatchArray([
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.0.0',
+                'toolVersion' => $contract['toolVersion'] ?? '1.0.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => $contract['scopes'],
                 'compatibility' => $contract['compatibility'] ?? 'stable',
@@ -196,12 +224,12 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
     expect($contract['field'])->toBe('view_url')
         ->and($contract['public_path_template'])->toBe('/p/{artifact}')
         ->and($contract['tiers']['public'])->toBe('app_open_route')
-        ->and($contract['tiers']['ephemeral'])->toBe('worker_public_url')
         ->and($contract['tiers']['secure'])->toBe('app_open_route')
-        ->and($contract['tiers']['unreadable'])->toBe('app_open_route');
+        ->and($contract['tiers']['unreadable'])->toBe('app_open_route')
+        ->and($contract['tiers'])->not->toHaveKey('ephemeral')
+        ->and($contract)->not->toHaveKey('deploy_to_canvas');
 
-    // The templates in the fixture are the templates the routes actually have,
-    // so the local server cannot address a path this app does not serve.
+    // The templates in the fixture are the templates the routes actually have.
     expect(route('artifacts.show', ['artifactId' => 'abc'], absolute: false))
         ->toBe(str_replace('{artifactId}', 'abc', $contract['app_open_path_template']))
         ->and(route('artifacts.version', ['artifactId' => 'abc', 'version' => 2], absolute: false))
@@ -211,10 +239,10 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
 
     // Every permanent artifact — public included — opens through the app's own
     // short route, which authorizes the visitor and mints only where it must.
-    // The anonymous ephemeral KV preview is the one tier with no app route, so
-    // it keeps the Worker's own URL.
+    // Unknown tiers (including a historical `ephemeral` value) use the same
+    // short link; free-tool KV previews never call this helper (RUB-452).
     expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->toBe($appOpenUrl)
-        ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'ephemeral'))->toBe('https://artfct.dev/p/abc')
+        ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'ephemeral'))->toBe($appOpenUrl)
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'secure'))->toBe($appOpenUrl)
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', null))->toBe($appOpenUrl)
         ->and(ArtifactViewLink::forArtifact('acme', 'abc', 'permanent'))->toBe($appOpenUrl);
@@ -222,14 +250,6 @@ test('the hosted server keeps the shared cross-server view_url contract', functi
     // A caller that cannot read a tier still never mints: the app route mints
     // per click, and only for a secure artifact.
     expect(ArtifactViewLink::forArtifact('acme', 'abc', 'public'))->not->toContain('token');
-});
-
-test('the anonymous ephemeral preview keeps the workers own url', function () {
-    $id = str_repeat('a', 32);
-
-    expect(ArtifactViewLink::forAnonymousArtifact($id, "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
-        ->and(ArtifactViewLink::forArtifact('acme', $id, 'ephemeral', "https://worker.test/p/{$id}"))->toBe("https://worker.test/p/{$id}")
-        ->and(ArtifactViewLink::forArtifact('acme', $id, 'public'))->toBe(route('artifacts.show', ['artifactId' => $id]));
 });
 
 test('deploy_artifact advertises bundle input and does not require html', function () {
@@ -240,8 +260,9 @@ test('deploy_artifact advertises bundle input and does not require html', functi
         ->first(fn ($tool): bool => $tool->name() === 'deploy_artifact')
         ->toArray()['inputSchema'];
 
-    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint'])
+    expect($schema['properties'])->toHaveKeys(['html', 'files', 'entrypoint', 'collection'])
         ->and($schema['properties']['files']['type'])->toContain('array')
         ->and($schema['properties']['files']['items']['required'])->toBe(['path', 'content'])
-        ->and($schema['required'] ?? [])->not->toContain('html');
+        ->and($schema['required'] ?? [])->not->toContain('html')
+        ->and($schema['required'] ?? [])->not->toContain('collection');
 });

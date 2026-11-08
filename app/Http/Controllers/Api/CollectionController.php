@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Collections\ArtifactExistence;
 use App\Services\Collections\CollectionDirectory;
 use App\Services\Collections\CollectionService;
+use App\Services\Collections\InvalidCollectionCursorException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -25,11 +26,18 @@ final class CollectionController extends Controller
         /** @var Team $team */
         $team = $request->attributes->get('org_jwt_team');
 
-        return response()->json($directory->list(
-            $team,
-            $validated['cursor'] ?? null,
-            (int) ($validated['limit'] ?? 20),
-        ));
+        try {
+            return response()->json($directory->list(
+                $team,
+                $validated['cursor'] ?? null,
+                (int) ($validated['limit'] ?? 20),
+            ));
+        } catch (InvalidCollectionCursorException) {
+            return response()->json([
+                'message' => 'The collection cursor is invalid.',
+                'error' => 'invalid_cursor',
+            ], 422);
+        }
     }
 
     public function store(Request $request, CollectionService $collections): JsonResponse
