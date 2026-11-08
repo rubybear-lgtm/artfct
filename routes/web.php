@@ -17,7 +17,6 @@ use App\Http\Controllers\WorkerEventController;
 use App\Services\Blog\BlogContent;
 use App\Services\Blog\BlogPost;
 use App\Support\AiToolSetup;
-use App\Support\LandingMedia;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -28,7 +27,6 @@ Route::get('/', fn (BlogContent $blog) => Inertia::render('landing', [
         'title' => 'Artfct: shared context and AI artifacts for every agent',
         'description' => 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.',
     ],
-    'flow' => LandingMedia::forPage(),
     'agentSetupPrompt' => AiToolSetup::forCurrentEnvironment()->agentSetupPrompt(),
     'connectGuides' => collect(AiToolSetup::forCurrentEnvironment()->guides())
         ->map(fn (array $guide): array => ['id' => $guide['id'], 'label' => $guide['label']])
@@ -89,6 +87,15 @@ Route::get('/blog/{slug}', [BlogController::class, 'show'])
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::get('/robots.txt', RobotsController::class)->name('robots');
 
+// Retired marketing URLs Google still requests as 4xx (RUB-513). Send them to
+// the closest live page so the 4xx report clears without inventing pages.
+// GET-only, same shape as the retired blog redirect above, so the isolation
+// matrix keys them as ordinary public GETs.
+Route::get('/pricing', fn () => redirect('/', 301));
+Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));
+Route::get('/app', fn () => redirect('/', 301));
+Route::get('/dashboard', fn () => redirect('/', 301));
+
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //
 // One short route for every sharing level. The viewer is addressed by artifact
@@ -107,6 +114,7 @@ Route::get('a/{artifactId}', [ArtifactViewerController::class, 'show'])->name('a
 Route::get('a/{artifactId}/v/{version}', [ArtifactViewerController::class, 'show'])
     ->whereNumber('version')
     ->name('artifacts.version');
+Route::get('a/{artifactId}/freshness', [ArtifactViewerController::class, 'freshness'])->name('artifacts.freshness');
 
 Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');

@@ -15,9 +15,9 @@ vendor/chart.umd.min.js   any library, vendored into the bundle
 
 A page with no script, no images and no outside fonts can be a single `html` string. Checked on a live staging artifact on 2026-10-18: an inline script, a base64 image, an image from another site and a Google Fonts stylesheet were all blocked. See RUB-444.
 
-## Single-file form (older, shared-origin preview)
+## Single-file form (do not use for deploy_artifact)
 
-Everything below describes one HTML file that inlines its resources or loads public CDNs. That form is served from the shared origin used by `deploy_to_canvas` (deprecated). Do not use it for `deploy_artifact`: its inline scripts, CDN libraries, Google Fonts and `data:` images are blocked there.
+Everything below describes one HTML file that inlines its resources or loads public CDNs. Do not use it for `deploy_artifact`: its inline scripts, CDN libraries, Google Fonts and `data:` images are blocked there. Prefer the bundle layout above.
 
 ## Inlining Rules
 

@@ -34,12 +34,57 @@ final class CollectionService
         );
     }
 
+    /**
+     * Resolve a workspace collection by numeric id or exact name. Digits try
+     * id first, then name, so a collection literally named "12" still works
+     * when no row has that id.
+     */
+    public function findForTeam(Team $team, string $nameOrId): ?Collection
+    {
+        $nameOrId = trim($nameOrId);
+        if ($nameOrId === '') {
+            return null;
+        }
+
+        $query = Collection::query()->where('team_id', $team->id);
+
+        if (ctype_digit($nameOrId)) {
+            $byId = (clone $query)->where('id', (int) $nameOrId)->first();
+            if ($byId !== null) {
+                return $byId;
+            }
+        }
+
+        return $query->where('name', $nameOrId)->first();
+    }
+
     public function removeArtifact(Collection $collection, string $artifactId): void
     {
         CollectionArtifact::query()
             ->where('collection_id', $collection->id)
             ->where('artifact_id', $artifactId)
             ->delete();
+    }
+
+    /**
+     * Drop every membership for an artifact across one team's collections
+     * (for example after the artifact itself was deleted).
+     */
+    public function forgetArtifact(Team $team, string $artifactId): void
+    {
+        CollectionArtifact::query()
+            ->whereIn('collection_id', Collection::query()->where('team_id', $team->id)->select('id'))
+            ->where('artifact_id', $artifactId)
+            ->delete();
+    }
+
+    /**
+     * Delete a collection and its memberships. Any member who can create
+     * collections may delete them (spec 16: kept deliberately thin).
+     */
+    public function delete(Collection $collection): void
+    {
+        $collection->delete();
     }
 
     /**

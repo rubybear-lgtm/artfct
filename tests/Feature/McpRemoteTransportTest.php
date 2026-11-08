@@ -5,6 +5,7 @@ use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Mcp\Support\ArtifactGuidance;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\AuditEvent;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
@@ -124,13 +125,22 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.tools.2.name', 'get_connection')
         ->assertJsonPath('result.tools.0.title', 'Publish artifact')
         ->assertJsonPath('result.tools.1.title', 'Search artifacts')
-        ->assertJsonMissingPath('result.tools.15')
+        ->assertJsonPath('result.tools.17.name', 'set_avatar')
+        ->assertJsonMissingPath('result.tools.18')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy')
         ->assertJsonMissingPath('result.nextCursor');
 
     expect(array_column($response->json('result.tools'), 'name'))
-        ->toContain('delete_artifact', 'read_artifact', 'get_guidance', 'resolve_artifact_comment');
+        ->toContain(
+            'delete_artifact',
+            'read_artifact',
+            'get_guidance',
+            'resolve_artifact_comment',
+            'remove_collection_artifact',
+            'delete_collection',
+            'set_avatar',
+        );
 });
 
 test('remote MCP negotiates supported protocol versions and rejects unsupported ones', function () {
@@ -483,7 +493,7 @@ test('remote MCP can permanently delete an artifact with the destructive scope',
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
-        'worker.test/v1/artifacts/artifact123' => Http::response('', 204),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response('', 204),
     ]);
 
     $response = $this->withToken($token)->postJson('/mcp', [
@@ -492,15 +502,15 @@ test('remote MCP can permanently delete an artifact with the destructive scope',
         'method' => 'tools/call',
         'params' => [
             'name' => 'delete_artifact',
-            'arguments' => ['id' => 'artifact123'],
+            'arguments' => ['id' => ARTIFACT_LINK_ID],
         ],
     ])->assertOk();
 
-    $response->assertJsonPath('result.structuredContent.id', 'artifact123')
+    $response->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
         ->assertJsonPath('result.structuredContent.deleted', true);
 
     Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-        && $request->url() === 'https://worker.test/v1/artifacts/artifact123');
+        && $request->url() === 'https://worker.test/v1/artifacts/'.ARTIFACT_LINK_ID);
 
     expect(McpActivity::query()
         ->where('team_id', $team->id)
@@ -690,8 +700,8 @@ test('remote usage returns customer-safe quota and render totals', function () {
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.organization', $team->slug)
         ->assertJsonPath('result.structuredContent.period.name', 'current')
-        ->assertJsonPath('result.structuredContent.period.starts_at', now()->startOfMonth()->toIso8601String())
-        ->assertJsonPath('result.structuredContent.period.resets_at', now()->startOfMonth()->addMonth()->toIso8601String())
+        ->assertJsonPath('result.structuredContent.period.starts_at', McpTimestamp::format(now()->startOfMonth()))
+        ->assertJsonPath('result.structuredContent.period.resets_at', McpTimestamp::format(now()->startOfMonth()->addMonth()))
         ->assertJsonPath('result.structuredContent.storage.used_bytes', 800)
         ->assertJsonPath('result.structuredContent.artifacts.used', 4)
         ->assertJsonPath('result.structuredContent.render_minutes.used', 12)
@@ -864,6 +874,113 @@ test('collection mutations require the explicit write scope and stay organizatio
         ->exists())->toBeTrue();
 });
 
+test('deploy_artifact can add a new artifact to a collection by name in one call', function () {
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create();
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch', 'created_by_user_id' => $user->id]);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $html = '<!doctype html><title>Launch brief</title><p>Summary</p>';
+    $sha = hash('sha256', $html);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response(['id' => ARTIFACT_LINK_ID, 'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID, 'tier' => 'secure', 'missing_files' => [$sha]], 201),
+        'worker.test/v1/artifacts/'.ARTIFACT_LINK_ID.'/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => $html,
+            'collection' => 'Launch',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
+        ->assertJsonPath('result.structuredContent.collection_id', $collection->id)
+        ->assertJsonPath('result.structuredContent.collection', 'Launch');
+
+    expect(CollectionArtifact::query()
+        ->where('collection_id', $collection->id)
+        ->where('artifact_id', ARTIFACT_LINK_ID)
+        ->exists())->toBeTrue();
+});
+
+test('deploy_artifact refuses an unknown collection before contacting the Worker', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => '<p>x</p>',
+            'collection' => 'Missing',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'collection_not_found');
+
+    Http::assertNothingSent();
+});
+
+test('deploy_artifact with collection requires collections:write', function () {
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create();
+    $user = memberOfTeam($team, TeamRole::Member);
+    Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch', 'created_by_user_id' => $user->id]);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Member, scopes: ['artifacts:deploy'])['token'];
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake();
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'html' => '<p>x</p>',
+            'collection' => 'Launch',
+        ]],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true);
+
+    expect(McpActivity::query()->where('team_id', $team->id)->where('tool', 'deploy_artifact')->where('outcome', 'denied')->exists())->toBeTrue();
+    Http::assertNothingSent();
+});
+
+test('add_collection_artifact accepts a collection name', function () {
+    $team = Team::factory()->create();
+    $token = remoteMcpToken($team);
+    $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Launch']);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/artifact123' => Http::response(['id' => 'artifact123', 'tier' => 'secure'], 200),
+    ]);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'add_collection_artifact',
+            'arguments' => ['collection' => 'Launch', 'artifact_id' => 'artifact123'],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.structuredContent.collection_id', $collection->id)
+        ->assertJsonPath('result.structuredContent.collection', 'Launch')
+        ->assertJsonPath('result.structuredContent.artifact_id', 'artifact123');
+
+    expect(CollectionArtifact::query()
+        ->where('collection_id', $collection->id)
+        ->where('artifact_id', 'artifact123')
+        ->exists())->toBeTrue();
+});
+
 test('deploy_artifact publishes a permanent org artifact in two steps', function () {
     configureArtifactLinks();
 
@@ -884,7 +1001,8 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => $html]],
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID)
-        ->assertJsonPath('result.structuredContent.tier', 'secure')
+        ->assertJsonMissingPath('result.structuredContent.tier')
+        ->assertJsonPath('result.structuredContent.sharing', 'team')
         ->assertJsonPath('result.structuredContent.title', 'Q3 report')
         ->assertJsonPath('result.structuredContent.organization', $team->slug)
         ->assertJsonMissingPath('result.structuredContent.warnings');
@@ -1150,7 +1268,8 @@ test('deploy_artifact hands a public artifact the one short link without a token
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('worker.test')
         ->and($response->json('result.structuredContent.view_url'))->not->toContain('staging.artfct.dev')
         ->and($response->getContent())->not->toContain('token=')
-        ->and($response->json('result.structuredContent.tier'))->toBe('public');
+        ->and($response->json('result.structuredContent.sharing'))->toBe('public')
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 });
 
 test('get_artifact hands a secure artifact the apps own open route', function () {
@@ -1404,25 +1523,26 @@ test('a public artifact still gets the short link with no signing secret configu
         ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
-test('an artifact whose id cannot form an isolated hostname is refused rather than linked', function () {
+test('get_artifact rejects a free-tool ephemeral id before contacting the Worker', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create();
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
-    Http::fake([
-        'worker.test/v1/artifacts/abcdefghij' => Http::response([
-            'id' => 'artifact-123', 'tier' => 'permanent', 'entrypoint' => 'index.html',
-        ], 200),
-    ]);
+    Http::fake();
 
+    // Free-tool KV previews use a 10-character id with no D1 row. MCP only
+    // addresses permanent artifacts, so the id fails closed at validation
+    // rather than round-tripping the Worker (RUB-452).
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'abcdefghij']],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
-        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'signed_link_unavailable')
+        ->assertJsonPath('result.content.0._meta.artfct.errorCode', 'invalid_request')
         ->assertJsonMissingPath('result.structuredContent.view_url');
+
+    Http::assertNothingSent();
 });
 
 test('deploy_artifact refuses over-quota workspaces before contacting the Worker', function () {

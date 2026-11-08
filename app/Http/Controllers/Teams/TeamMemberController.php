@@ -23,6 +23,7 @@ class TeamMemberController extends Controller
      */
     public function update(UpdateTeamMemberRequest $request, Team $team, User $user, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
+        abort_if($user->is_bot, 404);
         Gate::authorize('updateMember', $team);
 
         $newRole = TeamRole::from($request->validated('role'));
@@ -53,6 +54,7 @@ class TeamMemberController extends Controller
      */
     public function destroy(Request $request, Team $team, User $user, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker): RedirectResponse
     {
+        abort_if($user->is_bot, 404);
         Gate::authorize('removeMember', $team);
 
         app(LastAdminGuard::class)->ensureNotOwner($team, $user);

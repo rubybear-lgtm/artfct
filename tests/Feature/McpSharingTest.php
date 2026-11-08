@@ -51,8 +51,7 @@ test('deploy_artifact sends and returns the requested sharing level', function (
 
     expect($response->json('result.isError'))->toBeFalse()
         ->and($response->json('result.structuredContent.sharing'))->toBe($sharing)
-        // `tier` is kept for one release, matching the Worker's alias.
-        ->and($response->json('result.structuredContent.tier'))->toBe($tier);
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 
     // `sharing` is what the caller asked for; `tier` is derived from it so an
     // older Worker that only knows the alias still accepts the request.
@@ -109,7 +108,7 @@ test('deploy_artifact keeps tier as a deprecated alias that maps onto sharing', 
     ])->assertOk();
 
     expect($response->json('result.structuredContent.sharing'))->toBe($sharing)
-        ->and($response->json('result.structuredContent.tier'))->toBe($tier);
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 
     Http::assertSent(fn ($request): bool => $request->method() === 'POST'
         && str_ends_with((string) $request->url(), '/v1/artifacts')
@@ -140,7 +139,7 @@ test('deploy_artifact lets sharing win over the tier alias', function () {
     ])->assertOk();
 
     expect($response->json('result.structuredContent.sharing'))->toBe('private')
-        ->and($response->json('result.structuredContent.tier'))->toBe('private');
+        ->and($response->json('result.structuredContent'))->not->toHaveKey('tier');
 
     Http::assertSent(fn ($request): bool => $request->method() === 'POST'
         && str_ends_with((string) $request->url(), '/v1/artifacts')
@@ -281,5 +280,5 @@ test('get_artifact derives sharing from the tier when the Worker omits sharing',
         'params' => ['name' => 'get_artifact', 'arguments' => ['id' => $id]],
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.sharing', 'public')
-        ->assertJsonPath('result.structuredContent.tier', 'public');
+        ->assertJsonMissingPath('result.structuredContent.tier');
 });
