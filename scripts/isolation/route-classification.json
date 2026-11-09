@@ -79,6 +79,7 @@
         "GET sitemap.xml": "public",
         "GET storage/{path}": "signed",
         "PUT storage/{path}": "signed",
+        "GET support": "public",
         "GET terms": "public",
         "GET terms/accept": "user",
         "POST terms/accept": "user",
