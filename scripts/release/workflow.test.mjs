@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseArgs } from './release.mjs';
+import { buildAtomicReleasePushArgs, parseArgs } from './release.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const workflowPath = resolve(
@@ -23,13 +23,34 @@ test('B9: workflow_dispatch exposes sha and dry_run inputs', () => {
     assert.match(yaml, /contents:\s*write/);
     assert.match(yaml, /checks:\s*read/);
     assert.doesNotMatch(yaml, /--force(?:-with-lease)?\b/);
-    assert.match(yaml, /git push origin <sha>:main/);
+    assert.match(yaml, /git push --atomic origin <sha>:main refs\/tags\/<tag>/);
     const releaseSource = readFileSync(
         resolve(root, 'scripts/release/release.mjs'),
         'utf8',
     );
-    assert.match(releaseSource, /push',\s*'origin',\s*`\$\{sha\}:main`/);
+    assert.match(releaseSource, /buildAtomicReleasePushArgs/);
+    assert.match(releaseSource, /'--atomic'/);
     assert.doesNotMatch(releaseSource, /--force(?:-with-lease)?\b/);
+});
+
+test('atomic release push publishes main and tag together', () => {
+    assert.deepEqual(
+        buildAtomicReleasePushArgs(
+            'c0d605011c1adee65820ee4c5335fbedad469eea',
+            'release-20261109-0123',
+        ),
+        [
+            'push',
+            '--atomic',
+            'origin',
+            'c0d605011c1adee65820ee4c5335fbedad469eea:main',
+            'refs/tags/release-20261109-0123',
+        ],
+    );
+    assert.throws(
+        () => buildAtomicReleasePushArgs('', 'release-20261109-0123'),
+        /sha and tagName are required/,
+    );
 });
 
 test('B9: release CLI defaults dryRun false and accepts --dry-run', () => {

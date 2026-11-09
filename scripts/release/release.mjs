@@ -71,6 +71,30 @@ export function parseArgs(argv) {
 }
 
 /**
+ * Build the git push argv that fast-forwards main and publishes the release
+ * tag in one atomic negotiation. Pushing them separately can leave main
+ * advanced while the annotated tag is rejected with "missing necessary
+ * objects" (seen on release run 42545339333).
+ *
+ * @param {string} sha
+ * @param {string} tagName
+ * @returns {string[]}
+ */
+export function buildAtomicReleasePushArgs(sha, tagName) {
+    if (!sha || !tagName) {
+        throw new Error('sha and tagName are required for an atomic release push');
+    }
+
+    return [
+        'push',
+        '--atomic',
+        'origin',
+        `${sha}:main`,
+        `refs/tags/${tagName}`,
+    ];
+}
+
+/**
  * @param {string[]} args
  */
 function runGit(args) {
@@ -354,9 +378,8 @@ async function main() {
             'Would run:',
             '',
             '```',
-            `git push origin ${sha}:main`,
             `git tag -a ${releaseNotes.tagName} ${sha}`,
-            `git push origin refs/tags/${releaseNotes.tagName}`,
+            `git push --atomic origin ${sha}:main refs/tags/${releaseNotes.tagName}`,
             '```',
             '',
             '### Release notes preview',
@@ -368,29 +391,6 @@ async function main() {
 
         return;
     }
-
-    log(`Fast-forwarding main to ${sha}`);
-    const push = runGit(['push', 'origin', `${sha}:main`]);
-
-    if (push.status !== 0) {
-        summaryLines.push(
-            '',
-            '## Push failed',
-            '',
-            push.stderr || push.stdout || 'git push failed',
-            '',
-            '### Rollback',
-            '',
-            previousTag
-                ? `Previous release \`${previousTag}\` at \`${previousCommit}\`. main was not updated.`
-                : 'main was not updated.',
-        );
-        writeSummary(summaryLines.join('\n'));
-
-        throw new Error(`Fast-forward push failed: ${push.stderr || push.stdout}`);
-    }
-
-    summaryLines.push('- Action: fast-forwarded `main` ✅ (no force)');
 
     /**
      * @param {string} title
@@ -430,15 +430,47 @@ async function main() {
     ]);
 
     if (tag.status !== 0) {
-        failAfterPush('Tag failed', `git tag failed: ${tag.stderr}`);
+        summaryLines.push(
+            '',
+            '## Tag failed',
+            '',
+            `git tag failed: ${tag.stderr}`,
+            '',
+            '### Rollback',
+            '',
+            'main was not updated (tag is created locally before the atomic push).',
+        );
+        writeSummary(summaryLines.join('\n'));
+
+        throw new Error(`git tag failed: ${tag.stderr}`);
     }
 
-    const pushTag = runGit(['push', 'origin', `refs/tags/${releaseNotes.tagName}`]);
+    log(`Atomically fast-forwarding main and pushing tag ${releaseNotes.tagName}`);
+    const push = runGit(
+        buildAtomicReleasePushArgs(sha, releaseNotes.tagName),
+    );
 
-    if (pushTag.status !== 0) {
-        failAfterPush('Tag push failed', `git push tag failed: ${pushTag.stderr}`);
+    if (push.status !== 0) {
+        summaryLines.push(
+            '',
+            '## Atomic push failed',
+            '',
+            push.stderr || push.stdout || 'git push --atomic failed',
+            '',
+            '### Rollback',
+            '',
+            previousTag
+                ? `Previous release \`${previousTag}\` at \`${previousCommit}\`. main was not updated (atomic push).`
+                : 'main was not updated (atomic push).',
+        );
+        writeSummary(summaryLines.join('\n'));
+
+        throw new Error(
+            `Atomic fast-forward + tag push failed: ${push.stderr || push.stdout}`,
+        );
     }
 
+    summaryLines.push('- Action: fast-forwarded `main` ✅ (no force, atomic with tag)');
     summaryLines.push(`- Action: created tag \`${releaseNotes.tagName}\` ✅`);
 
     try {
