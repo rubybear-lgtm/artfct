@@ -17,7 +17,7 @@ use Illuminate\Validation\ValidationException;
  * existing bot instead of minting a duplicate. Link mode switches the binding
  * to an existing team bot. Deny/cancel never call this action, so no orphans.
  *
- * @phpstan-type BotInstallIntent array{mode: 'create'|'link', bot_name: ?string, bot_id: ?int}
+ * @phpstan-type BotInstallIntent array{mode: string, bot_name: ?string, bot_id: ?int}
  */
 class ResolveOAuthBotInstallation
 {
@@ -47,13 +47,20 @@ class ResolveOAuthBotInstallation
                 ->lockForUpdate()
                 ->first();
 
-            return match ($intent['mode']) {
-                'create' => $this->resolveCreate($team, $consenter, $oauthClientId, $intent['bot_name'], $existing),
-                'link' => $this->resolveLink($team, $consenter, $oauthClientId, $intent['bot_id'], $existing),
-                default => throw ValidationException::withMessages([
-                    'bot_mode' => 'Choose whether to create a bot or link an existing one.',
-                ]),
-            };
+            $mode = $intent['mode'];
+            if ($mode === 'create') {
+                return $this->resolveCreate($team, $consenter, $oauthClientId, $intent['bot_name'], $existing);
+            }
+
+            if ($mode === 'link') {
+                return $this->resolveLink($team, $consenter, $oauthClientId, $intent['bot_id'], $existing);
+            }
+
+            // Defensive: cached grants should only store create|link; anything
+            // else must become invalid_grant rather than an uncaught error.
+            throw ValidationException::withMessages([
+                'bot_mode' => 'Choose whether to create a bot or link an existing one.',
+            ]);
         });
     }
 

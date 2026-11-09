@@ -321,8 +321,8 @@ function AuthorizeForm({
                                             Yourself
                                         </span>
                                         <span className="mt-0.5 block text-muted-foreground">
-                                            Actions are attributed to{' '}
-                                            {userName}.
+                                            Actions are attributed to {userName}
+                                            .
                                         </span>
                                     </span>
                                 </label>
@@ -422,7 +422,11 @@ function AuthorizeForm({
                         )}
 
                         {!canInstallAsBot && (
-                            <input type="hidden" name="bot_mode" value="human" />
+                            <input
+                                type="hidden"
+                                name="bot_mode"
+                                value="human"
+                            />
                         )}
 
                         <p className="text-xs text-muted-foreground">
