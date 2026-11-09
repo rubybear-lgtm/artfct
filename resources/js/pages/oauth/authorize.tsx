@@ -11,6 +11,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthLayout from '@/layouts/auth-layout';
 
@@ -20,6 +21,11 @@ interface Team {
     slug: string;
 }
 
+interface BotOption {
+    id: number;
+    name: string;
+}
+
 interface RequestedScope {
     value: string;
     label: string;
@@ -27,6 +33,8 @@ interface RequestedScope {
 }
 
 type ScopeRisk = 'read' | 'write' | 'destructive';
+
+type IdentityMode = 'human' | 'create' | 'link';
 
 interface Props {
     clientId: string;
@@ -42,6 +50,8 @@ interface Props {
     csrfToken: string;
     team: Team;
     teams: Team[];
+    canInstallAsBot: boolean;
+    bots: BotOption[];
 }
 
 const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
@@ -82,16 +92,23 @@ function AuthorizeForm({
     csrfToken,
     team,
     teams,
+    canInstallAsBot,
+    bots,
 }: Props) {
     const redirectHost = (() => {
         try {
-            return new URL(redirectUri).host;
+            return new URL(redirectUri).host || redirectUri;
         } catch {
             return redirectUri;
         }
     })();
 
     const [selectedTeam, setSelectedTeam] = useState(team.slug);
+    const [identityMode, setIdentityMode] = useState<IdentityMode>('human');
+    const [botName, setBotName] = useState('');
+    const [botId, setBotId] = useState(
+        bots[0] !== undefined ? String(bots[0].id) : '',
+    );
     const selectedTeamName =
         teams.find((candidate) => candidate.slug === selectedTeam)?.name ??
         team.name;
@@ -101,6 +118,10 @@ function AuthorizeForm({
         ([field, message]) =>
             typeof message === 'string' ? ([[field, message]] as const) : [],
     );
+
+    const connectingAsBot =
+        canInstallAsBot &&
+        (identityMode === 'create' || identityMode === 'link');
 
     return (
         <>
@@ -275,9 +296,143 @@ function AuthorizeForm({
                             </div>
                         )}
 
+                        {canInstallAsBot && (
+                            <fieldset
+                                className="flex flex-col gap-3 rounded-md border p-3"
+                                data-testid="bot-install-options"
+                            >
+                                <legend className="px-1 text-sm font-medium">
+                                    Connect as
+                                </legend>
+                                <label className="flex items-start gap-2 text-sm">
+                                    <input
+                                        type="radio"
+                                        name="bot_mode"
+                                        value="human"
+                                        className="mt-1"
+                                        checked={identityMode === 'human'}
+                                        onChange={() =>
+                                            setIdentityMode('human')
+                                        }
+                                        data-testid="bot-mode-human"
+                                    />
+                                    <span>
+                                        <span className="font-medium">
+                                            Yourself
+                                        </span>
+                                        <span className="mt-0.5 block text-muted-foreground">
+                                            Actions are attributed to {userName}
+                                            .
+                                        </span>
+                                    </span>
+                                </label>
+                                <label className="flex items-start gap-2 text-sm">
+                                    <input
+                                        type="radio"
+                                        name="bot_mode"
+                                        value="create"
+                                        className="mt-1"
+                                        checked={identityMode === 'create'}
+                                        onChange={() =>
+                                            setIdentityMode('create')
+                                        }
+                                        data-testid="bot-mode-create"
+                                    />
+                                    <span>
+                                        <span className="font-medium">
+                                            A new bot teammate
+                                        </span>
+                                        <span className="mt-0.5 block text-muted-foreground">
+                                            Free seat, no email. Reconnecting
+                                            the same app reuses this bot.
+                                        </span>
+                                    </span>
+                                </label>
+                                {bots.length > 0 && (
+                                    <label className="flex items-start gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="bot_mode"
+                                            value="link"
+                                            className="mt-1"
+                                            checked={identityMode === 'link'}
+                                            onChange={() =>
+                                                setIdentityMode('link')
+                                            }
+                                            data-testid="bot-mode-link"
+                                        />
+                                        <span>
+                                            <span className="font-medium">
+                                                An existing bot teammate
+                                            </span>
+                                            <span className="mt-0.5 block text-muted-foreground">
+                                                Link this app to a bot already
+                                                on the team.
+                                            </span>
+                                        </span>
+                                    </label>
+                                )}
+
+                                {identityMode === 'create' && (
+                                    <div className="flex flex-col gap-1.5 pl-6">
+                                        <Label htmlFor="bot_name">
+                                            Bot name
+                                        </Label>
+                                        <Input
+                                            id="bot_name"
+                                            name="bot_name"
+                                            placeholder="Grok Bot"
+                                            value={botName}
+                                            onChange={(event) =>
+                                                setBotName(event.target.value)
+                                            }
+                                            required
+                                            maxLength={80}
+                                            data-testid="bot-name-input"
+                                        />
+                                    </div>
+                                )}
+
+                                {identityMode === 'link' && bots.length > 0 && (
+                                    <div className="flex flex-col gap-1.5 pl-6">
+                                        <Label htmlFor="bot_id">Bot</Label>
+                                        <select
+                                            id="bot_id"
+                                            name="bot_id"
+                                            className="h-10 rounded-md border bg-background px-3 text-sm"
+                                            value={botId}
+                                            onChange={(event) =>
+                                                setBotId(event.target.value)
+                                            }
+                                            required
+                                            data-testid="bot-link-select"
+                                        >
+                                            {bots.map((bot) => (
+                                                <option
+                                                    key={bot.id}
+                                                    value={bot.id}
+                                                >
+                                                    {bot.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </fieldset>
+                        )}
+
+                        {!canInstallAsBot && (
+                            <input
+                                type="hidden"
+                                name="bot_mode"
+                                value="human"
+                            />
+                        )}
+
                         <p className="text-xs text-muted-foreground">
-                            You can disconnect it any time in AI tool
-                            connections.
+                            {connectingAsBot
+                                ? 'The connection will act as that bot, not as you. You can disconnect it any time in AI tool connections.'
+                                : 'You can disconnect it any time in AI tool connections.'}
                         </p>
 
                         {errorEntries.length > 0 && (
