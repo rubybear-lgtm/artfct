@@ -25,6 +25,7 @@ class SitemapController extends Controller
             ['loc' => url('/blog'), 'priority' => '0.6', 'changefreq' => 'weekly'],
             ['loc' => url('/terms'), 'priority' => '0.3', 'changefreq' => 'yearly'],
             ['loc' => url('/privacy'), 'priority' => '0.3', 'changefreq' => 'yearly'],
+            ['loc' => url('/support'), 'priority' => '0.3', 'changefreq' => 'yearly'],
         ];
 
         foreach ($this->content->all() as $post) {

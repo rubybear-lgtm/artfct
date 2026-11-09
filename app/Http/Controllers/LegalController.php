@@ -20,6 +20,11 @@ class LegalController extends Controller
         return Inertia::render('legal/privacy', ['version' => config('legal.terms_version')]);
     }
 
+    public function support(): Response
+    {
+        return Inertia::render('legal/support');
+    }
+
     public function showAcceptance(Request $request): Response|RedirectResponse
     {
         if ($request->user()->terms_version === config('legal.terms_version')) {

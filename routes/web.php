@@ -65,6 +65,7 @@ Route::get('/llms-full.txt', [LlmsTextController::class, 'full'])->name('llms.fu
 
 Route::get('/terms', [LegalController::class, 'terms'])->name('terms');
 Route::get('/privacy', [LegalController::class, 'privacy'])->name('privacy');
+Route::get('/support', [LegalController::class, 'support'])->name('support');
 Route::middleware('auth')->group(function () {
     Route::get('/terms/accept', [LegalController::class, 'showAcceptance'])->name('terms.accept.show');
     Route::post('/terms/accept', [LegalController::class, 'accept'])->name('terms.accept');

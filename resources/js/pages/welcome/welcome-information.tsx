@@ -1,6 +1,6 @@
 import { Link } from '@inertiajs/react';
 
-import { blog, docs, home, login, privacy, terms } from '@/routes';
+import { blog, docs, home, login, privacy, support, terms } from '@/routes';
 import consoleRoutes from '@/routes/console';
 
 function FaqItem({ q, children }: { q: string; children: React.ReactNode }) {
@@ -107,6 +107,7 @@ export function WelcomeFooter({
                 {[
                     ['docs', docs.url()],
                     ['blog', blog.url()],
+                    ['support', support.url()],
                     ['terms', terms.url()],
                     ['privacy', privacy.url()],
                 ].map(([label, href]) => (

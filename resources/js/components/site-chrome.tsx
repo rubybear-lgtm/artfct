@@ -2,7 +2,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { useRef } from 'react';
 import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAppTheme } from '@/lib/useAppTheme';
-import { blog, docs, home, login, privacy, terms } from '@/routes';
+import { blog, docs, home, login, privacy, support, terms } from '@/routes';
 import connectRoutes from '@/routes/connect';
 import consoleRoutes from '@/routes/console';
 import onboardingRoutes from '@/routes/onboarding';
@@ -182,6 +182,7 @@ export function SiteFooter() {
                     <a href={GITHUB} target="_blank" rel="noreferrer">
                         GitHub
                     </a>
+                    <Link href={support.url()}>Support</Link>
                     <Link href={privacy.url()}>Privacy</Link>
                     <Link href={terms.url()}>Terms</Link>
                 </div>

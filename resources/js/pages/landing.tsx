@@ -19,7 +19,16 @@ import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { backgroundPair } from '@/lib/backgrounds';
-import { blog, docs, free, home, login, privacy, terms } from '@/routes';
+import {
+    blog,
+    docs,
+    free,
+    home,
+    login,
+    privacy,
+    support,
+    terms,
+} from '@/routes';
 import blogRoutes from '@/routes/blog';
 import connectRoutes from '@/routes/connect';
 
@@ -1015,6 +1024,7 @@ export default function Landing({
                         <Link href={connectRoutes.index().url}>Connect</Link>
                         <Link href={docs.url()}>Docs</Link>
                         <Link href={blog.url()}>Blog</Link>
+                        <Link href={support.url()}>Support</Link>
                         <Link href={privacy.url()}>Privacy</Link>
                         <Link href={terms.url()}>Terms</Link>
                     </div>

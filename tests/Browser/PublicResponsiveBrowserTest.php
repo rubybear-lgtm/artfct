@@ -46,6 +46,7 @@ test('public reading pages fit every viewport without sideways scrolling', funct
         '/blog/what-is-an-ai-artifact',
         '/terms',
         '/privacy',
+        '/support',
     ]);
 });
 

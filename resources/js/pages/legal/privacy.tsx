@@ -74,7 +74,10 @@ export default function Privacy({ version }: { version: string }) {
                 </p>
             </Section>
             <Section title="Contact">
-                <p>Contact address: to be set before public launch.</p>
+                <p>
+                    For privacy and data requests, email{' '}
+                    <a href="mailto:privacy@artfct.dev">privacy@artfct.dev</a>.
+                </p>
             </Section>
         </LegalPage>
     );
