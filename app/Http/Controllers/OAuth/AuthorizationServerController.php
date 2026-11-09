@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\OAuth;
 
+use App\Actions\OAuth\ResolveOAuthBotInstallation;
 use App\Enums\AuditEventType;
 use App\Enums\AuthMode;
 use App\Enums\McpScope;
+use App\Enums\OrgTokenKind;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\McpConnection;
+use App\Models\OAuthBotInstallation;
 use App\Models\OAuthClient;
 use App\Models\OAuthRefreshToken;
 use App\Models\OrgToken;
@@ -37,6 +40,14 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 final class AuthorizationServerController extends Controller
 {
     private const REFRESH_TOKEN_TTL_DAYS = 30;
+
+    /**
+     * Exact custom-scheme redirect URI Grok Bot / Cursor MCP clients register
+     * during DCR (alongside HTTPS and loopback). Rejecting it fails the whole
+     * registration batch. Source: Cursor forum thread on Grok Bot redirect_uri
+     * (cursor://anysphere.cursor-mcp/oauth/callback).
+     */
+    private const CURSOR_MCP_REDIRECT_URI = 'cursor://anysphere.cursor-mcp/oauth/callback';
 
     public function authorizationServerMetadata(): JsonResponse
     {
@@ -190,6 +201,23 @@ final class AuthorizationServerController extends Controller
         $this->abortUnlessSignInAdmitted($request, $user, $team);
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
+        $role = $user->teamRole($team);
+        $canInstallAsBot = $role instanceof TeamRole
+            && $role !== TeamRole::Viewer
+            && ! $user->isBot();
+
+        $bots = $canInstallAsBot
+        ? $team->members()
+            ->where('is_bot', true)
+            ->orderBy('name')
+            ->get(['users.id', 'users.name'])
+            ->map(fn (User $bot): array => [
+                'id' => $bot->id,
+                'name' => $bot->name,
+            ])
+            ->values()
+            ->all()
+        : [];
 
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
@@ -210,6 +238,9 @@ final class AuthorizationServerController extends Controller
                 'name' => $candidate->name,
                 'slug' => $candidate->slug,
             ])->values(),
+            // RUB-524: optional bot install alongside unchanged human OAuth.
+            'canInstallAsBot' => $canInstallAsBot,
+            'bots' => $bots,
         ]);
     }
 
@@ -244,6 +275,8 @@ final class AuthorizationServerController extends Controller
         abort_if($team === null, 403, 'The selected team is not available to this account.');
         $this->abortUnlessSignInAdmitted($request, $user, $team);
 
+        $botInstall = $this->botInstallIntentFromRequest($request, $user, $team);
+
         $code = Str::random(96);
         Cache::put($this->codeKey($code), [
             'user_id' => $user->id,
@@ -255,6 +288,9 @@ final class AuthorizationServerController extends Controller
             // Captured at consent: AuthKit sessions never set this, so a later
             // switch to polis can refuse the grant (RUB-482).
             'polis_proven' => TeamSignIn::provesPolisSignIn($request, $user, $team),
+            // RUB-524: resolved only on token redeem so Cancel/deny never
+            // creates a bot or credential.
+            'bot_install' => $botInstall,
         ], now()->addMinutes(5));
 
         return $this->redirectWith($parameters['redirect_uri'], [
@@ -264,7 +300,7 @@ final class AuthorizationServerController extends Controller
         ]);
     }
 
-    public function token(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker, OrgTokenRevocationRetry $revocationRetry): JsonResponse
+    public function token(Request $request, AuditLogger $auditLogger, OrgTokenRevoker $tokenRevoker, OrgTokenRevocationRetry $revocationRetry, ResolveOAuthBotInstallation $resolveOAuthBotInstallation): JsonResponse
     {
         $rules = [
             'grant_type' => ['required', 'string', 'in:authorization_code,refresh_token'],
@@ -313,11 +349,11 @@ final class AuthorizationServerController extends Controller
             return $this->tokenError('invalid_grant', 'The code verifier is invalid.');
         }
 
-        $user = User::query()->find($authorization['user_id']);
+        $consenter = User::query()->find($authorization['user_id']);
         $team = Team::query()->find($authorization['team_id']);
-        $role = $user instanceof User && $team instanceof Team ? $user->teamRole($team) : null;
+        $consenterRole = $consenter instanceof User && $team instanceof Team ? $consenter->teamRole($team) : null;
 
-        if (! $user instanceof User || ! $team instanceof Team || ! $role instanceof TeamRole) {
+        if (! $consenter instanceof User || ! $team instanceof Team || ! $consenterRole instanceof TeamRole) {
             return $this->tokenError('invalid_grant', 'The authorization is no longer valid.');
         }
 
@@ -332,6 +368,37 @@ final class AuthorizationServerController extends Controller
             return $this->tokenError('invalid_grant', 'This organisation only accepts connections made through its single sign-on. Sign in with SSO and approve the connection again.');
         }
 
+        $botInstall = is_array($authorization['bot_install'] ?? null) ? $authorization['bot_install'] : null;
+        $actor = $consenter;
+        $role = $consenterRole;
+        $tokenKind = OrgTokenKind::Api;
+        $tokenName = 'MCP OAuth ('.$authorization['client_id'].')';
+        $installation = null;
+
+        if ($botInstall !== null) {
+            try {
+                $resolved = $resolveOAuthBotInstallation->handle(
+                    $team,
+                    $consenter,
+                    (string) $authorization['client_id'],
+                    $botInstall,
+                );
+            } catch (ValidationException $exception) {
+                $message = collect($exception->errors())->flatten()->first();
+
+                return $this->tokenError(
+                    'invalid_grant',
+                    is_string($message) ? $message : 'The bot install could not be completed.',
+                );
+            }
+
+            $actor = $resolved['bot'];
+            $role = TeamRole::Member;
+            $tokenKind = OrgTokenKind::Agent;
+            $tokenName = $actor->name;
+            $installation = $resolved['installation'];
+        }
+
         $scopes = $this->scopesForRole($role);
         $requestedScopes = array_values(array_filter(explode(' ', (string) $authorization['scope'])));
         if (array_diff($requestedScopes, $scopes) !== []) {
@@ -339,28 +406,36 @@ final class AuthorizationServerController extends Controller
         }
 
         try {
-            $minted = OrgJwtService::default()->mint($team, $user, $role, 300, $requestedScopes);
+            $minted = OrgJwtService::default()->mint($team, $actor, $role, 300, $requestedScopes);
         } catch (\Throwable) {
             return $this->tokenError('server_error', 'The authorization server is not configured.');
         }
 
         $orgToken = OrgToken::query()->create([
             'team_id' => $team->id,
-            'user_id' => $user->id,
-            'name' => 'MCP OAuth ('.$authorization['client_id'].')',
+            'user_id' => $actor->id,
+            'name' => $tokenName,
+            'kind' => $tokenKind,
             'jti' => $minted['jti'],
             'role' => $role,
+            'scopes' => $requestedScopes,
             'last_four' => Str::substr($minted['token'], -4),
             'expires_at' => $minted['expires_at'],
         ]);
-        $connection = $this->createOAuthConnection($team, $user, $validated['client_id'], $minted['jti'], $requestedScopes);
+        $connection = $this->createOAuthConnection($team, $actor, $validated['client_id'], $minted['jti'], $requestedScopes);
         $orgToken->forceFill(['mcp_connection_id' => $connection->id])->saveQuietly();
-        $refreshToken = $this->createRefreshToken($team, $user, $validated['client_id'], $requestedScopes, $connection, $polisProven);
+        if ($installation instanceof OAuthBotInstallation) {
+            $installation->forceFill([
+                'mcp_connection_id' => $connection->id,
+                'consented_by_user_id' => $consenter->id,
+            ])->save();
+        }
+        $refreshToken = $this->createRefreshToken($team, $actor, $validated['client_id'], $requestedScopes, $connection, $polisProven);
         $auditLogger->recordForRequest(
             $request,
             AuditEventType::TokenCreated,
             $team,
-            (string) $user->id,
+            (string) $actor->id,
             "token:{$orgToken->id}",
         );
 
@@ -591,12 +666,15 @@ final class AuthorizationServerController extends Controller
             return $this->tokenError('server_error', 'The authorization server is not configured.');
         }
 
+        $isBotActor = $user->isBot();
         $orgToken = OrgToken::query()->create([
             'team_id' => $team->id,
             'user_id' => $user->id,
-            'name' => 'MCP OAuth ('.$validated['client_id'].')',
+            'name' => $isBotActor ? $user->name : 'MCP OAuth ('.$validated['client_id'].')',
+            'kind' => $isBotActor ? OrgTokenKind::Agent : OrgTokenKind::Api,
             'jti' => $minted['jti'],
             'role' => $role,
+            'scopes' => $scopes,
             'last_four' => Str::substr($minted['token'], -4),
             'expires_at' => $minted['expires_at'],
         ]);
@@ -657,11 +735,14 @@ final class AuthorizationServerController extends Controller
         $clientName = OAuthClient::query()
             ->where('client_id', $clientId)
             ->value('client_name') ?? $clientId;
+        $connectionName = $user->isBot()
+            ? $user->name
+            : $clientName.' MCP';
         $connection = new McpConnection;
         $connection->forceFill([
             'team_id' => $team->id,
             'user_id' => $user->id,
-            'name' => $clientName.' MCP',
+            'name' => $connectionName,
             'client_name' => $clientName,
             'transport' => 'streamable-http',
             'credential_jti' => $credentialJti,
@@ -825,8 +906,76 @@ final class AuthorizationServerController extends Controller
             return true;
         }
 
-        return $parts['scheme'] === 'http'
-            && in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true);
+        if ($parts['scheme'] === 'http'
+            && in_array(strtolower($parts['host']), ['localhost', '127.0.0.1', '[::1]', '::1'], true)) {
+            return true;
+        }
+
+        // Exact Cursor / Grok Bot desktop custom-scheme callback used in DCR.
+        return $redirectUri === self::CURSOR_MCP_REDIRECT_URI;
+    }
+
+    /**
+     * Parse optional bot-install fields from consent. Missing / "human" keeps
+     * the historical human OAuth path. Bot create/link is deferred until token
+     * redeem so Cancel never orphans a bot (RUB-524).
+     *
+     * @return array{mode: 'create'|'link', bot_name: ?string, bot_id: ?int}|null
+     */
+    private function botInstallIntentFromRequest(Request $request, User $user, Team $team): ?array
+    {
+        $mode = $request->string('bot_mode')->toString();
+        if ($mode === '' || $mode === 'human') {
+            return null;
+        }
+
+        $role = $user->teamRole($team);
+        if (! $role instanceof TeamRole || $role === TeamRole::Viewer || $user->isBot()) {
+            throw ValidationException::withMessages([
+                'bot_mode' => 'Only a human teammate with write access can connect a bot for this team.',
+            ]);
+        }
+
+        if ($mode === 'create') {
+            $botName = trim($request->string('bot_name')->toString());
+            if ($botName === '' || mb_strlen($botName) > 80) {
+                throw ValidationException::withMessages([
+                    'bot_name' => 'Give the bot a name between 1 and 80 characters.',
+                ]);
+            }
+
+            return [
+                'mode' => 'create',
+                'bot_name' => $botName,
+                'bot_id' => null,
+            ];
+        }
+
+        if ($mode === 'link') {
+            $botId = $request->integer('bot_id');
+            if ($botId < 1) {
+                throw ValidationException::withMessages([
+                    'bot_id' => 'Choose an existing bot teammate to link.',
+                ]);
+            }
+
+            $bot = User::query()->find($botId);
+            if (! $bot instanceof User || ! $bot->isBot() || ! $bot->belongsToTeam($team)) {
+                throw ValidationException::withMessages([
+                    'bot_id' => 'That bot is not on this team.',
+                ]);
+            }
+
+            return [
+                'mode' => 'link',
+                'bot_name' => null,
+                'bot_id' => $bot->id,
+            ];
+        }
+
+        throw ValidationException::withMessages([
+            'bot_mode' => 'Choose whether to connect as yourself, create a bot, or link an existing bot.',
+        ]);
     }
 
     private function codeKey(string $code): string
