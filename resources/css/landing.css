@@ -274,18 +274,6 @@
         border-inline: 1px solid var(--line);
     }
 
-    @media (min-width: 1440px) {
-        & .frame {
-            max-width: 1360px;
-        }
-    }
-
-    @media (min-width: 1920px) {
-        & .frame {
-            max-width: 1600px;
-        }
-    }
-
     & .pad {
         padding-inline: clamp(20px, 5vw, 64px);
     }
