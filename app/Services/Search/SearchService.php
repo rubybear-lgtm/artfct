@@ -9,6 +9,8 @@ use App\Models\ArtifactUsageEvent;
 use App\Models\Collection;
 use App\Models\SearchResultServed;
 use App\Models\Team;
+use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Collections\UsageScorer;
@@ -59,6 +61,7 @@ final class SearchService
         string $actor,
         string $ip = 'internal',
         string $userAgent = 'search',
+        string $source = 'api',
     ): array {
         // Fail closed before scoring: a zero-candidate search must not skip the
         // viewer-credential gate that used to run on the full-directory list.
@@ -68,13 +71,13 @@ final class SearchService
         // and lexical queries. Null means org-wide; [] means nothing matches.
         $scopeIds = $this->laravelScopeIds($team, $filters);
         if ($scopeIds === []) {
-            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
+            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent, $source);
         }
 
         // Nothing indexed for this workspace: skip Workers AI so a no-results
         // search cannot burn seconds on an embedding call (RUB-516).
         if (! $this->vectorIndex->hasIndexedChunks($team->slug)) {
-            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
+            return $this->finishEmpty($team, $query, $actor, $ip, $userAgent, $source);
         }
 
         // Filters that only the Worker's metadata can answer (repo, agent, since,
@@ -94,7 +97,7 @@ final class SearchService
             ));
 
             if ($retrievalIds === []) {
-                return $this->finishEmpty($team, $query, $actor, $ip, $userAgent);
+                return $this->finishEmpty($team, $query, $actor, $ip, $userAgent, $source);
             }
         }
 
@@ -191,6 +194,7 @@ final class SearchService
         );
 
         $this->recordResultsServed($team, $results);
+        $this->captureSearch($team, $query, $actor, $source, count($results));
 
         return $results;
     }
@@ -239,6 +243,7 @@ final class SearchService
         string $actor,
         string $ip,
         string $userAgent,
+        string $source = 'api',
     ): array {
         $this->auditLogger->record(
             AuditEventType::SearchPerformed,
@@ -250,7 +255,28 @@ final class SearchService
             '0 result(s)',
         );
 
+        $this->captureSearch($team, $query, $actor, $source, 0);
+
         return [];
+    }
+
+    private function captureSearch(Team $team, string $query, string $actor, string $source, int $resultCount): void
+    {
+        $user = ctype_digit($actor) ? User::query()->find((int) $actor) : null;
+
+        app(ProductAnalytics::class)->artifactSearched(
+            $user ?? $actor,
+            $team,
+            $source,
+            mb_strlen($query),
+            $resultCount,
+            [
+                'actor_is_bot' => $user?->isBot() ?? false,
+                'mcp_client_name' => $source === 'mcp'
+                    ? (request()->header('MCP-Client-Name') ?: null)
+                    : null,
+            ],
+        );
     }
 
     /**

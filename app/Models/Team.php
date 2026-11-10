@@ -24,6 +24,9 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $slug
  * @property bool $is_personal
+ * @property string|null $heard_about
+ * @property string|null $heard_about_other
+ * @property array<string, string>|null $acquisition
  * @property AuthMode $auth_mode
  * @property CarbonInterface|null $provisioned_at
  * @property string|null $provisioning_failed_step
@@ -198,6 +201,9 @@ class Team extends Model
     {
         return [
             'is_personal' => 'boolean',
+            'heard_about' => 'string',
+            'heard_about_other' => 'string',
+            'acquisition' => 'array',
             'auth_mode' => AuthMode::class,
             'provisioned_at' => 'datetime',
             'plan' => Plan::class,

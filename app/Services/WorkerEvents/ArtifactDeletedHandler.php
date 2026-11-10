@@ -3,6 +3,7 @@
 namespace App\Services\WorkerEvents;
 
 use App\Models\Team;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Collections\CollectionService;
 use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
@@ -13,6 +14,7 @@ final class ArtifactDeletedHandler
     public function __construct(
         private readonly IndexingService $indexer,
         private readonly CollectionService $collections,
+        private readonly ProductAnalytics $analytics,
     ) {}
 
     /** @param array<string, mixed> $event */
@@ -32,5 +34,9 @@ final class ArtifactDeletedHandler
         // Worker deletes (console, retention, etc.) never hit DeleteArtifactTool,
         // so drop collection memberships here too (RUB-515 item 6).
         $this->collections->forgetArtifact($team, $artifactId);
+
+        $this->analytics->artifactDeleted('worker', $team, [
+            'artifact_id' => $artifactId,
+        ]);
     }
 }

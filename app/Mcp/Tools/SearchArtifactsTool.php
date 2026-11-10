@@ -99,6 +99,7 @@ final class SearchArtifactsTool extends Tool
                 actor: McpContext::actor(),
                 ip: ClientIp::for($httpRequest),
                 userAgent: $httpRequest->userAgent() ?? 'mcp',
+                source: 'mcp',
             );
         } catch (CollectionNotFoundException $exception) {
             app(McpTelemetry::class)->record('search_artifacts', 'collection_not_found', $startedAt);

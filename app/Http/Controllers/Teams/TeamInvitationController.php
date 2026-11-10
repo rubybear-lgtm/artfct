@@ -11,6 +11,7 @@ use App\Http\Requests\Teams\RespondToTeamInvitationRequest;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -50,6 +51,10 @@ class TeamInvitationController extends Controller
 
         Notification::route('mail', $invitation->email)
             ->notify(new TeamInvitationNotification($invitation));
+
+        app(ProductAnalytics::class)->inviteSent($request->user(), $team, [
+            'role' => $invitation->role->value,
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation sent.')]);
 

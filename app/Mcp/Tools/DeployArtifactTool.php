@@ -11,6 +11,8 @@ use App\Mcp\Support\McpTelemetry;
 use App\Mcp\Support\McpTimestamp;
 use App\Models\Collection;
 use App\Models\McpConnection;
+use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Billing\BundleTooLargeException;
@@ -446,6 +448,19 @@ final class DeployArtifactTool extends Tool
             // A version publish is audited against the version, so the log
             // records which publish happened rather than only the artifact.
             $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
+        );
+
+        $actorUser = ctype_digit((string) $actor) ? User::query()->find((int) $actor) : null;
+        app(ProductAnalytics::class)->artifactShared(
+            $actorUser ?? (string) $actor,
+            $team,
+            'mcp',
+            [
+                'artifact_id' => $artifactId,
+                'version' => $version,
+                'created' => $wasCreated,
+                'mcp_client_name' => McpContext::httpRequest()->header('MCP-Client-Name'),
+            ],
         );
 
         // Daily quota: new artifacts always count. Version publishes count only

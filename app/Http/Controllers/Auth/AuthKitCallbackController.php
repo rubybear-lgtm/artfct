@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\AuthKit\AuthKitClientContract;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\Identity\IdentityResolver;
@@ -58,6 +59,9 @@ class AuthKitCallbackController extends Controller
 
         if ($wasCreated) {
             event(new Registered($user));
+            app(ProductAnalytics::class)->userSignedUp($user);
+        } else {
+            app(ProductAnalytics::class)->userLoggedIn($user);
         }
 
         Auth::guard('web')->login($user);

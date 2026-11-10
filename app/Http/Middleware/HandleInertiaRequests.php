@@ -91,15 +91,27 @@ class HandleInertiaRequests extends Middleware
                 $team = $request->user()?->currentTeam;
 
                 return $team === null ? null : [
+                    'id' => $team->id,
                     'slug' => $team->slug,
                     'name' => $team->name,
                     'plan' => ($team->plan ?? Plan::Free)->value,
                     'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
+                    'isPersonal' => (bool) $team->is_personal,
                     'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
                     'role' => $request->user()->teamRole($team)?->value,
                     'isAdmin' => $request->user()->isAdminOf($team),
                 ];
             },
+            // Public PostHog browser config only. The key is a project token;
+            // with enabled false the client must stay a no-op.
+            'analytics' => [
+                'enabled' => (bool) config('analytics.enabled')
+                    && is_string(config('analytics.api_key'))
+                    && config('analytics.api_key') !== '',
+                'apiKey' => config('analytics.enabled') ? config('analytics.api_key') : null,
+                'host' => config('analytics.host'),
+                'environment' => config('analytics.environment'),
+            ],
         ];
     }
 }

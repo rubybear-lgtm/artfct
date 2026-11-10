@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\AnalyticsContract;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
@@ -9,6 +10,8 @@ use App\Listeners\CreatePersonalTeam;
 use App\Mail\CloudflareEmailTransport;
 use App\Models\McpConnection;
 use App\Models\User;
+use App\Services\Analytics\FakeAnalytics;
+use App\Services\Analytics\PostHogAnalytics;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
@@ -182,6 +185,12 @@ class AppServiceProvider extends ServiceProvider
             SlackPostContract::class,
             app()->environment('testing') ? FakeSlackPost::class : RealSlackPost::class,
         );
+        // Tests always get the in-memory sink so CI never talks to PostHog.
+        // Outside testing, PostHogAnalytics no-ops when disabled or keyless.
+        $this->app->singleton(
+            AnalyticsContract::class,
+            app()->environment('testing') ? FakeAnalytics::class : PostHogAnalytics::class,
+        );
     }
 
     /**
@@ -190,6 +199,14 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Flush batched PostHog events after the response is sent so capture
+        // never sits on the request critical path.
+        $this->app->terminating(function (): void {
+            if ($this->app->bound(AnalyticsContract::class)) {
+                $this->app->make(AnalyticsContract::class)->flush();
+            }
+        });
 
         // The one staff ability (spec 17). Deliberately not a `Gate::before`
         // hook: that would grant every ability, including the tenant policies,

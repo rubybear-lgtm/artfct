@@ -6,6 +6,8 @@ use App\Enums\AuditEventType;
 use App\Models\McpActivity;
 use App\Models\SearchResultServed;
 use App\Models\Team;
+use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Collections\UsageEventLogger;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Support\Carbon;
@@ -35,6 +37,7 @@ final class ArtifactViewedHandler
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly UsageEventLogger $usage,
+        private readonly ProductAnalytics $analytics,
     ) {}
 
     /**
@@ -65,6 +68,13 @@ final class ArtifactViewedHandler
             "artifact:{$artifactId}",
             'worker',
             'worker-event',
+        );
+
+        $viewer = $viewerUserId !== null ? User::query()->find($viewerUserId) : null;
+        $this->analytics->artifactViewed(
+            $viewer ?? $actor,
+            $team,
+            ['artifact_id' => $artifactId],
         );
 
         if ($viewerUserId !== null && $this->wasRetrievedViaMcp($team->id, $artifactId, $viewerUserId, $occurredAt)) {

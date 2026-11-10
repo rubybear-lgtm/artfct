@@ -150,7 +150,22 @@ export default function TeamEdit({
 }: Props) {
     const inviteForm = useForm({ email: '', role: 'member' });
     const renameForm = useForm({ name: team.name });
-    const upgradeForm = useForm({ name: '' });
+    const upgradeForm = useForm({
+        name: '',
+        heard_about: '',
+        heard_about_other: '',
+    });
+    const heardAboutOptions = [
+        { value: 'linkedin', label: 'LinkedIn' },
+        { value: 'x', label: 'X (Twitter)' },
+        { value: 'search_engine', label: 'Search engine' },
+        { value: 'friend_or_colleague', label: 'Friend or colleague' },
+        {
+            value: 'ai_assistant',
+            label: 'AI assistant / bot marketplace (Grok, Cursor, ChatGPT, Claude)',
+        },
+        { value: 'other', label: 'Other' },
+    ] as const;
     const sharingForm = useForm({
         name: team.name,
         public_sharing_allowed: team.publicSharingAllowed,
@@ -316,30 +331,87 @@ export default function TeamEdit({
                                         }),
                                     );
                                 }}
-                                className="flex flex-wrap items-end gap-3"
+                                className="flex flex-col gap-4"
                             >
-                                <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-                                    <Label htmlFor="upgrade-name">
-                                        Team name
+                                <div className="flex flex-wrap items-end gap-3">
+                                    <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                                        <Label htmlFor="upgrade-name">
+                                            Team name
+                                        </Label>
+                                        <Input
+                                            id="upgrade-name"
+                                            name="name"
+                                            value={upgradeForm.data.name}
+                                            onChange={(e) =>
+                                                upgradeForm.setData(
+                                                    'name',
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <Button
+                                        type="submit"
+                                        disabled={upgradeForm.processing}
+                                    >
+                                        Create team
+                                    </Button>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="heard-about">
+                                        How did you hear about Artfct?
+                                        <span className="ml-1 font-normal text-muted-foreground">
+                                            (optional)
+                                        </span>
                                     </Label>
-                                    <Input
-                                        id="upgrade-name"
-                                        name="name"
-                                        value={upgradeForm.data.name}
+                                    <select
+                                        id="heard-about"
+                                        name="heard_about"
+                                        className="border-input h-9 rounded-md border bg-background px-3 text-sm"
+                                        value={upgradeForm.data.heard_about}
                                         onChange={(e) =>
                                             upgradeForm.setData(
-                                                'name',
+                                                'heard_about',
                                                 e.target.value,
                                             )
                                         }
-                                    />
+                                    >
+                                        <option value="">Skip</option>
+                                        {heardAboutOptions.map((option) => (
+                                            <option
+                                                key={option.value}
+                                                value={option.value}
+                                            >
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <Button
-                                    type="submit"
-                                    disabled={upgradeForm.processing}
-                                >
-                                    Create team
-                                </Button>
+                                {upgradeForm.data.heard_about === 'other' && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label htmlFor="heard-about-other">
+                                            Tell us more
+                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                (optional)
+                                            </span>
+                                        </Label>
+                                        <Input
+                                            id="heard-about-other"
+                                            name="heard_about_other"
+                                            maxLength={120}
+                                            value={
+                                                upgradeForm.data
+                                                    .heard_about_other
+                                            }
+                                            onChange={(e) =>
+                                                upgradeForm.setData(
+                                                    'heard_about_other',
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                )}
                             </form>
                             {upgradeForm.errors.name && (
                                 <p
@@ -347,6 +419,14 @@ export default function TeamEdit({
                                     className="mt-2 text-sm text-destructive"
                                 >
                                     {upgradeForm.errors.name}
+                                </p>
+                            )}
+                            {upgradeForm.errors.heard_about && (
+                                <p
+                                    role="alert"
+                                    className="mt-2 text-sm text-destructive"
+                                >
+                                    {upgradeForm.errors.heard_about}
                                 </p>
                             )}
                         </CardContent>

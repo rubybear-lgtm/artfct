@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CacheControl;
+use App\Http\Middleware\CaptureFirstTouchAttribution;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\EnsureTermsAccepted;
 use App\Http\Middleware\EnsureUserIsActive;
@@ -54,6 +55,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(prepend: [NegotiateMarkdown::class]);
 
         $middleware->web(append: [
+            CaptureFirstTouchAttribution::class,
             HandleInertiaRequests::class,
             CacheControl::class,
             NoIndexOutsideProduction::class,

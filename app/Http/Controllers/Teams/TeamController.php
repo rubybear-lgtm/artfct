@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Teams;
 use App\Actions\Teams\CreateTeam;
 use App\Actions\Teams\UpgradePersonalTeam;
 use App\Enums\AuditEventType;
+use App\Enums\HeardAboutSource;
 use App\Enums\McpScope;
 use App\Enums\OrgTokenKind;
 use App\Enums\Plan;
@@ -17,6 +18,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Rules\TeamName;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
 use App\Services\Sharing\OrgSettingsWriter;
@@ -25,6 +27,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,7 +48,7 @@ class TeamController extends Controller
     /**
      * Store a newly created team.
      */
-    public function store(SaveTeamRequest $request, CreateTeam $createTeam, AuditLogger $auditLogger): RedirectResponse
+    public function store(SaveTeamRequest $request, CreateTeam $createTeam, AuditLogger $auditLogger, ProductAnalytics $analytics): RedirectResponse
     {
         $team = $createTeam->handle(
             $request->user(),
@@ -53,7 +56,10 @@ class TeamController extends Controller
             slug: $request->validated('slug'),
         );
 
+        $this->applyHeardAbout($team, $request->validated('heard_about'), $request->validated('heard_about_other'), $analytics);
+
         $auditLogger->recordForRequest($request, AuditEventType::TeamCreated, $team, (string) $request->user()->id, $team->slug);
+        $analytics->teamCreated($request->user(), $team->fresh(), 'web');
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 
@@ -63,7 +69,7 @@ class TeamController extends Controller
     /**
      * Turn a personal team into a team, keeping its artifacts.
      */
-    public function upgrade(Request $request, Team $team, UpgradePersonalTeam $upgradePersonalTeam, AuditLogger $auditLogger): RedirectResponse
+    public function upgrade(Request $request, Team $team, UpgradePersonalTeam $upgradePersonalTeam, AuditLogger $auditLogger, ProductAnalytics $analytics): RedirectResponse
     {
         Gate::authorize('upgrade', $team);
 
@@ -73,15 +79,36 @@ class TeamController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'min:2', 'max:255', new TeamName],
+            'heard_about' => ['nullable', 'string', Rule::in(HeardAboutSource::values())],
+            'heard_about_other' => ['nullable', 'string', 'max:120'],
         ]);
 
         $upgradePersonalTeam->handle($request->user(), $team, $validated['name']);
 
+        $this->applyHeardAbout($team, $validated['heard_about'] ?? null, $validated['heard_about_other'] ?? null, $analytics);
+
         $auditLogger->recordForRequest($request, AuditEventType::TeamCreated, $team, (string) $request->user()->id, $team->slug);
+        $analytics->teamUpgraded($request->user(), $team->fresh());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Your workspace is now a team.')]);
 
         return to_route('teams.billing.show', ['team' => $team->slug]);
+    }
+
+    private function applyHeardAbout(Team $team, ?string $heardAbout, ?string $heardAboutOther, ProductAnalytics $analytics): void
+    {
+        if ($heardAbout === null || $heardAbout === '') {
+            return;
+        }
+
+        $other = $heardAbout === HeardAboutSource::Other->value
+            ? $analytics->sanitizeHeardAboutOther($heardAboutOther)
+            : null;
+
+        $team->forceFill([
+            'heard_about' => $heardAbout,
+            'heard_about_other' => $other,
+        ])->save();
     }
 
     /**
