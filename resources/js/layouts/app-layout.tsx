@@ -26,7 +26,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Toaster } from '@/components/ui/sonner';
 import { useAppTheme } from '@/lib/useAppTheme';
-import { blog, dashboard, docs, home, logout, privacy, terms } from '@/routes';
+import {
+    blog,
+    dashboard,
+    docs,
+    home,
+    logout,
+    privacy,
+    support,
+    terms,
+} from '@/routes';
 import accountRoutes from '@/routes/account';
 import consoleRoutes from '@/routes/console';
 import teamRoutes from '@/routes/teams';
@@ -787,6 +796,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         >
                             GitHub
                         </a>
+                        <Link
+                            className="transition-colors hover:text-foreground"
+                            href={support.url()}
+                        >
+                            Support
+                        </Link>
                         <Link
                             className="transition-colors hover:text-foreground"
                             href={terms.url()}

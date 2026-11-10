@@ -26,7 +26,7 @@ test('app, auth, site and legal pages server-render app-theme on <html>', functi
     expect(appThemeHtmlTag($response->getContent()))
         ->toStartWith('<html lang="en"')
         ->toContain('class="app-theme"');
-})->with(['/docs', '/terms', '/privacy', '/login']);
+})->with(['/docs', '/terms', '/privacy', '/support', '/login']);
 
 test('the free tool and landing page keep their own palette', function (string $path) {
     $response = $this->get($path);

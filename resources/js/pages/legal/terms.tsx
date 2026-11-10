@@ -57,7 +57,8 @@ export default function Terms({ version }: { version: string }) {
             <Section title="Changes and contact">
                 <p>
                     We will ask you to accept updated terms when they change
-                    materially. Contact address: to be set before public launch.
+                    materially. For legal requests, email{' '}
+                    <a href="mailto:privacy@artfct.dev">privacy@artfct.dev</a>.
                 </p>
             </Section>
         </LegalPage>

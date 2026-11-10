@@ -32,7 +32,7 @@ test('marketing pages stay indexable in production', function (string $path) {
     app()->detectEnvironment(fn (): string => 'production');
 
     test()->get($path)->assertHeaderMissing('X-Robots-Tag');
-})->with(['/', '/free', '/docs', '/blog', '/connect', '/terms', '/privacy']);
+})->with(['/', '/free', '/docs', '/blog', '/connect', '/terms', '/privacy', '/support']);
 
 test('production robots keeps marketing open and private paths closed', function () {
     app()->detectEnvironment(fn (): string => 'production');
