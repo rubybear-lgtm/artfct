@@ -49,15 +49,18 @@ final class PostHogAnalytics implements AnalyticsContract
         }
 
         try {
-            $props = $properties;
+            // posthog-php copies `properties` onto top-level `$set`. `$set_once`
+            // must be a sibling of `$set`, not nested inside `properties`, or the
+            // SDK folds it into `$set['$set_once']` and first-touch never sticks.
+            $payload = [
+                'distinctId' => $distinctId,
+                'properties' => $properties,
+            ];
             if ($setOnce !== []) {
-                $props['$set_once'] = $setOnce;
+                $payload['$set_once'] = $setOnce;
             }
 
-            PostHog::identify([
-                'distinctId' => $distinctId,
-                'properties' => $props,
-            ]);
+            PostHog::identify($payload);
         } catch (Throwable $exception) {
             Log::warning('PostHog identify failed.', [
                 'exception' => $exception->getMessage(),
@@ -120,11 +123,17 @@ final class PostHogAnalytics implements AnalyticsContract
         }
 
         try {
+            $clientOptions = config('analytics.client_options', []);
+            $initOptions = [
+                'host' => (string) config('analytics.host', 'https://us.i.posthog.com'),
+            ];
+            if (is_array($clientOptions)) {
+                $initOptions = [...$initOptions, ...$clientOptions];
+            }
+
             PostHog::init(
                 (string) config('analytics.api_key'),
-                [
-                    'host' => (string) config('analytics.host', 'https://us.i.posthog.com'),
-                ],
+                $initOptions,
             );
             $this->initialized = true;
 

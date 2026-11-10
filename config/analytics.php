@@ -19,6 +19,11 @@ return [
     'host' => env('POSTHOG_HOST', 'https://us.i.posthog.com'),
 
     /*
+    | Extra options merged into PostHog::init (tests may set consumer/before_send).
+    */
+    'client_options' => [],
+
+    /*
     | Tag on every event. Prefer an explicit POSTHOG_ENVIRONMENT; otherwise
     | derive from APP_ENV (production/staging/local).
     */

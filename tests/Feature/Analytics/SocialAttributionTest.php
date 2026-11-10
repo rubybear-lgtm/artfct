@@ -79,7 +79,10 @@ test('S2 user_signed_up uses $set_once initials and login does not overwrite', f
         ->and($signup['properties']['initial_landing_path'])->toBe('/docs');
 
     $identifies = array_values(array_filter($analytics->records, fn (array $r): bool => $r['type'] === 'identify'));
-    expect($identifies[0]['set_once']['initial_utm_source'])->toBe('x');
+    expect($identifies[0]['set_once']['initial_utm_source'])->toBe('x')
+        // FakeAnalytics keeps set_once separate; PostHogIdentifySetOnceTest
+        // asserts the real posthog-php wire shape ($set_once sibling of $set).
+        ->and($identifies[0]['properties'])->not->toHaveKey('$set_once');
 
     $analytics->reset();
     auth()->logout();
