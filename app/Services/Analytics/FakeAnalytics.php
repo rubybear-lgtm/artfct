@@ -4,7 +4,6 @@ namespace App\Services\Analytics;
 
 use App\Contracts\AnalyticsContract;
 use RuntimeException;
-use Throwable;
 
 /**
  * In-memory analytics sink for tests. Never talks to PostHog.
@@ -32,57 +31,46 @@ final class FakeAnalytics implements AnalyticsContract
 
     public function capture(string $distinctId, string $event, array $properties = [], array $groups = []): void
     {
-        try {
-            if ($this->throwOnCapture) {
-                throw new RuntimeException('Fake PostHog capture failure.');
-            }
-
-            $this->records[] = [
-                'type' => 'capture',
-                'distinct_id' => $distinctId,
-                'event' => $event,
-                'properties' => $properties,
-                'groups' => $groups,
-            ];
-        } catch (Throwable $exception) {
-            report($exception);
+        if ($this->throwOnCapture) {
+            // Rethrow so ProductAnalytics::safe() (or call-site catch) is exercised.
+            throw new RuntimeException('Fake PostHog capture failure.');
         }
+
+        $this->records[] = [
+            'type' => 'capture',
+            'distinct_id' => $distinctId,
+            'event' => $event,
+            'properties' => $properties,
+            'groups' => $groups,
+        ];
     }
 
     public function identify(string $distinctId, array $properties = [], array $setOnce = []): void
     {
-        try {
-            if ($this->throwOnCapture) {
-                throw new RuntimeException('Fake PostHog identify failure.');
-            }
-
-            $this->records[] = [
-                'type' => 'identify',
-                'distinct_id' => $distinctId,
-                'properties' => $properties,
-                'set_once' => $setOnce,
-            ];
-        } catch (Throwable $exception) {
-            report($exception);
+        if ($this->throwOnCapture) {
+            throw new RuntimeException('Fake PostHog identify failure.');
         }
+
+        $this->records[] = [
+            'type' => 'identify',
+            'distinct_id' => $distinctId,
+            'properties' => $properties,
+            'set_once' => $setOnce,
+        ];
     }
 
     public function groupIdentify(string $groupType, string $groupKey, array $properties = []): void
     {
-        try {
-            if ($this->throwOnCapture) {
-                throw new RuntimeException('Fake PostHog groupIdentify failure.');
-            }
-
-            $this->records[] = [
-                'type' => 'group_identify',
-                'group_type' => $groupType,
-                'group_key' => $groupKey,
-                'properties' => $properties,
-            ];
-        } catch (Throwable $exception) {
-            report($exception);
+        if ($this->throwOnCapture) {
+            throw new RuntimeException('Fake PostHog groupIdentify failure.');
         }
+
+        $this->records[] = [
+            'type' => 'group_identify',
+            'group_type' => $groupType,
+            'group_key' => $groupKey,
+            'properties' => $properties,
+        ];
     }
 
     public function flush(): void

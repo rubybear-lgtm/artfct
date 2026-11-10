@@ -440,16 +440,20 @@ final class AuthorizationServerController extends Controller
             "token:{$orgToken->id}",
         );
 
-        app(ProductAnalytics::class)->botConnected(
-            $actor,
-            $team,
-            'oauth',
-            [
-                'token_kind' => $tokenKind->value,
-                'oauth_client_id' => $validated['client_id'],
-                'actor_is_bot' => $actor->isBot(),
-            ],
-        );
+        // Human MCP OAuth (OrgTokenKind::Api) is not a bot connect — only
+        // Agent/bot installs emit bot_connected (matches OrgTokenController).
+        if ($tokenKind === OrgTokenKind::Agent) {
+            app(ProductAnalytics::class)->botConnected(
+                $actor,
+                $team,
+                'oauth',
+                [
+                    'token_kind' => $tokenKind->value,
+                    'oauth_client_id' => $validated['client_id'],
+                    'actor_is_bot' => $actor->isBot(),
+                ],
+            );
+        }
 
         return response()->json([
             'access_token' => $minted['token'],

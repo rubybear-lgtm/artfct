@@ -66,15 +66,15 @@ final class ProductAnalytics
 
     public function userSignedUp(User $user): void
     {
-        $initial = $this->firstTouch->asInitialProperties();
-        if ($user->acquisition === null && $initial !== []) {
-            $user->forceFill(['acquisition' => $initial])->save();
-        }
+        $this->safe(function () use ($user): void {
+            $initial = $this->firstTouch->asInitialProperties();
+            if ($user->acquisition === null && $initial !== []) {
+                $user->forceFill(['acquisition' => $initial])->save();
+            }
 
-        $initial = is_array($user->acquisition) ? $user->acquisition : $initial;
-        $isInternal = $this->isInternalUser($user);
+            $initial = is_array($user->acquisition) ? $user->acquisition : $initial;
+            $isInternal = $this->isInternalUser($user);
 
-        $this->safe(function () use ($user, $initial, $isInternal): void {
             $this->analytics->identify(
                 (string) $user->id,
                 [
@@ -118,25 +118,25 @@ final class ProductAnalytics
 
     public function teamCreated(User $user, Team $team, string $source = 'web'): void
     {
-        $initial = is_array($user->acquisition) ? $user->acquisition : [];
-        if ($initial === []) {
-            $initial = $this->firstTouch->asInitialProperties();
-        }
+        $this->safe(function () use ($user, $team, $source): void {
+            $initial = is_array($user->acquisition) ? $user->acquisition : [];
+            if ($initial === []) {
+                $initial = $this->firstTouch->asInitialProperties();
+            }
 
-        if ($team->acquisition === null && $initial !== []) {
-            $team->forceFill(['acquisition' => $initial])->save();
-        }
+            if ($team->acquisition === null && $initial !== []) {
+                $team->forceFill(['acquisition' => $initial])->save();
+            }
 
-        $heard = $this->heardAboutProps($team);
-        $groupProps = [
-            ...$this->teamProps($team),
-            ...$initial,
-            ...$heard,
-            'name' => $team->name,
-            'plan' => ($team->plan ?? Plan::Free)->value,
-        ];
+            $heard = $this->heardAboutProps($team);
+            $groupProps = [
+                ...$this->teamProps($team),
+                ...$initial,
+                ...$heard,
+                'name' => $team->name,
+                'plan' => ($team->plan ?? Plan::Free)->value,
+            ];
 
-        $this->safe(function () use ($user, $team, $source, $initial, $heard, $groupProps): void {
             $this->analytics->groupIdentify('team', $team->slug, $groupProps);
             $this->captureTeamEvent(self::TEAM_CREATED, $user, $team, $source, [
                 ...$initial,
@@ -147,21 +147,21 @@ final class ProductAnalytics
 
     public function teamUpgraded(User $user, Team $team): void
     {
-        $initial = is_array($user->acquisition) ? $user->acquisition : [];
-        if ($team->acquisition === null && $initial !== []) {
-            $team->forceFill(['acquisition' => $initial])->save();
-        }
+        $this->safe(function () use ($user, $team): void {
+            $initial = is_array($user->acquisition) ? $user->acquisition : [];
+            if ($team->acquisition === null && $initial !== []) {
+                $team->forceFill(['acquisition' => $initial])->save();
+            }
 
-        $heard = $this->heardAboutProps($team);
-        $groupProps = [
-            ...$this->teamProps($team),
-            ...$initial,
-            ...$heard,
-            'name' => $team->name,
-            'plan' => ($team->plan ?? Plan::Free)->value,
-        ];
+            $heard = $this->heardAboutProps($team);
+            $groupProps = [
+                ...$this->teamProps($team),
+                ...$initial,
+                ...$heard,
+                'name' => $team->name,
+                'plan' => ($team->plan ?? Plan::Free)->value,
+            ];
 
-        $this->safe(function () use ($user, $team, $initial, $heard, $groupProps): void {
             $this->analytics->groupIdentify('team', $team->slug, $groupProps);
             $this->captureTeamEvent(self::TEAM_UPGRADED, $user, $team, 'web', [
                 ...$initial,

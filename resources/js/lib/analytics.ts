@@ -27,34 +27,41 @@ let initialized = false;
  *
  * Cookieless/memory persistence for anonymous visitors (no consent banner).
  * Session replay off; autocapture conservative.
+ *
+ * Init runs once; identify/group update on later Inertia navigations so team
+ * switches keep the PostHog group in sync.
  */
 export function initAnalytics(
     config: AnalyticsConfig | undefined,
     user?: AnalyticsUser | null,
     team?: AnalyticsTeam,
 ): void {
-    if (initialized || !config?.enabled || !config.apiKey) {
+    if (!config?.enabled || !config.apiKey) {
         return;
     }
 
-    posthog.init(config.apiKey, {
-        api_host: config.host || 'https://us.i.posthog.com',
-        // Memory persistence avoids a tracking cookie for anonymous visitors.
-        persistence: 'memory',
-        capture_pageview: true,
-        capture_pageleave: true,
-        autocapture: {
-            dom_event_allowlist: ['click'],
-            url_allowlist: [window.location.origin],
-            element_allowlist: ['button', 'a'],
-        },
-        disable_session_recording: true,
-        person_profiles: 'identified_only',
-    });
+    if (!initialized) {
+        posthog.init(config.apiKey, {
+            api_host: config.host || 'https://us.i.posthog.com',
+            // Memory persistence avoids a tracking cookie for anonymous visitors.
+            persistence: 'memory',
+            capture_pageview: true,
+            capture_pageleave: true,
+            autocapture: {
+                dom_event_allowlist: ['click'],
+                url_allowlist: [window.location.origin],
+                element_allowlist: ['button', 'a'],
+            },
+            disable_session_recording: true,
+            person_profiles: 'identified_only',
+        });
 
-    posthog.register({
-        environment: config.environment || 'local',
-    });
+        posthog.register({
+            environment: config.environment || 'local',
+        });
+
+        initialized = true;
+    }
 
     if (user?.id != null) {
         posthog.identify(String(user.id));
@@ -69,8 +76,6 @@ export function initAnalytics(
             team_slug: team.slug,
         });
     }
-
-    initialized = true;
 }
 
 export function analyticsInitOptionsSnapshot(): Record<string, unknown> {

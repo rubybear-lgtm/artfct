@@ -141,6 +141,43 @@ test('C4 bot_connected fires when creating an agent org token', function () {
         ->and($events[0]['properties']['source'])->toBe('web');
 });
 
+test('C4 human OAuth code exchange does not fire bot_connected', function () {
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create(['slug' => 'human-oauth-analytics']);
+    $user = User::factory()->create(['is_bot' => false]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($team);
+
+    $verifier = str_repeat('v', 64);
+    $parameters = oauthParameters(oauthChallenge($verifier));
+
+    test()->actingAs($user)->get('/oauth/authorize?'.http_build_query($parameters))->assertOk();
+
+    $authorization = test()->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $team->slug,
+    ]);
+    $authorization->assertRedirect();
+    parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+    expect($query['code'] ?? null)->toBeString();
+
+    /** @var FakeAnalytics $analytics */
+    $analytics = app(AnalyticsContract::class);
+    $analytics->reset();
+
+    test()->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ])->assertOk();
+
+    expect($analytics->eventsNamed(ProductAnalytics::BOT_CONNECTED))->toBeEmpty();
+});
+
 test('C5 artifact_viewed and artifact_deleted fire on worker-events path', function () {
     config(['services.worker_events.secret' => 'test-secret']);
 

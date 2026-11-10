@@ -81,3 +81,21 @@ test('D3 browser init defaults keep cookieless memory persistence and replay off
         ->and($source)->toContain('autocapture:')
         ->and($source)->toContain("dom_event_allowlist: ['click']");
 });
+
+test('D1 identify and team group update after first init (Inertia team switch)', function () {
+    $source = File::get(base_path('resources/js/lib/analytics.ts'));
+
+    // Init is gated once; identify/group must run on later prop changes.
+    expect($source)->toContain('if (!initialized)')
+        ->and($source)->toContain('initialized = true')
+        ->and($source)->toContain('posthog.identify(String(user.id))')
+        ->and($source)->toContain("posthog.group('team', team.slug");
+
+    $initBlockEnd = strpos($source, 'initialized = true');
+    $identifyPos = strpos($source, 'posthog.identify(String(user.id))');
+    $groupPos = strpos($source, "posthog.group('team', team.slug");
+
+    expect($initBlockEnd)->not->toBeFalse()
+        ->and($identifyPos)->toBeGreaterThan($initBlockEnd)
+        ->and($groupPos)->toBeGreaterThan($initBlockEnd);
+});

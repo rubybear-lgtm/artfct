@@ -4,11 +4,15 @@ use App\Contracts\AnalyticsContract;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\TeamRole;
 use App\Models\Team;
+use App\Models\User;
 use App\Services\Analytics\FakeAnalytics;
 use App\Services\Analytics\PostHogAnalytics;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\AuthKit\AuthKitProfile;
+use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\Search\SearchService;
+use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     config([
@@ -25,6 +29,7 @@ beforeEach(function () {
 });
 
 test('A1 PostHogAnalytics is a no-op without a key and does not throw', function () {
+    Http::fake();
     config(['analytics.enabled' => false, 'analytics.api_key' => null]);
 
     $sink = new PostHogAnalytics;
@@ -34,9 +39,12 @@ test('A1 PostHogAnalytics is a no-op without a key and does not throw', function
     $sink->identify('1', ['is_internal' => false], ['initial_utm_source' => 'x']);
     $sink->groupIdentify('team', 'acme', ['plan' => 'free']);
     $sink->flush();
+
+    Http::assertNothingSent();
 });
 
-test('A1 real search path succeeds when analytics is disabled', function () {
+test('A1 real search path succeeds when analytics is disabled and sends no PostHog HTTP', function () {
+    Http::fake();
     config(['analytics.enabled' => false, 'analytics.api_key' => null]);
     app()->instance(AnalyticsContract::class, new PostHogAnalytics);
 
@@ -53,6 +61,27 @@ test('A1 real search path succeeds when analytics is disabled', function () {
     );
 
     expect($results)->toBeArray();
+    Http::assertNothingSent();
+});
+
+test('A1 enable=false with key present still sends no PostHog HTTP on search', function () {
+    Http::fake();
+    config(['analytics.enabled' => false, 'analytics.api_key' => 'phc_present_but_disabled']);
+    app()->instance(AnalyticsContract::class, new PostHogAnalytics);
+
+    $team = Team::factory()->create(['slug' => 'a1-disabled-key']);
+    $user = memberOfTeam($team, TeamRole::Member);
+
+    expect(app(SearchService::class)->search(
+        $team,
+        'hello',
+        [],
+        5,
+        actor: (string) $user->id,
+        source: 'web',
+    ))->toBeArray();
+
+    Http::assertNothingSent();
 });
 
 test('A2 capture failure does not break a real search request', function () {
@@ -140,6 +169,31 @@ test('A5 privacy: search sends query_length not query, invites omit email', func
     expect($invite)->not->toHaveKey('email')
         ->and($invite)->not->toHaveKey('invitee_email')
         ->and($invite)->toHaveKey('role', 'member');
+});
+
+test('A2 AuthKit signup still succeeds when analytics capture throws', function () {
+    /** @var FakeAnalytics $analytics */
+    $analytics = app(AnalyticsContract::class);
+    $analytics->throwOnCapture = true;
+
+    $code = FakeAuthKitClient::codeFor(new AuthKitProfile(
+        'ext-a2-signup',
+        'MagicAuth',
+        'a2-signup@example.com',
+        true,
+        'A2 User',
+        null,
+        null,
+    ));
+
+    config(['services.authkit.dev_login_enabled' => true]);
+
+    test()->withSession([
+        'utm_source' => 'linkedin',
+        'utm_medium' => 'social',
+    ])->get(route('authenticate', ['code' => $code]))->assertRedirect();
+
+    expect(User::query()->where('email', 'a2-signup@example.com')->exists())->toBeTrue();
 });
 
 test('A2 web sharing update still succeeds when analytics throws', function () {
