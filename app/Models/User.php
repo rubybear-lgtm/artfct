@@ -21,8 +21,6 @@ use Illuminate\Support\Carbon;
  * @property bool $is_bot
  * @property Carbon|string|null $staff_at
  * @property Carbon|null $case_manager_at
- */
-/**
  * @property array<string, string>|null $acquisition
  */
 #[Fillable(['name', 'email', 'password', 'avatar', 'email_verified_at', 'current_team_id', 'is_bot'])]

@@ -12,7 +12,18 @@ use Throwable;
  */
 final class FakeAnalytics implements AnalyticsContract
 {
-    /** @var list<array{type: string, distinct_id?: string, event?: string, properties: array<string, mixed>, groups?: array<string, mixed>, group_type?: string, group_key?: string, set_once?: array<string, mixed>}> */
+    /**
+     * @var list<array{
+     *     type: 'capture'|'identify'|'group_identify',
+     *     distinct_id?: string,
+     *     event?: string,
+     *     properties: array<string, mixed>,
+     *     groups?: array<string, mixed>,
+     *     group_type?: string,
+     *     group_key?: string,
+     *     set_once?: array<string, mixed>
+     * }>
+     */
     public array $records = [];
 
     public bool $throwOnCapture = false;
@@ -85,13 +96,22 @@ final class FakeAnalytics implements AnalyticsContract
     }
 
     /**
-     * @return list<array{type: string, distinct_id?: string, event?: string, properties: array<string, mixed>, groups?: array<string, mixed>}>
+     * @return list<array{
+     *     type: 'capture'|'identify'|'group_identify',
+     *     distinct_id?: string,
+     *     event?: string,
+     *     properties: array<string, mixed>,
+     *     groups?: array<string, mixed>,
+     *     group_type?: string,
+     *     group_key?: string,
+     *     set_once?: array<string, mixed>
+     * }>
      */
     public function eventsNamed(string $event): array
     {
         return array_values(array_filter(
             $this->records,
-            fn (array $record): bool => ($record['type'] ?? null) === 'capture' && ($record['event'] ?? null) === $event,
+            fn (array $record): bool => $record['type'] === 'capture' && ($record['event'] ?? null) === $event,
         ));
     }
 

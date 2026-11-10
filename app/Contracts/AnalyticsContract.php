@@ -10,7 +10,7 @@ interface AnalyticsContract
 {
     /**
      * @param  array<string, mixed>  $properties
-     * @param  array<string, array<string, mixed>>  $groups  e.g. ['team' => ['id' => 'acme', ...]] unused on free plan but still sent
+     * @param  array<string, string|array<string, mixed>>  $groups  group type => group key (or props bag with id/slug)
      */
     public function capture(string $distinctId, string $event, array $properties = [], array $groups = []): void;
 

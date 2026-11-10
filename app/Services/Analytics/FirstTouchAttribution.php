@@ -67,13 +67,21 @@ final class FirstTouchAttribution
             'utm_campaign' => $utmCampaign,
             'utm_content' => $utmContent,
             'referrer' => $referrer,
-            'landing_path' => $landingPath === '' ? '/' : $landingPath,
+            'landing_path' => $landingPath,
         ]);
     }
 
     /**
      * Person / team property bag with initial_* keys (nulls omitted).
      *
+     * @param  array{
+     *     utm_source?: ?string,
+     *     utm_medium?: ?string,
+     *     utm_campaign?: ?string,
+     *     utm_content?: ?string,
+     *     referrer?: ?string,
+     *     landing_path?: ?string
+     * }|null  $touch
      * @return array<string, string>
      */
     public function asInitialProperties(?array $touch = null): array
@@ -94,7 +102,7 @@ final class FirstTouchAttribution
 
         return array_filter(
             $map,
-            static fn (?string $value): bool => is_string($value) && $value !== '',
+            static fn (mixed $value): bool => is_string($value) && trim($value) !== '',
         );
     }
 

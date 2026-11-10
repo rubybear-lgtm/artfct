@@ -294,9 +294,8 @@ final class ProductAnalytics
                 'plan' => ($team->plan ?? Plan::Free)->value,
                 'environment' => $this->environment(),
                 'source' => $source,
-                'actor_is_bot' => $actorIsBot,
-                'is_internal' => $isInternal,
                 ...$properties,
+                // Force after caller props so privacy/identity cannot be overridden.
                 'actor_is_bot' => $actorIsBot,
                 'is_internal' => $isInternal,
             ];

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\AcceptTeamInvitation;
+use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\CreateTeamInvitationRequest;
@@ -11,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use App\Services\Analytics\ProductAnalytics;
+use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
