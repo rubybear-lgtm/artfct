@@ -49,6 +49,7 @@ final class SlashCommandService
             limit: 10,
             actor: (string) $identity->user_id,
             userAgent: 'slack-slash-command',
+            source: 'slack',
         );
 
         return SlashCommandResult::results($results);

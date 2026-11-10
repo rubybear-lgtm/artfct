@@ -8,17 +8,24 @@ export default function Privacy({ version }: { version: string }) {
                     Your name and email address from your sign-in provider; the
                     files you upload and their titles, descriptions and
                     provenance (agent, repository, commit); your team, role and
-                    invitation records; usage counts for quotas and billing; and
-                    an audit log of actions in your team, including IP address
-                    and browser.
+                    invitation records; usage counts for quotas and billing; an
+                    audit log of actions in your team, including IP address and
+                    browser; and product analytics events (for example sign-in,
+                    team creation, artifact share and search) with properties
+                    such as team id/slug, plan, whether the actor is a bot,
+                    acquisition source tags (UTM and referrer on first visit),
+                    and optional &quot;how did you hear about us&quot; answers.
+                    We do not send artifact file contents, raw search query
+                    text, or invitee email addresses to our analytics processor.
                 </p>
             </Section>
             <Section title="Why we use it">
                 <p>
                     To sign you in, serve and search your artifacts, enforce
-                    plan limits, bill your team, keep the service secure and
-                    show your team what happened in it. We do not sell your data
-                    or use your files to train models.
+                    plan limits, bill your team, keep the service secure, show
+                    your team what happened in it, and understand product usage
+                    and growth (for example weekly active teams). We do not sell
+                    your data or use your files to train models.
                 </p>
             </Section>
             <Section title="What our staff can see">
@@ -49,9 +56,11 @@ export default function Privacy({ version }: { version: string }) {
             <Section title="Who processes it for us">
                 <p>
                     WorkOS (sign-in), Stripe (payments), Cloudflare (file
-                    storage, delivery and email) and Railway (application
-                    hosting). Each handles data only to provide its part of the
-                    service.
+                    storage, delivery and email), Railway (application hosting)
+                    and PostHog (product analytics, United States cloud). Each
+                    handles data only to provide its part of the service.
+                    Browser analytics uses cookieless/memory persistence for
+                    anonymous visitors; session replay is off.
                 </p>
             </Section>
             <Section title="How long we keep it">

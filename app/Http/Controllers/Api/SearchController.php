@@ -51,6 +51,7 @@ class SearchController extends Controller
                 actor: (string) ($claims['user_id'] ?? 'unknown'),
                 ip: ClientIp::for($request),
                 userAgent: $request->userAgent() ?? 'unknown',
+                source: 'api',
             );
         } catch (Throwable $exception) {
             report($exception);

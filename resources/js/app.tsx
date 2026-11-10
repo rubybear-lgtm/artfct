@@ -1,5 +1,8 @@
 import { createInertiaApp, Head, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+
+import { initAnalytics } from '@/lib/analytics';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -7,6 +10,27 @@ interface PageMeta {
     title?: string;
     description?: string;
 }
+
+interface AnalyticsShared {
+    enabled: boolean;
+    apiKey: string | null;
+    host: string | null;
+    environment: string | null;
+}
+
+type AnalyticsPageProps = {
+    meta?: PageMeta;
+    analytics?: AnalyticsShared;
+    auth?: { user?: { id: number | string } | null };
+    currentTeam?: {
+        id?: number;
+        slug: string;
+        name?: string;
+        plan?: string;
+        isPersonal?: boolean;
+    } | null;
+    [key: string]: unknown;
+};
 
 /**
  * Renders the server-provided meta as the default head, so server-rendered
@@ -51,7 +75,12 @@ function DefaultMeta({ meta }: { meta?: PageMeta }) {
 }
 
 function MetaLayout({ children }: { children: ReactNode }) {
-    const { meta } = usePage<{ meta?: PageMeta }>().props;
+    const { meta, analytics, auth, currentTeam } =
+        usePage<AnalyticsPageProps>().props;
+
+    useEffect(() => {
+        initAnalytics(analytics, auth?.user, currentTeam ?? null);
+    }, [analytics, auth?.user, currentTeam]);
 
     return (
         <>

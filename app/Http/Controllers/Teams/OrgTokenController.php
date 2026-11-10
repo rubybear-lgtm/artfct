@@ -12,6 +12,7 @@ use App\Models\McpConnection;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevoker;
 use App\Services\Governance\AuditLogger;
@@ -150,6 +151,18 @@ class OrgTokenController extends Controller
         });
 
         $auditLogger->recordForRequest($request, AuditEventType::TokenCreated, $team, (string) $request->user()->id, "token:{$orgToken->id}");
+
+        if ($kind === OrgTokenKind::Agent) {
+            app(ProductAnalytics::class)->botConnected(
+                $tokenUser,
+                $team,
+                'web',
+                [
+                    'token_kind' => $kind->value,
+                    'bot_user_id' => $tokenUser->id,
+                ],
+            );
+        }
 
         return response()->json([
             'id' => $orgToken->id,

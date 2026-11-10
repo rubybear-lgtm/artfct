@@ -9,14 +9,23 @@ export type SharedTeam = {
 };
 
 export type CurrentTeam = {
+    id?: number;
     slug: string;
     name: string;
     plan: 'free' | 'team' | 'enterprise';
     paymentStatus: 'active' | 'past_due';
+    isPersonal?: boolean;
     isOwner: boolean;
     role: 'admin' | 'member' | 'viewer' | null;
     isAdmin: boolean;
 } | null;
+
+export type AnalyticsShared = {
+    enabled: boolean;
+    apiKey: string | null;
+    host: string | null;
+    environment: string | null;
+};
 
 export type QuotaDimension = {
     used: number;
@@ -39,4 +48,5 @@ export type SharedProps = {
     teams: SharedTeam[];
     currentTeam: CurrentTeam;
     quota: Quota;
+    analytics?: AnalyticsShared;
 };

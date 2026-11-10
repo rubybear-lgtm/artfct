@@ -9,6 +9,7 @@ use App\Enums\AuditEventType;
 use App\Models\ArtifactComment;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactViewLink;
@@ -397,6 +398,19 @@ final class ArtifactViewerController extends Controller
             'forbidden' => ['error', 'Only the owner or a team admin can change sharing.'],
             'public_disabled' => ['error', 'Your team has turned off public links.'],
         };
+
+        if ($result['status'] === 'updated') {
+            app(ProductAnalytics::class)->artifactShared(
+                $user,
+                $team,
+                'web',
+                [
+                    'artifact_id' => $artifactId,
+                    'sharing' => $validated['sharing'] ?? null,
+                    'edit_access' => $validated['edit_access'] ?? null,
+                ],
+            );
+        }
 
         Inertia::flash('toast', ['type' => $type, 'message' => __($message)]);
 

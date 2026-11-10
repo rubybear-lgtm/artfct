@@ -6,13 +6,17 @@ use App\Enums\AuditEventType;
 use App\Models\TeamInvitation;
 use App\Models\User;
 use App\Rules\ValidTeamInvitation;
+use App\Services\Analytics\ProductAnalytics;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AcceptTeamInvitation
 {
-    public function __construct(private AuditLogger $auditLogger) {}
+    public function __construct(
+        private AuditLogger $auditLogger,
+        private ProductAnalytics $analytics,
+    ) {}
 
     /**
      * Add the user to the invitation's team, mark the invitation accepted and
@@ -35,5 +39,8 @@ class AcceptTeamInvitation
         });
 
         $this->auditLogger->recordForRequest($request, AuditEventType::MemberAdded, $invitation->team, (string) $user->id, "user:{$user->id}");
+        $this->analytics->memberJoined($user, $invitation->team, 'web', [
+            'role' => $invitation->role->value,
+        ]);
     }
 }

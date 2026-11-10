@@ -142,6 +142,7 @@ class DashboardController extends Controller
                     actor: (string) $request->user()->id,
                     ip: ClientIp::for($request),
                     userAgent: (string) $request->userAgent(),
+                    source: 'web',
                 ), $canonicalIds);
             } catch (\Throwable) {
                 $searchError = __('Search is unavailable right now. Try again shortly.');

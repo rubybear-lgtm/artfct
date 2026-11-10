@@ -22,6 +22,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|string|null $staff_at
  * @property Carbon|null $case_manager_at
  */
+/**
+ * @property array<string, string>|null $acquisition
+ */
 #[Fillable(['name', 'email', 'password', 'avatar', 'email_verified_at', 'current_team_id', 'is_bot'])]
 #[Hidden(['password', 'remember_token', 'staff_at', 'case_manager_at'])]
 class User extends Authenticatable
@@ -104,6 +107,7 @@ class User extends Authenticatable
             'case_manager_at' => 'datetime',
             'password' => 'hashed',
             'is_bot' => 'boolean',
+            'acquisition' => 'array',
         ];
     }
 }
