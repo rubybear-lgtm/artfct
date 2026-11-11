@@ -100,6 +100,34 @@ final class FakeBilling implements BillingContract
         }
     }
 
+    public function getSubscription(string $subscriptionId): ?array
+    {
+        if (! isset($this->subscriptions[$subscriptionId])) {
+            return null;
+        }
+
+        $subscription = $this->subscriptions[$subscriptionId];
+
+        return [
+            'id' => $subscriptionId,
+            'status' => (string) ($subscription['status'] ?? ($subscription['cancelled'] ? 'canceled' : 'active')),
+            'lookup_key' => isset($subscription['lookup_key']) ? (string) $subscription['lookup_key'] : null,
+        ];
+    }
+
+    /**
+     * Test helper: Stripe converted a trial to paid after a card was added.
+     */
+    public function convertTrialToActive(string $subscriptionId): void
+    {
+        if (! isset($this->subscriptions[$subscriptionId])) {
+            return;
+        }
+
+        $this->subscriptions[$subscriptionId]['status'] = 'active';
+        unset($this->subscriptions[$subscriptionId]['trial_end']);
+    }
+
     public function resumeSubscription(string $subscriptionId): void
     {
         if (isset($this->subscriptions[$subscriptionId])) {

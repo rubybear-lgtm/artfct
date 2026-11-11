@@ -89,6 +89,31 @@ test('at_trial_end_plus_one_second_team_is_free_features_upgrade_prompt_artifact
         ->and($billing->subscriptions[$subscriptionId]['status'] ?? null)->toBe('canceled');
 });
 
+test('expire_does_not_cancel_subscription_converted_to_active_after_card_added', function () {
+    $this->freezeTime();
+    $user = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($user, 'Portal Convert Co');
+    $subscriptionId = $team->fresh()->stripe_subscription_id;
+    expect($subscriptionId)->not->toBeNull();
+
+    /** @var FakeBilling $billing */
+    $billing = app(BillingContract::class);
+    $billing->convertTrialToActive($subscriptionId);
+
+    $this->travelTo(now()->addDays(90)->addSecond());
+
+    $expired = app(TeamTrialService::class)->expireIfDue($team->fresh());
+
+    $team->refresh();
+    expect($expired)->toBeFalse()
+        ->and($team->plan)->toBe(Plan::Team)
+        ->and($team->stripe_subscription_id)->toBe($subscriptionId)
+        ->and($team->trial_ends_at)->toBeNull()
+        ->and(PlanGate::hasTeamFeatures($team))->toBeTrue()
+        ->and($billing->subscriptions[$subscriptionId]['status'] ?? null)->toBe('active')
+        ->and($billing->subscriptions[$subscriptionId]['cancelled'] ?? false)->toBeFalse();
+});
+
 test('trial_cannot_be_restarted_after_it_ends', function () {
     $this->freezeTime();
     $user = User::factory()->create();

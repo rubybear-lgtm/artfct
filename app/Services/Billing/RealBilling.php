@@ -114,6 +114,37 @@ final class RealBilling implements BillingContract
         $this->http()->delete(self::BASE."/subscriptions/{$subscriptionId}")->throw();
     }
 
+    public function getSubscription(string $subscriptionId): ?array
+    {
+        $response = $this->http()
+            ->get(self::BASE."/subscriptions/{$subscriptionId}", [
+                'expand' => ['items.data.price'],
+            ]);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+
+        $id = $response->json('id');
+        $status = $response->json('status');
+        if (! is_string($id) || ! is_string($status)) {
+            throw new RuntimeException('Stripe subscription response was missing id or status.');
+        }
+
+        $lookupKey = $response->json('items.data.0.price.lookup_key');
+        if (! is_string($lookupKey) || $lookupKey === '') {
+            $lookupKey = $response->json('metadata.lookup_key');
+        }
+
+        return [
+            'id' => $id,
+            'status' => $status,
+            'lookup_key' => is_string($lookupKey) && $lookupKey !== '' ? $lookupKey : null,
+        ];
+    }
+
     public function resumeSubscription(string $subscriptionId): void
     {
         $this->http()->asForm()->post(self::BASE."/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => 'false'])->throw();

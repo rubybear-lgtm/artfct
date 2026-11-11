@@ -38,6 +38,13 @@ interface BillingContract
      */
     public function deleteSubscription(string $subscriptionId): void;
 
+    /**
+     * Latest Stripe subscription snapshot, or null when Stripe reports it gone.
+     *
+     * @return array{id: string, status: string, lookup_key: string|null}|null
+     */
+    public function getSubscription(string $subscriptionId): ?array;
+
     public function resumeSubscription(string $subscriptionId): void;
 
     /**

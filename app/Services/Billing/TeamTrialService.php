@@ -102,15 +102,47 @@ final class TeamTrialService
         $subscriptionId = $team->stripe_subscription_id;
         if ($subscriptionId !== null) {
             try {
-                $this->billing->deleteSubscription($subscriptionId);
+                $remote = $this->billing->getSubscription($subscriptionId);
             } catch (Throwable $exception) {
-                Log::warning('Could not delete Stripe trial subscription during expire.', [
+                // Fail closed: never delete a subscription we cannot classify.
+                Log::warning('Could not inspect Stripe subscription during trial expire; leaving team unchanged.', [
                     'team_id' => $team->id,
                     'subscription' => $subscriptionId,
                     'exception' => $exception->getMessage(),
                 ]);
                 report($exception);
+
+                return false;
             }
+
+            $status = $remote['status'] ?? null;
+            if (in_array($status, ['active', 'past_due'], true)) {
+                // Card added during trial: Stripe converted the same sub to paid.
+                // Trust Stripe over local trial_ends_at — do not cancel.
+                $this->applyStripeSubscriptionState(
+                    $team,
+                    $subscriptionId,
+                    $status,
+                    null,
+                    $remote['lookup_key'] ?? null,
+                );
+
+                return false;
+            }
+
+            if ($status === 'trialing') {
+                try {
+                    $this->billing->deleteSubscription($subscriptionId);
+                } catch (Throwable $exception) {
+                    Log::warning('Could not delete Stripe trial subscription during expire.', [
+                        'team_id' => $team->id,
+                        'subscription' => $subscriptionId,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                    report($exception);
+                }
+            }
+            // canceled / incomplete_expired / missing: local Free drop only.
         }
 
         $team->forceFill([
