@@ -1,12 +1,13 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 
 $payload = ['team_id' => 'T123', 'user_id' => 'U123', 'text' => 'dashboard'];
 
 test('valid_signature_reaches_controller', function () use ($payload) {
-    $team = Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org', 'slack_workspace_id' => 'T123']);
     linkSlackUser($team, TeamRole::Member, 'U123');
 
     postSlackCommand($payload)->assertOk()->assertJson(['response_type' => 'ephemeral']);
@@ -64,7 +65,7 @@ test('slack_published_test_vector_verifies', function () {
 });
 
 test('slash_command_behaviour_unchanged_when_signed', function () use ($payload) {
-    Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org', 'slack_workspace_id' => 'T123']);
 
     postSlackCommand(['user_id' => 'U_UNKNOWN'] + $payload)->assertOk();
 });

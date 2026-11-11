@@ -764,7 +764,7 @@ test('show_page_carries_the_action_props', function () {
             ->where('actions.reindex.enabled', true)
             ->where('actions.limits.enabled', true)
             ->where('actions.billing.enabled', true)
-            ->where('actions.billing.plans', ['free', 'team', 'enterprise'])
+            ->where('actions.billing.plans', ['free', 'pro', 'team', 'enterprise'])
             ->where('actions.billing.payment_statuses', ['active', 'past_due'])
             ->where('actions.erase.enabled', true)
             ->where('erasure_plan', null)

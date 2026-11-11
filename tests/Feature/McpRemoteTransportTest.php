@@ -380,7 +380,7 @@ test('remote MCP rate limits connections collectively within an organization', f
 });
 
 test('local MCP API calls share the organization and credential rate limits', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = remoteMcpToken($team);
     $jti = OrgJwtService::default()->verify($token)['jti'];
     RateLimiter::clear('mcp:'.$jti);

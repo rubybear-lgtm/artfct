@@ -172,7 +172,7 @@ final class TeamTrialService
             return 0;
         }
 
-        $days = (int) ceil(now()->floatDiffInDays($team->trial_ends_at, absolute: false));
+        $days = (int) ceil(now()->diffInDays($team->trial_ends_at, absolute: false));
 
         return max(0, $days);
     }

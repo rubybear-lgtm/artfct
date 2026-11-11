@@ -90,18 +90,19 @@ final class TeamEntitlements
                 && $role->hasPermission(TeamPermission::CreateInvitation)
             );
 
+        // $notViewer / $canInviteByRole already require a non-bot human role.
         $capabilities = [
             self::VIEW_ADMIN => $isAdmin,
             self::MANAGE_BILLING => $isAdmin,
-            self::MANAGE_MEMBERS => $teammatesPlan && $canInviteByRole && ! $isBot,
+            self::MANAGE_MEMBERS => $teammatesPlan && $canInviteByRole,
             self::VIEW_MEMBERS => ! $isBot && $role !== null,
-            self::USE_BOTS => $botPlan && $notViewer && ! $isBot,
+            self::USE_BOTS => $botPlan && $notViewer,
             self::SEARCH_BY_DESCRIPTION => $paidFeatures && ! $isBot,
             self::CUSTOM_HOSTNAME => $paidFeatures && $isAdmin,
             self::MANAGE_GOVERNANCE => $isAdmin,
             self::MANAGE_AUTH => $isAdmin,
             self::VIEW_AUDIT_LOG => $isAdmin,
-            self::CREATE_API_TOKENS => $notViewer && ! $isBot,
+            self::CREATE_API_TOKENS => $notViewer,
         ];
 
         $nav = self::navFor($capabilities, $planTier, $isAdmin, $isBot, $role);

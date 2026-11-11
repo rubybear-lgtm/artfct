@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
@@ -15,7 +16,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('the_search_page_explains_when_indexing_is_off', function () {
     config(['indexing.enabled' => false]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->get(route('dashboard', [$team, 'q' => 'billing']))
@@ -30,7 +31,7 @@ test('the_search_page_explains_when_indexing_is_off', function () {
 
 test('a_member_search_runs_and_lists_the_teams_collections', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     Collection::create(['team_id' => $team->id, 'name' => 'reporting', 'created_by_user_id' => $member->id]);
 
@@ -43,9 +44,9 @@ test('a_member_search_runs_and_lists_the_teams_collections', function () {
 });
 
 test('another_teams_collections_never_appear', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
-    $other = Team::factory()->create();
+    $other = Team::factory()->create(['plan' => Plan::Team]);
     Collection::create(['team_id' => $other->id, 'name' => 'secret', 'created_by_user_id' => $member->id]);
 
     test()->actingAs($member)->get(route('dashboard', $team))
@@ -56,13 +57,13 @@ test('another_teams_collections_never_appear', function () {
 });
 
 test('non_members_get_a_404_for_the_search_page', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
 
     test()->actingAs(User::factory()->create())->get(route('teams.search', $team))->assertNotFound();
 });
 
 test('the_search_page_redirects_to_the_dashboard_with_the_query_preserved', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)
@@ -77,7 +78,7 @@ test('the_search_page_redirects_to_the_dashboard_with_the_query_preserved', func
 
 test('the_search_page_returns_the_teams_matches_and_flags_canonical_ones', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'find-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'find-org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     /** @var FakeArtifactDirectory $directory */
@@ -109,7 +110,7 @@ test('the_search_page_returns_the_teams_matches_and_flags_canonical_ones', funct
 
 test('provenance_and_date_filters_narrow_the_results', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'filter-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'filter-org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     /** @var FakeArtifactDirectory $directory */

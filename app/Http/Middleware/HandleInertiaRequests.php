@@ -100,7 +100,7 @@ class HandleInertiaRequests extends Middleware
 
                 $trialDaysLeft = null;
                 if ($onTrial && $team->trial_ends_at !== null) {
-                    $trialDaysLeft = max(0, (int) ceil(now()->floatDiffInDays($team->trial_ends_at, absolute: false)));
+                    $trialDaysLeft = max(0, (int) ceil(now()->diffInDays($team->trial_ends_at, absolute: false)));
                 }
 
                 return [

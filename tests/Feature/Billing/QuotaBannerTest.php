@@ -154,8 +154,8 @@ test('real_usage_returns_the_limits_the_worker_enforces', function () {
 
 test('billing_exposes_worker_usage_and_limits_for_precise_meters', function () {
     $team = Team::factory()->create(['plan' => Plan::Free]);
-    $member = memberOfTeam($team, TeamRole::Member);
-    $member->switchTeam($team);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $admin->switchTeam($team);
     app()->instance(UsageContract::class, new class implements UsageContract
     {
         public function currentUsage(string $orgSlug): array
@@ -169,7 +169,7 @@ test('billing_exposes_worker_usage_and_limits_for_precise_meters', function () {
         }
     });
 
-    test()->actingAs($member)->get(route('teams.billing.show', $team))
+    test()->actingAs($admin)->get(route('teams.billing.show', $team))
         ->assertInertia(fn (Assert $page) => $page
             ->where('usage.storageBytes', 900)
             ->where('usage.storageLimitBytes', 1000)
