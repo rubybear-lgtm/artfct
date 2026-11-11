@@ -13,6 +13,7 @@ pub mod governance;
 pub mod quota;
 pub mod store;
 
+mod artifact_db;
 mod artifact_origin;
 mod artifact_routes;
 mod auth;
