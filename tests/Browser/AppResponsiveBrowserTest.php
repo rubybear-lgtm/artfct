@@ -182,6 +182,9 @@ test('mobile_menu_hides_admin_destinations_from_members', function () {
         $page->assertMissing("@mobile-nav-{$destination}");
     }
 
+    // Members reach their own tokens from the account section, as the avatar menu used to allow.
+    $page->assertVisible('@mobile-nav-account-tokens');
+
     $page->assertNoJavaScriptErrors();
 });
 

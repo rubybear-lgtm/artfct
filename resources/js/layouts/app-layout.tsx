@@ -183,7 +183,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         currentPath === href || (!exact && url.startsWith(`${href}/`));
     const sidebarLinkClass = (active: boolean) =>
         cn(
-            'flex min-h-9 items-center gap-3 rounded-md border-l-2 px-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground',
+            'flex min-h-9 items-center gap-3 rounded-md border-l-2 px-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
             active
                 ? 'border-[var(--accent)] bg-tint text-foreground'
                 : 'border-transparent text-muted-foreground',
@@ -452,7 +452,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             collapsed ? 'Expand sidebar' : 'Collapse sidebar'
                         }
                         data-testid="sidebar-toggle"
-                        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     >
                         <PanelLeft className="size-4" aria-hidden="true" />
                     </button>
@@ -468,7 +468,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     : undefined
                             }
                             className={cn(
-                                'flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-sm font-medium transition-colors hover:border-foreground/30',
+                                'flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 collapsed && 'justify-center px-0',
                             )}
                         >
@@ -616,7 +616,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                             : undefined
                                                     }
                                                     className={cn(
-                                                        'flex min-h-8 items-center rounded-md px-2.5 text-[13px] font-medium transition-colors hover:bg-muted hover:text-foreground',
+                                                        'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                                                         active
                                                             ? 'bg-tint font-semibold text-foreground'
                                                             : 'text-muted-foreground',
@@ -669,7 +669,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <DropdownMenuTrigger
                                 aria-label="Account menu"
                                 className={cn(
-                                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-muted',
+                                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                                     collapsed && 'justify-center',
                                 )}
                             >
@@ -886,6 +886,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                             >
                                                 Account settings
                                             </Link>
+                                            {team && !isAdmin && (
+                                                <Link
+                                                    href={teamRoutes.tokens.index.url(
+                                                        { team: team.slug },
+                                                    )}
+                                                    onClick={closeMenu}
+                                                    data-testid="mobile-nav-account-tokens"
+                                                    className="flex min-h-[44px] items-center text-[15px] font-medium"
+                                                >
+                                                    Agent & API tokens
+                                                </Link>
+                                            )}
                                             <Link
                                                 href={docs.url()}
                                                 onClick={closeMenu}

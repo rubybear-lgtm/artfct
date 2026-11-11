@@ -3,7 +3,14 @@ import { useCallback, useSyncExternalStore } from 'react';
 const STORAGE_KEY = 'artfct:sidebar-collapsed';
 const CHANGE_EVENT = 'artfct:sidebar-collapsed-change';
 
+/** Holds the choice when storage is blocked, so the toggle still works. */
+let memoryCollapsed: boolean | null = null;
+
 function readCollapsed(): boolean {
+    if (memoryCollapsed !== null) {
+        return memoryCollapsed;
+    }
+
     try {
         return window.localStorage.getItem(STORAGE_KEY) === '1';
     } catch {
@@ -12,11 +19,17 @@ function readCollapsed(): boolean {
 }
 
 function subscribe(onChange: () => void): () => void {
-    window.addEventListener('storage', onChange);
+    // Another tab changed the saved value: it wins over this tab's memory.
+    const onStorage = () => {
+        memoryCollapsed = null;
+        onChange();
+    };
+
+    window.addEventListener('storage', onStorage);
     window.addEventListener(CHANGE_EVENT, onChange);
 
     return () => {
-        window.removeEventListener('storage', onChange);
+        window.removeEventListener('storage', onStorage);
         window.removeEventListener(CHANGE_EVENT, onChange);
     };
 }
@@ -33,11 +46,11 @@ export function useSidebarCollapsed(): [boolean, () => void] {
     );
 
     const toggle = useCallback(() => {
+        const next = !readCollapsed();
+        memoryCollapsed = next;
+
         try {
-            window.localStorage.setItem(
-                STORAGE_KEY,
-                readCollapsed() ? '0' : '1',
-            );
+            window.localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
         } catch {
             // Storage can be blocked; the choice then lasts until reload.
         }
