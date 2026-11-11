@@ -90,7 +90,20 @@ class HandleInertiaRequests extends Middleware
             'currentTeam' => function () use ($request) {
                 $team = $request->user()?->currentTeam;
 
-                return $team === null ? null : [
+                if ($team === null) {
+                    return null;
+                }
+
+                $onTrial = $team->trial_ends_at !== null
+                    && $team->trial_ends_at->isFuture()
+                    && ($team->plan ?? Plan::Free) === Plan::Team;
+
+                $trialDaysLeft = null;
+                if ($onTrial) {
+                    $trialDaysLeft = max(0, (int) ceil(now()->floatDiffInDays($team->trial_ends_at, absolute: false)));
+                }
+
+                return [
                     'id' => $team->id,
                     'slug' => $team->slug,
                     'name' => $team->name,
@@ -100,6 +113,9 @@ class HandleInertiaRequests extends Middleware
                     'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
                     'role' => $request->user()->teamRole($team)?->value,
                     'isAdmin' => $request->user()->isAdminOf($team),
+                    'onTrial' => $onTrial,
+                    'trialDaysLeft' => $trialDaysLeft,
+                    'trialEndsAt' => $onTrial ? $team->trial_ends_at?->toIso8601String() : null,
                 ];
             },
             // Public PostHog browser config only. The key is a project token;

@@ -2,46 +2,48 @@
 
 namespace App\Services\Billing;
 
+use App\Enums\BillingPrice;
 use App\Models\Team;
 
 /**
- * Stripe billing seam (spec 14): per-seat Team-plan subscriptions.
- * Enterprise is invoiced manually and never touches this contract.
+ * Stripe billing seam (spec 14 / RUB-529): flat Pro and Team prices by
+ * lookup_key. Quantity is always 1 — no per-seat syncing.
  */
 interface BillingContract
 {
     /**
-     * Creates a Stripe Checkout session for `$team` to subscribe at
-     * `$seatCount` seats. Returns the session URL to redirect the admin
-     * to; the subscription itself is created by Stripe and confirmed via
-     * webhook (`applyCheckoutCompleted`).
+     * Creates a Stripe Checkout session for `$price` (quantity 1).
+     * Returns the session URL to redirect the admin to.
      */
-    public function createCheckoutSession(Team $team, int $seatCount): string;
+    public function createCheckoutSession(Team $team, BillingPrice $price): string;
 
     /**
-     * Updates a subscription's seat count — called at a billing period
-     * boundary, not on every membership change (DoD: "Adding a member
-     * mid-period bills correctly at the next boundary").
+     * Creates a Stripe subscription on `artfct_team_monthly` with a 90-day
+     * trial, no payment method required, and
+     * `trial_settings.end_behavior.missing_payment_method=cancel`.
+     *
+     * @return array{id: string, customer: string, status: string, trial_end: int}
+     */
+    public function createTrialSubscription(Team $team): array;
+
+    /**
+     * @deprecated Per-seat quantity syncing was removed in RUB-529.
      */
     public function updateSeats(string $subscriptionId, int $seatCount): void;
 
     public function cancelSubscription(string $subscriptionId): void;
 
     /**
-     * Undo a scheduled cancellation before the period ends.
+     * Immediately cancels a subscription (trial replaced by paid checkout).
      */
+    public function deleteSubscription(string $subscriptionId): void;
+
     public function resumeSubscription(string $subscriptionId): void;
 
     /**
-     * The team's most recent invoices, newest first.
-     *
      * @return list<array{number: string|null, amount: int, currency: string, status: string|null, date: int, url: string|null}>
      */
     public function listInvoices(Team $team): array;
 
-    /**
-     * A Stripe customer-portal URL where the team manages its payment method
-     * and downloads invoices.
-     */
     public function createPortalSession(Team $team): string;
 }

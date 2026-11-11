@@ -7,9 +7,11 @@ use App\Models\TeamInvitation;
 use App\Models\User;
 use App\Rules\ValidTeamInvitation;
 use App\Services\Analytics\ProductAnalytics;
+use App\Services\Billing\MemberCap;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class AcceptTeamInvitation
 {
@@ -27,6 +29,13 @@ class AcceptTeamInvitation
     {
         DB::transaction(function () use ($user, $invitation) {
             $team = $invitation->team;
+
+            $alreadyMember = $team->memberships()->where('user_id', $user->id)->exists();
+            if (! $alreadyMember && ! $user->isBot() && ! MemberCap::canAddHuman($team)) {
+                throw ValidationException::withMessages([
+                    'invitation' => MemberCap::upgradeMessage($team),
+                ]);
+            }
 
             $team->memberships()->firstOrCreate(
                 ['user_id' => $user->id],

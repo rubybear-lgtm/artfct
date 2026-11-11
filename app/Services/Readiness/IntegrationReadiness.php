@@ -22,7 +22,7 @@ final class IntegrationReadiness
     {
         $integrations = [
             'WorkOS sign-in' => ['services.workos.client_id', 'services.workos.secret', 'services.workos.redirect_url'],
-            'Stripe payments' => ['services.stripe.secret', 'services.stripe.webhook_secret', 'services.stripe.team_price_id'],
+            'Stripe payments' => ['services.stripe.secret', 'services.stripe.webhook_secret'],
             'Invitation email' => $this->emailKeys(),
             'Worker and org-token keys' => [
                 'services.org_jwt.worker_base_url',

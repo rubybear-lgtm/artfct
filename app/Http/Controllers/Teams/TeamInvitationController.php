@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use App\Services\Analytics\ProductAnalytics;
+use App\Services\Billing\MemberCap;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +29,10 @@ class TeamInvitationController extends Controller
     public function store(CreateTeamInvitationRequest $request, Team $team): RedirectResponse
     {
         Gate::authorize('inviteMember', $team);
+
+        if (! MemberCap::canAddHuman($team)) {
+            throw ValidationException::withMessages(['email' => MemberCap::upgradeMessage($team)]);
+        }
 
         if ($team->invitations()->whereNull('accepted_at')->count() >= (int) config('teams.max_pending_invitations')) {
             throw ValidationException::withMessages(['email' => __('This team has too many pending invitations. Cancel some before inviting more.')]);
