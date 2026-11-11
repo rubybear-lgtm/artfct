@@ -51,7 +51,12 @@ OCTANE_PID=$!
 trap 'kill -TERM "$OCTANE_PID" "$SSR_PID" 2>/dev/null || true' TERM INT
 # `wait` under `set -e` would exit the shell before STATUS is captured when
 # Octane exits non-zero; the `||` keeps the shell alive to clean up SSR.
+# A trapped signal also makes `wait` return at once while Octane is still
+# draining in-flight requests, so keep waiting until the process is gone.
 STATUS=0
 wait "$OCTANE_PID" || STATUS=$?
+while kill -0 "$OCTANE_PID" 2>/dev/null; do
+    wait "$OCTANE_PID" || STATUS=$?
+done
 kill "$SSR_PID" 2>/dev/null || true
 exit "$STATUS"

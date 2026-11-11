@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -154,5 +154,58 @@ test('staging and production web services use the Octane startup', () => {
         );
         assert.match(config, /start: "sh scripts\/start-web\.sh"/);
         assert.doesNotMatch(config, /php -d variables_order=EGPCS artisan serve/);
+    }
+});
+
+test('a stop signal waits for Octane to finish draining before exiting', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'artfct-start-web-signal-'));
+    const log = join(directory, 'commands');
+
+    try {
+        writeFileSync(log, '');
+        writeFileSync(
+            join(directory, 'php'),
+            `#!/bin/sh
+CMD="$1"
+if [ "$CMD" = "-d" ]; then CMD="$4"; fi
+if [ "$CMD" = "inertia:start-ssr" ]; then
+    tail -f /dev/null & TPID=$!
+    trap 'kill $TPID; exit 0' TERM
+    wait
+fi
+if [ "$CMD" = "octane:start" ]; then
+    echo started >> "$STARTUP_LOG"
+    tail -f /dev/null & TPID=$!
+    trap '/bin/sleep 0.5; echo drained >> "$STARTUP_LOG"; kill $TPID; exit 0' TERM
+    wait
+fi
+exit 0
+`,
+            { mode: 0o755 },
+        );
+        writeFileSync(join(directory, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+
+        const child = spawn('sh', [startScript], {
+            env: {
+                ...process.env,
+                PATH: `${directory}:${process.env.PATH}`,
+                STARTUP_LOG: log,
+                PORT: '8080',
+            },
+            stdio: 'ignore',
+        });
+        const closed = new Promise((resolve) => child.on('close', (code) => resolve(code)));
+
+        for (let waited = 0; !readFileSync(log, 'utf8').includes('started'); waited += 50) {
+            assert.ok(waited < 10000, 'Octane never started');
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        child.kill('SIGTERM');
+        await closed;
+
+        assert.match(readFileSync(log, 'utf8'), /drained/);
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
     }
 });
