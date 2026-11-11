@@ -192,6 +192,8 @@ final class ArtifactViewerController extends Controller
     ): InertiaResponse {
         Gate::authorize('view', $team);
 
+        $request->attributes->set('feature_team', $team);
+
         $sharing = $artifact['sharing'] ?? null;
         $links = ArtifactAccessLink::default();
 
