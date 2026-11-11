@@ -14,6 +14,7 @@
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.7",
         "laravel/mcp": "^0.7.0",
+        "laravel/octane": "^2.5",
         "laravel/pennant": "^1.27",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
@@ -59,7 +60,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve --host=localhost\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan octane:start --server=frankenphp --host=localhost --port=8000 --workers=2 --watch\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
         ],
         "lint": [
             "pint --parallel"

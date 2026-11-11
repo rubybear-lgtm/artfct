@@ -286,9 +286,9 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 
 **Local development**
 
-- `composer setup`, then `composer dev` (PHP server + queue + Pail logs + Vite in one process).
+- `composer setup`, then `composer dev` (Octane/FrankenPHP + queue + Pail logs + Vite in one process).
 - Worker: `npm run worker:dev` (wrangler dev, port 8787) or `npm run worker:dev:local` (port 8788, sets `ARTFCT_PUBLIC_BASE_URL`). Point the frontend at it with `VITE_WORKER_URL` in `.env`.
-- `herd sites` reports no sites for this repo, so the Herd block above does not apply — run the app with `composer dev` (or `php artisan serve`).
+- `herd sites` reports no sites for this repo, so the Herd block above does not apply — run the app with `composer dev`.
 - Login uses WorkOS AuthKit; tests get an injectable fake client, so no credentials are needed.
 
 **Verification gates** — `.githooks/pre-commit` (wired via `core.hooksPath`) runs, per staged file type:
