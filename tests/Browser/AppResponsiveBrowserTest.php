@@ -196,14 +196,14 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($owner);
 
-    $page = visit(route('dashboard', $team))->resize(1280, 800);
+    $page = visit(route('dashboard', $team));
     $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
     $page->navigate(route('dashboard', $team))
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 
     foreach (['teams.admin.show', 'teams.edit', 'teams.tokens.index', 'teams.billing.show', 'teams.authentication.show', 'teams.governance.show', 'teams.audit.index'] as $name) {
-        visit(route($name, $team))->resize(1280, 800)
+        visit(route($name, $team))
             ->assertVisible('@admin-subnav')
             ->assertNoJavaScriptErrors();
     }
