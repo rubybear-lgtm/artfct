@@ -121,6 +121,12 @@ Pushed from Laravel through the existing limits channel (`org_limits`): `max_db_
 
 Per artifact and per viewer on writes, using the Worker's existing per-IP limiter pattern (RUB-463). A page in a loop must not exhaust D1 for the org.
 
+### Known limits of v1
+
+- **Write token lifetime.** The write token lives 5 minutes. Removing someone's access, or making an artifact private, does not revoke a token they already hold until it expires. Revoking or deleting the artifact takes effect immediately, because every request re-reads the artifact row.
+- **Origin scheme.** The guard compares `Origin` with the connection's own scheme and `Host`, not a hard-coded `https`. Local `wrangler dev` serves http and rewrites the incoming `Origin` to match, so a hard-coded `https` refused every legitimate local request.
+- **Batch atomicity.** A batch validates every write, checks every `if_version` and the quota, and then applies one D1 batch. A concurrent writer between the check and the apply can still win; single-document `PATCH` and `DELETE` are guarded on the version they read.
+
 ## Definition of done
 
 - [ ] A page on its own origin reads and writes its collections with a `member` token; a `viewer` token can read and gets `403` on write.

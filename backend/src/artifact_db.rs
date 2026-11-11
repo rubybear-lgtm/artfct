@@ -114,6 +114,9 @@ pub(crate) enum GuardRefusal {
 /// The request facts the guard reads.
 pub(crate) struct GuardFacts<'a> {
     pub(crate) is_write: bool,
+    /// The scheme of the connection the request arrived on (`https` at the
+    /// edge). Taken from the request URL, never from a header.
+    pub(crate) scheme: &'a str,
     /// The request `Host` header.
     pub(crate) host: Option<&'a str>,
     pub(crate) sec_fetch_site: Option<&'a str>,
@@ -134,7 +137,7 @@ pub(crate) struct GuardFacts<'a> {
 /// 3. A write or a body-bearing request must be `application/json`, which a
 ///    plain form post or `text/plain` `no-cors` fetch cannot produce.
 pub(crate) fn guard_request(facts: &GuardFacts<'_>) -> Result<(), GuardRefusal> {
-    let own_origin = facts.host.map(|host| format!("https://{host}"));
+    let own_origin = facts.host.map(|host| format!("{}://{host}", facts.scheme));
     match facts.sec_fetch_site {
         Some(site) => {
             if !site.eq_ignore_ascii_case("same-origin") {
@@ -505,6 +508,7 @@ mod tests {
     fn facts<'a>() -> GuardFacts<'a> {
         GuardFacts {
             is_write: true,
+            scheme: "https",
             host: Some(HOST),
             sec_fetch_site: Some("same-origin"),
             origin: Some("https://acme--abc123def456x--prod.artfct.dev"),
@@ -604,6 +608,17 @@ mod tests {
     fn stray_foreign_origin_rejected_even_with_same_origin_metadata() {
         let mut request = facts();
         request.origin = Some("https://acme--zzzzzzzzzzzzz--prod.artfct.dev");
+        assert_eq!(guard_request(&request), Err(GuardRefusal::NotSameOrigin));
+    }
+
+    #[test]
+    fn origin_scheme_must_match_the_connection_scheme() {
+        let mut request = facts();
+        request.scheme = "http";
+        request.origin = Some("http://acme--abc123def456x--prod.artfct.dev");
+        assert_eq!(guard_request(&request), Ok(()));
+        // An https origin on an http connection is not this origin.
+        request.origin = Some("https://acme--abc123def456x--prod.artfct.dev");
         assert_eq!(guard_request(&request), Err(GuardRefusal::NotSameOrigin));
     }
 

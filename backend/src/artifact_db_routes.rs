@@ -163,8 +163,12 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     let origin = header(req, "Origin")?;
     let content_type = header(req, "Content-Type")?;
     let request_header = header(req, DB_REQUEST_HEADER)?;
+    // The scheme is the connection's own (https at the edge), never a header a
+    // caller can set; the local dev Worker is http and rewrites `Origin` to match.
+    let scheme = req.url()?.scheme().to_string();
     let facts = GuardFacts {
         is_write,
+        scheme: &scheme,
         host: host.as_deref(),
         sec_fetch_site: sec_fetch_site.as_deref(),
         origin: origin.as_deref(),

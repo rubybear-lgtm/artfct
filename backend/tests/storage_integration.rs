@@ -303,6 +303,13 @@ impl RetryingClient {
         }
     }
 
+    fn options(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
+        RetryingRequest {
+            client: self.inner.clone(),
+            builder: self.inner.request(reqwest::Method::OPTIONS, url),
+        }
+    }
+
     fn post(&self, url: impl reqwest::IntoUrl) -> RetryingRequest {
         RetryingRequest {
             client: self.inner.clone(),
@@ -3875,5 +3882,426 @@ async fn old_public_links_and_the_public_read_lead_to_the_viewer() -> Result<(),
             "{hidden} must look missing"
         );
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Spec 20: the artifact database on an isolated origin.
+// ---------------------------------------------------------------------------
+
+const DB_MANIFEST: &str = r#"{"collections":{"cards":{"index":"column"}},
+    "seed":[{"collection":"cards","doc_id":"seed1","body":{"column":"todo","title":"Start here"}}]}"#;
+
+/// `{id}.{exp}.{viewer}.{p|m}.{hmac}` — the five-part access token Laravel
+/// mints for a named viewer, built with the same key so the live Worker's
+/// verifier decides.
+fn viewer_access_token(
+    secret: &str,
+    artifact_id: &str,
+    expires_at_unix: i64,
+    viewer: &str,
+    scope: &str,
+) -> String {
+    let message = format!("{artifact_id}.{expires_at_unix}.{viewer}.{scope}");
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret.as_bytes());
+    let signature: String = hmac::sign(&key, message.as_bytes())
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{message}.{signature}")
+}
+
+fn header_name(name: &'static str) -> reqwest::header::HeaderName {
+    reqwest::header::HeaderName::from_static(name)
+}
+
+fn one_hour_from_now() -> Result<i64, Box<dyn Error>> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64
+        + 3600)
+}
+
+/// Deploys a team-shared artifact whose manifest declares a `cards`
+/// collection with one seed row. `edit_access` is set directly in D1.
+async fn deploy_db_artifact(
+    context: &Context,
+    client: &RetryingClient,
+    label: &str,
+    edit_access: &str,
+) -> Result<String, Box<dyn Error>> {
+    let bytes = unique_html(label);
+    let mut payload = permanent_payload(&bytes, json!({}));
+    payload["manifest"]["db"] = serde_json::from_str(DB_MANIFEST)?;
+    let (id, _) = create_and_upload_payload(context, client, &bytes, payload).await?;
+    d1_execute(
+        context,
+        &format!(
+            "UPDATE artifacts SET tier = 'secure', edit_access = '{edit_access}' WHERE id = '{id}'"
+        ),
+    )?;
+    Ok(id)
+}
+
+/// A same-origin db request the way the artifact's own page would send it.
+fn db_request(
+    client: &RetryingClient,
+    method: &str,
+    context: &Context,
+    id: &str,
+    path_and_query: &str,
+) -> RetryingRequest {
+    let host = isolated_origin(&context.org, id, &context.origin_suffix);
+    let url = format!("{}/__artfct/db/{path_and_query}", context.base);
+    let request = match method {
+        "GET" => client.get(url),
+        "PUT" => client.put(url),
+        "PATCH" => client.patch(url),
+        "DELETE" => client.delete(url),
+        _ => client.post(url),
+    };
+    request
+        .header(reqwest::header::HOST, host.as_str())
+        .header(header_name("sec-fetch-site"), "same-origin")
+        .header(header_name("x-artfct-db"), "1")
+        .header(reqwest::header::ORIGIN, &format!("https://{host}"))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+}
+
+/// Exchanges the host-only access cookie for a db bearer token.
+async fn db_session(
+    context: &Context,
+    client: &RetryingClient,
+    id: &str,
+    viewer: &str,
+) -> Result<(reqwest::StatusCode, Value), Box<dyn Error>> {
+    let access = viewer_access_token(&context.token_secret, id, one_hour_from_now()?, viewer, "m");
+    let response = db_request(client, "GET", context, id, "session")
+        .header(reqwest::header::COOKIE, &format!("artfct_access={access}"))
+        .send()
+        .await?;
+    let status = response.status();
+    Ok((status, response.json().await?))
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_round_trip_respects_viewer_roles() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-roles", "view").await?;
+
+    // A named member of a view-only artifact is a reader, never a writer.
+    let (status, session) = db_session(&context, &client, &id, "member-r").await?;
+    assert_eq!(status, reqwest::StatusCode::OK, "{session}");
+    assert_eq!(session["role"], "reader");
+    let reader_token = session["token"].as_str().ok_or("no token")?.to_string();
+
+    // The seed row written at deploy is readable.
+    let seeded = db_request(&client, "GET", &context, &id, "cards/seed1")
+        .bearer_auth(&reader_token)
+        .send()
+        .await?;
+    assert_eq!(seeded.status(), reqwest::StatusCode::OK);
+    let seeded: Value = seeded.json().await?;
+    assert_eq!(seeded["data"]["title"], "Start here");
+    assert_eq!(seeded["version"], 1);
+
+    let denied = db_request(&client, "PUT", &context, &id, "cards/c1")
+        .bearer_auth(&reader_token)
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(
+        denied.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "a reader must not write"
+    );
+
+    // Edit access turns a named member into a writer.
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET edit_access = 'edit' WHERE id = '{id}'"),
+    )?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    assert_eq!(session["role"], "writer");
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+
+    let created = db_request(&client, "PUT", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .body(br#"{"column":"todo","title":"One"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(created.status(), reqwest::StatusCode::OK);
+    let created: Value = created.json().await?;
+    assert_eq!(created["version"], 1);
+
+    let updated = db_request(&client, "PUT", &context, &id, "cards/c1?if_version=1")
+        .bearer_auth(&writer)
+        .body(br#"{"column":"doing","title":"One"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(updated.status(), reqwest::StatusCode::OK);
+    assert_eq!(updated.json::<Value>().await?["version"], 2);
+
+    let stale = db_request(&client, "PUT", &context, &id, "cards/c1?if_version=1")
+        .bearer_auth(&writer)
+        .body(br#"{"column":"done"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(
+        stale.json::<Value>().await?["current"]["data"]["column"],
+        "doing"
+    );
+
+    let by_column = db_request(&client, "GET", &context, &id, "cards?index_eq=doing")
+        .bearer_auth(&writer)
+        .send()
+        .await?;
+    let by_column: Value = by_column.json().await?;
+    assert_eq!(by_column["documents"].as_array().map(Vec::len), Some(1));
+
+    let patched = db_request(&client, "PATCH", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .body(br#"{"title":"Renamed"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(patched.status(), reqwest::StatusCode::OK);
+    let read = db_request(&client, "GET", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .send()
+        .await?
+        .json::<Value>()
+        .await?;
+    assert_eq!(read["data"]["title"], "Renamed");
+    assert_eq!(read["data"]["column"], "doing");
+    assert_eq!(read["updated_by"], "member-w");
+
+    // Undeclared collections, forged server fields and non-objects are refused.
+    for (path, body, expected) in [
+        (
+            "notes/n1",
+            r#"{"a":1}"#,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "cards/c2",
+            r#"{"updated_by":"someone-else"}"#,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "cards/c2",
+            r#"[1,2]"#,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        let response = db_request(&client, "PUT", &context, &id, path)
+            .bearer_auth(&writer)
+            .body(body.as_bytes().to_vec())
+            .send()
+            .await?;
+        assert_eq!(response.status(), expected, "{path} {body}");
+    }
+
+    // An atomic batch: one invalid write applies none of them.
+    let bad_batch = db_request(&client, "POST", &context, &id, "batch")
+        .bearer_auth(&writer)
+        .body(br#"{"writes":[{"op":"set","collection":"cards","doc_id":"b1","data":{"column":"todo"}},{"op":"set","collection":"nope","doc_id":"b2","data":{}}]}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(
+        bad_batch.status(),
+        reqwest::StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let missing = db_request(&client, "GET", &context, &id, "cards/b1")
+        .bearer_auth(&writer)
+        .send()
+        .await?;
+    assert_eq!(
+        missing.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "a failed batch applied a write"
+    );
+
+    // Rows survive a republish of the page: they are keyed by the stable id.
+    let still_there = db_request(&client, "GET", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .send()
+        .await?;
+    assert_eq!(still_there.status(), reqwest::StatusCode::OK);
+    Ok(())
+}
+
+/// The adversarial one. Spec 20 is not done without it: artifact B must not
+/// be able to cause a write to artifact A, whatever it holds.
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn cross_artifact_write_is_blocked() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let a = deploy_db_artifact(&context, &client, "db-victim", "edit").await?;
+    let b = deploy_db_artifact(&context, &client, "db-attacker", "edit").await?;
+    let (_, session_a) = db_session(&context, &client, &a, "member-w").await?;
+    let writer_a = session_a["token"].as_str().ok_or("no token")?.to_string();
+    let (_, session_b) = db_session(&context, &client, &b, "member-w").await?;
+    let writer_b = session_b["token"].as_str().ok_or("no token")?.to_string();
+    let host_a = isolated_origin(&context.org, &a, &context.origin_suffix);
+    let host_b = isolated_origin(&context.org, &b, &context.origin_suffix);
+    let body = br#"{"column":"hacked"}"#.to_vec();
+
+    // 1. B's own valid write token is not a credential for A.
+    let wrong_token = db_request(&client, "PUT", &context, &a, "cards/seed1")
+        .bearer_auth(&writer_b)
+        .body(body.clone())
+        .send()
+        .await?;
+    assert_eq!(wrong_token.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    // 2. Even A's real token is refused when the browser says the request is
+    //    not same-origin: another artifact's script on the same site.
+    for site in ["same-site", "cross-site", "none"] {
+        let response = db_request(&client, "PUT", &context, &a, "cards/seed1")
+            .header(header_name("sec-fetch-site"), site)
+            .bearer_auth(&writer_a)
+            .body(body.clone())
+            .send()
+            .await?;
+        assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN, "{site}");
+    }
+
+    // 3. An Origin naming B is refused where no fetch metadata is present.
+    let from_b = db_request(&client, "PUT", &context, &a, "cards/seed1")
+        .header(reqwest::header::ORIGIN, &format!("https://{host_b}"))
+        .bearer_auth(&writer_a)
+        .body(body.clone())
+        .send()
+        .await?;
+    assert_eq!(from_b.status(), reqwest::StatusCode::FORBIDDEN);
+
+    // 4. The simple-request shapes a form post or a no-cors fetch can make.
+    for content_type in ["text/plain", "application/x-www-form-urlencoded"] {
+        let response = db_request(&client, "PUT", &context, &a, "cards/seed1")
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .bearer_auth(&writer_a)
+            .body(body.clone())
+            .send()
+            .await?;
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::FORBIDDEN,
+            "{content_type}"
+        );
+    }
+
+    // 5. The ambient cookie alone never writes: no bearer, no write.
+    let access = viewer_access_token(
+        &context.token_secret,
+        &a,
+        one_hour_from_now()?,
+        "member-w",
+        "m",
+    );
+    let cookie_only = db_request(&client, "PUT", &context, &a, "cards/seed1")
+        .header(reqwest::header::COOKIE, &format!("artfct_access={access}"))
+        .body(body.clone())
+        .send()
+        .await?;
+    assert_eq!(cookie_only.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    // 6. Without the custom header a cross-origin caller needs a preflight.
+    let host = host_a.as_str();
+    let no_header = client
+        .put(format!("{}/__artfct/db/cards/seed1", context.base))
+        .header(reqwest::header::HOST, host)
+        .header(header_name("sec-fetch-site"), "same-origin")
+        .header(reqwest::header::ORIGIN, &format!("https://{host}"))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .bearer_auth(&writer_a)
+        .body(body.clone())
+        .send()
+        .await?;
+    assert_eq!(no_header.status(), reqwest::StatusCode::FORBIDDEN);
+
+    // 7. A preflight is refused and grants nothing.
+    let preflight = client
+        .options(format!("{}/__artfct/db/cards/seed1", context.base))
+        .header(reqwest::header::HOST, host)
+        .header(reqwest::header::ORIGIN, &format!("https://{host_b}"))
+        .header(header_name("access-control-request-method"), "PUT")
+        .send()
+        .await?;
+    assert_eq!(preflight.status(), reqwest::StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(
+        response_header(&preflight, "access-control-allow-origin"),
+        ""
+    );
+    assert_eq!(
+        response_header(&preflight, "access-control-allow-methods"),
+        ""
+    );
+
+    // 8. A forged artifact id in the body or path cannot redirect the write.
+    let forged = db_request(
+        &client,
+        "PUT",
+        &context,
+        &a,
+        &format!("cards/seed1?artifact_id={b}"),
+    )
+    .bearer_auth(&writer_a)
+    .body(br#"{"column":"todo","artifact_id":"x","org_id":"y"}"#.to_vec())
+    .send()
+    .await?;
+    assert_eq!(forged.status(), reqwest::StatusCode::OK);
+    let on_b = db_request(&client, "GET", &context, &b, "cards/seed1")
+        .bearer_auth(&writer_b)
+        .send()
+        .await?
+        .json::<Value>()
+        .await?;
+    assert_eq!(on_b["version"], 1, "A's write leaked into B");
+
+    // None of the refused writes changed A's row.
+    let on_a = db_request(&client, "GET", &context, &a, "cards/seed1")
+        .bearer_auth(&writer_a)
+        .send()
+        .await?
+        .json::<Value>()
+        .await?;
+    assert_ne!(on_a["data"]["column"], "hacked");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_without_db_manifest_has_no_endpoint_and_reserved_paths_are_refused(
+) -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let bytes = unique_html("db-none");
+    let (id, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET tier = 'secure' WHERE id = '{id}'"),
+    )?;
+    let (status, _) = db_session(&context, &client, &id, "member-w").await?;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND);
+
+    let page = b"<html>x</html>".to_vec();
+    let mut payload = bundle_payload(
+        &[("__artfct/db/x.html", &page, "text/html")],
+        "__artfct/db/x.html",
+    );
+    payload["tier"] = json!("secure");
+    ensure_org_provisioned(&context, &client).await?;
+    let response = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&payload)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
     Ok(())
 }
