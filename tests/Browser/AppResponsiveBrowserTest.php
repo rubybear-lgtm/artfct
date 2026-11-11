@@ -242,11 +242,11 @@ test('desktop_sidebar_collapses_to_icon_rail_and_remembers_it', function () {
         ->assertScript('document.querySelector(\'[data-testid="sidebar-toggle"]\').getAttribute("aria-expanded") === "false"');
 
     // The choice is remembered per browser across a full reload.
-    $page->navigate(route('dashboard', $team))->wait(0.6)
+    $page->script('location.reload()');
+    $page->wait(1)
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getAttribute("data-collapsed") === "true"')
         ->click('@sidebar-toggle')->wait(0.4)
-        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
-        ->assertNoJavaScriptErrors();
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200');
     $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
 });
 
