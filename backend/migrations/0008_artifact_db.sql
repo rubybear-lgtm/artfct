@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS artifact_docs (
 );
 
 CREATE INDEX IF NOT EXISTS artifact_docs_index_idx
-    ON artifact_docs(org_id, artifact_id, collection, index_value);
+    ON artifact_docs(org_id, artifact_id, collection, index_value, doc_id);
 
 -- Per-viewer, per-artifact write counter for the one-minute rate limit. D1 is
 -- strongly consistent and `ON CONFLICT DO UPDATE ... RETURNING` is atomic, so

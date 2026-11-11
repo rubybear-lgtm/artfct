@@ -133,7 +133,7 @@ The seed that travels in the manifest is capped at 256 KiB in total, because the
 
 ### Concurrency
 
-`PUT` with `if_version` is one atomic statement (`UPDATE ... WHERE version = N RETURNING`; `if_version=0` is `INSERT ... DO NOTHING RETURNING`), so two concurrent writes that expect the same version cannot both win. Without `if_version` a `PUT` is last-write-wins and the version it returns comes from the statement itself. `PATCH` is guarded on the version it read. A `DELETE` with `if_version` is guarded on it; without one the delete wins, as last-write-wins promises. A `DELETE` that finds the document already gone reports success.
+`PUT` with `if_version` is one atomic statement (`UPDATE ... WHERE version = N RETURNING`; `if_version=0` is `INSERT ... DO NOTHING RETURNING`), so two concurrent writes that expect the same version cannot both win. Without `if_version` a `PUT` is last-write-wins and the version it returns comes from the statement itself. `PATCH` is guarded on the version it read. A `DELETE` with `if_version` is guarded on it; without one the delete wins, as last-write-wins promises. A `DELETE` of a document that does not exist reports success with `deleted: false`, so a retried delete is safe. An unconditional `PATCH` that loses the read-merge-write race retries on the fresh row (up to four times) instead of returning `409`; a `PATCH` with `if_version` reports the conflict.
 
 ### Known limits of v1
 
@@ -144,6 +144,10 @@ The seed that travels in the manifest is capped at 256 KiB in total, because the
 - **Index values are write-time.** A republish that changes a collection's declared `index` field does not reindex existing rows, and a string longer than 256 characters or a number written as `1.0` will not match `index_eq`.
 - **`db` added in a later version.** A `db` first declared on a v2 republish never gets its seed: seed rows are written once, at create.
 - **Quota pushes cannot clear a value.** An omitted field keeps the stored one, so Laravel can raise or lower a quota but not return it to the default.
+- **Quota checks are check-then-write.** The document and byte quotas read the current usage and then write, so parallel writes can overshoot by up to the rate limit (120 writes per viewer per minute). Only version checks are atomic.
+- **Byte usage is a scan.** `db_bytes_per_org` is computed with `SUM(LENGTH(CAST(body AS BLOB)))` over the org's rows on every write that grows. That is fine at the default 64 MiB and gets heavy near the cap on a busy org; a per-org running total is the follow-up.
+- **Seed rows skip quotas.** Seed rows are written with the artifact, bounded by the 256 KiB seed cap and the monthly artifact quota, and are not checked against the db quotas.
+- **Rejected requests spend rate budget.** The charge happens before body and quota validation, so a request refused for a bad body or quota still counts toward the 120 a minute. A refused write from a read-only org does not, because that check comes first. Reads are not rate limited.
 - **Pending uploads.** An artifact whose upload is not complete has no db endpoint, the same completeness rule file serving uses.
 
 ## Definition of done

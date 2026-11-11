@@ -229,18 +229,19 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     }
     let mut limits = DbLimits::default();
     if is_write {
-        // A batch is charged per write inside `batch`, once its size is known.
-        if route != DbRoute::Batch
-            && !charge_write_rate(&database, &row.id, &grant.viewer, 1, now).await?
-        {
-            return rate_limited_response();
-        }
-        // A read-only org (payment state) can read but not write.
+        // A read-only org (payment state) can read but not write. Checked
+        // first so a refused write does not spend the viewer's budget.
         if crate::org_admin::load_org_limits(&database, env, &row.org)
             .await?
             .read_only
         {
             return db_error("read_only", "This team's workspace is read-only.", 403);
+        }
+        // A batch is charged per write inside `batch`, once its size is known.
+        if route != DbRoute::Batch
+            && !charge_write_rate(&database, &row.id, &grant.viewer, 1, now).await?
+        {
+            return rate_limited_response();
         }
         limits = load_db_limits(&database, &row.org).await?;
     }
@@ -786,61 +787,68 @@ async fn patch_doc(
         Ok(body) => body,
         Err(refusal) => return body_refusal_response(refusal),
     };
-    let Some(current) = fetch_doc(database, row, collection, doc_id).await? else {
-        return db_not_found();
-    };
-    if expected.is_some_and(|version| version != current.version as u64) {
-        return conflict(&current, collection);
-    }
-    let mut merged = match serde_json::from_str::<Value>(&current.body) {
-        Ok(Value::Object(map)) => map,
-        _ => serde_json::Map::new(),
-    };
-    for (key, value) in patch {
-        merged.insert(key, value);
-    }
-    let encoded = encode_body(&merged);
-    if encoded.len() > MAX_BODY_BYTES {
-        return body_refusal_response(BodyRefusal::TooLarge);
-    }
-    let added = bytes_added(encoded.len() as u64, Some(current.body.len() as u64));
-    if added > 0 {
-        let (docs, org_bytes) = usage(database, row).await?;
-        if exceeds_db_quota(limits, docs, org_bytes, 0, added) {
-            return quota_response();
+    // Without `if_version` a PATCH is last-write-wins, so losing the
+    // read-merge-write race to another writer retries on the fresh row instead
+    // of failing a caller that never asked for optimistic concurrency. With
+    // `if_version`, a lost race is a real conflict and is reported.
+    let attempts = if expected.is_some() { 1 } else { 4 };
+    for _ in 0..attempts {
+        let Some(current) = fetch_doc(database, row, collection, doc_id).await? else {
+            return db_not_found();
+        };
+        if expected.is_some_and(|version| version != current.version as u64) {
+            return conflict(&current, collection);
+        }
+        let mut merged = match serde_json::from_str::<Value>(&current.body) {
+            Ok(Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        for (key, value) in &patch {
+            merged.insert(key.clone(), value.clone());
+        }
+        let encoded = encode_body(&merged);
+        if encoded.len() > MAX_BODY_BYTES {
+            return body_refusal_response(BodyRefusal::TooLarge);
+        }
+        let added = bytes_added(encoded.len() as u64, Some(current.body.len() as u64));
+        if added > 0 {
+            let (docs, org_bytes) = usage(database, row).await?;
+            if exceeds_db_quota(limits, docs, org_bytes, 0, added) {
+                return quota_response();
+            }
+        }
+        let updated_at = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        let index = declaration
+            .index
+            .as_deref()
+            .and_then(|field| index_value(&merged, field));
+        // The write is guarded on the version just read, so a concurrent write
+        // between the read and here changes nothing instead of being silently
+        // overwritten.
+        let result = database
+            .prepare("UPDATE artifact_docs SET body = ?, index_value = ?, version = version + 1, updated_at = ?, updated_by = ? WHERE org_id = ? AND artifact_id = ? AND collection = ? AND doc_id = ? AND version = ?")
+            .bind(&[
+                JsValue::from_str(&encoded),
+                index.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                JsValue::from_str(&updated_at),
+                JsValue::from_str(&grant.viewer),
+                JsValue::from_str(&row.org),
+                JsValue::from_str(&row.id),
+                JsValue::from_str(collection),
+                JsValue::from_str(doc_id),
+                JsValue::from_f64(current.version),
+            ])?
+            .run()
+            .await?;
+        let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+        if changed > 0 {
+            return written(collection, doc_id, current.version as u64 + 1, &updated_at);
         }
     }
-    let updated_at = now.to_rfc3339_opts(SecondsFormat::Millis, true);
-    let index = declaration
-        .index
-        .as_deref()
-        .and_then(|field| index_value(&merged, field));
-    // The write is guarded on the version just read, so a concurrent write
-    // between the read and here changes nothing and is reported as a conflict
-    // instead of being silently overwritten.
-    let result = database
-        .prepare("UPDATE artifact_docs SET body = ?, index_value = ?, version = version + 1, updated_at = ?, updated_by = ? WHERE org_id = ? AND artifact_id = ? AND collection = ? AND doc_id = ? AND version = ?")
-        .bind(&[
-            JsValue::from_str(&encoded),
-            index.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
-            JsValue::from_str(&updated_at),
-            JsValue::from_str(&grant.viewer),
-            JsValue::from_str(&row.org),
-            JsValue::from_str(&row.id),
-            JsValue::from_str(collection),
-            JsValue::from_str(doc_id),
-            JsValue::from_f64(current.version),
-        ])?
-        .run()
-        .await?;
-    let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
-    if changed == 0 {
-        return match fetch_doc(database, row, collection, doc_id).await? {
-            Some(latest) => conflict(&latest, collection),
-            None => db_not_found(),
-        };
+    match fetch_doc(database, row, collection, doc_id).await? {
+        Some(latest) => conflict(&latest, collection),
+        None => db_not_found(),
     }
-    written(collection, doc_id, current.version as u64 + 1, &updated_at)
 }
 
 async fn delete_doc(
@@ -866,7 +874,11 @@ async fn delete_doc(
         );
     };
     let Some(current) = fetch_doc(database, row, collection, doc_id).await? else {
-        return db_not_found();
+        // Already gone: a retried DELETE reaches the state it asked for.
+        return db_json(
+            json!({"id": doc_id, "collection": collection, "deleted": false}),
+            200,
+        );
     };
     if expected.is_some_and(|version| version != current.version as u64) {
         return conflict(&current, collection);
