@@ -274,6 +274,18 @@
         border-inline: 1px solid var(--line);
     }
 
+    @media (min-width: 1440px) {
+        & .frame {
+            max-width: 1360px;
+        }
+    }
+
+    @media (min-width: 1920px) {
+        & .frame {
+            max-width: 1600px;
+        }
+    }
+
     & .pad {
         padding-inline: clamp(20px, 5vw, 64px);
     }
@@ -895,6 +907,20 @@
         gap: clamp(56px, 10vw, 150px);
         padding: clamp(18px, 2.6vw, 34px) clamp(18px, 3.4vw, 48px);
         align-items: stretch;
+    }
+
+    /* The windows scale from their own width, so the stage grows with the
+       wider frame instead of cropping them. */
+    @media (min-width: 1440px) {
+        & .aw-frame {
+            height: 680px;
+        }
+    }
+
+    @media (min-width: 1920px) {
+        & .aw-frame {
+            height: 810px;
+        }
     }
 
     /* The connector stays at rest, so the static frame still tells the
