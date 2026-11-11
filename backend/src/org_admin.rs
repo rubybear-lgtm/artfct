@@ -284,6 +284,9 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
 pub(crate) struct OrgSettingsWriteRequest {
     org: String,
     public_sharing_allowed: bool,
+    /// Spec 20 rollout gate. `None` leaves the stored choice alone.
+    #[serde(default)]
+    artifact_db_enabled: Option<bool>,
 }
 
 /// The `POST /v1/internal/org-settings` body. `downgraded` lists the ids this
@@ -352,11 +355,14 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
                 .collect::<Vec<_>>()
         };
         let mut statements = vec![database
-            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
+            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at, artifact_db_enabled) VALUES (?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at, artifact_db_enabled = COALESCE(excluded.artifact_db_enabled, org_settings.artifact_db_enabled)")
             .bind(&[
                 JsValue::from_str(&payload.org),
                 JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
                 JsValue::from_str(&now),
+                payload.artifact_db_enabled.map_or_else(JsValue::null, |enabled| {
+                    JsValue::from_f64(f64::from(u8::from(enabled)))
+                }),
             ])?];
         if !payload.public_sharing_allowed {
             statements.push(

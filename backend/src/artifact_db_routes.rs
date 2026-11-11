@@ -19,10 +19,10 @@ use super::*;
 use serde_json::json;
 
 use crate::artifact_db::{
-    bytes_added, db_role, exceeds_db_quota, guard_request, index_value, is_db_path, mint_db_token,
-    parse_db_path, parse_document_body, verify_db_token, within_write_rate, BodyRefusal, DbGrant,
-    DbLimits, DbManifest, DbRoute, GuardFacts, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS,
-    DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
+    bytes_added, db_allowed, db_role, exceeds_db_quota, guard_request, index_value, is_db_path,
+    mint_db_token, parse_db_path, parse_document_body, verify_db_token, within_write_rate,
+    BodyRefusal, DbGrant, DbLimits, DbManifest, DbRollout, DbRoute, GuardFacts, DB_REQUEST_HEADER,
+    DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
 };
 use crate::artifact_origin::{
     access_token_from_cookie, artifact_origin_suffix, artifact_token_secret,
@@ -129,12 +129,53 @@ fn doc_json(collection: &str, row: &DocRow) -> Value {
     })
 }
 
+/// The environment variable that releases the artifact database.
+const ROLLOUT_ENV: &str = "ARTFCT_ARTIFACT_DB_ENABLED";
+
+pub(crate) fn db_rollout(env: &Env) -> DbRollout {
+    env.var(ROLLOUT_ENV)
+        .ok()
+        .map_or(DbRollout::Off, |value| DbRollout::parse(&value.to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgDbSettingRow {
+    artifact_db_enabled: Option<i64>,
+}
+
+/// Whether the artifact database is released to `org`: the environment's
+/// rollout, narrowed by the org's explicit setting. An `Off` environment
+/// answers without touching D1.
+pub(crate) async fn db_enabled_for_org(
+    database: &worker::D1Database,
+    env: &Env,
+    org: &str,
+) -> Result<bool> {
+    let rollout = db_rollout(env);
+    if rollout == DbRollout::Off {
+        return Ok(false);
+    }
+    let setting = database
+        .prepare("SELECT artifact_db_enabled FROM org_settings WHERE org_id = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<OrgDbSettingRow>(None)
+        .await?
+        .and_then(|row| row.artifact_db_enabled)
+        .map(|value| value != 0);
+    Ok(db_allowed(rollout, setting))
+}
+
 /// Entry point from the Worker's `fetch`. Returns `None` for a request that
 /// is not in the db namespace so the normal router keeps it.
 pub(crate) async fn artifact_db_route(req: &mut Request, env: &Env) -> Option<Result<Response>> {
     let url = req.url().ok()?;
     if !is_db_path(url.path()) {
         return None;
+    }
+    // Released dark: with the environment off the whole namespace is a 404,
+    // answered before any D1 query.
+    if db_rollout(env) == DbRollout::Off {
+        return Some(db_not_found());
     }
     Some(handle(req, env, url.path().to_string()).await)
 }
@@ -202,6 +243,9 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     };
     // One origin per artifact: the host's tenant must own the artifact.
     if row.org != host_slug || row.id != artifact_id {
+        return db_not_found();
+    }
+    if !db_enabled_for_org(&database, env, &row.org).await? {
         return db_not_found();
     }
     let Some(declared) = declared_db(&row.manifest) else {

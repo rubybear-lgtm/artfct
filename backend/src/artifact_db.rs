@@ -84,6 +84,41 @@ pub(crate) fn exceeds_db_quota(
         || org_bytes.saturating_add(add_bytes) > limits.bytes_per_org
 }
 
+/// How far the artifact database is released in this environment. Set with
+/// `ARTFCT_ARTIFACT_DB_ENABLED`; anything unrecognised, or unset, is `Off`, so
+/// a missing variable fails closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DbRollout {
+    /// Nobody: the endpoint answers 404 and a deploy may not declare `db`.
+    Off,
+    /// Every org, except one that is explicitly turned off.
+    All,
+    /// Only orgs explicitly turned on, which Laravel's feature release
+    /// controls decide.
+    Orgs,
+}
+
+impl DbRollout {
+    pub(crate) fn parse(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "all" | "on" => Self::All,
+            "orgs" => Self::Orgs,
+            _ => Self::Off,
+        }
+    }
+}
+
+/// Whether the artifact database is available to one org, given the
+/// environment's rollout and the org's explicit setting (`None` when the org
+/// has made no choice).
+pub(crate) fn db_allowed(rollout: DbRollout, org_setting: Option<bool>) -> bool {
+    match rollout {
+        DbRollout::Off => false,
+        DbRollout::All => org_setting != Some(false),
+        DbRollout::Orgs => org_setting == Some(true),
+    }
+}
+
 /// Writes one viewer may make to one artifact in a minute.
 pub(crate) const DB_WRITES_PER_MINUTE: u64 = 120;
 
@@ -1057,6 +1092,31 @@ mod tests {
             }
         );
         assert_eq!(DbLimits::from_pushed(Some(-5), None).docs_per_artifact, 0);
+    }
+
+    #[test]
+    fn rollout_parses_and_fails_closed() {
+        for on in ["true", "TRUE", " 1 ", "all", "on"] {
+            assert_eq!(DbRollout::parse(on), DbRollout::All, "{on}");
+        }
+        assert_eq!(DbRollout::parse("orgs"), DbRollout::Orgs);
+        for off in ["", "false", "0", "off", "yes please", "enabled"] {
+            assert_eq!(DbRollout::parse(off), DbRollout::Off, "{off}");
+        }
+    }
+
+    #[test]
+    fn rollout_decides_per_org() {
+        use DbRollout::{All, Off, Orgs};
+        for setting in [None, Some(true), Some(false)] {
+            assert!(!db_allowed(Off, setting), "off ignores every org setting");
+        }
+        assert!(db_allowed(All, None));
+        assert!(db_allowed(All, Some(true)));
+        assert!(!db_allowed(All, Some(false)), "an org can opt out of all");
+        assert!(!db_allowed(Orgs, None), "orgs mode needs an explicit yes");
+        assert!(!db_allowed(Orgs, Some(false)));
+        assert!(db_allowed(Orgs, Some(true)));
     }
 
     #[test]

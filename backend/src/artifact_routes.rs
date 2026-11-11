@@ -1874,6 +1874,18 @@ pub(crate) async fn create_permanent_artifact(
     if let Err(message) = store::validate_slug(&org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
+    // Spec 20: a manifest may declare a database only where it is released, so
+    // a dark environment or org never accumulates rows nobody can reach.
+    if manifest.db.is_some()
+        && !crate::artifact_db_routes::db_enabled_for_org(&env.d1("ARTIFACTS_DB")?, env, &org)
+            .await?
+    {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Artifact databases are not enabled for this team.",
+            403,
+        );
+    }
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);

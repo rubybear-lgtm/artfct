@@ -203,6 +203,17 @@ The seed that travels in the manifest is capped at 256 KiB in total, because the
 - `second_member_sees_first_members_card`
 - `artifact_b_script_cannot_write_artifact_a` *(negative)*
 
+## Release behind a feature flag
+
+The database ships dark. Two switches, both fail closed:
+
+1. **Environment, `ARTFCT_ARTIFACT_DB_ENABLED`** (a Worker var, set per environment in `wrangler*.jsonc`): `false` or unset is **off**; `orgs` allows only orgs that are explicitly enabled; `true` allows every org that has not been explicitly turned off. Production is `false`, staging is `true` while it soaks. With it off, the whole `/__artfct/db/` namespace answers `404` before any D1 query, and a deploy or a new version that declares `db` is refused with `403`, so nothing accumulates behind a dark flag.
+2. **Org, `org_settings.artifact_db_enabled`** (migration 0010, nullable): `NULL` follows the environment, `0` turns the org off, `1` turns it on in `orgs` mode. Laravel pushes it with the rest of an org's settings (`POST /v1/internal/org-settings`, optional `artifact_db_enabled`; omitted leaves the stored value).
+
+Laravel's Pennant feature release controls (`config/features.php`, released per team in `/ops`) are the place staff decide who gets it. Wiring them to the org switch (register `artifact-db`, push the org gate when a release changes, and gate the `db_*` MCP tools with `FeatureFlaggedTool`) belongs to the Laravel and MCP half of this spec; until then, production stays dark and staging is on for everyone.
+
+Order for a production release: apply migrations 0008 to 0010, deploy the Worker (still `false`), set `orgs`, enable a pilot org, widen, and only then consider `true`.
+
 ## Rollout and rollback
 
 **Staging only until `cross_artifact_write_is_blocked` and its browser counterpart pass on the real staging wildcard origins.** No production change before that, per the standing production hold. D1 migrations are applied by hand to staging first, before the Worker deploy.

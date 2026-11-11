@@ -5051,3 +5051,117 @@ async fn artifact_db_deploys_of_identical_bytes_are_separate_artifacts(
     );
     Ok(())
 }
+
+async fn push_org_db_gate(
+    context: &Context,
+    client: &RetryingClient,
+    enabled: bool,
+) -> Result<(), Box<dyn Error>> {
+    let secret = context
+        .limits_secret
+        .as_deref()
+        .ok_or("the limits secret is required")?;
+    let (status, body) = internal_post(
+        context,
+        client,
+        secret,
+        "/v1/internal/org-settings",
+        json!({
+            "org": context.org,
+            "public_sharing_allowed": true,
+            "artifact_db_enabled": enabled,
+        }),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "settings push failed: {body}"
+    );
+    Ok(())
+}
+
+/// The environment flag releases the database; an org can still be turned off.
+/// While off, the endpoint is a 404 and neither a deploy nor a new version may
+/// declare `db`, so nothing accumulates behind the flag.
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_org_gate_turns_the_endpoint_and_deploys_off() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    if context.limits_secret.is_none() {
+        return Err("the limits secret is required; refusing to pass without asserting".into());
+    }
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-gate", "edit").await?;
+    let (before, _) = db_session(&context, &client, &id, "member-w").await?;
+
+    // Everything below runs with the org off; the gate is restored before any
+    // assertion so a failure cannot leave the org dark for the other tests.
+    push_org_db_gate(&context, &client, false).await?;
+    let (session_off, _) = db_session(&context, &client, &id, "member-w").await?;
+    let plain = unique_html("db-gate-plain");
+    let plain_created = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&permanent_payload(&plain, json!({})))
+        .send()
+        .await?
+        .status();
+    let with_db = unique_html("db-gate-with-db");
+    let mut payload = permanent_payload(&with_db, json!({}));
+    payload["manifest"]["db"] = serde_json::from_str(DB_MANIFEST)?;
+    let deploy_off = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&payload)
+        .send()
+        .await?
+        .status();
+    let mut version = version_payload(&unique_html("db-gate-v2"), json!({}));
+    version["manifest"]["db"] = serde_json::from_str(DB_MANIFEST)?;
+    let version_off = client
+        .post(format!("{}/v1/artifacts/{id}/versions", context.base))
+        .bearer_auth(&context.token)
+        .json(&version)
+        .send()
+        .await?
+        .status();
+    push_org_db_gate(&context, &client, true).await?;
+    let (session_on, _) = db_session(&context, &client, &id, "member-w").await?;
+    let deploy_on = client
+        .post(format!("{}/v1/artifacts", context.base))
+        .bearer_auth(&context.token)
+        .json(&payload)
+        .send()
+        .await?
+        .status();
+
+    assert_eq!(before, reqwest::StatusCode::OK);
+    assert_eq!(
+        session_off,
+        reqwest::StatusCode::NOT_FOUND,
+        "an off org has no endpoint"
+    );
+    assert_eq!(
+        plain_created,
+        reqwest::StatusCode::CREATED,
+        "artifacts without db are unaffected"
+    );
+    assert_eq!(
+        deploy_off,
+        reqwest::StatusCode::FORBIDDEN,
+        "an off org may not deploy db"
+    );
+    assert_eq!(
+        version_off,
+        reqwest::StatusCode::FORBIDDEN,
+        "nor publish a db version"
+    );
+    assert_eq!(
+        session_on,
+        reqwest::StatusCode::OK,
+        "turning the org back on restores it"
+    );
+    assert_eq!(deploy_on, reqwest::StatusCode::CREATED);
+    Ok(())
+}

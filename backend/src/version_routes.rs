@@ -597,6 +597,16 @@ async fn create_version(
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
+    // Spec 20: a version may declare a database only where it is released.
+    if manifest.db.is_some()
+        && !crate::artifact_db_routes::db_enabled_for_org(&storage.database, env, &org).await?
+    {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Artifact databases are not enabled for this team.",
+            403,
+        );
+    }
     let viewer = Viewer::from_credential(&credential);
     // Org first: the artifact's own org wins, then a live Public + edit
     // artifact of another org (same_org = false). A non-public artifact of
