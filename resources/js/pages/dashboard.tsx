@@ -53,7 +53,7 @@ export default function Dashboard({
                 ? teamRoutes.billing.show.url({ team: currentTeam.slug })
                 : teamRoutes.index.url(),
             label: 'Choose a plan',
-            detail: 'Start with the free team trial.',
+            detail: 'Try Team free for 90 days, or choose Pro or Team.',
         },
     ];
     const setupComplete =

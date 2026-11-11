@@ -29,7 +29,7 @@ export function useAccountNav(): {
     if (!auth?.user) {
         return {
             isAuthenticated: false,
-            accountLabel: 'Try Team free',
+            accountLabel: 'Try Team free for 90 days',
             accountUrl: login.url(),
         };
     }

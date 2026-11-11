@@ -12,12 +12,15 @@ export type CurrentTeam = {
     id?: number;
     slug: string;
     name: string;
-    plan: 'free' | 'team' | 'enterprise';
+    plan: 'free' | 'pro' | 'team' | 'enterprise';
     paymentStatus: 'active' | 'past_due';
     isPersonal?: boolean;
     isOwner: boolean;
     role: 'admin' | 'member' | 'viewer' | null;
     isAdmin: boolean;
+    onTrial?: boolean;
+    trialDaysLeft?: number | null;
+    trialEndsAt?: string | null;
 } | null;
 
 export type AnalyticsShared = {

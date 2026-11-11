@@ -34,10 +34,15 @@ export default function Terms({ version }: { version: string }) {
             </Section>
             <Section title="Plans and payment">
                 <p>
-                    Paid plans are billed per seat through Stripe and renew
-                    until cancelled. Cancelling takes effect at the end of the
-                    period you paid for. If a payment fails, existing artifacts
-                    keep serving but new ones are blocked until it is fixed.
+                    Free lets you share a page as a link. New teams get a 90-day
+                    free Team trial with no card required; when the trial ends
+                    the workspace drops back to Free with no charge and nothing
+                    deleted. Paid Pro and Team plans are billed through Stripe
+                    as flat prices (monthly or yearly) and renew until
+                    cancelled. Cancelling takes effect at the end of the period
+                    you paid for. If a payment fails, existing artifacts keep
+                    serving but new ones are blocked until it is fixed. Teams
+                    larger than ten people should contact us about Business.
                 </p>
             </Section>
             <Section title="Acceptable use and enforcement">

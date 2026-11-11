@@ -743,6 +743,36 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     </Alert>
                 </div>
             )}
+            {team?.onTrial && team.trialDaysLeft != null && (
+                <div
+                    className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]"
+                    data-testid="trial-banner"
+                >
+                    <Alert
+                        variant={
+                            team.trialDaysLeft <= 7 ? 'warning' : 'default'
+                        }
+                        role="status"
+                    >
+                        {team.trialDaysLeft === 0
+                            ? 'Your Team trial ends today.'
+                            : `Team trial: ${team.trialDaysLeft} day${team.trialDaysLeft === 1 ? '' : 's'} left.`}{' '}
+                        After that you keep Free — no charge, nothing deleted.{' '}
+                        {isAdmin ? (
+                            <Link
+                                className="underline"
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                Upgrade to Pro or Team
+                            </Link>
+                        ) : (
+                            'Ask a team admin to upgrade.'
+                        )}
+                    </Alert>
+                </div>
+            )}
             {team?.paymentStatus === 'past_due' && (
                 <div className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]">
                     <Alert variant="warning" role="status">
