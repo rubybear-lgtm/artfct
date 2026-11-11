@@ -149,13 +149,14 @@ test('recent_rows_carry_a_preview_url_unless_revoked', function () {
         'revoked_at' => now()->toIso8601String(),
     ]);
     seedDashboardArtifact($team, 'live-row', [
+        'version' => 3,
         'created_at' => now()->subMinute()->toIso8601String(),
     ]);
 
     test()->actingAs($member)->get(route('dashboard', $team))
         ->assertInertia(fn (Assert $page) => $page
             ->where('home.recent.0.previewUrl', null)
-            ->where('home.recent.1.previewUrl', route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => 'live-row'])));
+            ->where('home.recent.1.previewUrl', route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => 'live-row', 'v' => 3])));
 });
 
 test('a_search_returns_service_results_and_lists_no_recent_artifacts', function () {

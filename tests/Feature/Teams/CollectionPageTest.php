@@ -119,6 +119,7 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
         'org_id' => $team->slug,
         'user_id' => $member->id,
         'title' => 'Linked artifact',
+        'version' => 4,
         'description' => null,
         'content_hash' => 'aaaabbbbcccc',
         'created_at' => now()->subDay()->toIso8601String(),
@@ -127,7 +128,7 @@ test('artifact_rows_link_through_the_apps_open_route', function () {
     ]);
 
     $openUrl = route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]);
-    $previewUrl = route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID]);
+    $previewUrl = route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => ARTIFACT_LINK_ID, 'v' => 4]);
 
     test()->actingAs($member)->get(route('teams.collections.index', $team))
         ->assertInertia(fn (Assert $page) => $page

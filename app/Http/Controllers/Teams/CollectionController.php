@@ -75,6 +75,7 @@ class CollectionController extends Controller
                             $artifact->artifact_id => route('teams.artifacts.preview', [
                                 'team' => $team->slug,
                                 'artifactId' => $artifact->artifact_id,
+                                'v' => $visibleArtifactIds[$artifact->artifact_id]['version'] ?? null,
                             ]),
                         ])->all(),
                     ];
@@ -186,7 +187,7 @@ class CollectionController extends Controller
      * revoked artifacts are left out. A directory outage fails closed
      * (nothing visible) rather than showing whatever a stale page held.
      *
-     * @return array{options: list<array{id: string, title: string}>, visible: array<string, true>}
+     * @return array{options: list<array{id: string, title: string}>, visible: array<string, array<string, mixed>>}
      */
     private function directoryArtifacts(ArtifactDirectory $artifacts, Team $team): array
     {
@@ -204,7 +205,7 @@ class CollectionController extends Controller
                     }
 
                     $id = (string) $artifact['id'];
-                    $visible[$id] = true;
+                    $visible[$id] = $artifact;
 
                     if (count($options) < 100) {
                         $options[] = [
