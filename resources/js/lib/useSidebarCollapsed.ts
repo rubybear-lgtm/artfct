@@ -20,7 +20,12 @@ function readCollapsed(): boolean {
 
 function subscribe(onChange: () => void): () => void {
     // Another tab changed the saved value: it wins over this tab's memory.
-    const onStorage = () => {
+    const onStorage = (event: StorageEvent) => {
+        // key is null when storage was cleared; ignore unrelated keys.
+        if (event.key !== null && event.key !== STORAGE_KEY) {
+            return;
+        }
+
         memoryCollapsed = null;
         onChange();
     };

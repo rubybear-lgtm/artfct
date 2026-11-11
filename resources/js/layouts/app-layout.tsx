@@ -573,16 +573,83 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     role="separator"
                                     className="my-2 border-t border-border"
                                 />
-                                {sidebarLink({
-                                    key: 'admin',
-                                    href: teamRoutes.admin.show.url({
-                                        team: team.slug,
-                                    }),
-                                    label: 'Admin',
-                                    icon: ShieldCheck,
-                                    active: onAdminPage,
-                                    testId: 'nav-admin',
-                                })}
+                                {collapsed ? (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger
+                                            aria-label="Admin"
+                                            title="Admin"
+                                            data-testid="nav-admin"
+                                            className={cn(
+                                                sidebarLinkClass(onAdminPage),
+                                                'w-full cursor-pointer',
+                                            )}
+                                        >
+                                            <ShieldCheck
+                                                aria-hidden="true"
+                                                className={cn(
+                                                    'size-[18px] shrink-0',
+                                                    onAdminPage &&
+                                                        'text-[var(--accent)]',
+                                                )}
+                                            />
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                            align="start"
+                                            side="right"
+                                        >
+                                            <DropdownMenuLabel>
+                                                Admin
+                                            </DropdownMenuLabel>
+                                            {adminSubNav.map((item) => (
+                                                <DropdownMenuItem
+                                                    key={item.key}
+                                                    data-testid={`admin-menu-${item.key}`}
+                                                    data-locked={
+                                                        item.locked
+                                                            ? 'true'
+                                                            : 'false'
+                                                    }
+                                                    title={
+                                                        item.locked
+                                                            ? lockedTitle(
+                                                                  item.reason,
+                                                              )
+                                                            : undefined
+                                                    }
+                                                    className={cn(
+                                                        !item.locked &&
+                                                            isActive(
+                                                                item.href,
+                                                                item.exact,
+                                                            ) &&
+                                                            'bg-tint font-semibold',
+                                                        item.locked &&
+                                                            'opacity-70',
+                                                    )}
+                                                    onSelect={() =>
+                                                        router.visit(item.href)
+                                                    }
+                                                >
+                                                    {item.label}
+                                                    {item.locked
+                                                        ? ' · Upgrade'
+                                                        : ''}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                ) : (
+                                    sidebarLink({
+                                        key: 'admin',
+                                        href: teamRoutes.admin.show.url({
+                                            team: team.slug,
+                                        }),
+                                        label: 'Admin',
+                                        icon: ShieldCheck,
+                                        active: onAdminPage,
+                                        testId: 'nav-admin',
+                                    })
+                                )}
                                 {onAdminPage && !collapsed && (
                                     <div
                                         data-testid="admin-subnav"

@@ -196,19 +196,19 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($owner);
 
-    visit(route('dashboard', $team))
+    visit(route('dashboard', $team))->resize(1280, 800)
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 
     foreach (['teams.admin.show', 'teams.edit', 'teams.tokens.index', 'teams.billing.show', 'teams.authentication.show', 'teams.governance.show', 'teams.audit.index'] as $name) {
-        visit(route($name, $team))
+        visit(route($name, $team))->resize(1280, 800)
             ->assertVisible('@admin-subnav')
             ->assertNoJavaScriptErrors();
     }
 
     test()->actingAs($member);
 
-    visit(route('dashboard', $team))
+    visit(route('dashboard', $team))->resize(1280, 800)
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 });
@@ -229,8 +229,9 @@ test('desktop_sidebar_collapses_to_icon_rail_and_remembers_it', function () {
     [$team, $owner] = responsiveOwner('sidebar-rail@example.com');
     test()->actingAs($owner);
 
-    $page = visit(route('dashboard', $team))->resize(1280, 800)
-        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
+    $page = visit(route('dashboard', $team))->resize(1280, 800);
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
+    $page->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
         ->click('@sidebar-toggle')->wait(0.4)
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width < 100')
         ->assertScript('document.querySelector(\'[data-testid="sidebar-toggle"]\').getAttribute("aria-expanded") === "false"');
@@ -241,6 +242,27 @@ test('desktop_sidebar_collapses_to_icon_rail_and_remembers_it', function () {
         ->click('@sidebar-toggle')->wait(0.4)
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
         ->assertNoJavaScriptErrors();
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
+});
+
+test('collapsed_rail_keeps_every_admin_destination_in_a_menu', function () {
+    [$team, $owner] = responsiveOwner('sidebar-rail-admin@example.com');
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.audit.index', $team))->resize(1280, 800);
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
+    $page->click('@sidebar-toggle')->wait(0.4)
+        ->assertMissing('@admin-subnav')
+        ->click('@nav-admin')->wait(0.3);
+
+    foreach (['overview', 'members', 'tokens', 'billing', 'authentication', 'governance', 'audit'] as $key) {
+        $page->assertVisible("@admin-menu-{$key}");
+    }
+
+    $page->click('@admin-menu-billing')->wait(1)
+        ->assertRoute('teams.billing.show', ['team' => $team->slug])
+        ->assertNoJavaScriptErrors();
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
 });
 
 test('mobile_menu_switches_teams_and_reaches_account_settings', function () {
