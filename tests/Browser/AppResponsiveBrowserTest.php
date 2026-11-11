@@ -196,21 +196,21 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($owner);
 
-    $page = visit(route('dashboard', $team));
-    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
-    $page->navigate(route('dashboard', $team))
+    visit(route('dashboard', $team))
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 
     // assertVisible waits only 1s; slow admin pages can hydrate later than that
-    // in a parallel CI run, so wait for the sub-nav to render first.
-    $subnavRendered = 'new Promise((resolve) => { const started = Date.now(); const check = () => { const found = document.querySelector(\'[data-testid="admin-subnav"]\') !== null; if (found || Date.now() - started > 10000) { resolve(found); } else { setTimeout(check, 50); } }; check(); })';
-
+    // in a parallel CI run, so wait for a sub-nav label to render first.
     foreach (['teams.admin.show', 'teams.edit', 'teams.tokens.index', 'teams.billing.show', 'teams.authentication.show', 'teams.governance.show', 'teams.audit.index'] as $name) {
-        visit(route($name, $team))
-            ->assertScript($subnavRendered, true)
-            ->assertVisible('@admin-subnav')
-            ->assertNoJavaScriptErrors();
+        try {
+            visit(route($name, $team))
+                ->waitForText('Sign-in and security')
+                ->assertVisible('@admin-subnav')
+                ->assertNoJavaScriptErrors();
+        } catch (Throwable $exception) {
+            throw new RuntimeException("Admin sub-nav check failed on {$name}: {$exception->getMessage()}", 0, $exception);
+        }
     }
 
     test()->actingAs($member);
@@ -224,9 +224,8 @@ test('desktop_sidebar_holds_primary_nav_and_admin_group_for_admins', function ()
     [$team, $owner] = responsiveOwner('sidebar-admin@example.com');
     test()->actingAs($owner);
 
-    $page = visit(route('teams.billing.show', $team))->resize(1280, 800);
-    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
-    $page->navigate(route('teams.billing.show', $team))
+    visit(route('teams.billing.show', $team))->resize(1280, 800)
+        ->waitForText('Sign-in and security')
         ->assertVisible('@sidebar')
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').contains(document.querySelector(\'[data-testid="admin-subnav"]\'))')
         ->assertScript('document.querySelector(\'[data-testid="admin-subnav-billing"]\').getAttribute("aria-current") === "page"')
