@@ -183,7 +183,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         currentPath === href || (!exact && url.startsWith(`${href}/`));
     const sidebarLinkClass = (active: boolean) =>
         cn(
-            'flex min-h-9 items-center gap-3 rounded-md border-l-2 px-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+            'flex min-h-9 items-center gap-3 rounded-md border-l-2 px-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
             active
                 ? 'border-[var(--accent)] bg-tint text-foreground'
                 : 'border-transparent text-muted-foreground',
@@ -452,7 +452,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             collapsed ? 'Expand sidebar' : 'Collapse sidebar'
                         }
                         data-testid="sidebar-toggle"
-                        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:size-11"
                     >
                         <PanelLeft className="size-4" aria-hidden="true" />
                     </button>
@@ -468,7 +468,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     : undefined
                             }
                             className={cn(
-                                'flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                'flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                 collapsed && 'justify-center px-0',
                             )}
                         >
@@ -577,6 +577,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     <DropdownMenu>
                                         <DropdownMenuTrigger
                                             aria-label="Admin"
+                                            aria-current={
+                                                onAdminPage ? 'page' : undefined
+                                            }
                                             title="Admin"
                                             data-testid="nav-admin"
                                             className={cn(
@@ -683,7 +686,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                             : undefined
                                                     }
                                                     className={cn(
-                                                        'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                                        'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                                         active
                                                             ? 'bg-tint font-semibold text-foreground'
                                                             : 'text-muted-foreground',
@@ -736,7 +739,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <DropdownMenuTrigger
                                 aria-label="Account menu"
                                 className={cn(
-                                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                     collapsed && 'justify-center',
                                 )}
                             >

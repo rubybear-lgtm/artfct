@@ -196,7 +196,9 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($owner);
 
-    visit(route('dashboard', $team))->resize(1280, 800)
+    $page = visit(route('dashboard', $team))->resize(1280, 800);
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
+    $page->navigate(route('dashboard', $team))
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 
@@ -217,7 +219,9 @@ test('desktop_sidebar_holds_primary_nav_and_admin_group_for_admins', function ()
     [$team, $owner] = responsiveOwner('sidebar-admin@example.com');
     test()->actingAs($owner);
 
-    visit(route('teams.billing.show', $team))->resize(1280, 800)
+    $page = visit(route('teams.billing.show', $team))->resize(1280, 800);
+    $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
+    $page->navigate(route('teams.billing.show', $team))
         ->assertVisible('@sidebar')
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').contains(document.querySelector(\'[data-testid="admin-subnav"]\'))')
         ->assertScript('document.querySelector(\'[data-testid="admin-subnav-billing"]\').getAttribute("aria-current") === "page"')
@@ -253,6 +257,7 @@ test('collapsed_rail_keeps_every_admin_destination_in_a_menu', function () {
     $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
     $page->click('@sidebar-toggle')->wait(0.4)
         ->assertMissing('@admin-subnav')
+        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "page"')
         ->click('@nav-admin')->wait(0.3);
 
     foreach (['overview', 'members', 'tokens', 'billing', 'authentication', 'governance', 'audit'] as $key) {
