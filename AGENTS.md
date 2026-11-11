@@ -290,6 +290,7 @@ Bold · Confident · Fast. artfct is a precision tool, not a SaaS platform. Simp
 - Worker: `npm run worker:dev` (wrangler dev, port 8787) or `npm run worker:dev:local` (port 8788, sets `ARTFCT_PUBLIC_BASE_URL`). Point the frontend at it with `VITE_WORKER_URL` in `.env`.
 - `herd sites` reports no sites for this repo, so the Herd block above does not apply — run the app with `composer dev` (or `php artisan serve`).
 - Login uses WorkOS AuthKit; tests get an injectable fake client, so no credentials are needed.
+- Worktrees share the main checkout's Composer install: `artisan` hard-links `vendor/` from the main checkout on first run (`scripts/worktree-bootstrap.php`), so Boost MCP and the rest of `php artisan` work without a per-worktree `composer install`. Composer's generated files are copied, not linked, so `composer install` in one checkout cannot rewrite another's autoloader.
 
 **Verification gates** — `.githooks/pre-commit` (wired via `core.hooksPath`) runs, per staged file type:
 
