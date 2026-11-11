@@ -148,9 +148,16 @@ const SERVER_FIELDS: [&str; 3] = ["version", "updated_at", "updated_by"];
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum DbRoute {
     Session,
+    /// The collections the artifact declares (agents ask this first).
+    Schema,
     Batch,
-    Collection { collection: String },
-    Doc { collection: String, doc_id: String },
+    Collection {
+        collection: String,
+    },
+    Doc {
+        collection: String,
+        doc_id: String,
+    },
 }
 
 /// Names a collection or document: `[A-Za-z0-9._-]`, no leading dot (so `.`
@@ -180,6 +187,7 @@ pub(crate) fn parse_db_path(path: &str) -> Option<DbRoute> {
     let segments: Vec<&str> = rest.split('/').collect();
     match segments.as_slice() {
         ["session"] => Some(DbRoute::Session),
+        ["schema"] => Some(DbRoute::Schema),
         ["batch"] => Some(DbRoute::Batch),
         [collection] if valid_collection_name(collection) => Some(DbRoute::Collection {
             collection: (*collection).to_string(),
@@ -192,6 +200,19 @@ pub(crate) fn parse_db_path(path: &str) -> Option<DbRoute> {
         }
         _ => None,
     }
+}
+
+/// Splits an agent db path, `/v1/artifacts/{id}/db/{rest}`, into the artifact
+/// id and the part after `db/`, which [`parse_db_path`] understands once
+/// [`DB_PATH_PREFIX`] is put back. `None` for any other path, including one
+/// whose id has anything but ASCII letters and digits.
+pub(crate) fn parse_agent_db_path(path: &str) -> Option<(String, String)> {
+    let rest = path.strip_prefix("/v1/artifacts/")?;
+    let (artifact_id, tail) = rest.split_once("/db/")?;
+    let id_ok = !artifact_id.is_empty()
+        && artifact_id.len() <= 64
+        && artifact_id.bytes().all(|byte| byte.is_ascii_alphanumeric());
+    (id_ok && !tail.is_empty()).then(|| (artifact_id.to_string(), tail.to_string()))
 }
 
 /// Whether a request path is in the reserved db namespace at all, valid or
@@ -555,7 +576,7 @@ pub(crate) fn validate_db_manifest(manifest: &DbManifest) -> Result<(), Manifest
         return Err(ManifestRefusal::TooManyCollections);
     }
     for (name, declaration) in &manifest.collections {
-        if !valid_collection_name(name) || matches!(name.as_str(), "session" | "batch") {
+        if !valid_collection_name(name) || matches!(name.as_str(), "session" | "batch" | "schema") {
             return Err(ManifestRefusal::InvalidCollectionName(name.clone()));
         }
         if let Some(index) = &declaration.index {
@@ -660,6 +681,30 @@ mod tests {
                 doc_id: "card-1.v2".into()
             })
         );
+    }
+
+    #[test]
+    fn agent_paths_split_into_id_and_db_path() {
+        assert_eq!(
+            parse_agent_db_path("/v1/artifacts/abc123def456x/db/cards/c1"),
+            Some(("abc123def456x".into(), "cards/c1".into()))
+        );
+        assert_eq!(
+            parse_agent_db_path("/v1/artifacts/abc123def456x/db/schema"),
+            Some(("abc123def456x".into(), "schema".into()))
+        );
+        for path in [
+            "/v1/artifacts/abc/db",
+            "/v1/artifacts/abc/db/",
+            "/v1/artifacts//db/cards",
+            "/v1/artifacts/ab.c/db/cards",
+            "/v1/artifacts/abc/files/db/cards",
+            "/v1/orgs/x/artifacts/abc/db/cards",
+            "/__artfct/db/cards",
+        ] {
+            assert_eq!(parse_agent_db_path(path), None, "{path}");
+        }
+        assert_eq!(parse_db_path("/__artfct/db/schema"), Some(DbRoute::Schema));
     }
 
     #[test]
@@ -1243,7 +1288,7 @@ mod tests {
 
     #[test]
     fn manifest_refuses_reserved_and_invalid_collection_names() {
-        for name in ["session", "batch", ".x", "a/b", ""] {
+        for name in ["session", "batch", "schema", ".x", "a/b", ""] {
             let manifest = DbManifest {
                 collections: BTreeMap::from([(name.to_string(), DbCollectionDecl::default())]),
                 seed: Vec::new(),

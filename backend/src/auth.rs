@@ -97,8 +97,15 @@ pub(crate) fn credential_has_scope(credential: &OrgCredential, required_scope: &
             "collections:read",
             "collections:write",
             "usage:read",
+            "data:read",
+            "data:write",
         ][..],
-        "viewer" => &["artifacts:read", "collections:read", "usage:read"][..],
+        "viewer" => &[
+            "artifacts:read",
+            "collections:read",
+            "usage:read",
+            "data:read",
+        ][..],
         _ => &[][..],
     };
     role_scopes.contains(&required_scope)

@@ -20,13 +20,14 @@ use serde_json::json;
 
 use crate::artifact_db::{
     bytes_added, db_allowed, db_role, exceeds_db_quota, guard_request, index_value, is_db_path,
-    mint_db_token, parse_db_path, parse_document_body, verify_db_token, within_write_rate,
-    BodyRefusal, DbGrant, DbLimits, DbManifest, DbRollout, DbRoute, GuardFacts, DB_REQUEST_HEADER,
-    DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
+    mint_db_token, parse_agent_db_path, parse_db_path, parse_document_body, verify_db_token,
+    within_write_rate, BodyRefusal, DbGrant, DbLimits, DbManifest, DbRollout, DbRoute, GuardFacts,
+    DB_PATH_PREFIX, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES,
+    MAX_BODY_BYTES, MAX_PAGE_LIMIT,
 };
 use crate::artifact_origin::{
     access_token_from_cookie, artifact_origin_suffix, artifact_token_secret,
-    parse_isolated_hostname, verified_token_viewer,
+    parse_isolated_hostname, verified_token_viewer, TokenViewer,
 };
 use crate::sharing::{EditAccess, Sharing};
 
@@ -169,6 +170,12 @@ pub(crate) async fn db_enabled_for_org(
 /// is not in the db namespace so the normal router keeps it.
 pub(crate) async fn artifact_db_route(req: &mut Request, env: &Env) -> Option<Result<Response>> {
     let url = req.url().ok()?;
+    if let Some((artifact_id, rest)) = parse_agent_db_path(url.path()) {
+        if db_rollout(env) == DbRollout::Off {
+            return Some(db_not_found());
+        }
+        return Some(handle_agent(req, env, artifact_id, rest).await);
+    }
     if !is_db_path(url.path()) {
         return None;
     }
@@ -178,6 +185,87 @@ pub(crate) async fn artifact_db_route(req: &mut Request, env: &Env) -> Option<Re
         return Some(db_not_found());
     }
     Some(handle(req, env, url.path().to_string()).await)
+}
+
+/// The agent API: `/v1/artifacts/{id}/db/...`, authenticated by an org
+/// credential with `data:read` or `data:write`. There is no browser here, so
+/// the origin guard does not apply; everything the artifact origin enforces
+/// after authentication (role, read-only org, rate limit, quotas) still does,
+/// through [`dispatch`]. Anything the caller may not see is a 404.
+async fn handle_agent(
+    req: &mut Request,
+    env: &Env,
+    artifact_id: String,
+    rest: String,
+) -> Result<Response> {
+    let method = req.method();
+    if method == Method::Options {
+        return db_preflight_refused();
+    }
+    let is_write = !matches!(method, Method::Get | Method::Head);
+    let scope = if is_write { "data:write" } else { "data:read" };
+    let authorization = header(req, "Authorization")?;
+    let credential =
+        match crate::auth::require_org_scope(authorization.as_deref(), env, scope).await? {
+            Ok(credential) => credential,
+            Err(refusal) => return Ok(refusal),
+        };
+    let Some(route) = parse_db_path(&format!("{DB_PATH_PREFIX}{rest}")) else {
+        return db_not_found();
+    };
+    if route == DbRoute::Session {
+        return db_not_found();
+    }
+    if is_write
+        && header(req, "Content-Length")?
+            .and_then(|value| value.parse::<usize>().ok())
+            .is_some_and(|length| length > MAX_BODY_BYTES * 4)
+    {
+        return body_refusal_response(BodyRefusal::TooLarge);
+    }
+    let database = env.d1("ARTIFACTS_DB")?;
+    let now = Utc::now();
+    let Some(row) = database
+        .prepare(DB_ARTIFACT_SQL)
+        .bind(&[
+            JsValue::from_str(&artifact_id),
+            JsValue::from_str(&now.to_rfc3339()),
+        ])?
+        .first::<DbArtifactRow>(None)
+        .await?
+    else {
+        return db_not_found();
+    };
+    if row.org != credential.org_id || !db_enabled_for_org(&database, env, &row.org).await? {
+        return db_not_found();
+    }
+    let Some(declared) = declared_db(&row.manifest) else {
+        return db_not_found();
+    };
+    let viewer = crate::sharing::Viewer::from_credential(&credential);
+    let token_viewer = TokenViewer {
+        viewer: Some(credential.user_id.clone()),
+        sees_private: viewer.is_admin() || viewer.reads_private(),
+    };
+    let Some(role) = db_role(
+        Some(&token_viewer),
+        row.user_id.as_deref(),
+        Sharing::from_tier(&row.tier),
+        EditAccess::from_stored(row.edit_access.as_deref().unwrap_or("view")),
+    ) else {
+        return db_not_found();
+    };
+    let grant = DbGrant {
+        viewer: format!("agent:{}", credential.user_id)
+            .chars()
+            .take(64)
+            .collect(),
+        role,
+    };
+    dispatch(
+        req, env, &database, &row, &declared, route, method, &grant, now,
+    )
+    .await
 }
 
 async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> {
@@ -268,6 +356,28 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     else {
         return db_error("unauthorized", "A valid database token is required.", 401);
     };
+    dispatch(
+        req, env, &database, &row, &declared, route, method, &grant, now,
+    )
+    .await
+}
+
+/// Everything after authentication, shared by the artifact origin (a db token)
+/// and the agent API (an org credential): the write-permission check, the
+/// read-only org check, the rate charge, quotas, and the routing itself.
+#[allow(clippy::too_many_arguments, reason = "one argument per request fact")]
+async fn dispatch(
+    req: &mut Request,
+    env: &Env,
+    database: &worker::D1Database,
+    row: &DbArtifactRow,
+    declared: &DbManifest,
+    route: DbRoute,
+    method: Method,
+    grant: &DbGrant,
+    now: chrono::DateTime<Utc>,
+) -> Result<Response> {
+    let is_write = !matches!(method, Method::Get | Method::Head);
     if is_write && !grant.role.can_write() {
         return db_error("forbidden", "This viewer cannot write.", 403);
     }
@@ -275,7 +385,7 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     if is_write {
         // A read-only org (payment state) can read but not write. Checked
         // first so a refused write does not spend the viewer's budget.
-        if crate::org_admin::load_org_limits(&database, env, &row.org)
+        if crate::org_admin::load_org_limits(database, env, &row.org)
             .await?
             .read_only
         {
@@ -283,27 +393,30 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
         }
         // A batch is charged per write inside `batch`, once its size is known.
         if route != DbRoute::Batch
-            && !charge_write_rate(&database, &row.id, &grant.viewer, 1, now).await?
+            && !charge_write_rate(database, &row.id, &grant.viewer, 1, now).await?
         {
             return rate_limited_response();
         }
-        limits = load_db_limits(&database, &row.org).await?;
+        limits = load_db_limits(database, &row.org).await?;
     }
 
     match (route, method) {
+        (DbRoute::Schema, Method::Get) => {
+            db_json(json!({"collections": declared.collections}), 200)
+        }
         (DbRoute::Doc { collection, doc_id }, Method::Get) => {
-            read_doc(&database, &declared, &row, &collection, &doc_id).await
+            read_doc(database, declared, row, &collection, &doc_id).await
         }
         (DbRoute::Collection { collection }, Method::Get) => {
-            list_docs(req, &database, &declared, &row, &collection).await
+            list_docs(req, database, declared, row, &collection).await
         }
         (DbRoute::Doc { collection, doc_id }, Method::Put) => {
             put_doc(
                 req,
-                &database,
-                &declared,
-                &row,
-                &grant,
+                database,
+                declared,
+                row,
+                grant,
                 &limits,
                 &collection,
                 &doc_id,
@@ -314,10 +427,10 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
         (DbRoute::Doc { collection, doc_id }, Method::Patch) => {
             patch_doc(
                 req,
-                &database,
-                &declared,
-                &row,
-                &grant,
+                database,
+                declared,
+                row,
+                grant,
                 &limits,
                 &collection,
                 &doc_id,
@@ -326,10 +439,10 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
             .await
         }
         (DbRoute::Doc { collection, doc_id }, Method::Delete) => {
-            delete_doc(req, &database, &declared, &row, &collection, &doc_id).await
+            delete_doc(req, database, declared, row, &collection, &doc_id).await
         }
         (DbRoute::Batch, Method::Post) => {
-            batch(req, &database, &declared, &row, &grant, &limits, now).await
+            batch(req, database, declared, row, grant, &limits, now).await
         }
         _ => db_error(
             "method_not_allowed",
