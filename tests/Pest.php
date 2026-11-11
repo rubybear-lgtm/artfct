@@ -30,6 +30,10 @@ pest()->extend(TestCase::class)
 pest()->extend(TestCase::class)
     ->in('Browser');
 
+// CI runs the whole browser suite in parallel on a small runner, where pages
+// can hydrate slower than the plugin's 5s default. Only failing assertions wait longer.
+pest()->browser()->timeout(15_000);
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
