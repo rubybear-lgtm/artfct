@@ -102,6 +102,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Test web startup
+        run: node --test scripts/start-web.test.mjs
+
       - name: Audit PHP dependencies
         run: composer audit --no-interaction
 

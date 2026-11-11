@@ -79,6 +79,8 @@ class ArtifactPreviewController extends Controller
             return $this->unavailable();
         }
 
+        $fetchStartedAt = hrtime(true);
+
         try {
             $artifact = $content->fetch($team->slug, $artifactId);
         } catch (Throwable $exception) {
@@ -102,6 +104,7 @@ class ArtifactPreviewController extends Controller
         }
 
         $response = $this->html($artifact['html']);
+        $response->headers->set('Server-Timing', 'artifact_fetch;dur='.number_format((hrtime(true) - $fetchStartedAt) / 1_000_000, 2, '.', ''));
         $response->setEtag(hash('sha256', implode(':', [
             (string) $user->id,
             (string) $team->id,
