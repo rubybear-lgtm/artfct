@@ -67,13 +67,30 @@ if (! function_exists('artfct_main_checkout')) {
         $output = [];
         $status = 0;
 
-        exec('git -C '.escapeshellarg($root).' rev-parse --path-format=absolute --git-common-dir 2>/dev/null', $output, $status);
+        // Git hooks export GIT_DIR (and friends); a caller's environment must
+        // not redirect discovery of this checkout's own common dir.
+        exec(artfct_git_environment().' git -C '.escapeshellarg($root).' rev-parse --path-format=absolute --git-common-dir 2>/dev/null', $output, $status);
 
         if ($status !== 0 || ! isset($output[0])) {
             return null;
         }
 
-        $main = dirname(rtrim(trim($output[0]), '/'));
+        $common = rtrim(trim($output[0]), '/');
+
+        // --path-format=absolute guarantees an absolute path; anything else is
+        // not a usable common dir and must not be resolved against the cwd.
+        if (! str_starts_with($common, '/') || ! is_dir($common)) {
+            return null;
+        }
+
+        $main = realpath(dirname($common));
+        $checkout = realpath($root);
+
+        // Inside the main checkout there is nothing to share with itself, and
+        // treating it as a source would let provisioning touch a live vendor/.
+        if ($main === false || $checkout === false || $main === $checkout) {
+            return null;
+        }
 
         return is_file($main.'/composer.json') ? $main : null;
     }
@@ -89,27 +106,55 @@ if (! function_exists('artfct_link_vendor')) {
             return false;
         }
 
-        if (is_dir($target) && ! is_file($target.'/autoload.php')) {
-            artfct_run('rm -rf '.escapeshellarg($target));
+        if (is_file($target.'/autoload.php')) {
+            return true;
         }
 
-        if (! is_dir($target)) {
-            $status = artfct_run('cp -al '.escapeshellarg($source).' '.escapeshellarg($target));
+        // Build the install completely at a staging path first. autoload.php
+        // only appears at $target once the tree is whole, so a concurrent
+        // caller cannot require a half-written autoloader and a killed copy
+        // leaves nothing that looks installed.
+        $staging = $target.'.tmp.'.getmypid();
 
-            if ($status !== 0) {
-                artfct_run('rm -rf '.escapeshellarg($target));
-                $status = artfct_run('cp -a '.escapeshellarg($source).' '.escapeshellarg($target));
-            }
+        artfct_run('rm -rf '.escapeshellarg($staging));
 
-            if ($status !== 0 || ! is_file($target.'/autoload.php')) {
-                artfct_run('rm -rf '.escapeshellarg($target));
+        $status = artfct_run('cp -al '.escapeshellarg($source).' '.escapeshellarg($staging));
+
+        if ($status !== 0) {
+            artfct_run('rm -rf '.escapeshellarg($staging));
+            $status = artfct_run('cp -a '.escapeshellarg($source).' '.escapeshellarg($staging));
+        }
+
+        if ($status !== 0 || ! is_file($staging.'/autoload.php')) {
+            artfct_run('rm -rf '.escapeshellarg($staging));
+
+            return false;
+        }
+
+        foreach (['composer', 'bin'] as $generated) {
+            if (! artfct_copy_directory($staging.'/'.$generated)) {
+                artfct_run('rm -rf '.escapeshellarg($staging));
 
                 return false;
             }
         }
 
-        foreach (['composer', 'bin'] as $generated) {
-            artfct_copy_directory($target.'/'.$generated);
+        foreach (['autoload.php', 'pest-plugins.json'] as $generated) {
+            if (! artfct_copy_file($staging.'/'.$generated)) {
+                artfct_run('rm -rf '.escapeshellarg($staging));
+
+                return false;
+            }
+        }
+
+        if (is_dir($target)) {
+            artfct_run('rm -rf '.escapeshellarg($target));
+        }
+
+        if (! @rename($staging, $target)) {
+            artfct_run('rm -rf '.escapeshellarg($staging));
+
+            return false;
         }
 
         return true;
@@ -120,19 +165,43 @@ if (! function_exists('artfct_copy_directory')) {
     /**
      * Replace a directory of hard links with independent copies.
      */
-    function artfct_copy_directory(string $path): void
+    function artfct_copy_directory(string $path): bool
     {
         if (! is_dir($path) || is_link($path)) {
-            return;
+            return true;
         }
 
         $copy = $path.'.copy';
 
-        artfct_run('rm -rf '.escapeshellarg($copy));
-        artfct_run('cp -a '.escapeshellarg($path).' '.escapeshellarg($copy));
-        artfct_run('rm -rf '.escapeshellarg($path));
+        if (artfct_run('rm -rf '.escapeshellarg($copy)) !== 0
+            || artfct_run('cp -a '.escapeshellarg($path).' '.escapeshellarg($copy)) !== 0
+            || artfct_run('rm -rf '.escapeshellarg($path)) !== 0) {
+            return false;
+        }
 
-        rename($copy, $path);
+        return rename($copy, $path);
+    }
+}
+
+if (! function_exists('artfct_copy_file')) {
+    /**
+     * Replace a hard-linked generated file with an independent copy.
+     */
+    function artfct_copy_file(string $path): bool
+    {
+        if (! is_file($path)) {
+            return true;
+        }
+
+        $copy = $path.'.copy';
+
+        if (artfct_run('rm -f '.escapeshellarg($copy)) !== 0
+            || artfct_run('cp -a '.escapeshellarg($path).' '.escapeshellarg($copy)) !== 0
+            || artfct_run('rm -f '.escapeshellarg($path)) !== 0) {
+            return false;
+        }
+
+        return rename($copy, $path);
     }
 }
 
@@ -147,7 +216,12 @@ if (! function_exists('artfct_local_environment')) {
     {
         $argv = $_SERVER['argv'] ?? [];
 
-        if (is_file($root.'/.env') || ! in_array('boost:mcp', $argv, true)) {
+        $isBoostCommand = array_any(
+            $argv,
+            fn (mixed $argument): bool => is_string($argument) && str_starts_with($argument, 'boost:'),
+        );
+
+        if (is_file($root.'/.env') || ! $isBoostCommand) {
             return;
         }
 
@@ -187,6 +261,20 @@ if (! function_exists('artfct_vendor_unlock')) {
 
         flock($handle, LOCK_UN);
         fclose($handle);
+    }
+}
+
+if (! function_exists('artfct_git_environment')) {
+    /**
+     * Shell prefix that drops inherited git location overrides.
+     *
+     * `git -C` still honours GIT_DIR, and git exports it to hooks, so running
+     * artisan from a hook would otherwise resolve the wrong repository.
+     */
+    function artfct_git_environment(): string
+    {
+        return 'env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE'
+            .' -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES';
     }
 }
 
