@@ -12,9 +12,9 @@ uses(RefreshDatabase::class);
 /**
  * Signed-in pages at phone, tablet and desktop widths (RUB mobile slice).
  *
- * The layout switches below 768px: the desktop nav hides and a hamburger
- * opens an accessible Dialog with every role-visible destination, team
- * switching and account controls. Artifact and membership tables become
+ * The layout switches below 768px: the desktop sidebar hides, a top bar shows
+ * a hamburger, and it opens an accessible drawer (Dialog) with every
+ * role-visible destination, team switching and account controls. Artifact and membership tables become
  * labeled cards without duplicating testids or controls; billing and audit
  * tables keep contained scrolling.
  */
@@ -188,7 +188,7 @@ test('mobile_menu_hides_admin_destinations_from_members', function () {
 test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', function () {
     [$team, $owner] = responsiveOwner('subnav-admin@example.com');
 
-    // The sub-nav replaces the plain settings links on desktop: it shows on
+    // The sub-nav sits under Admin in the sidebar on desktop: it shows on
     // the admin overview and on every admin settings page, and not elsewhere.
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($owner);
@@ -207,6 +207,36 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
 
     visit(route('dashboard', $team))
         ->assertMissing('@admin-subnav')
+        ->assertNoJavaScriptErrors();
+});
+
+test('desktop_sidebar_holds_primary_nav_and_admin_group_for_admins', function () {
+    [$team, $owner] = responsiveOwner('sidebar-admin@example.com');
+    test()->actingAs($owner);
+
+    visit(route('teams.billing.show', $team))->resize(1280, 800)
+        ->assertVisible('@sidebar')
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').contains(document.querySelector(\'[data-testid="admin-subnav"]\'))')
+        ->assertScript('document.querySelector(\'[data-testid="admin-subnav-billing"]\').getAttribute("aria-current") === "page"')
+        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "page"')
+        ->assertNoJavaScriptErrors();
+});
+
+test('desktop_sidebar_collapses_to_icon_rail_and_remembers_it', function () {
+    [$team, $owner] = responsiveOwner('sidebar-rail@example.com');
+    test()->actingAs($owner);
+
+    $page = visit(route('dashboard', $team))->resize(1280, 800)
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
+        ->click('@sidebar-toggle')->wait(0.4)
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width < 100')
+        ->assertScript('document.querySelector(\'[data-testid="sidebar-toggle"]\').getAttribute("aria-expanded") === "false"');
+
+    // The choice is remembered per browser across a full reload.
+    $page->navigate(route('dashboard', $team))->wait(0.6)
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getAttribute("data-collapsed") === "true"')
+        ->click('@sidebar-toggle')->wait(0.4)
+        ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').getBoundingClientRect().width > 200')
         ->assertNoJavaScriptErrors();
 });
 
