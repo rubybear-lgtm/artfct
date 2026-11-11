@@ -270,8 +270,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
+      # Ubuntu's apt mirrors can be unreachable from runners, which used to fail
+      # the whole job at `--with-deps`. The runner image already ships Chromium's
+      # shared libraries, so the browser download is required but the extra
+      # system packages (mostly fonts) are best effort and fail fast.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          printf 'Acquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAcquire::Retries "0";\n' | sudo tee /etc/apt/apt.conf.d/99fail-fast >/dev/null
+          npx playwright install-deps chromium || echo "::warning::Playwright system dependencies could not be installed; continuing with the runner image's packages."
 
       - name: Prepare Laravel
         run: |
