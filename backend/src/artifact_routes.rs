@@ -1092,6 +1092,7 @@ pub(crate) async fn resolve_permanent_artifact(
             files: Vec::new(),
             external_origins: Vec::new(),
             unsafe_eval: false,
+            db: None,
         }
     });
     let mut response = Response::from_bytes(serve_bytes)?.with_status(200);
@@ -2102,6 +2103,17 @@ pub(crate) async fn create_permanent_artifact(
                         JsValue::from_str(&provenance_json),
                     ])?,
             ];
+            // Spec 20: starter rows ride in the same atomic batch as the new
+            // artifact, `INSERT OR IGNORE`, and only on this first deploy.
+            if let Some(declared_db) = manifest.db.as_ref() {
+                statements.extend(crate::artifact_db_routes::seed_statements(
+                    database,
+                    &org,
+                    &artifact_id,
+                    declared_db,
+                    &now,
+                )?);
+            }
             for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
                 statements.push(
                     database

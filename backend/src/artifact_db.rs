@@ -11,11 +11,6 @@
 //! every `*--prod.artfct.dev` host is one site. So no rule below may rely on
 //! the `artfct_access` cookie being unreachable from another artifact.
 
-#![allow(
-    dead_code,
-    reason = "the handler that calls these lands in the next commit of spec 20; removed there"
-)]
-
 use super::*;
 use std::collections::BTreeMap;
 
@@ -1080,6 +1075,69 @@ mod tests {
             validate_db_manifest(&seeds),
             Err(ManifestRefusal::TooManySeedRows)
         );
+    }
+
+    // ----- deploy-time wiring -----
+
+    fn deploy_body(extra: &str, path: &str) -> Value {
+        serde_json::from_str(&format!(
+            r#"{{"manifest":{{"entrypoint":"index.html","external_origins":[],
+                "files":[{{"path":"{path}","size_bytes":1,"content_type":"text/html",
+                "sha256":"{}"}}]{extra}}}}}"#,
+            "a".repeat(64)
+        ))
+        .expect("deploy json")
+    }
+
+    #[test]
+    fn manifest_without_db_keeps_its_canonical_bytes_and_hash() {
+        let (manifest, hash) =
+            crate::validation::validate_permanent_manifest(&deploy_body("", "index.html"))
+                .expect("valid");
+        assert_eq!(manifest.db, None);
+        let canonical = serde_json::to_string(&manifest).expect("json");
+        assert!(!canonical.contains("\"db\""), "{canonical}");
+        assert_eq!(hash, store::content_hash(canonical.as_bytes()));
+    }
+
+    #[test]
+    fn deploy_accepts_a_declared_db_with_seed() {
+        let extra = r#","db":{"collections":{"cards":{"index":"column"}},
+            "seed":[{"collection":"cards","doc_id":"c1","body":{"column":"todo"}}]}"#;
+        let (manifest, _) =
+            crate::validation::validate_permanent_manifest(&deploy_body(extra, "index.html"))
+                .expect("valid");
+        let declared = manifest.db.expect("db kept");
+        assert_eq!(declared.seed.len(), 1);
+        assert_eq!(
+            declared
+                .collection("cards")
+                .and_then(|c| c.index.as_deref()),
+            Some("column")
+        );
+    }
+
+    #[test]
+    fn deploy_refuses_an_invalid_db_section() {
+        for extra in [
+            r#","db":{"collections":{}}"#,
+            r#","db":{"collections":{"session":{}}}"#,
+            r#","db":{"collections":{"a":{}},"seed":[{"collection":"b","doc_id":"x","body":{}}]}"#,
+            r#","db":"yes""#,
+        ] {
+            assert!(
+                crate::validation::validate_permanent_manifest(&deploy_body(extra, "index.html"))
+                    .is_err(),
+                "{extra}"
+            );
+        }
+    }
+
+    #[test]
+    fn deploy_refuses_a_bundle_file_in_the_reserved_namespace() {
+        let result =
+            crate::validation::validate_permanent_manifest(&deploy_body("", "__artfct/db/x.html"));
+        assert!(result.is_err());
     }
 
     // ----- reserved bundle prefix -----
