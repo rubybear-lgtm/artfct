@@ -30,9 +30,11 @@ What the Action does:
    succeed. Pending checks time out as failure. Railway preview/deploy
    statuses (`artfct - …`) are ignored. When GitHub retried a check, only the
    latest attempt per name counts.
-4. Unless `dry_run`: fast-forwards `main` (`git push origin <sha>:main`),
-   creates an annotated tag `release-YYYYMMDD-HHMM` (UTC), and opens a GitHub
-   Release whose notes list PRs since the previous `release-*` tag.
+4. Unless `dry_run`: creates an annotated tag `release-YYYYMMDD-HHMM` (UTC)
+   locally, then atomically fast-forwards `main` and publishes that tag
+   (`git push --atomic origin <sha>:main refs/tags/<tag>` — never force), and
+   opens a GitHub Release whose notes list PRs since the previous `release-*`
+   tag. Atomic push avoids leaving `main` advanced when the tag is rejected.
 5. Polls Railway until production `web`, `queue`, and `scheduler` show
    `SUCCESS` for that commit.
 6. Smoke-tests `https://artfct.dev/up` and `https://artfct.dev/mcp`

@@ -83,5 +83,5 @@ jobs:
             args+=(--dry-run)
           fi
           # Fast-forward only: scripts/release/release.mjs runs
-          # `git push origin <sha>:main` (never a forced push).
+          # `git push --atomic origin <sha>:main refs/tags/<tag>` (never a forced push).
           node scripts/release/release.mjs "${args[@]}"
