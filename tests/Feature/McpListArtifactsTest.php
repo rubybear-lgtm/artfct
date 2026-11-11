@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Enums\UsageEventType;
 use App\Models\ArtifactUsageEvent;
@@ -100,7 +101,7 @@ function listArtifactsEncodeCursor(array $payload): string
 }
 
 test('list_artifacts sends every filter to the Worker with live true', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-filters']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-filters']);
     $token = remoteMcpToken($team);
     $actor = OrgJwtService::default()->verify($token)['user_id'];
     config(['services.worker.base_url' => 'https://worker.test']);
@@ -136,7 +137,7 @@ test('list_artifacts sends every filter to the Worker with live true', function 
 });
 
 test('list_artifacts maps owner anyone to no owner filter and an email to that member id', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-owner']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-owner']);
     $token = remoteMcpToken($team);
     $member = memberOfTeam($team, TeamRole::Member);
     config(['services.worker.base_url' => 'https://worker.test']);
@@ -152,7 +153,7 @@ test('list_artifacts maps owner anyone to no owner filter and an email to that m
 });
 
 test('list_artifacts returns an empty list for an owner email that is not a team member', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-owner-unknown']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-owner-unknown']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake();
@@ -168,7 +169,7 @@ test('list_artifacts returns an empty list for an owner email that is not a team
 });
 
 test('list_artifacts resolves a collection by id and by name into an ids filter', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-collection']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-collection']);
     $token = remoteMcpToken($team);
     $collection = Collection::factory()->for($team)->create(['name' => 'Launch dashboards']);
     CollectionArtifact::create(['collection_id' => $collection->id, 'artifact_id' => 'abc123def4567', 'added_at' => now()]);
@@ -186,7 +187,7 @@ test('list_artifacts resolves a collection by id and by name into an ids filter'
 });
 
 test('list_artifacts reports an unknown collection without calling the Worker', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-collection-missing']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-collection-missing']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake();
@@ -200,7 +201,7 @@ test('list_artifacts reports an unknown collection without calling the Worker', 
 });
 
 test('list_artifacts returns invalid_cursor for a garbage cursor instead of restarting at page 1', function () {
-    $team = Team::factory()->create(['slug' => 'rub-515-list-garbage-cursor']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-list-garbage-cursor']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
@@ -219,7 +220,7 @@ test('list_artifacts returns invalid_cursor for a garbage cursor instead of rest
 });
 
 test('list_artifacts caps a collection at the 200 most recently added artifacts and says so', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-collection-cap']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-collection-cap']);
     $token = remoteMcpToken($team);
     $collection = Collection::factory()->for($team)->create();
 
@@ -251,7 +252,7 @@ test('list_artifacts caps a collection at the 200 most recently added artifacts 
 });
 
 test('list_artifacts maps each requested sort to the Worker sort', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-sorts']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-sorts']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
 
@@ -273,7 +274,7 @@ test('list_artifacts maps each requested sort to the Worker sort', function () {
 });
 
 test('list_artifacts ranks most viewed and pages with a keyset cursor without duplicating', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-most-viewed']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-most-viewed']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
 
@@ -319,7 +320,7 @@ test('list_artifacts ranks most viewed and pages with a keyset cursor without du
 });
 
 test('list_artifacts passes the Worker cursor through wrapped and ignores a cursor for another sort', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-cursor']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-cursor']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake(['worker.test/v1/orgs/*' => Http::response(['artifacts' => [], 'next_cursor' => 'wc1'])]);
@@ -345,7 +346,7 @@ test('list_artifacts passes the Worker cursor through wrapped and ignores a curs
 test('list_artifacts returns view counts can_edit and owner you', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-440-items']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-items']);
     $token = remoteMcpToken($team);
     $actor = OrgJwtService::default()->verify($token)['user_id'];
     config(['services.worker.base_url' => 'https://worker.test']);
@@ -396,7 +397,7 @@ test('list_artifacts rejects a limit outside the allowed bounds before calling t
 ]);
 
 test('list_artifacts forwards the callers own bearer token to the Worker', function () {
-    $team = Team::factory()->create(['slug' => 'rub-440-token']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-440-token']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake(['worker.test/v1/orgs/*' => Http::response(['artifacts' => [], 'next_cursor' => null])]);

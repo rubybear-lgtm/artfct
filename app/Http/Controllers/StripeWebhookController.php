@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BillingPrice;
+use App\Enums\Plan;
 use App\Models\Team;
 use App\Services\Billing\BillingService;
 use App\Services\Billing\StripeSignature;
+use App\Services\Billing\TeamTrialService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,8 +18,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * `POST /webhooks/stripe`. Verifies the signature over the raw body, records
  * the event id (a replay is a no-op), then applies the payment state to the
- * team it belongs to. Payment state only ever arrives here, never from the
- * checkout redirect.
+ * team it belongs to. Unknown event types are ignored with 2xx.
  */
 class StripeWebhookController extends Controller
 {
@@ -34,8 +36,6 @@ class StripeWebhookController extends Controller
             return response()->json(['error' => 'malformed'], 400);
         }
 
-        // An event from the other Stripe mode is never ours to apply: a test-mode
-        // event must not upgrade a team in production, and the reverse.
         if (isset($event['livemode']) && (bool) $event['livemode'] !== $this->liveKeyConfigured()) {
             Log::warning('Ignoring a Stripe event from the other mode.', ['type' => $event['type'], 'livemode' => (bool) $event['livemode']]);
 
@@ -43,13 +43,6 @@ class StripeWebhookController extends Controller
         }
 
         try {
-            // The idempotency row and the state it guards commit together. The row
-            // used to be written and committed first, so a failure partway through
-            // applying state left the event marked as received: Stripe's retry was
-            // then answered `duplicate` and the state was never applied, with
-            // nothing recording that it had been dropped (RUB-373). Inside one
-            // transaction a mid-apply failure rolls the row back, so the retry
-            // processes it for real.
             DB::transaction(function () use ($billing, $event): void {
                 DB::table('stripe_events_received')->insert([
                     'event_id' => $event['id'],
@@ -60,9 +53,6 @@ class StripeWebhookController extends Controller
                 $this->apply($billing, $event);
             });
         } catch (UniqueConstraintViolationException $exception) {
-            // Only the event-id constraint means "already processed". Any other
-            // unique violation is a real failure, and answering it as a duplicate
-            // would reintroduce the same silent drop through a different door.
             if (! str_contains($exception->getMessage(), 'stripe_events_received')) {
                 throw $exception;
             }
@@ -91,7 +81,13 @@ class StripeWebhookController extends Controller
                 (bool) ($object['cancel_at_period_end'] ?? false),
                 isset($object['current_period_end']) ? (int) $object['current_period_end'] : ($object['items']['data'][0]['current_period_end'] ?? null),
                 isset($object['status']) ? (string) $object['status'] : null,
+                isset($object['id']) ? (string) $object['id'] : null,
+                isset($object['trial_end']) ? (int) $object['trial_end'] : null,
+                $this->lookupKeyFromSubscription($object),
             )),
+            'customer.subscription.trial_will_end' => $this->forCustomer($object, $created, function (Team $team): void {
+                app(TeamTrialService::class)->markReminderSent($team);
+            }),
             default => Log::info('Ignoring Stripe event type.', ['type' => $event['type']]),
         };
     }
@@ -109,21 +105,57 @@ class StripeWebhookController extends Controller
             return;
         }
 
-        // A completed session is not a paid one: an asynchronous payment method
-        // can complete a session whose money has not arrived and may never.
         if (! in_array($session['payment_status'] ?? null, ['paid', 'no_payment_required'], true)) {
             Log::warning('Stripe checkout completed without payment; the plan is not changed.', ['payment_status' => $session['payment_status'] ?? null]);
 
             return;
         }
 
-        $this->applyToTeam($team, $created, function (Team $team) use ($billing, $session): void {
+        $plan = $this->planFromCheckoutMetadata($session);
+
+        $this->applyToTeam($team, $created, function (Team $team) use ($billing, $session, $plan): void {
             if (isset($session['customer']) && $team->stripe_customer_id !== $session['customer']) {
                 $team->forceFill(['stripe_customer_id' => $session['customer']])->save();
             }
 
-            $billing->applyCheckoutCompleted($team, (string) $session['subscription']);
+            $billing->applyCheckoutCompleted($team, (string) $session['subscription'], $plan);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $session
+     */
+    private function planFromCheckoutMetadata(array $session): Plan
+    {
+        $lookupKey = $session['metadata']['lookup_key'] ?? null;
+        if (is_string($lookupKey) && $lookupKey !== '') {
+            $price = BillingPrice::tryFromLookupKey($lookupKey);
+            if ($price !== null) {
+                return $price->plan();
+            }
+        }
+
+        $plan = $session['metadata']['plan'] ?? null;
+        if (is_string($plan)) {
+            return Plan::tryFrom($plan) ?? Plan::Team;
+        }
+
+        return Plan::Team;
+    }
+
+    /**
+     * @param  array<string, mixed>  $subscription
+     */
+    private function lookupKeyFromSubscription(array $subscription): ?string
+    {
+        $fromMeta = $subscription['metadata']['lookup_key'] ?? null;
+        if (is_string($fromMeta) && $fromMeta !== '') {
+            return $fromMeta;
+        }
+
+        $fromPrice = $subscription['items']['data'][0]['price']['lookup_key'] ?? null;
+
+        return is_string($fromPrice) && $fromPrice !== '' ? $fromPrice : null;
     }
 
     /**
@@ -144,12 +176,6 @@ class StripeWebhookController extends Controller
     }
 
     /**
-     * Applies an event to a team under a row lock, and only if it is not older
-     * than the last event applied to that team. Stripe retries failed deliveries
-     * for days, so a stale event can arrive after a newer one; applied blindly it
-     * would put a cancelled team back on the paid plan, or a paying one back to
-     * read-only. Events with the same timestamp are applied.
-     *
      * @param  callable(Team): void  $apply
      */
     private function applyToTeam(Team $team, int $created, callable $apply): void

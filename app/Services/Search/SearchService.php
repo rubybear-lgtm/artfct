@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Billing\PlanGate;
 use App\Services\Collections\UsageScorer;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\EmbeddingsContract;
@@ -63,6 +64,9 @@ final class SearchService
         string $userAgent = 'search',
         string $source = 'api',
     ): array {
+        // Search by description is a Team/Pro feature (RUB-529).
+        PlanGate::requireTeam($team, 'Search by description');
+
         // Fail closed before scoring: a zero-candidate search must not skip the
         // viewer-credential gate that used to run on the full-directory list.
         $this->artifacts->requireViewerCredential($team->slug);

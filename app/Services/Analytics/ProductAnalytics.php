@@ -39,6 +39,10 @@ final class ProductAnalytics
 
     public const ARTIFACT_DELETED = 'artifact_deleted';
 
+    public const TRIAL_STARTED = 'trial_started';
+
+    public const TRIAL_ENDED = 'trial_ended';
+
     public function __construct(
         private AnalyticsContract $analytics,
         private FirstTouchAttribution $firstTouch,
@@ -168,6 +172,18 @@ final class ProductAnalytics
                 ...$heard,
             ]);
         });
+    }
+
+    public function trialStarted(User|string|null $actor, Team $team, string $source, int $trialDaysLeft): void
+    {
+        $this->captureTeamEvent(self::TRIAL_STARTED, $actor, $team, $source, [
+            'trial_days_left' => $trialDaysLeft,
+        ]);
+    }
+
+    public function trialEnded(User|string|null $actor, Team $team, string $source): void
+    {
+        $this->captureTeamEvent(self::TRIAL_ENDED, $actor, $team, $source);
     }
 
     /**

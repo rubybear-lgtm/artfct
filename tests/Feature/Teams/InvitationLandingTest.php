@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Teams\InvitationLandingController;
 use App\Models\AuditEvent;
@@ -17,7 +18,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 function pendingInvitation(string $email = 'invitee@example.com', array $overrides = []): TeamInvitation
 {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     return $team->invitations()->create(array_merge([
@@ -117,7 +118,7 @@ test('invitation_email_links_to_the_landing_page', function () {
 });
 
 test('declining_an_invitation_is_audited_and_removes_it', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $inviter = memberOfTeam($team, TeamRole::Admin);
     $invitee = User::factory()->create(['email' => 'decliner@example.com']);
     $invitation = $team->invitations()->create(['email' => 'decliner@example.com', 'role' => TeamRole::Member, 'invited_by' => $inviter->id, 'expires_at' => now()->addDay()]);
@@ -129,7 +130,7 @@ test('declining_an_invitation_is_audited_and_removes_it', function () {
 });
 
 test('an_invitation_for_another_email_cannot_be_accepted', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $inviter = memberOfTeam($team, TeamRole::Admin);
     $other = User::factory()->create(['email' => 'not-invited@example.com']);
     $invitation = $team->invitations()->create(['email' => 'someone-else@example.com', 'role' => TeamRole::Member, 'invited_by' => $inviter->id, 'expires_at' => now()->addDay()]);

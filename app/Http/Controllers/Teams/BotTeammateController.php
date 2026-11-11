@@ -12,6 +12,8 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgTokenRevoker;
+use App\Services\Billing\PlanGate;
+use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
 use App\Services\Teams\BotAvatarStore;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +21,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use RuntimeException;
 
@@ -32,6 +35,21 @@ class BotTeammateController extends Controller
     {
         Gate::authorize('create', [OrgToken::class, $team]);
         abort_if($request->user()?->is_bot === true, 403);
+
+        try {
+            PlanGate::requireBotAccess($team);
+        } catch (PlanGateException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'errorCode' => 'plan_required',
+                    'message' => $exception->getMessage(),
+                    'retryable' => false,
+                    'nextAction' => 'upgrade_plan',
+                ], 403);
+            }
+
+            throw ValidationException::withMessages(['name' => $exception->getMessage()]);
+        }
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:100'],
@@ -116,6 +134,17 @@ class BotTeammateController extends Controller
         Gate::authorize('create', [OrgToken::class, $team]);
         abort_if($request->user()?->is_bot === true, 403);
         abort_unless($user->is_bot && $user->belongsToTeam($team), 404);
+
+        try {
+            PlanGate::requireBotAccess($team);
+        } catch (PlanGateException $exception) {
+            return response()->json([
+                'errorCode' => 'plan_required',
+                'message' => $exception->getMessage(),
+                'retryable' => false,
+                'nextAction' => 'upgrade_plan',
+            ], 403);
+        }
 
         $validated = $request->validate([
             'scopes' => ['sometimes', 'array', 'min:1'],

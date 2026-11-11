@@ -2,6 +2,7 @@
 
 use App\Enums\McpScope;
 use App\Enums\OrgTokenKind;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\OrgToken;
 use App\Models\Team;
@@ -14,7 +15,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('a member can add a bot teammate without email and receive a token once', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     $response = test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
@@ -37,7 +38,7 @@ test('a member can add a bot teammate without email and receive a token once', f
 
 test('creating a bot without an avatar accepts application/json', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)
@@ -54,7 +55,7 @@ test('creating a bot without an avatar accepts application/json', function () {
 
 test('bots appear on the members page with a bot flag and no email', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $created = test()->actingAs($admin)->postJson(route('teams.bots.store', $team), [
         'name' => 'Hoku',
@@ -86,7 +87,7 @@ test('rolling a bot token revokes the old credential and returns a new one once'
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create(['slug' => 'roll-bot-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'roll-bot-team']);
     $member = memberOfTeam($team, TeamRole::Member);
     $created = test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
         'name' => 'Hoku',
@@ -132,7 +133,7 @@ test('rolling a bot token revokes the old credential and returns a new one once'
 });
 
 test('tokens page lists bots so the agent tab can explain an empty state', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     test()->actingAs($admin)->get(route('teams.tokens.index', $team))
@@ -143,7 +144,7 @@ test('tokens page lists bots so the agent tab can explain an empty state', funct
 });
 
 test('bots do not count toward billed seats', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     memberOfTeam($team, TeamRole::Admin);
     memberOfTeam($team, TeamRole::Member);
     $bot = User::factory()->bot()->create();
@@ -155,7 +156,7 @@ test('bots do not count toward billed seats', function () {
 
 test('a human can upload a bot avatar from team settings', function () {
     Storage::fake('public');
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $bot = User::factory()->bot()->create(['name' => 'Hoku']);
     $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Member]);
@@ -175,7 +176,7 @@ test('a human can upload a bot avatar from team settings', function () {
 test('set_avatar mcp tool updates the authenticated bot avatar', function () {
     configureOrgJwt();
     Storage::fake('public');
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     $created = test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
@@ -223,7 +224,7 @@ test('removing a bot revokes its tokens', function () {
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $created = test()->actingAs($admin)->postJson(route('teams.bots.store', $team), [
         'name' => 'Hoku',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -55,7 +56,7 @@ afterEach(function () {
 
 test('golden_queries_pass_when_every_expected_artifact_is_in_the_top_results', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'zz-golden']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-golden']);
     memberOfTeam($team, TeamRole::Admin);
     $fixture = goldenQueriesFixture($team, [
         ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash']],
@@ -69,7 +70,7 @@ test('golden_queries_pass_when_every_expected_artifact_is_in_the_top_results', f
 
 test('golden_queries_fail_and_name_the_missing_key_when_an_expected_artifact_is_absent', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'zz-golden']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-golden']);
     memberOfTeam($team, TeamRole::Admin);
     $fixture = goldenQueriesFixture($team, [
         ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash', 'never-seeded']],
@@ -82,7 +83,7 @@ test('golden_queries_fail_and_name_the_missing_key_when_an_expected_artifact_is_
 
 test('golden_queries_apply_the_fixtures_agent_filter', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'zz-golden']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-golden']);
     memberOfTeam($team, TeamRole::Admin);
     $fixture = goldenQueriesFixture($team, [
         ['query' => 'billing dashboard revenue overview', 'expected_keys' => ['billing-dash'], 'agent' => 'cursor'],
@@ -95,7 +96,7 @@ test('golden_queries_apply_the_fixtures_agent_filter', function () {
 });
 
 test('golden_queries_refuse_a_non_synthetic_org', function () {
-    Team::factory()->create(['slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
 
     test()->artisan('synthetic:golden-queries', ['org' => 'acme'])->assertFailed();
 });

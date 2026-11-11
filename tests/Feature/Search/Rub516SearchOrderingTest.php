@@ -1,12 +1,13 @@
 <?php
 
+use App\Contracts\ArtifactDirectory;
 /**
  * RUB-516 items 3–4: search must return scores that match result order, keep
  * exact-title matches clearly ahead, preserve heading words in snippets, and
  * not hang for ~10s on no-results when Workers AI is slow.
  */
 
-use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Models\Team;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\RerankerContract;
@@ -72,7 +73,7 @@ test('rub516_item3_returned_scores_are_sorted_descending_and_exact_title_leads_b
 });
 
 test('rub516_item3_search_service_orders_by_returned_score_with_production_path', function () {
-    $team = Team::factory()->create(['slug' => 'rub516-search']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub516-search']);
     $directory = app(ArtifactDirectory::class);
     $index = app(VectorIndexContract::class);
 
@@ -161,7 +162,7 @@ test('rub516_item3_snippets_keep_heading_words_when_title_is_only_a_prefix', fun
 });
 
 test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', function () {
-    $team = Team::factory()->create(['slug' => 'rub516-slow-embed']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub516-slow-embed']);
     $directory = app(ArtifactDirectory::class);
 
     // Production-like: artifacts exist in the directory, but nothing is indexed
@@ -219,7 +220,7 @@ test('rub516_item4_no_results_search_finishes_under_1_5s_when_embeddings_hang', 
 });
 
 test('rub516_item4_empty_workspace_skips_embeddings_entirely', function () {
-    $team = Team::factory()->create(['slug' => 'rub516-empty-dir']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub516-empty-dir']);
     $embeddings = new class implements EmbeddingsContract
     {
         public int $calls = 0;

@@ -2,6 +2,7 @@
 
 use App\Contracts\AnalyticsContract;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -29,7 +30,7 @@ beforeEach(function () {
 test('B2 artifact_shared fires on web sharing update with source=web', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'share-analytics']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'share-analytics']);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $team->forceFill(['owner_user_id' => $owner->id])->save();
 
@@ -67,7 +68,7 @@ test('B2 artifact_shared fires on web sharing update with source=web', function 
 });
 
 test('B3 artifact_searched fires from SearchService with query_length and source', function () {
-    $team = Team::factory()->create(['slug' => 'search-analytics']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'search-analytics']);
     $user = memberOfTeam($team, TeamRole::Member);
     $bot = User::factory()->create(['is_bot' => true]);
     $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Member]);
@@ -111,7 +112,7 @@ test('B3 artifact_searched fires from SearchService with query_length and source
 test('B1 artifact_shared fires on real deploy_artifact MCP success path', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'mcp-share']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'mcp-share']);
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Analytics share</title><p>Hi</p>';
     $sha = hash('sha256', $html);

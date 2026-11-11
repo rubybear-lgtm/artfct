@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Middleware\EnsureTeamMembership;
 use App\Models\Collection;
@@ -54,7 +55,7 @@ function seedDashboardChunk(Team $team, string $artifactId, string $text, array 
 }
 
 test('the_dashboard_home_carries_team_recent_and_pinned_collections', function () {
-    $team = Team::factory()->create(['slug' => 'home-org', 'name' => 'Home Org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'home-org', 'name' => 'Home Org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     for ($i = 0; $i < 12; $i++) {
@@ -159,7 +160,7 @@ test('recent_rows_carry_a_preview_url_unless_revoked', function () {
 
 test('a_search_returns_service_results_and_lists_no_recent_artifacts', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'search-home-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'search-home-org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     $text = 'billing dashboard revenue overview';

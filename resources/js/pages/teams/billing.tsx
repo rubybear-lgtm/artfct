@@ -27,9 +27,12 @@ interface Props {
     team: {
         slug: string;
         name: string;
-        plan: 'free' | 'team' | 'enterprise';
+        plan: 'free' | 'pro' | 'team' | 'enterprise';
         paymentStatus: 'active' | 'past_due';
         hasSubscription: boolean;
+        onTrial: boolean;
+        trialDaysLeft: number | null;
+        trialEndsAt: string | null;
         seatsBilled: number | null;
         activeSeats: number;
         cancelAtPeriodEnd: boolean;
@@ -58,7 +61,15 @@ interface Props {
         storageExceeded: boolean;
         artifactsExceeded: boolean;
     } | null;
-    limits: { free: PlanLimits; team: PlanLimits };
+    limits: { free: PlanLimits; pro: PlanLimits; team: PlanLimits };
+    prices: {
+        proMonthly: string;
+        proYearly: string;
+        teamMonthly: string;
+        teamYearly: string;
+        yearlySavings: string;
+        businessContact: string;
+    };
     checkout: string | null;
 }
 
@@ -127,17 +138,26 @@ export default function Billing({
     stripeConfigured,
     usage,
     limits,
+    prices,
     invoices,
     checkout,
 }: Props) {
-    const paid = team.plan !== 'free';
+    const paid = team.plan !== 'free' && !team.onTrial;
     const awaitingWebhook = checkout === 'success' && !paid;
     const [pollExhausted, setPollExhausted] = useState(false);
     const [confirmingCancel, setConfirmingCancel] = useState(false);
     const [cancelling, setCancelling] = useState(false);
+    const [yearly, setYearly] = useState(false);
     const periodEnd = team.renewsAt
         ? new Date(team.renewsAt).toLocaleDateString()
         : 'the end of the current billing period';
+
+    const startCheckout = (plan: 'pro' | 'team') => {
+        router.post(teams.billing.checkout.url({ team: team.slug }), {
+            plan,
+            interval: yearly ? 'year' : 'month',
+        });
+    };
 
     const cancelSubscription = () => {
         router.post(
@@ -200,7 +220,19 @@ export default function Billing({
                     </Alert>
                 )}
                 {checkout === 'success' && paid && (
-                    <Alert>You are on the Team plan. Thanks!</Alert>
+                    <Alert>You are on the {team.plan} plan. Thanks!</Alert>
+                )}
+                {team.onTrial && team.trialDaysLeft != null && (
+                    <Alert
+                        variant={
+                            team.trialDaysLeft <= 7 ? 'warning' : 'default'
+                        }
+                        data-testid="billing-trial-banner"
+                    >
+                        Team trial: {team.trialDaysLeft} day
+                        {team.trialDaysLeft === 1 ? '' : 's'} left. After that
+                        you keep Free — no charge, nothing deleted.
+                    </Alert>
                 )}
                 {team.cancelAtPeriodEnd && (
                     <Alert variant="warning">
@@ -208,7 +240,7 @@ export default function Billing({
                         {team.renewsAt
                             ? ` on ${new Date(team.renewsAt).toLocaleDateString()}`
                             : ' at the end of the billing period'}
-                        . Resume it to keep the Team plan.
+                        . Resume it to keep your plan.
                     </Alert>
                 )}
                 {checkout === 'cancelled' && (
@@ -225,51 +257,103 @@ export default function Billing({
                     <CardHeader>
                         <CardTitle className="flex min-w-0 flex-wrap items-center gap-2 break-words">
                             Current plan{' '}
-                            <Badge variant={paid ? 'success' : 'outline'}>
-                                {team.plan}
+                            <Badge
+                                variant={
+                                    paid || team.onTrial ? 'success' : 'outline'
+                                }
+                            >
+                                {team.onTrial ? 'team trial' : team.plan}
                             </Badge>
                         </CardTitle>
                         <CardDescription>
-                            {paid
-                                ? `${team.activeSeats} active seats${team.seatsBilled !== null ? `, ${team.seatsBilled} billed` : ''}. Seats sync daily.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${new Date(team.renewsAt).toLocaleDateString()}.` : ''}`
-                                : 'Free plan. Upgrade when you need more room for your team.'}
+                            {team.onTrial
+                                ? `Full Team features while the trial lasts. ${team.activeSeats} people on this workspace.`
+                                : paid
+                                  ? `${team.activeSeats} people on this workspace.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${new Date(team.renewsAt).toLocaleDateString()}.` : ''}`
+                                  : 'Free plan. Upgrade to Pro or Team when you need more.'}
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                        {!paid && canManage && (
-                            <Button
-                                disabled={!stripeConfigured}
-                                onClick={() =>
-                                    router.post(
-                                        teams.billing.checkout.url({
-                                            team: team.slug,
-                                        }),
-                                    )
-                                }
-                            >
-                                Upgrade to Team
-                            </Button>
+                    <CardContent className="flex flex-col gap-4">
+                        {(!paid || team.onTrial) && canManage && (
+                            <div className="flex flex-col gap-3">
+                                <div
+                                    className="flex flex-wrap gap-2"
+                                    role="group"
+                                    aria-label="Billing period"
+                                >
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={yearly ? 'outline' : 'default'}
+                                        onClick={() => setYearly(false)}
+                                    >
+                                        Monthly
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={yearly ? 'default' : 'outline'}
+                                        onClick={() => setYearly(true)}
+                                    >
+                                        Yearly · {prices.yearlySavings}
+                                    </Button>
+                                </div>
+                                <div className="flex min-w-0 flex-wrap gap-2">
+                                    <Button
+                                        disabled={!stripeConfigured}
+                                        className="max-w-full whitespace-normal"
+                                        onClick={() => startCheckout('pro')}
+                                    >
+                                        {yearly
+                                            ? prices.proYearly
+                                            : prices.proMonthly}{' '}
+                                        · Pro
+                                    </Button>
+                                    <Button
+                                        disabled={!stripeConfigured}
+                                        className="max-w-full whitespace-normal"
+                                        onClick={() => startCheckout('team')}
+                                    >
+                                        {yearly
+                                            ? prices.teamYearly
+                                            : prices.teamMonthly}{' '}
+                                        · Team
+                                    </Button>
+                                </div>
+                                <p className="text-sm break-words text-muted-foreground">
+                                    Pro is solo. Team covers up to 10 people; AI
+                                    bots stay free. Over 10? Contact{' '}
+                                    <a
+                                        className="break-all underline"
+                                        href={`mailto:${prices.businessContact}`}
+                                    >
+                                        {prices.businessContact}
+                                    </a>{' '}
+                                    about Business.
+                                </p>
+                            </div>
                         )}
-                        {!paid && !stripeConfigured && (
+                        {(!paid || team.onTrial) && !stripeConfigured && (
                             <p className="text-sm text-muted-foreground">
                                 Payments are not enabled on this environment
                                 yet.
                             </p>
                         )}
-                        {team.hasSubscription && canManage && (
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    router.post(
-                                        teams.billing.portal.url({
-                                            team: team.slug,
-                                        }),
-                                    )
-                                }
-                            >
-                                Payment method &amp; invoices
-                            </Button>
-                        )}
+                        {(team.hasSubscription || team.onTrial) &&
+                            canManage && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                        router.post(
+                                            teams.billing.portal.url({
+                                                team: team.slug,
+                                            }),
+                                        )
+                                    }
+                                >
+                                    Payment method &amp; invoices
+                                </Button>
+                            )}
                         {paid &&
                             team.hasSubscription &&
                             canManage &&

@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Jobs\ProcessWorkerEvent;
@@ -59,7 +60,7 @@ function seedContent(string $org, string $artifactId, string $html = '<html><bod
 
 test('artifact_created_event_dispatches_index_job', function () {
     Queue::fake();
-    Team::factory()->create(['slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     seedContent('acme', 'art-1');
 
     artifactCreatedEvent('acme', 'art-1')->assertStatus(202);
@@ -69,7 +70,7 @@ test('artifact_created_event_dispatches_index_job', function () {
 
 test('duplicate_event_dispatches_once', function () {
     Queue::fake();
-    Team::factory()->create(['slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     seedContent('acme', 'art-1');
     $eventId = (string) Str::uuid();
 
@@ -81,8 +82,8 @@ test('duplicate_event_dispatches_once', function () {
 
 test('artifact_deleted_event_removes_only_its_org_index_and_is_idempotent', function () {
     Queue::fake();
-    $teamA = Team::factory()->create(['slug' => 'deleted-a']);
-    $teamB = Team::factory()->create(['slug' => 'deleted-b']);
+    $teamA = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'deleted-a']);
+    $teamB = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'deleted-b']);
     $artifactId = 'shared-artifact';
     $index = app(VectorIndexContract::class);
 
@@ -120,8 +121,8 @@ test('artifact_deleted_event_removes_only_its_org_index_and_is_idempotent', func
 
 test('artifact_deleted_event_forgets_collection_memberships_for_that_team', function () {
     Queue::fake();
-    $team = Team::factory()->create(['slug' => 'delete-collections']);
-    $other = Team::factory()->create(['slug' => 'keep-collections']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'delete-collections']);
+    $other = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'keep-collections']);
     $artifactId = 'delcoll1234567';
     $mine = Collection::factory()->create(['team_id' => $team->id]);
     $theirs = Collection::factory()->create(['team_id' => $other->id]);
@@ -143,8 +144,8 @@ test('artifact_deleted_event_forgets_collection_memberships_for_that_team', func
 
 test('event_for_foreign_org_artifact_dispatches_nothing', function () {
     Queue::fake();
-    Team::factory()->create(['slug' => 'acme']);
-    Team::factory()->create(['slug' => 'other']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'other']);
     seedContent('other', 'art-foreign');
 
     artifactCreatedEvent('acme', 'art-foreign')->assertStatus(202);
@@ -155,7 +156,7 @@ test('event_for_foreign_org_artifact_dispatches_nothing', function () {
 test('indexing_disabled_records_event_without_dispatch', function () {
     Queue::fake();
     config(['indexing.enabled' => false]);
-    Team::factory()->create(['slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     seedContent('acme', 'art-1');
     $eventId = (string) Str::uuid();
 
@@ -168,7 +169,7 @@ test('indexing_disabled_records_event_without_dispatch', function () {
 });
 
 test('dispatched_job_failure_dead_letters_and_artifact_still_serves', function () {
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     $html = '<div id="root"></div>';
     seedContent('acme', 'art-js', $html);
 
@@ -190,7 +191,7 @@ test('dispatched_job_failure_dead_letters_and_artifact_still_serves', function (
 });
 
 test('event_driven_chunks_carry_provenance', function () {
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     seedContent('acme', 'art-1');
 
     Queue::fake();
@@ -211,7 +212,7 @@ test('event_driven_chunks_carry_provenance', function () {
 });
 
 test('hydrated_artifact_becomes_searchable_after_its_event_and_indexing_job', function () {
-    $team = Team::factory()->create(['slug' => 'hydrated-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'hydrated-org']);
     $artifactId = 'hydrated-dashboard';
     $html = '<html><body><div id="root"></div><script src="app.js"></script></body></html>';
     $hydratedText = 'Hydrated React revenue dashboard';
@@ -252,7 +253,7 @@ test('hydrated_artifact_becomes_searchable_after_its_event_and_indexing_job', fu
 
 test('already_indexed_artifact_is_not_redispatched', function () {
     Queue::fake();
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     seedContent('acme', 'art-1');
     ArtifactIndexEntry::query()->create([
         'team_id' => $team->id,
@@ -269,7 +270,7 @@ test('already_indexed_artifact_is_not_redispatched', function () {
 });
 
 test('transient_content_read_failure_retries_the_event_instead_of_losing_the_artifact', function () {
-    Team::factory()->create(['slug' => 'acme']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     $source = Mockery::mock(ArtifactContentSource::class);
     $source->shouldReceive('fetch')->once()->with('acme', 'art-retry')->andThrow(new RuntimeException('Temporary Worker outage'));
     app()->instance(ArtifactContentSource::class, $source);

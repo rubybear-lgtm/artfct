@@ -2,15 +2,14 @@
 
 use App\Services\Billing\BillingService;
 
-test('change_needed_when_quantity_differs', function () {
-    expect(BillingService::seatChangeNeeded(3, 5))->toBeTrue()
-        ->and(BillingService::seatChangeNeeded(5, 3))->toBeTrue();
-});
-
-test('no_change_when_quantity_matches', function () {
-    expect(BillingService::seatChangeNeeded(4, 4))->toBeFalse();
-});
-
-test('change_needed_when_never_billed', function () {
-    expect(BillingService::seatChangeNeeded(null, 1))->toBeTrue();
+/**
+ * Per-seat quantity sync was retired with flat Pro/Team pricing (RUB-529).
+ * seatChangeNeeded stays as a no-op predicate so the scheduled command can
+ * keep calling it until the command itself is removed.
+ */
+test('seat_change_is_never_needed_under_flat_pricing', function () {
+    expect(BillingService::seatChangeNeeded(3, 5))->toBeFalse()
+        ->and(BillingService::seatChangeNeeded(5, 3))->toBeFalse()
+        ->and(BillingService::seatChangeNeeded(4, 4))->toBeFalse()
+        ->and(BillingService::seatChangeNeeded(null, 1))->toBeFalse();
 });

@@ -571,6 +571,138 @@ const GUIDES: {
     },
 ];
 
+function PricingSection({
+    accountLabel,
+    accountUrl,
+}: {
+    accountLabel: string;
+    accountUrl: string;
+}) {
+    const [yearly, setYearly] = useState(false);
+    const guestCta =
+        accountLabel === 'Try Team free for 90 days' ||
+        accountLabel.startsWith('Try Team free')
+            ? accountLabel
+            : accountLabel;
+
+    return (
+        <section className="plansec pad rule" id="plans">
+            <div className="eyebrow">Pricing</div>
+            <h2>Start free. Add Pro or Team when you’re ready.</h2>
+            <div
+                className="billing-toggle"
+                role="group"
+                aria-label="Billing period"
+            >
+                <button
+                    type="button"
+                    className={!yearly ? 'on' : ''}
+                    aria-pressed={!yearly}
+                    onClick={() => setYearly(false)}
+                >
+                    Monthly
+                </button>
+                <button
+                    type="button"
+                    className={yearly ? 'on' : ''}
+                    aria-pressed={yearly}
+                    onClick={() => setYearly(true)}
+                >
+                    Yearly
+                    <span className="save">2 months free</span>
+                </button>
+            </div>
+            <div className="plans">
+                <div className="plan">
+                    <div className="nm">Free</div>
+                    <div className="for">
+                        Share a page as a link. A good way to try it.
+                    </div>
+                    <ul>
+                        <li>Share a page with anyone</li>
+                        <li>Private link, no account needed to view</li>
+                    </ul>
+                    <Button asChild className="btn btn-ghost">
+                        <Link href={free.url()}>Use Free</Link>
+                    </Button>
+                </div>
+                <div className="plan">
+                    <div className="nm">Pro</div>
+                    <div className="price">
+                        {yearly ? '$50/year' : '$5/month'}
+                    </div>
+                    <div className="for">
+                        One person. Everything in Team except teammates.
+                    </div>
+                    <ul>
+                        <li>Search by describing what you need</li>
+                        <li>Your own web address for your knowledge base</li>
+                        <li>AI bot teammates</li>
+                        <li>Connect your AI tools with sources</li>
+                    </ul>
+                    <Button asChild className="btn btn-ghost">
+                        <Link href={accountUrl}>Get Pro</Link>
+                    </Button>
+                </div>
+                <div className="plan hl">
+                    <div className="nm">Team</div>
+                    <div className="price">
+                        {yearly
+                            ? '$490/year for up to 10 people, bots free'
+                            : '$49/month for up to 10 people, bots free'}
+                    </div>
+                    <div className="for">
+                        Everything your team’s AI makes, shared and searchable.
+                    </div>
+                    <ul>
+                        <li>
+                            Every AI tool on your team can use what’s shared,
+                            with sources
+                        </li>
+                        <li>AI bot teammates</li>
+                        <li>Share from your AI tool to your team</li>
+                        <li>
+                            Search by describing what you need, in plain words
+                        </li>
+                        <li>
+                            Your company’s own web address for your knowledge
+                            base
+                        </li>
+                    </ul>
+                    <p className="fine">
+                        Free for 90 days, no card needed. After that, keep using
+                        Free or upgrade.
+                    </p>
+                    <Button asChild className="btn btn-primary">
+                        <Link
+                            href={accountUrl}
+                            data-testid="landing-pricing-cta"
+                        >
+                            {guestCta}
+                        </Link>
+                    </Button>
+                </div>
+                <div className="plan">
+                    <div className="nm">Business</div>
+                    <div className="price">Contact us</div>
+                    <div className="for">
+                        For teams over 10 people, with security and compliance
+                        needs.
+                    </div>
+                    <ul>
+                        <li>More than 10 people</li>
+                        <li>Single sign-on with your company login</li>
+                        <li>A full record of who did what</li>
+                    </ul>
+                    <Button asChild className="btn btn-ghost">
+                        <a href="mailto:support@artfct.dev">Contact us</a>
+                    </Button>
+                </div>
+            </div>
+        </section>
+    );
+}
+
 export default function Landing({
     agentSetupPrompt,
     connectGuides,
@@ -880,81 +1012,10 @@ export default function Landing({
                         </div>
                     </section>
 
-                    <section className="plansec pad rule" id="plans">
-                        <div className="eyebrow">Pricing</div>
-                        <h2>Start free. Add your team when you’re ready.</h2>
-                        <div className="plans">
-                            <div className="plan">
-                                <div className="nm">Free</div>
-                                <div className="for">
-                                    Share a page as a link. A good way to try
-                                    it.
-                                </div>
-                                <ul>
-                                    <li>Share a page with anyone</li>
-                                    <li>
-                                        Private link, no account needed to view
-                                    </li>
-                                </ul>
-                                <Button asChild className="btn btn-ghost">
-                                    <Link href={free.url()}>Use Free</Link>
-                                </Button>
-                            </div>
-                            <div className="plan hl">
-                                <div className="nm">Team</div>
-                                <div className="for">
-                                    Everything in Free, for the whole team.
-                                    Billed per person; Team pricing isn’t
-                                    published yet.
-                                </div>
-                                <ul>
-                                    <li>
-                                        Every AI tool on your team can use
-                                        what’s shared, with sources
-                                    </li>
-                                    <li>
-                                        Share from your AI tool to your team
-                                    </li>
-                                    <li>
-                                        Search by describing what you need, in
-                                        plain words
-                                    </li>
-                                    <li>
-                                        Your company’s own web address for your
-                                        knowledge base
-                                    </li>
-                                </ul>
-                                <p className="fine">
-                                    Try Team free with everything except search
-                                    by description and your own web address.
-                                    Your AI tools can still open any shared
-                                    document in full.
-                                </p>
-                                <Button asChild className="btn btn-primary">
-                                    <Link
-                                        href={accountUrl}
-                                        data-testid="landing-pricing-cta"
-                                    >
-                                        {accountLabel}
-                                    </Link>
-                                </Button>
-                            </div>
-                            <div className="plan">
-                                <div className="nm">Enterprise</div>
-                                <div className="for">
-                                    For companies with security and compliance
-                                    needs.
-                                </div>
-                                <ul>
-                                    <li>
-                                        Single sign-on with your company login
-                                    </li>
-                                    <li>A full record of who did what</li>
-                                    <li>Rules for how long work is kept</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </section>
+                    <PricingSection
+                        accountLabel={accountLabel}
+                        accountUrl={accountUrl}
+                    />
 
                     <section className="close pad rule">
                         <h2 className="two">

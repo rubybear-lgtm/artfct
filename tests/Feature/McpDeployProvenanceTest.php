@@ -2,6 +2,7 @@
 
 use App\Contracts\UsageContract;
 use App\Enums\McpScope;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Services\Billing\FakeUsage;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 test('deploy_artifact records the MCP client as the publishing agent and stores the model', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Launch plan</title><p>Notes</p>';
     config(['services.worker.base_url' => 'https://worker.test']);
@@ -66,7 +67,7 @@ test('an agent token name wins over the self-reported MCP client name', function
     configureArtifactLinks();
     configureOrgJwt();
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $botToken = test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
         'name' => 'Hoku',
@@ -126,7 +127,7 @@ test('an agent token name wins over the self-reported MCP client name', function
 test('get_artifact returns agent and model from Worker provenance', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
@@ -173,7 +174,7 @@ test('get_artifact returns agent and model from Worker provenance', function () 
 test('list_artifacts agent filter matches a hosted deploy provenance agent', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([

@@ -76,7 +76,9 @@ return [
     'stripe' => [
         'secret' => env('STRIPE_SECRET_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
-        'team_price_id' => env('STRIPE_TEAM_PRICE_ID'),
+        // Retired: per-seat Team price. Look up flat Pro/Team prices by
+        // lookup_key via config('billing.price_lookup_keys') instead.
+        // STRIPE_TEAM_PRICE_ID may still exist in Railway until archived.
     ],
 
     'polis' => [

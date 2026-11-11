@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Services\Billing\PlanGateException;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
 use App\Support\ClientIp;
@@ -53,6 +54,13 @@ class SearchController extends Controller
                 userAgent: $request->userAgent() ?? 'unknown',
                 source: 'api',
             );
+        } catch (PlanGateException $exception) {
+            return response()->json([
+                'errorCode' => 'plan_upgrade_required',
+                'message' => $exception->getMessage(),
+                'retryable' => false,
+                'nextAction' => 'upgrade_plan',
+            ], 403);
         } catch (Throwable $exception) {
             report($exception);
 

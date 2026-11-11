@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\TeamInvitation;
@@ -19,7 +20,7 @@ function resendableInvitation(Team $team, string $email = 'new@example.com'): Te
 
 test('resending_emails_the_invitee_again_and_extends_expiry', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $invitation = resendableInvitation($team);
     $oldCode = $invitation->code;
@@ -34,7 +35,7 @@ test('resending_emails_the_invitee_again_and_extends_expiry', function () {
 
 test('viewers_cannot_resend', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $viewer = memberOfTeam($team, TeamRole::Viewer);
     $invitation = resendableInvitation($team);
@@ -46,9 +47,9 @@ test('viewers_cannot_resend', function () {
 
 test('an_invitation_from_another_team_cannot_be_resent', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
-    $other = Team::factory()->create();
+    $other = Team::factory()->create(['plan' => Plan::Team]);
     memberOfTeam($other, TeamRole::Admin);
     $foreign = resendableInvitation($other);
 

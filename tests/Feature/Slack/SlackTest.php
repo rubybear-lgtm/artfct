@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\OrgToken;
@@ -17,7 +18,7 @@ use App\Services\Slack\SlashCommandService;
 use App\Services\Slack\UnfurlService;
 
 test('public_artifact_unfurls_with_full_metadata', function () {
-    $team = Team::factory()->create(['slug' => 'test-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org']);
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);
     $sharing->seed('test-org', '1234567890', SharingLevel::Public);
@@ -30,7 +31,7 @@ test('public_artifact_unfurls_with_full_metadata', function () {
 });
 
 test('private_artifact_unfurls_bare_card', function () {
-    $team = Team::factory()->create(['slug' => 'test-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org']);
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);
     $sharing->seed('test-org', '1234567890', SharingLevel::OrgPrivate);
@@ -44,7 +45,7 @@ test('private_artifact_unfurls_bare_card', function () {
 });
 
 test('domain_restricted_artifact_unfurls_title_only', function () {
-    $team = Team::factory()->create(['slug' => 'test-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org']);
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);
     $sharing->seed('test-org', '1234567890', SharingLevel::DomainRestricted, 'acme.com');
@@ -63,7 +64,7 @@ test('outside_user_unfurl_reveals_nothing', function () {
     // an outsider who somehow obtains an org-private link gets exactly
     // the same bare card any other viewer would (DoD: "sees the bare
     // card" — not a *different*, more revealing shape).
-    $team = Team::factory()->create(['slug' => 'test-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org']);
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);
     $sharing->seed('test-org', '1234567890', SharingLevel::OrgPrivate);
@@ -74,7 +75,7 @@ test('outside_user_unfurl_reveals_nothing', function () {
 });
 
 test('slash_command_returns_ephemeral_results', function () {
-    $team = Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org', 'slack_workspace_id' => 'T123']);
     linkSlackUser($team, TeamRole::Member, 'U123');
 
     $response = postSlackCommand([
@@ -88,7 +89,7 @@ test('slash_command_returns_ephemeral_results', function () {
 });
 
 test('search_results_not_visible_to_channel', function () {
-    $team = Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org', 'slack_workspace_id' => 'T123']);
     linkSlackUser($team, TeamRole::Member, 'U123');
 
     $response = postSlackCommand([
@@ -104,7 +105,7 @@ test('search_results_not_visible_to_channel', function () {
 });
 
 test('unlinked_slack_user_gets_connect_prompt', function () {
-    Team::factory()->create(['slug' => 'test-org', 'slack_workspace_id' => 'T123']);
+    Team::factory()->create(['plan' => Plan::Team, 'slug' => 'test-org', 'slack_workspace_id' => 'T123']);
 
     $response = postSlackCommand([
         'team_id' => 'T123',
@@ -118,8 +119,8 @@ test('unlinked_slack_user_gets_connect_prompt', function () {
 });
 
 test('slack_user_cannot_search_other_org', function () {
-    $orgA = Team::factory()->create(['slug' => 'org-a', 'slack_workspace_id' => 'T_A']);
-    $orgB = Team::factory()->create(['slug' => 'org-b', 'slack_workspace_id' => 'T_B']);
+    $orgA = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-a', 'slack_workspace_id' => 'T_A']);
+    $orgB = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-b', 'slack_workspace_id' => 'T_B']);
     // Linked in org A only.
     linkSlackUser($orgA, TeamRole::Member, 'U123');
 
@@ -129,7 +130,7 @@ test('slack_user_cannot_search_other_org', function () {
 });
 
 test('agent_post_to_unlisted_channel_refused', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = OrgToken::factory()->create(['team_id' => $team->id, 'slack_channels' => ['#allowed']]);
 
     expect(fn () => app(SlackPostService::class)->postArtifact($token, '#other', 'https://artfct.dev/p/abc', 'Dashboard'))
@@ -141,7 +142,7 @@ test('agent_post_to_unlisted_channel_refused', function () {
 });
 
 test('channel_post_rate_limit_enforced', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $token = OrgToken::factory()->create(['team_id' => $team->id, 'slack_channels' => ['#allowed']]);
     $service = app(SlackPostService::class);
 
@@ -158,7 +159,7 @@ test('channel_post_rate_limit_enforced', function () {
 });
 
 test('unfurl_and_search_are_audited', function () {
-    $team = Team::factory()->create(['slug' => 'audit-org', 'slack_workspace_id' => 'T_AUDIT']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'audit-org', 'slack_workspace_id' => 'T_AUDIT']);
     linkSlackUser($team, TeamRole::Member, 'U123');
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);

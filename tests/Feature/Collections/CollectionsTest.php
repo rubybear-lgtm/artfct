@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Enums\UsageEventType;
 use App\Models\ArtifactUsageEvent;
@@ -135,7 +136,7 @@ function seedCollectionsSearchFixture(Team $team, string $artifactId, string $ti
 }
 
 test('canonical_collection_boosts_ranking', function () {
-    $team = Team::factory()->create(['slug' => 'canon-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'canon-org']);
     $admin = memberOfTeam($team, TeamRole::Admin);
     seedCollectionsSearchFixture($team, 'canonical-artifact', 'Canonical Doc');
     seedCollectionsSearchFixture($team, 'other-artifact', 'Other Doc');
@@ -152,7 +153,7 @@ test('canonical_collection_boosts_ranking', function () {
 });
 
 test('collection_scoped_search_excludes_others', function () {
-    $team = Team::factory()->create(['slug' => 'scope-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'scope-org']);
     $admin = memberOfTeam($team, TeamRole::Admin);
     seedCollectionsSearchFixture($team, 'in-collection', 'In Collection');
     seedCollectionsSearchFixture($team, 'out-of-collection', 'Out of Collection');
@@ -174,8 +175,8 @@ test('collection_scoped_search_excludes_others', function () {
 });
 
 test('collection_invisible_across_orgs', function () {
-    $orgA = Team::factory()->create(['slug' => 'org-a-coll']);
-    $orgB = Team::factory()->create(['slug' => 'org-b-coll']);
+    $orgA = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-a-coll']);
+    $orgB = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-b-coll']);
     $adminA = memberOfTeam($orgA, TeamRole::Admin);
 
     app(CollectionService::class)->create($orgA, $adminA, 'org-a-only-collection');
@@ -200,7 +201,7 @@ test('ranking_is_useful_with_no_collections', function () {
     // Zero collections defined anywhere — ranking must still work purely
     // from semantic + usage signals (DoD: "automatic signal alone must be
     // useful, since most orgs will never create one").
-    $team = Team::factory()->create(['slug' => 'no-collections-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'no-collections-org']);
     seedCollectionsSearchFixture($team, 'only-artifact', 'Only Doc');
 
     $results = app(SearchService::class)->search($team, 'shared query text', [], limit: 10, actor: 'tester');

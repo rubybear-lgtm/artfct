@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\McpConnection;
 use App\Models\OrgToken;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 
 test('token_creation_returns_value_once_only', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     $response = test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
@@ -42,7 +43,7 @@ test('token_revocation_writes_denylist', function () {
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create(['jti' => 'jti-under-test']);
     $connection = McpConnection::factory()->for($team)->for($admin)->create();
@@ -67,7 +68,7 @@ test('token_revocation_does_not_claim_success_when_worker_denylist_fails', funct
         'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create(['jti' => 'jti-worker-unavailable']);
     $connection = McpConnection::factory()->for($team)->for($admin)->create([
@@ -87,7 +88,7 @@ test('token_revocation_fails_closed_when_worker_connection_throws', function () 
         'https://worker.test/v1/internal/revocations' => Http::failedConnection(),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create();
 
@@ -103,7 +104,7 @@ test('token_revocation_through_an_inertia_visit_redirects_with_a_toast', functio
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create();
 
@@ -123,7 +124,7 @@ test('token_revocation_with_the_headers_inertia_sends_redirects_instead_of_retur
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create();
 
@@ -145,7 +146,7 @@ test('a_failed_inertia_revocation_redirects_with_an_error_toast', function () {
         'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $token = OrgToken::factory()->for($team)->for($admin)->create();
 
@@ -164,7 +165,7 @@ test('member_cannot_revoke_another_users_token', function () {
     Http::fake([
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $otherMember = memberOfTeam($team, TeamRole::Member);
     $token = OrgToken::factory()->for($team)->for($owner)->create();
@@ -176,7 +177,7 @@ test('member_cannot_revoke_another_users_token', function () {
 });
 
 test('member_cannot_mint_an_admin_token', function () {
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'sneaky', 'role' => 'admin'])->assertForbidden();
@@ -185,7 +186,7 @@ test('member_cannot_mint_an_admin_token', function () {
 });
 
 test('member_can_mint_a_member_or_viewer_token', function () {
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     $member = memberOfTeam($team, TeamRole::Member);
     configureOrgJwt();
 
@@ -193,7 +194,7 @@ test('member_can_mint_a_member_or_viewer_token', function () {
 });
 
 test('viewer_cannot_create_tokens', function () {
-    $team = Team::factory()->create(['slug' => 'acme']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'acme']);
     $viewer = memberOfTeam($team, TeamRole::Viewer);
 
     test()->actingAs($viewer)->postJson("/settings/teams/{$team->slug}/tokens", ['name' => 'nope', 'role' => 'viewer'])->assertForbidden();
@@ -201,7 +202,7 @@ test('viewer_cannot_create_tokens', function () {
 
 test('sending_invitations_is_rate_limited_per_team', function () {
     config(['auth.invitations_per_hour' => 2]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     foreach (['a', 'b'] as $name) {

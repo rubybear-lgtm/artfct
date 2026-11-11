@@ -65,7 +65,7 @@ test('tenant_list_filters_by_plan_payment_status_region', function () {
 
     expect($props['filters'])->toMatchArray(['plan' => 'team', 'region' => 'eu', 'payment_status' => null, 'deleted' => false])
         ->and($props['options']['regions'])->toBe(['eu', 'us'])
-        ->and($props['options']['plans'])->toBe(['free', 'team', 'enterprise'])
+        ->and($props['options']['plans'])->toBe(['free', 'pro', 'team', 'enterprise'])
         ->and($props['tenants']['data'][0])->toHaveKeys([
             'slug', 'name', 'plan', 'payment_status', 'seats', 'region', 'release_version', 'schema_version', 'created_at', 'state',
         ]);

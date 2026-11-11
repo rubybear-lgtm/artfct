@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Services\Billing\QuotaService;
+use App\Services\Billing\TeamEntitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
@@ -90,17 +91,43 @@ class HandleInertiaRequests extends Middleware
             'currentTeam' => function () use ($request) {
                 $team = $request->user()?->currentTeam;
 
-                return $team === null ? null : [
+                if ($team === null) {
+                    return null;
+                }
+
+                $entitlements = TeamEntitlements::resolve($team, $request->user());
+                $onTrial = $entitlements->planTier === 'team_trialing';
+
+                $trialDaysLeft = null;
+                if ($onTrial && $team->trial_ends_at !== null) {
+                    $trialDaysLeft = max(0, (int) ceil(now()->diffInDays($team->trial_ends_at, absolute: false)));
+                }
+
+                return [
                     'id' => $team->id,
                     'slug' => $team->slug,
                     'name' => $team->name,
                     'plan' => ($team->plan ?? Plan::Free)->value,
+                    'planTier' => $entitlements->planTier,
                     'paymentStatus' => ($team->payment_status ?? PaymentStatus::Active)->value,
                     'isPersonal' => (bool) $team->is_personal,
                     'isOwner' => $team->owner_user_id !== null && $team->owner_user_id === $request->user()->id,
-                    'role' => $request->user()->teamRole($team)?->value,
-                    'isAdmin' => $request->user()->isAdminOf($team),
+                    'role' => $entitlements->role?->value,
+                    'isAdmin' => $entitlements->can(TeamEntitlements::VIEW_ADMIN),
+                    'onTrial' => $onTrial,
+                    'trialDaysLeft' => $trialDaysLeft,
+                    'trialEndsAt' => $onTrial ? $team->trial_ends_at?->toIso8601String() : null,
                 ];
+            },
+            'entitlements' => function () use ($request): ?array {
+                $team = $request->user()?->currentTeam;
+                $user = $request->user();
+
+                if ($team === null || $user === null) {
+                    return null;
+                }
+
+                return TeamEntitlements::resolve($team, $user)->toArray();
             },
             // Public PostHog browser config only. The key is a project token;
             // with enabled false the client must stay a no-op.

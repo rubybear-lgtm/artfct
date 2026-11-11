@@ -2,40 +2,51 @@
 
 namespace App\Services\Billing;
 
+use App\Enums\BillingPrice;
+use App\Enums\Plan;
 use App\Models\Team;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * Stripe (test mode on staging) over its REST API. No SDK: three calls are
- * all billing needs, and the form-encoded API is simple to fake in tests.
+ * Stripe over its REST API. Prices are resolved by lookup_key (RUB-529).
+ * Subscription quantity is always 1 — no per-seat syncing.
  */
 final class RealBilling implements BillingContract
 {
     private const BASE = 'https://api.stripe.com/v1';
 
-    public function createCheckoutSession(Team $team, int $seatCount): string
+    /** @var array<string, string> lookup_key => price id */
+    private array $priceIdCache = [];
+
+    public function createCheckoutSession(Team $team, BillingPrice $price): string
     {
-        $priceId = config('services.stripe.team_price_id');
-
-        if (! $priceId) {
-            throw new RuntimeException('services.stripe.team_price_id must be configured to start checkout.');
-        }
-
-        $seats = max(1, $seatCount);
+        $priceId = $this->priceIdFor($price);
         $customer = $this->customerFor($team);
 
-        // The key makes a double click or a retried request return the same
-        // session instead of opening a second subscription; it rolls over every
-        // ten minutes so a later, genuine attempt gets a fresh one.
-        $response = $this->http()->withHeaders(['Idempotency-Key' => 'artfct-checkout-'.$team->id.'-'.$seats.'-'.intdiv(now()->timestamp, 600)])->asForm()->post(self::BASE.'/checkout/sessions', [
+        $response = $this->http()->withHeaders([
+            'Idempotency-Key' => 'artfct-checkout-'.$team->id.'-'.$price->value.'-'.intdiv(now()->timestamp, 600),
+        ])->asForm()->post(self::BASE.'/checkout/sessions', [
             'mode' => 'subscription',
             'payment_method_types' => ['card'],
             'client_reference_id' => (string) $team->id,
             'customer' => $customer,
-            'line_items' => [['price' => $priceId, 'quantity' => $seats]],
-            'subscription_data' => ['metadata' => ['team_id' => (string) $team->id]],
+            'line_items' => [['price' => $priceId, 'quantity' => 1]],
+            'subscription_data' => [
+                'metadata' => [
+                    'team_id' => (string) $team->id,
+                    'plan' => $price->plan()->value,
+                    'interval' => $price->interval(),
+                    'lookup_key' => $price->value,
+                ],
+            ],
+            'metadata' => [
+                'team_id' => (string) $team->id,
+                'plan' => $price->plan()->value,
+                'interval' => $price->interval(),
+                'lookup_key' => $price->value,
+            ],
             'success_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=success',
             'cancel_url' => route('teams.billing.show', ['team' => $team->slug]).'?checkout=cancelled',
         ])->throw();
@@ -43,20 +54,95 @@ final class RealBilling implements BillingContract
         return (string) $response->json('url');
     }
 
-    public function updateSeats(string $subscriptionId, int $seatCount): void
+    public function createTrialSubscription(Team $team): array
     {
-        $item = $this->http()->get(self::BASE."/subscriptions/{$subscriptionId}")->throw()->json('items.data.0.id');
+        $price = BillingPrice::TeamMonthly;
+        $priceId = $this->priceIdFor($price);
+        $customer = $this->customerFor($team);
+        $trialDays = (int) config('billing.trial_days', 90);
 
-        if (! is_string($item)) {
-            throw new RuntimeException("Subscription {$subscriptionId} has no item to update.");
+        $response = $this->http()
+            ->withHeaders(['Idempotency-Key' => 'artfct-trial-'.$team->id])
+            ->asForm()
+            ->post(self::BASE.'/subscriptions', [
+                'customer' => $customer,
+                'items' => [['price' => $priceId, 'quantity' => 1]],
+                'trial_period_days' => $trialDays,
+                'trial_settings' => [
+                    'end_behavior' => [
+                        'missing_payment_method' => 'cancel',
+                    ],
+                ],
+                'metadata' => [
+                    'team_id' => (string) $team->id,
+                    'team_slug' => $team->slug,
+                    'plan' => Plan::Team->value,
+                    'lookup_key' => $price->value,
+                    'trial' => 'true',
+                ],
+            ])
+            ->throw();
+
+        $id = $response->json('id');
+        $status = $response->json('status');
+        $trialEnd = $response->json('trial_end');
+
+        if (! is_string($id) || ! is_string($status) || ! is_int($trialEnd)) {
+            throw new RuntimeException('Stripe trial subscription response was missing id, status, or trial_end.');
         }
 
-        $this->http()->asForm()->post(self::BASE."/subscription_items/{$item}", ['quantity' => max(1, $seatCount)])->throw();
+        return [
+            'id' => $id,
+            'customer' => $customer,
+            'status' => $status,
+            'trial_end' => $trialEnd,
+        ];
+    }
+
+    public function updateSeats(string $subscriptionId, int $seatCount): void
+    {
+        // Flat pricing: quantity stays 1. Intentionally a no-op.
     }
 
     public function cancelSubscription(string $subscriptionId): void
     {
         $this->http()->asForm()->post(self::BASE."/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => 'true'])->throw();
+    }
+
+    public function deleteSubscription(string $subscriptionId): void
+    {
+        $this->http()->delete(self::BASE."/subscriptions/{$subscriptionId}")->throw();
+    }
+
+    public function getSubscription(string $subscriptionId): ?array
+    {
+        $response = $this->http()
+            ->get(self::BASE."/subscriptions/{$subscriptionId}", [
+                'expand' => ['items.data.price'],
+            ]);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+
+        $id = $response->json('id');
+        $status = $response->json('status');
+        if (! is_string($id) || ! is_string($status)) {
+            throw new RuntimeException('Stripe subscription response was missing id or status.');
+        }
+
+        $lookupKey = $response->json('items.data.0.price.lookup_key');
+        if (! is_string($lookupKey) || $lookupKey === '') {
+            $lookupKey = $response->json('metadata.lookup_key');
+        }
+
+        return [
+            'id' => $id,
+            'status' => $status,
+            'lookup_key' => is_string($lookupKey) && $lookupKey !== '' ? $lookupKey : null,
+        ];
     }
 
     public function resumeSubscription(string $subscriptionId): void
@@ -92,9 +178,26 @@ final class RealBilling implements BillingContract
         ])->throw()->json('url');
     }
 
-    /**
-     * The team's Stripe customer, created once and reused.
-     */
+    private function priceIdFor(BillingPrice $price): string
+    {
+        if (isset($this->priceIdCache[$price->value])) {
+            return $this->priceIdCache[$price->value];
+        }
+
+        $response = $this->http()->get(self::BASE.'/prices', [
+            'lookup_keys' => [$price->value],
+            'active' => 'true',
+            'limit' => 1,
+        ])->throw();
+
+        $id = $response->json('data.0.id');
+        if (! is_string($id) || $id === '') {
+            throw new RuntimeException("No active Stripe price found for lookup_key [{$price->value}].");
+        }
+
+        return $this->priceIdCache[$price->value] = $id;
+    }
+
     private function customerFor(Team $team): string
     {
         if ($team->stripe_customer_id) {
@@ -109,7 +212,6 @@ final class RealBilling implements BillingContract
             'metadata' => ['team_id' => (string) $team->id, 'team_slug' => $team->slug],
         ]);
 
-        // Two concurrent first checkouts must not create two Stripe customers.
         $id = (string) $this->http()->withHeaders(['Idempotency-Key' => 'artfct-customer-'.$team->id.'-'.substr(sha1((string) json_encode($parameters)), 0, 16)])
             ->asForm()->post(self::BASE.'/customers', $parameters)->throw()->json('id');
 

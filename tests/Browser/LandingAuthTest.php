@@ -29,13 +29,13 @@ test('guest sees the guest account controls on the landing page and shared heade
     visit('/')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@landing-account', 'Sign in')
-        ->assertSeeIn('@landing-account', 'Try Team free')
+        ->assertSeeIn('@landing-account', 'Try Team free for 90 days')
         ->assertAttributeContains('@landing-account-cta', 'href', '/login');
 
     visit('/blog')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@site-account', 'Sign in')
-        ->assertSeeIn('@site-account', 'Try Team free')
+        ->assertSeeIn('@site-account', 'Try Team free for 90 days')
         ->assertAttributeContains('@site-account-cta', 'href', '/login');
 });
 
@@ -47,7 +47,7 @@ test('signed-in user with a current team sees open console everywhere', function
     visit('/')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@landing-account', 'Open console')
-        ->assertDontSeeIn('@landing-account', 'Try Team free')
+        ->assertDontSeeIn('@landing-account', 'Try Team free for 90 days')
         ->assertMissing('@landing-signin')
         ->assertAttributeContains('@landing-account-cta', 'href', $consoleUrl)
         ->assertAttributeContains('@landing-hero-cta', 'href', $consoleUrl)
@@ -72,7 +72,7 @@ test('signed-in user with a current team sees open console everywhere', function
     visit('/blog')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@site-account', 'Open console')
-        ->assertDontSeeIn('@site-account', 'Try Team free')
+        ->assertDontSeeIn('@site-account', 'Try Team free for 90 days')
         ->assertMissing('@site-signin')
         ->assertAttributeContains('@site-account-cta', 'href', $consoleUrl);
 });
@@ -88,7 +88,7 @@ test('signed-in user without a current team sees create team everywhere', functi
     visit('/')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@landing-account', 'Create team')
-        ->assertDontSeeIn('@landing-account', 'Try Team free')
+        ->assertDontSeeIn('@landing-account', 'Try Team free for 90 days')
         ->assertMissing('@landing-signin')
         ->assertAttributeContains('@landing-account-cta', 'href', '/onboarding/team')
         ->assertAttributeContains('@landing-hero-cta', 'href', '/onboarding/team')
@@ -113,7 +113,7 @@ test('signed-in user without a current team sees create team everywhere', functi
     visit('/blog')
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@site-account', 'Create team')
-        ->assertDontSeeIn('@site-account', 'Try Team free')
+        ->assertDontSeeIn('@site-account', 'Try Team free for 90 days')
         ->assertMissing('@site-signin')
         ->assertAttributeContains('@site-account-cta', 'href', '/onboarding/team');
 });

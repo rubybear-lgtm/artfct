@@ -8,6 +8,7 @@ use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Mcp\Support\McpTimestamp;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Billing\PlanGateException;
 use App\Services\Search\CollectionNotFoundException;
 use App\Services\Search\SearchResult;
 use App\Services\Search\SearchService;
@@ -105,6 +106,10 @@ final class SearchArtifactsTool extends Tool
             app(McpTelemetry::class)->record('search_artifacts', 'collection_not_found', $startedAt);
 
             return McpErrorResponse::error($exception->getMessage(), 'collection_not_found');
+        } catch (PlanGateException $exception) {
+            app(McpTelemetry::class)->record('search_artifacts', 'plan_upgrade_required', $startedAt);
+
+            return McpErrorResponse::error($exception->getMessage(), 'plan_upgrade_required', false, 'upgrade_plan');
         } catch (\Throwable $exception) {
             report($exception);
             app(McpTelemetry::class)->record('search_artifacts', 'error', $startedAt);

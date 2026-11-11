@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Mcp\Servers\ArtfctServer;
 use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
@@ -29,7 +30,7 @@ function callRub515Tool(string $token, string $tool, array $arguments = []): Tes
 }
 
 test('list_artifacts returns invalid_cursor for a garbage cursor instead of page 1', function () {
-    $team = Team::factory()->create(['slug' => 'rub-515-list-cursor']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-list-cursor']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
@@ -50,7 +51,7 @@ test('list_artifacts returns invalid_cursor for a garbage cursor instead of page
 
 test('search_artifacts returns collection_not_found for an unknown collection like list_artifacts', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'rub-515-search-collection']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-search-collection']);
     $token = remoteMcpToken($team);
 
     $response = callRub515Tool($token, 'search_artifacts', [
@@ -65,7 +66,7 @@ test('search_artifacts returns collection_not_found for an unknown collection li
 
 test('search_artifacts accepts a collection numeric id and returns a hint when empty', function () {
     config(['indexing.enabled' => true]);
-    $team = Team::factory()->create(['slug' => 'rub-515-search-hint']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-search-hint']);
     $token = remoteMcpToken($team);
     $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Empty shelf']);
 
@@ -81,7 +82,7 @@ test('search_artifacts accepts a collection numeric id and returns a hint when e
 });
 
 test('delete_artifact forgets collection memberships and purges the index entry', function () {
-    $team = Team::factory()->create(['slug' => 'rub-515-delete-purge']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-delete-purge']);
     $token = remoteMcpToken($team);
     $collection = Collection::factory()->create(['team_id' => $team->id]);
     CollectionArtifact::create([
@@ -159,7 +160,7 @@ test('artifact text purger removes the index entry used by list_collections coun
 
 test('get_usage and get_connection reflect create then delete within one indexing cycle', function () {
     config(['indexing.enabled' => true, 'services.worker.base_url' => 'https://worker.test']);
-    $team = Team::factory()->create(['slug' => 'rub-515-live-counts']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-515-live-counts']);
     $token = remoteMcpToken($team);
     $collection = Collection::factory()->create(['team_id' => $team->id, 'name' => 'Live counts']);
     CollectionArtifact::create([

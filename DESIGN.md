@@ -49,7 +49,7 @@ Deliberately not used: Inter, Space Grotesk, Geist, Roboto, and monospace for an
 
 ## 4. Component Stylings
 
-* **Buttons:** subtly rounded (6px). Primary is Oxblood with white text, and on hover deepens to Deep Oxblood, lifts 1px and gains a soft oxblood shadow. Secondary is an outlined Hairline button with Charcoal text. Text links carry a small arrow that slides right on hover. The primary action is "Try Team free".
+* **Buttons:** subtly rounded (6px). Primary is Oxblood with white text, and on hover deepens to Deep Oxblood, lifts 1px and gains a soft oxblood shadow. Secondary is an outlined Hairline button with Charcoal text. Text links carry a small arrow that slides right on hover. The primary action is "Try Team free for 90 days".
 * **Cards and containers:** used sparingly. The hero demo is the one lifted object (Paper, 10px corners, a single long soft shadow). Everything else is separated by hairlines. Three-up feature blocks are columns divided by vertical hairlines, not three boxed cards.
 * **Rows (artifact lists):** flat Bone rows with a 30px icon well, a semibold title, a quiet metadata line and a small tag. A matching row gets Oxblood Tint and a 2px Oxblood left edge. A newly shared row uses a soft green tint and a green "Shared" tag.
 * **Inputs and search:** Bone field, Hairline stroke, 8px corners. While active, the stroke turns Oxblood with a soft Oxblood Tint ring.

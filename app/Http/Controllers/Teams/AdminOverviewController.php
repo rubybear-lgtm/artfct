@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\McpConnection;
 use App\Models\Team;
 use App\Services\Billing\PlanGate;
+use App\Services\Billing\TeamEntitlements;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,7 +24,7 @@ class AdminOverviewController extends Controller
     public function __invoke(Request $request, Team $team): Response
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
-        abort_unless($request->user()->isAdminOf($team), 403);
+        TeamEntitlements::resolve($team, $request->user())->assertCan(TeamEntitlements::VIEW_ADMIN);
 
         return Inertia::render('teams/admin', [
             'team' => [

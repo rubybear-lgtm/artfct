@@ -2,6 +2,7 @@
 
 use App\Enums\McpScope;
 use App\Enums\OrgTokenKind;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\McpConnection;
 use App\Models\OrgToken;
@@ -58,7 +59,7 @@ function agentMcpInitialize(string $token)
 }
 
 test('a member creates an agent token shown once with scopes hashed as jti only', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $minted = mintAgentToken($team, $member, [
         McpScope::ArtifactsRead->value,
@@ -86,7 +87,7 @@ test('a member creates an agent token shown once with scopes hashed as jti only'
 });
 
 test('an agent token authenticates mcp without a browser and reports bot attribution', function () {
-    $team = Team::factory()->create(['slug' => 'artfct-dev']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'artfct-dev']);
     $member = memberOfTeam($team, TeamRole::Member);
     $minted = mintAgentToken($team, $member, [
         McpScope::ArtifactsRead->value,
@@ -124,7 +125,7 @@ test('revoking an agent token immediately returns 401 on mcp', function () {
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $minted = mintAgentToken($team, $member, [McpScope::ArtifactsRead->value]);
 
@@ -139,8 +140,8 @@ test('revoking an agent token immediately returns 401 on mcp', function () {
 });
 
 test('an agent token cannot reach another team', function () {
-    $teamA = Team::factory()->create(['slug' => 'team-a']);
-    $teamB = Team::factory()->create(['slug' => 'team-b']);
+    $teamA = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'team-a']);
+    $teamB = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'team-b']);
     $member = memberOfTeam($teamA, TeamRole::Member);
     $teamB->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
@@ -179,7 +180,7 @@ test('an agent token cannot reach another team', function () {
 });
 
 test('agent token scopes are enforced on mcp tools', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $minted = mintAgentToken($team, $member, [McpScope::ArtifactsRead->value]);
 
@@ -199,7 +200,7 @@ test('agent token scopes are enforced on mcp tools', function () {
 
 test('a viewer cannot mint an agent token', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $viewer = memberOfTeam($team, TeamRole::Viewer);
 
     test()->actingAs($viewer)->postJson("/settings/teams/{$team->slug}/bots", [
@@ -220,7 +221,7 @@ test('viewer role scope caps exclude mutation scopes', function () {
 
 test('unknown scopes are rejected when minting an agent token', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->postJson("/settings/teams/{$team->slug}/bots", [
@@ -231,7 +232,7 @@ test('unknown scopes are rejected when minting an agent token', function () {
 
 test('agent token mint rejects empty scopes', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->postJson("/settings/teams/{$team->slug}/bots", [
@@ -242,7 +243,7 @@ test('agent token mint rejects empty scopes', function () {
 
 test('api tokens without kind keep working for rest and mcp', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     $response = test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
@@ -258,7 +259,7 @@ test('api tokens without kind keep working for rest and mcp', function () {
 });
 
 test('tokens page exposes agent token props', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $bot = User::factory()->bot()->create(['name' => 'Hoku']);
     $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Member]);
@@ -279,7 +280,7 @@ test('tokens page exposes agent token props', function () {
 });
 
 test('optional expiry is stored on the agent token', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $minted = mintAgentToken($team, $member, [McpScope::ArtifactsRead->value], [
         'ttl_seconds' => 3600,
@@ -291,7 +292,7 @@ test('optional expiry is stored on the agent token', function () {
 
 test('additional agent tokens can be minted for an existing bot', function () {
     configureOrgJwt();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $first = mintAgentToken($team, $admin, [McpScope::ArtifactsRead->value]);
 
@@ -312,7 +313,7 @@ test('RUB-511 DoD: bot Bearer MCP can create and read an artifact with bot attri
     configureArtifactLinks();
     Storage::fake('public');
 
-    $team = Team::factory()->create(['slug' => 'hoku-local']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'hoku-local']);
     $human = memberOfTeam($team, TeamRole::Admin);
     $minted = mintAgentToken($team, $human, [
         McpScope::ArtifactsRead->value,

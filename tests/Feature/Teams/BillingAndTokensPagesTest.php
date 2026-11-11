@@ -24,12 +24,11 @@ test('billing_page_shows_plan_seats_and_limits_to_admins', function () {
             ->has('limits.team.storage_bytes'));
 });
 
-test('billing_page_tells_members_they_cannot_manage', function () {
+test('billing_page_is_forbidden_for_members', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
 
-    test()->actingAs($member)->get(route('teams.billing.show', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('canManage', false));
+    test()->actingAs($member)->get(route('teams.billing.show', $team))->assertForbidden();
 });
 
 test('billing_page_is_hidden_from_non_members', function () {
@@ -142,7 +141,10 @@ test('checkout_and_portal_send_admins_to_stripe_via_an_inertia_location', functi
     $team = Team::factory()->create(['plan' => Plan::Free]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
-    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [], ['X-Inertia' => 'true'])
+    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [
+        'plan' => 'team',
+        'interval' => 'month',
+    ], ['X-Inertia' => 'true'])
         ->assertStatus(409)
         ->assertHeader('X-Inertia-Location');
 

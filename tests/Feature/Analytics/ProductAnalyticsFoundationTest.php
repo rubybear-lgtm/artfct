@@ -2,6 +2,7 @@
 
 use App\Contracts\AnalyticsContract;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -48,7 +49,7 @@ test('A1 real search path succeeds when analytics is disabled and sends no PostH
     config(['analytics.enabled' => false, 'analytics.api_key' => null]);
     app()->instance(AnalyticsContract::class, new PostHogAnalytics);
 
-    $team = Team::factory()->create(['slug' => 'a1-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a1-team']);
     $user = memberOfTeam($team, TeamRole::Member);
 
     $results = app(SearchService::class)->search(
@@ -69,7 +70,7 @@ test('A1 enable=false with key present still sends no PostHog HTTP on search', f
     config(['analytics.enabled' => false, 'analytics.api_key' => 'phc_present_but_disabled']);
     app()->instance(AnalyticsContract::class, new PostHogAnalytics);
 
-    $team = Team::factory()->create(['slug' => 'a1-disabled-key']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a1-disabled-key']);
     $user = memberOfTeam($team, TeamRole::Member);
 
     expect(app(SearchService::class)->search(
@@ -89,7 +90,7 @@ test('A2 capture failure does not break a real search request', function () {
     $analytics = app(AnalyticsContract::class);
     $analytics->throwOnCapture = true;
 
-    $team = Team::factory()->create(['slug' => 'a2-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a2-team']);
     $user = memberOfTeam($team, TeamRole::Member);
 
     $results = app(SearchService::class)->search(
@@ -108,7 +109,7 @@ test('A2 capture failure does not break a real search request', function () {
 test('A3 every captured event includes environment and enable gate blocks sends', function () {
     config(['analytics.environment' => 'staging']);
 
-    $team = Team::factory()->create(['slug' => 'a3-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a3-team']);
     $user = memberOfTeam($team, TeamRole::Admin);
 
     app(ProductAnalytics::class)->artifactSearched($user, $team, 'web', 4, 0);
@@ -127,7 +128,7 @@ test('A3 every captured event includes environment and enable gate blocks sends'
 });
 
 test('A4 team denormalization props are present on share and search events', function () {
-    $team = Team::factory()->create(['slug' => 'a4-team', 'is_personal' => false]);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a4-team', 'is_personal' => false]);
     $user = memberOfTeam($team, TeamRole::Admin);
 
     app(ProductAnalytics::class)->artifactShared($user, $team, 'mcp');
@@ -147,7 +148,7 @@ test('A4 team denormalization props are present on share and search events', fun
 });
 
 test('A5 privacy: search sends query_length not query, invites omit email', function () {
-    $team = Team::factory()->create(['slug' => 'a5-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a5-team']);
     $user = memberOfTeam($team, TeamRole::Admin);
 
     app(SearchService::class)->search($team, 'secret query text', [], 5, actor: (string) $user->id, source: 'api');
@@ -203,7 +204,7 @@ test('A2 web sharing update still succeeds when analytics throws', function () {
     $analytics = app(AnalyticsContract::class);
     $analytics->throwOnCapture = true;
 
-    $team = Team::factory()->create(['slug' => 'a2-share']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'a2-share']);
     $user = memberOfTeam($team, TeamRole::Admin);
     $team->forceFill(['owner_user_id' => $user->id])->save();
 

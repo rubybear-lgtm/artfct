@@ -114,7 +114,8 @@ function quotaMessage(teamName: string, quota: Quota) {
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-    const { auth, teams, currentTeam, quota } = usePage<SharedProps>().props;
+    const { auth, teams, currentTeam, quota, entitlements } =
+        usePage<SharedProps>().props;
     const { flash, url } = usePage();
     const toastMessage = flash?.toast;
 
@@ -150,8 +151,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         return () => query.removeEventListener('change', closeOnDesktop);
     }, []);
     // Admins (team leads) get the Admin area; members and viewers stay on the
-    // teammate path. The server decides the role, never the client.
-    const isAdmin = team?.isAdmin === true;
+    // teammate path. Capabilities come from the server entitlements object.
+    const isAdmin =
+        entitlements?.capabilities?.view_admin === true ||
+        team?.isAdmin === true;
+    const navItem = (key: string) =>
+        entitlements?.nav?.find((item) => item.key === key);
+    const membersNav = navItem('members');
+    const botsNav = navItem('bots');
+    const billingNav = navItem('billing');
+    const lockedTitle = (reason: string | null | undefined) =>
+        reason ?? 'Upgrade your plan to unlock this.';
     const currentPath = url.split('?')[0];
     const topNavLinkClassFor = (active: boolean) =>
         `inline-flex h-[68px] items-center border-b-2 transition-colors hover:text-foreground ${
@@ -201,38 +211,71 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   href: teamRoutes.admin.show.url({ team: team.slug }),
                   label: 'Overview',
                   exact: true,
+                  locked: false,
+                  reason: null as string | null,
+                  key: 'overview',
               },
               {
-                  href: teamRoutes.edit.url({ team: team.slug }),
+                  href: membersNav?.locked
+                      ? teamRoutes.billing.show.url({ team: team.slug })
+                      : teamRoutes.edit.url({ team: team.slug }),
                   label: 'Members',
                   exact: true,
+                  locked: membersNav?.locked === true,
+                  reason: membersNav?.reason ?? null,
+                  key: 'members',
               },
               {
-                  href: teamRoutes.tokens.index.url({ team: team.slug }),
-                  label: 'Agent & API tokens',
+                  href: botsNav?.locked
+                      ? teamRoutes.billing.show.url({ team: team.slug })
+                      : teamRoutes.tokens.index.url({ team: team.slug }),
+                  label: botsNav?.locked
+                      ? 'AI bot teammates'
+                      : 'Agent & API tokens',
                   exact: false,
+                  locked: botsNav?.locked === true,
+                  reason: botsNav?.reason ?? null,
+                  key: 'tokens',
               },
-              {
-                  href: teamRoutes.billing.show.url({ team: team.slug }),
-                  label: 'Billing',
-                  exact: false,
-              },
+              ...(billingNav?.visible !== false
+                  ? [
+                        {
+                            href: teamRoutes.billing.show.url({
+                                team: team.slug,
+                            }),
+                            label: 'Billing',
+                            exact: false,
+                            locked: false,
+                            reason: null as string | null,
+                            key: 'billing',
+                        },
+                    ]
+                  : []),
               {
                   href: teamRoutes.authentication.show.url({
                       team: team.slug,
                   }),
                   label: 'Sign-in and security',
                   exact: false,
+                  locked: false,
+                  reason: null as string | null,
+                  key: 'authentication',
               },
               {
                   href: teamRoutes.governance.show.url({ team: team.slug }),
                   label: 'Retention and legal holds',
                   exact: false,
+                  locked: false,
+                  reason: null as string | null,
+                  key: 'governance',
               },
               {
                   href: teamRoutes.audit.index.url({ team: team.slug }),
                   label: 'Audit log',
                   exact: false,
+                  locked: false,
+                  reason: null as string | null,
+                  key: 'audit',
               },
           ]
         : [];
@@ -445,15 +488,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                     href={teamRoutes.admin.show.url({
                                         team: team.slug,
                                     })}
+                                    data-testid="nav-admin"
                                     className={topNavLinkClassFor(onAdminPage)}
                                 >
                                     Admin
                                 </Link>
-                            ) : (
+                            ) : membersNav?.visible ? (
                                 <Link
                                     href={teamRoutes.edit.url({
                                         team: team.slug,
                                     })}
+                                    data-testid="nav-team"
                                     className={topNavLinkClass(
                                         teamRoutes.edit.url({
                                             team: team.slug,
@@ -463,7 +508,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 >
                                     Team
                                 </Link>
-                            )}
+                            ) : null}
                         </nav>
                     )}
 
@@ -558,14 +603,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <nav className="flex w-max items-center gap-x-5 text-[13px] font-medium whitespace-nowrap">
                                 {adminSubNav.map((item) => (
                                     <Link
-                                        key={item.href}
+                                        key={item.key}
                                         href={item.href}
-                                        className={subNavLinkClass(
+                                        data-testid={`admin-subnav-${item.key}`}
+                                        data-locked={
+                                            item.locked ? 'true' : 'false'
+                                        }
+                                        title={
+                                            item.locked
+                                                ? lockedTitle(item.reason)
+                                                : undefined
+                                        }
+                                        className={`${subNavLinkClass(
                                             item.href,
                                             item.exact,
-                                        )}
+                                        )}${item.locked ? 'opacity-70' : ''}`}
                                     >
                                         {item.label}
+                                        {item.locked ? ' · Upgrade' : ''}
                                     </Link>
                                 ))}
                             </nav>
@@ -736,6 +791,36 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 })}
                             >
                                 See usage
+                            </Link>
+                        ) : (
+                            'Ask a team admin to upgrade.'
+                        )}
+                    </Alert>
+                </div>
+            )}
+            {team?.onTrial && team.trialDaysLeft != null && (
+                <div
+                    className="mx-auto w-full max-w-[1120px] min-w-0 px-4 pt-4 break-words md:px-5 xl:max-w-[1280px] 2xl:max-w-[1480px]"
+                    data-testid="trial-banner"
+                >
+                    <Alert
+                        variant={
+                            team.trialDaysLeft <= 7 ? 'warning' : 'default'
+                        }
+                        role="status"
+                    >
+                        {team.trialDaysLeft === 0
+                            ? 'Your Team trial ends today.'
+                            : `Team trial: ${team.trialDaysLeft} day${team.trialDaysLeft === 1 ? '' : 's'} left.`}{' '}
+                        After that you keep Free — no charge, nothing deleted.{' '}
+                        {isAdmin ? (
+                            <Link
+                                className="underline"
+                                href={teamRoutes.billing.show.url({
+                                    team: team.slug,
+                                })}
+                            >
+                                Upgrade to Pro or Team
                             </Link>
                         ) : (
                             'Ask a team admin to upgrade.'

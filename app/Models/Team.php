@@ -44,6 +44,9 @@ use Illuminate\Support\Carbon;
  * @property bool $cancel_at_period_end
  * @property Carbon|null $current_period_end
  * @property Carbon|null $stripe_event_at
+ * @property Carbon|null $trial_started_at
+ * @property Carbon|null $trial_ends_at
+ * @property Carbon|null $trial_reminder_sent_at
  * @property string|null $custom_hostname
  * @property string|null $slack_workspace_id
  * @property Carbon|null $created_at
@@ -211,6 +214,9 @@ class Team extends Model
             'cancel_at_period_end' => 'boolean',
             'current_period_end' => 'datetime',
             'stripe_event_at' => 'datetime',
+            'trial_started_at' => 'datetime',
+            'trial_ends_at' => 'datetime',
+            'trial_reminder_sent_at' => 'datetime',
             'public_sharing_allowed' => 'boolean',
         ];
     }
