@@ -19,19 +19,18 @@ use super::*;
 use serde_json::json;
 
 use crate::artifact_db::{
-    db_role, exceeds_db_quota, guard_request, index_value, is_db_path, mint_db_token,
-    parse_db_path, parse_document_body, verify_db_token, BodyRefusal, DbGrant, DbLimits,
-    DbManifest, DbRoute, GuardFacts, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT,
-    MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
+    bytes_added, db_role, exceeds_db_quota, guard_request, index_value, is_db_path, mint_db_token,
+    parse_db_path, parse_document_body, verify_db_token, within_write_rate, BodyRefusal, DbGrant,
+    DbLimits, DbManifest, DbRoute, GuardFacts, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS,
+    DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
 };
 use crate::artifact_origin::{
     access_token_from_cookie, artifact_origin_suffix, artifact_token_secret,
     parse_isolated_hostname, verified_token_viewer,
 };
-use crate::auth::check_and_increment_db_write_rate_limit;
 use crate::sharing::{EditAccess, Sharing};
 
-const DB_ARTIFACT_SQL: &str = "SELECT a.id AS id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.manifest AS manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > ?) ORDER BY a.row_id LIMIT 1";
+const DB_ARTIFACT_SQL: &str = "SELECT a.id AS id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.manifest AS manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > ?) AND NOT EXISTS (SELECT 1 FROM json_each(a.manifest, '$.files') mf WHERE NOT EXISTS (SELECT 1 FROM files complete WHERE complete.artifact_row_id = a.row_id AND complete.path = json_extract(mf.value, '$.path'))) ORDER BY a.row_id LIMIT 1";
 
 #[derive(Debug, Deserialize)]
 struct DbArtifactRow {
@@ -179,6 +178,15 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
         );
     }
 
+    // Refuse an obviously oversized body before reading any of it.
+    if is_write
+        && header(req, "Content-Length")?
+            .and_then(|value| value.parse::<usize>().ok())
+            .is_some_and(|length| length > MAX_BODY_BYTES * 4)
+    {
+        return body_refusal_response(BodyRefusal::TooLarge);
+    }
+
     let database = env.d1("ARTIFACTS_DB")?;
     let now = Utc::now();
     let Some(row) = database
@@ -221,8 +229,11 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     }
     let mut limits = DbLimits::default();
     if is_write {
-        if !check_and_increment_db_write_rate_limit(env, &row.id, &grant.viewer).await? {
-            return db_error("rate_limited", "Too many writes. Try again shortly.", 429);
+        // A batch is charged per write inside `batch`, once its size is known.
+        if route != DbRoute::Batch
+            && !charge_write_rate(&database, &row.id, &grant.viewer, 1, now).await?
+        {
+            return rate_limited_response();
         }
         // A read-only org (payment state) can read but not write.
         if crate::org_admin::load_org_limits(&database, env, &row.org)
@@ -262,6 +273,7 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
                 &declared,
                 &row,
                 &grant,
+                &limits,
                 &collection,
                 &doc_id,
                 now,
@@ -446,7 +458,7 @@ async fn list_docs(
 /// different scopes.
 async fn usage(database: &worker::D1Database, row: &DbArtifactRow) -> Result<(u64, u64)> {
     let usage = database
-        .prepare("SELECT (SELECT COUNT(*) FROM artifact_docs WHERE org_id = ? AND artifact_id = ?) AS docs, (SELECT COALESCE(SUM(LENGTH(body)), 0) FROM artifact_docs WHERE org_id = ?) AS bytes")
+        .prepare("SELECT (SELECT COUNT(*) FROM artifact_docs WHERE org_id = ? AND artifact_id = ?) AS docs, (SELECT COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) FROM artifact_docs WHERE org_id = ?) AS bytes")
         .bind(&[
             JsValue::from_str(&row.org),
             JsValue::from_str(&row.id),
@@ -455,6 +467,54 @@ async fn usage(database: &worker::D1Database, row: &DbArtifactRow) -> Result<(u6
         .first::<UsageRow>(None)
         .await?;
     Ok(usage.map_or((0, 0), |usage| (usage.docs as u64, usage.bytes as u64)))
+}
+
+#[derive(Debug, Deserialize)]
+struct RateRow {
+    writes: f64,
+}
+
+fn rate_limited_response() -> Result<Response> {
+    db_error("rate_limited", "Too many writes. Try again shortly.", 429)
+}
+
+/// Charges `writes` against this viewer's one-minute budget for this artifact
+/// and reports whether it still fits. One atomic D1 statement: parallel writes
+/// each see the true running count.
+async fn charge_write_rate(
+    database: &worker::D1Database,
+    artifact_id: &str,
+    viewer: &str,
+    writes: u64,
+    now: chrono::DateTime<Utc>,
+) -> Result<bool> {
+    let minute = now.timestamp() / 60;
+    let row = database
+        .prepare("INSERT INTO artifact_db_rate (artifact_id, viewer, minute, writes) VALUES (?, ?, ?, ?) ON CONFLICT(artifact_id, viewer, minute) DO UPDATE SET writes = writes + excluded.writes RETURNING writes")
+        .bind(&[
+            JsValue::from_str(artifact_id),
+            JsValue::from_str(viewer),
+            JsValue::from_f64(minute as f64),
+            JsValue::from_f64(writes as f64),
+        ])?
+        .first::<RateRow>(None)
+        .await?;
+    let total = row.map_or(writes, |row| row.writes as u64);
+    if total == writes {
+        // First charge of a new minute: drop this viewer's old buckets.
+        database
+            .prepare(
+                "DELETE FROM artifact_db_rate WHERE artifact_id = ? AND viewer = ? AND minute < ?",
+            )
+            .bind(&[
+                JsValue::from_str(artifact_id),
+                JsValue::from_str(viewer),
+                JsValue::from_f64((minute - 5) as f64),
+            ])?
+            .run()
+            .await?;
+    }
+    Ok(within_write_rate(total))
 }
 
 #[derive(Debug, Deserialize)]
@@ -549,6 +609,68 @@ fn upsert_statement(
         ])
 }
 
+#[derive(Debug, Deserialize)]
+struct VersionRow {
+    version: f64,
+}
+
+/// Writes one document atomically and returns the version it now has, or
+/// `None` when an `if_version` precondition no longer holds. The precondition
+/// is part of the statement, so two concurrent `if_version=N` writes cannot
+/// both win: exactly one statement finds `version = N`.
+#[allow(clippy::too_many_arguments, reason = "one argument per column written")]
+async fn write_doc(
+    database: &worker::D1Database,
+    row: &DbArtifactRow,
+    collection: &str,
+    doc_id: &str,
+    body: &str,
+    index: Option<&str>,
+    grant: &DbGrant,
+    updated_at: &str,
+    expected: Option<u64>,
+) -> Result<Option<u64>> {
+    let index_js = index.map(JsValue::from_str).unwrap_or_else(JsValue::null);
+    let insert_binds = [
+        JsValue::from_str(&row.org),
+        JsValue::from_str(&row.id),
+        JsValue::from_str(collection),
+        JsValue::from_str(doc_id),
+        JsValue::from_str(body),
+        index_js.clone(),
+        JsValue::from_str(updated_at),
+        JsValue::from_str(&grant.viewer),
+    ];
+    let statement = match expected {
+        // Create only: nothing may exist yet.
+        Some(0) => database
+            .prepare("INSERT INTO artifact_docs (org_id, artifact_id, collection, doc_id, body, index_value, version, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(org_id, artifact_id, collection, doc_id) DO NOTHING RETURNING version")
+            .bind(&insert_binds)?,
+        // Replace exactly version N.
+        Some(version) => database
+            .prepare("UPDATE artifact_docs SET body = ?, index_value = ?, version = version + 1, updated_at = ?, updated_by = ? WHERE org_id = ? AND artifact_id = ? AND collection = ? AND doc_id = ? AND version = ? RETURNING version")
+            .bind(&[
+                JsValue::from_str(body),
+                index_js,
+                JsValue::from_str(updated_at),
+                JsValue::from_str(&grant.viewer),
+                JsValue::from_str(&row.org),
+                JsValue::from_str(&row.id),
+                JsValue::from_str(collection),
+                JsValue::from_str(doc_id),
+                JsValue::from_f64(version as f64),
+            ])?,
+        // Last write wins.
+        None => database
+            .prepare("INSERT INTO artifact_docs (org_id, artifact_id, collection, doc_id, body, index_value, version, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(org_id, artifact_id, collection, doc_id) DO UPDATE SET body = excluded.body, index_value = excluded.index_value, version = artifact_docs.version + 1, updated_at = excluded.updated_at, updated_by = excluded.updated_by RETURNING version")
+            .bind(&insert_binds)?,
+    };
+    Ok(statement
+        .first::<VersionRow>(None)
+        .await?
+        .map(|written| written.version as u64))
+}
+
 #[allow(clippy::too_many_arguments, reason = "one argument per request fact")]
 async fn put_doc(
     req: &mut Request,
@@ -589,9 +711,20 @@ async fn put_doc(
         (Some(current), Some(0)) => return conflict(current, collection),
         _ => {}
     }
-    if existing.is_none() {
+    let encoded = encode_body(&body);
+    let added = bytes_added(
+        encoded.len() as u64,
+        existing.as_ref().map(|current| current.body.len() as u64),
+    );
+    if existing.is_none() || added > 0 {
         let (docs, org_bytes) = usage(database, row).await?;
-        if exceeds_db_quota(limits, docs, org_bytes, 1, bytes.len() as u64) {
+        if exceeds_db_quota(
+            limits,
+            docs,
+            org_bytes,
+            u64::from(existing.is_none()),
+            added,
+        ) {
             return quota_response();
         }
     }
@@ -600,8 +733,7 @@ async fn put_doc(
         .index
         .as_deref()
         .and_then(|field| index_value(&body, field));
-    let encoded = encode_body(&body);
-    let statement = upsert_statement(
+    let Some(version) = write_doc(
         database,
         row,
         collection,
@@ -610,9 +742,16 @@ async fn put_doc(
         index.as_deref(),
         grant,
         &updated_at,
-    )?;
-    database.batch(vec![statement]).await?;
-    let version = existing.map_or(1, |current| current.version as u64 + 1);
+        expected,
+    )
+    .await?
+    else {
+        // The precondition failed between the read above and the write.
+        return match fetch_doc(database, row, collection, doc_id).await? {
+            Some(latest) => conflict(&latest, collection),
+            None => db_not_found(),
+        };
+    };
     written(collection, doc_id, version, &updated_at)
 }
 
@@ -623,6 +762,7 @@ async fn patch_doc(
     declared: &DbManifest,
     row: &DbArtifactRow,
     grant: &DbGrant,
+    limits: &DbLimits,
     collection: &str,
     doc_id: &str,
     now: chrono::DateTime<Utc>,
@@ -662,6 +802,13 @@ async fn patch_doc(
     let encoded = encode_body(&merged);
     if encoded.len() > MAX_BODY_BYTES {
         return body_refusal_response(BodyRefusal::TooLarge);
+    }
+    let added = bytes_added(encoded.len() as u64, Some(current.body.len() as u64));
+    if added > 0 {
+        let (docs, org_bytes) = usage(database, row).await?;
+        if exceeds_db_quota(limits, docs, org_bytes, 0, added) {
+            return quota_response();
+        }
     }
     let updated_at = now.to_rfc3339_opts(SecondsFormat::Millis, true);
     let index = declaration
@@ -724,17 +871,33 @@ async fn delete_doc(
     if expected.is_some_and(|version| version != current.version as u64) {
         return conflict(&current, collection);
     }
-    database
-        .prepare("DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ? AND collection = ? AND doc_id = ? AND version = ?")
-        .bind(&[
-            JsValue::from_str(&row.org),
-            JsValue::from_str(&row.id),
-            JsValue::from_str(collection),
-            JsValue::from_str(doc_id),
-            JsValue::from_f64(current.version),
-        ])?
-        .run()
-        .await?;
+    // With `if_version` the delete is guarded on it; without, the delete wins
+    // over a concurrent write, as last-write-wins promises.
+    let mut sql = String::from(
+        "DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ? AND collection = ? AND doc_id = ?",
+    );
+    let mut binds = vec![
+        JsValue::from_str(&row.org),
+        JsValue::from_str(&row.id),
+        JsValue::from_str(collection),
+        JsValue::from_str(doc_id),
+    ];
+    if let Some(version) = expected {
+        sql.push_str(" AND version = ?");
+        binds.push(JsValue::from_f64(version as f64));
+    }
+    let result = database.prepare(sql).bind(&binds)?.run().await?;
+    let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0);
+    if changed == 0 && expected.is_some() {
+        return match fetch_doc(database, row, collection, doc_id).await? {
+            Some(latest) => conflict(&latest, collection),
+            // Already gone: the caller's goal is met.
+            None => db_json(
+                json!({"id": doc_id, "collection": collection, "deleted": true}),
+                200,
+            ),
+        };
+    }
     db_json(
         json!({"id": doc_id, "collection": collection, "deleted": true}),
         200,
@@ -785,6 +948,17 @@ async fn batch(
             422,
         );
     }
+    if !charge_write_rate(
+        database,
+        &row.id,
+        &grant.viewer,
+        request.writes.len() as u64,
+        now,
+    )
+    .await?
+    {
+        return rate_limited_response();
+    }
     let updated_at = now.to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut statements = Vec::with_capacity(request.writes.len());
     let mut new_docs = 0u64;
@@ -828,8 +1002,11 @@ async fn batch(
                 };
                 if existing.is_none() {
                     new_docs += 1;
-                    new_bytes += raw.len() as u64;
                 }
+                new_bytes += bytes_added(
+                    raw.len() as u64,
+                    existing.as_ref().map(|current| current.body.len() as u64),
+                );
                 let index = declaration
                     .index
                     .as_deref()
@@ -862,7 +1039,7 @@ async fn batch(
             }
         }
     }
-    if new_docs > 0 {
+    if new_docs > 0 || new_bytes > 0 {
         let (docs, org_bytes) = usage(database, row).await?;
         if exceeds_db_quota(limits, docs, org_bytes, new_docs, new_bytes) {
             return quota_response();
@@ -909,12 +1086,17 @@ pub(crate) fn seed_statements(
 
 /// The statement that removes every row of an artifact, run in the same
 /// batch that deletes the artifact.
-pub(crate) fn delete_all_statement(
+pub(crate) fn delete_all_statements(
     database: &worker::D1Database,
     org_slug: &str,
     artifact_id: &str,
-) -> Result<worker::D1PreparedStatement> {
-    database
-        .prepare("DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ?")
-        .bind(&[JsValue::from_str(org_slug), JsValue::from_str(artifact_id)])
+) -> Result<Vec<worker::D1PreparedStatement>> {
+    Ok(vec![
+        database
+            .prepare("DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ?")
+            .bind(&[JsValue::from_str(org_slug), JsValue::from_str(artifact_id)])?,
+        database
+            .prepare("DELETE FROM artifact_db_rate WHERE artifact_id = ?")
+            .bind(&[JsValue::from_str(artifact_id)])?,
+    ])
 }

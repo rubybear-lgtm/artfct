@@ -90,16 +90,22 @@ An artifact declares its collections in the manifest: `db: { collections: { card
 
 ### Authorization
 
-The access token (spec 07 form `{artifact_id}.{exp}.{viewer}.{scope}.{sig}`) gains a role claim, `r`, signed with the rest:
+The Worker derives the db role itself from a verified access token and the artifact's sharing state (`db_role`). There are two roles, `reader` and `writer`; no access is a `403` from `/session`.
 
-| Role | Who | Read | Write |
-|---|---|---|---|
-| `owner` / `admin` | artifact owner, team admins | yes | yes |
-| `member` | team member, tier `team` | yes | yes if `edit_access` allows |
-| `viewer` | team member without edit access | yes | no |
-| `link` | anonymous holder of a `public` link | yes | no, unless the artifact is explicitly marked `edit_access = 'link'` (see Deferred) |
+| Artifact | Token | Role |
+|---|---|---|
+| private | none, or one that does not open it | none |
+| private | owner or admin | `writer` |
+| private | another viewer the token opens it for | `reader` |
+| team | none | none |
+| team | owner or admin | `writer` |
+| team | any named member, `edit_access = edit` | `writer` |
+| team | any named member, `edit_access = view` | `reader` |
+| team | legacy token that names nobody | `reader` |
+| public | anyone | `reader` |
+| public | owner or admin | `writer` |
 
-The existing sharing tiers (`private`, `secure`, `public`) and `edit_access` (RUB-438) decide the role. Every write path calls one Worker function that returns the role; any value it does not recognise is no access (fail closed), matching the sharing rule.
+The server-side renderer (viewer `system`) is never a `writer`, on any artifact: loading a page to render it must not run that page's writes. Anonymous write through a public link is deferred. The existing sharing tiers (`private`, `secure`, `public`) and `edit_access` (RUB-438) decide the role; any value the Worker does not recognise is no access (fail closed).
 
 ### Seed rows and templates
 
@@ -115,17 +121,30 @@ Rows are written by viewers and are untrusted. Tool descriptions and `get_guidan
 
 ### Quotas
 
-Pushed from Laravel through the existing limits channel (`POST /v1/internal/org-limits`, stored in `org_limits` by migration 0009): `db_docs_per_artifact` and `db_bytes_per_org`. Both are optional; an absent (NULL) value means the Worker default of 5,000 documents per artifact and 64 MiB per org, so a Laravel that does not push them changes nothing. Documents are counted per artifact and bytes per org. Over quota returns `429` with code `quota_exceeded`; an overwrite adds no document, and reads are never blocked by quota. A read-only org (the existing payment state) can read but its writes return `403` with code `read_only`. Deleting an artifact deletes its rows in the same batch.
+Pushed from Laravel through the existing limits channel (`POST /v1/internal/org-limits`, stored in `org_limits` by migration 0009): `db_docs_per_artifact` and `db_bytes_per_org`. Both are optional; an absent (NULL) value means the Worker default of 5,000 documents per artifact and 64 MiB per org, so a Laravel that does not push them changes nothing. Documents are counted per artifact and bytes per org, as the UTF-8 size of the stored body.
+
+A write is gated on what it **adds**: a new document adds one document and its size, and an overwrite, `PATCH` or batch `set` of an existing document adds only the growth (a write that does not grow is never refused). Over quota returns `429` with code `quota_exceeded`. Reads are never blocked by quota. A read-only org (the existing payment state) can read but its writes return `403` with code `read_only`. Deleting an artifact deletes its rows (and its rate counters) in the same batch, and so does the expiry of an unfinished first upload. Revoking an artifact hides it but keeps its rows, which keep counting toward the org's bytes until it is hard-deleted.
+
+The seed that travels in the manifest is capped at 256 KiB in total, because the manifest is stored on the artifact row and parsed on every db request.
 
 ### Rate limiting
 
-120 writes per viewer per artifact per minute, using the Worker's existing KV window limiter (RUB-463). The key is the artifact the host resolved to and the viewer the verified token names. Over the limit returns `429` with code `rate_limited`. A page in a loop must not exhaust D1 for the org.
+120 writes per viewer per artifact per minute, counted in D1 (table `artifact_db_rate`, migration 0008) with one atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` per request, so parallel writes each see the true running count. Workers KV was rejected: its read-then-write is not atomic and it allows about one write per second to a key, which would have turned legitimate rapid edits into errors. A batch is charged one per write. Over the limit returns `429` with code `rate_limited`. A page in a loop must not exhaust D1 for the org.
+
+### Concurrency
+
+`PUT` with `if_version` is one atomic statement (`UPDATE ... WHERE version = N RETURNING`; `if_version=0` is `INSERT ... DO NOTHING RETURNING`), so two concurrent writes that expect the same version cannot both win. Without `if_version` a `PUT` is last-write-wins and the version it returns comes from the statement itself. `PATCH` is guarded on the version it read. A `DELETE` with `if_version` is guarded on it; without one the delete wins, as last-write-wins promises. A `DELETE` that finds the document already gone reports success.
 
 ### Known limits of v1
 
-- **Write token lifetime.** The write token lives 5 minutes. Removing someone's access, or making an artifact private, does not revoke a token they already hold until it expires. Revoking or deleting the artifact takes effect immediately, because every request re-reads the artifact row.
-- **Origin scheme.** The guard compares `Origin` with the connection's own scheme and `Host`, not a hard-coded `https`. Local `wrangler dev` serves http and rewrites the incoming `Origin` to match, so a hard-coded `https` refused every legitimate local request.
-- **Batch atomicity.** A batch validates every write, checks every `if_version` and the quota, and then applies one D1 batch. A concurrent writer between the check and the apply can still win; single-document `PATCH` and `DELETE` are guarded on the version they read.
+- **Write token lifetime.** The write token lives 5 minutes, but `/session` mints a fresh one from the host-only access cookie, so a removed team member keeps write access for as long as their access cookie is valid, which can be up to the access token's own lifetime (about an hour). Revoking or deleting the artifact, changing its tier or `edit_access`, and making it private take effect at the next `/session` call; revoking or deleting takes effect immediately because every request re-reads the artifact row.
+- **Origin scheme.** The guard compares `Origin` with the connection's own scheme and `Host`, not a hard-coded `https`. Local `wrangler dev` serves http and rewrites the incoming `Origin` to match.
+- **Batch.** A batch validates every write and checks every `if_version` and the quota, then applies one D1 batch. A concurrent writer between the check and the apply can still win, so a batch `if_version` is best effort; single-document writes are atomic.
+- **No deduplication for `db` artifacts.** The create path's content-hash idempotency (RUB-371) is skipped for an artifact that declares `db`, so each deploy of identical bytes is a new artifact with its own seed rows, and a template pull never returns another user's live board. The cost is that a retried deploy of a `db` artifact creates a second artifact.
+- **Index values are write-time.** A republish that changes a collection's declared `index` field does not reindex existing rows, and a string longer than 256 characters or a number written as `1.0` will not match `index_eq`.
+- **`db` added in a later version.** A `db` first declared on a v2 republish never gets its seed: seed rows are written once, at create.
+- **Quota pushes cannot clear a value.** An omitted field keeps the stored one, so Laravel can raise or lower a quota but not return it to the default.
+- **Pending uploads.** An artifact whose upload is not complete has no db endpoint, the same completeness rule file serving uses.
 
 ## Definition of done
 

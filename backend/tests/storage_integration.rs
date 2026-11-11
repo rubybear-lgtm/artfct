@@ -3944,6 +3944,37 @@ async fn deploy_db_artifact(
     Ok(id)
 }
 
+/// One request header the db guard reads: the legitimate same-origin value,
+/// none at all, or a specific (hostile) value. `reqwest`'s `header()` appends,
+/// so a negative case must replace the default rather than add to it; sending
+/// both would hand the Worker `"same-origin, same-site"` and make every
+/// negative test pass for the wrong reason.
+#[derive(Clone, Default)]
+enum HeaderChoice {
+    #[default]
+    Default,
+    Omit,
+    Value(String),
+}
+
+impl HeaderChoice {
+    fn resolve(&self, default: Option<String>) -> Option<String> {
+        match self {
+            Self::Default => default,
+            Self::Omit => None,
+            Self::Value(value) => Some(value.clone()),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct DbHeaders {
+    sec_fetch_site: HeaderChoice,
+    origin: HeaderChoice,
+    content_type: HeaderChoice,
+    request_header: HeaderChoice,
+}
+
 /// A same-origin db request the way the artifact's own page would send it.
 fn db_request(
     client: &RetryingClient,
@@ -3952,21 +3983,50 @@ fn db_request(
     id: &str,
     path_and_query: &str,
 ) -> RetryingRequest {
+    db_request_with(
+        client,
+        method,
+        context,
+        id,
+        path_and_query,
+        &DbHeaders::default(),
+    )
+}
+
+fn db_request_with(
+    client: &RetryingClient,
+    method: &str,
+    context: &Context,
+    id: &str,
+    path_and_query: &str,
+    headers: &DbHeaders,
+) -> RetryingRequest {
     let host = isolated_origin(&context.org, id, &context.origin_suffix);
     let url = format!("{}/__artfct/db/{path_and_query}", context.base);
-    let request = match method {
+    let mut request = match method {
         "GET" => client.get(url),
         "PUT" => client.put(url),
         "PATCH" => client.patch(url),
         "DELETE" => client.delete(url),
         _ => client.post(url),
-    };
+    }
+    .header(reqwest::header::HOST, host.as_str());
+    if let Some(value) = headers.sec_fetch_site.resolve(Some("same-origin".into())) {
+        request = request.header(header_name("sec-fetch-site"), &value);
+    }
+    if let Some(value) = headers.request_header.resolve(Some("1".into())) {
+        request = request.header(header_name("x-artfct-db"), &value);
+    }
+    if let Some(value) = headers.origin.resolve(Some(format!("https://{host}"))) {
+        request = request.header(reqwest::header::ORIGIN, &value);
+    }
+    if let Some(value) = headers
+        .content_type
+        .resolve(Some("application/json".into()))
+    {
+        request = request.header(reqwest::header::CONTENT_TYPE, &value);
+    }
     request
-        .header(reqwest::header::HOST, host.as_str())
-        .header(header_name("sec-fetch-site"), "same-origin")
-        .header(header_name("x-artfct-db"), "1")
-        .header(reqwest::header::ORIGIN, &format!("https://{host}"))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
 }
 
 /// Exchanges the host-only access cookie for a db bearer token.
@@ -4162,8 +4222,11 @@ async fn cross_artifact_write_is_blocked() -> Result<(), Box<dyn Error>> {
     // 2. Even A's real token is refused when the browser says the request is
     //    not same-origin: another artifact's script on the same site.
     for site in ["same-site", "cross-site", "none"] {
-        let response = db_request(&client, "PUT", &context, &a, "cards/seed1")
-            .header(header_name("sec-fetch-site"), site)
+        let headers = DbHeaders {
+            sec_fetch_site: HeaderChoice::Value(site.into()),
+            ..DbHeaders::default()
+        };
+        let response = db_request_with(&client, "PUT", &context, &a, "cards/seed1", &headers)
             .bearer_auth(&writer_a)
             .body(body.clone())
             .send()
@@ -4172,18 +4235,38 @@ async fn cross_artifact_write_is_blocked() -> Result<(), Box<dyn Error>> {
     }
 
     // 3. An Origin naming B is refused where no fetch metadata is present.
-    let from_b = db_request(&client, "PUT", &context, &a, "cards/seed1")
-        .header(reqwest::header::ORIGIN, &format!("https://{host_b}"))
+    let headers = DbHeaders {
+        sec_fetch_site: HeaderChoice::Omit,
+        origin: HeaderChoice::Value(format!("https://{host_b}")),
+        ..DbHeaders::default()
+    };
+    let from_b = db_request_with(&client, "PUT", &context, &a, "cards/seed1", &headers)
         .bearer_auth(&writer_a)
         .body(body.clone())
         .send()
         .await?;
     assert_eq!(from_b.status(), reqwest::StatusCode::FORBIDDEN);
 
+    // 3b. ...and so is a foreign Origin that arrives with same-origin fetch
+    //     metadata, which no same-origin request would ever carry.
+    let headers = DbHeaders {
+        origin: HeaderChoice::Value(format!("https://{host_b}")),
+        ..DbHeaders::default()
+    };
+    let stray = db_request_with(&client, "PUT", &context, &a, "cards/seed1", &headers)
+        .bearer_auth(&writer_a)
+        .body(body.clone())
+        .send()
+        .await?;
+    assert_eq!(stray.status(), reqwest::StatusCode::FORBIDDEN);
+
     // 4. The simple-request shapes a form post or a no-cors fetch can make.
     for content_type in ["text/plain", "application/x-www-form-urlencoded"] {
-        let response = db_request(&client, "PUT", &context, &a, "cards/seed1")
-            .header(reqwest::header::CONTENT_TYPE, content_type)
+        let headers = DbHeaders {
+            content_type: HeaderChoice::Value(content_type.into()),
+            ..DbHeaders::default()
+        };
+        let response = db_request_with(&client, "PUT", &context, &a, "cards/seed1", &headers)
             .bearer_auth(&writer_a)
             .body(body.clone())
             .send()
@@ -4212,12 +4295,11 @@ async fn cross_artifact_write_is_blocked() -> Result<(), Box<dyn Error>> {
 
     // 6. Without the custom header a cross-origin caller needs a preflight.
     let host = host_a.as_str();
-    let no_header = client
-        .put(format!("{}/__artfct/db/cards/seed1", context.base))
-        .header(reqwest::header::HOST, host)
-        .header(header_name("sec-fetch-site"), "same-origin")
-        .header(reqwest::header::ORIGIN, &format!("https://{host}"))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
+    let headers = DbHeaders {
+        request_header: HeaderChoice::Omit,
+        ..DbHeaders::default()
+    };
+    let no_header = db_request_with(&client, "PUT", &context, &a, "cards/seed1", &headers)
         .bearer_auth(&writer_a)
         .body(body.clone())
         .send()
@@ -4314,6 +4396,16 @@ async fn push_db_limits(
     db_docs_per_artifact: u64,
     read_only: bool,
 ) -> Result<(), Box<dyn Error>> {
+    push_db_limits_with_bytes(context, client, db_docs_per_artifact, 67_108_864, read_only).await
+}
+
+async fn push_db_limits_with_bytes(
+    context: &Context,
+    client: &RetryingClient,
+    db_docs_per_artifact: u64,
+    db_bytes_per_org: u64,
+    read_only: bool,
+) -> Result<(), Box<dyn Error>> {
     let secret = context
         .limits_secret
         .as_deref()
@@ -4330,6 +4422,7 @@ async fn push_db_limits(
             "bundle_ceiling_bytes": 10_485_760,
             "read_only": read_only,
             "db_docs_per_artifact": db_docs_per_artifact,
+            "db_bytes_per_org": db_bytes_per_org,
         }),
     )
     .await?;
@@ -4346,7 +4439,7 @@ async fn push_db_limits(
 async fn artifact_db_enforces_quota_read_only_and_write_rate_limit() -> Result<(), Box<dyn Error>> {
     let context = require_context()?;
     if context.limits_secret.is_none() {
-        return Ok(());
+        return Err("the limits secret is required; refusing to pass without asserting".into());
     }
     let client = RetryingClient::new();
     let id = deploy_db_artifact(&context, &client, "db-limits", "edit").await?;
@@ -4432,6 +4525,305 @@ async fn artifact_db_enforces_quota_read_only_and_write_rate_limit() -> Result<(
     assert!(
         (100..=125).contains(&limited_at),
         "the limit tripped at write {limited_at}, expected near 120"
+    );
+    Ok(())
+}
+
+/// Publishes `bytes` as the artifact's next version, carrying the same `db`
+/// declaration, and uploads its file.
+async fn publish_db_version(
+    context: &Context,
+    client: &RetryingClient,
+    id: &str,
+    bytes: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let mut payload = version_payload(bytes, json!({}));
+    payload["manifest"]["db"] = serde_json::from_str(DB_MANIFEST)?;
+    let response = client
+        .post(format!("{}/v1/artifacts/{id}/versions", context.base))
+        .bearer_auth(&context.token)
+        .json(&payload)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    if body["missing_files"]
+        .as_array()
+        .is_some_and(|missing| missing.iter().any(|hash| hash == &sha256(bytes)))
+    {
+        upload_version_file(context, client, id, bytes).await?;
+    }
+    Ok(())
+}
+
+fn org_db_bytes(context: &Context) -> Result<i64, Box<dyn Error>> {
+    count_value(
+        context,
+        &format!(
+            "SELECT COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) AS n FROM artifact_docs WHERE org_id = '{}'",
+            context.org
+        ),
+        "n",
+    )
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_rows_survive_republish_and_seed_is_written_once() -> Result<(), Box<dyn Error>>
+{
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-republish", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+
+    // A live row, and an edit to the seeded row.
+    let put = |doc: &str, body: &'static str| {
+        db_request(&client, "PUT", &context, &id, &format!("cards/{doc}"))
+            .bearer_auth(&writer)
+            .body(body.as_bytes().to_vec())
+    };
+    assert_eq!(
+        put("c1", r#"{"column":"todo"}"#).send().await?.status(),
+        reqwest::StatusCode::OK
+    );
+    assert_eq!(
+        put("seed1", r#"{"column":"done","title":"Edited"}"#)
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::OK
+    );
+
+    publish_db_version(&context, &client, &id, &unique_html("db-republish-v2")).await?;
+
+    let (status, session) = db_session(&context, &client, &id, "member-w").await?;
+    assert_eq!(status, reqwest::StatusCode::OK, "{session}");
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    let live = db_request(&client, "GET", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .send()
+        .await?;
+    assert_eq!(
+        live.status(),
+        reqwest::StatusCode::OK,
+        "a live row must survive a republish"
+    );
+    let seeded: Value = db_request(&client, "GET", &context, &id, "cards/seed1")
+        .bearer_auth(&writer)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(
+        seeded["data"]["title"], "Edited",
+        "a republish must not rewrite the seed row over a user's edit"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_rows_are_deleted_with_the_artifact() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-delete", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    db_request(&client, "PUT", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+    let rows = format!("SELECT COUNT(*) AS n FROM artifact_docs WHERE artifact_id = '{id}'");
+    let rate = format!("SELECT COUNT(*) AS n FROM artifact_db_rate WHERE artifact_id = '{id}'");
+    assert!(
+        count_value(&context, &rows, "n")? >= 2,
+        "seed row plus the written row"
+    );
+    assert!(count_value(&context, &rate, "n")? >= 1);
+
+    let deleted = client
+        .delete(format!("{}/v1/artifacts/{id}", context.base))
+        .bearer_auth(&context.token)
+        .send()
+        .await?;
+    assert!(deleted.status().is_success(), "{}", deleted.status());
+    assert_eq!(
+        count_value(&context, &rows, "n")?,
+        0,
+        "rows outlived the artifact"
+    );
+    assert_eq!(count_value(&context, &rate, "n")?, 0);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_byte_quota_covers_overwrite_and_patch_growth() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    if context.limits_secret.is_none() {
+        return Err("the limits secret is required; refusing to pass without asserting".into());
+    }
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-bytes", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    let raw = reqwest::Client::new();
+    let host = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let send = |method: reqwest::Method, doc: &str, body: String| {
+        raw.request(method, format!("{}/__artfct/db/cards/{doc}", context.base))
+            .header(reqwest::header::HOST, host.as_str())
+            .header("sec-fetch-site", "same-origin")
+            .header("x-artfct-db", "1")
+            .header(reqwest::header::ORIGIN, format!("https://{host}"))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .bearer_auth(&writer)
+            .body(body)
+    };
+
+    // Room for a tiny document and a little more, then nothing.
+    let small = r#"{"column":"todo"}"#;
+    let created = send(reqwest::Method::PUT, "g1", small.into())
+        .send()
+        .await?;
+    let headroom = org_db_bytes(&context)? + 200;
+    push_db_limits_with_bytes(&context, &client, 5000, headroom as u64, false).await?;
+    let big = format!(r#"{{"column":"todo","note":"{}"}}"#, "x".repeat(400));
+    let overwrite = send(reqwest::Method::PUT, "g1", big.clone())
+        .send()
+        .await?
+        .status();
+    let patch = send(
+        reqwest::Method::PATCH,
+        "g1",
+        format!(r#"{{"note":"{}"}}"#, "y".repeat(400)),
+    )
+    .send()
+    .await?
+    .status();
+    let shrink = send(reqwest::Method::PUT, "g1", small.into())
+        .send()
+        .await?
+        .status();
+    push_db_limits_with_bytes(&context, &client, 5000, 67_108_864, false).await?;
+
+    assert_eq!(created.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        overwrite,
+        reqwest::StatusCode::TOO_MANY_REQUESTS,
+        "overwrite growth must be gated"
+    );
+    assert_eq!(
+        patch,
+        reqwest::StatusCode::TOO_MANY_REQUESTS,
+        "PATCH growth must be gated"
+    );
+    assert_eq!(
+        shrink,
+        reqwest::StatusCode::OK,
+        "a write that does not grow is never gated"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_if_version_is_atomic_and_rate_limit_counts_parallel_writes(
+) -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-atomic", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    let raw = reqwest::Client::new();
+    let host = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let base = context.base.clone();
+    let put = move |doc: String, query: String, body: String| {
+        let raw = raw.clone();
+        let host = host.clone();
+        let base = base.clone();
+        let writer = writer.clone();
+        async move {
+            raw.put(format!("{base}/__artfct/db/cards/{doc}{query}"))
+                .header(reqwest::header::HOST, host.as_str())
+                .header("sec-fetch-site", "same-origin")
+                .header("x-artfct-db", "1")
+                .header(reqwest::header::ORIGIN, format!("https://{host}"))
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .bearer_auth(&writer)
+                .body(body)
+                .send()
+                .await
+                .map(|response| response.status())
+        }
+    };
+
+    // Two concurrent writes that both expect version 1: exactly one wins.
+    let first = put(
+        "seed1".into(),
+        "?if_version=1".into(),
+        r#"{"column":"a"}"#.into(),
+    );
+    let second = put(
+        "seed1".into(),
+        "?if_version=1".into(),
+        r#"{"column":"b"}"#.into(),
+    );
+    let (first, second) = tokio::join!(first, second);
+    let mut statuses = [first?, second?];
+    statuses.sort();
+    assert_eq!(
+        statuses,
+        [reqwest::StatusCode::OK, reqwest::StatusCode::CONFLICT],
+        "both concurrent if_version=1 writes must not succeed"
+    );
+
+    // 150 parallel writes against a 120-a-minute budget: the counter is
+    // atomic, so exactly 120 are admitted (one is already spent above).
+    let mut tasks = tokio::task::JoinSet::new();
+    for n in 0..150 {
+        tasks.spawn(put("p1".into(), String::new(), format!(r#"{{"n":{n}}}"#)));
+    }
+    let mut admitted = 0;
+    let mut limited = 0;
+    while let Some(result) = tasks.join_next().await {
+        match result?? {
+            reqwest::StatusCode::OK => admitted += 1,
+            reqwest::StatusCode::TOO_MANY_REQUESTS => limited += 1,
+            other => return Err(format!("unexpected status {other}").into()),
+        }
+    }
+    assert_eq!(admitted + limited, 150);
+    assert_eq!(
+        admitted, 118,
+        "120 per minute, two already spent on the if_version race (admitted {admitted}, limited {limited})"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_system_renderer_session_is_read_only() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-system", "edit").await?;
+    let access = viewer_access_token(
+        &context.token_secret,
+        &id,
+        one_hour_from_now()?,
+        "system",
+        "p",
+    );
+    let response = db_request(&client, "GET", &context, &id, "session")
+        .header(reqwest::header::COOKIE, &format!("artfct_access={access}"))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let session: Value = response.json().await?;
+    assert_eq!(
+        session["role"], "reader",
+        "the renderer must never be a writer"
     );
     Ok(())
 }

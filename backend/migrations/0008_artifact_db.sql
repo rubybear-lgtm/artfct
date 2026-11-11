@@ -26,3 +26,17 @@ CREATE TABLE IF NOT EXISTS artifact_docs (
 
 CREATE INDEX IF NOT EXISTS artifact_docs_index_idx
     ON artifact_docs(org_id, artifact_id, collection, index_value);
+
+-- Per-viewer, per-artifact write counter for the one-minute rate limit. D1 is
+-- strongly consistent and `ON CONFLICT DO UPDATE ... RETURNING` is atomic, so
+-- parallel writes cannot all read the same count. Workers KV is neither, and
+-- allows about one write per second to a key, so it cannot back this limit.
+-- `minute` is the Unix minute; old buckets of the same viewer are pruned when
+-- a new one starts.
+CREATE TABLE IF NOT EXISTS artifact_db_rate (
+    artifact_id TEXT NOT NULL,
+    viewer TEXT NOT NULL,
+    minute INTEGER NOT NULL,
+    writes INTEGER NOT NULL,
+    PRIMARY KEY (artifact_id, viewer, minute)
+);

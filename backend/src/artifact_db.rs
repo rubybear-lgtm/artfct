@@ -34,6 +34,10 @@ const MAX_NAME_LEN: usize = 64;
 const MAX_DOC_ID_LEN: usize = 128;
 const MAX_COLLECTIONS: usize = 16;
 const MAX_SEED_ROWS: usize = 200;
+/// Total encoded seed size. The seed travels inside the manifest, which is
+/// stored on the artifact row and parsed on every db request, so it is capped
+/// far below the per-row limit times the row count.
+const MAX_SEED_BYTES: usize = 256 * 1024;
 /// Defaults used when an org has no pushed db limits (the columns are NULL).
 pub(crate) const DEFAULT_DOCS_PER_ARTIFACT: u64 = 5_000;
 pub(crate) const DEFAULT_BYTES_PER_ORG: u64 = 64 * 1024 * 1024;
@@ -79,6 +83,25 @@ pub(crate) fn exceeds_db_quota(
     artifact_docs.saturating_add(add_docs) > limits.docs_per_artifact
         || org_bytes.saturating_add(add_bytes) > limits.bytes_per_org
 }
+
+/// Writes one viewer may make to one artifact in a minute.
+pub(crate) const DB_WRITES_PER_MINUTE: u64 = 120;
+
+/// Whether a write count (including the writes just charged) is within the
+/// per-minute limit.
+pub(crate) fn within_write_rate(writes_this_minute: u64) -> bool {
+    writes_this_minute <= DB_WRITES_PER_MINUTE
+}
+
+/// The bytes a write adds to the org: the new body's size less what the
+/// document already held. A shrinking overwrite adds nothing.
+pub(crate) fn bytes_added(new_len: u64, existing_len: Option<u64>) -> u64 {
+    new_len.saturating_sub(existing_len.unwrap_or(0))
+}
+
+/// The server-side renderer's viewer id (`system`). It loads an artifact's page
+/// to render it and must never write that artifact's data.
+const SYSTEM_VIEWER: &str = "system";
 
 /// Seconds a write token is valid. Short, because it is a bearer credential.
 pub(crate) const DB_TOKEN_TTL_SECS: i64 = 300;
@@ -266,11 +289,12 @@ pub(crate) fn db_role(
     edit_access: EditAccess,
 ) -> Option<DbRole> {
     let is_owner_or_admin = token.is_some_and(|token| {
-        token.sees_private
-            || matches!(
-                (token.viewer.as_deref(), owner_user_id),
-                (Some(viewer), Some(owner)) if !owner.is_empty() && viewer == owner
-            )
+        token.viewer.as_deref() != Some(SYSTEM_VIEWER)
+            && (token.sees_private
+                || matches!(
+                    (token.viewer.as_deref(), owner_user_id),
+                    (Some(viewer), Some(owner)) if !owner.is_empty() && viewer == owner
+                ))
     });
     match sharing {
         Sharing::Private => {
@@ -293,7 +317,10 @@ pub(crate) fn db_role(
         }
         _ => {
             let token = token?;
-            let named_member = token.viewer.is_some();
+            let named_member = token
+                .viewer
+                .as_deref()
+                .is_some_and(|viewer| viewer != SYSTEM_VIEWER);
             if is_owner_or_admin || (named_member && edit_access == EditAccess::Edit) {
                 Some(DbRole::Writer)
             } else {
@@ -476,6 +503,7 @@ pub(crate) enum ManifestRefusal {
     InvalidCollectionName(String),
     InvalidIndexField(String),
     TooManySeedRows,
+    SeedTooLarge,
     SeedCollectionUndeclared(String),
     InvalidSeedDocId(String),
     SeedBodyInvalid(String),
@@ -505,6 +533,7 @@ pub(crate) fn validate_db_manifest(manifest: &DbManifest) -> Result<(), Manifest
         return Err(ManifestRefusal::TooManySeedRows);
     }
     let mut seen = std::collections::BTreeSet::new();
+    let mut seed_bytes = 0usize;
     for row in &manifest.seed {
         if !manifest.collections.contains_key(&row.collection) {
             return Err(ManifestRefusal::SeedCollectionUndeclared(
@@ -522,6 +551,10 @@ pub(crate) fn validate_db_manifest(manifest: &DbManifest) -> Result<(), Manifest
         }
         let encoded = serde_json::to_vec(&row.body).unwrap_or_default();
         let key = format!("{}/{}", row.collection, row.doc_id);
+        seed_bytes = seed_bytes.saturating_add(encoded.len());
+        if seed_bytes > MAX_SEED_BYTES {
+            return Err(ManifestRefusal::SeedTooLarge);
+        }
         if encoded.len() > MAX_BODY_BYTES {
             return Err(ManifestRefusal::SeedBodyInvalid(key));
         }
@@ -1024,6 +1057,63 @@ mod tests {
             }
         );
         assert_eq!(DbLimits::from_pushed(Some(-5), None).docs_per_artifact, 0);
+    }
+
+    #[test]
+    fn bytes_added_counts_growth_only() {
+        assert_eq!(bytes_added(100, None), 100);
+        assert_eq!(bytes_added(100, Some(40)), 60);
+        assert_eq!(bytes_added(40, Some(100)), 0);
+    }
+
+    #[test]
+    fn write_rate_allows_up_to_the_limit() {
+        assert!(within_write_rate(DB_WRITES_PER_MINUTE));
+        assert!(!within_write_rate(DB_WRITES_PER_MINUTE + 1));
+    }
+
+    #[test]
+    fn system_renderer_never_writes() {
+        let system = named("system", true);
+        for sharing in [Sharing::Team, Sharing::Private, Sharing::Public] {
+            assert_ne!(
+                db_role(Some(&system), Some("system"), sharing, EditAccess::Edit),
+                Some(DbRole::Writer),
+                "{sharing:?}"
+            );
+        }
+        // It can still read what it renders.
+        assert_eq!(
+            db_role(
+                Some(&system),
+                Some("user-1"),
+                Sharing::Private,
+                EditAccess::Edit
+            ),
+            Some(DbRole::Reader)
+        );
+    }
+
+    #[test]
+    fn manifest_caps_total_seed_size() {
+        let big = "x".repeat(40 * 1024);
+        let seeds = DbManifest {
+            collections: BTreeMap::from([("c".to_string(), DbCollectionDecl::default())]),
+            seed: (0..8)
+                .map(|i| DbSeedRow {
+                    collection: "c".into(),
+                    doc_id: format!("d{i}"),
+                    body: serde_json::Map::from_iter([(
+                        "v".to_string(),
+                        Value::String(big.clone()),
+                    )]),
+                })
+                .collect(),
+        };
+        assert_eq!(
+            validate_db_manifest(&seeds),
+            Err(ManifestRefusal::SeedTooLarge)
+        );
     }
 
     // ----- bodies -----

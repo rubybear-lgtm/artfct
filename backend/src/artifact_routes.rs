@@ -463,6 +463,16 @@ pub(crate) async fn upload_permanent_file(
                     .bind(&[JsValue::from_str(&row.row_id)])?
                     .run()
                     .await?;
+                // Spec 20: an unfinished first upload seeded its database rows
+                // at create; they go with the artifact.
+                database
+                    .prepare("DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ?")
+                    .bind(&[
+                        JsValue::from_str(&artifact_org),
+                        JsValue::from_str(artifact_id),
+                    ])?
+                    .run()
+                    .await?;
                 database
                     .prepare("DELETE FROM artifacts WHERE row_id = ?")
                     .bind(&[JsValue::from_str(&row.row_id)])?
@@ -1962,14 +1972,21 @@ pub(crate) async fn create_permanent_artifact(
             return Err(worker::Error::RustError(error.to_string()));
         }
     };
-    match existing_permanent_by_content(
-        &storage,
-        &org,
-        content_hash,
-        &Viewer::from_credential(&credential),
-    )
-    .await
-    {
+    // Spec 20: an artifact that declares a database is never deduplicated by
+    // content. The puller of a template must get their own artifact with fresh
+    // seed rows, not the id (and live rows) of an identical one in the org.
+    let existing_lookup = if manifest.db.is_some() {
+        Ok(None)
+    } else {
+        existing_permanent_by_content(
+            &storage,
+            &org,
+            content_hash,
+            &Viewer::from_credential(&credential),
+        )
+        .await
+    };
+    match existing_lookup {
         Ok(Some(existing)) => {
             let response = existing_artifact_response(&storage, env, &org, &existing).await;
             let release = storage

@@ -894,8 +894,12 @@ pub(crate) async fn hard_delete_permanent(
                 .prepare("DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)")
                 .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
             // Spec 20: the artifact's database rows go with the artifact.
-            crate::artifact_db_routes::delete_all_statement(database, org, artifact_id)?,
         ];
+        statements.extend(crate::artifact_db_routes::delete_all_statements(
+            database,
+            org,
+            artifact_id,
+        )?);
         for hash in &lock_hashes {
             statements.push(
                 database

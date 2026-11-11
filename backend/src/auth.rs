@@ -343,22 +343,6 @@ pub(crate) async fn check_and_increment_ip_rate_limit(env: &Env, ip: &str) -> Re
         .await
 }
 
-/// Spec 20: per-viewer, per-artifact db write limiter. The key names the
-/// artifact the host resolved to and the viewer the verified token names,
-/// never anything the request body supplies.
-pub(crate) async fn check_and_increment_db_write_rate_limit(
-    env: &Env,
-    artifact_id: &str,
-    viewer: &str,
-) -> Result<bool> {
-    check_and_increment_rate_limit_key(
-        env,
-        &format!("{RATE_LIMIT_DB_KV_PREFIX}{artifact_id}:{viewer}"),
-        RATE_LIMIT_MAX_DB_WRITES,
-    )
-    .await
-}
-
 async fn check_and_increment_rate_limit_key(env: &Env, key: &str, limit: u32) -> Result<bool> {
     let kv = env.kv(KV_BINDING)?;
     let current = kv
