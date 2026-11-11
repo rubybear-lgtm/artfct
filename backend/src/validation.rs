@@ -131,12 +131,22 @@ pub(crate) fn validate_permanent_manifest(
         Some(Value::Bool(value)) => *value,
         Some(_) => return Err(ErrorCode::ValidationFailed),
     };
+    let db = match manifest.get("db") {
+        None | Some(Value::Null) => None,
+        Some(raw) => {
+            let declared = serde_json::from_value::<crate::artifact_db::DbManifest>(raw.clone())
+                .map_err(|_| ErrorCode::ValidationFailed)?;
+            crate::artifact_db::validate_db_manifest(&declared)
+                .map_err(|_| ErrorCode::ValidationFailed)?;
+            Some(declared)
+        }
+    };
     let mut paths = std::collections::HashSet::new();
     let mut total = 0usize;
     let mut parsed = Vec::with_capacity(files.len());
     for file in files {
         let path = file.get("path").and_then(Value::as_str).unwrap_or_default();
-        if !is_valid_relative_path(path) {
+        if !is_valid_relative_path(path) || crate::artifact_db::is_reserved_bundle_path(path) {
             return Err(ErrorCode::InvalidPath);
         }
         if !paths.insert(path.to_string()) {
@@ -185,6 +195,7 @@ pub(crate) fn validate_permanent_manifest(
         files: parsed,
         external_origins,
         unsafe_eval,
+        db,
     };
     let canonical = serde_json::to_vec(&manifest).map_err(|_| ErrorCode::ValidationFailed)?;
     Ok((manifest, store::content_hash(&canonical)))

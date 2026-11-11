@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { useAppTheme } from '@/lib/useAppTheme';
 import { health } from '@/routes/ops';
+import { index as featuresIndex } from '@/routes/ops/features';
 import { index as tenantsIndex } from '@/routes/ops/tenants';
 
 /**
@@ -30,10 +31,18 @@ export default function OpsLayout({ children }: { children: ReactNode }) {
             href: healthUrl,
             active: path === healthUrl,
         },
+        {
+            key: 'features',
+            label: 'Features',
+            href: featuresIndex.url(),
+            active:
+                path === featuresIndex.url() ||
+                path.startsWith(`${featuresIndex.url()}/`),
+        },
     ];
 
-    // `/ops/health` also starts with `/ops/`, so Tenants must not claim it.
-    items[0].active = items[0].active && !items[1].active;
+    items[0].active =
+        items[0].active && !items.slice(1).some((item) => item.active);
 
     return (
         <div className="min-h-screen bg-background text-foreground">

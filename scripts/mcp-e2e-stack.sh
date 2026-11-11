@@ -160,6 +160,7 @@ up() {
         ../"$WRANGLER" dev --config wrangler.e2e.jsonc --local --port "$WORKER_PORT" --persist-to "$STATE_DIR/wrangler" \
             --var "ARTFCT_ARTIFACT_TOKEN_SECRET:$ARTFCT_ARTIFACT_TOKEN_SECRET" \
             --var "ARTFCT_ARTIFACT_ORIGIN_SUFFIX:$ARTFCT_ARTIFACT_ORIGIN_SUFFIX" \
+            --var "ARTFCT_ARTIFACT_DB_ENABLED:true" \
             --var "ARTFCT_JWT_ISSUER:$ORG_JWT_ISSUER" \
             --var "ARTFCT_JWT_AUDIENCE:$ORG_JWT_AUDIENCE" \
             --var "ARTFCT_JWKS_WRITE_SECRET:$ARTFCT_JWKS_WRITE_SECRET" \

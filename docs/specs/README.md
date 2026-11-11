@@ -22,6 +22,7 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | 3 | [Storage split](03-storage-split.md) | Both modes work; existing `/p/{id}` behaviour unchanged |
 | 4 | [Bundle format and API](04-bundle-format.md) | Deploy a real multi-file React bundle well over 1 MB |
 | 5 | [Origin isolation](05-origin-isolation.md) | JS in artifact A provably cannot read artifact B |
+| 20 | [Artifact database](20-artifact-db.md) | JS in artifact B provably cannot write artifact A's data; a pulled template starts with seed rows, not the source's |
 
 ### Track C — Control plane
 

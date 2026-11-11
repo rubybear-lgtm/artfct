@@ -52,6 +52,8 @@
         },
     ],
     "vars": {
+        // Spec 20 artifact database: on for every staging org while it soaks.
+        "ARTFCT_ARTIFACT_DB_ENABLED": "true",
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct-engine-staging.rubentortolero.workers.dev",
         "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--stg.artfct.dev",
         "ARTFCT_ORG_SLUG": "zz-northwind",

@@ -13,6 +13,8 @@ pub mod governance;
 pub mod quota;
 pub mod store;
 
+mod artifact_db;
+mod artifact_db_routes;
 mod artifact_origin;
 mod artifact_routes;
 mod auth;
@@ -199,6 +201,11 @@ struct PermanentManifest {
     external_origins: Vec<String>,
     #[serde(default)]
     unsafe_eval: bool,
+    /// Spec 20: the artifact database declaration. Skipped when absent so an
+    /// artifact that never declared one keeps the exact canonical manifest
+    /// bytes, and so the same content hash, it had before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    db: Option<artifact_db::DbManifest>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -459,6 +466,13 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
 
     if let Some(response) = dispatch_unimplemented_route(&method, path) {
         return response.into_worker_response();
+    }
+
+    // Spec 20: the db namespace on an artifact origin. Matched first so no
+    // other arm, and none of their `Access-Control-Allow-Origin: *`
+    // responses, can ever answer a `/__artfct/db/` request.
+    if let Some(response) = artifact_db_routes::artifact_db_route(&mut req, &env).await {
+        return response.or_else(|_| internal_error_response());
     }
 
     let result = match (method, path) {
@@ -1653,6 +1667,7 @@ mod tests {
             files: Vec::new(),
             external_origins: Vec::new(),
             unsafe_eval: false,
+            db: None,
         };
         for is_isolated in [false, true] {
             assert!(permanent_file_response_headers(
@@ -2271,6 +2286,7 @@ mod tests {
             files: Vec::new(),
             external_origins: external_origins.into_iter().map(str::to_string).collect(),
             unsafe_eval,
+            db: None,
         }
     }
 

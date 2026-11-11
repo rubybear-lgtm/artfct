@@ -67,6 +67,8 @@
         },
     ],
     "vars": {
+        // Spec 20 artifact database. false = dark (404, deploys may not declare db); orgs = only orgs Laravel enables; true = every org not opted out.
+        "ARTFCT_ARTIFACT_DB_ENABLED": "false",
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
         "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--prod.artfct.dev",
         // RUB-438: the only origin allowed to frame isolated artifacts (the viewer).

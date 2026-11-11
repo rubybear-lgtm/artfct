@@ -53,6 +53,7 @@ enum AuditEventType: string
     case OperatorReindexRequested = 'operator.reindex_requested';
     case OperatorLimitsChanged = 'operator.limits_changed';
     case OperatorPlanChanged = 'operator.plan_changed';
+    case OperatorFeatureReleaseChanged = 'operator.feature_release_changed';
     case OperatorTenantErased = 'operator.tenant_erased';
     case OperatorEraseStarted = 'operator.erase_started';
     case OperatorCaseCreated = 'operator.case_created';
@@ -111,6 +112,7 @@ enum AuditEventType: string
             self::OperatorReindexRequested => 'Search reindex requested by staff',
             self::OperatorLimitsChanged => 'Limits changed by staff',
             self::OperatorPlanChanged => 'Plan changed by staff',
+            self::OperatorFeatureReleaseChanged => 'Feature release changed by staff',
             self::OperatorTenantErased => 'Workspace erased by staff',
             self::OperatorEraseStarted => 'Erase started',
             self::OperatorCaseCreated => 'Suppression case opened',
@@ -139,6 +141,7 @@ enum AuditEventType: string
             self::OperatorReindexRequested,
             self::OperatorLimitsChanged,
             self::OperatorPlanChanged,
+            self::OperatorFeatureReleaseChanged,
             self::OperatorTenantErased,
         ], true);
     }
@@ -152,6 +155,7 @@ enum AuditEventType: string
     {
         return in_array($this, [
             self::OperatorEraseStarted,
+            self::OperatorFeatureReleaseChanged,
             self::OperatorCaseCreated,
             self::OperatorCaseRenewed,
             self::OperatorCaseReleased,

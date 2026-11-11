@@ -463,6 +463,16 @@ pub(crate) async fn upload_permanent_file(
                     .bind(&[JsValue::from_str(&row.row_id)])?
                     .run()
                     .await?;
+                // Spec 20: an unfinished first upload seeded its database rows
+                // at create; they go with the artifact.
+                database
+                    .prepare("DELETE FROM artifact_docs WHERE org_id = ? AND artifact_id = ?")
+                    .bind(&[
+                        JsValue::from_str(&artifact_org),
+                        JsValue::from_str(artifact_id),
+                    ])?
+                    .run()
+                    .await?;
                 database
                     .prepare("DELETE FROM artifacts WHERE row_id = ?")
                     .bind(&[JsValue::from_str(&row.row_id)])?
@@ -1092,6 +1102,7 @@ pub(crate) async fn resolve_permanent_artifact(
             files: Vec::new(),
             external_origins: Vec::new(),
             unsafe_eval: false,
+            db: None,
         }
     });
     let mut response = Response::from_bytes(serve_bytes)?.with_status(200);
@@ -1863,6 +1874,18 @@ pub(crate) async fn create_permanent_artifact(
     if let Err(message) = store::validate_slug(&org) {
         return json_error(ErrorCode::ValidationFailed, &message, 422);
     }
+    // Spec 20: a manifest may declare a database only where it is released, so
+    // a dark environment or org never accumulates rows nobody can reach.
+    if manifest.db.is_some()
+        && !crate::artifact_db_routes::db_enabled_for_org(&env.d1("ARTIFACTS_DB")?, env, &org)
+            .await?
+    {
+        return json_error(
+            ErrorCode::Forbidden,
+            "Artifact databases are not enabled for this team.",
+            403,
+        );
+    }
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let upload_expires_at =
         (Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -1961,14 +1984,21 @@ pub(crate) async fn create_permanent_artifact(
             return Err(worker::Error::RustError(error.to_string()));
         }
     };
-    match existing_permanent_by_content(
-        &storage,
-        &org,
-        content_hash,
-        &Viewer::from_credential(&credential),
-    )
-    .await
-    {
+    // Spec 20: an artifact that declares a database is never deduplicated by
+    // content. The puller of a template must get their own artifact with fresh
+    // seed rows, not the id (and live rows) of an identical one in the org.
+    let existing_lookup = if manifest.db.is_some() {
+        Ok(None)
+    } else {
+        existing_permanent_by_content(
+            &storage,
+            &org,
+            content_hash,
+            &Viewer::from_credential(&credential),
+        )
+        .await
+    };
+    match existing_lookup {
         Ok(Some(existing)) => {
             let response = existing_artifact_response(&storage, env, &org, &existing).await;
             let release = storage
@@ -2102,6 +2132,17 @@ pub(crate) async fn create_permanent_artifact(
                         JsValue::from_str(&provenance_json),
                     ])?,
             ];
+            // Spec 20: starter rows ride in the same atomic batch as the new
+            // artifact, `INSERT OR IGNORE`, and only on this first deploy.
+            if let Some(declared_db) = manifest.db.as_ref() {
+                statements.extend(crate::artifact_db_routes::seed_statements(
+                    database,
+                    &org,
+                    &artifact_id,
+                    declared_db,
+                    &now,
+                )?);
+            }
             for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
                 statements.push(
                     database

@@ -330,6 +330,7 @@ test('every_audit_event_type_has_an_explicit_target_decision', function () {
         'operator.reindex_requested',
         'operator.limits_changed',
         'operator.plan_changed',
+        'operator.feature_release_changed',
         'operator.tenant_erased',
         'operator.erase_started',
         'operator.case_created',

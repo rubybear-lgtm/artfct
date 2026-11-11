@@ -207,6 +207,11 @@ pub(crate) struct OrgLimitsWriteRequest {
     artifacts_per_month: u64,
     bundle_ceiling_bytes: u64,
     read_only: bool,
+    /// Spec 20. `None` leaves the stored value (or the Worker default) alone.
+    #[serde(default)]
+    db_docs_per_artifact: Option<u64>,
+    #[serde(default)]
+    db_bytes_per_org: Option<u64>,
 }
 
 /// An unset secret fails closed.
@@ -248,7 +253,7 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
         ensure_org_row(&storage.database, &payload.org, &now).await?;
         storage
             .database
-            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at, db_docs_per_artifact, db_bytes_per_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at, db_docs_per_artifact = COALESCE(excluded.db_docs_per_artifact, org_limits.db_docs_per_artifact), db_bytes_per_org = COALESCE(excluded.db_bytes_per_org, org_limits.db_bytes_per_org)")
             .bind(&[
                 JsValue::from_str(&payload.org),
                 JsValue::from_f64(payload.storage_bytes as f64),
@@ -256,6 +261,12 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
                 JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
                 JsValue::from_f64(f64::from(u8::from(payload.read_only))),
                 JsValue::from_str(&now),
+                payload
+                    .db_docs_per_artifact
+                    .map_or_else(JsValue::null, |value| JsValue::from_f64(value as f64)),
+                payload
+                    .db_bytes_per_org
+                    .map_or_else(JsValue::null, |value| JsValue::from_f64(value as f64)),
             ])?
             .run()
             .await?;
@@ -273,6 +284,9 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
 pub(crate) struct OrgSettingsWriteRequest {
     org: String,
     public_sharing_allowed: bool,
+    /// Spec 20 rollout gate. `None` leaves the stored choice alone.
+    #[serde(default)]
+    artifact_db_enabled: Option<bool>,
 }
 
 /// The `POST /v1/internal/org-settings` body. `downgraded` lists the ids this
@@ -341,11 +355,14 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
                 .collect::<Vec<_>>()
         };
         let mut statements = vec![database
-            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at) VALUES (?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at")
+            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at, artifact_db_enabled) VALUES (?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at, artifact_db_enabled = COALESCE(excluded.artifact_db_enabled, org_settings.artifact_db_enabled)")
             .bind(&[
                 JsValue::from_str(&payload.org),
                 JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
                 JsValue::from_str(&now),
+                payload.artifact_db_enabled.map_or_else(JsValue::null, |enabled| {
+                    JsValue::from_f64(f64::from(u8::from(enabled)))
+                }),
             ])?];
         if !payload.public_sharing_allowed {
             statements.push(
@@ -882,7 +899,13 @@ pub(crate) async fn hard_delete_permanent(
             database
                 .prepare("DELETE FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)")
                 .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
+            // Spec 20: the artifact's database rows go with the artifact.
         ];
+        statements.extend(crate::artifact_db_routes::delete_all_statements(
+            database,
+            org,
+            artifact_id,
+        )?);
         for hash in &lock_hashes {
             statements.push(
                 database
