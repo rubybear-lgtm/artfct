@@ -42,13 +42,16 @@ until $PHP artisan inertia:check-ssr --no-interaction; do
     sleep 1
 done
 
-# A shell trap would die with `exec` (POSIX exec discards traps), so SSR
-# cleanup cannot live here. Instead Octane runs in the foreground as a child:
-# when it exits, the shell regains control and stops SSR, so signals that
-# terminate Octane still clean up the background SSR server.
+# The shell stays PID 1 while Octane runs in the background, so container
+# stop signals land on sh, not the children: forward them to both servers.
+# (A trap before `exec` would be discarded with the shell image, so Octane
+# runs as a child and the shell regains control when it exits.)
 $PHP artisan octane:start --server=frankenphp --host=0.0.0.0 --port="${PORT:?PORT is required}" --workers="${OCTANE_WORKERS:-4}" --max-requests="${OCTANE_MAX_REQUESTS:-500}" --no-interaction &
 OCTANE_PID=$!
-wait "$OCTANE_PID"
-STATUS=$?
+trap 'kill -TERM "$OCTANE_PID" "$SSR_PID" 2>/dev/null || true' TERM INT
+# `wait` under `set -e` would exit the shell before STATUS is captured when
+# Octane exits non-zero; the `||` keeps the shell alive to clean up SSR.
+STATUS=0
+wait "$OCTANE_PID" || STATUS=$?
 kill "$SSR_PID" 2>/dev/null || true
 exit "$STATUS"

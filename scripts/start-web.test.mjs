@@ -11,13 +11,12 @@ const startScript = fileURLToPath(new URL('./start-web.sh', import.meta.url));
 /**
  * The mock `php` shifts off the `-d variables_order=EGPCS` prefix the
  * script passes, then dispatches on the artisan command. `checkSsr` may be
- * 'healthy', 'never', or a number N: fail the first N checks, then succeed,
- * exercising the bounded retry loop. `octane:start` exits 0 at once so the
- * script's `wait` returns (as if Octane ran and exited cleanly).
+ * exercising the bounded retry loop. `octane:start` exits at once with
+ * OCTANE_EXIT (default 0) so the script's `wait` returns promptly.
  *
- * @param {{ failOptimize?: boolean, checkSsr?: 'healthy' | 'never' | number, env?: Record<string, string>, timeout?: number }} options
+ * @param {{ failOptimize?: boolean, checkSsr?: 'healthy' | 'never' | number, octaneExit?: number, env?: Record<string, string>, timeout?: number }} options
  */
-function runStartup({ failOptimize = false, checkSsr = 'healthy', env = {}, timeout = 15000 } = {}) {
+function runStartup({ failOptimize = false, checkSsr = 'healthy', octaneExit = 0, env = {}, timeout = 15000 } = {}) {
     const directory = mkdtempSync(join(tmpdir(), 'artfct-start-web-'));
     const log = join(directory, 'commands');
     const attempts = join(directory, 'attempts');
@@ -27,12 +26,13 @@ function runStartup({ failOptimize = false, checkSsr = 'healthy', env = {}, time
         writeFileSync(
             join(directory, 'php'),
             `#!/bin/sh
-if [ "$1" = "-d" ]; then shift 2; fi
 printf 'php %s\n' "$*" >> "$STARTUP_LOG"
-if [ "$2" = "optimize" ] && [ "$FAIL_OPTIMIZE" = "true" ]; then
+CMD="$1"
+if [ "$CMD" = "-d" ]; then CMD="$4"; fi
+if [ "$CMD" = "optimize" ] && [ "$FAIL_OPTIMIZE" = "true" ]; then
     exit 17
 fi
-if [ "$2" = "inertia:check-ssr" ]; then
+if [ "$CMD" = "inertia:check-ssr" ]; then
     n=$(($(cat "$CHECK_ATTEMPTS") + 1))
     echo "$n" > "$CHECK_ATTEMPTS"
     if [ "$SSR_HEALTH" = "never" ]; then
@@ -43,13 +43,16 @@ if [ "$2" = "inertia:check-ssr" ]; then
     fi
     exit 19
 fi
-if [ "$2" = "inertia:start-ssr" ]; then
+if [ "$CMD" = "inertia:start-ssr" ]; then
     # Stay alive until the script kills us, like the real start-ssr which
     # blocks streaming the Node SSR server. Reap tail on TERM so no orphan
     # holds the harness stdio pipes open (spawnSync waits for EOF).
     tail -f /dev/null & TPID=$!
     trap 'kill $TPID' TERM
     wait
+fi
+if [ "$CMD" = "octane:start" ]; then
+    exit "$OCTANE_EXIT"
 fi
 exit 0
 `,
@@ -64,6 +67,7 @@ exit 0
                 PATH: `${directory}:${process.env.PATH}`,
                 STARTUP_LOG: log,
                 CHECK_ATTEMPTS: attempts,
+                OCTANE_EXIT: String(octaneExit),
                 FAIL_OPTIMIZE: String(failOptimize),
                 SSR_HEALTH: String(checkSsr),
                 PORT: '8080',
@@ -87,16 +91,16 @@ exit 0
 test('web startup serves with Octane on FrankenPHP after SSR is healthy', () => {
     const result = runStartup();
     assert.equal(result.status, 0);
-    assert.match(result.commands, /php artisan optimize --no-interaction/);
-    assert.match(result.commands, /php artisan storage:link --no-interaction/);
+    assert.match(result.commands, /php -d variables_order=EGPCS artisan optimize --no-interaction/);
+    assert.match(result.commands, /php -d variables_order=EGPCS artisan storage:link --no-interaction/);
     assert.match(
         result.commands,
-        /php artisan inertia:start-ssr --no-interaction/,
+        /php -d variables_order=EGPCS artisan inertia:start-ssr --no-interaction/,
     );
-    assert.match(result.commands, /php artisan inertia:check-ssr/);
+    assert.match(result.commands, /php -d variables_order=EGPCS artisan inertia:check-ssr/);
     assert.match(
         result.commands,
-        /php artisan octane:start --server=frankenphp --host=0\.0\.0\.0 --port=8080 --workers=4 --max-requests=500 --no-interaction/,
+        /php -d variables_order=EGPCS artisan octane:start --server=frankenphp --host=0\.0\.0\.0 --port=8080 --workers=4 --max-requests=500 --no-interaction/,
     );
     assert.doesNotMatch(result.commands, /artisan (serve|migrate)/);
 });
@@ -105,7 +109,7 @@ test('SSR that becomes healthy after boot is waited for, not failed', () => {
     const result = runStartup({ checkSsr: 3 });
     assert.equal(result.status, 0);
     assert.equal(result.checkAttempts, 4);
-    assert.match(result.commands, /php artisan octane:start/);
+    assert.match(result.commands, /php -d variables_order=EGPCS artisan octane:start/);
 });
 
 test('worker and request counts are configurable', () => {
@@ -118,7 +122,7 @@ test('worker and request counts are configurable', () => {
 test('failed optimization prevents SSR and Octane from starting', () => {
     const result = runStartup({ failOptimize: true });
     assert.equal(result.status, 17);
-    assert.equal(result.commands, 'php artisan optimize --no-interaction\n');
+    assert.equal(result.commands, 'php -d variables_order=EGPCS artisan optimize --no-interaction\n');
 });
 
 test('an SSR server that never becomes healthy prevents Octane from starting', () => {
@@ -128,6 +132,20 @@ test('an SSR server that never becomes healthy prevents Octane from starting', (
     assert.doesNotMatch(result.commands, /octane:start/);
 });
 
+test('a failing Octane server propagates its exit status', () => {
+    const result = runStartup({ octaneExit: 3 });
+    assert.equal(result.status, 3);
+    assert.match(result.commands, /php -d variables_order=EGPCS artisan octane:start/);
+});
+
+test('every php invocation sees the process environment', () => {
+    const result = runStartup();
+
+    for (const line of result.commands.trim().split('\n')) {
+        assert.match(line, /^php -d variables_order=EGPCS artisan/);
+    }
+});
+
 test('staging and production web services use the Octane startup', () => {
     for (const environment of ['staging', 'production']) {
         const config = readFileSync(
@@ -135,6 +153,6 @@ test('staging and production web services use the Octane startup', () => {
             'utf8',
         );
         assert.match(config, /start: "sh scripts\/start-web\.sh"/);
-        assert.doesNotMatch(config, /php artisan serve/);
+        assert.doesNotMatch(config, /php -d variables_order=EGPCS artisan serve/);
     }
 });
