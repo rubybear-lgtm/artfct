@@ -9,6 +9,7 @@ use App\Enums\Plan;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Services\Billing\BillingService;
+use App\Services\Billing\MemberCap;
 use App\Services\Billing\PlanGate;
 use App\Services\Billing\PlanGateException;
 use App\Services\Billing\QuotaService;
@@ -134,7 +135,19 @@ class BillingController extends Controller
             return to_route('teams.billing.show', ['team' => $team->slug]);
         }
 
-        $price = BillingPrice::for(Plan::from($validated['plan']), $validated['interval']);
+        $plan = Plan::from($validated['plan']);
+        if ($plan === Plan::Pro && MemberCap::humanMemberCount($team) > 1) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => __('Pro is for one person. Keep Team, or contact :email about Business for larger workspaces.', [
+                    'email' => config('billing.business_contact_email', 'support@artfct.dev'),
+                ]),
+            ]);
+
+            return to_route('teams.billing.show', ['team' => $team->slug]);
+        }
+
+        $price = BillingPrice::for($plan, $validated['interval']);
         $url = $billing->startCheckout($team, $price);
 
         return Inertia::location($url);

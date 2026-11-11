@@ -146,6 +146,47 @@ test('bots_do_not_count_toward_the_team_member_cap', function () {
         ->and(MemberCap::canAddHuman($team))->toBeFalse();
 });
 
+test('pending_invite_cannot_join_after_drop_to_free', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    for ($i = 0; $i < 2; $i++) {
+        memberOfTeam($team, TeamRole::Member);
+    }
+
+    $invitation = $team->invitations()->create([
+        'email' => 'late@example.com',
+        'role' => TeamRole::Member,
+        'invited_by' => $admin->id,
+        'expires_at' => now()->addDays(3),
+    ]);
+
+    $team->forceFill(['plan' => Plan::Free, 'stripe_subscription_id' => null, 'trial_ends_at' => null])->save();
+
+    $invitee = User::factory()->create(['email' => 'late@example.com']);
+    test()->actingAs($invitee)->post(route('invitations.accept', $invitation))
+        ->assertSessionHasErrors('invitation');
+
+    expect($team->fresh()->memberships()->where('user_id', $invitee->id)->exists())->toBeFalse()
+        ->and(MemberCap::canAddHuman($team->fresh()))->toBeFalse();
+});
+
+test('pro_checkout_is_rejected_when_the_workspace_already_has_teammates', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    memberOfTeam($team, TeamRole::Member);
+    $team->forceFill(['owner_user_id' => $admin->id])->save();
+
+    /** @var FakeBilling $billing */
+    $billing = app(BillingContract::class);
+
+    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [
+        'plan' => 'pro',
+        'interval' => 'month',
+    ])->assertRedirect(route('teams.billing.show', $team));
+
+    expect($billing->checkoutSessions)->toBeEmpty();
+});
+
 test('billing_checkout_route_accepts_plan_and_interval', function () {
     $team = Team::factory()->create(['plan' => Plan::Free]);
     $admin = memberOfTeam($team, TeamRole::Admin);

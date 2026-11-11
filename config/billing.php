@@ -59,7 +59,9 @@ return [
     | Pro is one person; Team is flat for up to 10; over that is Business.
     */
     'human_member_caps' => [
-        'free' => null,
+        // Free and Pro are one-person workspaces; pending invites cannot join
+        // after a Team trial ends on Free (AcceptTeamInvitation uses this cap).
+        'free' => 1,
         'pro' => 1,
         'team' => 10,
         'enterprise' => null,

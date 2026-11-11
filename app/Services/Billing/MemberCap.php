@@ -47,9 +47,10 @@ final class MemberCap
         $contact = (string) config('billing.business_contact_email', 'support@artfct.dev');
 
         return match ($plan) {
+            Plan::Free => __('Free is for one person. Upgrade to Team to invite teammates, or contact :email about Business.', ['email' => $contact]),
             Plan::Pro => __('Pro is for one person. Upgrade to Team to invite teammates, or contact :email about Business.', ['email' => $contact]),
             Plan::Team => __('Team includes up to 10 people. Contact :email about Business for larger teams.', ['email' => $contact]),
-            default => __('This team cannot add more members on the current plan. Contact :email about Business.', ['email' => $contact]),
+            Plan::Enterprise => __('This team cannot add more members on the current plan. Contact :email about Business.', ['email' => $contact]),
         };
     }
 }
