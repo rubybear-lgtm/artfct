@@ -202,8 +202,13 @@ test('desktop_admin_subnav_marks_admin_settings_and_members_never_see_it', funct
         ->assertMissing('@admin-subnav')
         ->assertNoJavaScriptErrors();
 
+    // assertVisible waits only 1s; slow admin pages can hydrate later than that
+    // in a parallel CI run, so wait for the sub-nav to render first.
+    $subnavRendered = 'new Promise((resolve) => { const started = Date.now(); const check = () => { const found = document.querySelector(\'[data-testid="admin-subnav"]\') !== null; if (found || Date.now() - started > 10000) { resolve(found); } else { setTimeout(check, 50); } }; check(); })';
+
     foreach (['teams.admin.show', 'teams.edit', 'teams.tokens.index', 'teams.billing.show', 'teams.authentication.show', 'teams.governance.show', 'teams.audit.index'] as $name) {
         visit(route($name, $team))
+            ->assertScript($subnavRendered, true)
             ->assertVisible('@admin-subnav')
             ->assertNoJavaScriptErrors();
     }
