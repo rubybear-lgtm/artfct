@@ -320,11 +320,11 @@ export default function Billing({
                                         · Team
                                     </Button>
                                 </div>
-                                <p className="text-sm text-muted-foreground break-words">
-                                    Pro is solo. Team covers up to 10 people;
-                                    AI bots stay free. Over 10? Contact{' '}
+                                <p className="text-sm break-words text-muted-foreground">
+                                    Pro is solo. Team covers up to 10 people; AI
+                                    bots stay free. Over 10? Contact{' '}
                                     <a
-                                        className="underline break-all"
+                                        className="break-all underline"
                                         href={`mailto:${prices.businessContact}`}
                                     >
                                         {prices.businessContact}
