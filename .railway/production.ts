@@ -25,7 +25,7 @@ export default defineRailway(() => {
   const web = service("web", {
     source: github("rubybear-lgtm/artfct", { checkSuites: true }),
     build: "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction && npm install --no-audit --no-fund && npm run build:ssr",
-    start: "php artisan optimize && (php artisan inertia:start-ssr &) && php artisan serve --host=0.0.0.0 --port=${PORT}",
+    start: "sh scripts/start-web.sh",
     healthcheck: "/up",
     healthcheckTimeout: 300,
     preDeploy: "sh -c 'php artisan migrate --force && php artisan auth:publish-jwks'",

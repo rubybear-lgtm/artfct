@@ -229,6 +229,7 @@ test('an unchanged preview revalidates without sending its body', function () {
     $url = artifactPreviewUrl($team, 'artifact-1');
 
     $first = test()->actingAs($member)->get($url)->assertOk();
+    expect($first->headers->get('Server-Timing'))->toMatch('/^artifact_fetch;dur=[0-9]+\.[0-9]{2}$/');
     $etag = $first->headers->get('ETag');
     expect($etag)->not->toBeNull();
 
