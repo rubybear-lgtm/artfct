@@ -1,11 +1,12 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use Illuminate\Support\Facades\Notification;
 
 test('last_admin_cannot_leave', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     memberOfTeam($team, TeamRole::Member);
 
@@ -15,7 +16,7 @@ test('last_admin_cannot_leave', function () {
 });
 
 test('last_admin_cannot_be_demoted', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     test()->actingAs($admin)->patch(route('teams.members.update', [$team, $admin]), ['role' => 'member'])->assertSessionHasErrors('role');
@@ -24,7 +25,7 @@ test('last_admin_cannot_be_demoted', function () {
 });
 
 test('promote_then_leave_succeeds', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $other = memberOfTeam($team, TeamRole::Member);
 
@@ -35,7 +36,7 @@ test('promote_then_leave_succeeds', function () {
 });
 
 test('demoting_one_of_two_admins_is_allowed', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $first = memberOfTeam($team, TeamRole::Admin);
     $second = memberOfTeam($team, TeamRole::Admin);
 
@@ -44,7 +45,7 @@ test('demoting_one_of_two_admins_is_allowed', function () {
 
 test('member_cannot_invite_someone_as_admin', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'admin'])->assertForbidden();
@@ -54,7 +55,7 @@ test('member_cannot_invite_someone_as_admin', function () {
 
 test('member_can_invite_a_viewer', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->post(route('teams.invitations.store', $team), ['email' => 'new@example.com', 'role' => 'viewer'])->assertSessionHasNoErrors();

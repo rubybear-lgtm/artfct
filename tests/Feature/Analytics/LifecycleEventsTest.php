@@ -3,6 +3,7 @@
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\AnalyticsContract;
 use App\Enums\OrgTokenKind;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -88,7 +89,7 @@ test('C2 team_created and team_upgraded fire on web paths', function () {
 });
 
 test('C3 invite_sent and member_joined omit invitee email', function () {
-    $team = Team::factory()->create(['slug' => 'invite-analytics']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'invite-analytics']);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     test()->actingAs($admin)->post(route('teams.invitations.store', $team), [
@@ -120,7 +121,7 @@ test('C4 bot_connected fires when creating an agent org token', function () {
         'services.org_jwt.audience' => 'artfct-engine',
     ]);
 
-    $team = Team::factory()->create(['slug' => 'bot-connect']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bot-connect']);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $bot = User::factory()->create(['is_bot' => true, 'name' => 'Grok']);
     $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Member]);
@@ -144,7 +145,7 @@ test('C4 bot_connected fires when creating an agent org token', function () {
 test('C4 human OAuth code exchange does not fire bot_connected', function () {
     configureSigning(testSigningKey());
 
-    $team = Team::factory()->create(['slug' => 'human-oauth-analytics']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'human-oauth-analytics']);
     $user = User::factory()->create(['is_bot' => false]);
     $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
     $user->switchTeam($team);
@@ -181,7 +182,7 @@ test('C4 human OAuth code exchange does not fire bot_connected', function () {
 test('C5 artifact_viewed and artifact_deleted fire on worker-events path', function () {
     config(['services.worker_events.secret' => 'test-secret']);
 
-    $team = Team::factory()->create(['slug' => 'worker-analytics']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'worker-analytics']);
 
     postWorkerEvent([
         'type' => 'artifact.viewed',

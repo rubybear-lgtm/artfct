@@ -15,6 +15,8 @@ use App\Models\User;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevoker;
+use App\Services\Billing\PlanGate;
+use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -99,6 +101,17 @@ class OrgTokenController extends Controller
         $tokenUser = $request->user();
 
         if ($kind === OrgTokenKind::Agent) {
+            try {
+                PlanGate::requireBotAccess($team);
+            } catch (PlanGateException $exception) {
+                return response()->json([
+                    'errorCode' => 'plan_required',
+                    'message' => $exception->getMessage(),
+                    'retryable' => false,
+                    'nextAction' => 'upgrade_plan',
+                ], 403);
+            }
+
             $bot = User::query()->whereKey((int) $request->validated('bot_id'))->firstOrFail();
             abort_unless($bot->is_bot && $bot->belongsToTeam($team), 404);
             $tokenUser = $bot;

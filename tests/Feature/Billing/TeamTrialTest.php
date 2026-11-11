@@ -195,6 +195,7 @@ test('marketing_copy_describes_the_ninety_day_trial_and_flat_pricing', function 
         ->and($landing)->toContain('$5/month')
         ->and($landing)->toContain('2 months free')
         ->and($landing)->toContain('Contact us')
+        ->and($landing)->toContain('AI bot teammates')
         ->and($landing)->not->toContain('everything except search by description')
         ->and($landing)->not->toContain("Team pricing isn't published yet")
         ->and($landing)->not->toContain('Billed per person')

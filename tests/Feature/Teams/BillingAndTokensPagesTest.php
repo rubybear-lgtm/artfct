@@ -24,12 +24,11 @@ test('billing_page_shows_plan_seats_and_limits_to_admins', function () {
             ->has('limits.team.storage_bytes'));
 });
 
-test('billing_page_tells_members_they_cannot_manage', function () {
+test('billing_page_is_forbidden_for_members', function () {
     $team = Team::factory()->create();
     $member = memberOfTeam($team, TeamRole::Member);
 
-    test()->actingAs($member)->get(route('teams.billing.show', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('canManage', false));
+    test()->actingAs($member)->get(route('teams.billing.show', $team))->assertForbidden();
 });
 
 test('billing_page_is_hidden_from_non_members', function () {

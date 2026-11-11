@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\McpConnection;
@@ -39,7 +40,7 @@ function memberManagementOrgToken(Team $team, User $user, TeamRole $role): array
 }
 
 test('a_role_change_takes_effect_and_is_audited', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
 
@@ -55,7 +56,7 @@ test('downgrading_a_member_revokes_their_org_and_oauth_tokens', function () {
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Admin);
     [$rawToken, $token, $connection, $refreshToken] = memberManagementOrgToken($team, $member, TeamRole::Admin);
@@ -77,7 +78,7 @@ test('downgrading_a_member_revokes_their_org_and_oauth_tokens', function () {
 });
 
 test('removing_a_member_is_immediate_and_audited', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
 
@@ -93,7 +94,7 @@ test('removal_and_self_leave_revoke_the_members_org_and_oauth_tokens', function 
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
     [$rawToken, $token, $connection, $refreshToken] = memberManagementOrgToken($team, $member, TeamRole::Member);
@@ -123,7 +124,7 @@ test('membership_changes_fail_closed_when_the_worker_denylist_write_fails', func
         'https://worker.test/v1/internal/revocations' => Http::response(['error' => 'unavailable'], 503),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
     [$rawToken, $token, $connection, $refreshToken] = memberManagementOrgToken($team, $member, TeamRole::Member);
@@ -161,7 +162,7 @@ test('membership_changes_retry_worker_revocation_for_locally_revoked_unexpired_t
         'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
     ]);
 
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $owner = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
     $token = OrgToken::factory()->for($team)->for($member)->create([
@@ -182,7 +183,7 @@ test('membership_changes_retry_worker_revocation_for_locally_revoked_unexpired_t
 });
 
 test('members_cannot_change_roles', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
     $other = memberOfTeam($team, TeamRole::Member);
 
@@ -190,7 +191,7 @@ test('members_cannot_change_roles', function () {
 });
 
 test('deactivated_members_are_flagged_in_the_member_list', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $gone = memberOfTeam($team, TeamRole::Member);
     $gone->forceFill(['deactivated_at' => now()])->save();
@@ -201,7 +202,7 @@ test('deactivated_members_are_flagged_in_the_member_list', function () {
 });
 
 test('available_roles_only_lists_roles_the_viewer_can_grant', function () {
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)->get(route('teams.edit', $team))
@@ -211,7 +212,7 @@ test('available_roles_only_lists_roles_the_viewer_can_grant', function () {
 
 test('a_member_inviting_a_higher_role_is_refused', function () {
     Notification::fake();
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $member = memberOfTeam($team, TeamRole::Member);
 
     test()->actingAs($member)

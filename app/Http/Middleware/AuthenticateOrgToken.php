@@ -10,6 +10,8 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Billing\PlanGate;
+use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
 use Closure;
 use Illuminate\Http\Request;
@@ -88,6 +90,14 @@ class AuthenticateOrgToken
             $request->attributes->set('actor_is_bot', true);
         }
 
+        if (PlanGate::isBotCredential($orgToken, $actorUser)) {
+            try {
+                PlanGate::requireBotAccess($team);
+            } catch (PlanGateException $exception) {
+                return $this->botPlanRequiredResponse($request, $exception);
+            }
+        }
+
         if ($request->is('mcp')) {
             $this->syncHostedConnection($request, $claims, $team, app(AuditLogger::class), $orgToken);
         }
@@ -104,6 +114,36 @@ class AuthenticateOrgToken
         }
 
         return $next($request);
+    }
+
+    private function botPlanRequiredResponse(Request $request, PlanGateException $exception): Response
+    {
+        $payload = [
+            'errorCode' => 'plan_required',
+            'message' => $exception->getMessage(),
+            'retryable' => false,
+            'nextAction' => 'upgrade_plan',
+        ];
+
+        if ($request->is('mcp')) {
+            return response()->json([
+                'jsonrpc' => '2.0',
+                'id' => $request->input('id'),
+                'error' => [
+                    'code' => -32003,
+                    'message' => $exception->getMessage(),
+                    'data' => [
+                        'artfct' => [
+                            'errorCode' => 'plan_required',
+                            'retryable' => false,
+                            'nextAction' => 'upgrade_plan',
+                        ],
+                    ],
+                ],
+            ], 403);
+        }
+
+        return response()->json($payload, 403);
     }
 
     /**

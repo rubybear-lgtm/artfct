@@ -20,6 +20,8 @@ use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevocationRetry;
 use App\Services\Auth\OrgTokenRevoker;
+use App\Services\Billing\PlanGate;
+use App\Services\Billing\PlanGateException;
 use App\Services\Governance\AuditLogger;
 use App\Support\ClientIp;
 use App\Support\TeamSignIn;
@@ -377,6 +379,12 @@ final class AuthorizationServerController extends Controller
         $installation = null;
 
         if ($botInstall !== null) {
+            try {
+                PlanGate::requireBotAccess($team);
+            } catch (PlanGateException $exception) {
+                return $this->tokenError('invalid_grant', $exception->getMessage());
+            }
+
             try {
                 $resolved = $resolveOAuthBotInstallation->handle(
                     $team,

@@ -637,6 +637,7 @@ function PricingSection({
                     <ul>
                         <li>Search by describing what you need</li>
                         <li>Your own web address for your knowledge base</li>
+                        <li>AI bot teammates</li>
                         <li>Connect your AI tools with sources</li>
                     </ul>
                     <Button asChild className="btn btn-ghost">
@@ -658,6 +659,7 @@ function PricingSection({
                             Every AI tool on your team can use what’s shared,
                             with sources
                         </li>
+                        <li>AI bot teammates</li>
                         <li>Share from your AI tool to your team</li>
                         <li>
                             Search by describing what you need, in plain words

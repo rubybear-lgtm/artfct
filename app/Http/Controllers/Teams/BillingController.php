@@ -12,6 +12,7 @@ use App\Services\Billing\BillingService;
 use App\Services\Billing\PlanGate;
 use App\Services\Billing\PlanGateException;
 use App\Services\Billing\QuotaService;
+use App\Services\Billing\TeamEntitlements;
 use App\Services\Billing\TeamTrialService;
 use App\Services\Governance\AuditLogger;
 use Illuminate\Http\RedirectResponse;
@@ -30,6 +31,7 @@ class BillingController extends Controller
     public function show(Request $request, Team $team, QuotaService $quota, BillingService $billing, TeamTrialService $trials): Response
     {
         abort_unless($request->user()->belongsToTeam($team), 404);
+        TeamEntitlements::resolve($team, $request->user())->assertCan(TeamEntitlements::MANAGE_BILLING);
 
         try {
             $status = $quota->status($team);

@@ -8,11 +8,32 @@ export type SharedTeam = {
     isCurrent: boolean | null;
 };
 
+export type PlanTier = 'free' | 'pro' | 'team_trialing' | 'team' | 'business';
+
+export type EntitlementNavItem = {
+    key: string;
+    visible: boolean;
+    locked: boolean;
+    label: string;
+    reason: string | null;
+};
+
+export type Entitlements = {
+    plan: 'free' | 'pro' | 'team' | 'enterprise';
+    planTier: PlanTier;
+    role: 'admin' | 'member' | 'viewer' | null;
+    isBot: boolean;
+    isAdmin: boolean;
+    capabilities: Record<string, boolean>;
+    nav: EntitlementNavItem[];
+} | null;
+
 export type CurrentTeam = {
     id?: number;
     slug: string;
     name: string;
     plan: 'free' | 'pro' | 'team' | 'enterprise';
+    planTier?: PlanTier;
     paymentStatus: 'active' | 'past_due';
     isPersonal?: boolean;
     isOwner: boolean;
@@ -50,6 +71,7 @@ export type SharedProps = {
     auth: { user: { id: number; name: string; email: string } | null };
     teams: SharedTeam[];
     currentTeam: CurrentTeam;
+    entitlements?: Entitlements;
     quota: Quota;
     analytics?: AnalyticsShared;
 };

@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Rules\TeamName;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgTokenRevoker;
+use App\Services\Billing\TeamEntitlements;
 use App\Services\Governance\AuditLogger;
 use App\Services\Sharing\OrgSettingsWriter;
 use App\Services\Teams\LastAdminGuard;
@@ -168,7 +169,9 @@ class TeamController extends Controller
                         : null,
                 ];
             }),
-            'canAddBot' => $user->can('create', [OrgToken::class, $team]),
+            'canAddBot' => TeamEntitlements::resolve($team, $user)->can(TeamEntitlements::USE_BOTS)
+                && $user->can('create', [OrgToken::class, $team]),
+            'entitlements' => TeamEntitlements::resolve($team, $user)->toArray(),
             'botScopeOptions' => McpScope::forRole($user->teamRole($team)),
             'botScopeLabels' => collect(McpScope::cases())
                 ->mapWithKeys(fn (McpScope $scope): array => [$scope->value => $scope->label()])

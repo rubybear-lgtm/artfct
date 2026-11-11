@@ -10,6 +10,7 @@ use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Billing\PlanGate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -33,6 +34,8 @@ class CreateBotTeammate
         ?int $ttlSeconds = null,
         ?string $avatar = null,
     ): array {
+        PlanGate::requireBotAccess($team);
+
         $scopes ??= [
             McpScope::ArtifactsRead->value,
             McpScope::ArtifactsDeploy->value,

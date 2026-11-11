@@ -3,7 +3,9 @@
 namespace App\Services\Billing;
 
 use App\Enums\Plan;
+use App\Models\OrgToken;
 use App\Models\Team;
+use App\Models\User;
 
 /**
  * The single place every plan-gated feature checks `plan` (spec 14 / RUB-529).
@@ -60,5 +62,37 @@ final class PlanGate
             Plan::Pro, Plan::Team, Plan::Enterprise => true,
             Plan::Free => false,
         };
+    }
+
+    /**
+     * Bot teammates and Agent/bot credentials (what `bot_connected` tracks).
+     * Pro, Team (including trial), and Enterprise/Business. Free does not.
+     * A person's own human OAuth MCP connection is not gated here.
+     *
+     * @throws PlanGateException when the team is on Free (or an expired trial).
+     */
+    public static function requireBotAccess(Team $team): void
+    {
+        if (! self::hasBotAccess($team)) {
+            throw new PlanGateException('AI bot teammates', 'Pro or Team');
+        }
+    }
+
+    public static function hasBotAccess(Team $team): bool
+    {
+        return self::hasTeamFeatures($team);
+    }
+
+    /**
+     * Bot credentials are Agent tokens and/or bot-user actors. Human API /
+     * user-OAuth tokens are not bot credentials.
+     */
+    public static function isBotCredential(?OrgToken $orgToken, ?User $actor): bool
+    {
+        if ($orgToken?->isAgent() === true) {
+            return true;
+        }
+
+        return $actor?->isBot() === true;
     }
 }

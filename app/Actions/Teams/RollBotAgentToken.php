@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
 use App\Services\Auth\OrgTokenRevoker;
+use App\Services\Billing\PlanGate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -35,6 +36,7 @@ class RollBotAgentToken
         ?int $ttlSeconds = null,
     ): array {
         abort_unless($bot->is_bot && $bot->belongsToTeam($team), 404);
+        PlanGate::requireBotAccess($team);
 
         $activeTokens = OrgToken::query()
             ->where('team_id', $team->id)

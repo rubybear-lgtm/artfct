@@ -3,6 +3,7 @@
 use App\Contracts\UsageContract;
 use App\Enums\McpScope;
 use App\Enums\OrgTokenKind;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\OAuthBotInstallation;
 use App\Models\OAuthClient;
@@ -34,7 +35,7 @@ function botInstallOAuthFixture(array $scopes = [
     configureOrgJwt();
 
     $admin = User::factory()->create(['name' => 'Consent Admin']);
-    $team = Team::factory()->create(['slug' => 'bot-install-team']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bot-install-team']);
     $team->memberships()->create(['user_id' => $admin->id, 'role' => TeamRole::Admin]);
     $admin->forceFill(['current_team_id' => $team->id])->save();
 
@@ -367,7 +368,7 @@ test('viewer cannot approve a bot install and wrong-team bot link is rejected', 
         'bot_name' => 'Viewer Bot',
     ])->assertSessionHasErrors('bot_mode');
 
-    $otherTeam = Team::factory()->create();
+    $otherTeam = Team::factory()->create(['plan' => Plan::Team]);
     $foreignBot = User::factory()->bot()->create(['name' => 'Foreign Bot']);
     $otherTeam->memberships()->create(['user_id' => $foreignBot->id, 'role' => TeamRole::Member]);
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -8,7 +9,7 @@ use Illuminate\Support\Facades\Notification;
 test('the_pending_invitation_cap_is_enforced', function () {
     Notification::fake();
     config(['teams.max_pending_invitations' => 1]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     test()->actingAs($admin)->post(route('teams.invitations.store', $team), ['email' => 'a@example.com', 'role' => 'member'])->assertRedirect();
@@ -20,7 +21,7 @@ test('the_pending_invitation_cap_is_enforced', function () {
 test('members_cannot_invite_when_the_policy_is_admins_only', function () {
     Notification::fake();
     config(['teams.members_can_invite' => false]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $member = memberOfTeam($team, TeamRole::Member);
 
@@ -30,7 +31,7 @@ test('members_cannot_invite_when_the_policy_is_admins_only', function () {
 
 test('consent_is_required_before_the_console_when_enabled', function () {
     config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $user = memberOfTeam($team, TeamRole::Member);
     $user->switchTeam($team);
 
@@ -41,7 +42,7 @@ test('consent_is_required_before_the_console_when_enabled', function () {
 
 test('accepting_the_terms_stores_the_version_and_time_and_unblocks', function () {
     config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $user = memberOfTeam($team, TeamRole::Member);
     $user->switchTeam($team);
 
@@ -55,7 +56,7 @@ test('accepting_the_terms_stores_the_version_and_time_and_unblocks', function ()
 
 test('a_new_terms_version_asks_again', function () {
     config(['legal.consent_required' => true, 'legal.terms_version' => 'v2']);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $user = memberOfTeam($team, TeamRole::Member);
     $user->switchTeam($team);
     $user->forceFill(['terms_version' => 'v1', 'terms_accepted_at' => now()])->save();
@@ -65,7 +66,7 @@ test('a_new_terms_version_asks_again', function () {
 
 test('consent_is_not_enforced_when_the_flag_is_off', function () {
     config(['legal.consent_required' => false]);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $user = memberOfTeam($team, TeamRole::Member);
     $user->switchTeam($team);
 
@@ -80,7 +81,7 @@ test('logout_is_never_blocked_by_consent', function () {
 
 test('accepting_the_terms_returns_the_user_to_the_page_they_wanted', function () {
     config(['legal.consent_required' => true, 'legal.terms_version' => 'v1']);
-    $team = Team::factory()->create();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
     $user = memberOfTeam($team, TeamRole::Member);
     $user->switchTeam($team);
 
