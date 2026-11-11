@@ -270,6 +270,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
+      # The runner image's default apt mirror (azure.archive.ubuntu.com) can stop
+      # resolving, which fails the whole job. Fall back to the public mirror.
+      - name: Use public Ubuntu apt mirror
+        run: sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' /etc/apt/apt-mirrors.txt
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
