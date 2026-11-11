@@ -4,13 +4,16 @@ use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
 use App\Enums\AuditEventType;
+use App\Enums\FeatureReleaseState;
 use App\Enums\TeamRole;
 use App\Models\ArtifactComment;
 use App\Models\AuditEvent;
+use App\Models\FeatureRelease;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
+use App\Services\FeatureFlags;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -226,6 +229,10 @@ test('a_member_of_two_teams_resolves_the_team_that_owns_the_artifact', function 
     $ownerTeam->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
     $member->update(['current_team_id' => $currentTeam->id]);
 
+    config(['features.registry' => ['viewer-beta' => ['name' => 'Viewer beta', 'description' => 'Team-scoped viewer changes.', 'expose_to_browser' => true]]]);
+    app(FeatureFlags::class)->register();
+    FeatureRelease::factory()->create(['key' => 'viewer-beta', 'state' => FeatureReleaseState::SelectedTeams, 'selected_team_ids' => [$currentTeam->id]]);
+
     // The fake serves globally, so a subclass pins the artifact to team-b: the
     // viewer must keep looking past the current team to find it. Seed the
     // subclass itself — a fresh instance has none of the singleton's rows.
@@ -252,7 +259,10 @@ test('a_member_of_two_teams_resolves_the_team_that_owns_the_artifact', function 
 
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)
         ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page->where('team.slug', 'team-b'));
+        ->assertInertia(fn (Assert $page) => $page->where('team.slug', 'team-b')->where('features.viewer-beta', false));
+
+    FeatureRelease::query()->where('key', 'viewer-beta')->update(['selected_team_ids' => [$ownerTeam->id]]);
+    test()->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page->where('features.viewer-beta', true));
 });
 
 test('an_artifact_id_that_is_not_permanent_is_a_404', function () {

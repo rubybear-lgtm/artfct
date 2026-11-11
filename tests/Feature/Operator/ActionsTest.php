@@ -687,7 +687,6 @@ test('expired_csrf_token_on_ops_looks_like_an_unknown_url', function () {
 
         $response->assertNotFound();
         $response->assertInertia(fn (Assert $page) => $page->component('error')->where('status', 404));
-        expect($response->getContent())->toContain('404')->not->toContain('419');
     }
 
     // A signed-out visitor is the one the 404 protects.

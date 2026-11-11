@@ -4,8 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Enums\PaymentStatus;
 use App\Enums\Plan;
+use App\Models\Team;
 use App\Services\Billing\QuotaService;
 use App\Services\Billing\TeamEntitlements;
+use App\Services\FeatureFlags;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
@@ -47,6 +49,13 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'teams' => fn () => $request->user()?->toUserTeams(includeCurrent: true) ?? [],
+            'features' => function () use ($request): array {
+                $team = $request->attributes->get('feature_team') ?? $request->route('team') ?? $request->route('current_team');
+
+                return $team instanceof Team && $request->user()?->belongsToTeam($team)
+                    ? app(FeatureFlags::class)->forBrowser($team)
+                    : [];
+            },
             // A cached read of the current team's quota so every page can show a
             // warning or over-quota banner; null when the Worker is unreachable.
             'quota' => function () use ($request): ?array {
