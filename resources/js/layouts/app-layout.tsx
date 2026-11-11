@@ -195,13 +195,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         label: string;
         icon: LucideIcon;
         active: boolean;
+        // 'true' marks a section that contains the current page, so the
+        // current destination (a sub-link) is the only one marked 'page'.
+        current?: 'page' | 'true';
         testId?: string;
     }) => (
         <Link
             key={item.key}
             href={item.href}
             title={collapsed ? item.label : undefined}
-            aria-current={item.active ? 'page' : undefined}
+            aria-current={item.active ? (item.current ?? 'page') : undefined}
             data-testid={item.testId}
             className={sidebarLinkClass(item.active)}
         >
@@ -578,7 +581,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         <DropdownMenuTrigger
                                             aria-label="Admin"
                                             aria-current={
-                                                onAdminPage ? 'page' : undefined
+                                                onAdminPage ? 'true' : undefined
                                             }
                                             title="Admin"
                                             data-testid="nav-admin"
@@ -607,6 +610,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                 <DropdownMenuItem
                                                     key={item.key}
                                                     data-testid={`admin-menu-${item.key}`}
+                                                    aria-current={
+                                                        !item.locked &&
+                                                        isActive(
+                                                            item.href,
+                                                            item.exact,
+                                                        )
+                                                            ? 'page'
+                                                            : undefined
+                                                    }
                                                     data-locked={
                                                         item.locked
                                                             ? 'true'
@@ -650,6 +662,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         label: 'Admin',
                                         icon: ShieldCheck,
                                         active: onAdminPage,
+                                        current: 'true',
                                         testId: 'nav-admin',
                                     })
                                 )}

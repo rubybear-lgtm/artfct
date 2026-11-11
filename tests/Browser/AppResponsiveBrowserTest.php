@@ -225,7 +225,8 @@ test('desktop_sidebar_holds_primary_nav_and_admin_group_for_admins', function ()
         ->assertVisible('@sidebar')
         ->assertScript('document.querySelector(\'[data-testid="sidebar"]\').contains(document.querySelector(\'[data-testid="admin-subnav"]\'))')
         ->assertScript('document.querySelector(\'[data-testid="admin-subnav-billing"]\').getAttribute("aria-current") === "page"')
-        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "page"')
+        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "true"')
+        ->assertScript('document.querySelectorAll(\'[data-testid="sidebar"] [aria-current="page"]\').length === 1')
         ->assertNoJavaScriptErrors();
 });
 
@@ -257,7 +258,7 @@ test('collapsed_rail_keeps_every_admin_destination_in_a_menu', function () {
     $page->script("localStorage.removeItem('artfct:sidebar-collapsed')");
     $page->click('@sidebar-toggle')->wait(0.4)
         ->assertMissing('@admin-subnav')
-        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "page"')
+        ->assertScript('document.querySelector(\'[data-testid="nav-admin"]\').getAttribute("aria-current") === "true"')
         ->click('@nav-admin')->wait(0.3);
 
     foreach (['overview', 'members', 'tokens', 'billing', 'authentication', 'governance', 'audit'] as $key) {
