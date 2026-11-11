@@ -317,6 +317,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ]
         : [];
 
+    // When no unlocked sub-page matches (locked Members or bots pages), Admin
+    // itself is the best current destination, so it reports 'page'.
+    const adminLeafActive = adminSubNav.some(
+        (item) => !item.locked && isActive(item.href, item.exact),
+    );
+    const adminCurrent = adminLeafActive ? 'true' : 'page';
+
     const mobilePrimaryNav = team
         ? [
               {
@@ -581,7 +588,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         <DropdownMenuTrigger
                                             aria-label="Admin"
                                             aria-current={
-                                                onAdminPage ? 'true' : undefined
+                                                onAdminPage
+                                                    ? adminCurrent
+                                                    : undefined
                                             }
                                             title="Admin"
                                             data-testid="nav-admin"
@@ -662,7 +671,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         label: 'Admin',
                                         icon: ShieldCheck,
                                         active: onAdminPage,
-                                        current: 'true',
+                                        current: adminCurrent,
                                         testId: 'nav-admin',
                                     })
                                 )}
