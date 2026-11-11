@@ -82,8 +82,8 @@ class BillingController extends Controller
             'prices' => [
                 'proMonthly' => '$5/month',
                 'proYearly' => '$50/year',
-                'teamMonthly' => '$49/month for up to 10 people, bots free',
-                'teamYearly' => '$490/year for up to 10 people, bots free',
+                'teamMonthly' => '$49/month',
+                'teamYearly' => '$490/year',
                 'yearlySavings' => '2 months free',
                 'businessContact' => config('billing.business_contact_email'),
             ],

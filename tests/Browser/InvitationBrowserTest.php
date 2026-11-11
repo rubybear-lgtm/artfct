@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -7,7 +8,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 test('invitee_accepts_from_the_email_link_and_lands_in_the_team', function () {
-    $team = Team::factory()->create(['name' => 'Northwind Analytics']);
+    $team = Team::factory()->create([
+        'name' => 'Northwind Analytics',
+        'plan' => Plan::Team,
+    ]);
     $admin = memberOfTeam($team, TeamRole::Admin);
     $invitation = $team->invitations()->create([
         'email' => 'invitee@example.com',

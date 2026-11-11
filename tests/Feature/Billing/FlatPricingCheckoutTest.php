@@ -212,7 +212,7 @@ test('billing_page_exposes_flat_price_copy_and_toggle_savings', function () {
     test()->actingAs($admin)->get(route('teams.billing.show', $team))
         ->assertInertia(fn (Assert $page) => $page
             ->where('prices.proMonthly', '$5/month')
-            ->where('prices.teamMonthly', '$49/month for up to 10 people, bots free')
+            ->where('prices.teamMonthly', '$49/month')
             ->where('prices.yearlySavings', '2 months free'));
 });
 

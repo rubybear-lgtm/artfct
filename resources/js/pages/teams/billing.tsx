@@ -298,9 +298,10 @@ export default function Billing({
                                         Yearly · {prices.yearlySavings}
                                     </Button>
                                 </div>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="flex min-w-0 flex-wrap gap-2">
                                     <Button
                                         disabled={!stripeConfigured}
+                                        className="max-w-full whitespace-normal"
                                         onClick={() => startCheckout('pro')}
                                     >
                                         {yearly
@@ -310,6 +311,7 @@ export default function Billing({
                                     </Button>
                                     <Button
                                         disabled={!stripeConfigured}
+                                        className="max-w-full whitespace-normal"
                                         onClick={() => startCheckout('team')}
                                     >
                                         {yearly
@@ -318,10 +320,11 @@ export default function Billing({
                                         · Team
                                     </Button>
                                 </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Over 10 people? Contact{' '}
+                                <p className="text-sm text-muted-foreground break-words">
+                                    Pro is solo. Team covers up to 10 people;
+                                    AI bots stay free. Over 10? Contact{' '}
                                     <a
-                                        className="underline"
+                                        className="underline break-all"
                                         href={`mailto:${prices.businessContact}`}
                                     >
                                         {prices.businessContact}
