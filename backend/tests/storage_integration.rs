@@ -5165,3 +5165,191 @@ async fn artifact_db_org_gate_turns_the_endpoint_and_deploys_off() -> Result<(),
     assert_eq!(deploy_on, reqwest::StatusCode::CREATED);
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Spec 20: the agent API, `/v1/artifacts/{id}/db/...`, authenticated by an
+// org credential (what the MCP `db_*` tools call).
+// ---------------------------------------------------------------------------
+
+fn agent_request(
+    client: &RetryingClient,
+    method: &str,
+    context: &Context,
+    token: &str,
+    id: &str,
+    path_and_query: &str,
+) -> RetryingRequest {
+    let url = format!("{}/v1/artifacts/{id}/db/{path_and_query}", context.base);
+    let request = match method {
+        "GET" => client.get(url),
+        "PUT" => client.put(url),
+        "PATCH" => client.patch(url),
+        "DELETE" => client.delete(url),
+        _ => client.post(url),
+    };
+    request
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn agent_db_api_reads_and_writes_with_an_org_credential() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "agent-db", "edit").await?;
+
+    // The declared collections come first, so an agent knows what exists.
+    let schema = agent_request(&client, "GET", &context, &context.token, &id, "schema")
+        .send()
+        .await?;
+    assert_eq!(schema.status(), reqwest::StatusCode::OK);
+    let schema: Value = schema.json().await?;
+    assert_eq!(schema["collections"]["cards"]["index"], "column");
+
+    let seeded: Value = agent_request(&client, "GET", &context, &context.token, &id, "cards/seed1")
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(seeded["data"]["title"], "Start here");
+
+    let written = agent_request(&client, "PUT", &context, &context.token, &id, "cards/a1")
+        .body(br#"{"column":"todo","title":"From an agent"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(written.status(), reqwest::StatusCode::OK);
+    let read: Value = agent_request(&client, "GET", &context, &context.token, &id, "cards/a1")
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(read["data"]["title"], "From an agent");
+    assert!(
+        read["updated_by"]
+            .as_str()
+            .is_some_and(|by| by.starts_with("agent:")),
+        "an agent's writes are attributed to it: {read}"
+    );
+
+    // The page sees the agent's card: one database, two doors.
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    let from_page: Value = db_request(&client, "GET", &context, &id, "cards/a1")
+        .bearer_auth(&writer)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(from_page["data"]["column"], "todo");
+
+    let listed: Value = agent_request(
+        &client,
+        "GET",
+        &context,
+        &context.token,
+        &id,
+        "cards?index_eq=todo",
+    )
+    .send()
+    .await?
+    .json()
+    .await?;
+    assert!(listed["documents"]
+        .as_array()
+        .is_some_and(|docs| docs.len() >= 2));
+
+    let patched = agent_request(&client, "PATCH", &context, &context.token, &id, "cards/a1")
+        .body(br#"{"column":"done"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(patched.status(), reqwest::StatusCode::OK);
+    let deleted = agent_request(&client, "DELETE", &context, &context.token, &id, "cards/a1")
+        .send()
+        .await?;
+    assert_eq!(deleted.status(), reqwest::StatusCode::OK);
+    let batch = agent_request(&client, "POST", &context, &context.token, &id, "batch")
+        .body(br#"{"writes":[{"op":"set","collection":"cards","doc_id":"a2","data":{"column":"todo"}}]}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(batch.status(), reqwest::StatusCode::OK);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn agent_db_api_enforces_scope_role_and_org() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let read_only = optional_env("ARTFCT_INTEGRATION_READ_TOKEN")
+        .ok_or("ARTFCT_INTEGRATION_READ_TOKEN is required; refusing to pass without asserting")?;
+    let member = require_member_token(&context)?.to_string();
+    let id = deploy_db_artifact(&context, &client, "agent-db-authz", "view").await?;
+
+    // A credential without a data scope reads nothing and writes nothing.
+    let no_scope = agent_request(&client, "GET", &context, &read_only, &id, "schema")
+        .send()
+        .await?;
+    assert_eq!(
+        no_scope.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "no data:read scope"
+    );
+    let no_write_scope = agent_request(&client, "PUT", &context, &read_only, &id, "cards/x")
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(no_write_scope.status(), reqwest::StatusCode::FORBIDDEN);
+
+    // A plain member who does not own a view-only artifact may read, not write.
+    let member_read = agent_request(&client, "GET", &context, &member, &id, "cards/seed1")
+        .send()
+        .await?;
+    assert_eq!(member_read.status(), reqwest::StatusCode::OK);
+    let member_write = agent_request(&client, "PUT", &context, &member, &id, "cards/m1")
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(
+        member_write.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "reader cannot write"
+    );
+
+    // The same member may write once the artifact allows edits.
+    d1_execute(
+        &context,
+        &format!("UPDATE artifacts SET edit_access = 'edit' WHERE id = '{id}'"),
+    )?;
+    let member_edit = agent_request(&client, "PUT", &context, &member, &id, "cards/m1")
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+    assert_eq!(member_edit.status(), reqwest::StatusCode::OK);
+
+    // Another org's admin cannot see this artifact's data at all.
+    if let Some(other_org) = context.other_org_token.as_deref() {
+        let other = agent_request(&client, "GET", &context, other_org, &id, "cards/seed1")
+            .send()
+            .await?;
+        assert_eq!(
+            other.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "another org's admin"
+        );
+    }
+    // No credential at all.
+    let anonymous = client
+        .get(format!("{}/v1/artifacts/{id}/db/schema", context.base))
+        .send()
+        .await?;
+    assert_eq!(anonymous.status(), reqwest::StatusCode::UNAUTHORIZED);
+    // An artifact that declares no database has no agent endpoint either.
+    let bytes = unique_html("agent-db-none");
+    let (plain, _) = create_and_upload(&context, &client, &bytes, json!({})).await?;
+    let none = agent_request(&client, "GET", &context, &context.token, &plain, "schema")
+        .send()
+        .await?;
+    assert_eq!(none.status(), reqwest::StatusCode::NOT_FOUND);
+    Ok(())
+}

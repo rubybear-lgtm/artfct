@@ -4,6 +4,7 @@ namespace App\Services\Operator\Actions;
 
 use App\Enums\AuditEventType;
 use App\Enums\FeatureReleaseState;
+use App\Jobs\SyncArtifactDbRollout;
 use App\Models\FeatureRelease;
 use App\Models\Team;
 use App\Services\FeatureFlags;
@@ -48,5 +49,9 @@ class UpdateFeatureRelease
         });
 
         $this->flags->flush();
+
+        if ($key === SyncArtifactDbRollout::FEATURE) {
+            SyncArtifactDbRollout::dispatch();
+        }
     }
 }

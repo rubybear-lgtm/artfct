@@ -37,6 +37,7 @@ test('staff can manage a feature release', function () {
 });
 
 test('staff sees an empty registry without changing existing features', function () {
+    config(['features.registry' => []]);
     $staff = User::factory()->create();
     $staff->forceFill(['staff_at' => now()])->save();
     $this->actingAs($staff);

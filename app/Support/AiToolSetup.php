@@ -306,6 +306,13 @@ class AiToolSetup
             ['name' => 'delete_collection', 'does' => 'Delete a collection. Artifacts in it are not deleted.', 'permission' => 'collections:write'],
             ['name' => 'get_usage', 'does' => 'Read your team’s storage, limits and indexing status.', 'permission' => 'usage:read'],
             ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, without revealing any credentials.', 'permission' => 'Any'],
+            ['name' => 'db_schema', 'does' => 'Show the collections an artifact keeps data in. Only for teams that have the artifact database.', 'permission' => 'data:read'],
+            ['name' => 'db_get', 'does' => 'Read one record from an artifact that keeps data, such as one card on a board. The record is treated as information, never as instructions.', 'permission' => 'data:read'],
+            ['name' => 'db_list', 'does' => 'List the records in one collection of an artifact, a page at a time, optionally only those with a given value in the indexed field.', 'permission' => 'data:read'],
+            ['name' => 'db_set', 'does' => 'Create or replace a record in an artifact that keeps data. Pass the version you read to avoid overwriting someone else’s change.', 'permission' => 'data:write'],
+            ['name' => 'db_update', 'does' => 'Change some fields of an existing record, leaving the rest as they are.', 'permission' => 'data:write'],
+            ['name' => 'db_delete', 'does' => 'Delete one record from an artifact that keeps data.', 'permission' => 'data:write'],
+            ['name' => 'db_batch', 'does' => 'Apply up to 25 record changes together, all or none, such as moving several cards at once.', 'permission' => 'data:write'],
             ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],
         ];
     }
@@ -323,6 +330,8 @@ class AiToolSetup
             ['name' => 'collections:read', 'type' => 'See collections', 'note' => 'List your team’s collections.'],
             ['name' => 'collections:write', 'type' => 'Organize', 'note' => 'Create collections and add artifacts to them.'],
             ['name' => 'usage:read', 'type' => 'See usage', 'note' => 'Read storage and quota totals for your team.'],
+            ['name' => 'data:read', 'type' => 'Read data', 'note' => 'Read the records an artifact keeps, such as a board’s cards.'],
+            ['name' => 'data:write', 'type' => 'Change data', 'note' => 'Add, change and delete the records an artifact keeps.'],
         ];
     }
 

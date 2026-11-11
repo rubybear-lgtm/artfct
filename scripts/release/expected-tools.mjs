@@ -1,6 +1,7 @@
 /**
  * Read the hosted MCP tool catalog from ArtfctServer.php so smoke tests do
- * not hard-code a count (RUB-517).
+ * not hard-code a count (RUB-517). Feature-flagged tools are left out: they
+ * only exist for teams the feature is released to.
  */
 
 import { readFileSync } from 'node:fs';
@@ -39,6 +40,14 @@ export function readExpectedMcpToolNames(
     for (const className of classNames) {
         const toolPath = resolve(root, `app/Mcp/Tools/${className}.php`);
         const toolSource = readFileSync(toolPath, 'utf8');
+
+        // A feature-flagged tool (FeatureFlaggedTool, or DatabaseTool which
+        // extends it) is listed only for teams the feature is released to, so a
+        // smoke against a team without it must not expect it.
+        if (/extends\s+(FeatureFlaggedTool|DatabaseTool)\b/.test(toolSource)) {
+            continue;
+        }
+
         const named = toolSource.match(/#\[Name\(\s*'([^']+)'\s*\)\]/);
 
         if (!named) {
