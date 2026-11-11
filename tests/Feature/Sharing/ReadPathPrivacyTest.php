@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Collection;
 use App\Models\ExternalIdentity;
@@ -94,7 +95,7 @@ function assertSharingViewerToken(string $token, User $user): void
 test('the_console_lists_only_artifacts_the_members_own_token_may_see', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $seenToken = null;
 
@@ -121,7 +122,7 @@ test('the_console_lists_only_artifacts_the_members_own_token_may_see', function 
 test('the_dashboard_recent_list_excludes_a_private_artifact_the_worker_did_not_list', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $member->switchTeam($team);
     $seenToken = null;
@@ -146,7 +147,7 @@ test('dashboard_search_excludes_a_private_artifact_the_worker_did_not_list', fun
     useSharingWorkerDirectory();
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $member->switchTeam($team);
 
@@ -172,7 +173,7 @@ test('mcp_search_excludes_a_private_artifact_and_uses_the_callers_own_token', fu
     useSharingWorkerDirectory();
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
 
@@ -201,7 +202,7 @@ test('mcp_search_excludes_a_private_artifact_and_uses_the_callers_own_token', fu
 test('the_collections_page_drops_a_private_artifact_from_titles_and_links', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'curated', 'created_by_user_id' => $member->id]);
     $collection->artifacts()->create(['artifact_id' => 'public-1', 'added_at' => now()]);
@@ -220,7 +221,7 @@ test('the_collections_page_drops_a_private_artifact_from_titles_and_links', func
 });
 
 test('the_collections_api_returns_collection_metadata_without_artifact_ids_or_titles', function () {
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'curated', 'created_by_user_id' => $member->id]);
     $collection->artifacts()->create(['artifact_id' => 'private-1', 'added_at' => now()]);
@@ -239,7 +240,7 @@ test('the_collections_api_returns_collection_metadata_without_artifact_ids_or_ti
 });
 
 test('mcp_list_collections_returns_no_artifact_ids_or_titles', function () {
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'curated', 'created_by_user_id' => $member->id]);
     $collection->artifacts()->create(['artifact_id' => 'private-1', 'added_at' => now()]);
@@ -259,7 +260,7 @@ test('mcp_list_collections_returns_no_artifact_ids_or_titles', function () {
 test('mcp_add_collection_artifact_refuses_a_private_artifact_the_caller_cannot_see', function () {
     config(['services.worker.base_url' => 'https://worker.test']);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $collection = Collection::create(['team_id' => $team->id, 'name' => 'curated', 'created_by_user_id' => $member->id]);
 
@@ -283,7 +284,7 @@ test('api_search_excludes_a_private_artifact_and_uses_the_callers_own_token', fu
     useSharingWorkerDirectory();
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member, scopes: ['artifacts:read'])['token'];
 
@@ -309,7 +310,7 @@ test('api_search_excludes_a_private_artifact_and_uses_the_callers_own_token', fu
 test('mcp_get_artifact_is_not_found_for_a_private_artifact_the_caller_cannot_see', function () {
     config(['services.worker.base_url' => 'https://worker.test']);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     configureSigning(testSigningKey());
@@ -331,7 +332,7 @@ test('mcp_get_artifact_is_not_found_for_a_private_artifact_the_caller_cannot_see
 test('the_console_export_omits_a_private_artifact_the_worker_did_not_export', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
     Http::fake(['worker.test/v1/orgs/privacy-org/export' => Http::response([
@@ -353,7 +354,7 @@ test('the_console_export_omits_a_private_artifact_the_worker_did_not_export', fu
 test('artifact_version_history_is_a_404_for_a_private_artifact_the_viewer_cannot_see', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
 
     // The Worker answers another org's artifact, a missing one and a private
@@ -371,7 +372,7 @@ test('the_preview_applies_the_private_rule_to_the_system_content_read', function
     config(['services.worker.base_url' => 'https://worker.test']);
     app()->instance(ArtifactContentSource::class, HttpArtifactContentSource::default());
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $owner = memberOfTeam($team, TeamRole::Member);
     $other = memberOfTeam($team, TeamRole::Member);
     $admin = memberOfTeam($team, TeamRole::Admin);
@@ -397,7 +398,7 @@ test('the_preview_applies_the_private_rule_to_the_system_content_read', function
 test('the_slack_slash_command_fails_closed_and_never_surfaces_a_private_artifact', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
     $user = memberOfTeam($team, TeamRole::Member);
     ExternalIdentity::create([
         'user_id' => $user->id,
@@ -423,7 +424,7 @@ test('search_fails_closed_with_zero_vector_hits_when_there_is_no_viewer_credenti
     useSharingWorkerDirectory();
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org', 'slack_workspace_id' => 'T123']);
     $user = memberOfTeam($team, TeamRole::Member);
     ExternalIdentity::create([
         'user_id' => $user->id,
@@ -448,7 +449,7 @@ test('search_drops_a_malformed_indexed_id_instead_of_failing_the_whole_search', 
     useSharingWorkerDirectory();
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     $token = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
 
@@ -480,7 +481,7 @@ test('search_drops_a_malformed_indexed_id_instead_of_failing_the_whole_search', 
 test('the_ids_retry_never_sends_an_unfiltered_request_for_an_empty_id', function () {
     useSharingWorkerDirectory();
 
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     test()->actingAs($member);
 
@@ -515,7 +516,7 @@ test('the_credential_gate_does_nothing_when_no_worker_is_configured', function (
 });
 
 test('a_private_artifact_unfurls_as_a_bare_card', function () {
-    $team = Team::factory()->create(['slug' => 'privacy-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'privacy-org']);
     /** @var FakeArtifactSharing $sharing */
     $sharing = app(ArtifactSharingContract::class);
     $sharing->seed('privacy-org', 'private-1', SharingLevel::OrgPrivate);

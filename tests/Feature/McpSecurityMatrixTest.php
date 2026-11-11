@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\PaymentStatus;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
@@ -471,7 +472,7 @@ test('hosted setup surfaces never render a raw OAuth or access token', function 
 test('a past-due workspace keeps reading artifacts but cannot deploy', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['payment_status' => PaymentStatus::PastDue]);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'payment_status' => PaymentStatus::PastDue]);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake(['worker.test/v1/artifacts/'.ARTIFACT_LINK_ID => Http::response([

@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -47,7 +48,7 @@ function seedSearchableArtifact(string $orgSlug, string $artifactId, string $tex
 test('search_artifacts returns a view_url on the apps open route and no raw url', function () {
     config(['indexing.enabled' => true, 'app.public_base_url' => 'https://artfct.dev']);
 
-    $team = Team::factory()->create(['slug' => 'link-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'link-org']);
     $token = remoteMcpToken($team);
     seedSearchableArtifact($team->slug, 'billing-dash', 'billing dashboard revenue overview');
 
@@ -72,7 +73,7 @@ test('search_artifacts returns a view_url on the apps open route and no raw url'
 test('search_artifacts explains when indexing is disabled instead of asking the client to retry', function () {
     config(['indexing.enabled' => false]);
 
-    $team = Team::factory()->create(['slug' => 'search-disabled-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'search-disabled-org']);
     $token = remoteMcpToken($team);
 
     $this->withToken($token)->postJson('/mcp', [
@@ -88,7 +89,7 @@ test('search_artifacts explains when indexing is disabled instead of asking the 
 test('the search page links each row the same way the tool does', function () {
     config(['indexing.enabled' => true, 'app.public_base_url' => 'https://artfct.dev']);
 
-    $team = Team::factory()->create(['slug' => 'link-page-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'link-page-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     seedSearchableArtifact($team->slug, 'billing-dash', 'billing dashboard revenue overview');
 
@@ -104,7 +105,7 @@ test('the search page links each row the same way the tool does', function () {
 test('a search row carries no open link when the environment cannot mint one', function () {
     config(['indexing.enabled' => true, 'services.artifact_access.token_secret' => null]);
 
-    $team = Team::factory()->create(['slug' => 'link-no-secret-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'link-no-secret-org']);
     $member = memberOfTeam($team, TeamRole::Member);
     seedSearchableArtifact($team->slug, 'billing-dash', 'billing dashboard revenue overview');
 
@@ -119,7 +120,7 @@ test('a search row carries no open link when the environment cannot mint one', f
 test('search_artifacts returns the longer evidence excerpt as its snippet while the UI snippet stays short', function () {
     config(['indexing.enabled' => true]);
 
-    $team = Team::factory()->create(['slug' => 'excerpt-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'excerpt-org']);
     $token = remoteMcpToken($team);
     $text = 'Billing exports. '.str_repeat('The nightly export reconciles invoices against ledger entries before the finance review. ', 4)
         .'A mismatch above two dollars is routed to a reviewer rather than corrected automatically.';

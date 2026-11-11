@@ -16,7 +16,7 @@ test('readiness_strict_fails_when_nothing_is_configured', function () {
 test('readiness_passes_when_every_integration_is_configured', function () {
     config([
         'services.workos' => ['client_id' => 'c', 'secret' => 's', 'redirect_url' => 'https://x.test/authenticate'],
-        'services.stripe' => ['secret' => 'sk', 'webhook_secret' => 'wh', 'team_price_id' => 'price'],
+        'services.stripe' => ['secret' => 'sk', 'webhook_secret' => 'wh'],
         'services.org_jwt' => ['private_key' => 'key', 'kid' => 'kid', 'issuer' => 'https://artfct.dev', 'audience' => 'artfct-engine', 'worker_base_url' => 'https://worker.test', 'jwks_write_secret' => 'j', 'revocation_write_secret' => 'r'],
         'mail.default' => 'cloudflare',
         'services.cloudflare_email' => ['account_id' => 'a', 'api_token' => 't'],

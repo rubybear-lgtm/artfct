@@ -2,10 +2,12 @@
 
 use Illuminate\Support\Facades\Http;
 
-test('setup_creates_price_and_webhook_and_writes_the_secret_to_a_private_file', function () {
+test('setup_creates_prices_and_webhook_and_writes_the_secret_to_a_private_file', function () {
     config(['services.stripe.secret' => 'sk_test_x']);
     Http::fake([
-        'api.stripe.com/v1/products' => Http::response(['id' => 'prod_1']),
+        'api.stripe.com/v1/products' => Http::sequence()
+            ->push(['id' => 'prod_pro'])
+            ->push(['id' => 'prod_team']),
         'api.stripe.com/v1/prices' => Http::response(['id' => 'price_1']),
         'api.stripe.com/v1/webhook_endpoints' => Http::response(['id' => 'we_1', 'secret' => 'whsec_abc']),
     ]);
@@ -15,9 +17,10 @@ test('setup_creates_price_and_webhook_and_writes_the_secret_to_a_private_file', 
         ->doesntExpectOutputToContain('whsec_abc')
         ->assertSuccessful();
 
-    expect(file_get_contents($out))->toBe("STRIPE_TEAM_PRICE_ID=price_1\nSTRIPE_WEBHOOK_SECRET=whsec_abc\n");
+    expect(file_get_contents($out))->toBe("STRIPE_WEBHOOK_SECRET=whsec_abc\n");
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/webhook_endpoints')
-        && $request['url'] === 'https://staging.test/webhooks/stripe');
+        && $request['url'] === 'https://staging.test/webhooks/stripe'
+        && in_array('customer.subscription.trial_will_end', $request['enabled_events'], true));
     unlink($out);
 });
 

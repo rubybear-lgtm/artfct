@@ -3,6 +3,7 @@
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Mcp\Support\ArtifactGuidance;
 use App\Mcp\Support\McpTimestamp;
@@ -1189,7 +1190,7 @@ test('deploy_artifact skips the upload when the Worker already has the content',
 test('deploy_artifact hands a secure artifact the apps own open route', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-367-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-org']);
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Signed report</title><p>Summary</p>';
     $sha = hash('sha256', $html);
@@ -1238,7 +1239,7 @@ test('deploy_artifact hands a secure artifact the apps own open route', function
 test('deploy_artifact hands a public artifact the one short link without a token', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-367-public']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-public']);
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Public report</title><p>Summary</p>';
     $sha = hash('sha256', $html);
@@ -1275,7 +1276,7 @@ test('deploy_artifact hands a public artifact the one short link without a token
 test('get_artifact hands a secure artifact the apps own open route', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-367-fetch']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-fetch']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
@@ -1316,8 +1317,8 @@ test('get_artifact hands a secure artifact the apps own open route', function ()
 test('a secure view_url from the workspace tools opens for a member and is refused for everyone else', function (string $tool) {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-367-open']);
-    $otherTeam = Team::factory()->create(['slug' => 'rub-367-elsewhere']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-open']);
+    $otherTeam = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-elsewhere']);
     $token = remoteMcpToken($team);
     $member = memberOfTeam($team, TeamRole::Member);
     $outsider = memberOfTeam($otherTeam, TeamRole::Member);
@@ -1426,7 +1427,7 @@ test('a secure view_url from the workspace tools opens for a member and is refus
 test('get_artifact hands a public artifact the one short link without a token', function () {
     configureArtifactLinks();
 
-    $team = Team::factory()->create(['slug' => 'rub-367-fetch-public']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-fetch-public']);
     $token = remoteMcpToken($team);
     config([
         'services.worker.base_url' => 'https://worker.test',
@@ -1500,7 +1501,7 @@ test('artifact links fail closed when no signing secret is configured', function
 test('a public artifact still gets the short link with no signing secret configured', function () {
     config(['services.artifact_access.token_secret' => null]);
 
-    $team = Team::factory()->create(['slug' => 'rub-367-public-no-secret']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-367-public-no-secret']);
     $token = remoteMcpToken($team);
     $html = '<!doctype html><title>Public no secret</title><p>Summary</p>';
     $sha = hash('sha256', $html);

@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactDirectory;
 use App\Enums\ArtifactType;
+use App\Enums\Plan;
 use App\Models\ArtifactTypeAssignment;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactTypeResolver;
@@ -58,7 +59,7 @@ test('the resolver lets a declared type win and keeps it on later versions', fun
 
 test('deploy_artifact stores and returns the declared or inferred type', function () {
     configureArtifactLinks();
-    $team = Team::factory()->create(['slug' => 'rub-443-type-deploy']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-443-type-deploy']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     app()->bind(UsageContract::class, FakeUsage::class);
@@ -79,7 +80,7 @@ test('deploy_artifact stores and returns the declared or inferred type', functio
 });
 
 test('list_artifacts filters by type and returns it', function () {
-    $team = Team::factory()->create(['slug' => 'rub-443-type-list']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-443-type-list']);
     $token = remoteMcpToken($team);
     config(['services.worker.base_url' => 'https://worker.test']);
     ArtifactTypeAssignment::factory()->create(['team_id' => $team->id, 'artifact_id' => 'aaaaaaaaaaaaa', 'artifact_type' => ArtifactType::Report]);
@@ -103,7 +104,7 @@ test('list_artifacts filters by type and returns it', function () {
 
 test('search_artifacts filters by type and changed_since and returns version and update time', function () {
     config(['indexing.enabled' => true, 'app.public_base_url' => 'https://artfct.dev']);
-    $team = Team::factory()->create(['slug' => 'rub-443-type-search']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-443-type-search']);
     $token = remoteMcpToken($team);
 
     /** @var FakeArtifactDirectory $directory */

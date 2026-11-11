@@ -142,7 +142,10 @@ test('checkout_and_portal_send_admins_to_stripe_via_an_inertia_location', functi
     $team = Team::factory()->create(['plan' => Plan::Free]);
     $admin = memberOfTeam($team, TeamRole::Admin);
 
-    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [], ['X-Inertia' => 'true'])
+    test()->actingAs($admin)->post(route('teams.billing.checkout', $team), [
+        'plan' => 'team',
+        'interval' => 'month',
+    ], ['X-Inertia' => 'true'])
         ->assertStatus(409)
         ->assertHeader('X-Inertia-Location');
 

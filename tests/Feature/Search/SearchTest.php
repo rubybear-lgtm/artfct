@@ -2,6 +2,7 @@
 
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
 use App\Models\Collection;
@@ -60,7 +61,7 @@ function seedSearchChunk(Team $team, string $artifactId, string $text, ?array $v
 }
 
 test('semantic_query_finds_relevant_artifact', function () {
-    $team = Team::factory()->create(['slug' => 'search-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'search-org']);
     seedSearchArtifact($team, 'billing-dash', ['title' => 'Billing Dashboard']);
 
     // 999 unrelated decoys plus the one relevant artifact — "an org with
@@ -90,7 +91,7 @@ test('search_results_link_to_the_short_viewer_link', function () {
         'services.worker.base_url' => 'https://staging-worker.example.test',
     ]);
 
-    $team = Team::factory()->create(['slug' => 'search-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'search-org']);
     $artifactId = str_repeat('a', 32);
     seedSearchArtifact($team, $artifactId);
     seedSearchChunk($team, $artifactId, 'staging worker host');
@@ -103,7 +104,7 @@ test('search_results_link_to_the_short_viewer_link', function () {
 test('api_search_explains_when_indexing_is_disabled', function () {
     config(['indexing.enabled' => false]);
 
-    $team = Team::factory()->create(['slug' => 'api-search-disabled-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'api-search-disabled-org']);
 
     $this->withToken(remoteMcpToken($team))
         ->postJson('/api/search', ['query' => 'billing dashboard'])
@@ -120,7 +121,7 @@ test('api_search_requires_artifact_read_scope', function () {
     config(['indexing.enabled' => false]);
     configureSigning(testSigningKey());
 
-    $team = Team::factory()->create(['slug' => 'api-search-scoped-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'api-search-scoped-org']);
     $user = memberOfTeam($team, TeamRole::Viewer);
 
     $withoutReadScope = OrgJwtService::default()->mint($team, $user, TeamRole::Viewer, scopes: ['usage:read']);
@@ -137,7 +138,7 @@ test('api_search_requires_artifact_read_scope', function () {
 });
 
 test('repo_filter_narrows_results', function () {
-    $team = Team::factory()->create(['slug' => 'repo-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'repo-org']);
     seedSearchArtifact($team, 'in-repo', ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/billing', 'commit_sha' => 'a']]);
     seedSearchArtifact($team, 'out-of-repo', ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/other', 'commit_sha' => 'b']]);
     seedSearchChunk($team, 'in-repo', 'dashboard content', provenance: ['repo_url' => 'https://github.com/acme/billing']);
@@ -156,7 +157,7 @@ test('repo_filter_narrows_results', function () {
 });
 
 test('since_filter_excludes_older', function () {
-    $team = Team::factory()->create(['slug' => 'since-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'since-org']);
     seedSearchArtifact($team, 'old-artifact', ['created_at' => now()->subDays(30)->toIso8601String()]);
     seedSearchArtifact($team, 'new-artifact', ['created_at' => now()->subDays(1)->toIso8601String()]);
     seedSearchChunk($team, 'old-artifact', 'dashboard content');
@@ -176,7 +177,7 @@ test('since_filter_excludes_older', function () {
 });
 
 test('exact_repo_match_outranks_semantic_match', function () {
-    $team = Team::factory()->create(['slug' => 'rank-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rank-org']);
     seedSearchArtifact($team, 'billing-repo-artifact', ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/billing', 'commit_sha' => 'a']]);
     seedSearchArtifact($team, 'unrelated-repo-artifact', ['provenance' => ['agent' => 'cursor', 'repo_url' => 'https://github.com/acme/unrelated', 'commit_sha' => 'b']]);
 
@@ -213,8 +214,8 @@ test('exact_repo_match_outranks_semantic_match', function () {
 });
 
 test('search_scoped_to_credential_org', function () {
-    $teamA = Team::factory()->create(['slug' => 'org-a']);
-    $teamB = Team::factory()->create(['slug' => 'org-b']);
+    $teamA = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-a']);
+    $teamB = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'org-b']);
     seedSearchArtifact($teamB, 'org-b-artifact');
     seedSearchChunk($teamB, 'org-b-artifact', 'shared query text');
 
@@ -230,7 +231,7 @@ test('search_scoped_to_credential_org', function () {
 });
 
 test('revoked_artifact_absent_from_results', function () {
-    $team = Team::factory()->create(['slug' => 'revoke-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'revoke-org']);
     seedSearchArtifact($team, 'revoked-artifact', ['revoked_at' => now()->toIso8601String()]);
     seedSearchChunk($team, 'revoked-artifact', 'revoked content query');
 
@@ -246,7 +247,7 @@ test('revoked_artifact_absent_from_results', function () {
 });
 
 test('inaccessible_artifact_indistinguishable_from_absent', function () {
-    $team = Team::factory()->create(['slug' => 'inaccessible-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'inaccessible-org']);
     // A chunk exists in the vector index for an artifact the directory
     // never returns (deleted from the directory but not yet purged from
     // the index) — it must simply vanish from results, the same as a
@@ -266,7 +267,7 @@ test('inaccessible_artifact_indistinguishable_from_absent', function () {
 });
 
 test('search_writes_audit_event', function () {
-    $team = Team::factory()->create(['slug' => 'audit-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'audit-org']);
     seedSearchArtifact($team, 'audited-artifact');
     seedSearchChunk($team, 'audited-artifact', 'auditable query text');
 
@@ -284,7 +285,7 @@ test('search_writes_audit_event', function () {
 });
 
 test('search_records_a_search_results_served_row_per_returned_artifact', function () {
-    $team = Team::factory()->create(['slug' => 'served-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'served-org']);
     seedSearchArtifact($team, 'served-artifact');
     seedSearchChunk($team, 'served-artifact', 'servable content query');
 
@@ -304,7 +305,7 @@ test('search_records_a_search_results_served_row_per_returned_artifact', functio
 });
 
 test('a_search_that_returns_nothing_records_no_served_rows', function () {
-    $team = Team::factory()->create(['slug' => 'no-results-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'no-results-org']);
 
     app(SearchService::class)->search(
         $team,
@@ -318,7 +319,7 @@ test('a_search_that_returns_nothing_records_no_served_rows', function () {
 });
 
 test('search_under_500ms_at_1k_artifacts', function () {
-    $team = Team::factory()->create(['slug' => 'perf-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'perf-org']);
     for ($i = 0; $i < 1000; $i++) {
         $id = "perf-artifact-{$i}";
         seedSearchArtifact($team, $id);
@@ -346,7 +347,7 @@ test('search_under_500ms_at_1k_artifacts', function () {
 });
 
 test('search_worker_calls_stay_bounded_at_10k_artifacts', function () {
-    $team = Team::factory()->create(['slug' => 'bound-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bound-org']);
     for ($i = 0; $i < 10000; $i++) {
         $id = "bound-artifact-{$i}";
         seedSearchArtifact($team, $id);
@@ -371,7 +372,7 @@ test('search_worker_calls_stay_bounded_at_10k_artifacts', function () {
 });
 
 test('empty_laravel_scope_skips_worker_list_calls', function () {
-    $team = Team::factory()->create(['slug' => 'empty-scope-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'empty-scope-org']);
     seedSearchArtifact($team, 'scoped-artifact');
     seedSearchChunk($team, 'scoped-artifact', 'scoped content');
 
@@ -396,7 +397,7 @@ test('empty_laravel_scope_skips_worker_list_calls', function () {
 });
 
 test('a_narrow_repo_filter_over_a_large_org_still_finds_its_matches', function () {
-    $team = Team::factory()->create(['slug' => 'narrow-filter-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'narrow-filter-org']);
 
     // Far more equally relevant artifacts than the candidate limit (50) in one
     // repo, and two in another. The filter must narrow retrieval first; applied
@@ -422,7 +423,7 @@ test('a_narrow_repo_filter_over_a_large_org_still_finds_its_matches', function (
 });
 
 test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', function () {
-    $team = Team::factory()->create(['slug' => 'empty-filter-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'empty-filter-org']);
     seedSearchArtifact($team, 'only-one');
     seedSearchChunk($team, 'only-one', 'some content');
 
@@ -455,7 +456,7 @@ test('a_filter_that_matches_no_artifact_skips_embeddings_and_returns_nothing', f
 });
 
 test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function () {
-    $team = Team::factory()->create(['slug' => 'crowded-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'crowded-org']);
 
     // Indexed passages the Worker does not list for this viewer (another
     // member's private artifacts: chunks, but no directory rows) crowd the
@@ -491,7 +492,7 @@ test('hidden_rows_crowding_the_candidates_trigger_one_widening_pass', function (
 });
 
 test('a_search_with_enough_visible_candidates_does_not_widen', function () {
-    $team = Team::factory()->create(['slug' => 'no-widen-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'no-widen-org']);
 
     for ($i = 0; $i < 80; $i++) {
         seedSearchArtifact($team, "open-{$i}");

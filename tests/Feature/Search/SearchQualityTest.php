@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\UsageEventType;
 use App\Models\ArtifactChunk;
 use App\Models\ArtifactUsageEvent;
@@ -51,7 +52,7 @@ test('passage selection recovers the introduction without admitting foreign chun
 });
 
 test('no match gating removes low relevance even when the artifact is canonical and heavily used', function () {
-    $team = Team::factory()->create(['slug' => 'zz-quality']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-quality']);
     app(ArtifactDirectory::class)->seedArtifact(['id' => 'greenhouse', 'org_id' => $team->slug, 'user_id' => 1, 'title' => 'Recruiting connector', 'created_at' => now()->toIso8601String(), 'revoked_at' => null, 'provenance' => []]);
     $collection = Collection::factory()->create(['team_id' => $team->id, 'canonical' => true]);
     app(CollectionService::class)->addArtifact($collection, 'greenhouse');
@@ -137,8 +138,8 @@ test('snippets show the relevant body and preserve complete words with escaped w
 });
 
 test('first chunk lookup is bounded by artifact and tenant on the real database implementation', function () {
-    $team = Team::factory()->create(['slug' => 'zz-quality']);
-    $foreign = Team::factory()->create(['slug' => 'other-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-quality']);
+    $foreign = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'other-org']);
     foreach ([$team, $foreign] as $owner) {
         foreach (['a', 'b'] as $id) {
             foreach (range(1, 4) as $position) {
@@ -153,7 +154,7 @@ test('first chunk lookup is bounded by artifact and tenant on the real database 
 });
 
 test('search returns the selected passage raw relevance rather than the combined ranking score', function () {
-    $team = Team::factory()->create(['slug' => 'zz-quality']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-quality']);
     app(ArtifactDirectory::class)->seedArtifact(['id' => 'a', 'org_id' => $team->slug, 'user_id' => 1, 'title' => 'Credential readiness', 'created_at' => now()->toIso8601String(), 'revoked_at' => null, 'provenance' => []]);
     $intro = qualityMatch('a', 'Readiness must exercise an authorized operation.', 0.85);
     app(VectorIndexContract::class)->upsertChunks($team->slug, 'a', [$intro->chunk]);
@@ -203,7 +204,7 @@ test('a five-artifact fixture ranks the exact title first with a score gap', fun
 });
 
 test('search quality fixture ranks exact title first with score gap and substantial snippets', function () {
-    $team = Team::factory()->create(['slug' => 'zz-quality-fixture']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'zz-quality-fixture']);
     $directory = app(ArtifactDirectory::class);
     $index = app(VectorIndexContract::class);
 

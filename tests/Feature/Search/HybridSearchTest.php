@@ -1,6 +1,7 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Models\Team;
 use App\Services\Indexing\RerankerContract;
 use App\Services\Indexing\VectorChunk;
@@ -24,7 +25,7 @@ test('rank_fusion_combines_signals_and_deduplicates_artifacts', function () {
 });
 
 test('hybrid_search_reranks_only_accessible_candidates_in_the_calling_org', function () {
-    $team = Team::factory()->create(['slug' => 'hybrid-org']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'hybrid-org']);
     $directory = app(ArtifactDirectory::class);
     foreach (['semantic', 'lexical', 'revoked'] as $id) {
         $directory->seedArtifact([
