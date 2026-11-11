@@ -5,6 +5,7 @@ use App\Http\Controllers\Ops\Actions\ErasePreviewController;
 use App\Http\Controllers\Ops\Actions\LimitsController;
 use App\Http\Controllers\Ops\Actions\PlanController;
 use App\Http\Controllers\Ops\Actions\ReindexController;
+use App\Http\Controllers\Ops\FeatureFlagController;
 use App\Http\Controllers\Ops\HealthController;
 use App\Http\Controllers\Ops\TenantIndexController;
 use App\Http\Controllers\Ops\TenantShowController;
@@ -38,6 +39,9 @@ Route::prefix('ops')
         // includes trashed teams, so an erased or deleted tenant is readable.
         Route::get('tenants/{team}', TenantShowController::class)->withTrashed()->name('tenants.show');
         Route::get('health', HealthController::class)->name('health');
+        Route::get('features', [FeatureFlagController::class, 'index'])->name('features.index');
+        Route::get('features/{feature}', [FeatureFlagController::class, 'show'])->name('features.show');
+        Route::put('features/{feature}', [FeatureFlagController::class, 'update'])->name('features.update');
 
         // Phase 2: audited support actions. Each needs a reason; erase also
         // needs a dry run and the typed slug.
