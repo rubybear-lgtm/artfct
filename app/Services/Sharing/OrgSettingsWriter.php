@@ -34,6 +34,39 @@ final class OrgSettingsWriter
     }
 
     /**
+     * Push whether the artifact database is released to the team. The Worker's
+     * settings endpoint always carries `public_sharing_allowed`, so the team's
+     * current value is sent along unchanged: this call can never flip it.
+     */
+    public function pushArtifactDb(Team $team, bool $enabled): bool
+    {
+        if (! $this->baseUrl || ! $this->secret) {
+            return false;
+        }
+
+        try {
+            $response = Http::withToken($this->secret)
+                ->post(rtrim($this->baseUrl, '/').'/v1/internal/org-settings', [
+                    'org' => $team->slug,
+                    'public_sharing_allowed' => (bool) ($team->public_sharing_allowed ?? true),
+                    'artifact_db_enabled' => $enabled,
+                ]);
+        } catch (Throwable $exception) {
+            Log::warning('Artifact database gate push failed.', ['org' => $team->slug, 'error' => $exception->getMessage()]);
+
+            return false;
+        }
+
+        if (! $response->successful()) {
+            Log::warning('Artifact database gate push rejected.', ['org' => $team->slug, 'status' => $response->status()]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Push whether the team allows public sharing. Turning it off downgrades
      * every live public artifact of the org to team in the same request; the
      * returned ids are the ones the Worker moved, so the caller can audit each.

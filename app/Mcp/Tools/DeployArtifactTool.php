@@ -20,6 +20,7 @@ use App\Services\Billing\DailyPublishLimiter;
 use App\Services\Billing\QuotaExceededException;
 use App\Services\Billing\QuotaService;
 use App\Services\Collections\CollectionService;
+use App\Services\FeatureFlags;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ExtractionHeuristics;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -41,7 +42,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url. Optional `db` gives the artifact a shared database for teams that have it: `collections` (a map of collection name to an optional `index` field) and optional `seed` starter records; the page and agents then read and write it (see the db_* tools and get_guidance topic data).')]
 #[Name('deploy_artifact')]
 #[Title('Publish artifact')]
 #[IsReadOnly(false)]
@@ -123,7 +124,40 @@ final class DeployArtifactTool extends Tool
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
             'collection' => ['nullable', 'string', 'max:100'],
+            'db' => ['nullable', 'array'],
+            'db.collections' => ['required_with:db', 'array', 'min:1', 'max:16'],
+            'db.collections.*' => ['nullable', 'array'],
+            'db.collections.*.index' => ['nullable', 'string', 'max:64'],
+            'db.seed' => ['nullable', 'array', 'max:200'],
+            'db.seed.*.collection' => ['required', 'string', 'max:64'],
+            'db.seed.*.doc_id' => ['required', 'string', 'max:128'],
+            'db.seed.*.body' => ['present', 'array'],
         ]);
+
+        // `validated()` drops a collection declared with no fields (an empty map),
+        // which is exactly a collection with no index, so read the declared
+        // collection names from the request itself and check them here.
+        if (isset($validated['db'])) {
+            $declared = $request->get('db')['collections'] ?? [];
+            foreach (array_keys(is_array($declared) ? $declared : []) as $name) {
+                if (! is_string($name) || preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/', $name) !== 1 || in_array($name, ['session', 'batch', 'schema'], true)) {
+                    return McpErrorResponse::error(
+                        'Collection names use letters, digits, dot, underscore and hyphen (at most 64), may not start with a dot, and may not be session, batch or schema.',
+                        'invalid_request',
+                    );
+                }
+            }
+            $validated['db']['collections'] = $declared;
+        }
+
+        if (isset($validated['db']) && ! app(FeatureFlags::class)->enabled(DatabaseTool::FEATURE, McpContext::team())) {
+            app(McpTelemetry::class)->record('deploy_artifact', 'feature_not_enabled', $startedAt);
+
+            return McpErrorResponse::error(
+                'The artifact database is not enabled for this workspace yet, so `db` cannot be used. Publish without it.',
+                'feature_not_enabled',
+            );
+        }
 
         $artifactIdInput = $validated['artifact_id'] ?? null;
         if ($artifactIdInput !== null && ! ArtifactIdShape::isPermanent($artifactIdInput)) {
@@ -315,7 +349,7 @@ final class DeployArtifactTool extends Tool
                         'sha256' => $file['sha256'],
                     ], $files)),
                     'external_origins' => [],
-                ],
+                ] + (isset($validated['db']) ? ['db' => $this->databaseManifest($validated['db'])] : []),
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ];
 
@@ -521,6 +555,32 @@ final class DeployArtifactTool extends Tool
     }
 
     /**
+     * The manifest's `db` section in the shape the Worker expects. PHP turns an
+     * empty map into `[]`, which is not a JSON object, so each empty map is
+     * sent as `{}`.
+     *
+     * @param  array<string, mixed>  $db
+     * @return array<string, mixed>
+     */
+    private function databaseManifest(array $db): array
+    {
+        $collections = [];
+        foreach ($db['collections'] ?? [] as $name => $declaration) {
+            $index = is_array($declaration) ? ($declaration['index'] ?? null) : null;
+            $collections[$name] = $index === null ? new \stdClass : ['index' => $index];
+        }
+
+        return [
+            'collections' => $collections,
+            'seed' => array_values(array_map(static fn (array $row): array => [
+                'collection' => $row['collection'],
+                'doc_id' => $row['doc_id'],
+                'body' => $row['body'] === [] ? new \stdClass : $row['body'],
+            ], $db['seed'] ?? [])),
+        ];
+    }
+
+    /**
      * Get the tool's input schema.
      *
      * @return array<string, Type>
@@ -546,6 +606,14 @@ final class DeployArtifactTool extends Tool
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results. On a version publish, omit to keep the previous description.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
             'collection' => $schema->string()->max(100)->description('Optional workspace collection name or numeric id. On a new publish, adds the artifact to that collection (requires collections:write). Ignored when publishing a new version with `artifact_id` (membership is kept).')->nullable(),
+            'db' => $schema->object([
+                'collections' => $schema->object()->description('Map of collection name to {index: field name}, e.g. {"cards": {"index": "column"}}. `index` is the one field db_list can filter on.')->required(),
+                'seed' => $schema->array()->items($schema->object([
+                    'collection' => $schema->string()->required(),
+                    'doc_id' => $schema->string()->required(),
+                    'body' => $schema->object()->required(),
+                ]))->description('Starter records written once when the artifact is first published, never on a new version.')->nullable(),
+            ])->description('Give the artifact a shared database. Only for teams that have the artifact database.')->nullable(),
         ];
     }
 

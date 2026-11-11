@@ -93,7 +93,7 @@ test('viewers receive read-only scopes without mutation access', function () {
         'client_name' => 'codex',
         'transport' => 'stdio',
     ])->assertCreated()
-        ->assertJsonPath('scopes', ['artifacts:read', 'collections:read', 'usage:read']);
+        ->assertJsonPath('scopes', ['artifacts:read', 'collections:read', 'usage:read', 'data:read']);
 });
 
 test('heartbeat updates usage and rejects a revoked connection', function () {

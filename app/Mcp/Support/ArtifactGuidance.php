@@ -15,7 +15,7 @@ final class ArtifactGuidance
     public const VERSION = '1.1.0';
 
     /** @var list<string> */
-    public const TOPICS = ['publish', 'search', 'collaborate'];
+    public const TOPICS = ['publish', 'search', 'collaborate', 'data'];
 
     /**
      * @return array{contract_version: string, topic: string, text: string, artifact_types: list<string>, limits: array<string, int>}|null

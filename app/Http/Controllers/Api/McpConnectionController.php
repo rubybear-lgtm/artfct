@@ -125,8 +125,8 @@ class McpConnectionController extends Controller
     private function scopesForRole(string $role, ?string $requestedScopes = null): array
     {
         $allowed = match (TeamRole::tryFrom($role)) {
-            TeamRole::Admin, TeamRole::Member => ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read'],
-            TeamRole::Viewer => ['artifacts:read', 'collections:read', 'usage:read'],
+            TeamRole::Admin, TeamRole::Member => ['artifacts:read', 'artifacts:deploy', 'artifacts:delete', 'collections:read', 'collections:write', 'usage:read', 'data:read', 'data:write'],
+            TeamRole::Viewer => ['artifacts:read', 'collections:read', 'usage:read', 'data:read'],
             default => [],
         };
 

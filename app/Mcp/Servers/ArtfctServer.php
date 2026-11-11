@@ -6,6 +6,13 @@ use App\Mcp\Support\ArtifactGuidance;
 use App\Mcp\Tools\AddArtifactCommentTool;
 use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
+use App\Mcp\Tools\DbBatchTool;
+use App\Mcp\Tools\DbDeleteTool;
+use App\Mcp\Tools\DbGetTool;
+use App\Mcp\Tools\DbListTool;
+use App\Mcp\Tools\DbSchemaTool;
+use App\Mcp\Tools\DbSetTool;
+use App\Mcp\Tools\DbUpdateTool;
 use App\Mcp\Tools\DeleteArtifactTool;
 use App\Mcp\Tools\DeleteCollectionTool;
 use App\Mcp\Tools\DeployArtifactTool;
@@ -65,6 +72,14 @@ final class ArtfctServer extends Server
         DeleteCollectionTool::class,
         DeleteArtifactTool::class,
         SetAvatarTool::class,
+        // Released per team through the `artifact-db` feature; see DatabaseTool.
+        DbSchemaTool::class,
+        DbGetTool::class,
+        DbListTool::class,
+        DbSetTool::class,
+        DbUpdateTool::class,
+        DbDeleteTool::class,
+        DbBatchTool::class,
     ];
 
     protected array $resources = [
