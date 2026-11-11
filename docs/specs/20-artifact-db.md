@@ -115,11 +115,11 @@ Rows are written by viewers and are untrusted. Tool descriptions and `get_guidan
 
 ### Quotas
 
-Pushed from Laravel through the existing limits channel (`org_limits`): `max_db_docs_per_artifact`, `max_db_bytes_per_org`. Defaults are conservative and plan-scaled. Over quota returns `429` with the limit named. Reads are never blocked by quota. Deleting an artifact deletes its rows in the same operation, and the blob-lifecycle denylist covers the db path.
+Pushed from Laravel through the existing limits channel (`POST /v1/internal/org-limits`, stored in `org_limits` by migration 0009): `db_docs_per_artifact` and `db_bytes_per_org`. Both are optional; an absent (NULL) value means the Worker default of 5,000 documents per artifact and 64 MiB per org, so a Laravel that does not push them changes nothing. Documents are counted per artifact and bytes per org. Over quota returns `429` with code `quota_exceeded`; an overwrite adds no document, and reads are never blocked by quota. A read-only org (the existing payment state) can read but its writes return `403` with code `read_only`. Deleting an artifact deletes its rows in the same batch.
 
 ### Rate limiting
 
-Per artifact and per viewer on writes, using the Worker's existing per-IP limiter pattern (RUB-463). A page in a loop must not exhaust D1 for the org.
+120 writes per viewer per artifact per minute, using the Worker's existing KV window limiter (RUB-463). The key is the artifact the host resolved to and the viewer the verified token names. Over the limit returns `429` with code `rate_limited`. A page in a loop must not exhaust D1 for the org.
 
 ### Known limits of v1
 

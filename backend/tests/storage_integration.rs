@@ -4305,3 +4305,133 @@ async fn artifact_without_db_manifest_has_no_endpoint_and_reserved_paths_are_ref
     assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
     Ok(())
 }
+
+/// Pushes the org's limits the way Laravel does, including the spec 20 db
+/// quotas, and the read-only payment state.
+async fn push_db_limits(
+    context: &Context,
+    client: &RetryingClient,
+    db_docs_per_artifact: u64,
+    read_only: bool,
+) -> Result<(), Box<dyn Error>> {
+    let secret = context
+        .limits_secret
+        .as_deref()
+        .ok_or("the limits secret is required")?;
+    let (status, body) = internal_post(
+        context,
+        client,
+        secret,
+        "/v1/internal/org-limits",
+        json!({
+            "org": context.org,
+            "storage_bytes": 5_368_709_120u64,
+            "artifacts_per_month": 1000,
+            "bundle_ceiling_bytes": 10_485_760,
+            "read_only": read_only,
+            "db_docs_per_artifact": db_docs_per_artifact,
+        }),
+    )
+    .await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "limits push failed: {body}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn artifact_db_enforces_quota_read_only_and_write_rate_limit() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    if context.limits_secret.is_none() {
+        return Ok(());
+    }
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-limits", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+
+    // The seed row is document 1. A limit of 2 admits one more and refuses the
+    // next; reads and overwrites are never refused by quota. The limits are
+    // restored before anything is asserted, so a failure cannot leave the org
+    // throttled for the other tests.
+    push_db_limits(&context, &client, 2, false).await?;
+    // A plain client, not the suite's: `RetryingClient` waits out a minute on
+    // every 429, which is exactly the status these requests expect.
+    let raw = reqwest::Client::new();
+    let host = isolated_origin(&context.org, &id, &context.origin_suffix);
+    let raw_put = |doc: &str, body: &'static str| {
+        raw.put(format!("{}/__artfct/db/cards/{doc}", context.base))
+            .header(reqwest::header::HOST, host.as_str())
+            .header("sec-fetch-site", "same-origin")
+            .header("x-artfct-db", "1")
+            .header(reqwest::header::ORIGIN, format!("https://{host}"))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .bearer_auth(&writer)
+            .body(body)
+    };
+    let mut outcomes = Vec::new();
+    for doc in ["q1", "q2"] {
+        outcomes.push(raw_put(doc, r#"{"column":"todo"}"#).send().await?.status());
+    }
+    let overwrite = raw_put("q1", r#"{"column":"doing"}"#)
+        .send()
+        .await?
+        .status();
+    let read = db_request(&client, "GET", &context, &id, "cards/seed1")
+        .bearer_auth(&writer)
+        .send()
+        .await?
+        .status();
+
+    // A read-only org (payment state) can read but not write.
+    push_db_limits(&context, &client, 5000, true).await?;
+    let read_only_write = raw_put("q1", r#"{"column":"done"}"#).send().await?.status();
+    let read_only_read = db_request(&client, "GET", &context, &id, "cards/q1")
+        .bearer_auth(&writer)
+        .send()
+        .await?
+        .status();
+    push_db_limits(&context, &client, 5000, false).await?;
+
+    assert_eq!(
+        outcomes[0],
+        reqwest::StatusCode::OK,
+        "the second document fits"
+    );
+    assert_eq!(
+        outcomes[1],
+        reqwest::StatusCode::TOO_MANY_REQUESTS,
+        "the third document passes the 2-document limit"
+    );
+    assert_eq!(
+        overwrite,
+        reqwest::StatusCode::OK,
+        "an overwrite adds no document"
+    );
+    assert_eq!(
+        read,
+        reqwest::StatusCode::OK,
+        "reads are never gated by quota"
+    );
+    assert_eq!(read_only_write, reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(read_only_read, reqwest::StatusCode::OK);
+
+    // 120 writes per viewer per artifact per minute.
+    let mut limited_at = None;
+    for attempt in 1..=130u32 {
+        let response = raw_put("q1", r#"{"column":"todo"}"#).send().await?;
+        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            limited_at = Some(attempt);
+            break;
+        }
+    }
+    let limited_at = limited_at.ok_or("130 writes never hit the write rate limit")?;
+    assert!(
+        (100..=125).contains(&limited_at),
+        "the limit tripped at write {limited_at}, expected near 120"
+    );
+    Ok(())
+}

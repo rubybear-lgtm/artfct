@@ -152,6 +152,10 @@ const RATE_LIMIT_MAX_PER_TOKEN: u32 = 60;
 /// Matches the create WAF rule's intended ~60/min budget so `*--prod` /
 /// `*--stg` hosts stay limited even when edge rules are missing or partial.
 const RATE_LIMIT_MAX_PER_IP: u32 = 60;
+/// Spec 20: db writes per viewer per artifact per window. A page in a loop
+/// must not exhaust D1 for the org; real use (dragging cards) is far below it.
+const RATE_LIMIT_DB_KV_PREFIX: &str = "auth:ratelimit:db:";
+const RATE_LIMIT_MAX_DB_WRITES: u32 = 120;
 /// Token id used for the legacy static `ARTFCT_ORG_TOKEN` credential, which
 /// carries no `jti` of its own.
 const LEGACY_ORG_TOKEN_ID: &str = "legacy-static-org-token";

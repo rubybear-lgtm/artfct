@@ -207,6 +207,11 @@ pub(crate) struct OrgLimitsWriteRequest {
     artifacts_per_month: u64,
     bundle_ceiling_bytes: u64,
     read_only: bool,
+    /// Spec 20. `None` leaves the stored value (or the Worker default) alone.
+    #[serde(default)]
+    db_docs_per_artifact: Option<u64>,
+    #[serde(default)]
+    db_bytes_per_org: Option<u64>,
 }
 
 /// An unset secret fails closed.
@@ -248,7 +253,7 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
         ensure_org_row(&storage.database, &payload.org, &now).await?;
         storage
             .database
-            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at, db_docs_per_artifact, db_bytes_per_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at, db_docs_per_artifact = COALESCE(excluded.db_docs_per_artifact, org_limits.db_docs_per_artifact), db_bytes_per_org = COALESCE(excluded.db_bytes_per_org, org_limits.db_bytes_per_org)")
             .bind(&[
                 JsValue::from_str(&payload.org),
                 JsValue::from_f64(payload.storage_bytes as f64),
@@ -256,6 +261,12 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
                 JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
                 JsValue::from_f64(f64::from(u8::from(payload.read_only))),
                 JsValue::from_str(&now),
+                payload
+                    .db_docs_per_artifact
+                    .map_or_else(JsValue::null, |value| JsValue::from_f64(value as f64)),
+                payload
+                    .db_bytes_per_org
+                    .map_or_else(JsValue::null, |value| JsValue::from_f64(value as f64)),
             ])?
             .run()
             .await?;

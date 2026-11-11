@@ -19,21 +19,17 @@ use super::*;
 use serde_json::json;
 
 use crate::artifact_db::{
-    db_role, guard_request, index_value, is_db_path, mint_db_token, parse_db_path,
-    parse_document_body, verify_db_token, BodyRefusal, DbGrant, DbManifest, DbRoute, GuardFacts,
-    DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES,
-    MAX_PAGE_LIMIT,
+    db_role, exceeds_db_quota, guard_request, index_value, is_db_path, mint_db_token,
+    parse_db_path, parse_document_body, verify_db_token, BodyRefusal, DbGrant, DbLimits,
+    DbManifest, DbRoute, GuardFacts, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT,
+    MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
 };
 use crate::artifact_origin::{
     access_token_from_cookie, artifact_origin_suffix, artifact_token_secret,
     parse_isolated_hostname, verified_token_viewer,
 };
+use crate::auth::check_and_increment_db_write_rate_limit;
 use crate::sharing::{EditAccess, Sharing};
-
-/// Hard ceilings per artifact until plan quotas are pushed through
-/// `org_limits`. Writes that would pass either return 429; reads never do.
-pub(crate) const MAX_DOCS_PER_ARTIFACT: u64 = 5_000;
-pub(crate) const MAX_BYTES_PER_ARTIFACT: u64 = 8 * 1024 * 1024;
 
 const DB_ARTIFACT_SQL: &str = "SELECT a.id AS id, a.tier AS tier, a.user_id AS user_id, a.edit_access AS edit_access, a.manifest AS manifest, o.slug AS org FROM artifacts a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > ?) ORDER BY a.row_id LIMIT 1";
 
@@ -223,6 +219,20 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
     if is_write && !grant.role.can_write() {
         return db_error("forbidden", "This viewer cannot write.", 403);
     }
+    let mut limits = DbLimits::default();
+    if is_write {
+        if !check_and_increment_db_write_rate_limit(env, &row.id, &grant.viewer).await? {
+            return db_error("rate_limited", "Too many writes. Try again shortly.", 429);
+        }
+        // A read-only org (payment state) can read but not write.
+        if crate::org_admin::load_org_limits(&database, env, &row.org)
+            .await?
+            .read_only
+        {
+            return db_error("read_only", "This team's workspace is read-only.", 403);
+        }
+        limits = load_db_limits(&database, &row.org).await?;
+    }
 
     match (route, method) {
         (DbRoute::Doc { collection, doc_id }, Method::Get) => {
@@ -238,6 +248,7 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
                 &declared,
                 &row,
                 &grant,
+                &limits,
                 &collection,
                 &doc_id,
                 now,
@@ -260,7 +271,9 @@ async fn handle(req: &mut Request, env: &Env, path: String) -> Result<Response> 
         (DbRoute::Doc { collection, doc_id }, Method::Delete) => {
             delete_doc(req, &database, &declared, &row, &collection, &doc_id).await
         }
-        (DbRoute::Batch, Method::Post) => batch(req, &database, &declared, &row, &grant, now).await,
+        (DbRoute::Batch, Method::Post) => {
+            batch(req, &database, &declared, &row, &grant, &limits, now).await
+        }
         _ => db_error(
             "method_not_allowed",
             "That method is not supported here.",
@@ -429,13 +442,37 @@ async fn list_docs(
     )
 }
 
+/// `(documents in this artifact, bytes in this org)`: the two quotas count
+/// different scopes.
 async fn usage(database: &worker::D1Database, row: &DbArtifactRow) -> Result<(u64, u64)> {
     let usage = database
-        .prepare("SELECT COUNT(*) AS docs, COALESCE(SUM(LENGTH(body)), 0) AS bytes FROM artifact_docs WHERE org_id = ? AND artifact_id = ?")
-        .bind(&[JsValue::from_str(&row.org), JsValue::from_str(&row.id)])?
+        .prepare("SELECT (SELECT COUNT(*) FROM artifact_docs WHERE org_id = ? AND artifact_id = ?) AS docs, (SELECT COALESCE(SUM(LENGTH(body)), 0) FROM artifact_docs WHERE org_id = ?) AS bytes")
+        .bind(&[
+            JsValue::from_str(&row.org),
+            JsValue::from_str(&row.id),
+            JsValue::from_str(&row.org),
+        ])?
         .first::<UsageRow>(None)
         .await?;
     Ok(usage.map_or((0, 0), |usage| (usage.docs as u64, usage.bytes as u64)))
+}
+
+#[derive(Debug, Deserialize)]
+struct DbLimitsRow {
+    db_docs_per_artifact: Option<i64>,
+    db_bytes_per_org: Option<i64>,
+}
+
+/// The org's pushed db quotas; NULL columns, or no row, mean the defaults.
+async fn load_db_limits(database: &worker::D1Database, org: &str) -> Result<DbLimits> {
+    let row = database
+        .prepare("SELECT db_docs_per_artifact, db_bytes_per_org FROM org_limits WHERE org_id = ?")
+        .bind(&[JsValue::from_str(org)])?
+        .first::<DbLimitsRow>(None)
+        .await?;
+    Ok(row.map_or_else(DbLimits::default, |row| {
+        DbLimits::from_pushed(row.db_docs_per_artifact, row.db_bytes_per_org)
+    }))
 }
 
 fn body_refusal_response(refusal: BodyRefusal) -> Result<Response> {
@@ -519,6 +556,7 @@ async fn put_doc(
     declared: &DbManifest,
     row: &DbArtifactRow,
     grant: &DbGrant,
+    limits: &DbLimits,
     collection: &str,
     doc_id: &str,
     now: chrono::DateTime<Utc>,
@@ -552,10 +590,8 @@ async fn put_doc(
         _ => {}
     }
     if existing.is_none() {
-        let (docs, total_bytes) = usage(database, row).await?;
-        if docs >= MAX_DOCS_PER_ARTIFACT
-            || total_bytes.saturating_add(bytes.len() as u64) > MAX_BYTES_PER_ARTIFACT
-        {
+        let (docs, org_bytes) = usage(database, row).await?;
+        if exceeds_db_quota(limits, docs, org_bytes, 1, bytes.len() as u64) {
             return quota_response();
         }
     }
@@ -732,6 +768,7 @@ async fn batch(
     declared: &DbManifest,
     row: &DbArtifactRow,
     grant: &DbGrant,
+    limits: &DbLimits,
     now: chrono::DateTime<Utc>,
 ) -> Result<Response> {
     let bytes = req.bytes().await?;
@@ -826,10 +863,8 @@ async fn batch(
         }
     }
     if new_docs > 0 {
-        let (docs, total_bytes) = usage(database, row).await?;
-        if docs.saturating_add(new_docs) > MAX_DOCS_PER_ARTIFACT
-            || total_bytes.saturating_add(new_bytes) > MAX_BYTES_PER_ARTIFACT
-        {
+        let (docs, org_bytes) = usage(database, row).await?;
+        if exceeds_db_quota(limits, docs, org_bytes, new_docs, new_bytes) {
             return quota_response();
         }
     }

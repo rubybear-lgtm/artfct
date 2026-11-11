@@ -34,6 +34,52 @@ const MAX_NAME_LEN: usize = 64;
 const MAX_DOC_ID_LEN: usize = 128;
 const MAX_COLLECTIONS: usize = 16;
 const MAX_SEED_ROWS: usize = 200;
+/// Defaults used when an org has no pushed db limits (the columns are NULL).
+pub(crate) const DEFAULT_DOCS_PER_ARTIFACT: u64 = 5_000;
+pub(crate) const DEFAULT_BYTES_PER_ORG: u64 = 64 * 1024 * 1024;
+
+/// The db quotas that apply to one org's writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DbLimits {
+    pub(crate) docs_per_artifact: u64,
+    pub(crate) bytes_per_org: u64,
+}
+
+impl Default for DbLimits {
+    fn default() -> Self {
+        Self {
+            docs_per_artifact: DEFAULT_DOCS_PER_ARTIFACT,
+            bytes_per_org: DEFAULT_BYTES_PER_ORG,
+        }
+    }
+}
+
+impl DbLimits {
+    /// A pushed value wins; a missing (NULL) one falls back to the default.
+    pub(crate) fn from_pushed(docs_per_artifact: Option<i64>, bytes_per_org: Option<i64>) -> Self {
+        let default = Self::default();
+        Self {
+            docs_per_artifact: docs_per_artifact
+                .map_or(default.docs_per_artifact, |value| value.max(0) as u64),
+            bytes_per_org: bytes_per_org.map_or(default.bytes_per_org, |value| value.max(0) as u64),
+        }
+    }
+}
+
+/// Whether adding `add_docs` documents and `add_bytes` bytes would pass a
+/// quota, given what the artifact (documents) and the org (bytes) already
+/// hold. Only new documents add to the count; reads are never gated.
+pub(crate) fn exceeds_db_quota(
+    limits: &DbLimits,
+    artifact_docs: u64,
+    org_bytes: u64,
+    add_docs: u64,
+    add_bytes: u64,
+) -> bool {
+    artifact_docs.saturating_add(add_docs) > limits.docs_per_artifact
+        || org_bytes.saturating_add(add_bytes) > limits.bytes_per_org
+}
+
 /// Seconds a write token is valid. Short, because it is a bearer credential.
 pub(crate) const DB_TOKEN_TTL_SECS: i64 = 300;
 /// Keys the server owns; a client body carrying one is refused rather than
@@ -947,6 +993,37 @@ mod tests {
             "art1",
             now
         ));
+    }
+
+    // ----- quotas -----
+
+    #[test]
+    fn quota_blocks_the_document_that_passes_the_limit() {
+        let limits = DbLimits {
+            docs_per_artifact: 10,
+            bytes_per_org: 1000,
+        };
+        assert!(!exceeds_db_quota(&limits, 9, 0, 1, 10));
+        assert!(exceeds_db_quota(&limits, 10, 0, 1, 10));
+        assert!(
+            !exceeds_db_quota(&limits, 10, 0, 0, 10),
+            "an overwrite adds no document"
+        );
+        assert!(exceeds_db_quota(&limits, 0, 995, 1, 10));
+        assert!(!exceeds_db_quota(&limits, 0, 990, 1, 10));
+    }
+
+    #[test]
+    fn pushed_limits_override_defaults_and_null_falls_back() {
+        assert_eq!(DbLimits::from_pushed(None, None), DbLimits::default());
+        assert_eq!(
+            DbLimits::from_pushed(Some(7), Some(99)),
+            DbLimits {
+                docs_per_artifact: 7,
+                bytes_per_org: 99
+            }
+        );
+        assert_eq!(DbLimits::from_pushed(Some(-5), None).docs_per_artifact, 0);
     }
 
     // ----- bodies -----
