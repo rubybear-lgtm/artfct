@@ -116,9 +116,10 @@ final class TeamTrialService
             }
 
             $status = $remote['status'] ?? null;
-            if (in_array($status, ['active', 'past_due'], true)) {
-                // Card added during trial: Stripe converted the same sub to paid.
-                // Trust Stripe over local trial_ends_at — do not cancel.
+            if (in_array($status, ['active', 'past_due', 'unpaid'], true)) {
+                // Card added during trial: Stripe converted the same sub to paid
+                // (or is collecting). Trust Stripe over local trial_ends_at —
+                // never cancel or Free-drop a live subscription here.
                 $this->applyStripeSubscriptionState(
                     $team,
                     $subscriptionId,
@@ -246,14 +247,14 @@ final class TeamTrialService
             return;
         }
 
-        if ($status === 'active') {
+        if (in_array($status, ['active', 'past_due', 'unpaid'], true)) {
             if (! in_array($plan, [Plan::Pro, Plan::Team, Plan::Enterprise], true)) {
                 $plan = Plan::Team;
             }
 
             $team->forceFill([
                 'plan' => $plan,
-                'payment_status' => PaymentStatus::Active,
+                'payment_status' => $status === 'active' ? PaymentStatus::Active : PaymentStatus::PastDue,
                 'stripe_subscription_id' => $subscriptionId !== '' ? $subscriptionId : $team->stripe_subscription_id,
                 'trial_ends_at' => null,
                 'seats_billed' => 1,

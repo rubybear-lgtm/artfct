@@ -156,7 +156,10 @@ final class BillingService
         $team->forceFill($attributes)->save();
 
         $shouldMirrorTrial = $status === 'trialing'
-            || ($status === 'active' && ($lookupKey !== null || $team->trial_ends_at !== null));
+            || (
+                in_array($status, ['active', 'past_due', 'unpaid'], true)
+                && ($lookupKey !== null || $team->trial_ends_at !== null)
+            );
 
         if ($shouldMirrorTrial) {
             app(TeamTrialService::class)->applyStripeSubscriptionState(

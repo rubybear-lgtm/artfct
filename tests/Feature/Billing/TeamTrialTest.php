@@ -114,6 +114,31 @@ test('expire_does_not_cancel_subscription_converted_to_active_after_card_added',
         ->and($billing->subscriptions[$subscriptionId]['cancelled'] ?? false)->toBeFalse();
 });
 
+test('expire_preserves_past_due_converted_trial_without_free_drop', function () {
+    $this->freezeTime();
+    $user = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($user, 'Past Due Convert Co');
+    $subscriptionId = $team->fresh()->stripe_subscription_id;
+    expect($subscriptionId)->not->toBeNull();
+
+    /** @var FakeBilling $billing */
+    $billing = app(BillingContract::class);
+    $billing->convertTrialToActive($subscriptionId);
+    $billing->subscriptions[$subscriptionId]['status'] = 'past_due';
+
+    $this->travelTo(now()->addDays(90)->addSecond());
+
+    $expired = app(TeamTrialService::class)->expireIfDue($team->fresh());
+
+    $team->refresh();
+    expect($expired)->toBeFalse()
+        ->and($team->plan)->toBe(Plan::Team)
+        ->and($team->payment_status->value)->toBe('past_due')
+        ->and($team->stripe_subscription_id)->toBe($subscriptionId)
+        ->and($team->trial_ends_at)->toBeNull()
+        ->and($billing->subscriptions[$subscriptionId]['cancelled'] ?? false)->toBeFalse();
+});
+
 test('trial_cannot_be_restarted_after_it_ends', function () {
     $this->freezeTime();
     $user = User::factory()->create();
