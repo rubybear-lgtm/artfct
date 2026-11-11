@@ -101,7 +101,24 @@ class ArtifactPreviewController extends Controller
             return $this->unavailable();
         }
 
-        return $this->html($artifact['html']);
+        $response = $this->html($artifact['html']);
+        $response->setEtag(hash('sha256', implode(':', [
+            (string) $user->id,
+            (string) $team->id,
+            $artifactId,
+            (string) ($artifact['version'] ?? ''),
+            $artifact['html'],
+        ])), true);
+        // A version query is a cache key, never authority to read old content.
+        // Do not cache a newer body under a stale or speculative version URL.
+        $requestedVersion = $request->query('v');
+        if ($requestedVersion !== null && $requestedVersion !== (string) ($artifact['version'] ?? '')) {
+            $response->headers->set('Cache-Control', 'private, no-store');
+        }
+
+        $response->isNotModified($request);
+
+        return $response;
     }
 
     /**

@@ -269,7 +269,7 @@ class DashboardController extends Controller
                 'agent' => isset($provenance['agent']) ? (string) $provenance['agent'] : null,
                 'openUrl' => ArtifactViewLink::forArtifact($team->slug, (string) $row['id'], null),
                 'previewUrl' => ($row['revoked_at'] ?? null) === null
-                    ? route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => (string) $row['id']])
+                    ? route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => (string) $row['id'], 'v' => $row['version'] ?? null])
                     : null,
                 'revoked' => ($row['revoked_at'] ?? null) !== null,
             ];

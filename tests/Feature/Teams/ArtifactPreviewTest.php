@@ -221,3 +221,71 @@ test('an_upstream_failure_is_a_generic_503', function () {
         ->not->toContain('worker exploded')
         ->not->toContain('artifact-1');
 });
+
+test('an unchanged preview revalidates without sending its body', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    app(ArtifactContentSource::class)->seed($team->slug, 'artifact-1', '<h1>Cached</h1>');
+    $url = artifactPreviewUrl($team, 'artifact-1');
+
+    $first = test()->actingAs($member)->get($url)->assertOk();
+    $etag = $first->headers->get('ETag');
+    expect($etag)->not->toBeNull();
+
+    $response = test()->get($url, ['If-None-Match' => $etag])->assertStatus(304);
+    expect($response->getContent())->toBe('');
+    $response->assertHeader('ETag', $etag)
+        ->assertHeader('Cache-Control', 'max-age=120, private')
+        ->assertHeader('Content-Security-Policy', ARTIFACT_PREVIEW_CSP);
+});
+
+test('a changed preview returns the new body and validator', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, 'artifact-1', '<h1>Before</h1>');
+    $url = artifactPreviewUrl($team, 'artifact-1');
+    $etag = test()->actingAs($member)->get($url)->headers->get('ETag');
+
+    $content->seed($team->slug, 'artifact-1', '<h1>After</h1>', version: 2);
+    $response = test()->get($url, ['If-None-Match' => $etag])->assertOk()->assertSee('<h1>After</h1>', false);
+    expect($response->headers->get('ETag'))->not->toBe($etag);
+});
+
+test('a preview validator never bypasses current visibility or membership', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, 'artifact-1', '<h1>Team content</h1>');
+    $url = artifactPreviewUrl($team, 'artifact-1');
+    $etag = test()->actingAs($member)->get($url)->headers->get('ETag');
+
+    $content->seed($team->slug, 'artifact-1', '<h1>Team content</h1>', sharing: 'private', ownerUserId: 'other-user');
+    test()->get($url, ['If-None-Match' => $etag])->assertNotFound()->assertHeader('Cache-Control', 'no-store, private');
+
+    $content->seed($team->slug, 'artifact-1', '<h1>Team content</h1>');
+    $team->memberships()->where('user_id', $member->id)->delete();
+    test()->get($url, ['If-None-Match' => $etag])->assertNotFound();
+});
+
+test('preview validators are scoped to the signed in viewer', function () {
+    $team = Team::factory()->create();
+    $firstMember = memberOfTeam($team, TeamRole::Member);
+    $secondMember = memberOfTeam($team, TeamRole::Member);
+    app(ArtifactContentSource::class)->seed($team->slug, 'artifact-1', '<h1>Team content</h1>');
+    $url = artifactPreviewUrl($team, 'artifact-1');
+    $etag = test()->actingAs($firstMember)->get($url)->headers->get('ETag');
+
+    test()->actingAs($secondMember)->get($url, ['If-None-Match' => $etag])->assertOk();
+});
+
+test('a mismatched version url cannot cache the current body under another version', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    app(ArtifactContentSource::class)->seed($team->slug, 'artifact-1', '<h1>Current</h1>', version: 2);
+    $url = artifactPreviewUrl($team, 'artifact-1');
+
+    test()->actingAs($member)->get($url.'?v=2')->assertOk()->assertHeader('Cache-Control', 'max-age=120, private');
+    test()->get($url.'?v=1')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    test()->get($url.'?v=3')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+});
