@@ -47,6 +47,9 @@ test('collection previews scale and stay inside their cards at all four widths',
     $page = visit(route('teams.collections.index', $team))->resize($width, 850)->wait(0.2);
     $page->assertScript("getComputedStyle(document.querySelector('[data-testid=collection-rows]')).gridTemplateColumns.split(' ').length", $columns)
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth')
+        // Frames mount after hydration and an IntersectionObserver tick; under
+        // a parallel CI run that can take longer than the fixed wait above.
+        ->assertScript('new Promise((resolve) => { const started = Date.now(); const check = () => { const count = document.querySelectorAll("iframe").length; if (count > 0 || Date.now() - started > 8000) { resolve(count); } else { setTimeout(check, 50); } }; check(); })', 1)
         ->assertScript('document.querySelectorAll("iframe").length', 1)
         ->assertScript('document.querySelector("iframe").getAttribute("aria-hidden")', 'true')
         ->assertScript('Array.from(document.querySelectorAll("iframe")).every(frame => frame.getAttribute("sandbox") === "" && frame.getAttribute("loading") === "lazy" && frame.getAttribute("referrerpolicy") === "no-referrer" && frame.tabIndex === -1 && getComputedStyle(frame).pointerEvents === "none")')
