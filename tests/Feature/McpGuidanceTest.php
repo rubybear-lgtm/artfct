@@ -82,6 +82,21 @@ test('tool descriptions and the server instructions point at the guidance at its
         ->toContain('base_version');
 });
 
+test('every tool that names a guidance version names the current one', function () {
+    // Read the source, not the registered tools: the db_* tools are only
+    // registered when the artifact database is on, but they carry the version.
+    $versions = collect(glob(app_path('Mcp/Tools/*.php')))
+        ->mapWithKeys(function (string $file): array {
+            preg_match("/'guidanceVersion' => '([^']+)'/", (string) file_get_contents($file), $match);
+
+            return [basename($file, '.php') => $match[1] ?? null];
+        })
+        ->filter();
+
+    expect($versions->keys()->all())->toContain('GetGuidanceTool', 'DeployArtifactTool', 'DbSchemaTool')
+        ->and($versions->unique()->values()->all())->toBe([ArtifactGuidance::VERSION]);
+});
+
 test('the Agent Skills files carry exactly the served guidance', function (string $topic) {
     $skill = file_get_contents(base_path("skills/artfct-{$topic}/SKILL.md"));
     $guidance = ArtifactGuidance::topic($topic)['text'];
@@ -149,7 +164,7 @@ test('coding agents ask before changing the project and never ask the person to 
         ->and($result['text'])->toContain('Never ask the person to run a command')->toContain('Ask first')
         ->and($result['text'])->toContain('get_connection')->toContain('get_guidance')
         ->and($consent)->toBe(['add_project_instructions']);
-})->with(['claude-code', 'cursor', 'grok-build']);
+})->with(['claude-code', 'cursor', 'grok-build', 'coding-agent']);
 
 /*
  * RUB-530: non-technical people install nothing from a terminal, so no
@@ -167,7 +182,7 @@ test('no onboarding playbook mentions npx or a plugin command that does not exis
 
 test('the instruction line coding agents add is the one the connect pages show', function (string $host) {
     expect(onboardingGuidance($host)['text'])->toContain((new AiToolSetup('https://example.test'))->agentInstructionLine());
-})->with(['claude-code', 'cursor', 'grok-build']);
+})->with(['claude-code', 'cursor', 'grok-build', 'coding-agent']);
 
 test('an unknown onboarding host is refused and lists the allowed hosts', function () {
     $response = test()->withToken(remoteMcpToken(Team::factory()->create()))->postJson('/mcp', [

@@ -196,7 +196,7 @@ whenever a guidance rule or a guided tool description changes.
 ### RUB-530 additions (contract 1.0.0 unchanged, guidance 1.2.0)
 
 `get_guidance` gains the topic `onboarding` and an optional `host` input
-(`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt`, `grok`,
+(`claude-code`, `cursor`, `grok-build`, `coding-agent`, `claude-app`, `chatgpt`, `grok`,
 `unknown`). Only `onboarding` reads `host`; other topics ignore it. The result
 adds `host`, `mode` (`coding_agent`, `connector_only` or `hybrid`) and `steps`, each
 with `requires_consent`. The text is one static file per host in

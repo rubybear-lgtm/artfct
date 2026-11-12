@@ -126,6 +126,8 @@ test('the agent setup prompt connects, verifies and teaches the project, leaving
         ->toContain('https://staging.artfct.dev/mcp')
         ->toContain('get_connection')
         ->toContain('call `get_guidance` with topic `onboarding` and `host`')
+        ->toContain('`coding-agent` for any other coding agent such as Codex or VS Code')
+        ->toContain('they already set up this project, so do not repeat them')
         ->toContain('CLAUDE.md')
         ->toContain('AGENTS.md')
         ->toContain('restart')

@@ -38,6 +38,7 @@ final class ArtifactGuidance
         'claude-code' => 'coding_agent',
         'cursor' => 'coding_agent',
         'grok-build' => 'coding_agent',
+        'coding-agent' => 'coding_agent',
         'claude-app' => 'connector_only',
         'chatgpt' => 'connector_only',
         'grok' => 'connector_only',
