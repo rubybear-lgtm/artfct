@@ -50,6 +50,23 @@ final class McpContext
         }
     }
 
+    /**
+     * The tool call's `arguments` as decoded JSON objects, not arrays.
+     *
+     * The MCP request hands tools associative arrays, which cannot tell an empty
+     * object from an empty list: `{"meta": {}}` becomes `["meta" => []]` and is
+     * written back as `[]`. A tool that stores or forwards user JSON reads the
+     * raw body through this to keep `{}` as `{}`. Null when the body is not a
+     * single JSON-RPC call.
+     */
+    public static function rawArguments(): ?object
+    {
+        $payload = json_decode(self::httpRequest()->getContent(), false);
+        $arguments = is_object($payload) ? ($payload->params->arguments ?? null) : null;
+
+        return is_object($arguments) ? $arguments : null;
+    }
+
     public static function actor(): string
     {
         return self::claims()['user_id'];

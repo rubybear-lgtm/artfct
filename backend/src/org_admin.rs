@@ -283,7 +283,11 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
 #[derive(Debug, Deserialize)]
 pub(crate) struct OrgSettingsWriteRequest {
     org: String,
-    public_sharing_allowed: bool,
+    /// `None` leaves the stored value alone (a new org starts at allowed). The
+    /// artifact database gate push omits it so a gate change can never undo a
+    /// public-sharing change made while it was in flight.
+    #[serde(default)]
+    public_sharing_allowed: Option<bool>,
     /// Spec 20 rollout gate. `None` leaves the stored choice alone.
     #[serde(default)]
     artifact_db_enabled: Option<bool>,
@@ -296,6 +300,11 @@ pub(crate) struct OrgSettingsWriteResponse {
     pub(crate) org: String,
     pub(crate) public_sharing_allowed: bool,
     pub(crate) downgraded: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredSharingRow {
+    allowed: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,7 +350,8 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
         // Selected before the update so the response names exactly the artifacts
         // being downgraded. The update repeats the same predicate in one batch with
         // the settings upsert, so it can never leave a public artifact behind.
-        let downgraded = if payload.public_sharing_allowed {
+        let turning_public_off = payload.public_sharing_allowed == Some(false);
+        let downgraded = if !turning_public_off {
             Vec::new()
         } else {
             database
@@ -355,16 +365,21 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
                 .collect::<Vec<_>>()
         };
         let mut statements = vec![database
-            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at, artifact_db_enabled) VALUES (?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = excluded.public_sharing_allowed, updated_at = excluded.updated_at, artifact_db_enabled = COALESCE(excluded.artifact_db_enabled, org_settings.artifact_db_enabled)")
+            .prepare("INSERT INTO org_settings (org_id, public_sharing_allowed, updated_at, artifact_db_enabled) VALUES (?, COALESCE(?, 1), ?, ?) ON CONFLICT(org_id) DO UPDATE SET public_sharing_allowed = COALESCE(?, org_settings.public_sharing_allowed), updated_at = excluded.updated_at, artifact_db_enabled = COALESCE(excluded.artifact_db_enabled, org_settings.artifact_db_enabled)")
             .bind(&[
                 JsValue::from_str(&payload.org),
-                JsValue::from_f64(f64::from(u8::from(payload.public_sharing_allowed))),
+                payload.public_sharing_allowed.map_or_else(JsValue::null, |allowed| {
+                    JsValue::from_f64(f64::from(u8::from(allowed)))
+                }),
                 JsValue::from_str(&now),
                 payload.artifact_db_enabled.map_or_else(JsValue::null, |enabled| {
                     JsValue::from_f64(f64::from(u8::from(enabled)))
                 }),
+                payload.public_sharing_allowed.map_or_else(JsValue::null, |allowed| {
+                    JsValue::from_f64(f64::from(u8::from(allowed)))
+                }),
             ])?];
-        if !payload.public_sharing_allowed {
+        if turning_public_off {
             statements.push(
                 database
                     .prepare("UPDATE artifacts SET tier = 'secure' WHERE org_id = (SELECT id FROM orgs WHERE slug = ?) AND tier = 'public' AND revoked_at IS NULL")
@@ -372,10 +387,17 @@ pub(crate) async fn write_org_settings(req: &mut Request, env: &Env) -> Result<R
             );
         }
         database.batch(statements).await?;
+        // The value now stored, which is the request's when it sent one.
+        let stored = database
+            .prepare("SELECT public_sharing_allowed AS allowed FROM org_settings WHERE org_id = ?")
+            .bind(&[JsValue::from_str(&payload.org)])?
+            .first::<StoredSharingRow>(None)
+            .await?
+            .is_none_or(|row| row.allowed != 0);
         JsonResponseDefinition::json(
             OrgSettingsWriteResponse {
                 org: payload.org.clone(),
-                public_sharing_allowed: payload.public_sharing_allowed,
+                public_sharing_allowed: stored,
                 downgraded,
             },
             200,

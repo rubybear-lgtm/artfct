@@ -78,14 +78,20 @@ final class DbBatchTool extends DatabaseTool
             'writes.*.if_version' => ['nullable', 'integer', 'min:0'],
         ]);
 
-        $writes = array_map(static function (array $write): array {
+        // Each write's `data` is taken from the raw call when it is an object, so
+        // a nested `{}` stays `{}`; the validated array cannot tell it from `[]`.
+        $rawWrites = McpContext::rawArguments()?->writes ?? [];
+        $rawWrites = is_array($rawWrites) ? array_values($rawWrites) : [];
+
+        $writes = array_map(static function (array $write, int $index) use ($rawWrites): array {
             $write = array_filter($write, static fn ($value): bool => $value !== null);
-            if (isset($write['data']) && $write['data'] === []) {
-                $write['data'] = new \stdClass;
+            $rawData = is_object($rawWrites[$index] ?? null) ? ($rawWrites[$index]->data ?? null) : null;
+            if (isset($write['data'])) {
+                $write['data'] = is_object($rawData) ? $rawData : ($write['data'] === [] ? new \stdClass : $write['data']);
             }
 
             return $write;
-        }, $validated['writes']);
+        }, array_values($validated['writes']), array_keys(array_values($validated['writes'])));
 
         return $this->send('db_batch', $startedAt, 'POST', $validated['id'], 'batch', [], ['writes' => $writes]);
     }

@@ -60,9 +60,11 @@ final class DbUpdateTool extends DatabaseTool
             'if_version' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        $raw = McpContext::rawArguments()?->data ?? null;
+
         return $this->send('db_update', $startedAt, 'PATCH', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,
-        ], $validated['data']);
+        ], is_object($raw) ? $raw : $validated['data']);
     }
 
     /**

@@ -44,7 +44,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
     }
 
     /** Collection and document names the Worker accepts. */
-    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/'];
+    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/D'];
 
     /** @return array<string, list<string>> */
     protected function targetRules(bool $withDocument = true): array
@@ -64,7 +64,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
      * Call the Worker's agent API and turn its answer into a tool response.
      *
      * @param  array<string, scalar|null>  $query
-     * @param  array<string, mixed>|null  $body  a JSON object; an empty array is sent as `{}`
+     * @param  array<string, mixed>|object|null  $body  a JSON object; an empty array is sent as `{}`
      */
     protected function send(
         string $tool,
@@ -73,7 +73,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
         string $artifactId,
         string $path,
         array $query = [],
-        ?array $body = null,
+        array|object|null $body = null,
     ): ResponseFactory {
         if (! ArtifactIdShape::isPermanent($artifactId)) {
             app(McpTelemetry::class)->record($tool, 'invalid_request', $startedAt);
@@ -120,6 +120,10 @@ abstract class DatabaseTool extends FeatureFlaggedTool
         $status = $response->status();
         $json = $response->json();
         $json = is_array($json) ? $json : [];
+        // Decoded again as objects, so an empty `{}` in a row (`{"meta": {}}`)
+        // is handed to the agent as `{}` and not turned into `[]`.
+        $decoded = json_decode($response->body(), false);
+        $objectJson = is_object($decoded) ? (array) $decoded : [];
         $workerMessage = is_string($json['error']['message'] ?? null) ? $json['error']['message'] : null;
         $workerCode = is_string($json['error']['code'] ?? null) ? $json['error']['code'] : null;
 
@@ -127,7 +131,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
             app(McpTelemetry::class)->record($tool, 'success', $startedAt, $artifactId);
 
             // Marked so a caller cannot mistake row content for instructions.
-            return Response::structured(array_merge(['untrusted' => true, 'notice' => self::NOTICE], $json));
+            return Response::structured(array_merge(['untrusted' => true, 'notice' => self::NOTICE], $objectJson));
         }
 
         $outcome = match (true) {
@@ -153,7 +157,13 @@ abstract class DatabaseTool extends FeatureFlaggedTool
                 'version_conflict',
                 true,
                 'reread',
-                ['current' => is_array($json['current'] ?? null) ? $json['current'] : null],
+                [
+                    // The current row is user content like any other, so it is
+                    // marked the same way a successful read is.
+                    'untrusted' => true,
+                    'notice' => self::NOTICE,
+                    'current' => is_object($objectJson['current'] ?? null) ? $objectJson['current'] : null,
+                ],
             ),
             $status === 429 => McpErrorResponse::error(
                 $workerMessage ?? 'Too many writes or the database is full.',
