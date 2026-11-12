@@ -61,3 +61,8 @@ yarn-error.log
 /scratchpad/runs/*/*.diff
 
 /storage/framework/phpstan/
+
+# Local Octane/FrankenPHP binary (`php artisan octane:install` downloads it
+# per machine). Production uses Railpack's FrankenPHP; the committed
+# `public/frankenphp-worker.php` stub is all the repo needs.
+/frankenphp

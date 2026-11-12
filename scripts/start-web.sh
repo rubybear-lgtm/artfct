@@ -1,0 +1,62 @@
+#!/bin/sh
+set -eu
+
+# Serve the app with Laravel Octane on FrankenPHP (worker mode): the
+# application boots once and stays resident, so concurrent preview fetches
+# overlap instead of queueing behind a single-threaded server.
+# Migrations stay in Railway's pre-deploy step.
+#
+# OCTANE_WORKERS defaults to 4: the web service has 1 vCPU and preview
+# requests are I/O-bound on the Worker round trip, so threads wait on the
+# network, not the CPU. OCTANE_MAX_REQUESTS bounds memory growth by
+# recycling each worker after 500 requests.
+#
+# Railpack's php.ini ships `variables_order = "GPCS"` (no `E`), but Octane's
+# FrankenPHP worker passes APP_* and request limits to the worker through the
+# environment (`$_ENV`), the same reason Sail pins EGPCS. Every php invocation
+# below carries `-d variables_order=EGPCS` so the worker actually sees them.
+
+PHP="php -d variables_order=EGPCS"
+
+$PHP artisan optimize --no-interaction
+$PHP artisan storage:link --no-interaction
+
+$PHP artisan inertia:start-ssr --no-interaction &
+SSR_PID=$!
+
+# start-ssr boots Laravel and stops any old SSR server before Node binds
+# port 13714, so a single check-ssr races it. Poll while the SSR process is
+# alive; fail only when it dies or the deadline passes.
+ATTEMPTS=30
+until $PHP artisan inertia:check-ssr --no-interaction; do
+    ATTEMPTS=$((ATTEMPTS - 1))
+    if ! kill -0 "$SSR_PID" 2>/dev/null; then
+        echo "❌ Inertia SSR server exited before becoming healthy; refusing to serve without it." >&2
+        exit 1
+    fi
+    if [ "$ATTEMPTS" -le 0 ]; then
+        kill "$SSR_PID" 2>/dev/null || true
+        echo "❌ Inertia SSR server did not become healthy in time; refusing to serve without it." >&2
+        exit 1
+    fi
+    sleep 1
+done
+
+# The shell stays PID 1 while Octane runs in the background, so container
+# stop signals land on sh, not the children: forward them to both servers.
+# (A trap before `exec` would be discarded with the shell image, so Octane
+# runs as a child and the shell regains control when it exits.)
+$PHP artisan octane:start --server=frankenphp --host=0.0.0.0 --port="${PORT:?PORT is required}" --workers="${OCTANE_WORKERS:-4}" --max-requests="${OCTANE_MAX_REQUESTS:-500}" --no-interaction &
+OCTANE_PID=$!
+trap 'kill -TERM "$OCTANE_PID" "$SSR_PID" 2>/dev/null || true' TERM INT
+# `wait` under `set -e` would exit the shell before STATUS is captured when
+# Octane exits non-zero; the `||` keeps the shell alive to clean up SSR.
+# A trapped signal also makes `wait` return at once while Octane is still
+# draining in-flight requests, so keep waiting until the process is gone.
+STATUS=0
+wait "$OCTANE_PID" || STATUS=$?
+while kill -0 "$OCTANE_PID" 2>/dev/null; do
+    wait "$OCTANE_PID" || STATUS=$?
+done
+kill "$SSR_PID" 2>/dev/null || true
+exit "$STATUS"

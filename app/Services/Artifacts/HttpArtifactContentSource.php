@@ -38,7 +38,13 @@ final class HttpArtifactContentSource implements ArtifactContentSource
         $token = OrgJwtService::default()
             ->mintFor($orgSlug, 'system', TeamRole::Member, scopes: ['artifacts:read', 'artifacts:read_private'])['token'];
 
+        // Tighter than the HTTP client's 10s connect / 30s total defaults, and
+        // under Octane's 30s `max_execution_time`, so a slow Worker releases
+        // the thread with a handled 503 instead of being killed mid-request:
+        // four threads each stuck waiting is a full outage of the web service.
         $response = Http::withToken($token)
+            ->connectTimeout(5)
+            ->timeout(15)
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}/content");
 
         if ($response->status() === 404) {
