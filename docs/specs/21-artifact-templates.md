@@ -23,6 +23,14 @@ An empty library is the hardest moment for a new team, and a kanban board is the
 - **14** — quotas, the daily publish limit and plan gates. A pull is a publish and is subject to all of them.
 - **07** — the pull runs as the caller. The new artifact is owned by the puller and their credential decides what they may create.
 
+## Prerequisites found in review
+
+An independent review of this spec found three problems that must be settled first. Each was checked against the running system where it could be.
+
+1. **A version publish silently drops the database.** Checked on staging: republishing the kanban board with `deploy_artifact` and `artifact_id` but without `db` left all 4 rows in D1, removed `db` from the current manifest, and made `db_schema` answer `404`. Agents edit pages by version publish constantly ("make the board blue"), so any edit to a pulled board would break it. **Rule:** a version publish that omits `db` carries the previous declaration forward; removing a database takes an explicit `db: null`, which leaves the rows in place and the endpoint off. The carry-forward lives in the Worker (`post_version`), so every client gets it. This is a fix to spec 20, ships first as its own change, and also protects every `db` artifact already in production.
+2. **A pull from the library has no Worker credential.** `deploy_artifact` runs as an MCP caller, with the bearer token, team, actor, provenance and telemetry all coming from the connection. A browser session has none of that. So `ArtifactPublisher` takes an **explicit team, actor and credential** instead of reading `McpContext`, and the library action mints a short-lived org JWT for the user with `OrgJwtService::mint` (scope `artifacts:deploy`, a few minutes). Provenance and telemetry come from a builder that works without an MCP connection. Nothing in the web controllers calls the Worker for a user today, so this pattern is new.
+3. **"Reload to keep saving" may not be possible.** After the access TTL, both the iframe's `?token=` and the access cookie are expired, so reloading the frame would hit a 403, and the viewer's sandbox grants no top navigation, so the page cannot reload the viewer itself. Not yet verified end to end (shorten `services.artifact_access.token_ttl_minutes`, open a board, wait, reload the frame). Preferred mechanism, subject to that check: the **app shell** (which is not the artifact, so spec 05 is intact) re-mints the access token before it expires and swaps the iframe `src`. The page's own fallback, if the shell cannot, is a clear message to reload the whole tab.
+
 ## Design
 
 ### Where templates live
@@ -65,12 +73,18 @@ Constraints a template must meet, checked by the catalog and by a test that runs
 3. The new artifact has a new id, the puller as owner, the template's default sharing and edit access (the puller may choose `private` or `team`), and a title the puller may change. Seed rows are written once, fresh.
 4. Provenance records how it was made: tool `pull_template`, and `source_path` set to `template:<key>@<version>`. No Worker change is needed, and a later "update available" can read it.
 
+**Failed and half-finished pulls.** A pull is a create followed by file uploads, so it can fail between them. The pull takes a lock on `(team, template_key, request_id)`, writes the `template_pulls` row only after the artifact is complete, and on failure removes the pending artifact, so a retry starts clean and nothing counts against the org's quota. (A created-but-never-uploaded artifact keeps its seed rows and its byte count today; the pull must not leave one behind.)
+
 **Idempotency.** Because a `db` artifact is never deduplicated by content, a retry or a double click would create two boards. A pull takes a `request_id` (the UI generates one when the dialog opens; the MCP tool accepts an optional one). A table `template_pulls (team_id, template_key, request_id, artifact_id)` with a unique key on the first three makes the same pull return the same artifact. Rows older than 24 hours are pruned.
 
 ### Surfaces
 
 - **MCP.** `list_templates` (scope `artifacts:read`) returns key, title, description, version, what it requires and whether it is available to the team. `pull_template` (scope `artifacts:deploy`) takes `template`, optional `title`, `sharing`, `collection` and `request_id`, and returns the new artifact's id and `view_url`. Both are `FeatureFlaggedTool`s on a new `artifact-templates` feature, so they are hidden until released, and the release smoke leaves them out of the expected catalog (the existing flag-gated rule). They are documented in `AiToolSetup` and in a new guidance topic.
 - **Library.** A Templates section in the library (the console artifacts list) with a card per available template, and a "Use template" dialog: title, sharing, confirm. The result opens the new artifact. It follows `DESIGN.md` (Oxblood & Bone, hairline dividers, no boxed-card gallery), shows an empty state when none is available, and is hidden entirely when `artifact-templates` is not released to the team. Coordinated with the sidebar-layout work already in progress.
+
+**Agents must be able to find a board.** The cards live in database rows, which are not indexed, so `search_artifacts` and `read_artifact` only see a template's boilerplate. `get_artifact` and `list_artifacts` therefore report `database: {collections: {...}}` for an artifact that has one, and the `data` guidance says to call `db_schema` before answering a question about such an artifact.
+
+**Scopes.** A connection made before the data scopes existed lacks `data:read` and `data:write` (we saw this in production), so a pulled board's tools would fail with `insufficient_scope`. `pull_template` checks the caller's scopes and says to reconnect to let the agent use the board; the `db_*` scope error carries the same next action.
 
 ### The kanban template
 
@@ -80,6 +94,7 @@ Product quality, not the soak page:
 - Columns, cards, add, move left and right, delete; keyboard operable; sensible mobile layout.
 - **Session lifetime.** The page's database token comes from the host-only access cookie, which lives as long as the access token (60 minutes by default). A board left open past that stops being able to refresh its token. The page must show a clear "This board needs to be reloaded to keep saving" state instead of failing silently, and reload cleanly. Spec 05 forbids a postMessage refresh, so reloading is the mechanism. Verified by leaving a board open past the expiry (the access TTL is configurable, so the test shortens it).
 - Seed: three starter cards that explain the board, in their own columns.
+- A board lists at most 100 cards per page, so it pages, and shows how many are not shown.
 
 ### Gate
 
@@ -94,6 +109,10 @@ Production's Worker is in `true` mode so a team created after the last release s
 - [ ] `list_templates` and `pull_template` are absent for an unreleased team, and the release smoke's expected catalog is unchanged.
 - [ ] The library shows the Templates section only when released, and "Use template" creates the artifact and opens it; a double click makes one board.
 - [ ] A pulled board works in a real browser (add, move, an agent's change appears) and shows the reload state after its session expires.
+- [ ] A version publish without `db` keeps the database reachable (the rows and the endpoint), and only `db: null` turns it off; checked on a pulled board edited through `deploy_artifact`.
+- [ ] A library pull works with no MCP connection: it mints a short-lived credential, and a failed pull leaves no artifact, no seed rows and no `template_pulls` row.
+- [ ] A board open past the access TTL recovers or shows the reload message, per the verified mechanism.
+- [ ] `get_artifact` and `list_artifacts` report the database and its collections, and `pull_template` names the missing scope when the caller lacks one.
 - [ ] The `deploy_artifact` tests pass unchanged after the `ArtifactPublisher` extraction.
 - [ ] The existing catalog, docs, contract and guidance tests pass with the new tools.
 
@@ -111,9 +130,13 @@ Production's Worker is in `true` mode so a team created after the last release s
 - `list_templates_marks_unavailable_templates`
 - `template_tools_hidden_until_released` *(negative)*
 - `publisher_extraction_keeps_deploy_artifact_behaviour` (the existing tool tests)
+- `library_pull_runs_without_an_mcp_connection_and_cleans_up_on_failure`
+- `get_artifact_and_list_artifacts_report_the_database`
+- `pull_template_names_the_missing_scope`
 - `library_templates_section_visibility_and_pull_flow` (feature + browser)
 
 **Worker**
+- `version_publish_without_db_keeps_the_declaration` and `version_publish_with_db_null_turns_the_endpoint_off`
 - Covered by spec 20's tests: a pulled `db` artifact gets its own rows and the seed once. One new integration test pulls the same template twice and asserts the live rows are independent.
 
 **Browser (Pest 4)**
@@ -121,6 +144,8 @@ Production's Worker is in `true` mode so a team created after the last release s
 - `use_template_dialog_double_click_makes_one_board`
 
 ## Rollout and rollback
+
+**Order.** The version-publish fix to spec 20 ships first, because it protects every `db` artifact that exists now. Before widening the database to new sign-ups (the Worker's `true` mode), the independent review of the spec 20 agent API and `db_*` tools is run; it was flagged during that work and not completed. `resources/templates/` is a new top-level folder, called out here for approval.
 
 Staging first, then production behind `artifact-templates` (off), then one team in `/ops`, then everyone. A migration adds `template_pulls`, additive. Rollback is releasing `artifact-templates` back to off, which hides the tools and the library section at once; pulled artifacts are ordinary artifacts and stay. Reverting the `ArtifactPublisher` extraction is a code revert with no data effect.
 
