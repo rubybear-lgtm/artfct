@@ -90,7 +90,7 @@ class ConsoleController extends Controller
         $previewUrls = collect($data['artifacts'])
             ->filter(fn (array $artifact): bool => empty($artifact['revoked_at']))
             ->mapWithKeys(fn (array $artifact): array => [
-                $artifact['id'] => route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => $artifact['id']]),
+                $artifact['id'] => route('teams.artifacts.preview', ['team' => $team->slug, 'artifactId' => $artifact['id'], 'v' => $artifact['version'] ?? null]),
             ])->all();
 
         return Inertia::render('console/index', [

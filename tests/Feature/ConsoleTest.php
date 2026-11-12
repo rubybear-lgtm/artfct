@@ -508,3 +508,30 @@ test('the console open route no longer mints or audits, it hands out the short l
         // route mints nothing, so it records nothing.
         ->and(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
 });
+
+test('console preview urls change with the current artifact version and omit revoked artifacts', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    $directory = app(ArtifactDirectory::class);
+    $artifact = [
+        'id' => 'versioned-preview',
+        'org_id' => $team->slug,
+        'user_id' => $member->id,
+        'created_at' => now()->toIso8601String(),
+        'revoked_at' => null,
+    ];
+
+    foreach ([1, 2] as $version) {
+        $directory->seedArtifact([...$artifact, 'version' => $version]);
+        test()->actingAs($member)->get("/settings/teams/{$team->slug}/console")
+            ->assertInertia(fn ($page) => $page->where('previewUrls.versioned-preview', route('teams.artifacts.preview', [
+                'team' => $team->slug,
+                'artifactId' => $artifact['id'],
+                'v' => $version,
+            ])));
+    }
+
+    $directory->seedArtifact([...$artifact, 'version' => 2, 'revoked_at' => now()->toIso8601String()]);
+    test()->get("/settings/teams/{$team->slug}/console")
+        ->assertInertia(fn ($page) => $page->missing('previewUrls.versioned-preview'));
+});
