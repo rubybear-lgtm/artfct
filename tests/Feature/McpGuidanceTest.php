@@ -4,6 +4,7 @@ use App\Enums\ArtifactType;
 use App\Mcp\Servers\ArtfctServer;
 use App\Mcp\Support\ArtifactGuidance;
 use App\Models\Team;
+use App\Support\AiToolSetup;
 use Laravel\Mcp\Server\Transport\FakeTransporter;
 
 /*
@@ -87,7 +88,114 @@ test('the Agent Skills files carry exactly the served guidance', function (strin
 
     expect($skill)->toStartWith("---\nname: artfct-{$topic}\n")
         ->and(str_ends_with($skill, $guidance))->toBeTrue();
-})->with(ArtifactGuidance::TOPICS);
+})->with(ArtifactGuidance::MIRRORED_TOPICS);
+
+/*
+ * RUB-530: onboarding is the one topic with no mirrored skill. It branches by
+ * host, and it sends coding agents to the local artfct-init skill instead.
+ */
+test('every guidance topic is either mirrored as a skill or is onboarding', function () {
+    expect(array_values(array_diff(ArtifactGuidance::TOPICS, ArtifactGuidance::MIRRORED_TOPICS)))->toBe(['onboarding']);
+});
+
+function onboardingGuidance(?string $host): array
+{
+    $arguments = ['topic' => 'onboarding'] + ($host === null ? [] : ['host' => $host]);
+
+    return test()->withToken(remoteMcpToken(Team::factory()->create()))->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_guidance', 'arguments' => $arguments],
+    ])->assertOk()->json('result.structuredContent');
+}
+
+test('onboarding guidance is served for each host with its mode and steps', function (string $host, string $mode) {
+    $result = onboardingGuidance($host);
+
+    expect($result['topic'])->toBe('onboarding')
+        ->and($result['host'])->toBe($host)
+        ->and($result['mode'])->toBe($mode)
+        ->and($result['contract_version'])->toBe(ArtifactGuidance::VERSION)
+        ->and($result['text'])->toStartWith('# ')
+        ->and(array_column($result['steps'], 'id'))->not->toBeEmpty();
+})->with(collect(ArtifactGuidance::HOST_MODES)->map(fn (string $mode, string $host): array => [$host, $mode])->values()->all());
+
+test('onboarding without a host asks the agent to find its host and call again', function () {
+    $result = onboardingGuidance(null);
+
+    expect($result['host'])->toBe('unknown')
+        ->and($result['mode'])->toBe('hybrid')
+        ->and($result['text'])->toContain('get_guidance')->toContain('host')
+        ->and($result['text'])->not->toContain('npx');
+});
+
+test('connector-only hosts are never told to add anything to the computer', function (string $host) {
+    $result = onboardingGuidance($host);
+    $text = strtolower($result['text']);
+
+    expect($result['mode'])->toBe('connector_only')
+        ->and($text)->not->toContain('npx')
+        ->and($text)->not->toContain('plugin')
+        ->and($text)->not->toContain('marketplace')
+        ->and($text)->not->toContain('artfct-init')
+        ->and($text)->not->toContain('install')
+        ->and(array_column($result['steps'], 'requires_consent'))->each->toBeFalse();
+})->with(['claude-app', 'chatgpt', 'grok']);
+
+test('coding agents ask before changing the project and never ask the person to run a command', function (string $host) {
+    $result = onboardingGuidance($host);
+    $consent = collect($result['steps'])->where('requires_consent', true)->pluck('id')->all();
+
+    expect($result['mode'])->toBe('coding_agent')
+        ->and($result['text'])->toContain('Never ask the person to run a command')->toContain('Ask first')
+        ->and($result['text'])->toContain('get_connection')->toContain('get_guidance')
+        ->and($consent)->toBe(['add_project_instructions']);
+})->with(['claude-code', 'cursor', 'grok-build']);
+
+/*
+ * RUB-530: non-technical people install nothing from a terminal, so no
+ * playbook may send an agent to npx. The plugin commands are left out until a
+ * plugin exists, so an agent never runs one that fails.
+ */
+test('no onboarding playbook mentions npx or a plugin command that does not exist yet', function (string $host) {
+    expect(strtolower(onboardingGuidance($host)['text']))
+        ->not->toContain('npx')
+        ->not->toContain('npm ')
+        ->not->toContain('/plugin')
+        ->not->toContain('marketplace add')
+        ->not->toContain('/add-plugin');
+})->with(array_keys(ArtifactGuidance::HOST_MODES));
+
+test('the instruction line coding agents add is the one the connect pages show', function (string $host) {
+    expect(onboardingGuidance($host)['text'])->toContain((new AiToolSetup('https://example.test'))->agentInstructionLine());
+})->with(['claude-code', 'cursor', 'grok-build']);
+
+test('an unknown onboarding host is refused and lists the allowed hosts', function () {
+    $response = test()->withToken(remoteMcpToken(Team::factory()->create()))->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_guidance', 'arguments' => ['topic' => 'onboarding', 'host' => '../../.env']],
+    ])->assertOk()->assertJsonPath('result.isError', true);
+
+    expect($response->json('result.content.0.text'))->toContain('Allowed hosts:')->toContain('claude-code')->toContain('chatgpt');
+});
+
+test('the host is ignored for topics that are not onboarding', function () {
+    $result = test()->withToken(remoteMcpToken(Team::factory()->create()))->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'get_guidance', 'arguments' => ['topic' => 'publish', 'host' => 'chatgpt']],
+    ])->assertOk()->json('result.structuredContent');
+
+    expect($result['topic'])->toBe('publish')->and($result)->not->toHaveKey('host');
+});
+
+test('the server instructions and tool description name the onboarding topic', function () {
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+    $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'get_guidance')->toArray();
+
+    expect(ArtifactGuidance::INSTRUCTIONS)->toContain('onboarding')
+        ->and($tool['description'])->toContain('onboarding')
+        ->and(json_encode($tool['inputSchema']))->toContain('claude-code');
+});
 
 /*
  * RUB-444: a published page is served with `script-src 'self'`, so an inline

@@ -193,6 +193,21 @@ mirrored in `skills/artfct-*`; its version is `ArtifactGuidance::VERSION` and
 each guided tool names it in `_meta.artfct.guidanceVersion`. Bump that constant
 whenever a guidance rule or a guided tool description changes.
 
+### RUB-530 additions (contract 1.0.0 unchanged, guidance 1.2.0)
+
+`get_guidance` gains the topic `onboarding` and an optional `host` input
+(`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt`, `grok`,
+`unknown`). Only `onboarding` reads `host`; other topics ignore it. The result
+adds `host`, `mode` (`coding_agent`, `connector_only` or `hybrid`) and `steps`, each
+with `requires_consent`. The text is one static file per host in
+`resources/guidance/onboarding/`. `onboarding` has no mirrored skill
+(`ArtifactGuidance::MIRRORED_TOPICS` lists the topics that do). Non-technical
+users are never asked to run a command, so no playbook mentions `npx`. Until a
+one-step plugin package exists, coding agents verify the connection, read the
+rules, and with consent add one line to the project instructions file (or run
+`artfct-init` if it is already available); connector-only hosts are never told
+to add anything locally.
+
 ## Opening an artifact
 
 Tools that publish or describe an artifact return it as `view_url`. Which URL

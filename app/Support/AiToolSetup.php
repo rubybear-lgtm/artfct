@@ -434,8 +434,9 @@ class AiToolSetup
                - Signing in happens in my browser. Tell me to approve the page that opens, then wait. Never ask me for a password or a token.
                - Some apps only show a new server after a restart or a reconnect (for example `/mcp`). If the Artfct tools are missing, tell me what to do, and carry on once they appear.
             4. Check the connection: call `get_connection` and tell me which team I'm in and whether search is on. If that is not my team, stop and point me to "Connected to the wrong team" in {$this->baseUrl}/llms-full.txt.
+               Then call `get_guidance` with topic `onboarding` and `host` set to the app you are running in (`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt` or `grok`; use `unknown` if you are not sure). Follow the steps it returns, and ask me before any step it marks as needing my approval.
             5. If you are a coding agent working in a project, offer to set Artfct up there too. Ask before you change anything.
-               - If you can install skills, run `npx skills add rubybear-lgtm/artfct@artfct-init` and then the artfct-init skill. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
+               - If the artfct-init skill is already available to you, run it. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
                - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
 
             ---
