@@ -84,6 +84,23 @@ pub(crate) fn exceeds_db_quota(
         || org_bytes.saturating_add(add_bytes) > limits.bytes_per_org
 }
 
+/// What database declaration a new version carries. A version that leaves the
+/// `db` key out keeps the artifact's current declaration: agents edit a page
+/// by publishing a version, and one that forgot `db` used to take the endpoint
+/// offline while the rows stayed behind. An explicit `"db": null` turns the
+/// database off (the rows stay, unreachable), and a declaration replaces it.
+pub(crate) fn db_for_version(
+    key_in_request: bool,
+    declared: Option<DbManifest>,
+    previous: Option<DbManifest>,
+) -> Option<DbManifest> {
+    if key_in_request {
+        declared
+    } else {
+        previous
+    }
+}
+
 /// How far the artifact database is released in this environment. Set with
 /// `ARTFCT_ARTIFACT_DB_ENABLED`; anything unrecognised, or unset, is `Off`, so
 /// a missing variable fails closed.
@@ -1137,6 +1154,29 @@ mod tests {
             }
         );
         assert_eq!(DbLimits::from_pushed(Some(-5), None).docs_per_artifact, 0);
+    }
+
+    #[test]
+    fn a_version_keeps_the_previous_db_unless_it_says_otherwise() {
+        let previous = Some(DbManifest {
+            collections: BTreeMap::from([("cards".to_string(), DbCollectionDecl::default())]),
+            seed: Vec::new(),
+        });
+        let replacement = Some(DbManifest {
+            collections: BTreeMap::from([("notes".to_string(), DbCollectionDecl::default())]),
+            seed: Vec::new(),
+        });
+        // `db` left out: keep what the artifact has.
+        assert_eq!(db_for_version(false, None, previous.clone()), previous);
+        // `db: null`: turn it off.
+        assert_eq!(db_for_version(true, None, previous.clone()), None);
+        // A new declaration replaces the old one.
+        assert_eq!(
+            db_for_version(true, replacement.clone(), previous),
+            replacement
+        );
+        // Nothing before and nothing now stays nothing.
+        assert_eq!(db_for_version(false, None, None), None);
     }
 
     #[test]

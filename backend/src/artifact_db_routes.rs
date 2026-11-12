@@ -166,6 +166,23 @@ pub(crate) async fn db_enabled_for_org(
     Ok(db_allowed(rollout, setting))
 }
 
+/// The `db` declaration in an artifact's current manifest, if it has one.
+pub(crate) async fn current_db_manifest(
+    database: &worker::D1Database,
+    artifact_row_id: &str,
+) -> Result<Option<DbManifest>> {
+    #[derive(Deserialize)]
+    struct ManifestRow {
+        manifest: String,
+    }
+    let row = database
+        .prepare("SELECT manifest FROM artifacts WHERE row_id = ?")
+        .bind(&[JsValue::from_str(artifact_row_id)])?
+        .first::<ManifestRow>(None)
+        .await?;
+    Ok(row.and_then(|row| declared_db(&row.manifest)))
+}
+
 /// Entry point from the Worker's `fetch`. Returns `None` for a request that
 /// is not in the db namespace so the normal router keeps it.
 pub(crate) async fn artifact_db_route(req: &mut Request, env: &Env) -> Option<Result<Response>> {

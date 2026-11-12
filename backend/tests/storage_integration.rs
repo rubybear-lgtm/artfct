@@ -5353,3 +5353,90 @@ async fn agent_db_api_enforces_scope_role_and_org() -> Result<(), Box<dyn Error>
     assert_eq!(none.status(), reqwest::StatusCode::NOT_FOUND);
     Ok(())
 }
+
+/// Spec 20: editing a database page by publishing a version must not take the
+/// database offline. A version that leaves `db` out keeps the declaration;
+/// only an explicit `null` turns it off.
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn version_publish_keeps_the_db_declaration_unless_told_to_remove_it(
+) -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let id = deploy_db_artifact(&context, &client, "db-carry", "edit").await?;
+    let (_, session) = db_session(&context, &client, &id, "member-w").await?;
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    db_request(&client, "PUT", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .body(br#"{"column":"todo"}"#.to_vec())
+        .send()
+        .await?;
+
+    // 1. A version with no `db` key: the board's rows and endpoint survive.
+    let edited = unique_html("db-carry-edit");
+    let (status, body) = post_version(&context, &client, &id, &edited, json!({})).await?;
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{body}");
+    if body["missing_files"]
+        .as_array()
+        .is_some_and(|missing| !missing.is_empty())
+    {
+        upload_version_file(&context, &client, &id, &edited).await?;
+    }
+    let (after, session) = db_session(&context, &client, &id, "member-w").await?;
+    assert_eq!(
+        after,
+        reqwest::StatusCode::OK,
+        "the endpoint went offline: {session}"
+    );
+    let writer = session["token"].as_str().ok_or("no token")?.to_string();
+    let row = db_request(&client, "GET", &context, &id, "cards/c1")
+        .bearer_auth(&writer)
+        .send()
+        .await?;
+    assert_eq!(
+        row.status(),
+        reqwest::StatusCode::OK,
+        "a row became unreachable"
+    );
+
+    // 2. Republishing the same bytes again, still without `db`, is a no-op: the
+    //    stored manifest (with the carried declaration) hashes the same.
+    let (status, again) = post_version(&context, &client, &id, &edited, json!({})).await?;
+    assert_eq!(status, reqwest::StatusCode::OK, "{again}");
+    assert_eq!(
+        again["version"], body["version"],
+        "an unchanged republish made a version"
+    );
+
+    // 3. An explicit `db: null` turns the endpoint off and leaves the rows.
+    let removed = unique_html("db-carry-off");
+    let mut payload = version_payload(&removed, json!({}));
+    payload["manifest"]["db"] = Value::Null;
+    let response = client
+        .post(format!("{}/v1/artifacts/{id}/versions", context.base))
+        .bearer_auth(&context.token)
+        .json(&payload)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    if body["missing_files"]
+        .as_array()
+        .is_some_and(|missing| !missing.is_empty())
+    {
+        upload_version_file(&context, &client, &id, &removed).await?;
+    }
+    let (off, _) = db_session(&context, &client, &id, "member-w").await?;
+    assert_eq!(
+        off,
+        reqwest::StatusCode::NOT_FOUND,
+        "db: null must turn the endpoint off"
+    );
+    let rows = count_value(
+        &context,
+        &format!("SELECT COUNT(*) AS n FROM artifact_docs WHERE artifact_id = '{id}'"),
+        "n",
+    )?;
+    assert!(rows >= 2, "turning the database off must leave the rows");
+    Ok(())
+}

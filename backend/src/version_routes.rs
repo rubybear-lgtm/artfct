@@ -593,7 +593,6 @@ async fn create_version(
         Ok(value) => value,
         Err(code) => return manifest_error_response(code),
     };
-    let content_hash = bundle_hash.as_str();
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
@@ -633,6 +632,29 @@ async fn create_version(
             403,
         );
     }
+    // Spec 20: a version that leaves `db` out keeps the artifact's declaration,
+    // so an agent editing the page cannot take the database offline by
+    // forgetting it. `"db": null` turns it off. The hash is recomputed over
+    // the manifest that is actually stored, so an unchanged republish still
+    // matches the current content and stays a no-op.
+    let db_key_in_request = raw.pointer("/manifest/db").is_some();
+    let (manifest, bundle_hash) = if db_key_in_request {
+        (manifest, bundle_hash)
+    } else {
+        let previous =
+            crate::artifact_db_routes::current_db_manifest(&storage.database, &artifact.row_id)
+                .await?;
+        match crate::artifact_db::db_for_version(false, manifest.db.clone(), previous) {
+            Some(db) => {
+                let mut carried = manifest;
+                carried.db = Some(db);
+                let canonical = serde_json::to_vec(&carried)?;
+                (carried, store::content_hash(&canonical))
+            }
+            None => (manifest, bundle_hash),
+        }
+    };
+    let content_hash = bundle_hash.as_str();
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
     // The bundle lock serialises same-content creates; the per-artifact lock
     // serialises version-numbering and promotion for this artifact; the org

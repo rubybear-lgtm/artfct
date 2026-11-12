@@ -42,7 +42,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url. Optional `db` gives the artifact a shared database for teams that have it: `collections` (a map of collection name to an optional `index` field) and optional `seed` starter records; the page and agents then read and write it (see the db_* tools and get_guidance topic data).')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url. Optional `db` gives the artifact a shared database for teams that have it (on a version publish, leaving `db` out keeps the artifact\'s existing database; pass `db: null` to turn it off): `collections` (a map of collection name to an optional `index` field) and optional `seed` starter records; the page and agents then read and write it (see the db_* tools and get_guidance topic data).')]
 #[Name('deploy_artifact')]
 #[Title('Publish artifact')]
 #[IsReadOnly(false)]
@@ -349,7 +349,7 @@ final class DeployArtifactTool extends Tool
                         'sha256' => $file['sha256'],
                     ], $files)),
                     'external_origins' => [],
-                ] + (isset($validated['db']) ? ['db' => $this->databaseManifest($validated['db'])] : []),
+                ] + $this->databaseSection($validated, $versionPublish),
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ];
 
@@ -552,6 +552,29 @@ final class DeployArtifactTool extends Tool
         }
 
         return Response::structured($result);
+    }
+
+    /**
+     * The manifest's `db` key for this publish. A declaration is sent as given.
+     * On a version publish, `db` left out is left out of the manifest too, and
+     * the Worker keeps the artifact's current declaration; an explicit `null`
+     * is sent as `null` to turn the database off. A new artifact has nothing to
+     * keep, so null there is the same as leaving it out.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function databaseSection(array $validated, bool $versionPublish): array
+    {
+        if (isset($validated['db'])) {
+            return ['db' => $this->databaseManifest($validated['db'])];
+        }
+
+        if ($versionPublish && array_key_exists('db', $validated)) {
+            return ['db' => null];
+        }
+
+        return [];
     }
 
     /**

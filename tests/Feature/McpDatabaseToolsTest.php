@@ -297,3 +297,26 @@ test('releasing the artifact-db feature in /ops queues the Worker sync, and othe
     $release('artifact-db');
     Queue::assertPushed(SyncArtifactDbRollout::class, 1);
 });
+
+test('a version publish sends db only when told to: left out keeps the database, null turns it off', function () {
+    $team = Team::factory()->create(['slug' => 'db-version']);
+    releaseArtifactDb($team);
+    $token = remoteMcpToken($team);
+    Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'x']], 500)]);
+    $base = ['artifact_id' => DB_ARTIFACT_ID, 'html' => '<!doctype html><title>Board</title><p>Board</p>'];
+
+    callMcpTool($token, 'deploy_artifact', $base);
+    callMcpTool($token, 'deploy_artifact', $base + ['db' => null]);
+    callMcpTool($token, 'deploy_artifact', $base + ['db' => ['collections' => ['cards' => ['index' => 'column']]]]);
+
+    $bodies = Http::recorded()
+        ->map(fn (array $pair): Request => $pair[0])
+        ->filter(fn (Request $request): bool => str_ends_with($request->url(), '/versions'))
+        ->map(fn (Request $request): string => $request->body())
+        ->values();
+
+    expect($bodies)->toHaveCount(3)
+        ->and($bodies[0])->not->toContain('"db"')
+        ->and($bodies[1])->toContain('"db":null')
+        ->and($bodies[2])->toContain('"db":{"collections":{"cards":{"index":"column"}}');
+});
