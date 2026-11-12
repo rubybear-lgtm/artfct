@@ -68,7 +68,8 @@
     ],
     "vars": {
         // Spec 20 artifact database. false = dark (404, deploys may not declare db); orgs = only orgs Laravel enables; true = every org not opted out.
-        "ARTFCT_ARTIFACT_DB_ENABLED": "false",
+        // `orgs` since the pilot: a team needs an explicit release in /ops (which pushes its gate to the Worker) before it can use the database. Every other team stays dark. Set back to "false" to remove the endpoint for everyone.
+        "ARTFCT_ARTIFACT_DB_ENABLED": "orgs",
         "ARTFCT_PUBLIC_BASE_URL": "https://artfct.dev",
         "ARTFCT_ARTIFACT_ORIGIN_SUFFIX": "--prod.artfct.dev",
         // RUB-438: the only origin allowed to frame isolated artifacts (the viewer).
