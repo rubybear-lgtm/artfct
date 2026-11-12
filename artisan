@@ -6,8 +6,20 @@ use Symfony\Component\Console\Input\ArgvInput;
 
 define('LARAVEL_START', microtime(true));
 
-// Register the Composer autoloader...
-require __DIR__.'/vendor/autoload.php';
+// Register the Composer autoloader. Worktrees share the main checkout's
+// install; see scripts/worktree-bootstrap.php.
+require __DIR__.'/scripts/worktree-bootstrap.php';
+
+$autoload = artfct_worktree_bootstrap(__DIR__);
+
+if ($autoload === null) {
+    fwrite(STDERR, 'vendor/autoload.php is missing and the main checkout has no install to share.'.PHP_EOL);
+    fwrite(STDERR, 'Run `composer install` in `'.__DIR__.'`.'.PHP_EOL);
+
+    exit(1);
+}
+
+require $autoload;
 
 // Bootstrap Laravel and handle the command...
 /** @var Application $app */
