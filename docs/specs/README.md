@@ -56,6 +56,7 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | 12 | [Indexing pipeline](12-indexing-pipeline.md) | A JS-heavy dashboard is searchable by content absent from its source HTML |
 | 16 | [Collections and usage ranking](16-collections.md) | A canonical artifact outranks a semantically closer one nobody has opened |
 | 18 | [Blog content service](18-blog-content-service.md) | A Markdown draft lints against the claim allowlist and renders the review document and the live post from one source |
+| 21 | [Artifact templates](21-artifact-templates.md) | A new team pulls the kanban template into its library and gets its own working board: its own rows, the puller as owner, one board per pull |
 
 → **Thesis testable.**
 
