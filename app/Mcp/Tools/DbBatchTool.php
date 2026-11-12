@@ -80,7 +80,7 @@ final class DbBatchTool extends DatabaseTool
 
         // Each write's `data` is taken from the raw call when it is an object, so
         // a nested `{}` stays `{}`; the validated array cannot tell it from `[]`.
-        $rawWrites = McpContext::rawArguments()?->writes ?? [];
+        $rawWrites = McpContext::rawArguments()->writes ?? [];
         $rawWrites = is_array($rawWrites) ? array_values($rawWrites) : [];
 
         $writes = array_map(static function (array $write, int $index) use ($rawWrites): array {

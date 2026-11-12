@@ -62,7 +62,7 @@ final class DbSetTool extends DatabaseTool
         ]);
 
         // The raw object keeps nested `{}` as `{}`; the validated array cannot.
-        $raw = McpContext::rawArguments()?->data ?? null;
+        $raw = McpContext::rawArguments()->data ?? null;
 
         return $this->send('db_set', $startedAt, 'PUT', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,

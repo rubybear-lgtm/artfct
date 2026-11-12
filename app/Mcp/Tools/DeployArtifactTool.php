@@ -587,7 +587,7 @@ final class DeployArtifactTool extends Tool
      */
     private function databaseManifest(array $db): array
     {
-        $rawDb = McpContext::rawArguments()?->db ?? null;
+        $rawDb = McpContext::rawArguments()->db ?? null;
         $rawSeed = is_object($rawDb) && is_array($rawDb->seed ?? null) ? array_values($rawDb->seed) : [];
 
         $collections = [];
@@ -598,7 +598,7 @@ final class DeployArtifactTool extends Tool
 
         return [
             'collections' => $collections,
-            'seed' => array_values(array_map(static function (array $row, int $index) use ($rawSeed): array {
+            'seed' => array_map(static function (array $row, int $index) use ($rawSeed): array {
                 $rawBody = is_object($rawSeed[$index] ?? null) ? ($rawSeed[$index]->body ?? null) : null;
 
                 return [
@@ -607,7 +607,7 @@ final class DeployArtifactTool extends Tool
                     // The raw object keeps a nested `{}` as `{}`.
                     'body' => is_object($rawBody) ? $rawBody : ($row['body'] === [] ? new \stdClass : $row['body']),
                 ];
-            }, array_values($db['seed'] ?? []), array_keys(array_values($db['seed'] ?? [])))),
+            }, array_values($db['seed'] ?? []), array_keys(array_values($db['seed'] ?? []))),
         ];
     }
 
