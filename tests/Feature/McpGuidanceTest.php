@@ -97,6 +97,16 @@ test('every tool that names a guidance version names the current one', function 
         ->and($versions->unique()->values()->all())->toBe([ArtifactGuidance::VERSION]);
 });
 
+test('db_schema still points agents at the data guidance', function () {
+    expect(file_get_contents(app_path('Mcp/Tools/DbSchemaTool.php')))->toContain('get_guidance')->toContain('topic data');
+});
+
+test('the grok-build playbook never sends an agent to artfct-init, which has no Grok Build setting', function () {
+    $text = onboardingGuidance('grok-build')['text'];
+
+    expect($text)->toContain('Do not run the `artfct-init` skill')->not->toContain('--host');
+});
+
 test('the Agent Skills files carry exactly the served guidance', function (string $topic) {
     $skill = file_get_contents(base_path("skills/artfct-{$topic}/SKILL.md"));
     $guidance = ArtifactGuidance::topic($topic)['text'];
