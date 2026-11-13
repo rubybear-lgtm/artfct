@@ -379,10 +379,7 @@ pub fn artifact_matches_filter(item: &ArtifactListItem, filter: &ArtifactListFil
             return false;
         }
     }
-    if filter.live && (item.revoked_at.is_some() || item.expires_at.is_some()) {
-        return false;
-    }
-    true
+    !(filter.live && (item.revoked_at.is_some() || item.expires_at.is_some()))
 }
 
 /// Whether an artifact revoked at `revoked_at` should still be served.
