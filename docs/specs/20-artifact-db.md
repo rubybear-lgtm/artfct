@@ -213,12 +213,12 @@ A version publish that leaves `db` out of its manifest **keeps the artifact's cu
 
 The database ships dark. Two switches, both fail closed:
 
-1. **Environment, `ARTFCT_ARTIFACT_DB_ENABLED`** (a Worker var, set per environment in `wrangler*.jsonc`): `false` or unset is **off**; `orgs` allows only orgs that are explicitly enabled; `true` allows every org that has not been explicitly turned off. Production started at `false` and is `orgs` for the pilot (only teams released in `/ops` get it); staging is `true` while it soaks. With it off, the whole `/__artfct/db/` namespace answers `404` before any D1 query, and a deploy or a new version that declares `db` is refused with `403`, so nothing accumulates behind a dark flag.
+1. **Environment, `ARTFCT_ARTIFACT_DB_ENABLED`** (a Worker var, set per environment in `wrangler*.jsonc`): `false` or unset is **off**; `orgs` allows only orgs that are explicitly enabled; `true` allows every org that has not been explicitly turned off. Production started at `false`, ran as `orgs` for the pilot, and is `true` now that the release covers every team (new teams otherwise had no gate row and failed); staging is `true`. With it off, the whole `/__artfct/db/` namespace answers `404` before any D1 query, and a deploy or a new version that declares `db` is refused with `403`, so nothing accumulates behind a dark flag.
 2. **Org, `org_settings.artifact_db_enabled`** (migration 0010, nullable): `NULL` follows the environment, `0` turns the org off, `1` turns it on in `orgs` mode. Laravel pushes it with the rest of an org's settings (`POST /v1/internal/org-settings`, optional `artifact_db_enabled`; omitted leaves the stored value).
 
 Laravel's Pennant feature release controls (`config/features.php`, released per team in `/ops`) are where staff decide who gets it. The `artifact-db` feature is registered there (off by default). Changing its release queues `SyncArtifactDbRollout`, which pushes each team's gate to the Worker (`artifact_db_enabled`, with the team's own `public_sharing_allowed` carried unchanged so the push can never flip it); `php artisan artifact-db:sync-rollout` does the same by hand. The `db_*` tools are `FeatureFlaggedTool`s, so they exist only for released teams, and `deploy_artifact` refuses `db` with `feature_not_enabled` for the rest.
 
-A team created after a release is on the Worker's default until the next sync (off in `orgs` mode). Widening to everyone is therefore two steps: release the feature to all teams, then set the Worker to `true`.
+In `orgs` mode a team created after a release was on the Worker's default until the next sync (off). That is why production is `true`: Laravel's release decides who sees the tools, and the Worker allows every team that has not been explicitly turned off.
 
 Order for a production release: apply migrations 0008 to 0010, deploy the Worker (still `false`), set `orgs`, enable a pilot org, widen, and only then consider `true`.
 
