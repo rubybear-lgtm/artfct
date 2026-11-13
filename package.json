@@ -27,6 +27,7 @@
         "waf:rate-limits": "node cloudflare-rate-limits.mjs",
         "waf:rate-limits:env": "node --env-file=.env cloudflare-rate-limits.mjs",
         "test:release": "node --test scripts/release/*.test.mjs",
+        "test:plugin": "node --test scripts/plugin/*.test.mjs",
         "mcp:live": "node scripts/mcp-live-smoke.mjs",
         "video:wide": "node scripts/render-landing-flow.mjs",
         "video:mobile": "node scripts/render-landing-mobile.mjs",

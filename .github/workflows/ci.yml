@@ -152,6 +152,11 @@ jobs:
       - name: Test skill scripts
         run: npm run test:skills
 
+      # RUB-530: the skills the plugin repository copies must stay free of
+      # npx and the init script.
+      - name: Test plugin skill sync
+        run: npm run test:plugin
+
   # The unit and feature suites hold no state a worker can see from another
   # worker: RefreshDatabase runs them on in-memory SQLite, so ParaTest's
   # processes are isolated and `--parallel` is safe here. The browser suite is
