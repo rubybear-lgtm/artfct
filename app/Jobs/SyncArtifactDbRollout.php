@@ -3,19 +3,17 @@
 namespace App\Jobs;
 
 use App\Models\Team;
-use App\Services\FeatureFlags;
-use App\Services\Sharing\OrgSettingsWriter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Pushes the `artifact-db` feature release to the Worker, one team at a time.
+ * Fans the `artifact-db` feature release out to the Worker, one queued job per
+ * team ({@see SyncArtifactDbTeam}), so a long team list never runs into one
+ * job's timeout and a failed push retries on its own.
  *
  * Laravel decides who has the artifact database (the release in /ops); the
  * Worker enforces it per org. Run after a release changes, and from
- * `artifact-db:sync-rollout`. A team the Worker could not be told about is
- * logged by the writer and stays on whatever the Worker last knew, which is
- * off unless it was explicitly enabled, so a failed push can only withhold.
+ * `artifact-db:sync-rollout`.
  */
 class SyncArtifactDbRollout implements ShouldQueue
 {
@@ -23,11 +21,11 @@ class SyncArtifactDbRollout implements ShouldQueue
 
     public const FEATURE = 'artifact-db';
 
-    public function handle(FeatureFlags $flags, OrgSettingsWriter $writer): void
+    public function handle(): void
     {
-        Team::query()->orderBy('id')->chunkById(100, function ($teams) use ($flags, $writer): void {
+        Team::query()->orderBy('id')->chunkById(100, function ($teams): void {
             foreach ($teams as $team) {
-                $writer->pushArtifactDb($team, $flags->enabled(self::FEATURE, $team));
+                SyncArtifactDbTeam::dispatch($team->id);
             }
         });
     }

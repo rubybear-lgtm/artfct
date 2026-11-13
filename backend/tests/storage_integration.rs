@@ -5440,3 +5440,77 @@ async fn version_publish_keeps_the_db_declaration_unless_told_to_remove_it(
     assert!(rows >= 2, "turning the database off must leave the rows");
     Ok(())
 }
+
+/// Spec 20 review finding: the gate push must not touch public sharing. It used
+/// to send the team's cached value, so a stale `false` could demote public
+/// artifacts while an admin's change was in flight. Omitted now means "leave it".
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn org_settings_gate_push_leaves_public_sharing_alone() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let secret = context
+        .limits_secret
+        .as_deref()
+        .ok_or("the limits secret is required; refusing to pass without asserting")?
+        .to_string();
+    let client = RetryingClient::new();
+    let sharing_row = format!(
+        "SELECT public_sharing_allowed AS n FROM org_settings WHERE org_id = '{}'",
+        context.org
+    );
+
+    // Public sharing explicitly off, gate on.
+    let (status, _) = internal_post(
+        &context,
+        &client,
+        &secret,
+        "/v1/internal/org-settings",
+        json!({"org": context.org, "public_sharing_allowed": false, "artifact_db_enabled": true}),
+    )
+    .await?;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    let after_sharing = count_value(&context, &sharing_row, "n")?;
+
+    // A gate-only push, which is what Laravel's sync now sends.
+    let (status, body) = internal_post(
+        &context,
+        &client,
+        &secret,
+        "/v1/internal/org-settings",
+        json!({"org": context.org, "artifact_db_enabled": false}),
+    )
+    .await?;
+    let after_gate_only = count_value(&context, &sharing_row, "n")?;
+
+    // Restore the shared org before asserting, so a failure cannot leave it off.
+    let (restore, _) = internal_post(
+        &context,
+        &client,
+        &secret,
+        "/v1/internal/org-settings",
+        json!({"org": context.org, "public_sharing_allowed": true, "artifact_db_enabled": true}),
+    )
+    .await?;
+    assert_eq!(restore, reqwest::StatusCode::OK);
+
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "a gate-only push is accepted: {body}"
+    );
+    assert_eq!(after_sharing, 0, "sharing was turned off");
+    assert_eq!(
+        after_gate_only, 0,
+        "a gate-only push must leave public sharing as it was"
+    );
+    assert_eq!(
+        body["public_sharing_allowed"], false,
+        "the response reports the stored value"
+    );
+    assert_eq!(
+        body["downgraded"],
+        json!([]),
+        "a gate-only push downgrades nothing"
+    );
+    Ok(())
+}

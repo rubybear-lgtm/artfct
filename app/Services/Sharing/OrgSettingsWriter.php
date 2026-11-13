@@ -34,9 +34,10 @@ final class OrgSettingsWriter
     }
 
     /**
-     * Push whether the artifact database is released to the team. The Worker's
-     * settings endpoint always carries `public_sharing_allowed`, so the team's
-     * current value is sent along unchanged: this call can never flip it.
+     * Push whether the artifact database is released to the team. Only the gate
+     * is sent: the Worker leaves public sharing alone when the field is
+     * omitted, so this call cannot undo a sharing change made while it was in
+     * flight (an earlier version sent the team's cached value and could).
      */
     public function pushArtifactDb(Team $team, bool $enabled): bool
     {
@@ -48,7 +49,6 @@ final class OrgSettingsWriter
             $response = Http::withToken($this->secret)
                 ->post(rtrim($this->baseUrl, '/').'/v1/internal/org-settings', [
                     'org' => $team->slug,
-                    'public_sharing_allowed' => (bool) ($team->public_sharing_allowed ?? true),
                     'artifact_db_enabled' => $enabled,
                 ]);
         } catch (Throwable $exception) {

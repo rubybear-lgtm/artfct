@@ -140,7 +140,7 @@ final class DeployArtifactTool extends Tool
         if (isset($validated['db'])) {
             $declared = $request->get('db')['collections'] ?? [];
             foreach (array_keys(is_array($declared) ? $declared : []) as $name) {
-                if (! is_string($name) || preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/', $name) !== 1 || in_array($name, ['session', 'batch', 'schema'], true)) {
+                if (! is_string($name) || preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/D', $name) !== 1 || in_array($name, ['session', 'batch', 'schema'], true)) {
                     return McpErrorResponse::error(
                         'Collection names use letters, digits, dot, underscore and hyphen (at most 64), may not start with a dot, and may not be session, batch or schema.',
                         'invalid_request',
@@ -587,6 +587,9 @@ final class DeployArtifactTool extends Tool
      */
     private function databaseManifest(array $db): array
     {
+        $rawDb = McpContext::rawArguments()->db ?? null;
+        $rawSeed = is_object($rawDb) && is_array($rawDb->seed ?? null) ? array_values($rawDb->seed) : [];
+
         $collections = [];
         foreach ($db['collections'] ?? [] as $name => $declaration) {
             $index = is_array($declaration) ? ($declaration['index'] ?? null) : null;
@@ -595,11 +598,16 @@ final class DeployArtifactTool extends Tool
 
         return [
             'collections' => $collections,
-            'seed' => array_values(array_map(static fn (array $row): array => [
-                'collection' => $row['collection'],
-                'doc_id' => $row['doc_id'],
-                'body' => $row['body'] === [] ? new \stdClass : $row['body'],
-            ], $db['seed'] ?? [])),
+            'seed' => array_map(static function (array $row, int $index) use ($rawSeed): array {
+                $rawBody = is_object($rawSeed[$index] ?? null) ? ($rawSeed[$index]->body ?? null) : null;
+
+                return [
+                    'collection' => $row['collection'],
+                    'doc_id' => $row['doc_id'],
+                    // The raw object keeps a nested `{}` as `{}`.
+                    'body' => is_object($rawBody) ? $rawBody : ($row['body'] === [] ? new \stdClass : $row['body']),
+                ];
+            }, array_values($db['seed'] ?? []), array_keys(array_values($db['seed'] ?? []))),
         ];
     }
 
