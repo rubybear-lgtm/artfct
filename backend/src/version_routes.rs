@@ -83,6 +83,9 @@ pub(crate) struct LiveArtifactRow {
     pub(crate) edit_access: String,
     pub(crate) title: Option<String>,
     pub(crate) description: Option<String>,
+    /// The current version's manifest, carrying the spec 20 `db`
+    /// declaration — a publish that omits `db` inherits it (carry-forward).
+    pub(crate) manifest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -304,7 +307,7 @@ async fn live_artifact(
     artifact_id: &str,
 ) -> Result<Option<LiveArtifactRow>> {
     database
-        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description, manifest FROM artifacts WHERE id = ? AND org_id = ? AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<LiveArtifactRow>(None)
         .await
@@ -417,7 +420,7 @@ pub(crate) async fn version_target(
         return Ok(select_version_target(same_org, None, viewer));
     }
     let other_org = database
-        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
+        .prepare("SELECT row_id, org_id, content_hash, current_version, user_id, tier, edit_access, title, description, manifest FROM artifacts WHERE id = ? AND tier = 'public' AND edit_access = 'edit' AND revoked_at IS NULL ORDER BY row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id)])?
         .first::<LiveArtifactRow>(None)
         .await?;
@@ -554,6 +557,22 @@ fn manifest_error_response(code: ErrorCode) -> Result<Response> {
     };
     json_error(code, message, status)
 }
+/// The deploy-time refusal for a broken spec 20 `db` declaration: 422 for a
+/// malformed declaration, 413 when the seed exceeds its 256 KiB cap.
+fn db_manifest_error_response(raw: &Value) -> Result<Response> {
+    let code = match raw
+        .get("manifest")
+        .map(crate::validation::validate_db_manifest)
+    {
+        Some(Err(ErrorCode::BundleTooLarge)) => ErrorCode::BundleTooLarge,
+        _ => ErrorCode::ValidationFailed,
+    };
+    let (message, status) = match code {
+        ErrorCode::BundleTooLarge => ("The artifact database seed is too large.", 413),
+        _ => ("The artifact database declaration is invalid.", 422),
+    };
+    json_error(code, message, status)
+}
 
 async fn create_version(
     artifact_id: &str,
@@ -591,9 +610,18 @@ async fn create_version(
     }
     let (manifest, bundle_hash) = match validate_permanent_manifest(&raw) {
         Ok(value) => value,
-        Err(code) => return manifest_error_response(code),
+        Err(code) => {
+            // A broken `db` declaration gets its own message; every other
+            // manifest failure keeps the existing one.
+            if raw
+                .get("manifest")
+                .is_some_and(|manifest| crate::validation::validate_db_manifest(manifest).is_err())
+            {
+                return db_manifest_error_response(&raw);
+            }
+            return manifest_error_response(code);
+        }
     };
-    let content_hash = bundle_hash.as_str();
     let storage =
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let org = credential.org_id.clone();
@@ -623,6 +651,42 @@ async fn create_version(
             403,
         );
     }
+    // Spec 20 carry-forward: a publish whose manifest omits `db` keeps the
+    // live artifact's declaration, so rows stay addressable across versions;
+    // an explicit `db: null` turns the endpoint off (rows stay). A present
+    // `db` object replaces the declaration. Seed rows are never rewritten
+    // here — seeding happens once, on first deploy.
+    let (manifest, bundle_hash) = match raw.get("manifest") {
+        Some(raw_manifest)
+            if !raw_manifest
+                .as_object()
+                .is_some_and(|object| object.contains_key("db")) =>
+        {
+            let previous: Value =
+                serde_json::from_str(&artifact.manifest).unwrap_or(Value::Null);
+            let inherited =
+                crate::validation::apply_db_carry_forward(raw_manifest, &previous);
+            if inherited == *raw_manifest {
+                (manifest, bundle_hash)
+            } else {
+                let mut patched = raw.clone();
+                patched["manifest"] = inherited;
+                match validate_permanent_manifest(&patched) {
+                    Ok(value) => (value.0, value.1),
+                    Err(code) => {
+                        if patched.get("manifest").is_some_and(|manifest| {
+                            crate::validation::validate_db_manifest(manifest).is_err()
+                        }) {
+                            return db_manifest_error_response(&patched);
+                        }
+                        return manifest_error_response(code);
+                    }
+                }
+            }
+        }
+        _ => (manifest, bundle_hash),
+    };
+    let content_hash = bundle_hash.as_str();
     let declared = quota::declared_bytes(manifest.files.iter().map(|file| file.size_bytes));
     // The bundle lock serialises same-content creates; the per-artifact lock
     // serialises version-numbering and promotion for this artifact; the org
@@ -1201,6 +1265,7 @@ mod tests {
                 edit_access: edit_access.to_string(),
                 title: Some("Kept title".to_string()),
                 description: Some("Kept description".to_string()),
+                manifest: "{}".to_string(),
             }
         }
         fn viewer<'a>(user_id: &'a str, role: &'a str) -> Viewer<'a> {
@@ -1344,6 +1409,7 @@ mod tests {
             edit_access: "edit".to_string(),
             title: Some("Kept title".to_string()),
             description: Some("Kept description".to_string()),
+            manifest: "{}".to_string(),
         };
         let body = serde_json::json!({
             "thumbnail": "https://artfct.dev/og-image.svg",

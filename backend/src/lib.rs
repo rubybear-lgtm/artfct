@@ -13,6 +13,7 @@ pub mod governance;
 pub mod quota;
 pub mod store;
 
+mod artifact_db;
 mod artifact_origin;
 mod artifact_routes;
 mod auth;
@@ -199,6 +200,12 @@ struct PermanentManifest {
     external_origins: Vec<String>,
     #[serde(default)]
     unsafe_eval: bool,
+    /// Spec 20 database declaration. Skipped when absent, so manifests
+    /// without a database hash byte-identically to before; validated by
+    /// `validation::validate_db_manifest` during deploy and versioned with
+    /// the artifact (seed included, so template pulls carry it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    db: Option<validation::DbManifest>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -455,6 +462,26 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
 
     if is_robots_request(&method, path) {
         return robots_response();
+    }
+
+    // Spec 20: the artifact database lives on the artifact origin only. An
+    // isolated artifact host routes `/__artfct/db/*` to the database
+    // dispatcher; the same prefix on any other host is a 404, so the
+    // endpoint exists nowhere else.
+    if path.starts_with(artifact_db::DB_PATH_PREFIX) {
+        if let Some(host) = req.headers().get("Host")? {
+            if artifact_origin::parse_isolated_hostname(
+                &host,
+                &artifact_origin::artifact_origin_suffix(&env),
+            )
+            .is_some()
+            {
+                return artifact_db::handle_db_request(&mut req, &env, &host)
+                    .await
+                    .or_else(|_| internal_error_response());
+            }
+        }
+        return not_found_response();
     }
 
     if let Some(response) = dispatch_unimplemented_route(&method, path) {
@@ -1653,6 +1680,7 @@ mod tests {
             files: Vec::new(),
             external_origins: Vec::new(),
             unsafe_eval: false,
+            db: None,
         };
         for is_isolated in [false, true] {
             assert!(permanent_file_response_headers(
@@ -2271,6 +2299,7 @@ mod tests {
             files: Vec::new(),
             external_origins: external_origins.into_iter().map(str::to_string).collect(),
             unsafe_eval,
+            db: None,
         }
     }
 

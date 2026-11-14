@@ -1092,6 +1092,7 @@ pub(crate) async fn resolve_permanent_artifact(
             files: Vec::new(),
             external_origins: Vec::new(),
             unsafe_eval: false,
+            db: None,
         }
     });
     let mut response = Response::from_bytes(serve_bytes)?.with_status(200);
@@ -1838,6 +1839,30 @@ pub(crate) async fn create_permanent_artifact(
     let (manifest, bundle_hash) = match validate_permanent_manifest(raw) {
         Ok(value) => value,
         Err(code) => {
+            // A broken spec 20 `db` declaration gets its own message; every
+            // other manifest failure keeps the existing one.
+            if raw
+                .get("manifest")
+                .is_some_and(|manifest| crate::validation::validate_db_manifest(manifest).is_err())
+            {
+                let seed_too_large = matches!(
+                    raw.get("manifest").map(crate::validation::validate_db_manifest),
+                    Some(Err(ErrorCode::BundleTooLarge))
+                );
+                return json_error(
+                    if seed_too_large {
+                        ErrorCode::BundleTooLarge
+                    } else {
+                        ErrorCode::ValidationFailed
+                    },
+                    if seed_too_large {
+                        "The artifact database seed is too large."
+                    } else {
+                        "The artifact database declaration is invalid."
+                    },
+                    if seed_too_large { 413 } else { 422 },
+                );
+            }
             let message = match code {
                 ErrorCode::EntrypointMissing => "The manifest entrypoint is missing.",
                 ErrorCode::InvalidPath => "The manifest contains an invalid path.",
@@ -1925,6 +1950,33 @@ pub(crate) async fn create_permanent_artifact(
             .release_content_lock(&org_key, &org_lock_owner)
             .await;
         return Ok(refusal);
+    }
+    // Spec 20: seed rows land with the artifact on first deploy, in the same
+    // batch as the row itself. Quota is checked here (docs and bytes), under
+    // the org lock, before any row is written. A fresh artifact holds no rows.
+    let seed_inserts = manifest
+        .db
+        .as_ref()
+        .map(crate::artifact_db::db_seed_inserts)
+        .unwrap_or_default();
+    if !seed_inserts.is_empty() {
+        let limits = crate::artifact_db::load_db_limits(&storage.database, &org).await?;
+        let seed_bytes = seed_inserts
+            .iter()
+            .map(|seed| seed.body.len() as i64)
+            .sum::<i64>();
+        if let Err(deny) = crate::artifact_db::db_quota_check(
+            limits,
+            0,
+            0,
+            seed_inserts.len() as i64,
+            seed_bytes,
+        ) {
+            let _ = storage
+                .release_content_lock(&org_key, &org_lock_owner)
+                .await;
+            return crate::artifact_db::db_quota_response(deny);
+        }
     }
     let file_hashes = manifest
         .files
@@ -2102,6 +2154,27 @@ pub(crate) async fn create_permanent_artifact(
                         JsValue::from_str(&provenance_json),
                     ])?,
             ];
+            // Spec 20 seed-once: `db.seed` rows land with the artifact id on
+            // first deploy, atomically with the row. The statements bind the
+            // loop's current `artifact_id`, so an id-collision retry cannot
+            // orphan seed rows under a discarded id. Republishes never run
+            // this path.
+            for seed in &seed_inserts {
+                statements.push(
+                    database
+                        .prepare(crate::artifact_db::DB_SEED_INSERT_SQL)
+                        .bind(&[
+                            JsValue::from_str(&org),
+                            JsValue::from_str(&artifact_id),
+                            JsValue::from_str(&seed.collection),
+                            JsValue::from_str(&seed.doc_id),
+                            JsValue::from_str(&seed.body),
+                            seed.index_value.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null),
+                            JsValue::from_str(&now),
+                            JsValue::from_str(&credential.user_id),
+                        ])?,
+                );
+            }
             for (file, is_present) in manifest.files.iter().zip(existing.iter().copied()) {
                 statements.push(
                     database
