@@ -72,6 +72,12 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 |---|---|---|
 | 17 | [Operator console](17-operator-console.md) | Staff finds a tenant, reads its plan, usage against quota and recent audit events; the tenant sees that staff looked |
 
+### Track I — Distribution
+
+| # | Spec | Headline DoD |
+|---|---|---|
+| 22 | [OpenAI plugin listing](22-openai-plugin-listing.md) | A fresh ChatGPT workspace adds the plugin, signs in as the demo account and completes the review test cases; UserInfo returns a verified email |
+
 ---
 
 **Ordering notes**
