@@ -1,6 +1,6 @@
 ---
 name: artfct-announcements
-description: A chronological board for team news: decisions, launches, and date changes, newest first.
+description: "A chronological board for team news: decisions, launches, and date changes, newest first."
 ---
 
 # Announcement board skill

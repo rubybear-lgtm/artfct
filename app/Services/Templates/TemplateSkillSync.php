@@ -100,7 +100,10 @@ final class TemplateSkillSync
     public static function skillFile(string $topic, string $guidanceBody, string $description): string
     {
         $oneLine = trim(preg_replace('/\s+/', ' ', $description) ?? '');
+        // The installer parses frontmatter as YAML: always quote, since a
+        // description with ": " would otherwise read as a nested mapping.
+        $quoted = '"'.str_replace('"', '\\"', $oneLine).'"';
 
-        return "---\nname: artfct-{$topic}\ndescription: {$oneLine}\n---\n\n".$guidanceBody;
+        return "---\nname: artfct-{$topic}\ndescription: {$quoted}\n---\n\n".$guidanceBody;
     }
 }

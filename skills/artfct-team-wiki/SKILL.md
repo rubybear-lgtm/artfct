@@ -1,6 +1,6 @@
 ---
 name: artfct-team-wiki
-description: A shared knowledge base with an index, cross-linked pages, an activity log, and a knowledge graph — plus the skill that keeps it current.
+description: "A shared knowledge base with an index, cross-linked pages, an activity log, and a knowledge graph — plus the skill that keeps it current."
 ---
 
 # Team wiki skill

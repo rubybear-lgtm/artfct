@@ -41,7 +41,7 @@ test('sync_writes_the_guidance_body_and_skill_file_for_the_fixture_template', fu
     expect($result['skill_path'])->toBe($root.'/skills/artfct-fixture/SKILL.md')
         ->and($skill)->toStartWith("---\nname: artfct-fixture\n")
         ->and(str_ends_with($skill, $guidance))->toBeTrue()
-        ->and($skill)->toBe("---\nname: artfct-fixture\ndescription: A minimal template that exercises the catalog, used only by tests.\n---\n\n".$guidance);
+        ->and($skill)->toBe("---\nname: artfct-fixture\ndescription: \"A minimal template that exercises the catalog, used only by tests.\"\n---\n\n".$guidance);
 
     // Re-running is byte-identical.
     $sync->sync('fixture');
