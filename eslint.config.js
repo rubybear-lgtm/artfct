@@ -115,6 +115,10 @@ export default [
             'node_modules',
             // Template fixture bundles are content under test, not shipped code.
             'tests/Fixtures/**',
+            // Template payloads are reviewed content validated by
+            // TemplateCatalog (no inline script, no on*=, size caps),
+            // not app code; app JS style rules do not apply to them.
+            'resources/templates/**',
             'public',
             'backend/build',
             'backend/target',

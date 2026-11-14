@@ -100,7 +100,7 @@ class DbSetTool extends ArtifactDbTool
         try {
             $call = $method === 'PATCH' ? 'patch' : 'put';
             $response = $this->dbRequest($origin['token'], $origin['origin'])
-                ->$call($url, ['body' => $validated['body']]);
+                ->$call($url, $validated['body']);
         } catch (\Throwable $exception) {
             return $this->unavailable($tool, $startedAt, $artifactId, $exception);
         }

@@ -263,10 +263,10 @@ test('db_set_sends_if_version_in_the_query_string', function () {
         ]],
     ])->assertOk()->assertJsonPath('result.isError', false);
 
-    // The Worker reads single-write `if_version` from the query string,
-    // never from the JSON body.
+    // The Worker stores the PUT body as the document itself (PATCH merges
+    // keys): no envelope. `if_version` rides the query string.
     Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
-        && $request->data() === ['body' => ['column' => 'done']]
+        && $request->data() === ['column' => 'done']
         && str_contains((string) $request->toPsrRequest()->getUri(), 'if_version=3')
         && ($request->header('X-Artfct-Db')[0] ?? '') === '1');
 });
