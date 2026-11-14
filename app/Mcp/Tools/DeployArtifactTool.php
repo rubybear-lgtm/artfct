@@ -3,31 +3,20 @@
 namespace App\Mcp\Tools;
 
 use App\Enums\ArtifactType;
-use App\Enums\AuditEventType;
 use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
-use App\Mcp\Support\McpTimestamp;
 use App\Models\Collection;
-use App\Models\McpConnection;
-use App\Models\User;
-use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactIdShape;
-use App\Services\Artifacts\ArtifactTypeResolver;
-use App\Services\Billing\BundleTooLargeException;
-use App\Services\Billing\DailyPublishLimiter;
-use App\Services\Billing\QuotaExceededException;
-use App\Services\Billing\QuotaService;
+use App\Services\Artifacts\ArtifactPublish;
+use App\Services\Artifacts\ArtifactPublisher;
+use App\Services\Artifacts\PublishFailedException;
 use App\Services\Collections\CollectionService;
-use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ExtractionHeuristics;
+use App\Support\ClientIp;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\JsonSchema\Types\Type;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -39,7 +28,6 @@ use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
-use RuntimeException;
 
 #[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
@@ -96,12 +84,12 @@ final class DeployArtifactTool extends Tool
 
     private const CONTENT_TYPE = 'text/html; charset=utf-8';
 
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(private readonly ArtifactPublisher $publisher) {}
 
     /**
      * Handle the tool request.
      */
-    public function handle(Request $request, QuotaService $quotaService, DailyPublishLimiter $dailyPublish, CollectionService $collections): ResponseFactory
+    public function handle(Request $request, CollectionService $collections): ResponseFactory
     {
         $startedAt = hrtime(true);
         McpContext::requireScope('artifacts:deploy', 'deploy_artifact');
@@ -176,9 +164,6 @@ final class DeployArtifactTool extends Tool
 
         $entrypoint = $bundle['entrypoint'];
         $files = $bundle['files'];
-        // Markdown entrypoints keep raw bytes (and text/markdown) for type
-        // inference and Worker-side render — never pre-render to HTML here.
-        $typeSourceBytes = $files[$entrypoint]['bytes'];
 
         $totalBytes = 0;
         foreach ($files as $file) {
@@ -193,238 +178,55 @@ final class DeployArtifactTool extends Tool
 
         $team = McpContext::team();
         $actor = McpContext::actor();
-        // Fingerprint from a path-sorted copy so identical bundles match
-        // regardless of input order, without reordering the Worker manifest.
-        $filesForFingerprint = $files;
-        ksort($filesForFingerprint);
-        $contentFingerprint = hash('sha256', implode("\0", array_map(
-            fn (array $file): string => $file['path'].':'.$file['sha256'],
-            $filesForFingerprint,
-        )));
-
-        try {
-            $quotaService->assertCanCreateArtifact($team, $totalBytes);
-            $dailyPublish->assertCanPublish($team, $actor);
-        } catch (QuotaExceededException $exception) {
-            app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
-
-            return McpErrorResponse::error(
-                $exception->getMessage().' Use get_usage to inspect current limits and usage, then retry after remediation.',
-                $exception->errorCode,
-                false,
-                'get_usage',
-                $exception->details,
-            );
-        } catch (BundleTooLargeException $exception) {
-            app(McpTelemetry::class)->record('deploy_artifact', $exception->errorCode, $startedAt);
-
-            return McpErrorResponse::error(
-                $exception->getMessage().' Use get_usage to inspect current limits and usage, then retry after remediation.',
-                $exception->errorCode,
-                false,
-                'get_usage',
-            );
-        } catch (RequestException|ConnectionException|RuntimeException) {
-            app(McpTelemetry::class)->record('deploy_artifact', 'upstream_unavailable', $startedAt);
-
-            return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
-        }
-
-        $workerBaseUrl = config('services.worker.base_url');
-        if (! is_string($workerBaseUrl) || $workerBaseUrl === '') {
-            return McpErrorResponse::error('The artifact service is not configured.', 'configuration_error');
-        }
-
-        $baseUrl = rtrim($workerBaseUrl, '/');
-        $token = McpContext::httpRequest()->bearerToken();
+        $httpRequest = McpContext::httpRequest();
         $titleProvided = array_key_exists('title', $validated);
         $descriptionProvided = array_key_exists('description', $validated);
+        // A version publish without an explicit title keeps the previous one;
+        // the publisher derives the create-time fallback from the entry bytes.
         $title = $titleProvided
-            ? ($validated['title'] ?? $this->extractTitle($entryBytes))
-            : $this->extractTitle($entryBytes);
+            ? ($validated['title'] ?? ArtifactPublisher::extractTitle($entryBytes))
+            : null;
         $description = $descriptionProvided
             ? ($validated['description'] ?? $title)
-            : $title;
-
-        if ($baseVersion !== null) {
-            // Read-before-write: refuse when the live version moved on since the
-            // caller read it, so a stale copy cannot silently replace newer work.
-            try {
-                $live = Http::withToken($token)->get($baseUrl.'/v1/artifacts/'.$artifactIdInput);
-            } catch (\Throwable $exception) {
-                report($exception);
-                app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
-
-                return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
-            }
-
-            if (in_array($live->status(), [403, 404], true)) {
-                app(McpTelemetry::class)->record('deploy_artifact', 'artifact_not_found', $startedAt);
-
-                return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
-            }
-
-            if (! $live->successful()) {
-                app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
-
-                return McpErrorResponse::error('The artifact service could not check the current version.', 'deployment_rejected', true);
-            }
-
-            $liveVersion = (int) $live->json('version');
-            if ($baseVersion > $liveVersion) {
-                app(McpTelemetry::class)->record('deploy_artifact', 'invalid_request', $startedAt, $artifactIdInput);
-
-                return McpErrorResponse::error(
-                    "base_version {$baseVersion} is ahead of the live version {$liveVersion}. Read the live version with read_artifact or get_artifact, then publish with that version as base_version.",
-                    'invalid_request',
-                    false,
-                    'get_artifact',
-                    ['artifact_id' => $artifactIdInput, 'base_version' => $baseVersion, 'live_version' => $liveVersion],
-                );
-            }
-
-            if ($liveVersion !== $baseVersion) {
-                app(McpTelemetry::class)->record('deploy_artifact', 'stale_base', $startedAt, $artifactIdInput);
-
-                return McpErrorResponse::error(
-                    "This artifact is now at version {$liveVersion}, but your change was built on version {$baseVersion}. Read the live version with read_artifact, merge your changes into it, then publish again with base_version {$liveVersion}.",
-                    'stale_base',
-                    false,
-                    'read_artifact',
-                    [
-                        'artifact_id' => $artifactIdInput,
-                        'base_version' => $baseVersion,
-                        'live_version' => $liveVersion,
-                        'current_version' => $liveVersion,
-                        'updated_at' => McpTimestamp::format($live->json('updated_at')),
-                    ],
-                );
-            }
-        }
+            : null;
 
         try {
-            $payload = [
-                'thumbnail' => 'https://artfct.dev/og-image.svg',
-                'preview_blurred' => false,
-                'manifest' => [
-                    'entrypoint' => $entrypoint,
-                    'files' => array_values(array_map(fn (array $file): array => [
-                        'path' => $file['path'],
-                        'content_type' => $file['content_type'],
-                        'size_bytes' => strlen($file['bytes']),
-                        'sha256' => $file['sha256'],
-                    ], $files)),
-                    'external_origins' => [],
-                ],
-                'provenance' => $this->provenance($request, $validated['model'] ?? null),
-            ];
-
-            // Version publishes omit title/description unless the caller sent
-            // them, so a previous description is not wiped by a title fallback.
-            // NOTE for worker agent: version create must treat missing title/
-            // description as "keep previous" (coalesce from the live artifact),
-            // not store NULL and overwrite the artifact row.
-            if (! $versionPublish || $titleProvided) {
-                $payload['title'] = $title;
-            }
-            if (! $versionPublish || $descriptionProvided) {
-                $payload['description'] = $description;
-            }
-
-            // A new version keeps the artifact's existing sharing, so those
-            // fields are deliberately absent from a version request.
-            if (! $versionPublish) {
-                $sharing = $validated['sharing']
+            $published = $this->publisher->publish(new ArtifactPublish(
+                team: $team,
+                actor: $actor,
+                credentialToken: (string) $httpRequest->bearerToken(),
+                files: $files,
+                entrypoint: $entrypoint,
+                startedAt: $startedAt,
+                title: $title,
+                description: $description,
+                sharing: $validated['sharing']
                     ?? $this->sharingForTier($validated['tier'] ?? null)
-                    ?? 'team';
-
-                $payload = [
-                    'mode' => 'permanent',
-                    // `tier` is the deprecated alias: `sharing` wins when both
-                    // are given, and the tier sent always matches the sharing
-                    // so an older Worker that only knows `tier` still accepts it.
-                    'tier' => $this->tierForSharing($sharing),
-                    'sharing' => $sharing,
-                    'edit_access' => $validated['edit_access'] ?? 'view',
-                ] + $payload;
-            }
-
-            $created = Http::withToken($token)->post(
-                $versionPublish ? $baseUrl.'/v1/artifacts/'.$artifactIdInput.'/versions' : $baseUrl.'/v1/artifacts',
-                $payload,
+                    ?? 'team',
+                editAccess: $validated['edit_access'] ?? 'view',
+                artifactId: $artifactIdInput,
+                baseVersion: $baseVersion,
+                collection: $targetCollection,
+                provenance: $this->provenance($request, $validated['model'] ?? null),
+                declaredType: isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
+                source: 'mcp',
+                tool: 'deploy_artifact',
+                ip: ClientIp::for($httpRequest),
+                userAgent: $httpRequest->userAgent() ?? 'unknown',
+                clientName: $httpRequest->header('MCP-Client-Name'),
+            ));
+        } catch (PublishFailedException $exception) {
+            return McpErrorResponse::error(
+                $exception->getMessage(),
+                $exception->errorCode,
+                $exception->retryable,
+                $exception->nextAction,
+                $exception->details,
             );
-
-            if ($created->successful()) {
-                $uploaded = [];
-                foreach ((array) $created->json('missing_files', []) as $missing) {
-                    $file = collect($files)->firstWhere('sha256', $missing);
-                    if ($file === null || isset($uploaded[$missing])) {
-                        continue;
-                    }
-                    $uploaded[$missing] = true;
-
-                    $upload = Http::withToken($token)
-                        ->withBody($file['bytes'], $file['content_type'])
-                        ->put($baseUrl.'/v1/artifacts/'.$created->json('id').'/files/'.$missing);
-
-                    if (! $upload->successful()) {
-                        app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
-
-                        return McpErrorResponse::error('The artifact service could not store the artifact content.', 'deployment_rejected', true);
-                    }
-                }
-            }
-        } catch (\Throwable $exception) {
-            report($exception);
-            app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
-
-            return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
         }
 
-        if ($created->status() === 429) {
-            app(McpTelemetry::class)->record('deploy_artifact', 'rate_limited', $startedAt);
-
-            return McpErrorResponse::error('The workspace is publishing too quickly. Retry shortly.', 'rate_limited', true);
-        }
-
-        if ($created->status() === 403 && $created->json('error.code') === 'quota_exceeded') {
-            app(McpTelemetry::class)->record('deploy_artifact', 'quota_exceeded', $startedAt);
-
-            return McpErrorResponse::error('This workspace is over its plan limits. Use get_usage to inspect them.', 'quota_exceeded', false, 'get_usage');
-        }
-
-        if ($created->status() === 403 && $created->json('error.code') === 'public_sharing_disabled') {
-            app(McpTelemetry::class)->record('deploy_artifact', 'public_sharing_disabled', $startedAt);
-
-            return McpErrorResponse::error('Your team has turned off public links. Publish it with sharing set to team or private instead.', 'public_sharing_disabled');
-        }
-
-        if ($versionPublish && $created->status() === 403 && $created->json('error.code') === 'forbidden') {
-            app(McpTelemetry::class)->record('deploy_artifact', 'edit_forbidden', $startedAt);
-
-            return McpErrorResponse::error('You can only publish new versions of artifacts you own or that are shared with you for editing. Publish it as a new artifact instead by calling deploy_artifact without artifact_id.', 'edit_forbidden');
-        }
-
-        if ($versionPublish && $created->status() === 404) {
-            app(McpTelemetry::class)->record('deploy_artifact', 'artifact_not_found', $startedAt);
-
-            return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
-        }
-
-        if ($versionPublish && $created->status() === 409) {
-            app(McpTelemetry::class)->record('deploy_artifact', 'version_conflict', $startedAt);
-
-            return McpErrorResponse::error('Another version was being published at the same time. Retry the deployment.', 'version_conflict', true);
-        }
-
-        if (! $created->successful()) {
-            app(McpTelemetry::class)->record('deploy_artifact', 'error', $startedAt);
-
-            return McpErrorResponse::error('The artifact service could not accept this deployment.', 'deployment_rejected');
-        }
-
-        $artifactId = (string) $created->json('id');
-        $link = McpArtifactLink::forArtifact($team->slug, $artifactId, $created->json('tier'), $created->json('url'));
+        $artifactId = $published['id'];
+        $link = McpArtifactLink::forArtifact($team->slug, $artifactId, $published['tier'], $published['url']);
 
         if ($link instanceof ResponseFactory) {
             app(McpTelemetry::class)->record('deploy_artifact', McpArtifactLink::ERROR_CODE, $startedAt, $artifactId);
@@ -432,75 +234,14 @@ final class DeployArtifactTool extends Tool
             return $link;
         }
 
-        $tier = $created->json('tier');
-        $version = (int) $created->json('version');
-        // Product `created` means "brand-new artifact", not "Worker inserted a
-        // version row". Version publishes are always created:false (RUB-516),
-        // even when a legacy Worker still reports created:true on 201.
-        $wasCreated = ! $versionPublish;
-
-        app(McpTelemetry::class)->record('deploy_artifact', 'success', $startedAt, $artifactId);
-        $this->audit->recordForRequest(
-            McpContext::httpRequest(),
-            AuditEventType::ArtifactDeployed,
-            $team,
-            $actor,
-            // A version publish is audited against the version, so the log
-            // records which publish happened rather than only the artifact.
-            $versionPublish ? "artifact:{$artifactId} version:{$version}" : "artifact:{$artifactId}",
-        );
-
-        $actorUser = ctype_digit((string) $actor) ? User::query()->find((int) $actor) : null;
-        app(ProductAnalytics::class)->artifactShared(
-            $actorUser ?? (string) $actor,
-            $team,
-            'mcp',
-            [
-                'artifact_id' => $artifactId,
-                'version' => $version,
-                'created' => $wasCreated,
-                'mcp_client_name' => McpContext::httpRequest()->header('MCP-Client-Name'),
-            ],
-        );
-
-        // Daily quota: new artifacts always count. Version publishes count only
-        // when the Worker wrote a new version (HTTP 201); identical-content
-        // no-ops return 200 and must not burn the cap.
-        $countsTowardDaily = ! $versionPublish || $created->status() === 201;
-        $dailyPublish->recordPublish($team, $actor, $contentFingerprint, $countsTowardDaily);
-
-        $artifactType = app(ArtifactTypeResolver::class)->record(
-            $team,
-            $artifactId,
-            $typeSourceBytes,
-            isset($validated['artifact_type']) ? ArtifactType::from($validated['artifact_type']) : null,
-        );
-
-        if ($targetCollection instanceof Collection) {
-            try {
-                $collections->addArtifact($targetCollection, $artifactId);
-            } catch (\Throwable $exception) {
-                report($exception);
-                app(McpTelemetry::class)->record('deploy_artifact', 'collection_mutation_failed', $startedAt, $artifactId);
-
-                return McpErrorResponse::error(
-                    'The artifact was published, but it could not be added to that collection. Retry with add_collection_artifact.',
-                    'collection_mutation_failed',
-                    true,
-                    'add_collection_artifact',
-                    ['id' => $artifactId, 'collection_id' => $targetCollection->id],
-                );
-            }
-        }
-
         $result = [
             'id' => $artifactId,
-            'artifact_type' => $artifactType->value,
+            'artifact_type' => $published['artifact_type'],
             'view_url' => $link,
-            'sharing' => $this->sharingFromResponse($created->json('sharing'), is_string($tier) ? $tier : null),
-            'version' => $version,
-            'created' => $wasCreated,
-            'title' => $title,
+            'sharing' => $published['sharing'],
+            'version' => $published['version'],
+            'created' => $published['created'],
+            'title' => $published['title'],
             'organization' => $team->slug,
         ];
 
@@ -673,43 +414,6 @@ final class DeployArtifactTool extends Tool
             'private' => 'private',
             default => null,
         };
-    }
-
-    /** The `tier` an older Worker still understands, derived from `sharing`. */
-    private function tierForSharing(string $sharing): string
-    {
-        return match ($sharing) {
-            'public' => 'public',
-            'private' => 'private',
-            default => 'secure',
-        };
-    }
-
-    /**
-     * The sharing to report: the Worker's own value when it returned one, else
-     * the tier mapped to its sharing name (`secure` = `team`).
-     */
-    private function sharingFromResponse(mixed $sharing, ?string $tier): ?string
-    {
-        return is_string($sharing) && $sharing !== '' ? $sharing : $this->sharingForTier($tier);
-    }
-
-    private function extractTitle(string $html): string
-    {
-        if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $matches) === 1) {
-            $title = trim(strip_tags($matches[1]));
-
-            if ($title !== '') {
-                return Str::limit($title, 200, '');
-            }
-        }
-
-        $heading = ExtractionHeuristics::titleFromHtml($html);
-        if ($heading !== null) {
-            return Str::limit($heading, 200, '');
-        }
-
-        return 'Untitled artifact';
     }
 
     /** @return array<string, mixed> */
