@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Announcements — briefing board</title>
+<style>
+  :root {
+    --bone: #F7F5F2;
+    --paper: #FBFAF8;
+    --hairline: #DEDAD2;
+    --ink: #262624;
+    --muted: #55544E;
+    --quiet: #69675F;
+    --oxblood: #701A24;
+    --oxblood-deep: #58141C;
+    --tint: #F1E4E5;
+    --row: #EFECE6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bone); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Manrope, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.55;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .narrow { max-width: 760px; }
+  header.page { padding: 48px 0 8px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--oxblood); font-weight: 700; margin: 0 0 12px; }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -0.02em; font-size: clamp(40px, 6vw, 60px); line-height: 1.04; margin: 0 0 12px; }
+  h1 em { color: var(--oxblood); font-style: italic; }
+  .lede { color: var(--muted); max-width: 65ch; margin: 0 0 16px; }
+  .mode { display: inline-block; font-size: 13px; color: var(--muted); border: 1px solid var(--hairline); border-radius: 20px; padding: 4px 14px; background: var(--paper); margin-bottom: 24px; }
+  .mode strong { color: var(--oxblood); font-weight: 600; }
+  .banner { border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; font-size: 14px; }
+  .banner[hidden] { display: none; }
+  .banner-readonly { background: var(--row); border: 1px solid var(--hairline); color: var(--muted); }
+  .banner-expired { background: var(--tint); border: 1px solid var(--oxblood); color: var(--ink); }
+  .banner-expired .btn { margin-left: 12px; }
+  .btn { font: inherit; font-size: 14px; font-weight: 600; background: var(--oxblood); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+  .btn:hover { background: var(--oxblood-deep); }
+  .btn-quiet { background: transparent; color: var(--oxblood); border: 1px solid var(--oxblood); }
+  .btn-quiet:hover { background: var(--tint); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .chip { font: inherit; font-size: 13px; font-weight: 600; background: var(--row); color: var(--muted); border: 1px solid transparent; border-radius: 16px; padding: 5px 14px; cursor: pointer; min-height: 44px; }
+  .chip[aria-pressed="true"] { background: var(--tint); color: var(--oxblood); border-color: var(--oxblood); }
+  .posts { list-style: none; margin: 0 0 16px; padding: 0; border-top: 1px solid var(--hairline); }
+  .posts > li { border-bottom: 1px solid var(--hairline); padding: 20px 4px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--oxblood); background: var(--tint); border-radius: 4px; padding: 2px 8px; margin-bottom: 8px; }
+  .posts h3 { margin: 0 0 6px; font-family: Georgia, serif; font-weight: 500; font-size: 24px; }
+  .posts .body { margin: 0 0 8px; color: var(--muted); max-width: 70ch; }
+  .posts .body p { margin: 0 0 8px; }
+  .posts .body a { color: var(--oxblood); }
+  .posts time { font-size: 13px; color: var(--quiet); }
+  .post-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .post-actions .btn { font-size: 13px; padding: 6px 12px; }
+  .edit-form textarea { width: 100%; font: inherit; font-size: 14px; background: var(--bone); border: 1px solid var(--hairline); border-radius: 8px; padding: 8px 12px; margin: 8px 0; color: var(--ink); min-height: 90px; }
+  .composer { background: var(--paper); border: 1px solid var(--hairline); border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .composer[hidden] { display: none; }
+  .composer h2 { font-family: Georgia, serif; font-weight: 500; font-size: 20px; margin: 0 0 12px; }
+  .composer label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 4px; }
+  .composer input, .composer textarea, .composer select {
+    width: 100%; font: inherit; font-size: 14px; background: var(--bone);
+    border: 1px solid var(--hairline); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; color: var(--ink);
+  }
+  .composer textarea { min-height: 90px; resize: vertical; }
+  .composer input:focus, .composer textarea:focus, .composer select:focus { outline: none; border-color: var(--oxblood); box-shadow: 0 0 0 3px var(--tint); }
+  .form-error { color: var(--oxblood); font-size: 14px; margin: 0 0 12px; }
+  .form-error[hidden] { display: none; }
+  .counts { font-size: 13px; color: var(--quiet); margin: 0 0 12px; }
+  .pager { display: flex; gap: 8px; align-items: center; margin: 0 0 24px; font-size: 13px; color: var(--quiet); }
+  .pager[hidden] { display: none; }
+  footer.page { border-top: 1px solid var(--hairline); padding: 20px 0 48px; color: var(--quiet); font-size: 13px; }
+  footer.page a { color: var(--oxblood); }
+  .empty { color: var(--quiet); font-size: 14px; padding: 24px 4px; }
+</style>
+</head>
+<body>
+<header class="wrap page narrow">
+  <p class="eyebrow">Announcements</p>
+  <h1>Team <em>briefing</em></h1>
+  <p class="lede">What just happened, newest first. Decisions, launches, dates — one chronological board the team and its agents check before starting work.</p>
+  <span class="mode" id="mode-badge"><strong>Shared with the team</strong> · anyone with edit access can post</span>
+</header>
+<div class="wrap narrow">
+  <p class="banner banner-readonly" id="readonly-banner" hidden>You have read-only access to this board. Everything is visible, but posting is turned off for your role.</p>
+  <div class="banner banner-expired" id="expired-banner" hidden><span>This board needs to be reloaded to keep saving.</span><button class="btn" type="button" id="reload-btn">Reload</button></div>
+  <div class="chips" role="group" aria-label="Filter by tag" id="chips"></div>
+  <p class="counts" id="counts"></p>
+</div>
+<main class="wrap narrow">
+  <ul class="posts" id="posts"></ul>
+  <div class="pager" id="pager" hidden>
+    <button class="btn btn-quiet" type="button" id="prev-page">Newer</button>
+    <span id="page-label"></span>
+    <button class="btn btn-quiet" type="button" id="next-page">Older</button>
+  </div>
+  <section class="composer" aria-label="New announcement" id="composer-section">
+    <h2>Post an announcement</h2>
+    <p class="form-error" id="form-error" hidden></p>
+    <form id="composer">
+      <label for="f-title">Title</label>
+      <input id="f-title" name="title" type="text" maxlength="80" placeholder="What happened, in one line" required>
+      <label for="f-body">Details</label>
+      <textarea id="f-body" name="body" placeholder="What, who, when — and a link if there is one"></textarea>
+      <label for="f-tag">Tag</label>
+      <select id="f-tag" name="tag">
+        <option value="news">news</option>
+        <option value="decision">decision</option>
+        <option value="launch">launch</option>
+        <option value="event">event</option>
+        <option value="note">note</option>
+      </select>
+      <button class="btn" type="submit">Post</button>
+    </form>
+  </section>
+</main>
+<footer class="wrap page narrow">
+  Newest first, one tag per post. The upkeep rules for this board live in <a href="SKILL.md">SKILL.md</a>.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
