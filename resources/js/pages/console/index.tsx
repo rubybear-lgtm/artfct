@@ -43,6 +43,16 @@ interface Artifact {
     };
 }
 
+interface TemplateSummary {
+    key: string;
+    title: string;
+    description: string;
+    version: number;
+    requires: string[];
+    available: boolean;
+    unavailable_reason: string | null;
+}
+
 interface ConsoleIndexProps {
     team: {
         id: number;
@@ -76,6 +86,11 @@ interface ConsoleIndexProps {
         reason: string;
         failed_at: string;
     }[];
+    /** False until the templates feature is released: the section stays hidden. */
+    templatesReleased: boolean;
+    /** Viewers cannot pull: the section offers them no Use control. */
+    canPullTemplates: boolean;
+    templates: TemplateSummary[];
 }
 
 /** The row's name as plain text: its title, or the short id when it has none. */
@@ -162,6 +177,9 @@ export default function ConsoleIndex({
     indexingEnabled,
     indexing,
     indexingFailures,
+    templatesReleased,
+    canPullTemplates,
+    templates,
 }: ConsoleIndexProps) {
     const [localFilters, setLocalFilters] = useState(filters);
     const [revoking, setRevoking] = useState<Artifact | null>(null);
@@ -319,6 +337,43 @@ export default function ConsoleIndex({
         setRevoking(null);
         router.patch(
             ConsoleController.revoke.url({ team: team.slug, artifactId }),
+        );
+    };
+
+    /**
+     * The template pending confirmation, with the id its pull posts. The id
+     * is minted when the dialog opens, so a double click on the confirm
+     * button posts twice with one id and still makes one board.
+     */
+    const [useTemplate, setUseTemplate] = useState<{
+        template: TemplateSummary;
+        requestId: string;
+    } | null>(null);
+    const [pullingTemplate, setPullingTemplate] = useState(false);
+
+    const openUseTemplate = (template: TemplateSummary) => {
+        setUseTemplate({ template, requestId: crypto.randomUUID() });
+    };
+
+    const confirmUseTemplate = () => {
+        if (useTemplate === null || pullingTemplate) {
+            return;
+        }
+
+        setPullingTemplate(true);
+        router.post(
+            ConsoleController.pull.url({
+                team: team.slug,
+                template: useTemplate.template.key,
+            }),
+            { request_id: useTemplate.requestId },
+            {
+                preserveScroll: true,
+                onFinish: () => {
+                    setPullingTemplate(false);
+                    setUseTemplate(null);
+                },
+            },
         );
     };
 
@@ -558,6 +613,64 @@ export default function ConsoleIndex({
                         ))}
                     </ul>
                 </div>
+            )}
+
+            {templatesReleased && templates.length > 0 && (
+                <section
+                    aria-labelledby="templates-heading"
+                    data-testid="template-list"
+                    className="mb-8 border-t border-border pt-6"
+                >
+                    <h2
+                        id="templates-heading"
+                        className="text-sm font-semibold"
+                    >
+                        Templates
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Start from a reviewed page instead of a blank one. A
+                        pull makes a new board in your library with the
+                        template&apos;s starter cards.
+                    </p>
+                    <ul className="mt-4 divide-y divide-border border-y border-border">
+                        {templates.map((template) => (
+                            <li
+                                key={template.key}
+                                data-testid={`template-row-${template.key}`}
+                                className="flex flex-col gap-3 py-4 md:flex-row md:items-start md:justify-between md:gap-6"
+                            >
+                                <div className="min-w-0 flex-1">
+                                    <p className="min-w-0 font-semibold break-words text-foreground">
+                                        {template.title}
+                                    </p>
+                                    {template.description && (
+                                        <p className="mt-0.5 min-w-0 text-sm break-words text-muted-foreground">
+                                            {template.description}
+                                        </p>
+                                    )}
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {template.available
+                                            ? 'Ready to use'
+                                            : template.unavailable_reason}
+                                    </p>
+                                </div>
+                                {canPullTemplates && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={!template.available}
+                                        onClick={() =>
+                                            openUseTemplate(template)
+                                        }
+                                        data-testid={`use-template-${template.key}`}
+                                    >
+                                        Use template
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </section>
             )}
 
             {/* Editorial Hairline Artifact List */}
@@ -1063,6 +1176,24 @@ export default function ConsoleIndex({
                     description="People and AI tools lose access to it right away. This cannot be undone."
                     confirmLabel="Revoke artifact"
                     onConfirm={handleRevoke}
+                />
+            )}
+
+            {useTemplate && (
+                <ConfirmDialog
+                    open
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setUseTemplate(null);
+                        }
+                    }}
+                    title={`Use ${useTemplate.template.title}?`}
+                    description="This makes a new board in your library with the template's starter cards. A pull counts as a publish toward quota and the daily limit."
+                    confirmLabel="Use template"
+                    onConfirm={confirmUseTemplate}
+                    cancelLabel="Not now"
+                    destructive={false}
+                    processing={pullingTemplate}
                 />
             )}
         </div>

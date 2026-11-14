@@ -113,6 +113,8 @@ export default [
         ignores: [
             'vendor',
             'node_modules',
+            // Template fixture bundles are content under test, not shipped code.
+            'tests/Fixtures/**',
             'public',
             'backend/build',
             'backend/target',

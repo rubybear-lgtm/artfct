@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Enums\AuditEventType;
+use App\Enums\McpScope;
 use App\Enums\TeamRole;
 use App\Jobs\IndexArtifactJob;
 use App\Models\ArtifactIndexEntry;
@@ -15,10 +16,17 @@ use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactServiceUnavailableException;
 use App\Services\Artifacts\OrganizationExportArchive;
+use App\Services\Artifacts\WorkerCredential;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ArtifactTextPurger;
 use App\Services\Indexing\IndexingService;
 use App\Services\Sharing\ArtifactVisibility;
+use App\Services\Templates\PullFailedException;
+use App\Services\Templates\TeamFeatureGates;
+use App\Services\Templates\TemplateCatalog;
+use App\Services\Templates\TemplateListing;
+use App\Services\Templates\TemplatePull;
+use App\Services\Templates\TemplatePuller;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,7 +58,7 @@ class ConsoleController extends Controller
      * Show the artifact listing console.
      * Accessible to all team members (viewers see no revoke/export buttons).
      */
-    public function index(Request $request, string $teamSlug): InertiaResponse
+    public function index(Request $request, string $teamSlug, TemplateCatalog $catalog, TeamFeatureGates $gates): InertiaResponse
     {
         $user = $request->user();
         $team = $this->resolveTeam($user, $teamSlug);
@@ -110,6 +118,13 @@ class ConsoleController extends Controller
             'nextCursor' => $data['next_cursor'],
             'cursor' => is_string($cursor) ? $cursor : null,
             'isAdmin' => $user->isAdminOf($team),
+            // Templates stay hidden until released for the team; an unreleased
+            // team gets an empty list and no section.
+            'templatesReleased' => $templatesReleased = $gates->enabled(TeamFeatureGates::ARTIFACT_TEMPLATES, $team),
+            'templates' => $templatesReleased ? TemplateListing::summaries($catalog, $gates, $team) : [],
+            // Viewers lack the deploy scope, so the puller would refuse them:
+            // the section offers no Use control to them either.
+            'canPullTemplates' => in_array('artifacts:deploy', McpScope::forRole($user->teamRole($team)), true),
             // The signing secret belongs to the environment, not the member:
             // without one the page is not given an open control. A secure row
             // would only 503, and the list the Worker returns carries no tier,
@@ -211,6 +226,70 @@ class ConsoleController extends Controller
             }
             throw $e;
         }
+    }
+
+    /**
+     * Pull an Artfct-authored template into the library as a new artifact
+     * owned by the team (spec 21). The pull runs as the signed-in member
+     * with their role's scopes through the same path as `pull_template`, so
+     * a double click (two posts, one request id) still makes one board.
+     */
+    public function pull(Request $request, string $teamSlug, string $templateKey, TemplatePuller $puller, TeamFeatureGates $gates): RedirectResponse
+    {
+        $user = $request->user();
+        $team = $this->resolveTeam($user, $teamSlug);
+
+        Gate::authorize('view', $team);
+        abort_unless($gates->enabled(TeamFeatureGates::ARTIFACT_TEMPLATES, $team), 404);
+
+        $validated = $request->validate([
+            'request_id' => ['nullable', 'string', 'max:64'],
+            'title' => ['nullable', 'string', 'max:200'],
+            'sharing' => ['nullable', 'string', 'in:private,team'],
+            'collection' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $requestId = $validated['request_id'] ?? null;
+
+        try {
+            $result = $puller->pull(new TemplatePull(
+                team: $team,
+                actor: (string) $user->id,
+                credentialToken: WorkerCredential::forOrg($team->slug),
+                templateKey: $templateKey,
+                startedAt: hrtime(true),
+                scopes: McpScope::forRole($user->teamRole($team)),
+                title: $validated['title'] ?? null,
+                sharing: $validated['sharing'] ?? null,
+                collection: $validated['collection'] ?? null,
+                requestId: is_string($requestId) && trim($requestId) !== '' ? $requestId : null,
+                source: 'library',
+                ip: $request->ip() ?? '127.0.0.1',
+                userAgent: $request->userAgent() ?? 'unknown',
+                recordTelemetry: false,
+            ));
+        } catch (PullFailedException $exception) {
+            if (in_array($exception->errorCode, ['template_not_found', 'collection_not_found', 'feature_not_enabled'], true)) {
+                abort(404);
+            }
+
+            if ($exception->errorCode === 'insufficient_scope') {
+                abort(403);
+            }
+
+            // Quota and invalid requests are the caller's own state, not a bug.
+            if (! in_array($exception->errorCode, ['quota_exceeded', 'invalid_request'], true)) {
+                report($exception);
+            }
+
+            Inertia::flash('toast', ['type' => 'error', 'message' => __("Couldn't pull the template right now. Try again in a minute.")]);
+
+            return redirect()->route('console.index', ['team' => $team]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Template pulled into your library.')]);
+
+        return redirect()->route('console.index', ['team' => $team]);
     }
 
     /**

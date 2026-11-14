@@ -76,6 +76,7 @@ Route::middleware(['auth', EnsureTeamSignIn::class])->group(function () {
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/versions/{version}/restore', [ArtifactVersionController::class, 'restore'])->whereNumber('version')->name('console.versions.restore');
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/reindex', [ConsoleController::class, 'reindex'])->name('console.reindex');
     Route::patch('settings/teams/{team}/console/artifacts/{artifactId}/revoke', [ConsoleController::class, 'revoke'])->name('console.revoke');
+    Route::post('settings/teams/{team}/console/templates/{template}/pull', [ConsoleController::class, 'pull'])->name('console.templates.pull');
     Route::get('settings/teams/{team}/console/export', [ConsoleController::class, 'export'])->name('console.export');
 
     // Session-authenticated, inert preview of one artifact. It lives outside

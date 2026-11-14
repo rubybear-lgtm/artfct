@@ -7,7 +7,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Templates\TeamFeatureGates;
 use App\Services\Templates\TemplateCatalog;
-use Illuminate\Contracts\JsonSchema\JsonSchema;
+use App\Services\Templates\TemplateListing;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -59,28 +59,7 @@ final class ListTemplatesTool extends FeatureFlaggedTool
 
         McpContext::requireScope('artifacts:read', 'list_templates');
 
-        $team = McpContext::team();
-        $templates = [];
-
-        foreach ($catalog->all() as $template) {
-            $missing = [];
-            foreach ($template->requires as $feature) {
-                if (! $gates->enabled($feature, $team)) {
-                    $missing[] = $feature;
-                }
-            }
-
-            $templates[] = [
-                'key' => $template->key,
-                'title' => $template->title,
-                'description' => $template->description,
-                'version' => $template->version,
-                'artifact_type' => $template->artifactType,
-                'requires' => $template->requires,
-                'available' => $missing === [],
-                'unavailable_reason' => $missing === [] ? null : 'Requires features not released for this workspace: '.implode(', ', $missing).'.',
-            ];
-        }
+        $templates = TemplateListing::summaries($catalog, $gates, McpContext::team());
 
         app(McpTelemetry::class)->record('list_templates', 'success', $startedAt);
 
