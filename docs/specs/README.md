@@ -55,7 +55,9 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | 12 | [Indexing pipeline](12-indexing-pipeline.md) | A JS-heavy dashboard is searchable by content absent from its source HTML |
 | 16 | [Collections and usage ranking](16-collections.md) | A canonical artifact outranks a semantically closer one nobody has opened |
 | 18 | [Blog content service](18-blog-content-service.md) | A Markdown draft lints against the claim allowlist and renders the review document and the live post from one source |
-
+| 22 | [Kanban template + skill](22-kanban-template.md) | A new team pulls the kanban template and gets its own working board, in private and team modes, with the skill in the bundle |
+| 23 | [Team wiki template + skill](23-team-wiki-template.md) | A new team pulls the wiki template and gets its own compounding knowledge base, with ingest/query/lint working in both modes |
+| 24 | [Announcement board template + skill](24-announcement-board-template.md) | A new team pulls the announcement board and gets its own newest-first log, with check-before-work demonstrated |
 → **Thesis testable.**
 
 ### Track G — Commercial
