@@ -26,6 +26,7 @@ import {
     deploy,
     indexingEnabled,
     laravel,
+    retry429,
     run,
     tinker,
     worker,
@@ -158,21 +159,25 @@ async function web(actor, path, headers = {}) {
 }
 
 async function mcpRequest(token, session, method, params) {
-    const response = await fetch(`${laravel}/mcp`, {
-        method: 'POST',
-        headers: {
-            Accept: 'application/json, text/event-stream',
-            'Content-Type': 'application/json',
-            ...(token ? authed(token) : {}),
-            ...(session ? { 'MCP-Session-Id': session } : {}),
-        },
-        body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: crypto.randomUUID(),
-            method,
-            params,
+    // A team shares one 120-calls-a-minute bucket; a throttled call waits out
+    // Retry-After once instead of aborting the whole run.
+    const response = await retry429(() =>
+        fetch(`${laravel}/mcp`, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json, text/event-stream',
+                'Content-Type': 'application/json',
+                ...(token ? authed(token) : {}),
+                ...(session ? { 'MCP-Session-Id': session } : {}),
+            },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: crypto.randomUUID(),
+                method,
+                params,
+            }),
         }),
-    });
+    );
     const text = await response.text();
     let payload = null;
 
@@ -223,6 +228,20 @@ async function mcpTool(actor, name, args) {
 
     return response.payload.result;
 }
+
+/**
+ * What read_artifact answers for an artifact the caller may see: it only gets
+ * to these after the Worker's visibility pre-check passes. Whether the text is
+ * indexed yet (it is not, on this stack) decides which one. artifact_not_found
+ * and infrastructure errors (upstream_unavailable, artifact_retrieval_failed,
+ * configuration_error) are deliberately not in the list.
+ */
+const READ_REACHED_CONTENT = [
+    'ok',
+    'content_not_indexed',
+    'content_not_available',
+    'version_not_indexed',
+];
 
 const mcpCode = (result) =>
     result?.isError === true
@@ -859,13 +878,13 @@ export async function artifactAccess(world) {
                 level,
                 expected: indexing
                     ? visible
-                        ? 'anything but artifact_not_found'
+                        ? `a read that got past the visibility check (${READ_REACHED_CONTENT.join(', ')})`
                         : 'artifact_not_found'
                     : 'search_not_configured, the same as for everyone',
                 actual: code,
                 ok: indexing
                     ? visible
-                        ? code !== 'artifact_not_found'
+                        ? READ_REACHED_CONTENT.includes(code)
                         : code === 'artifact_not_found'
                     : code === 'search_not_configured' &&
                       JSON.stringify(answers[key]) === firstAnswer,
@@ -891,8 +910,11 @@ export async function artifactAccess(world) {
                 route: 'MCP search_artifacts',
                 level,
                 expected: 'no result that names the artifact',
-                actual: `${mcpCode(result)}${named.includes(art.id) || named.includes(art.title) ? ', ARTIFACT NAMED IN RESULT' : ''}`,
-                ok: !named.includes(art.id) && !named.includes(art.title),
+                actual: `${mcpCode(result)}${named.includes(art.id) || named.includes(art.title) || named.includes(art.marker) ? ', ARTIFACT NAMED IN RESULT' : ''}`,
+                ok:
+                    !named.includes(art.id) &&
+                    !named.includes(art.title) &&
+                    !named.includes(art.marker),
             });
         }
     }
