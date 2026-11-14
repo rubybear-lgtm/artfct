@@ -10,6 +10,7 @@
 //
 // Requires AUTHKIT_DEV_LOGIN_ENABLED=true on the target (never true in
 // production). Exits non-zero if any check fails.
+import { artifactAccess } from './isolation/artifact-access.mjs';
 import { baseline } from './isolation/baseline.mjs';
 import { failureCount, laravel, run, worker } from './isolation/lib.mjs';
 import { matrix } from './isolation/matrix.mjs';
@@ -18,7 +19,15 @@ import { revocation } from './isolation/revocation.mjs';
 import { roles } from './isolation/roles.mjs';
 import { webRoutes } from './isolation/web-routes.mjs';
 
-const scenarios = [baseline, webRoutes, originLink, matrix, roles, revocation];
+const scenarios = [
+    baseline,
+    webRoutes,
+    originLink,
+    matrix,
+    roles,
+    revocation,
+    artifactAccess,
+];
 
 async function main() {
     console.log(

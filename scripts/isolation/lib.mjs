@@ -327,8 +327,16 @@ export class Session {
 
 export const authed = (token) => ({ Authorization: `Bearer ${token}` });
 
-/** The create-artifact request, returned as-is so a caller can assert on the refusal. */
-export function deployRequest(token, content) {
+/**
+ * The create-artifact request, returned as-is so a caller can assert on the
+ * refusal. `sharing` and `title` are optional: without them the artifact is the
+ * default secure one titled "isolation probe" that the other scenarios expect.
+ */
+export function deployRequest(
+    token,
+    content,
+    { sharing, title = 'isolation probe' } = {},
+) {
     const sha = createHash('sha256').update(content).digest('hex');
 
     return fetch(`${worker}/v1/artifacts`, {
@@ -337,7 +345,8 @@ export function deployRequest(token, content) {
         body: JSON.stringify({
             mode: 'permanent',
             tier: 'secure',
-            title: 'isolation probe',
+            ...(sharing === undefined ? {} : { sharing }),
+            title,
             description: 'tenant isolation e2e',
             thumbnail: '',
             preview_blurred: false,
@@ -359,9 +368,9 @@ export function deployRequest(token, content) {
 }
 
 /** Create a secure permanent artifact in the token's own org through the real deploy path. */
-export async function deploy(token, content) {
+export async function deploy(token, content, options = {}) {
     const sha = createHash('sha256').update(content).digest('hex');
-    const created = await deployRequest(token, content);
+    const created = await deployRequest(token, content, options);
 
     if (!created.ok) {
         throw new Error(`deploy answered ${created.status}`);
