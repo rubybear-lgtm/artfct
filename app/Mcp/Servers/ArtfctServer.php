@@ -6,6 +6,13 @@ use App\Mcp\Support\ArtifactGuidance;
 use App\Mcp\Tools\AddArtifactCommentTool;
 use App\Mcp\Tools\AddCollectionArtifactTool;
 use App\Mcp\Tools\CreateCollectionTool;
+use App\Mcp\Tools\DbBatchTool;
+use App\Mcp\Tools\DbDeleteTool;
+use App\Mcp\Tools\DbGetTool;
+use App\Mcp\Tools\DbListTool;
+use App\Mcp\Tools\DbQueryTool;
+use App\Mcp\Tools\DbSetTool;
+use App\Mcp\Tools\DbUpdateTool;
 use App\Mcp\Tools\DeleteArtifactTool;
 use App\Mcp\Tools\DeleteCollectionTool;
 use App\Mcp\Tools\DeployArtifactTool;
@@ -69,6 +76,13 @@ final class ArtfctServer extends Server
         SetAvatarTool::class,
         ListTemplatesTool::class,
         PullTemplateTool::class,
+        DbGetTool::class,
+        DbListTool::class,
+        DbQueryTool::class,
+        DbSetTool::class,
+        DbUpdateTool::class,
+        DbDeleteTool::class,
+        DbBatchTool::class,
     ];
 
     protected array $resources = [

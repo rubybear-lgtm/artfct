@@ -212,6 +212,7 @@ test('a viewer cannot mint an agent token', function () {
 });
 
 test('viewer role scope caps exclude mutation scopes', function () {
+    // Viewers are read-only but may read artifact databases (spec 20).
     expect(McpScope::forRole(TeamRole::Viewer))->toBe([
         McpScope::ArtifactsRead->value,
         McpScope::CollectionsRead->value,

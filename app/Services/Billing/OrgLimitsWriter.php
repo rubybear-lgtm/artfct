@@ -47,6 +47,8 @@ final class OrgLimitsWriter
                     'storage_bytes' => $limits->storageBytes,
                     'artifacts_per_month' => $limits->artifactsPerMonth,
                     'bundle_ceiling_bytes' => $limits->bundleSizeCeilingBytes,
+                    'max_db_docs_per_artifact' => $limits->maxDbDocsPerArtifact,
+                    'max_db_bytes_per_org' => $limits->maxDbBytesPerOrg,
                     'read_only' => $team->payment_status === PaymentStatus::PastDue,
                 ]);
         } catch (Throwable $exception) {

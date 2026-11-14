@@ -161,6 +161,7 @@ final class GetArtifactTool extends Tool
                 'agent' => $versionResponse->json('agent'),
                 'current' => $versionResponse->json('current'),
                 'restored_from' => $versionResponse->json('restored_from'),
+                'database' => $this->databaseFromResponse($response),
             ] + $access);
         }
 
@@ -179,6 +180,7 @@ final class GetArtifactTool extends Tool
             'updated_at' => McpTimestamp::format($response->json('updated_at')),
             'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
             'model' => is_array($provenance) ? ($provenance['model'] ?? null) : null,
+            'database' => $this->databaseFromResponse($response),
             'provenance' => [
                 'agent' => is_array($provenance) ? ($provenance['agent'] ?? null) : null,
                 'repo_url' => is_array($provenance) ? ($provenance['repo_url'] ?? null) : null,
@@ -227,5 +229,19 @@ final class GetArtifactTool extends Tool
     private function ownerIsCaller(mixed $ownerUserId): bool
     {
         return is_string($ownerUserId) && $ownerUserId !== '' && $ownerUserId === McpContext::actor();
+    }
+
+    /**
+     * The database manifest the Worker reported (`{collections: {...}}`),
+     * or null when the artifact declares no database. Passed through
+     * verbatim: the Worker owns the shape.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function databaseFromResponse(mixed $response): ?array
+    {
+        $database = $response->json('database');
+
+        return is_array($database) ? $database : null;
     }
 }
