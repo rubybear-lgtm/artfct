@@ -24,6 +24,7 @@ use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
 use App\Mcp\Tools\ReadArtifactTool;
+use App\Mcp\Tools\RecordOnboardingStepTool;
 use App\Mcp\Tools\RemoveCollectionArtifactTool;
 use App\Mcp\Tools\ResolveArtifactCommentTool;
 use App\Mcp\Tools\SearchArtifactsTool;
@@ -74,6 +75,7 @@ final class ArtfctServer extends Server
         DeleteArtifactTool::class,
         SetAvatarTool::class,
         SetPreferenceTool::class,
+        RecordOnboardingStepTool::class,
         // Released per team through the `artifact-db` feature; see DatabaseTool.
         DbSchemaTool::class,
         DbGetTool::class,

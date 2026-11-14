@@ -114,6 +114,17 @@ final class ArtifactGuidance
         ];
     }
 
+    /**
+     * The onboarding steps for a mode, each with whether the agent must ask the
+     * person first. Empty for a mode the playbook does not know.
+     *
+     * @return list<array{id: string, requires_consent: bool}>
+     */
+    public static function stepsFor(string $mode): array
+    {
+        return self::ONBOARDING_STEPS[$mode] ?? [];
+    }
+
     /** The non-negotiables, repeated in the server instructions. */
     public const INSTRUCTIONS = 'Publish HTML artifacts to the authenticated workspace, then search, read, comment on and organize them. '
         .'Rules that always apply, even before you read the guidance: title an artifact with a two-to-four-word name; never publish secrets; '

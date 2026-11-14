@@ -70,6 +70,7 @@ const supportedTools = new Set([
     'resolve_artifact_comment',
     'set_avatar',
     'set_preference',
+    'record_onboarding_step',
 ]);
 
 const client = {

@@ -44,6 +44,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
         ],
         'get_guidance' => [
             'scopes' => [],
+            'toolVersion' => '1.1.0',
             'annotations' => [
                 'readOnlyHint' => true,
                 'idempotentHint' => true,
@@ -180,6 +181,16 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
         // No OAuth scope: a person's own preference is theirs to set, and the
         // team default is gated by the team admin permission instead (RUB-545).
         'set_preference' => [
+            'scopes' => [],
+            'annotations' => [
+                'readOnlyHint' => false,
+                'idempotentHint' => true,
+                'destructiveHint' => false,
+                'openWorldHint' => false,
+            ],
+        ],
+        // Same reasoning: it records the person's own set-up progress.
+        'record_onboarding_step' => [
             'scopes' => [],
             'annotations' => [
                 'readOnlyHint' => false,

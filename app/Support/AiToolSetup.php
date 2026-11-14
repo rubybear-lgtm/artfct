@@ -315,6 +315,7 @@ class AiToolSetup
             ['name' => 'db_batch', 'does' => 'Apply up to 25 record changes together, all or none, such as moving several cards at once.', 'permission' => 'data:write'],
             ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],
             ['name' => 'set_preference', 'does' => 'Save a choice about how your AI behaves, such as whether it saves what it makes to Artfct: always, ask first, or never. Your own choice follows you across teams, and a team admin can set the default for the team. It never changes who can see anything.', 'permission' => 'Any'],
+            ['name' => 'record_onboarding_step', 'does' => 'Note that your AI finished or skipped a step of its set-up, so a set-up that stops can pick up where it left off instead of starting again.', 'permission' => 'Any'],
         ];
     }
 
@@ -414,6 +415,22 @@ class AiToolSetup
     }
 
     /**
+     * The one command that installs the Claude plugin from the shell, adding
+     * its marketplace first (Claude Code 2.1.292 or later). It pins to a
+     * reviewed release when one is configured, so the prompt installs what was
+     * reviewed and not whatever the default branch holds that day. A tag that
+     * is not a plain ref name is ignored rather than put into a command.
+     */
+    public function pluginInstallCommand(): string
+    {
+        $marketplace = (string) config('services.artfct_plugin.marketplace', 'artfct-dev/artfct-plugin');
+        $tag = config('services.artfct_plugin.tag');
+        $pin = is_string($tag) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,63}$/', $tag) === 1 ? "#{$tag}" : '';
+
+        return "claude plugin install artfct --marketplace {$marketplace}{$pin}";
+    }
+
+    /**
      * The one prompt behind "Copy prompt" on the homepage, /connect and every
      * guide (RUB-502). It works in any agent: the agent finds its own section
      * of llms-full.txt and either makes the change itself or walks the person
@@ -427,6 +444,11 @@ class AiToolSetup
             Connect yourself to Artfct, the shared workspace where my team's AI agents publish their work and search each other's. Work through these steps in order and tell me when you need something from me.
 
             1. Work out which app you are running in (for example Claude Code, Codex, Cursor, VS Code, the Claude app or ChatGPT). If you already have Artfct tools such as `get_connection`, skip to step 4.
+               - If you are Claude Code 2.1.292 or later (check with `claude --version`), install the Artfct plugin instead of steps 2 and 3: it adds the connection and a set-up skill in one step. Show me this command, and run it only after I approve it:
+
+                 {$this->pluginInstallCommand()}
+
+                 Then tell me to type `/reload-plugins`, then `/mcp` to sign in to `artfct` in my browser, then `/artfct:onboard`, and stop there: that skill does the rest of these steps. If the command fails (an older version, or my organization limits plugins), carry on with step 2.
             2. Read {$this->baseUrl}/llms-full.txt and follow the setup section for your app. The server is named `artfct` and lives at {$this->mcpUrl()}. In a JSON config file the entry looks like this; some apps use other key names (`servers`, `context_servers`, `serverUrl`), and that page has the exact entry for each:
 
             {$serverEntry}
