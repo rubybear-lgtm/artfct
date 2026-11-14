@@ -284,6 +284,7 @@ abstract class ArtifactDbTool extends Tool
         return McpErrorResponse::error('The artifact service is temporarily unavailable.', 'upstream_unavailable', true);
     }
 
+    /** @param array<string, mixed> $structured */
     protected function ok(array $structured, string $tool, int $startedAt, string $artifactId): ResponseFactory
     {
         app(McpTelemetry::class)->record($tool, 'success', $startedAt, $artifactId);

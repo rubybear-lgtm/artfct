@@ -50,7 +50,7 @@ final class SyntheticScenario
 
     private function withStorage(QuotaLimits $limits, int $storageBytes): QuotaLimits
     {
-        return new QuotaLimits($storageBytes, $limits->artifactsPerMonth, $limits->bundleSizeCeilingBytes, $limits->renderMinutesPerMonth);
+        return new QuotaLimits($storageBytes, $limits->artifactsPerMonth, $limits->bundleSizeCeilingBytes, $limits->renderMinutesPerMonth, $limits->maxDbDocsPerArtifact, $limits->maxDbBytesPerOrg);
     }
 
     /**

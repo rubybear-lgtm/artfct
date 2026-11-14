@@ -103,7 +103,7 @@ test('quota_warning_at_eighty_percent', function () {
     $team = Team::factory()->create();
     /** @var FakeUsage $usage */
     $usage = app(UsageContract::class);
-    $limits = new QuotaLimits(storageBytes: 1000, artifactsPerMonth: 100, bundleSizeCeilingBytes: 500, renderMinutesPerMonth: 100);
+    $limits = new QuotaLimits(storageBytes: 1000, artifactsPerMonth: 100, bundleSizeCeilingBytes: 500, renderMinutesPerMonth: 100, maxDbDocsPerArtifact: 10, maxDbBytesPerOrg: 1024);
     $usage->setUsage($team->slug, storageBytes: 850, artifactsThisPeriod: 10);
 
     $status = (new QuotaService($usage, $limits))->status($team);
@@ -116,7 +116,7 @@ test('quota_exceeded_refuses_creation', function () {
     $team = Team::factory()->create();
     /** @var FakeUsage $usage */
     $usage = app(UsageContract::class);
-    $limits = new QuotaLimits(storageBytes: 1000, artifactsPerMonth: 100, bundleSizeCeilingBytes: 500, renderMinutesPerMonth: 100);
+    $limits = new QuotaLimits(storageBytes: 1000, artifactsPerMonth: 100, bundleSizeCeilingBytes: 500, renderMinutesPerMonth: 100, maxDbDocsPerArtifact: 10, maxDbBytesPerOrg: 1024);
     $usage->setUsage($team->slug, storageBytes: 1000, artifactsThisPeriod: 10);
 
     $exception = null;
@@ -151,7 +151,7 @@ test('bundle_over_tenant_ceiling_refused', function () {
     $team = Team::factory()->create();
     /** @var FakeUsage $usage */
     $usage = app(UsageContract::class);
-    $limits = new QuotaLimits(storageBytes: 1_000_000, artifactsPerMonth: 1000, bundleSizeCeilingBytes: 1000, renderMinutesPerMonth: 100);
+    $limits = new QuotaLimits(storageBytes: 1_000_000, artifactsPerMonth: 1000, bundleSizeCeilingBytes: 1000, renderMinutesPerMonth: 100, maxDbDocsPerArtifact: 10, maxDbBytesPerOrg: 1024);
 
     $exception = null;
     try {

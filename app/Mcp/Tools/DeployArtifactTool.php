@@ -9,6 +9,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Models\Collection;
+use App\Models\McpConnection;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactPublish;
 use App\Services\Artifacts\ArtifactPublisher;

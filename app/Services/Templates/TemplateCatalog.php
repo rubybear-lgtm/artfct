@@ -223,7 +223,10 @@ final class TemplateCatalog
         return $errors;
     }
 
-    /** @param array<string, mixed> $manifest @return list<string> */
+    /**
+     * @param  array<string, mixed>  $manifest
+     * @return list<string>
+     */
     private function validateManifest(string $key, array $manifest): array
     {
         $errors = [];
@@ -521,7 +524,7 @@ final class TemplateCatalog
 
         /** @var list<string> $requires */
         $requires = $manifest['requires'] ?? [];
-        /** @var array{collections: array<string, array<string, mixed>>, seed: list<array{collection: string, doc_id: string, body: array<string, mixed>}>}|null $db */
+        /** @var array{collections: array<string, array<string, mixed>>, seed?: list<array{collection: string, doc_id: string, body: array<string, mixed>}>}|null $db */
         $db = $manifest['db'] ?? null;
         if (is_array($db)) {
             $db['seed'] ??= [];
