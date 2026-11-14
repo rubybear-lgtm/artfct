@@ -319,6 +319,9 @@ test('every_audit_event_type_has_an_explicit_target_decision', function () {
         'team.created',
         'team.renamed',
         'team.deleted',
+        // RUB-545: the target is a preference key and one of its fixed values
+        // ("preference:save_to_artfct set to never"), never tenant content.
+        'team.preference_changed',
         'public_sharing.changed',
         'mcp.connection_created',
         'mcp.connection_refreshed',

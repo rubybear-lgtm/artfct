@@ -9,7 +9,7 @@ artfct publishes self-contained HTML to artfct.dev and returns a shareable URL. 
 
 ## When to Deploy
 
-Call `deploy_artifact` any time the output is:
+Call `deploy_artifact` when the output is:
 
 - A data visualization, chart, or dashboard
 - A generated report or summary with styled layout
@@ -18,6 +18,8 @@ Call `deploy_artifact` any time the output is:
 - Any visual artifact the user wants to view, share, or bookmark
 
 When the user says "show me", "preview this", or "make it shareable" — deploy.
+
+When the user did not ask you to publish it, follow their `save_to_artfct` preference instead (`always`, `ask` or `never`, from `get_connection`; treat an unreadable value as `ask`). The `artfct-publish` skill has the exact rules.
 
 ## Deploying
 

@@ -28,6 +28,7 @@ export const PLUGIN_SKILLS = [
     'artfct-search',
     'artfct-collaborate',
     'artfct-data',
+    'onboard',
 ];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');

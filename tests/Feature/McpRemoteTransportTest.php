@@ -127,7 +127,8 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertJsonPath('result.tools.0.title', 'Publish artifact')
         ->assertJsonPath('result.tools.1.title', 'Search artifacts')
         ->assertJsonPath('result.tools.17.name', 'set_avatar')
-        ->assertJsonMissingPath('result.tools.18')
+        ->assertJsonPath('result.tools.18.name', 'set_preference')
+        ->assertJsonMissingPath('result.tools.19')
         ->assertJsonPath('result.tools.0._meta.artfct.contractVersion', '1.0.0')
         ->assertJsonPath('result.tools.0._meta.artfct.requiredScopes.0', 'artifacts:deploy')
         ->assertJsonMissingPath('result.nextCursor');
@@ -141,6 +142,7 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
             'remove_collection_artifact',
             'delete_collection',
             'set_avatar',
+            'set_preference',
         );
 });
 

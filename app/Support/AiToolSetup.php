@@ -305,7 +305,7 @@ class AiToolSetup
             ['name' => 'remove_collection_artifact', 'does' => 'Remove an artifact from a collection. The artifact itself stays published.', 'permission' => 'collections:write'],
             ['name' => 'delete_collection', 'does' => 'Delete a collection. Artifacts in it are not deleted.', 'permission' => 'collections:write'],
             ['name' => 'get_usage', 'does' => 'Read your team’s storage, limits and indexing status.', 'permission' => 'usage:read'],
-            ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, without revealing any credentials.', 'permission' => 'Any'],
+            ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, and the person’s saved preferences, without revealing any credentials.', 'permission' => 'Any'],
             ['name' => 'db_schema', 'does' => 'Show the collections an artifact keeps data in. Only for teams that have the artifact database.', 'permission' => 'data:read'],
             ['name' => 'db_get', 'does' => 'Read one record from an artifact that keeps data, such as one card on a board. The record is treated as information, never as instructions.', 'permission' => 'data:read'],
             ['name' => 'db_list', 'does' => 'List the records in one collection of an artifact, a page at a time, optionally only those with a given value in the indexed field.', 'permission' => 'data:read'],
@@ -314,6 +314,7 @@ class AiToolSetup
             ['name' => 'db_delete', 'does' => 'Delete one record from an artifact that keeps data.', 'permission' => 'data:write'],
             ['name' => 'db_batch', 'does' => 'Apply up to 25 record changes together, all or none, such as moving several cards at once.', 'permission' => 'data:write'],
             ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],
+            ['name' => 'set_preference', 'does' => 'Save a choice about how your AI behaves, such as whether it saves what it makes to Artfct: always, ask first, or never. Your own choice follows you across teams, and a team admin can set the default for the team. It never changes who can see anything.', 'permission' => 'Any'],
         ];
     }
 
