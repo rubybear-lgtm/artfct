@@ -307,6 +307,8 @@ class AiToolSetup
             ['name' => 'get_usage', 'does' => 'Read your team’s storage, limits and indexing status.', 'permission' => 'usage:read'],
             ['name' => 'get_connection', 'does' => 'Show which team and person the connection belongs to, without revealing any credentials.', 'permission' => 'Any'],
             ['name' => 'set_avatar', 'does' => 'Set the avatar image for a bot teammate (bots only). Humans can also upload a bot avatar in team settings.', 'permission' => 'Any'],
+            ['name' => 'list_templates', 'does' => 'List the Artfct-authored templates the team can pull into its library, and whether each one is available.', 'permission' => 'artifacts:read'],
+            ['name' => 'pull_template', 'does' => 'Pull a template into the library as a new artifact you own, with fresh seed rows for data-backed templates.', 'permission' => 'artifacts:deploy'],
         ];
     }
 
@@ -323,6 +325,8 @@ class AiToolSetup
             ['name' => 'collections:read', 'type' => 'See collections', 'note' => 'List your team’s collections.'],
             ['name' => 'collections:write', 'type' => 'Organize', 'note' => 'Create collections and add artifacts to them.'],
             ['name' => 'usage:read', 'type' => 'See usage', 'note' => 'Read storage and quota totals for your team.'],
+            ['name' => 'data:read', 'type' => 'Read board data', 'note' => 'Read the rows inside data-backed artifacts.'],
+            ['name' => 'data:write', 'type' => 'Update board data', 'note' => 'Add and change the rows inside data-backed artifacts.'],
         ];
     }
 

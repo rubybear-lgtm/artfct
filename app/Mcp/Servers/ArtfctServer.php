@@ -16,6 +16,8 @@ use App\Mcp\Tools\GetUsageTool;
 use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
+use App\Mcp\Tools\ListTemplatesTool;
+use App\Mcp\Tools\PullTemplateTool;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Mcp\Tools\RemoveCollectionArtifactTool;
 use App\Mcp\Tools\ResolveArtifactCommentTool;
@@ -65,6 +67,8 @@ final class ArtfctServer extends Server
         DeleteCollectionTool::class,
         DeleteArtifactTool::class,
         SetAvatarTool::class,
+        ListTemplatesTool::class,
+        PullTemplateTool::class,
     ];
 
     protected array $resources = [

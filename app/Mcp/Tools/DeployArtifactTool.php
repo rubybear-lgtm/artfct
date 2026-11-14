@@ -42,7 +42,7 @@ final class DeployArtifactTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.1.0',
+            'guidanceVersion' => '1.2.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
@@ -71,16 +71,6 @@ final class DeployArtifactTool extends Tool
     private const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
 
     private const DEFAULT_ENTRYPOINT = 'index.html';
-
-    private const CONTENT_TYPES = [
-        'html' => 'text/html; charset=utf-8', 'htm' => 'text/html; charset=utf-8',
-        'md' => 'text/markdown; charset=utf-8', 'markdown' => 'text/markdown; charset=utf-8',
-        'css' => 'text/css', 'js' => 'text/javascript', 'mjs' => 'text/javascript',
-        'json' => 'application/json', 'wasm' => 'application/wasm', 'svg' => 'image/svg+xml',
-        'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif',
-        'webp' => 'image/webp', 'woff' => 'font/woff', 'woff2' => 'font/woff2',
-        'ttf' => 'font/ttf', 'otf' => 'font/otf',
-    ];
 
     private const CONTENT_TYPE = 'text/html; charset=utf-8';
 
@@ -213,7 +203,7 @@ final class DeployArtifactTool extends Tool
                 tool: 'deploy_artifact',
                 ip: ClientIp::for($httpRequest),
                 userAgent: $httpRequest->userAgent() ?? 'unknown',
-                clientName: $httpRequest->header('MCP-Client-Name'),
+                clientName: is_string($clientName = $httpRequest->header('MCP-Client-Name')) && trim($clientName) !== '' ? trim($clientName) : null,
             ));
         } catch (PublishFailedException $exception) {
             return McpErrorResponse::error(
@@ -363,7 +353,7 @@ final class DeployArtifactTool extends Tool
 
     private function contentTypeFor(string $path): string
     {
-        return self::CONTENT_TYPES[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+        return ArtifactPublisher::contentTypeFor($path);
     }
 
     /**
@@ -425,7 +415,7 @@ final class DeployArtifactTool extends Tool
     private function provenance(Request $request, ?string $model): array
     {
         $sessionId = $request->sessionId();
-        [$agent, $agentVersion, $agentSource] = $this->publishingAgent();
+        [$agent, $agentVersion, $agentSource] = self::publishingAgent();
 
         return [
             'agent' => $agent,
@@ -464,7 +454,7 @@ final class DeployArtifactTool extends Tool
      *
      * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
      */
-    private function publishingAgent(): array
+    public static function publishingAgent(): array
     {
         $credentialName = McpContext::agentName();
 
@@ -472,7 +462,7 @@ final class DeployArtifactTool extends Tool
             return [$credentialName, null, 'credential'];
         }
 
-        return $this->clientAgent();
+        return self::clientAgent();
     }
 
     /**
@@ -481,7 +471,7 @@ final class DeployArtifactTool extends Tool
      *
      * @return array{0: ?string, 1: ?string, 2: string} agent, version, provenance source
      */
-    private function clientAgent(): array
+    private static function clientAgent(): array
     {
         $http = McpContext::httpRequest();
         $connection = $http->attributes->get('mcp_connection');

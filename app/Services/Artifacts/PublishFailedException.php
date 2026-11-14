@@ -20,6 +20,7 @@ final class PublishFailedException extends RuntimeException
         public readonly bool $retryable = false,
         public readonly ?string $nextAction = null,
         public readonly array $details = [],
+        public readonly ?string $artifactId = null,
     ) {
         parent::__construct($message);
     }

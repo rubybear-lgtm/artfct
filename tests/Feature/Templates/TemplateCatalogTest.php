@@ -2,7 +2,6 @@
 
 use App\Models\Team;
 use App\Services\Templates\TemplateCatalog;
-use Illuminate\Support\Facades\File;
 
 /*
  * Spec 21 mechanism: the catalog loads reviewed template directories and
@@ -10,13 +9,6 @@ use Illuminate\Support\Facades\File;
  * cases run over a minimal fixture template in tests/Fixtures — the real
  * kanban/wiki/announcements content belongs to the content units.
  */
-
-function fixtureCatalog(string $copyTo): TemplateCatalog
-{
-    File::copyDirectory(base_path('tests/Fixtures/templates'), $copyTo);
-
-    return new TemplateCatalog($copyTo);
-}
 
 test('catalog loads the fixture template with its manifest files and seed', function () {
     $catalog = fixtureCatalog(sys_get_temp_dir().'/templates-valid-'.uniqid());

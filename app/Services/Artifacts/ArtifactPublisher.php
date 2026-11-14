@@ -120,6 +120,13 @@ final class ArtifactPublisher
                 'provenance' => $command->provenance,
             ];
 
+            // A db-backed artifact declares its collections (and, on a pull,
+            // its seed rows) in the manifest; the Worker seeds once per new
+            // artifact id and never copies live rows.
+            if ($command->db !== null) {
+                $payload['manifest']['db'] = $command->db;
+            }
+
             // A new version keeps the artifact's existing sharing, so those
             // fields are deliberately absent from a version request.
             if ($title !== null) {
@@ -160,7 +167,7 @@ final class ArtifactPublisher
                         ->put($baseUrl.'/v1/artifacts/'.$created->json('id').'/files/'.$missing);
 
                     if (! $upload->successful()) {
-                        $this->fail($command, 'deployment_rejected', 'The artifact service could not store the artifact content.', true, null, [], $artifactIdInput);
+                        $this->fail($command, 'deployment_rejected', 'The artifact service could not store the artifact content.', true, null, [], (string) $created->json('id'));
                     }
                 }
             }
@@ -172,16 +179,21 @@ final class ArtifactPublisher
         }
 
         /** @var Response $created */
+        // The Worker names the accepted artifact's id, so a later failure can
+        // clean the pending artifact up; refusals name none.
+        $partialId = $created->json('id');
+        $partialId = is_string($partialId) && $partialId !== '' ? $partialId : null;
+
         if ($created->status() === 429) {
-            $this->fail($command, 'rate_limited', 'The workspace is publishing too quickly. Retry shortly.', true, null, [], $artifactIdInput);
+            $this->fail($command, 'rate_limited', 'The workspace is publishing too quickly. Retry shortly.', true, null, [], $partialId);
         }
 
         if ($created->status() === 403 && $created->json('error.code') === 'quota_exceeded') {
-            $this->fail($command, 'quota_exceeded', 'This workspace is over its plan limits. Use get_usage to inspect them.', false, 'get_usage', [], $artifactIdInput);
+            $this->fail($command, 'quota_exceeded', 'This workspace is over its plan limits. Use get_usage to inspect them.', false, 'get_usage', [], $partialId);
         }
 
         if ($created->status() === 403 && $created->json('error.code') === 'public_sharing_disabled') {
-            $this->fail($command, 'public_sharing_disabled', 'Your team has turned off public links. Publish it with sharing set to team or private instead.', false, null, [], $artifactIdInput);
+            $this->fail($command, 'public_sharing_disabled', 'Your team has turned off public links. Publish it with sharing set to team or private instead.', false, null, [], $partialId);
         }
 
         if ($versionPublish && $created->status() === 403 && $created->json('error.code') === 'forbidden') {
@@ -197,7 +209,7 @@ final class ArtifactPublisher
         }
 
         if (! $created->successful()) {
-            $this->fail($command, 'deployment_rejected', 'The artifact service could not accept this deployment.', false, null, [], $artifactIdInput);
+            $this->fail($command, 'deployment_rejected', 'The artifact service could not accept this deployment.', false, null, [], $partialId);
         }
 
         $artifactId = (string) $created->json('id');
@@ -331,7 +343,7 @@ final class ArtifactPublisher
             $this->telemetry($command, $outcome, $artifactId);
         }
 
-        throw new PublishFailedException($message, $code, $retryable, $nextAction, $details);
+        throw new PublishFailedException($message, $code, $retryable, $nextAction, $details, $artifactId);
     }
 
     private function telemetry(ArtifactPublish $command, string $outcome, ?string $artifactId): void
@@ -387,5 +399,28 @@ final class ArtifactPublisher
         }
 
         return 'Untitled artifact';
+    }
+
+    /** The media type for a bundle path, inferred from its extension. */
+    public static function contentTypeFor(string $path): string
+    {
+        return match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+            'html', 'htm' => 'text/html; charset=utf-8',
+            'md', 'markdown' => 'text/markdown; charset=utf-8',
+            'css' => 'text/css',
+            'js', 'mjs' => 'text/javascript',
+            'json' => 'application/json',
+            'wasm' => 'application/wasm',
+            'svg' => 'image/svg+xml',
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'woff' => 'font/woff',
+            'woff2' => 'font/woff2',
+            'ttf' => 'font/ttf',
+            'otf' => 'font/otf',
+            default => 'application/octet-stream',
+        };
     }
 }

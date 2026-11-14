@@ -17,6 +17,7 @@ final class ArtifactPublish
     /**
      * @param  array<string, array{path: string, bytes: string, content_type: string, sha256: string}>  $files  keyed by path
      * @param  array<string, mixed>  $provenance  Worker provenance payload, built by the caller
+     * @param  array{collections: array<string, mixed>, seed?: list<array<string, mixed>>}|null  $db  manifest db section incl. seed rows
      */
     public function __construct(
         public Team $team,
@@ -40,5 +41,6 @@ final class ArtifactPublish
         public string $userAgent = 'unknown',
         public ?string $clientName = null,
         public bool $recordTelemetry = true,
+        public ?array $db = null,
     ) {}
 }

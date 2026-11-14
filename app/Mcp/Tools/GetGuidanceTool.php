@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Return Artfct\'s rules for one task: publish (publishing and updating), search (finding and reading) or collaborate (safe updates and comments), with the current artifact types and limits. Read it before publishing or answering from the library. The rules apply even if you did not read them.')]
+#[Description('Return Artfct\'s rules for one task: publish (publishing and updating), search (finding and reading), collaborate (safe updates and comments) or templates (starting from a template), with the current artifact types and limits. Read it before publishing or answering from the library. The rules apply even if you did not read them.')]
 #[Name('get_guidance')]
 #[Title('Get guidance')]
 #[IsReadOnly]
@@ -31,7 +31,7 @@ final class GetGuidanceTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.1.0',
+            'guidanceVersion' => '1.2.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [],
@@ -69,7 +69,7 @@ final class GetGuidanceTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'topic' => $schema->string()->enum(ArtifactGuidance::TOPICS)->description('publish, search or collaborate.')->required(),
+            'topic' => $schema->string()->enum(ArtifactGuidance::TOPICS)->description('publish, search, collaborate or templates.')->required(),
         ];
     }
 }
