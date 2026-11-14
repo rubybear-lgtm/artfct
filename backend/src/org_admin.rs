@@ -207,6 +207,12 @@ pub(crate) struct OrgLimitsWriteRequest {
     artifacts_per_month: u64,
     bundle_ceiling_bytes: u64,
     read_only: bool,
+    /// Spec 20 database quotas, pushed through the existing limits channel.
+    /// Absent (older Laravel) leaves the stored values untouched.
+    #[serde(default)]
+    max_db_docs_per_artifact: Option<u64>,
+    #[serde(default)]
+    max_db_bytes_per_org: Option<u64>,
 }
 
 /// An unset secret fails closed.
@@ -248,13 +254,21 @@ pub(crate) async fn write_org_limits(req: &mut Request, env: &Env) -> Result<Res
         ensure_org_row(&storage.database, &payload.org, &now).await?;
         storage
             .database
-            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, updated_at = excluded.updated_at")
+            .prepare("INSERT INTO org_limits (org_id, storage_bytes, artifacts_per_month, bundle_ceiling_bytes, read_only, max_db_docs_per_artifact, max_db_bytes_per_org, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, artifacts_per_month = excluded.artifacts_per_month, bundle_ceiling_bytes = excluded.bundle_ceiling_bytes, read_only = excluded.read_only, max_db_docs_per_artifact = COALESCE(excluded.max_db_docs_per_artifact, org_limits.max_db_docs_per_artifact), max_db_bytes_per_org = COALESCE(excluded.max_db_bytes_per_org, org_limits.max_db_bytes_per_org), updated_at = excluded.updated_at")
             .bind(&[
                 JsValue::from_str(&payload.org),
                 JsValue::from_f64(payload.storage_bytes as f64),
                 JsValue::from_f64(payload.artifacts_per_month as f64),
                 JsValue::from_f64(payload.bundle_ceiling_bytes as f64),
                 JsValue::from_f64(f64::from(u8::from(payload.read_only))),
+                payload
+                    .max_db_docs_per_artifact
+                    .map(|value| JsValue::from_f64(value as f64))
+                    .unwrap_or_else(JsValue::null),
+                payload
+                    .max_db_bytes_per_org
+                    .map(|value| JsValue::from_f64(value as f64))
+                    .unwrap_or_else(JsValue::null),
                 JsValue::from_str(&now),
             ])?
             .run()
@@ -867,6 +881,12 @@ pub(crate) async fn hard_delete_permanent(
         // after the deletes the surviving `artifact_versions` rows are the only
         // source of truth.
         let mut statements = vec![
+            // Spec 20: deleting an artifact removes its database rows in the
+            // same operation. The binding is the same (org slug, stable id) as
+            // every other statement here.
+            database
+                .prepare(crate::artifact_db::DB_DELETE_ARTIFACT_SQL)
+                .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?,
             database
                 .prepare("DELETE FROM version_files WHERE version_id IN (SELECT id FROM artifact_versions WHERE artifact_row_id IN (SELECT row_id FROM artifacts WHERE id = ? AND org_id = (SELECT id FROM orgs WHERE slug = ?)))")
                 .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?,
