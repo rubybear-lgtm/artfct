@@ -409,6 +409,59 @@ test('download_is_refused_for_an_artifact_the_caller_cannot_see', function () {
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/download')->assertNotFound();
 });
 
+/**
+ * The download reads the content with a system credential that can see private
+ * artifacts, so the directory lookup before it must not be the only thing that
+ * decides. Here the directory lets the artifact through (as it would if it ever
+ * answered more than the caller may see) while the content source reports it
+ * private and owned by someone else: the download applies the Private rule itself.
+ */
+test('download_applies_the_private_rule_itself_when_the_directory_lets_the_artifact_through', function () {
+    $team = viewerTeam('download-private-team', 'Download Private Team');
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $other = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team', 'title' => 'Private plan']);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed(
+        $team->slug,
+        ARTIFACT_LINK_ID,
+        '<h1>private-download-marker</h1>',
+        sharing: 'private',
+        ownerUserId: (string) $owner->id,
+    );
+
+    $response = test()->actingAs($other)->get('/a/'.ARTIFACT_LINK_ID.'/download');
+
+    $response->assertNotFound();
+    expect($response->getContent())->not->toContain('private-download-marker');
+});
+
+test('download_of_a_private_artifact_is_allowed_for_its_owner_and_a_team_admin', function () {
+    $team = viewerTeam('download-private-ok-team', 'Download Private Ok Team');
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'private', 'title' => 'Private plan']);
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed(
+        $team->slug,
+        ARTIFACT_LINK_ID,
+        '<h1>private-download-marker</h1>',
+        sharing: 'private',
+        ownerUserId: (string) $owner->id,
+    );
+
+    foreach ([$owner, $admin] as $viewer) {
+        $response = test()->actingAs($viewer)->get('/a/'.ARTIFACT_LINK_ID.'/download');
+
+        $response->assertOk();
+        expect($response->getContent())->toBe('<h1>private-download-marker</h1>');
+    }
+});
+
 test('a_member_comments_replies_and_resolves_on_the_viewer', function () {
     configureArtifactLinks();
 
