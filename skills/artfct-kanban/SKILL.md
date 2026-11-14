@@ -1,5 +1,6 @@
 ---
 name: artfct-kanban
+description: A shared kanban board: columns, cards, and nothing else. The team and its agents share the board, and agents keep it updated as work moves.
 ---
 
 # Kanban skill

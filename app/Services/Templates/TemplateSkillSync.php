@@ -13,9 +13,9 @@ use RuntimeException;
  * `McpGuidanceTest` consistency suite pins down:
  *
  * - `resources/guidance/<topic>.md` — the body verbatim;
- * - `skills/artfct-<topic>/SKILL.md` — `---\nname: artfct-<topic>\n---`
- *   frontmatter plus the body verbatim (the suite asserts the file starts
- *   with the name line and ends with the served guidance text).
+ * - `skills/artfct-<topic>/SKILL.md` — `---`, `name:`, `description:` (from
+ *   the template.json description) frontmatter plus the body verbatim (the
+ *   suite asserts the file starts with the name line and ends with the served guidance text).
  *
  * The topic equals the template key. Registering it in
  * `ArtifactGuidance::TOPICS` (and bumping `VERSION`) stays a deliberate
@@ -64,8 +64,13 @@ final class TemplateSkillSync
             mkdir($skillDir, 0755, true);
         }
 
+        $manifest = json_decode((string) @file_get_contents($this->templatesBase.'/'.$key.'/template.json'), true);
+        $description = is_array($manifest) && isset($manifest['description']) && is_string($manifest['description']) && trim($manifest['description']) !== ''
+            ? $manifest['description']
+            : "Agent skill for the {$key} artifact template.";
+
         $skillPath = $skillDir.'/SKILL.md';
-        file_put_contents($skillPath, self::skillFile($key, $body));
+        file_put_contents($skillPath, self::skillFile($key, $body, $description));
 
         return [
             'topic' => $key,
@@ -92,8 +97,10 @@ final class TemplateSkillSync
         return rtrim($body, "\r\n")."\n";
     }
 
-    public static function skillFile(string $topic, string $guidanceBody): string
+    public static function skillFile(string $topic, string $guidanceBody, string $description): string
     {
-        return "---\nname: artfct-{$topic}\n---\n\n".$guidanceBody;
+        $oneLine = trim(preg_replace('/\s+/', ' ', $description) ?? '');
+
+        return "---\nname: artfct-{$topic}\ndescription: {$oneLine}\n---\n\n".$guidanceBody;
     }
 }
