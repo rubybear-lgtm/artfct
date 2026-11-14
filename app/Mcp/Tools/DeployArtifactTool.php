@@ -302,6 +302,11 @@ final class DeployArtifactTool extends Tool
             if (! $this->isValidPath($path)) {
                 return "Invalid file path [{$path}]: use a relative path without a leading slash, `..`, empty segments, backslashes or colons.";
             }
+            // Spec 20 reserves `__artfct/` for the artifact database endpoint on
+            // the artifact origin; a bundle path there would shadow the db.
+            if (str_starts_with($path, '__artfct/')) {
+                return "File path [{$path}] is reserved: paths under `__artfct/` serve the artifact database, so pages cannot bundle files there.";
+            }
             if (isset($files[$path])) {
                 return "Duplicate file path [{$path}].";
             }
