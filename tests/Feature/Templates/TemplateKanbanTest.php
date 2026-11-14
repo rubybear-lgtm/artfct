@@ -161,7 +161,11 @@ test('kanban_skill_doctest_add_move_and_delete', function () {
             'database' => ['collections' => ['cards' => ['index' => 'column']]],
         ]),
         "{$host}/__artfct/db/cards*" => Http::sequence()
-            ->push(['documents' => [], 'cursor' => null])
+            ->push(['docs' => [[
+                'collection' => 'cards', 'doc_id' => 'seed-1',
+                'body' => ['column' => 'todo', 'title' => 'Welcome', 'body' => '', 'owner' => 'artfct', 'position' => 1],
+                'version' => 1, 'updated_at' => 't', 'updated_by' => 'artfct',
+            ]], 'cursor' => null])
             ->push(['collection' => 'cards', 'doc_id' => 'c1',
                 'body' => ['column' => 'todo', 'title' => 'Ship it'],
                 'version' => 1, 'updated_at' => '2026-11-14T00:00:00Z', 'updated_by' => 'system'])
@@ -179,7 +183,8 @@ test('kanban_skill_doctest_add_move_and_delete', function () {
     $call('get_artifact', ['id' => $id])
         ->assertJsonPath('result.structuredContent.database.collections.cards.index', 'column');
     $call('db_list', ['artifact' => $id, 'collection' => 'cards'])
-        ->assertJsonPath('result.structuredContent.documents', []);
+        ->assertJsonPath('result.structuredContent.documents.0.data.title', 'Welcome')
+        ->assertJsonPath('result.structuredContent.documents.0.doc_id', 'seed-1');
     $call('db_set', ['artifact' => $id, 'collection' => 'cards', 'doc_id' => 'c1',
         'body' => ['column' => 'todo', 'title' => 'Ship it']])
         ->assertJsonPath('result.structuredContent.data.column', 'todo');

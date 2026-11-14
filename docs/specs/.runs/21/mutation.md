@@ -64,3 +64,8 @@ route, authoritative refusal in the puller). No survivor hole.
 26 mutations, 0 surviving negatives. Working tree after the pass contains
 only the `ListTemplatesTool` import restoration; all mutations were
 restored (`git diff --stat` clean apart from that fix).
+
+## Wave 2 (integration branch, solo)
+- `ArtifactDbTool::dbOrigin` fail-closed on missing secret: guard bypassed → `db_tools_fail_closed_without_signing_secret` fails. Kills.
+- `DbListTool` reading `documents` instead of Worker `docs`: the strengthened kanban doctest (non-empty list asserting mapped `documents.0.data.title`) fails. Kills. (The first version of this mutation SURVIVED because the doctest listed an empty page — fixed by seeding one row and asserting its mapped content.)
+- `DbSetTool` with `if_version` back in the JSON body: the doctest's query-string + raw-body asserts fail. Kills.
