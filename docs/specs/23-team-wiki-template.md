@@ -87,7 +87,7 @@ Source of truth: `resources/templates/team-wiki/skill/SKILL.md`, copied byte-ide
 
 ### Discoverability
 
-Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {pages, activity}}`, and the `data` guidance points at `db_schema` first. No new MCP tools in this spec.
+Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {pages, activity}}`, and the `data` guidance points at `get_artifact` first. No new MCP tools in this spec.
 
 ## Definition of done
 

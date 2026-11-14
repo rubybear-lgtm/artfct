@@ -82,7 +82,7 @@ Skill contents:
 
 ### Discoverability
 
-Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {posts}}`, and the `data` guidance points at `db_schema` first. No new MCP tools in this spec.
+Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {posts}}`, and the `data` guidance points at `get_artifact` first. No new MCP tools in this spec.
 
 ## Definition of done
 

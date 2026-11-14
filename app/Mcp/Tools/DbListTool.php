@@ -96,8 +96,8 @@ class DbListTool extends ArtifactDbTool
 
         $body = $response->json();
         $body = is_array($body) ? $body : [];
-        $documents = is_array($body['documents'] ?? null)
-            ? array_values(array_filter($body['documents'], 'is_array'))
+        $documents = is_array($body['docs'] ?? null)
+            ? array_values(array_filter($body['docs'], 'is_array'))
             : [];
 
         return $this->ok([
@@ -112,8 +112,8 @@ class DbListTool extends ArtifactDbTool
                 ),
                 $documents,
             ),
-            'next_cursor' => is_string($body['next_cursor'] ?? null) && $body['next_cursor'] !== ''
-                ? $body['next_cursor']
+            'next_cursor' => is_string($body['cursor'] ?? null) && $body['cursor'] !== ''
+                ? $body['cursor']
                 : null,
         ], $tool, $startedAt, $artifactId);
     }

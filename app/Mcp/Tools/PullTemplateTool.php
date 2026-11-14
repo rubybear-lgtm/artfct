@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Support\ArtifactGuidance;
 use App\Mcp\Support\FeatureFlaggedTool;
 use App\Mcp\Support\McpArtifactLink;
 use App\Mcp\Support\McpContext;
@@ -37,7 +38,7 @@ final class PullTemplateTool extends FeatureFlaggedTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.2.0',
+            'guidanceVersion' => ArtifactGuidance::VERSION,
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],

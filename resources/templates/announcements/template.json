@@ -24,9 +24,7 @@
     "entrypoint": "index.html",
     "key": "announcements",
     "requires": ["artifact-db"],
-    "sharing": {
-        "default": "team"
-    },
+    "sharing": "team",
     "title": "Announcement board",
     "version": 1
 }

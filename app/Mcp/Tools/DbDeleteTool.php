@@ -64,11 +64,16 @@ final class DbDeleteTool extends ArtifactDbTool
         if ($origin instanceof ResponseFactory) {
             return $origin;
         }
-        $params = isset($validated['if_version']) ? ['if_version' => (int) $validated['if_version']] : [];
+        // Laravel's `delete($url, $params)` does not reliably carry a query
+        // string, and the Worker reads `if_version` from the query — build
+        // it explicitly like the other single-write verbs.
+        $url = $origin['base'].'/'.$validated['collection'].'/'.$validated['doc_id'];
+        if (isset($validated['if_version'])) {
+            $url .= '?'.http_build_query(['if_version' => (int) $validated['if_version']]);
+        }
 
         try {
-            $response = $this->dbRequest($origin['token'], $origin['origin'])
-                ->delete($origin['base'].'/'.$validated['collection'].'/'.$validated['doc_id'], $params);
+            $response = $this->dbRequest($origin['token'], $origin['origin'])->delete($url);
         } catch (\Throwable $exception) {
             return $this->unavailable('db_delete', $startedAt, $artifactId, $exception);
         }

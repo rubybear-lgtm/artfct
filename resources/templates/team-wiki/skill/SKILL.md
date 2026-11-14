@@ -16,7 +16,7 @@ activity: { ts, kind, summary, updated_by }
 - `visibility` is `personal` or `shared`.
 - `activity` is append-only; `kind` is one of `ingest`, `query`, `lint`.
 
-Flow: `db_schema` first, then `db_list` (at most 100 rows per page; read all pages before filtering), then `db_set` / `db_update` / `db_delete`. Page writes are full-document puts carrying `if_version`; a version conflict means re-reading, not overwriting. `db_batch` for multi-row setup, at most 25 writes.
+Flow: `get_artifact` first (it reports `database.collections`), then `db_list` (at most 100 rows per page; read all pages before filtering), then `db_set` / `db_update` / `db_delete`. Page writes are full-document puts carrying `if_version`; a version conflict means re-reading, not overwriting. `db_batch` for multi-row setup, at most 25 writes.
 
 ## Layers
 

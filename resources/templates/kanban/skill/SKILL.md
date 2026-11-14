@@ -18,7 +18,7 @@ Collection `cards`, indexed on `column`:
 
 ## Flow
 
-1. `db_schema` to confirm the collections, then `db_list` the `cards` collection, 100 rows per page. Read all pages before filtering.
+1. `get_artifact` to confirm the `database.collections`, then `db_list` the `cards` collection, 100 rows per page. Read all pages before filtering.
 2. When conversation work starts, changes state, or completes, create (`db_set`) or move (`db_update`) the matching card.
 3. Every mutation carries if_version. On a 409 conflict, re-read the row and retry — never overwrite blindly.
 4. Setting up several cards at once: `db_batch`, at most 25 writes per call.

@@ -79,7 +79,7 @@ Source of truth: `resources/templates/kanban/skill/SKILL.md`. The template build
 
 Skill contents:
 
-1. Board schema and the `db_schema` → `db_list` → `db_set`/`db_update`/`db_delete` flow, including `if_version` and the 100-card paging.
+1. Board schema and the `get_artifact` → `db_list` → `db_set`/`db_update`/`db_delete` flow, including `if_version` and the 100-card paging.
 2. Auto-update triggers: when conversation work starts, changes state, or completes, create/move the matching card. Card title is the work item; body holds the one-line why plus a link or id (e.g. Linear id) when one exists.
 3. Private vs team: on a `private` board track only the user's work and never mention teammates; on a `team` board set `owner` truthfully (self vs teammate vs agent) and never move someone else's card to `done` without evidence.
 4. Never fabricate rows: seed cards are the only starter content; a pull never copies live rows; `db_batch` for multi-card setup, ≤ 25 writes.
@@ -87,7 +87,7 @@ Skill contents:
 
 ### Discoverability
 
-Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {cards: …}}` for the copy, and the `data` guidance points at `db_schema` first. No new MCP tools in this spec.
+Through the shared mechanism: `get_artifact` / `list_artifacts` report `database: {collections: {cards: …}}` for the copy, and the `data` guidance points at `get_artifact` first. No new MCP tools in this spec.
 
 ## Definition of done
 

@@ -12,10 +12,10 @@ use App\Enums\ArtifactType;
 final class ArtifactGuidance
 {
     /** Bumped whenever a rule in the guidance or in a tool description changes. */
-    public const VERSION = '1.2.0';
+    public const VERSION = '1.3.0';
 
     /** @var list<string> */
-    public const TOPICS = ['publish', 'search', 'collaborate', 'templates'];
+    public const TOPICS = ['publish', 'search', 'collaborate', 'templates', 'kanban', 'team-wiki', 'announcements'];
 
     /**
      * @return array{contract_version: string, topic: string, text: string, artifact_types: list<string>, limits: array<string, int>}|null

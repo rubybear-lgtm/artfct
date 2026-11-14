@@ -1,7 +1,11 @@
 {
     "artifact_type": "dashboard",
     "db": {
-        "collections": { "cards": { "index": "column" } },
+        "collections": {
+            "cards": {
+                "index": "column"
+            }
+        },
         "seed": [
             {
                 "body": {
@@ -43,7 +47,7 @@
     "entrypoint": "index.html",
     "key": "kanban",
     "requires": ["artifact-db"],
-    "sharing": { "default": "team" },
+    "sharing": "team",
     "title": "Sprint board",
     "version": 1
 }

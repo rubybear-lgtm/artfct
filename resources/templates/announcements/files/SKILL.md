@@ -13,7 +13,7 @@ The board sorts newest first and never re-sorts on edit.
 
 ## Flows
 
-Work through db_schema first, then db_list, then db_set or db_update or db_delete.
+Work through get_artifact first (it reports database.collections), then db_list, then db_set or db_update or db_delete.
 Every mutation carries if_version; a 409 means the row changed underneath you, so
 re-read it with db_list and ask to retry rather than overwriting.
 
