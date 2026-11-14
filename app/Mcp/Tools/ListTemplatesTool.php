@@ -8,6 +8,7 @@ use App\Mcp\Support\McpTelemetry;
 use App\Services\Templates\TeamFeatureGates;
 use App\Services\Templates\TemplateCatalog;
 use App\Services\Templates\TemplateListing;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
