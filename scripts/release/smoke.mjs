@@ -2,7 +2,10 @@
  * Production smoke checks after a Railway deploy (RUB-517).
  */
 
-import { readExpectedMcpToolNames } from './expected-tools.mjs';
+import {
+    readExpectedMcpToolNames,
+    readFlaggedMcpToolNames,
+} from './expected-tools.mjs';
 
 /**
  * @param {{
@@ -11,6 +14,7 @@ import { readExpectedMcpToolNames } from './expected-tools.mjs';
  *   token: string,
  *   fetchImpl?: typeof fetch,
  *   expectedTools?: string[],
+ *   flaggedTools?: string[],
  * }} options
  */
 export async function runProductionSmoke(options) {
@@ -18,6 +22,9 @@ export async function runProductionSmoke(options) {
     const healthUrl = options.healthUrl ?? 'https://artfct.dev/up';
     const mcpUrl = options.mcpUrl ?? 'https://artfct.dev/mcp';
     const expectedTools = options.expectedTools ?? readExpectedMcpToolNames();
+    // Feature-flagged tools (the artifact database) may or may not be listed
+    // for the smoke bot's team, depending on how far the feature is released.
+    const flaggedTools = options.flaggedTools ?? readFlaggedMcpToolNames();
 
     if (!options.token) {
         return {
@@ -66,7 +73,9 @@ export async function runProductionSmoke(options) {
         (toolsList.result?.tools ?? []).map((tool) => tool.name).filter(Boolean),
     );
     const missing = expectedTools.filter((name) => !actual.has(name));
-    const unexpected = [...actual].filter((name) => !expectedTools.includes(name));
+    const unexpected = [...actual].filter(
+        (name) => !expectedTools.includes(name) && !flaggedTools.includes(name),
+    );
 
     if (missing.length > 0 || unexpected.length > 0) {
         return {

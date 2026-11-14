@@ -1,7 +1,9 @@
 /**
  * Read the hosted MCP tool catalog from ArtfctServer.php so smoke tests do
- * not hard-code a count (RUB-517). Feature-flagged tools are left out: they
- * only exist for teams the feature is released to.
+ * not hard-code a count (RUB-517). Feature-flagged tools are kept apart from
+ * the base catalog: they only exist for teams the feature is released to, so a
+ * smoke must not require them, and must not fail when a released team sees
+ * them.
  */
 
 import { readFileSync } from 'node:fs';
@@ -11,12 +13,10 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
- * @param {string} [serverPath]
- * @returns {string[]}
+ * @param {string} serverPath
+ * @returns {{ base: string[], flagged: string[] }}
  */
-export function readExpectedMcpToolNames(
-    serverPath = resolve(root, 'app/Mcp/Servers/ArtfctServer.php'),
-) {
+function readMcpToolNames(serverPath) {
     const source = readFileSync(serverPath, 'utf8');
     const toolsBlock = source.match(
         /protected\s+array\s+\$tools\s*=\s*\[([\s\S]*?)\];/,
@@ -35,27 +35,51 @@ export function readExpectedMcpToolNames(
     }
 
     /** @type {string[]} */
-    const names = [];
+    const base = [];
+    /** @type {string[]} */
+    const flagged = [];
 
     for (const className of classNames) {
         const toolPath = resolve(root, `app/Mcp/Tools/${className}.php`);
         const toolSource = readFileSync(toolPath, 'utf8');
-
-        // A feature-flagged tool (FeatureFlaggedTool, or DatabaseTool which
-        // extends it) is listed only for teams the feature is released to, so a
-        // smoke against a team without it must not expect it.
-        if (/extends\s+(FeatureFlaggedTool|DatabaseTool)\b/.test(toolSource)) {
-            continue;
-        }
-
         const named = toolSource.match(/#\[Name\(\s*'([^']+)'\s*\)\]/);
 
         if (!named) {
             throw new Error(`Missing #[Name('…')] on ${toolPath}`);
         }
 
-        names.push(named[1]);
+        // A feature-flagged tool (FeatureFlaggedTool, or DatabaseTool which
+        // extends it) is listed only for teams the feature is released to.
+        if (/extends\s+(FeatureFlaggedTool|DatabaseTool)\b/.test(toolSource)) {
+            flagged.push(named[1]);
+        } else {
+            base.push(named[1]);
+        }
     }
 
-    return names;
+    return { base, flagged };
+}
+
+/**
+ * Tools every team sees.
+ *
+ * @param {string} [serverPath]
+ * @returns {string[]}
+ */
+export function readExpectedMcpToolNames(
+    serverPath = resolve(root, 'app/Mcp/Servers/ArtfctServer.php'),
+) {
+    return readMcpToolNames(serverPath).base;
+}
+
+/**
+ * Feature-flagged tools: allowed in tools/list, never required.
+ *
+ * @param {string} [serverPath]
+ * @returns {string[]}
+ */
+export function readFlaggedMcpToolNames(
+    serverPath = resolve(root, 'app/Mcp/Servers/ArtfctServer.php'),
+) {
+    return readMcpToolNames(serverPath).flagged;
 }
