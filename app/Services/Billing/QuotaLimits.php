@@ -18,12 +18,15 @@ final readonly class QuotaLimits
         public int $artifactsPerMonth,
         public int $bundleSizeCeilingBytes,
         public int $renderMinutesPerMonth,
+        public int $maxDbDocsPerArtifact,
+        public int $maxDbBytesPerOrg,
     ) {}
 
     /**
      * Defaults: 5 GB storage, 1,000 artifacts/month, a 10 MB per-artifact
      * ceiling (below spec 4's absolute 50 MB bundle ceiling — DoD:
-     * "below spec 4's absolute ceiling"), 100 browser-render minutes.
+     * "below spec 4's absolute ceiling"), 100 browser-render minutes,
+     * 5,000 db documents per artifact and 100 MB of db bytes per org.
      */
     public static function default(): self
     {
@@ -32,6 +35,8 @@ final readonly class QuotaLimits
             artifactsPerMonth: (int) config('billing.quota.artifacts_per_month', 1000),
             bundleSizeCeilingBytes: (int) config('billing.quota.bundle_size_ceiling_bytes', 10 * 1024 * 1024),
             renderMinutesPerMonth: (int) config('billing.quota.render_minutes_per_month', 100),
+            maxDbDocsPerArtifact: (int) config('billing.quota.db_docs_per_artifact', 5000),
+            maxDbBytesPerOrg: (int) config('billing.quota.db_bytes_per_org', 100 * 1024 * 1024),
         );
     }
 
@@ -47,11 +52,15 @@ final readonly class QuotaLimits
             return self::default();
         }
 
+        $defaults = self::default();
+
         return new self(
             storageBytes: (int) $config['storage_bytes'],
             artifactsPerMonth: (int) $config['artifacts_per_month'],
             bundleSizeCeilingBytes: (int) $config['bundle_size_ceiling_bytes'],
             renderMinutesPerMonth: (int) $config['render_minutes_per_month'],
+            maxDbDocsPerArtifact: (int) ($config['max_db_docs_per_artifact'] ?? $defaults->maxDbDocsPerArtifact),
+            maxDbBytesPerOrg: (int) ($config['max_db_bytes_per_org'] ?? $defaults->maxDbBytesPerOrg),
         );
     }
 }

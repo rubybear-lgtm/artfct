@@ -22,6 +22,7 @@ use App\Services\Billing\QuotaService;
 use App\Services\Collections\CollectionService;
 use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ExtractionHeuristics;
+use App\Services\TeamFeatureGates;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -41,7 +42,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use RuntimeException;
 
-#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Re-publishing identical content returns the same artifact. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
+#[Description('Rules in get_guidance (topic publish) apply even if you have not read them. Publish a self-contained HTML document, or a multi-file bundle (an entrypoint plus its CSS, scripts, images and other assets, each file given in `files`), as a permanent artifact in the authenticated workspace. For markdown, pass `files` with `entrypoint` set to a `.md` or `.markdown` path such as `README.md` (the `html` parameter rejects markdown). Inline `<script>` blocks, `onclick=` handlers, `data:` images and resources from other sites do not load on the served page: put scripts, images and fonts in `files`. Publishing content that still contains an inline `<script>`, `onclick=` or `data:image` returns a `warnings` array. Optional `collection` (name or id) adds a newly created artifact to that workspace collection in the same call and requires collections:write; on a version publish with `artifact_id`, omitted fields (title, description, sharing, edit_access, collection) keep their previous values. Optional `base_version` with `artifact_id` checks for conflicts; omitting it overwrites without a conflict check (`base_version_checked: false`). Re-publishing identical content returns the same artifact. Optional `db` declares per-artifact database collections plus seed rows written once on first deploy (requires the artifact-db feature); on a version publish, explicit `db: null` removes the endpoint. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a short-lived signed link bound to the viewer at click time; for a public artifact it is the workspace\'s public artifact URL. Call get_artifact for a fresh view_url.')]
 #[Name('deploy_artifact')]
 #[Title('Publish artifact')]
 #[IsReadOnly(false)]
@@ -123,6 +124,12 @@ final class DeployArtifactTool extends Tool
             'description' => ['nullable', 'string', 'max:1000'],
             'model' => ['nullable', 'string', 'max:100'],
             'collection' => ['nullable', 'string', 'max:100'],
+            'db' => ['nullable', 'array'],
+            'db.collections' => ['nullable', 'array'],
+            'db.seed' => ['nullable', 'array', 'max:1000'],
+            'db.seed.*.collection' => ['required', 'string', 'regex:/\A[A-Za-z0-9._-]{1,64}\z/'],
+            'db.seed.*.doc_id' => ['required', 'string', 'regex:/\A[A-Za-z0-9._-]{1,128}\z/'],
+            'db.seed.*.body' => ['required', 'array'],
         ]);
 
         $artifactIdInput = $validated['artifact_id'] ?? null;
@@ -133,6 +140,29 @@ final class DeployArtifactTool extends Tool
         $baseVersion = isset($validated['base_version']) ? (int) $validated['base_version'] : null;
         if ($baseVersion !== null && ! $versionPublish) {
             return McpErrorResponse::error('`base_version` only applies when `artifact_id` is given.', 'invalid_request');
+        }
+        // The db manifest is opt-in per publish. An explicit `db: null` on a
+        // version publish removes the endpoint; omitting `db` keeps whatever
+        // the artifact already declares. Seed rows travel with a template:
+        // they are written once on first deploy, never copied from live rows.
+        $dbGiven = array_key_exists('db', $validated);
+        $dbManifest = new \stdClass;
+        if ($dbGiven && $validated['db'] !== null) {
+            if (! app(TeamFeatureGates::class)->enabled(TeamFeatureGates::ARTIFACT_DB, McpContext::team())) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'feature_not_enabled', $startedAt);
+
+                return McpErrorResponse::error('Artifact databases are not enabled in this workspace yet.', 'feature_not_enabled');
+            }
+            $dbManifest = $this->dbManifest($validated['db']);
+            if (is_string($dbManifest)) {
+                app(McpTelemetry::class)->record('deploy_artifact', 'invalid_request', $startedAt);
+
+                return McpErrorResponse::error($dbManifest, 'invalid_request');
+            }
+        } elseif ($dbGiven) {
+            // Explicit null: remove the endpoint on a version publish, no-op
+            // (no manifest) on a new artifact.
+            $dbManifest = null;
         }
 
         // Collection membership only applies to a new artifact; a version
@@ -318,6 +348,11 @@ final class DeployArtifactTool extends Tool
                 ],
                 'provenance' => $this->provenance($request, $validated['model'] ?? null),
             ];
+            // Forward the db manifest to the Worker create/version endpoint:
+            // a manifest declares collections, `db: null` removes the endpoint.
+            if ($dbGiven) {
+                $payload['manifest']['db'] = $dbManifest;
+            }
 
             // Version publishes omit title/description unless the caller sent
             // them, so a previous description is not wiped by a title fallback.
@@ -546,7 +581,63 @@ final class DeployArtifactTool extends Tool
             'description' => $schema->string()->max(1000)->description('Optional summary used in search results. On a version publish, omit to keep the previous description.')->nullable(),
             'model' => $schema->string()->max(100)->description('Optional model name for provenance.')->nullable(),
             'collection' => $schema->string()->max(100)->description('Optional workspace collection name or numeric id. On a new publish, adds the artifact to that collection (requires collections:write). Ignored when publishing a new version with `artifact_id` (membership is kept).')->nullable(),
+            'db' => $schema->object()->description('Optional database manifest: `collections` maps names to `{index}` declarations and `seed` lists `{collection, doc_id, body}` rows written once on first deploy (requires the artifact-db feature). On a version publish, explicit null removes the endpoint; omitting keeps the current manifest.')->nullable(),
         ];
+    }
+
+    /**
+     * Normalize the `db` argument into the Worker manifest shape, or an
+     * error message when it is malformed. Collections declare an optional
+     * `index` field; seed rows are written once on first deploy and are
+     * never copied from the source artifact's live rows on pull.
+     *
+     * @param  array<string, mixed>  $db
+     * @return array<string, mixed>|string
+     */
+    private function dbManifest(array $db): array|string
+    {
+        $manifest = [];
+
+        $collections = $db['collections'] ?? null;
+        if ($collections !== null) {
+            if (! is_array($collections)) {
+                return '`db.collections` must be an object mapping collection names to their declaration.';
+            }
+            $declared = [];
+            foreach ($collections as $name => $declaration) {
+                if (! is_string($name) || preg_match('/\A[A-Za-z0-9._-]{1,64}\z/', $name) !== 1) {
+                    return 'Collection names must be 1-64 characters of letters, numbers, dot, underscore or dash.';
+                }
+                if (! is_array($declaration)) {
+                    return "The declaration for collection [{$name}] must be an object.";
+                }
+                $index = $declaration['index'] ?? null;
+                if ($index !== null && (! is_string($index) || preg_match('/\A[A-Za-z0-9._-]{1,64}\z/', $index) !== 1)) {
+                    return "The index for collection [{$name}] must be 1-64 characters of letters, numbers, dot, underscore or dash.";
+                }
+                $declared[$name] = $index === null ? [] : ['index' => $index];
+            }
+            $manifest['collections'] = $declared;
+        }
+
+        $seed = $db['seed'] ?? null;
+        if ($seed !== null) {
+            if (! is_array($seed)) {
+                return '`db.seed` must be an array of {collection, doc_id, body} rows.';
+            }
+            foreach ($seed as $row) {
+                if (! is_array($row) || strlen((string) json_encode($row['body'] ?? null)) > 65536) {
+                    return 'Every `db.seed` row needs a JSON object body of at most 64 KiB.';
+                }
+            }
+            $manifest['seed'] = array_values($seed);
+        }
+
+        if ($manifest === []) {
+            return 'Pass `db.collections` or `db.seed` (or explicit null to remove the endpoint on a version publish).';
+        }
+
+        return $manifest;
     }
 
     /**
