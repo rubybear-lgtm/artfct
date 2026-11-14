@@ -14,6 +14,7 @@ use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Governance\AuditLogger;
+use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -482,10 +483,11 @@ final class ArtifactViewerController extends Controller
     }
 
     /**
-     * Download one artifact's entrypoint as an HTML attachment. The visible
-     * check is `getArtifact` for the signed-in member first: the content read
-     * itself uses a system credential that can see private artifacts, so it
-     * must never be the thing that decides what the member may have.
+     * Download one artifact's entrypoint as an HTML attachment. `getArtifact`
+     * for the signed-in member comes first, but the content read itself uses a
+     * system credential that can see private artifacts, so it must never be the
+     * thing that decides what the member may have: the Private rule is applied
+     * to what the content read returned, as the preview and the console do.
      */
     public function download(Request $request, string $artifactId, ArtifactDirectory $artifacts, ArtifactContentSource $content): Response
     {
@@ -499,6 +501,12 @@ final class ArtifactViewerController extends Controller
         $entry = $content->fetch($team->slug, $artifactId);
 
         abort_if($entry === null, 404);
+
+        // The same 404 as a missing artifact, so a refusal is not an existence oracle.
+        abort_unless(
+            ArtifactVisibility::canView($entry['sharing'] ?? null, $entry['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
 
         $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'.html';
 
