@@ -5,7 +5,6 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\ArtifactDbTool;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -61,16 +60,15 @@ final class DbDeleteTool extends ArtifactDbTool
             return $refused;
         }
 
-        $baseUrl = $this->workerBaseUrl('db_delete', $startedAt);
-        if ($baseUrl instanceof ResponseFactory) {
-            return $baseUrl;
+        $origin = $this->dbOrigin($artifactId, 'db_delete', $startedAt);
+        if ($origin instanceof ResponseFactory) {
+            return $origin;
         }
-
         $params = isset($validated['if_version']) ? ['if_version' => (int) $validated['if_version']] : [];
 
         try {
-            $response = Http::withToken($this->token())
-                ->delete($this->dbUrl($baseUrl, $artifactId, '/'.$validated['collection'].'/'.$validated['doc_id']), $params);
+            $response = $this->dbRequest($origin['token'], $origin['origin'])
+                ->delete($origin['base'].'/'.$validated['collection'].'/'.$validated['doc_id'], $params);
         } catch (\Throwable $exception) {
             return $this->unavailable('db_delete', $startedAt, $artifactId, $exception);
         }

@@ -5,7 +5,6 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\ArtifactDbTool;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -71,9 +70,9 @@ class DbListTool extends ArtifactDbTool
             return $refused;
         }
 
-        $baseUrl = $this->workerBaseUrl($tool, $startedAt);
-        if ($baseUrl instanceof ResponseFactory) {
-            return $baseUrl;
+        $origin = $this->dbOrigin($artifactId, $tool, $startedAt);
+        if ($origin instanceof ResponseFactory) {
+            return $origin;
         }
 
         $params = ['limit' => (int) ($validated['limit'] ?? 100)];
@@ -85,8 +84,8 @@ class DbListTool extends ArtifactDbTool
         }
 
         try {
-            $response = Http::withToken($this->token())
-                ->get($this->dbUrl($baseUrl, $artifactId, '/'.$validated['collection']), $params);
+            $response = $this->dbRequest($origin['token'], $origin['origin'])
+                ->get($origin['base'].'/'.$validated['collection'], $params);
         } catch (\Throwable $exception) {
             return $this->unavailable($tool, $startedAt, $artifactId, $exception);
         }

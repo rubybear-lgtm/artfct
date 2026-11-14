@@ -4,7 +4,6 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Support\ArtifactDbTool;
 use App\Mcp\Support\McpTelemetry;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -75,14 +74,14 @@ final class DbBatchTool extends ArtifactDbTool
             }
         }
 
-        $baseUrl = $this->workerBaseUrl('db_batch', $startedAt);
-        if ($baseUrl instanceof ResponseFactory) {
-            return $baseUrl;
+        $origin = $this->dbOrigin($artifactId, 'db_batch', $startedAt);
+        if ($origin instanceof ResponseFactory) {
+            return $origin;
         }
 
         try {
-            $response = Http::withToken($this->token())
-                ->post($this->dbUrl($baseUrl, $artifactId, '/batch'), [
+            $response = $this->dbRequest($origin['token'], $origin['origin'])
+                ->post($origin['base'].'/batch', [
                     'writes' => array_map(fn (array $write): array => array_filter([
                         'op' => $write['op'],
                         'collection' => $write['collection'],

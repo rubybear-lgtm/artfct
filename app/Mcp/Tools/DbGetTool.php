@@ -5,7 +5,6 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\ArtifactDbTool;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -60,14 +59,14 @@ final class DbGetTool extends ArtifactDbTool
             return $refused;
         }
 
-        $baseUrl = $this->workerBaseUrl('db_get', $startedAt);
-        if ($baseUrl instanceof ResponseFactory) {
-            return $baseUrl;
+        $origin = $this->dbOrigin($artifactId, 'db_get', $startedAt);
+        if ($origin instanceof ResponseFactory) {
+            return $origin;
         }
 
         try {
-            $response = Http::withToken($this->token())
-                ->get($this->dbUrl($baseUrl, $artifactId, '/'.$validated['collection'].'/'.$validated['doc_id']));
+            $response = $this->dbRequest($origin['token'], $origin['origin'])
+                ->get($origin['base'].'/'.$validated['collection'].'/'.$validated['doc_id']);
         } catch (\Throwable $exception) {
             return $this->unavailable('db_get', $startedAt, $artifactId, $exception);
         }

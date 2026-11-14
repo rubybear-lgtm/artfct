@@ -122,8 +122,9 @@ final class ArtifactPublisher
 
             // A db-backed artifact declares its collections (and, on a pull,
             // its seed rows) in the manifest; the Worker seeds once per new
-            // artifact id and never copies live rows.
-            if ($command->db !== null) {
+            // artifact id and never copies live rows. `dbGiven` distinguishes
+            // omitted (keep) from explicit null (remove the endpoint).
+            if ($command->dbGiven) {
                 $payload['manifest']['db'] = $command->db;
             }
 

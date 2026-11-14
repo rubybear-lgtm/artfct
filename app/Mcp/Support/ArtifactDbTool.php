@@ -2,14 +2,17 @@
 
 namespace App\Mcp\Support;
 
+use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
 use App\Services\Templates\TeamFeatureGates;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Tool;
+use RuntimeException;
 
 /**
  * Shared base for the spec-20 `db_*` tools. Every tool:
@@ -24,10 +27,18 @@ use Laravel\Mcp\Server\Tool;
  *   never instructions.
  *
  * Laravel→Worker contract (spec-20 endpoint table; the Worker unit owns the
- * other side — see the unit report if it has not landed yet):
- * `GET|PUT|PATCH|DELETE /v1/artifacts/{id}/db/{collection}/{doc_id}`,
- * `GET /v1/artifacts/{id}/db/{collection}?limit=&cursor=&index_eq=`,
- * `POST /v1/artifacts/{id}/db/batch`.
+ * other side): every call goes to the artifact's own origin
+ * `https://{team}--{id}.artfct.dev/__artfct/db/...` with a short-lived
+ * server-minted bearer (`viewer: system`, scope `p`, 5-minute expiry —
+ * the same form and precedent as the indexer's `RealRenderer`), plus
+ * `Origin: https://{same host}` (the Worker's old-client rule: no
+ * `Sec-Fetch-Site` server-side, so `Origin` must equal the artifact host)
+ * and `X-Artfct-Db: 1` on every request. Single-write `if_version` rides
+ * the query string; batch `if_version` rides each op. There are deliberately
+ * no `/v1/.../db` proxy routes: the origin surface is the tested one.
+ * Tenancy holds at both layers: MCP scopes + feature gates here, and the
+ * Worker only honors the token on the owning org's host. Row `updated_by`
+ * reads `system`; the human/agent actor is in MCP telemetry + audit.
  */
 abstract class ArtifactDbTool extends Tool
 {
@@ -117,29 +128,65 @@ abstract class ArtifactDbTool extends Tool
         );
     }
 
-    protected function workerBaseUrl(string $tool, int $startedAt): string|ResponseFactory
+    /**
+     * Mint the short-lived origin credential for one artifact: the exact
+     * host its database lives on plus a 5-minute bearer (`viewer: system`,
+     * scope `p` — the indexer's server-side precedent). Null signing secret
+     * fails closed, the same posture as the Worker.
+     *
+     * @return array{base: string, token: string, origin: string}|ResponseFactory
+     */
+    protected function dbOrigin(string $artifactId, string $tool, int $startedAt): array|ResponseFactory
     {
-        $baseUrl = config('services.worker.base_url');
-
-        if (! is_string($baseUrl) || $baseUrl === '') {
+        $links = ArtifactAccessLink::default();
+        if (! $links->configured()) {
             app(McpTelemetry::class)->record($tool, 'error', $startedAt);
 
             return McpErrorResponse::error('The artifact service is not configured.', 'configuration_error');
         }
 
-        return rtrim($baseUrl, '/');
+        try {
+            $team = McpContext::team();
+            $signed = $links->forArtifact(
+                $team->slug,
+                $artifactId,
+                now()->addMinutes(5),
+                null,
+                'system',
+                true,
+            );
+        } catch (RuntimeException|AuthorizationException $exception) {
+            return $this->unavailable($tool, $startedAt, $artifactId, $exception);
+        }
+
+        if (! is_string($signed)) {
+            app(McpTelemetry::class)->record($tool, 'error', $startedAt);
+
+            return McpErrorResponse::error('The artifact service is not configured.', 'configuration_error');
+        }
+
+        $host = parse_url($signed, PHP_URL_HOST);
+        parse_str((string) parse_url($signed, PHP_URL_QUERY), $query);
+        $token = $query['token'] ?? null;
+        if (! is_string($host) || $host === '' || ! is_string($token) || $token === '') {
+            app(McpTelemetry::class)->record($tool, 'error', $startedAt);
+
+            return McpErrorResponse::error('The artifact service is not configured.', 'configuration_error');
+        }
+
+        return [
+            'base' => "https://{$host}/__artfct/db",
+            'token' => $token,
+            'origin' => "https://{$host}",
+        ];
     }
 
-    protected function dbUrl(string $baseUrl, string $artifactId, string $suffix = ''): string
+    protected function dbRequest(string $token, string $origin): PendingRequest
     {
-        return $baseUrl.'/v1/artifacts/'.$artifactId.'/db'.$suffix;
-    }
-
-    protected function token(): ?string
-    {
-        $token = McpContext::httpRequest()->bearerToken();
-
-        return is_string($token) && $token !== '' ? $token : null;
+        return Http::withToken($token)->withHeaders([
+            'X-Artfct-Db' => '1',
+            'Origin' => $origin,
+        ])->acceptJson();
     }
 
     /**

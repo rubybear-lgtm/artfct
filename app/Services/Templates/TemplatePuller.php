@@ -171,6 +171,7 @@ final class TemplatePuller
             clientName: $pull->clientName,
             recordTelemetry: $pull->recordTelemetry,
             db: $template->db,
+            dbGiven: $template->db !== null,
         );
 
         $lock = $requestId !== null

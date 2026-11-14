@@ -7,7 +7,6 @@ use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -86,23 +85,22 @@ class DbSetTool extends ArtifactDbTool
             return $refused;
         }
 
-        $baseUrl = $this->workerBaseUrl($tool, $startedAt);
-        if ($baseUrl instanceof ResponseFactory) {
-            return $baseUrl;
+        $origin = $this->dbOrigin($artifactId, $tool, $startedAt);
+        if ($origin instanceof ResponseFactory) {
+            return $origin;
         }
 
-        $payload = ['body' => $validated['body']];
+        // Single-write `if_version` rides the query string — the Worker
+        // reads it from there, never from the JSON body.
+        $url = $origin['base'].'/'.$validated['collection'].'/'.$validated['doc_id'];
         if (isset($validated['if_version'])) {
-            $payload['if_version'] = (int) $validated['if_version'];
+            $url .= '?'.http_build_query(['if_version' => (int) $validated['if_version']]);
         }
 
         try {
             $call = $method === 'PATCH' ? 'patch' : 'put';
-            $response = Http::withToken($this->token())
-                ->$call(
-                    $this->dbUrl($baseUrl, $artifactId, '/'.$validated['collection'].'/'.$validated['doc_id']),
-                    $payload,
-                );
+            $response = $this->dbRequest($origin['token'], $origin['origin'])
+                ->$call($url, ['body' => $validated['body']]);
         } catch (\Throwable $exception) {
             return $this->unavailable($tool, $startedAt, $artifactId, $exception);
         }

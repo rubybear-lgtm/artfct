@@ -42,5 +42,6 @@ final class ArtifactPublish
         public ?string $clientName = null,
         public bool $recordTelemetry = true,
         public ?array $db = null,
+        public bool $dbGiven = false,
     ) {}
 }
