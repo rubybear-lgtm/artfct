@@ -323,6 +323,8 @@ test('console_limits_match_billing_sync_limits', function () {
             'storage_bytes' => 4321,
             'artifacts_per_month' => 77,
             'bundle_ceiling_bytes' => 999,
+            'max_db_docs_per_artifact' => 5000,
+            'max_db_bytes_per_org' => 100 * 1024 * 1024,
             'read_only' => true,
         ]);
 });

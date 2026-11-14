@@ -30,6 +30,8 @@ test('publishes MCP authorization metadata', function () {
                 'collections:read',
                 'collections:write',
                 'usage:read',
+                'data:read',
+                'data:write',
             ])
             ->where('registration_endpoint', route('oauth.register'))
             ->where('revocation_endpoint', route('oauth.revoke'))
@@ -47,6 +49,8 @@ test('publishes MCP authorization metadata', function () {
             'collections:read',
             'collections:write',
             'usage:read',
+            'data:read',
+            'data:write',
         ]);
 });
 
