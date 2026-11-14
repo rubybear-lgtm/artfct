@@ -314,7 +314,10 @@ binary, which `php artisan octane:install --server=frankenphp --no-interaction`
 downloads (the command also appends to `.gitignore`; discard that edit).
 `MCP_E2E_OCTANE_ADMIN_PORT` (default 2990) keeps FrankenPHP's admin endpoint off
 the default 2019 so it cannot collide with `composer dev`. Octane loads the code
-once per worker, so restart the stack after editing PHP.
+once per worker, so restart the stack after editing PHP. CI runs the isolation
+suite this way too, as the `mcp_e2e_octane` job (a required part of the
+`application` gate), so a green run means the repeat passes ran on resident
+workers; the `mcp_e2e` job alone uses the built-in server.
 
 ### Tenant isolation suite (RUB-435)
 
