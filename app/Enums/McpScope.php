@@ -18,6 +18,8 @@ enum McpScope: string
     case CollectionsRead = 'collections:read';
     case CollectionsWrite = 'collections:write';
     case UsageRead = 'usage:read';
+    case DataRead = 'data:read';
+    case DataWrite = 'data:write';
 
     /** @return list<string> */
     public static function values(): array
@@ -35,10 +37,13 @@ enum McpScope: string
     {
         return match ($role) {
             TeamRole::Admin, TeamRole::Member => self::values(),
+            // Spec 20: viewers read board rows but never write them; member
+            // and above grant both data scopes with the full set.
             default => [
                 self::ArtifactsRead->value,
                 self::CollectionsRead->value,
                 self::UsageRead->value,
+                self::DataRead->value,
             ],
         };
     }
@@ -62,14 +67,16 @@ enum McpScope: string
             self::CollectionsRead => 'See your team\'s collections',
             self::CollectionsWrite => 'Create collections and add work to them',
             self::UsageRead => 'See usage and plan limits',
+            self::DataRead => 'Read the data inside data-backed artifacts',
+            self::DataWrite => 'Update the data inside data-backed artifacts',
         };
     }
 
     public function risk(): McpScopeRisk
     {
         return match ($this) {
-            self::ArtifactsRead, self::CollectionsRead, self::UsageRead => McpScopeRisk::Read,
-            self::ArtifactsDeploy, self::CollectionsWrite, self::CommentsWrite => McpScopeRisk::Write,
+            self::ArtifactsRead, self::CollectionsRead, self::UsageRead, self::DataRead => McpScopeRisk::Read,
+            self::ArtifactsDeploy, self::CollectionsWrite, self::CommentsWrite, self::DataWrite => McpScopeRisk::Write,
             self::ArtifactsDelete => McpScopeRisk::Destructive,
         };
     }

@@ -216,6 +216,7 @@ test('viewer role scope caps exclude mutation scopes', function () {
         McpScope::ArtifactsRead->value,
         McpScope::CollectionsRead->value,
         McpScope::UsageRead->value,
+        McpScope::DataRead->value,
     ])->and(McpScope::forRole(TeamRole::Member))->toBe(McpScope::values());
 });
 
