@@ -88,7 +88,11 @@ impl DbDocRow {
 
 /// The artifact a request is routed to: the isolated hostname names it, the
 /// D1 row confirms it. Pure so the not-our-artifact cases are unit-testable.
-pub(crate) fn db_host_matches_row(host_org: &str, host_artifact: &str, row: &DbArtifactRow) -> bool {
+pub(crate) fn db_host_matches_row(
+    host_org: &str,
+    host_artifact: &str,
+    row: &DbArtifactRow,
+) -> bool {
     row.id == host_artifact && row.org == host_org
 }
 
@@ -149,8 +153,13 @@ pub(crate) fn db_request_shape_ok(
 pub(crate) enum DbPath<'a> {
     Session,
     Batch,
-    Collection { collection: &'a str },
-    Doc { collection: &'a str, doc_id: &'a str },
+    Collection {
+        collection: &'a str,
+    },
+    Doc {
+        collection: &'a str,
+        doc_id: &'a str,
+    },
 }
 
 /// Splits the db prefix off a request path. Returns the raw segments —
@@ -175,10 +184,7 @@ pub(crate) fn parse_db_path(path: &str) -> Option<DbPath<'_>> {
             if doc_id.is_empty() || segments.next().is_some() {
                 return None;
             }
-            Some(DbPath::Doc {
-                collection,
-                doc_id,
-            })
+            Some(DbPath::Doc { collection, doc_id })
         }
     }
 }
@@ -282,7 +288,9 @@ pub(crate) fn classify_db_token(
     artifact_id: &str,
     now: chrono::DateTime<Utc>,
 ) -> PresentedToken {
-    if let Some(viewer) = artifact_origin::verified_token_viewer(secret, presented, artifact_id, now) {
+    if let Some(viewer) =
+        artifact_origin::verified_token_viewer(secret, presented, artifact_id, now)
+    {
         return PresentedToken::This(viewer);
     }
     let claimed = match presented.split('.').collect::<Vec<_>>().as_slice() {
@@ -388,7 +396,9 @@ pub(crate) struct DbListParams {
     pub(crate) index_eq: Option<String>,
 }
 
-pub(crate) fn parse_db_list_params(query: &HashMap<String, String>) -> Result<DbListParams, ErrorCode> {
+pub(crate) fn parse_db_list_params(
+    query: &HashMap<String, String>,
+) -> Result<DbListParams, ErrorCode> {
     let limit = match query.get("limit") {
         None => DB_LIST_DEFAULT_LIMIT,
         Some(raw) => {
@@ -401,9 +411,7 @@ pub(crate) fn parse_db_list_params(query: &HashMap<String, String>) -> Result<Db
     };
     let cursor = match query.get("cursor") {
         None => None,
-        Some(raw)
-            if validation::is_valid_db_name(raw, validation::MAX_DB_DOC_ID_CHARS) =>
-        {
+        Some(raw) if validation::is_valid_db_name(raw, validation::MAX_DB_DOC_ID_CHARS) => {
             Some(raw.clone())
         }
         Some(_) => return Err(ErrorCode::ValidationFailed),
@@ -570,16 +578,18 @@ pub(crate) fn validate_db_batch(
         }
         let current = existing.get(&(op.collection.clone(), op.doc_id.clone()));
         match op.kind {
-            DbBatchOpKind::Put => match db_guard_version(current.map(|row| row.version), op.if_version) {
-                Err(DbWriteConflict::Missing) => return Err(DbBatchRefusal::Missing { index }),
-                Err(DbWriteConflict::Stale) => {
-                    return Err(DbBatchRefusal::Stale {
-                        index,
-                        current: current.cloned().expect("stale implies present"),
-                    })
+            DbBatchOpKind::Put => {
+                match db_guard_version(current.map(|row| row.version), op.if_version) {
+                    Err(DbWriteConflict::Missing) => return Err(DbBatchRefusal::Missing { index }),
+                    Err(DbWriteConflict::Stale) => {
+                        return Err(DbBatchRefusal::Stale {
+                            index,
+                            current: current.cloned().expect("stale implies present"),
+                        })
+                    }
+                    Ok(()) => {}
                 }
-                Ok(()) => {}
-            },
+            }
             // Patch and delete target an existing document.
             DbBatchOpKind::Patch | DbBatchOpKind::Delete if current.is_none() => {
                 return Err(DbBatchRefusal::Missing { index })
@@ -895,11 +905,9 @@ pub(crate) fn db_quota_response(deny: DbQuotaDeny) -> Result<Response> {
 
 pub(crate) fn db_refusal_response(refusal: &DbBatchRefusal) -> Result<Response> {
     match refusal {
-        DbBatchRefusal::UnknownCollection { .. } => db_error(
-            ErrorCode::ValidationFailed,
-            "Unknown collection.",
-            422,
-        ),
+        DbBatchRefusal::UnknownCollection { .. } => {
+            db_error(ErrorCode::ValidationFailed, "Unknown collection.", 422)
+        }
         DbBatchRefusal::BodyTooLarge { .. } => db_error(
             ErrorCode::BodyTooLarge,
             "Database documents are limited to 64 KiB.",
@@ -925,7 +933,11 @@ pub(crate) fn db_refusal_response(refusal: &DbBatchRefusal) -> Result<Response> 
 /// `main` only for isolated artifact hosts. Every branch binds `org_id` and
 /// `artifact_id` from the verified token and the D1 row — never from the
 /// request.
-pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) -> Result<Response> {
+pub(crate) async fn handle_db_request(
+    req: &mut Request,
+    env: &Env,
+    host: &str,
+) -> Result<Response> {
     let now = Utc::now();
     let suffix = artifact_origin::artifact_origin_suffix(env);
     let Some((host_org, host_artifact)) = artifact_origin::parse_isolated_hostname(host, &suffix)
@@ -995,10 +1007,13 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
     };
     let cookie_header = req.headers().get("Cookie")?;
     let cookie_viewer = artifact_origin::access_token_from_cookie(cookie_header.as_deref())
-        .and_then(|token| artifact_origin::verified_token_viewer(secret.as_deref(), &token, &row.id, now));
+        .and_then(|token| {
+            artifact_origin::verified_token_viewer(secret.as_deref(), &token, &row.id, now)
+        });
     match (method.clone(), db_path) {
         (Method::Get, DbPath::Session) => {
-            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false) {
+            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false)
+            {
                 Err(deny) => return db_deny_response(deny),
                 Ok(auth) => auth,
             };
@@ -1006,11 +1021,19 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
                 crate::auth::connecting_ip(req).unwrap_or_else(|_| "unknown".to_string())
             });
             if !db_write_allowed(env, &row.id, &identity).await? {
-                return db_error(ErrorCode::RateLimited, "Database requests are rate limited.", 429);
+                return db_error(
+                    ErrorCode::RateLimited,
+                    "Database requests are rate limited.",
+                    429,
+                );
             }
             let expires_at = now + chrono::Duration::seconds(DB_SESSION_TTL_SECONDS);
             let Some(secret) = secret else {
-                return db_error(ErrorCode::InternalError, "The database is unavailable.", 500);
+                return db_error(
+                    ErrorCode::InternalError,
+                    "The database is unavailable.",
+                    500,
+                );
             };
             // The session token carries the caller's own identity forward: a
             // named viewer gets a five-part token with their viewer and scope,
@@ -1042,10 +1065,11 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
             )
         }
         (Method::Get, DbPath::Doc { collection, doc_id }) => {
-            let _auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false) {
-                Err(deny) => return db_deny_response(deny),
-                Ok(auth) => auth,
-            };
+            let _auth =
+                match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false) {
+                    Err(deny) => return db_deny_response(deny),
+                    Ok(auth) => auth,
+                };
             let (collection, doc_id) = (collection.to_string(), doc_id.to_string());
             if !validation::is_valid_db_name(&collection, validation::MAX_DB_COLLECTION_CHARS)
                 || !validation::is_valid_db_name(&doc_id, validation::MAX_DB_DOC_ID_CHARS)
@@ -1071,10 +1095,11 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
             db_json_response(&db_doc_body(&collection, &existing), 200)
         }
         (Method::Get, DbPath::Collection { collection }) => {
-            let _auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false) {
-                Err(deny) => return db_deny_response(deny),
-                Ok(auth) => auth,
-            };
+            let _auth =
+                match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, false) {
+                    Err(deny) => return db_deny_response(deny),
+                    Ok(auth) => auth,
+                };
             let collection = collection.to_string();
             if !validation::is_valid_db_name(&collection, validation::MAX_DB_COLLECTION_CHARS) {
                 return db_error(ErrorCode::ValidationFailed, "Invalid collection name.", 422);
@@ -1091,8 +1116,16 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
             // An index filter only means something on the declared field; any
             // other value can never match, so it answers the empty page.
             let use_index_eq = params.index_eq.is_some()
-                && db.collections.get(&collection).and_then(|decl| decl.index.as_deref()).is_some();
-            let index_eq = if use_index_eq { params.index_eq.clone() } else { None };
+                && db
+                    .collections
+                    .get(&collection)
+                    .and_then(|decl| decl.index.as_deref())
+                    .is_some();
+            let index_eq = if use_index_eq {
+                params.index_eq.clone()
+            } else {
+                None
+            };
             let mut binds = vec![
                 JsValue::from_str(&row.org),
                 JsValue::from_str(&row.id),
@@ -1126,7 +1159,8 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
             )
         }
         (Method::Put | Method::Patch, DbPath::Doc { collection, doc_id }) => {
-            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true) {
+            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true)
+            {
                 Err(deny) => return db_deny_response(deny),
                 Ok(auth) => auth,
             };
@@ -1146,14 +1180,19 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
             .await
         }
         (Method::Delete, DbPath::Doc { collection, doc_id }) => {
-            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true) {
+            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true)
+            {
                 Err(deny) => return db_deny_response(deny),
                 Ok(auth) => auth,
             };
-            db_delete_single(env, &database, &row, &db, collection, doc_id, &query, auth, req).await
+            db_delete_single(
+                env, &database, &row, &db, collection, doc_id, &query, auth, req,
+            )
+            .await
         }
         (Method::Post, DbPath::Batch) => {
-            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true) {
+            let auth = match authorize_db(sharing, edit_access, owner, bearer, cookie_viewer, true)
+            {
                 Err(deny) => return db_deny_response(deny),
                 Ok(auth) => auth,
             };
@@ -1166,7 +1205,6 @@ pub(crate) async fn handle_db_request(req: &mut Request, env: &Env, host: &str) 
         ),
     }
 }
-
 
 #[allow(
     clippy::too_many_arguments,
@@ -1203,7 +1241,11 @@ async fn db_write_single(
         Ok(value) => value,
     };
     if !patch.is_object() {
-        return db_error(ErrorCode::ValidationFailed, "The document body must be a JSON object.", 422);
+        return db_error(
+            ErrorCode::ValidationFailed,
+            "The document body must be a JSON object.",
+            422,
+        );
     }
     let existing: Option<DbDocRow> = database
         .prepare(DB_GET_SQL)
@@ -1245,14 +1287,20 @@ async fn db_write_single(
         }
         Err(DbWriteConflict::Stale) => {
             let current = existing.expect("stale implies present");
-            let mut definition =
-                build_error_response(ErrorCode::VersionConflict, "The document changed since it was read.", DB_STALE_STATUS);
+            let mut definition = build_error_response(
+                ErrorCode::VersionConflict,
+                "The document changed since it was read.",
+                DB_STALE_STATUS,
+            );
             definition.body["error"]["details"] = db_conflict_details(&collection, &current);
             return db_json_response(&definition.body, definition.status);
         }
         Ok(()) => {}
     }
-    let updated_by = auth.viewer.clone().unwrap_or_else(|| "anonymous".to_string());
+    let updated_by = auth
+        .viewer
+        .clone()
+        .unwrap_or_else(|| "anonymous".to_string());
     let updated_at = now.to_rfc3339_opts(SecondsFormat::Secs, true);
     let index_field = db
         .collections
@@ -1275,61 +1323,60 @@ async fn db_write_single(
         crate::auth::connecting_ip(req).unwrap_or_else(|_| "unknown".to_string())
     });
     if !db_write_allowed(env, &row.id, &identity).await? {
-        return db_error(ErrorCode::RateLimited, "Database requests are rate limited.", 429);
+        return db_error(
+            ErrorCode::RateLimited,
+            "Database requests are rate limited.",
+            429,
+        );
     }
-    let index_bind = index_value.as_deref().map(JsValue::from_str).unwrap_or_else(JsValue::null);
+    let index_bind = index_value
+        .as_deref()
+        .map(JsValue::from_str)
+        .unwrap_or_else(JsValue::null);
     // The guarded UPDATE is the atomic compare-and-set; the blind upsert is
     // last-write-wins. Both run in one batch with the read-back, so the
     // response describes exactly what landed.
     let write = if let Some(expected) = if_version {
-        database
-            .prepare(DB_UPDATE_GUARDED_SQL)
-            .bind(&[
-                JsValue::from_str(&body_text),
-                index_bind,
-                JsValue::from_str(&updated_at),
-                JsValue::from_str(&updated_by),
-                JsValue::from_str(&row.org),
-                JsValue::from_str(&row.id),
-                JsValue::from_str(&collection),
-                JsValue::from_str(&doc_id),
-                JsValue::from_f64(expected as f64),
-            ])?
-    } else if existing.is_some() {
-        database
-            .prepare(DB_UPDATE_SQL)
-            .bind(&[
-                JsValue::from_str(&body_text),
-                index_bind,
-                JsValue::from_str(&updated_at),
-                JsValue::from_str(&updated_by),
-                JsValue::from_str(&row.org),
-                JsValue::from_str(&row.id),
-                JsValue::from_str(&collection),
-                JsValue::from_str(&doc_id),
-            ])?
-    } else {
-        database
-            .prepare(DB_UPSERT_SQL)
-            .bind(&[
-                JsValue::from_str(&row.org),
-                JsValue::from_str(&row.id),
-                JsValue::from_str(&collection),
-                JsValue::from_str(&doc_id),
-                JsValue::from_str(&body_text),
-                index_bind,
-                JsValue::from_str(&updated_at),
-                JsValue::from_str(&updated_by),
-            ])?
-    };
-    let read_back = database
-        .prepare(DB_GET_SQL)
-        .bind(&[
+        database.prepare(DB_UPDATE_GUARDED_SQL).bind(&[
+            JsValue::from_str(&body_text),
+            index_bind,
+            JsValue::from_str(&updated_at),
+            JsValue::from_str(&updated_by),
             JsValue::from_str(&row.org),
             JsValue::from_str(&row.id),
             JsValue::from_str(&collection),
             JsValue::from_str(&doc_id),
-        ])?;
+            JsValue::from_f64(expected as f64),
+        ])?
+    } else if existing.is_some() {
+        database.prepare(DB_UPDATE_SQL).bind(&[
+            JsValue::from_str(&body_text),
+            index_bind,
+            JsValue::from_str(&updated_at),
+            JsValue::from_str(&updated_by),
+            JsValue::from_str(&row.org),
+            JsValue::from_str(&row.id),
+            JsValue::from_str(&collection),
+            JsValue::from_str(&doc_id),
+        ])?
+    } else {
+        database.prepare(DB_UPSERT_SQL).bind(&[
+            JsValue::from_str(&row.org),
+            JsValue::from_str(&row.id),
+            JsValue::from_str(&collection),
+            JsValue::from_str(&doc_id),
+            JsValue::from_str(&body_text),
+            index_bind,
+            JsValue::from_str(&updated_at),
+            JsValue::from_str(&updated_by),
+        ])?
+    };
+    let read_back = database.prepare(DB_GET_SQL).bind(&[
+        JsValue::from_str(&row.org),
+        JsValue::from_str(&row.id),
+        JsValue::from_str(&collection),
+        JsValue::from_str(&doc_id),
+    ])?;
     let results = database.batch(vec![write, read_back]).await?;
     let rows = results
         .get(1)
@@ -1344,14 +1391,20 @@ async fn db_write_single(
     let pre_version = existing.as_ref().map(|row| row.version).unwrap_or(0);
     if let Some(expected) = if_version {
         if landed.version != pre_version + 1 || landed.version != expected + 1 {
-            let mut definition =
-                build_error_response(ErrorCode::VersionConflict, "The document changed since it was read.", DB_STALE_STATUS);
+            let mut definition = build_error_response(
+                ErrorCode::VersionConflict,
+                "The document changed since it was read.",
+                DB_STALE_STATUS,
+            );
             definition.body["error"]["details"] = db_conflict_details(&collection, &landed);
             return db_json_response(&definition.body, definition.status);
         }
     }
     let created = existing.is_none();
-    db_json_response(&db_doc_body(&collection, &landed), if created { 201 } else { 200 })
+    db_json_response(
+        &db_doc_body(&collection, &landed),
+        if created { 201 } else { 200 },
+    )
 }
 
 #[allow(
@@ -1396,8 +1449,11 @@ async fn db_delete_single(
         return db_error(ErrorCode::ArtifactNotFound, "Document not found.", 404);
     };
     if let Err(DbWriteConflict::Stale) = db_guard_version(Some(existing.version), if_version) {
-        let mut definition =
-            build_error_response(ErrorCode::VersionConflict, "The document changed since it was read.", DB_STALE_STATUS);
+        let mut definition = build_error_response(
+            ErrorCode::VersionConflict,
+            "The document changed since it was read.",
+            DB_STALE_STATUS,
+        );
         definition.body["error"]["details"] = db_conflict_details(&collection, &existing);
         return db_json_response(&definition.body, definition.status);
     }
@@ -1405,21 +1461,23 @@ async fn db_delete_single(
         crate::auth::connecting_ip(req).unwrap_or_else(|_| "unknown".to_string())
     });
     if !db_write_allowed(env, &row.id, &identity).await? {
-        return db_error(ErrorCode::RateLimited, "Database requests are rate limited.", 429);
+        return db_error(
+            ErrorCode::RateLimited,
+            "Database requests are rate limited.",
+            429,
+        );
     }
     if let Some(expected) = if_version {
         // Guarded delete: the abort statement rolls the batch back when a
         // concurrent write moved the row first, so no part of a racing batch
         // lands half-applied.
-        let delete = database
-            .prepare(DB_DELETE_GUARDED_SQL)
-            .bind(&[
-                JsValue::from_str(&row.org),
-                JsValue::from_str(&row.id),
-                JsValue::from_str(&collection),
-                JsValue::from_str(&doc_id),
-                JsValue::from_f64(expected as f64),
-            ])?;
+        let delete = database.prepare(DB_DELETE_GUARDED_SQL).bind(&[
+            JsValue::from_str(&row.org),
+            JsValue::from_str(&row.id),
+            JsValue::from_str(&collection),
+            JsValue::from_str(&doc_id),
+            JsValue::from_f64(expected as f64),
+        ])?;
         let guard = database.prepare(DB_GUARD_DELETE_SQL).bind(&[
             JsValue::from_str(&row.org),
             JsValue::from_str(&row.id),
@@ -1444,7 +1502,8 @@ async fn db_delete_single(
                         "The document changed since it was read.",
                         DB_STALE_STATUS,
                     );
-                    definition.body["error"]["details"] = db_conflict_details(&collection, &current);
+                    definition.body["error"]["details"] =
+                        db_conflict_details(&collection, &current);
                     return db_json_response(&definition.body, definition.status);
                 }
                 None => return db_error(ErrorCode::ArtifactNotFound, "Document not found.", 404),
@@ -1466,7 +1525,11 @@ async fn db_delete_single(
 }
 
 /// Current usage for quota: document count and body bytes for the artifact.
-async fn db_usage(database: &worker::D1Database, org: &str, artifact_id: &str) -> Result<(u64, u64)> {
+async fn db_usage(
+    database: &worker::D1Database,
+    org: &str,
+    artifact_id: &str,
+) -> Result<(u64, u64)> {
     let row = database
         .prepare(DB_COUNT_SQL)
         .bind(&[JsValue::from_str(org), JsValue::from_str(artifact_id)])?
@@ -1496,14 +1559,23 @@ async fn db_write_batch(
         Ok(value) => value,
     };
     let ops = match parse_db_batch_ops(&raw) {
-        Err(_) => return db_error(ErrorCode::ValidationFailed, "Invalid batch operations.", 422),
+        Err(_) => {
+            return db_error(
+                ErrorCode::ValidationFailed,
+                "Invalid batch operations.",
+                422,
+            )
+        }
         Ok(ops) => ops,
     };
     let existing = db_existing_rows(database, &row.org, &row.id, &ops).await?;
     if let Err(refusal) = validate_db_batch(&ops, &existing, db) {
         return db_batch_refusal(&ops, &refusal);
     }
-    let updated_by = auth.viewer.clone().unwrap_or_else(|| "anonymous".to_string());
+    let updated_by = auth
+        .viewer
+        .clone()
+        .unwrap_or_else(|| "anonymous".to_string());
     let updated_at = now.to_rfc3339_opts(SecondsFormat::Secs, true);
     // Quota over the whole batch: new documents and byte deltas together.
     let mut add_docs = 0i64;
@@ -1512,7 +1584,12 @@ async fn db_write_batch(
         let key = (op.collection.clone(), op.doc_id.clone());
         match op.kind {
             DbBatchOpKind::Put => {
-                let new_len = op.body.as_ref().expect("validated object").to_string().len() as i64;
+                let new_len = op
+                    .body
+                    .as_ref()
+                    .expect("validated object")
+                    .to_string()
+                    .len() as i64;
                 match existing.get(&key) {
                     Some(current) => add_bytes += new_len - current.body.len() as i64,
                     None => {
@@ -1523,7 +1600,8 @@ async fn db_write_batch(
             }
             DbBatchOpKind::Patch => {
                 let current = existing.get(&key).expect("validated present");
-                let merged = db_merge_patch(&current.body, op.body.as_ref().expect("validated object"));
+                let merged =
+                    db_merge_patch(&current.body, op.body.as_ref().expect("validated object"));
                 add_bytes += merged.len() as i64 - current.body.len() as i64;
             }
             DbBatchOpKind::Delete => {
@@ -1542,7 +1620,11 @@ async fn db_write_batch(
         crate::auth::connecting_ip(req).unwrap_or_else(|_| "unknown".to_string())
     });
     if !db_write_allowed(env, &row.id, &identity).await? {
-        return db_error(ErrorCode::RateLimited, "Database requests are rate limited.", 429);
+        return db_error(
+            ErrorCode::RateLimited,
+            "Database requests are rate limited.",
+            429,
+        );
     }
     let mut statements = Vec::with_capacity(ops.len() * 2);
     for op in &ops {
@@ -1562,52 +1644,41 @@ async fn db_write_batch(
                     .map(JsValue::from_str)
                     .unwrap_or_else(JsValue::null);
                 if let Some(expected) = op.if_version {
-                    statements.push(
-                        database
-                            .prepare(DB_UPDATE_GUARDED_SQL)
-                            .bind(&[
-                                JsValue::from_str(&body_text),
-                                index_bind,
-                                JsValue::from_str(&updated_at),
-                                JsValue::from_str(&updated_by),
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_f64(expected as f64),
-                            ])?,
-                    );
-                    statements.push(
-                        database
-                            .prepare(DB_GUARD_UPDATE_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_f64((expected + 1) as f64),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_UPDATE_GUARDED_SQL).bind(&[
+                        JsValue::from_str(&body_text),
+                        index_bind,
+                        JsValue::from_str(&updated_at),
+                        JsValue::from_str(&updated_by),
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_f64(expected as f64),
+                    ])?);
+                    statements.push(database.prepare(DB_GUARD_UPDATE_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_f64((expected + 1) as f64),
+                    ])?);
                 } else {
-                    statements.push(
-                        database
-                            .prepare(DB_UPSERT_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_str(&body_text),
-                                index_bind,
-                                JsValue::from_str(&updated_at),
-                                JsValue::from_str(&updated_by),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_UPSERT_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_str(&body_text),
+                        index_bind,
+                        JsValue::from_str(&updated_at),
+                        JsValue::from_str(&updated_by),
+                    ])?);
                 }
             }
             DbBatchOpKind::Patch => {
                 let current = current.expect("validated present");
-                let merged_text = db_merge_patch(&current.body, op.body.as_ref().expect("validated object"));
+                let merged_text =
+                    db_merge_patch(&current.body, op.body.as_ref().expect("validated object"));
                 let merged: Value =
                     serde_json::from_str(&merged_text).unwrap_or_else(|_| serde_json::json!({}));
                 let index_bind = index_field
@@ -1616,83 +1687,59 @@ async fn db_write_batch(
                     .map(JsValue::from_str)
                     .unwrap_or_else(JsValue::null);
                 if let Some(expected) = op.if_version {
-                    statements.push(
-                        database
-                            .prepare(DB_UPDATE_GUARDED_SQL)
-                            .bind(&[
-                                JsValue::from_str(&merged_text),
-                                index_bind,
-                                JsValue::from_str(&updated_at),
-                                JsValue::from_str(&updated_by),
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_f64(expected as f64),
-                            ])?,
-                    );
-                    statements.push(
-                        database
-                            .prepare(DB_GUARD_UPDATE_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_f64((expected + 1) as f64),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_UPDATE_GUARDED_SQL).bind(&[
+                        JsValue::from_str(&merged_text),
+                        index_bind,
+                        JsValue::from_str(&updated_at),
+                        JsValue::from_str(&updated_by),
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_f64(expected as f64),
+                    ])?);
+                    statements.push(database.prepare(DB_GUARD_UPDATE_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_f64((expected + 1) as f64),
+                    ])?);
                 } else {
-                    statements.push(
-                        database
-                            .prepare(DB_UPDATE_SQL)
-                            .bind(&[
-                                JsValue::from_str(&merged_text),
-                                index_bind,
-                                JsValue::from_str(&updated_at),
-                                JsValue::from_str(&updated_by),
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_UPDATE_SQL).bind(&[
+                        JsValue::from_str(&merged_text),
+                        index_bind,
+                        JsValue::from_str(&updated_at),
+                        JsValue::from_str(&updated_by),
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                    ])?);
                 }
             }
             DbBatchOpKind::Delete => {
                 if let Some(expected) = op.if_version {
-                    statements.push(
-                        database
-                            .prepare(DB_DELETE_GUARDED_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                                JsValue::from_f64(expected as f64),
-                            ])?,
-                    );
-                    statements.push(
-                        database
-                            .prepare(DB_GUARD_DELETE_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_DELETE_GUARDED_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                        JsValue::from_f64(expected as f64),
+                    ])?);
+                    statements.push(database.prepare(DB_GUARD_DELETE_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                    ])?);
                 } else {
-                    statements.push(
-                        database
-                            .prepare(DB_DELETE_SQL)
-                            .bind(&[
-                                JsValue::from_str(&row.org),
-                                JsValue::from_str(&row.id),
-                                JsValue::from_str(&op.collection),
-                                JsValue::from_str(&op.doc_id),
-                            ])?,
-                    );
+                    statements.push(database.prepare(DB_DELETE_SQL).bind(&[
+                        JsValue::from_str(&row.org),
+                        JsValue::from_str(&row.id),
+                        JsValue::from_str(&op.collection),
+                        JsValue::from_str(&op.doc_id),
+                    ])?);
                 }
             }
         }
@@ -1705,7 +1752,11 @@ async fn db_write_batch(
         if let Err(refusal) = validate_db_batch(&ops, &fresh, db) {
             return db_batch_refusal(&ops, &refusal);
         }
-        return db_error(ErrorCode::InternalError, "The database is unavailable.", 500);
+        return db_error(
+            ErrorCode::InternalError,
+            "The database is unavailable.",
+            500,
+        );
     }
     let fresh = db_existing_rows(database, &row.org, &row.id, &ops).await?;
     let mut results = Vec::with_capacity(ops.len());
@@ -1719,7 +1770,11 @@ async fn db_write_batch(
             _ => match fresh.get(&(op.collection.clone(), op.doc_id.clone())) {
                 Some(current) => results.push(db_doc_body(&op.collection, current)),
                 None => {
-                    return db_error(ErrorCode::InternalError, "The database is unavailable.", 500)
+                    return db_error(
+                        ErrorCode::InternalError,
+                        "The database is unavailable.",
+                        500,
+                    )
                 }
             },
         }
@@ -1733,7 +1788,10 @@ async fn db_write_batch(
 fn db_batch_refusal(ops: &[DbBatchOp], refusal: &DbBatchRefusal) -> Result<Response> {
     match refusal {
         DbBatchRefusal::Stale { index, current } => {
-            let collection = ops.get(*index).map(|op| op.collection.as_str()).unwrap_or("");
+            let collection = ops
+                .get(*index)
+                .map(|op| op.collection.as_str())
+                .unwrap_or("");
             let mut definition = build_error_response(
                 ErrorCode::VersionConflict,
                 "The document changed since it was read.",
@@ -1789,7 +1847,8 @@ async fn db_existing_rows(
 /// by the time this runs (validated upstream); a non-object stored body is
 /// replaced wholesale rather than failing the write.
 fn db_merge_patch(stored: &str, patch: &Value) -> String {
-    let mut merged: serde_json::Map<String, Value> = serde_json::from_str(stored).unwrap_or_default();
+    let mut merged: serde_json::Map<String, Value> =
+        serde_json::from_str(stored).unwrap_or_default();
     if let Some(patch) = patch.as_object() {
         for (key, value) in patch {
             merged.insert(key.clone(), value.clone());

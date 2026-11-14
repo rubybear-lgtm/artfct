@@ -1846,7 +1846,8 @@ pub(crate) async fn create_permanent_artifact(
                 .is_some_and(|manifest| crate::validation::validate_db_manifest(manifest).is_err())
             {
                 let seed_too_large = matches!(
-                    raw.get("manifest").map(crate::validation::validate_db_manifest),
+                    raw.get("manifest")
+                        .map(crate::validation::validate_db_manifest),
                     Some(Err(ErrorCode::BundleTooLarge))
                 );
                 return json_error(
@@ -1965,13 +1966,9 @@ pub(crate) async fn create_permanent_artifact(
             .iter()
             .map(|seed| seed.body.len() as i64)
             .sum::<i64>();
-        if let Err(deny) = crate::artifact_db::db_quota_check(
-            limits,
-            0,
-            0,
-            seed_inserts.len() as i64,
-            seed_bytes,
-        ) {
+        if let Err(deny) =
+            crate::artifact_db::db_quota_check(limits, 0, 0, seed_inserts.len() as i64, seed_bytes)
+        {
             let _ = storage
                 .release_content_lock(&org_key, &org_lock_owner)
                 .await;

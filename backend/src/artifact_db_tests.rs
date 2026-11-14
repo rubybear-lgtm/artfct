@@ -5,8 +5,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::artifact_origin::{mint_access_token, mint_viewer_access_token};
     use super::super::*;
+    use crate::artifact_origin::{mint_access_token, mint_viewer_access_token};
     use std::collections::BTreeMap;
 
     const SECRET: &str = "test-database-secret";
@@ -133,7 +133,11 @@ mod tests {
             Some("https://evil.example/"),
             HOST_A
         ));
-        assert!(!db_fetch_site_ok(None, Some("https://evil.example/"), HOST_A));
+        assert!(!db_fetch_site_ok(
+            None,
+            Some("https://evil.example/"),
+            HOST_A
+        ));
         assert!(!db_fetch_site_ok(None, None, HOST_A));
         // Control: the page's own same-origin post passes.
         assert!(db_fetch_site_ok(
@@ -142,8 +146,16 @@ mod tests {
             HOST_A
         ));
         // Old clients without the header fall back to an exact Origin match.
-        assert!(db_fetch_site_ok(None, Some(&format!("https://{HOST_A}")), HOST_A));
-        assert!(!db_fetch_site_ok(None, Some("https://other.artfct.dev"), HOST_A));
+        assert!(db_fetch_site_ok(
+            None,
+            Some(&format!("https://{HOST_A}")),
+            HOST_A
+        ));
+        assert!(!db_fetch_site_ok(
+            None,
+            Some("https://other.artfct.dev"),
+            HOST_A
+        ));
     }
 
     /// A `no-cors` `text/plain` fetch can attach the cookie but can neither
@@ -151,7 +163,11 @@ mod tests {
     #[test]
     fn no_cors_text_plain_write_rejected() {
         assert!(!db_request_shape_ok(&Method::Put, Some("text/plain"), None));
-        assert!(!db_request_shape_ok(&Method::Put, Some("text/plain"), Some("1")));
+        assert!(!db_request_shape_ok(
+            &Method::Put,
+            Some("text/plain"),
+            Some("1")
+        ));
         assert!(!db_request_shape_ok(
             &Method::Put,
             Some("application/json"),
@@ -240,7 +256,10 @@ mod tests {
     #[test]
     fn token_for_other_artifact_rejected() {
         let token_a = member_token(ARTIFACT_A);
-        assert_eq!(classify(&token_a, ARTIFACT_B), PresentedToken::OtherArtifact);
+        assert_eq!(
+            classify(&token_a, ARTIFACT_B),
+            PresentedToken::OtherArtifact
+        );
         assert_eq!(classify("not-a-token", ARTIFACT_B), PresentedToken::Garbage);
         assert_eq!(classify("", ARTIFACT_B), PresentedToken::Garbage);
         // An expired token for the right artifact is garbage, not cross-artifact.
@@ -338,7 +357,12 @@ mod tests {
         assert_eq!(EditAccess::from_stored("write-freely"), EditAccess::View);
         let member = member_viewer();
         assert_eq!(
-            db_role_for(Sharing::from_tier("bogus"), EditAccess::from_stored("bogus"), Some(OWNER), Some(&member)),
+            db_role_for(
+                Sharing::from_tier("bogus"),
+                EditAccess::from_stored("bogus"),
+                Some(OWNER),
+                Some(&member)
+            ),
             None
         );
         assert_eq!(
@@ -409,7 +433,10 @@ mod tests {
             )
         }
         assert_eq!(
-            validation::validate_permanent_manifest(&raw_with(&["index.html", "__artfct/db/session"])),
+            validation::validate_permanent_manifest(&raw_with(&[
+                "index.html",
+                "__artfct/db/session"
+            ])),
             Err(ErrorCode::InvalidPath)
         );
         assert_eq!(
@@ -417,7 +444,9 @@ mod tests {
             Err(ErrorCode::InvalidPath)
         );
         // Control: ordinary nested paths still deploy.
-        assert!(validation::validate_permanent_manifest(&raw_with(&["index.html", "a/b.css"])).is_ok());
+        assert!(
+            validation::validate_permanent_manifest(&raw_with(&["index.html", "a/b.css"])).is_ok()
+        );
     }
 
     /// Rows are keyed by the stable id, never a version: no document query
@@ -485,9 +514,15 @@ mod tests {
     /// missing document with a guard fails with 404.
     #[test]
     fn stale_if_version_conflicts() {
-        assert_eq!(db_guard_version(Some(3), Some(2)), Err(DbWriteConflict::Stale));
+        assert_eq!(
+            db_guard_version(Some(3), Some(2)),
+            Err(DbWriteConflict::Stale)
+        );
         assert_eq!(db_guard_version(Some(3), Some(3)), Ok(()));
-        assert_eq!(db_guard_version(None, Some(1)), Err(DbWriteConflict::Missing));
+        assert_eq!(
+            db_guard_version(None, Some(1)),
+            Err(DbWriteConflict::Missing)
+        );
         assert_eq!(db_guard_version(Some(3), None), Ok(()));
         assert_eq!(DB_STALE_STATUS, 409);
         let current = doc_row("c1", 3);
@@ -509,7 +544,8 @@ mod tests {
         .expect("valid batch");
         let mut existing = HashMap::new();
         existing.insert(("cards".to_string(), "c2".to_string()), doc_row("c2", 4));
-        let refusal = validate_db_batch(&ops, &existing, &db_fixture()).expect_err("stale write fails");
+        let refusal =
+            validate_db_batch(&ops, &existing, &db_fixture()).expect_err("stale write fails");
         assert!(matches!(refusal, DbBatchRefusal::Stale { index: 1, .. }));
         // The guard statements turn a concurrent move into a batch abort.
         assert!(DB_GUARD_UPDATE_SQL.contains("NOT EXISTS"));
@@ -532,7 +568,10 @@ mod tests {
             max_bytes: 100,
         };
         assert_eq!(db_quota_check(limits, 2, 10, 1, 0), Err(DbQuotaDeny::Docs));
-        assert_eq!(db_quota_check(limits, 1, 100, 0, 1), Err(DbQuotaDeny::Bytes));
+        assert_eq!(
+            db_quota_check(limits, 1, 100, 0, 1),
+            Err(DbQuotaDeny::Bytes)
+        );
         assert!(db_quota_check(limits, 1, 10, 1, 10).is_ok());
         // Deletes and shrinks free quota rather than consuming it.
         assert!(db_quota_check(limits, 2, 100, -1, -50).is_ok());
@@ -540,7 +579,10 @@ mod tests {
         assert_eq!(DbQuotaDeny::Bytes.limit_name(), "max_db_bytes_per_org");
         assert_eq!(DB_QUOTA_STATUS, 429);
         for sql in [DB_GET_SQL, DB_LIST_BASE_SQL] {
-            assert!(!sql.contains("org_limits"), "reads are never blocked by quota: {sql}");
+            assert!(
+                !sql.contains("org_limits"),
+                "reads are never blocked by quota: {sql}"
+            );
         }
     }
 
@@ -561,7 +603,9 @@ mod tests {
         assert_eq!(parse_db_path("/__artfct/db/batch"), Some(DbPath::Batch));
         assert_eq!(
             parse_db_path("/__artfct/db/cards"),
-            Some(DbPath::Collection { collection: "cards" })
+            Some(DbPath::Collection {
+                collection: "cards"
+            })
         );
         assert_eq!(parse_db_path("/__artfct/db/"), None);
         assert_eq!(parse_db_path("/__artfct/db/a/b/c"), None);
@@ -652,10 +696,22 @@ mod tests {
 
     #[test]
     fn db_names_follow_the_doc_id_set() {
-        assert!(validation::is_valid_db_name("cards-1_x.y", validation::MAX_DB_COLLECTION_CHARS));
-        assert!(!validation::is_valid_db_name("", validation::MAX_DB_COLLECTION_CHARS));
-        assert!(!validation::is_valid_db_name("has space", validation::MAX_DB_COLLECTION_CHARS));
-        assert!(!validation::is_valid_db_name("slash/x", validation::MAX_DB_COLLECTION_CHARS));
+        assert!(validation::is_valid_db_name(
+            "cards-1_x.y",
+            validation::MAX_DB_COLLECTION_CHARS
+        ));
+        assert!(!validation::is_valid_db_name(
+            "",
+            validation::MAX_DB_COLLECTION_CHARS
+        ));
+        assert!(!validation::is_valid_db_name(
+            "has space",
+            validation::MAX_DB_COLLECTION_CHARS
+        ));
+        assert!(!validation::is_valid_db_name(
+            "slash/x",
+            validation::MAX_DB_COLLECTION_CHARS
+        ));
         assert!(!validation::is_valid_db_name(
             &"c".repeat(validation::MAX_DB_COLLECTION_CHARS + 1),
             validation::MAX_DB_COLLECTION_CHARS
@@ -708,7 +764,10 @@ mod tests {
             Some(DbRole::Link)
         );
         assert!(!DbRole::Link.can_write());
-        assert_eq!(db_role_for(Sharing::Team, EditAccess::Edit, Some(OWNER), None), None);
+        assert_eq!(
+            db_role_for(Sharing::Team, EditAccess::Edit, Some(OWNER), None),
+            None
+        );
         // A legacy token naming nobody is anonymous-equivalent, never a member.
         let nobody = TokenViewer {
             viewer: None,
@@ -767,10 +826,7 @@ mod tests {
             assert!(sql.contains("artifact_id = ?"), "{sql}");
         }
         // The batch lookup binds both once, then one pair per document.
-        assert_eq!(
-            db_existing_lookup_sql(2).matches('?').count(),
-            2 + 2 * 2
-        );
+        assert_eq!(db_existing_lookup_sql(2).matches('?').count(), 2 + 2 * 2);
         // The collection list orders by doc id with a bound limit.
         let sql = db_list_sql(true, true);
         assert!(sql.contains("index_value = ?") && sql.contains("doc_id > ?"));
@@ -805,10 +861,7 @@ mod tests {
 
     #[test]
     fn db_patch_merges_shallowly() {
-        let merged = db_merge_patch(
-            r#"{"a":1,"b":2}"#,
-            &serde_json::json!({"b": 3, "c": null}),
-        );
+        let merged = db_merge_patch(r#"{"a":1,"b":2}"#, &serde_json::json!({"b": 3, "c": null}));
         let merged: Value = serde_json::from_str(&merged).expect("object");
         assert_eq!(merged, serde_json::json!({"a": 1, "b": 3, "c": null}));
         // A non-object stored body is replaced wholesale.
@@ -848,11 +901,25 @@ mod tests {
         );
         // A valid bearer wins over the cookie: the session mint below would
         // carry the bearer's identity, and anonymous reads need no token.
-        assert!(authorize_db(Sharing::Public, EditAccess::Edit, Some(OWNER), None, None, false)
-            .is_ok());
+        assert!(authorize_db(
+            Sharing::Public,
+            EditAccess::Edit,
+            Some(OWNER),
+            None,
+            None,
+            false
+        )
+        .is_ok());
         // Anonymous on a non-public artifact is asked to authenticate.
         assert_eq!(
-            authorize_db(Sharing::Team, EditAccess::Edit, Some(OWNER), None, None, false),
+            authorize_db(
+                Sharing::Team,
+                EditAccess::Edit,
+                Some(OWNER),
+                None,
+                None,
+                false
+            ),
             Err(DbDeny::Unauthorized)
         );
         // A presented-but-insufficient credential is forbidden, not anonymous.
@@ -896,11 +963,17 @@ mod tests {
         // Three-part tokens (no viewer) verify and read public artifacts as
         // links — the page's existing `?token=` links keep working.
         let token = mint_access_token(SECRET, ARTIFACT_A, future());
-        let viewer = artifact_origin::verified_token_viewer(Some(SECRET), &token, ARTIFACT_A, now())
-            .expect("verifies");
+        let viewer =
+            artifact_origin::verified_token_viewer(Some(SECRET), &token, ARTIFACT_A, now())
+                .expect("verifies");
         assert_eq!(viewer.viewer, None);
         assert_eq!(
-            db_role_for(Sharing::Public, EditAccess::Edit, Some(OWNER), Some(&viewer)),
+            db_role_for(
+                Sharing::Public,
+                EditAccess::Edit,
+                Some(OWNER),
+                Some(&viewer)
+            ),
             Some(DbRole::Link)
         );
     }

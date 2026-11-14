@@ -662,10 +662,8 @@ async fn create_version(
                 .as_object()
                 .is_some_and(|object| object.contains_key("db")) =>
         {
-            let previous: Value =
-                serde_json::from_str(&artifact.manifest).unwrap_or(Value::Null);
-            let inherited =
-                crate::validation::apply_db_carry_forward(raw_manifest, &previous);
+            let previous: Value = serde_json::from_str(&artifact.manifest).unwrap_or(Value::Null);
+            let inherited = crate::validation::apply_db_carry_forward(raw_manifest, &previous);
             if inherited == *raw_manifest {
                 (manifest, bundle_hash)
             } else {

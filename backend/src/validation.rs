@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 pub(crate) fn ephemeral_manifest_is_invalid(raw: &Value) -> bool {
     raw.get("mode").and_then(Value::as_str) != Some("permanent") && raw.get("manifest").is_some()
@@ -280,7 +280,9 @@ pub(crate) fn validate_db_manifest(manifest: &Value) -> Result<Option<DbManifest
             let decl = decl.as_object().ok_or(ErrorCode::ValidationFailed)?;
             let index = match decl.get("index") {
                 None => None,
-                Some(Value::String(field)) if !field.is_empty() && field.len() <= MAX_DB_COLLECTION_CHARS => {
+                Some(Value::String(field))
+                    if !field.is_empty() && field.len() <= MAX_DB_COLLECTION_CHARS =>
+                {
                     Some(field.clone())
                 }
                 Some(_) => return Err(ErrorCode::ValidationFailed),
@@ -288,10 +290,7 @@ pub(crate) fn validate_db_manifest(manifest: &Value) -> Result<Option<DbManifest
             if decl.len() != usize::from(index.is_some()) {
                 return Err(ErrorCode::ValidationFailed);
             }
-            collections.insert(
-                name.clone(),
-                DbCollectionDecl { index },
-            );
+            collections.insert(name.clone(), DbCollectionDecl { index });
         }
     }
     let mut seed = Vec::new();
@@ -354,7 +353,7 @@ pub(crate) fn apply_db_carry_forward(raw_manifest: &Value, previous_manifest: &V
         object.insert("db".to_string(), previous_db.clone());
     }
     manifest
- }
+}
 
 /// Title / description maxima shared by permanent and ephemeral creates (RUB-465).
 pub(crate) const MAX_TITLE_CHARS: usize = 200;
