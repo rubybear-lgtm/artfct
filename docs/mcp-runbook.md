@@ -305,6 +305,20 @@ this with a native GitHub Actions service container instead of
 This is what the `mcp_e2e` CI job runs on every push/PR — the same script,
 not a separate reimplementation, so a local failure reproduces the CI one.
 
+`MCP_E2E_OCTANE=true scripts/mcp-e2e-stack.sh up` serves Laravel with Octane
+(FrankenPHP, four resident workers) instead of PHP's built-in server, with the
+same environment-driven config, so the isolation suite doubles as a state-leak
+test: a worker that keeps one request's user, team or cache entry for the next
+one answers a later request differently. It needs the gitignored FrankenPHP
+binary, which `php artisan octane:install --server=frankenphp --no-interaction`
+downloads (the command also appends to `.gitignore`; discard that edit).
+`MCP_E2E_OCTANE_ADMIN_PORT` (default 2990) keeps FrankenPHP's admin endpoint off
+the default 2019 so it cannot collide with `composer dev`. Octane loads the code
+once per worker, so restart the stack after editing PHP. CI runs the isolation
+suite this way too, as the `mcp_e2e_octane` job (a required part of the
+`application` gate), so a green run means the repeat passes ran on resident
+workers; the `mcp_e2e` job alone uses the built-in server.
+
 ### Tenant isolation suite (RUB-435)
 
 `scripts/mcp-e2e-stack.sh isolation` runs `scripts/tenant-isolation-e2e.mjs`
@@ -323,6 +337,7 @@ fabricated by a helper. Each scenario is one module in `scripts/isolation/`:
 | `matrix` | Every Laravel route with a `{team}` or `{current_team}` parameter, attacked automatically; every other route must be classified in `scripts/isolation/route-classification.json`; every Worker `/v1` and `/p` path in `openapi/artfct.yaml` is attacked with the other team's credentials. An unclassified or stale route fails the run. Every `/ops` route is class `staff` (never a team route): signed out and as a non-staff user, each must answer a plain 404. |
 | `roles` | Viewer, member and admin limits, and tokens consented with fewer scopes than the role allows. |
 | `revocation` | A removed member's token and refresh token, and every credential of a deleted team, stop working (polled, since revocation reaches the Worker asynchronously). |
+| `artifactAccess` | Who can open one artifact at each sharing level. A plain-member owner publishes a private, a team and a public artifact through the real Worker; the owner, a second member, a team admin, a member of the other team and a visitor with no session then try the viewer, the freshness poll, the download, the in-app preview, the console's open link and the MCP tools (`get_artifact`, `read_artifact`, `search_artifacts`, `list_artifacts`) with their own credentials. Anything not visible to an actor must answer exactly like a missing id (status, headers and body); the viewer and preview must be per-viewer cacheable only, and the preview ETag must differ between viewers. The same requests are then repeated interleaved and concurrently, which makes this the state-leak test for a resident worker. `read_artifact` and `search_artifacts` answer `search_not_configured` before they look at the artifact unless the stack starts with `MCP_E2E_INDEXING_ENABLED=1`, so only `get_artifact` and `list_artifacts` exercise MCP visibility by default. |
 
 Adding a route is a one-line job: team routes are covered by the matrix with no
 change, a route outside a team goes in `route-classification.json` with the

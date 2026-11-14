@@ -13,6 +13,14 @@
 #   scripts/mcp-e2e-stack.sh run     # up, run mcp-live-smoke.mjs against it, down
 #   scripts/mcp-e2e-stack.sh isolation  # tenant isolation checks against a running stack (RUB-435)
 #
+# MCP_E2E_OCTANE=true serves Laravel with Octane (FrankenPHP, 4 resident
+# workers) instead of PHP's built-in server, so the same suites double as a
+# state-leak test: a worker that keeps one request's user, team or cache entry
+# for the next one answers a later request differently. It needs the gitignored
+# FrankenPHP binary, which `php artisan octane:install --server=frankenphp`
+# downloads (and which also edits .gitignore: revert that, it is not part of
+# this change).
+#
 # Never touches the developer's real .env or database: every Laravel process
 # this script starts gets its config from exported environment variables
 # (which phpdotenv does not override), and Postgres/Worker state lives under
@@ -283,7 +291,23 @@ up() {
     # real .env (sqlite, real WorkOS credentials). PHP's built-in server
     # invoked directly is this script's own child and inherits our exports
     # normally, same as the artisan commands above.
-    php -S "127.0.0.1:${LARAVEL_PORT}" -t public public/index.php >"$STATE_DIR/laravel.log" 2>&1 &
+    if [ "${MCP_E2E_OCTANE:-false}" = "true" ]; then
+        if [ ! -x ./frankenphp ]; then
+            echo "❌ MCP_E2E_OCTANE=true needs ./frankenphp: run php artisan octane:install --server=frankenphp --no-interaction" >&2
+            exit 1
+        fi
+        # Same inheritance reasoning as above, so no `artisan serve`. Octane's
+        # own command is this script's child and passes its environment to
+        # FrankenPHP; variables_order=EGPCS keeps $_ENV populated for the
+        # workers. The admin port is off the default 2019 so a developer's own
+        # `composer dev` Octane does not collide with it.
+        echo "==> Serving Laravel with Octane (FrankenPHP, 4 workers)" >&2
+        php -d variables_order=EGPCS artisan octane:start --server=frankenphp \
+            --host=127.0.0.1 --port="${LARAVEL_PORT}" --admin-port="${MCP_E2E_OCTANE_ADMIN_PORT:-2990}" \
+            --workers=4 --no-interaction >"$STATE_DIR/laravel.log" 2>&1 &
+    else
+        php -S "127.0.0.1:${LARAVEL_PORT}" -t public public/index.php >"$STATE_DIR/laravel.log" 2>&1 &
+    fi
     echo $! > "$STATE_DIR/laravel.pid"
     # LOG_CHANNEL=stderr for the worker only, so the worker's own log lines
     # (the queue probe's among them) land in queue.log where they can be
@@ -317,6 +341,12 @@ EOF
 
 down() {
     echo "==> Stopping Laravel, queue worker, and Worker" >&2
+    # Under MCP_E2E_OCTANE the pid is Octane's artisan process, which owns the
+    # FrankenPHP server as a child: stop the child first so it is not orphaned.
+    # With `php -S` there are no children and this does nothing.
+    if [ -f "$STATE_DIR/laravel.pid" ]; then
+        pkill -P "$(cat "$STATE_DIR/laravel.pid")" 2>/dev/null || true
+    fi
     for pidfile in laravel.pid queue.pid wrangler.pid; do
         if [ -f "$STATE_DIR/$pidfile" ]; then
             kill "$(cat "$STATE_DIR/$pidfile")" 2>/dev/null || true

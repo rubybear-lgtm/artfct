@@ -366,10 +366,11 @@ jobs:
 
   # The `application` check is required on `main` and `develop`, so the name and
   # the job id have to stay exactly as they are. It needs every job that guards
-  # correctness. A job the path filter skipped (mcp_e2e) counts as passing, and
-  # the skip decision itself is mcp_e2e_scope, which is needed too. Only a
-  # `failure` or `cancelled` result fails this gate, which is why it runs with
-  # `if: always()`: the default would hide a skipped-by-upstream result.
+  # correctness. A job the path filter skipped (mcp_e2e, mcp_e2e_octane) counts
+  # as passing, and the skip decision itself is mcp_e2e_scope, which is needed
+  # too. Only a `failure` or `cancelled` result fails this gate, which is why it
+  # runs with `if: always()`: the default would hide a skipped-by-upstream
+  # result.
   application:
     runs-on: ubuntu-latest
     if: always()
@@ -382,6 +383,7 @@ jobs:
       - mcp_application
       - mcp_e2e_scope
       - mcp_e2e
+      - mcp_e2e_octane
       - release_readiness
       - release_scripts
       - staging_scripts
@@ -695,3 +697,113 @@ jobs:
           MCP_E2E_DB_USERNAME: artfct
           MCP_E2E_DB_PASSWORD: artfct
         run: scripts/mcp-e2e-stack.sh run
+
+  mcp_e2e_octane:
+    name: MCP isolation end-to-end on Octane (resident workers)
+    needs: mcp_e2e_scope
+    if: needs.mcp_e2e_scope.outputs.run == 'true'
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: artfct
+          POSTGRES_PASSWORD: artfct
+          POSTGRES_DB: artfct_e2e
+        ports:
+          # Distinct from the pest_unit_feature pgvector service (55432) so a
+          # reused/dirty runner cannot fail container init with EADDRINUSE.
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U artfct -d artfct_e2e"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          ini-values: opcache.enable_cli=1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@a02741459ec5e501b9843ed30b535ca0a0376ae4 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            backend/target
+          key: ${{ runner.os }}-mcp-e2e-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Prepare Laravel for the frontend build
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Build frontend
+        run: npm run build
+
+      # The isolation suite's repeat passes are the state-leak test for a
+      # resident worker, so they must run on one: Octane on FrankenPHP with four
+      # workers, like production. `mcp_e2e` above serves Laravel with PHP's
+      # built-in server, where those passes can only catch non-determinism. The
+      # binary is a ~200 MB download, so it is cached with the Composer lock.
+      - name: Cache the FrankenPHP binary
+        id: frankenphp-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        with:
+          path: frankenphp
+          key: ${{ runner.os }}-frankenphp-${{ hashFiles('composer.lock') }}
+
+      - name: Install the FrankenPHP binary
+        if: steps.frankenphp-cache.outputs.cache-hit != 'true'
+        run: php artisan octane:install --server=frankenphp --no-interaction
+
+      - name: Run the tenant isolation suite against Octane
+        env:
+          MCP_E2E_OCTANE: 'true'
+          MCP_E2E_EXTERNAL_POSTGRES: 'true'
+          MCP_E2E_DB_HOST: 127.0.0.1
+          MCP_E2E_DB_PORT: '55433'
+          MCP_E2E_DB_DATABASE: artfct_e2e
+          MCP_E2E_DB_USERNAME: artfct
+          MCP_E2E_DB_PASSWORD: artfct
+        run: |
+          set -euo pipefail
+          trap 'scripts/mcp-e2e-stack.sh down' EXIT
+          scripts/mcp-e2e-stack.sh up
+          scripts/mcp-e2e-stack.sh isolation
