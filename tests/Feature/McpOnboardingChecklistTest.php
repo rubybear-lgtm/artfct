@@ -346,12 +346,9 @@ test('every playbook names each step the server waits for the agent to report, a
         expect($text)->not->toContain("record `{$id}`");
     }
 
-    // Nothing the playbook tells the agent to record may be a step the server refuses.
-    preg_match_all('/`(read_usage_rules|ask_save_preference|explain_tool_approvals|add_project_instructions|verify_connection)`/', $text, $named);
-    expect(array_diff(
-        array_unique($named[1]),
-        [...OnboardingChecklist::SELF_REPORTED, ...OnboardingChecklist::PER_PROJECT, 'verify_connection'],
-    ))->toBe([]);
+    // The playbook must never tell the agent to record a step the server
+    // refuses: the one it watches itself, or the one done once per project.
+    expect($text)->not->toMatch('/(record|recording|passing)\s+`(verify_connection|add_project_instructions)`/');
 })->with(collect(ArtifactGuidance::HOST_MODES)->reject(fn (string $mode): bool => $mode === 'hybrid')->map(fn (string $mode, string $host): array => [$host, $mode])->values()->all());
 
 test('the response names the per-project steps so a complete set-up is never read as done for this project', function () {
@@ -535,5 +532,10 @@ test('the onboard skill says a finished set-up stops and a re-run changes nothin
 
     expect($skill)->toContain('If `complete` is true')
         ->toContain('Running this again must change nothing')
-        ->toContain('do not record those');
+        ->toContain('do not record those')
+        // A finished set-up must not end the run before this project's own file
+        // is checked, or every project after the first never gets the block.
+        ->toContain('if `per_project_steps` is empty, say set-up is already finished')
+        ->toContain('If it lists a step, check this project\'s own file for it before you stop')
+        ->toContain('because `complete` never covers a step done once per project');
 });
