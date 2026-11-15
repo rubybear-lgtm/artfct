@@ -117,8 +117,9 @@ class OrgTokenController extends Controller
             $tokenUser = $bot;
             $role = $bot->teamRole($team) ?? TeamRole::Member;
             abort_if($scopes === null || $scopes === [], 422, __('Choose at least one permission for this agent token.'));
-            $scopes = array_values(array_intersect(McpScope::forRole($creatorRole), $scopes));
-            abort_if($scopes === [], 403, __('You cannot grant scopes beyond your team role.'));
+            $allowed = array_intersect(McpScope::forRole($creatorRole), McpScope::forRole($role));
+            $scopes = array_values(array_intersect($allowed, $scopes));
+            abort_if($scopes === [], 403, __('You cannot grant scopes beyond the token role.'));
         } else {
             $role = TeamRole::from($request->validated('role'));
             abort_unless($creatorRole->canGrant($role), 403, __('You cannot create a token with a higher role than your own.'));

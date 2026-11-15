@@ -328,6 +328,32 @@ test('additional agent tokens can be minted for an existing bot', function () {
         ->and($stored->scopes)->toBe([McpScope::ArtifactsRead->value, McpScope::UsageRead->value]);
 });
 
+test('viewer bot cannot be minted an agent token with mutation scopes', function () {
+    configureOrgJwt();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    $bot = User::factory()->bot()->create(['name' => 'ReadOnlyHoku']);
+    $team->memberships()->create(['user_id' => $bot->id, 'role' => TeamRole::Viewer]);
+
+    test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
+        'name' => 'ReadOnlyHoku write',
+        'kind' => 'agent',
+        'bot_id' => $bot->id,
+        'scopes' => [McpScope::ArtifactsDeploy->value, McpScope::DataWrite->value],
+    ])->assertInvalid(['scopes']);
+
+    $ok = test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
+        'name' => 'ReadOnlyHoku read',
+        'kind' => 'agent',
+        'bot_id' => $bot->id,
+        'scopes' => [McpScope::ArtifactsRead->value, McpScope::DataRead->value],
+    ])->assertCreated();
+
+    $stored = OrgToken::query()->findOrFail($ok->json('id'));
+    expect($stored->role)->toBe(TeamRole::Viewer)
+        ->and($stored->scopes)->toBe([McpScope::ArtifactsRead->value, McpScope::DataRead->value]);
+});
+
 test('RUB-511 DoD: bot Bearer MCP can create and read an artifact with bot attribution and no seat charge', function () {
     configureArtifactLinks();
     Storage::fake('public');

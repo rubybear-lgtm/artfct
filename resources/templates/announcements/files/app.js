@@ -109,8 +109,8 @@
         return h;
     }
 
-    function authFailed(status) {
-        return status === 401 || status === 403;
+    function isExpired(status) {
+        return status === 401;
     }
 
     function expire() {
@@ -136,8 +136,14 @@
         var url = BASE + '/posts?limit=' + PAGE_SIZE;
         if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
         return fetch(url, { headers: headers() }).then(function (res) {
-            if (authFailed(res.status)) {
+            if (isExpired(res.status)) {
                 expire();
+                return null;
+            }
+            if (res.status === 403) {
+                session.canWrite = false;
+                session.isOwner = false;
+                render();
                 return null;
             }
             if (!res.ok) throw new Error('list failed: ' + res.status);
@@ -312,8 +318,17 @@
             headers: headers(),
             body: method === 'DELETE' ? undefined : JSON.stringify(doc),
         }).then(function (res) {
-            if (authFailed(res.status)) {
+            if (isExpired(res.status)) {
                 expire();
+                return null;
+            }
+            if (res.status === 403) {
+                session.canWrite = false;
+                session.isOwner = false;
+                render();
+                showError(
+                    'You have read-only access and cannot edit this board.',
+                );
                 return null;
             }
             return res
@@ -499,25 +514,18 @@
             window.location.reload();
         });
 
-    function detectSharing() {
-        try {
-            var q = new URLSearchParams(window.location.search);
-            var s = q.get('sharing') || q.get('mode');
-            if (s === 'private' || s === 'personal') return 'private';
-        } catch (e) {
-            /* ignore */
-        }
-        return 'team';
-    }
-
     function initSession() {
-        session.sharing = detectSharing();
-        return fetch(BASE + '/session', { headers: headers() })
+        return fetch(BASE + '/session', { headers: { 'X-Artfct-Db': '1' } })
             .then(function (res) {
+                if (isExpired(res.status)) {
+                    expire();
+                    return false;
+                }
                 if (!res.ok) {
                     session.canWrite = false;
+                    session.isOwner = false;
                     render();
-                    return;
+                    return false;
                 }
                 return res
                     .json()
@@ -525,24 +533,29 @@
                         data = data || {};
                         if (typeof data.token === 'string')
                             session.token = data.token;
-                        var role = String(data.role || '');
-                        session.canWrite =
-                            role === 'owner' ||
-                            role === 'admin' ||
-                            role === 'member';
-                        session.isOwner = role === 'owner';
+                        session.canWrite = data.role === 'writer';
+                        session.isOwner = data.is_owner === true;
+                        if (
+                            data.sharing === 'private' ||
+                            data.sharing === 'team'
+                        )
+                            session.sharing = data.sharing;
                         render();
+                        return true;
                     })
                     .catch(function () {
                         render();
+                        return false;
                     });
             })
             .catch(function () {
                 render();
+                return false;
             });
     }
 
     render();
-    refresh();
-    initSession();
+    initSession().then(function (ok) {
+        if (ok) return refresh();
+    });
 })();

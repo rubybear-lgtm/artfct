@@ -192,3 +192,27 @@ test('announcement_skill_doctest_check_then_publish', function () {
     Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
         && str_contains($request->url(), 'if_version=1'));
 });
+
+test('announcement_readonly_viewer_post_refused_names_access', function () {
+    configureSigning(testSigningKey());
+    $team = Team::factory()->create(['slug' => 'rub-537-org']);
+    announceRelease($team);
+    $viewer = memberOfTeam($team, TeamRole::Viewer);
+    Http::fake();
+    $token = OrgJwtService::default()->mint($team, $viewer, TeamRole::Viewer, 300, ['artifacts:read', 'data:read'])['token'];
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'db_set', 'arguments' => [
+            'id' => STABLE_ARTIFACT_ID,
+            'collection' => 'posts',
+            'doc_id' => 'p-2',
+            'data' => ['title' => 'Blocked', 'body' => 'Nope', 'tag' => 'note', 'published_at' => '2026-11-14T00:00:00Z'],
+        ]],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and((string) $response->json('result.content.0.text'))->toStartWith('insufficient_scope:')
+        ->and((string) $response->json('result.content.0.text'))->toContain('data:write');
+    Http::assertNothingSent();
+});

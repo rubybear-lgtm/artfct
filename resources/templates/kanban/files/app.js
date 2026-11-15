@@ -7,7 +7,7 @@
 
     var token = null;
     var writesStopped = false;
-    var canWrite = true;
+    var canWrite = false;
     var cards = [];
     var nextCursor = null;
     var pageCursor = null;
@@ -56,8 +56,12 @@
         };
     }
 
-    function authRefused(status) {
-        return status === 401 || status === 403;
+    function isExpired(status) {
+        return status === 401;
+    }
+
+    function isReadOnly(status) {
+        return status === 403;
     }
 
     function stopWrites() {
@@ -86,8 +90,14 @@
                 body: body === undefined ? undefined : JSON.stringify(body),
             })
             .then(function (res) {
-                if (authRefused(res.status)) {
+                if (isExpired(res.status)) {
                     stopWrites();
+                    throw new Error('auth');
+                }
+                if (isReadOnly(res.status)) {
+                    canWrite = false;
+                    render();
+                    toast('This board is read-only for you.');
                     throw new Error('auth');
                 }
                 return res;
@@ -98,7 +108,7 @@
         return window
             .fetch(DB + '/session', { headers: { 'X-Artfct-Db': '1' } })
             .then(function (res) {
-                if (authRefused(res.status)) {
+                if (isExpired(res.status) || isReadOnly(res.status)) {
                     stopWrites();
                     throw new Error('auth');
                 }
@@ -107,13 +117,8 @@
             })
             .then(function (data) {
                 token = data.token;
-                var role = data.role || 'member';
-                canWrite =
-                    (role === 'owner' ||
-                        role === 'admin' ||
-                        role === 'member') &&
-                    !writesStopped;
-                applyMode(data.sharing || 'team');
+                canWrite = data.role === 'writer' && !writesStopped;
+                applyMode(data.sharing === 'private' ? 'private' : 'team');
             });
     }
 

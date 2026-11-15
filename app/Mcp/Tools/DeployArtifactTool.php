@@ -480,7 +480,7 @@ final class DeployArtifactTool extends Tool
         }
 
         foreach ($matches[1] as $attributes) {
-            if (preg_match('/\bsrc\s*=/i', $attributes) !== 1) {
+            if (preg_match('/(?:^|\s)src\s*=\s*(?:"[^"]+"|\'[^\']+\'|[^\s>"\']+)/i', $attributes) !== 1) {
                 return true;
             }
         }

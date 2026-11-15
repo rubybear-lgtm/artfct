@@ -20,9 +20,14 @@ final class TemplateCatalog
 {
     public const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
 
+    public const MAX_BUNDLE_FILES = 500;
+
     public const MAX_SEED_BYTES = 256 * 1024;
 
     public const MAX_BODY_BYTES = 64 * 1024;
+
+    /** @var list<string> */
+    private const RESERVED_COLLECTION_NAMES = ['session', 'batch', 'schema'];
 
     /** Feature keys a template may name in `requires`. */
     public const KNOWN_FEATURES = ['artifact-db', 'artifact-templates'];
@@ -106,8 +111,12 @@ final class TemplateCatalog
             return ["Template key [{$key}] must be a lowercase slug ([a-z0-9-])."];
         }
 
+        if (is_link($dir)) {
+            return ["Template [{$key}] directory cannot be a symbolic link."];
+        }
+
         $manifestPath = $dir.'/template.json';
-        if (! is_file($manifestPath)) {
+        if (is_link($manifestPath) || ! is_file($manifestPath)) {
             return ["Template [{$key}] is missing template.json."];
         }
 
@@ -121,14 +130,15 @@ final class TemplateCatalog
             return $errors;
         }
 
-        $files = $this->readFiles($dir);
-        if ($files === null) {
+        $scanned = $this->scanFiles($key, $dir);
+        if ($scanned === null) {
             return ["Template [{$key}] is missing the files/ directory."];
         }
 
         $errors = array_merge(
             $errors,
-            $this->validateFiles($key, $manifest, $files),
+            $scanned['errors'],
+            $this->validateFiles($key, $manifest, $scanned['files']),
             $this->validateDb($key, $manifest['db'] ?? null),
             $this->validateSkill($key, $dir),
         );
@@ -163,14 +173,14 @@ final class TemplateCatalog
         }
 
         foreach ($collections as $name => $spec) {
-            if (! is_string($name) || ! self::isDocName($name, 64)) {
-                $errors[] = "{$owner} collection name [{$name}] must be 1-64 characters of [A-Za-z0-9._-].";
+            if (! is_string($name) || ! self::isDocName($name, 64) || in_array($name, self::RESERVED_COLLECTION_NAMES, true)) {
+                $errors[] = "{$owner} collection name [{$name}] must be 1-64 characters of [A-Za-z0-9._-], may not start with a dot, and may not be session, batch, or schema.";
 
                 continue;
             }
 
             if (! is_array($spec) || ! isset($spec['index']) || ! is_string($spec['index']) || ! self::isDocName($spec['index'], 64)) {
-                $errors[] = "{$owner} collection [{$name}] must declare an `index` field of 1-64 characters of [A-Za-z0-9._-].";
+                $errors[] = "{$owner} collection [{$name}] must declare an `index` field of 1-64 characters of [A-Za-z0-9._-] without a leading dot.";
             }
         }
 
@@ -282,29 +292,64 @@ final class TemplateCatalog
     /** @return array<string, string>|null path => bytes, or null when files/ is missing */
     private function readFiles(string $dir): ?array
     {
+        $scanned = $this->scanFiles(basename($dir), $dir);
+
+        return $scanned['files'] ?? null;
+    }
+
+    /**
+     * @return array{files: array<string, string>, errors: list<string>}|null
+     */
+    private function scanFiles(string $key, string $dir): ?array
+    {
         $filesDir = $dir.'/files';
+        if (is_link($filesDir)) {
+            return ['files' => [], 'errors' => ["Template [{$key}] files/ cannot be a symbolic link."]];
+        }
+
         if (! is_dir($filesDir)) {
             return null;
         }
 
+        $realFilesDir = realpath($filesDir);
+        if ($realFilesDir === false) {
+            return null;
+        }
+
         $files = [];
+        $errors = [];
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($filesDir, \FilesystemIterator::SKIP_DOTS)
+            new \RecursiveDirectoryIterator($filesDir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST,
         );
 
         /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
-            if (! $file->isFile()) {
+            $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen($filesDir) + 1));
+
+            if ($file->isLink()) {
+                $errors[] = "Template [{$key}] file [{$relativePath}] is a symbolic link; bundle real files only.";
+
                 continue;
             }
 
-            $path = substr($file->getPathname(), strlen($filesDir) + 1);
-            $files[str_replace(DIRECTORY_SEPARATOR, '/', $path)] = (string) file_get_contents($file->getPathname());
+            if ($file->isDir() || ! $file->isFile()) {
+                continue;
+            }
+
+            $realFile = realpath($file->getPathname());
+            if ($realFile === false || ! str_starts_with($realFile, $realFilesDir.DIRECTORY_SEPARATOR)) {
+                $errors[] = "Template [{$key}] file [{$relativePath}] resolves outside files/.";
+
+                continue;
+            }
+
+            $files[$relativePath] = (string) file_get_contents($realFile);
         }
 
         ksort($files);
 
-        return $files;
+        return ['files' => $files, 'errors' => $errors];
     }
 
     /**
@@ -317,12 +362,20 @@ final class TemplateCatalog
         $errors = [];
         $where = "Template [{$key}]";
 
+        if (count($files) > self::MAX_BUNDLE_FILES) {
+            $errors[] = "{$where} has ".count($files).' files; the bundle limit is '.self::MAX_BUNDLE_FILES.'.';
+        }
+
         $totalBytes = array_sum(array_map(strlen(...), array_values($files)));
         if ($totalBytes < 1 || $totalBytes > self::MAX_BUNDLE_BYTES) {
             $errors[] = "{$where} totals {$totalBytes} bytes; the bundle limit is ".self::MAX_BUNDLE_BYTES.'.';
         }
 
         foreach (array_keys($files) as $path) {
+            if (! self::isValidPath($path)) {
+                $errors[] = "{$where} file [{$path}] is not a valid relative bundle path.";
+            }
+
             if (str_starts_with($path, '__artfct/')) {
                 $errors[] = "{$where} file [{$path}] lives under the reserved `__artfct/` prefix.";
             }
@@ -335,23 +388,41 @@ final class TemplateCatalog
         foreach ($files as $path => $bytes) {
             $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
-            if (! in_array($extension, ['html', 'css', 'js'], true)) {
+            if (! in_array($extension, ['html', 'htm', 'css', 'js', 'mjs', 'svg'], true)) {
                 continue;
             }
 
-            if ($extension === 'html' && preg_match('/<script\b(?![^>]*\bsrc\s*=)[^>]*>/i', $bytes) === 1) {
+            $isHtml = in_array($extension, ['html', 'htm'], true);
+            $isSvg = $extension === 'svg';
+            $isJs = in_array($extension, ['js', 'mjs'], true);
+
+            if ($isHtml && self::htmlHasInlineScript($bytes)) {
                 $errors[] = "{$where} file [{$path}] has an inline `<script>`; put scripts in their own file and load them with `<script src=\"…\">`.";
             }
 
-            if ($extension === 'html' && preg_match('/\son[a-z]+\s*=/i', $bytes) === 1) {
+            if ($isSvg && preg_match('/<script\b/i', $bytes) === 1) {
+                $errors[] = "{$where} file [{$path}] has an SVG `<script>` element; SVG assets must be static.";
+            }
+
+            if ($isSvg && preg_match('/<foreignObject\b/i', $bytes) === 1) {
+                $errors[] = "{$where} file [{$path}] has an SVG `<foreignObject>` element; SVG assets must be static.";
+            }
+
+            if (($isHtml || $isSvg) && preg_match('/(?:^|[\s<])on[a-z]+\s*=|<[a-z][^>]*\/on[a-z]+\s*=/i', $bytes) === 1) {
                 $errors[] = "{$where} file [{$path}] has an `on*=` handler; move interactivity into a bundled script file.";
             }
 
-            if (preg_match('/data:[a-z]+\/[a-z0-9.+-]+;/i', $bytes) === 1) {
+            if (self::hasDataUri($bytes)) {
                 $errors[] = "{$where} file [{$path}] has a `data:` URI; put images and fonts in files/ and reference them by relative path.";
             }
 
-            foreach ($this->externalOrigins($extension, $bytes) as $origin) {
+            $originType = match (true) {
+                $isHtml => 'html',
+                $isSvg => 'svg',
+                $isJs => 'js',
+                default => 'css',
+            };
+            foreach ($this->externalOrigins($originType, $bytes) as $origin) {
                 $errors[] = "{$where} file [{$path}] loads an external origin [{$origin}]; bundle every asset in files/.";
             }
         }
@@ -361,12 +432,49 @@ final class TemplateCatalog
         return $errors;
     }
 
+    /** True when the HTML has a `<script>` element without an actual `src` attribute. */
+    private static function htmlHasInlineScript(string $html): bool
+    {
+        if (preg_match_all('/<script\b([^>]*)>/i', $html, $matches) === 0) {
+            return false;
+        }
+
+        foreach ($matches[1] as $attributes) {
+            if (preg_match('/(?:^|\s)src\s*=\s*(?:"[^"]+"|\'[^\']+\'|[^\s>"\']+)/i', $attributes) !== 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** True when content contains a `data:` URI (with or without MIME parameters). */
+    private static function hasDataUri(string $bytes): bool
+    {
+        return preg_match('/(?:^|[\s"\'`(=])data:(?:[a-z0-9.+-]+\/[a-z0-9.+-]+(?:;[a-z0-9.=+-]+)*|;[a-z0-9.=+-]+)*,/i', $bytes) === 1;
+    }
+
+    private static function isValidPath(string $path): bool
+    {
+        return $path !== ''
+            && strlen($path) <= 255
+            && ! str_starts_with($path, '/')
+            && ! str_contains($path, '\\')
+            && ! str_contains($path, ':')
+            && ! in_array('..', explode('/', $path), true)
+            && ! in_array('', explode('/', $path), true);
+    }
+
     /** @return list<string> the external origins a file loads, if any */
     private function externalOrigins(string $extension, string $bytes): array
     {
         $patterns = match ($extension) {
             'html' => [
                 '/(?:src|href|action|poster|cite|data-[a-z-]+)\s*=\s*["\']\s*((?:https?:)?\/\/[^"\'\s<>]+)/i',
+                '/url\(\s*["\']?\s*((?:https?:)?\/\/[^)"\'\s]+)/i',
+            ],
+            'svg' => [
+                '/(?:xlink:href|href|src|action)\s*=\s*["\']\s*((?:https?:)?\/\/[^"\'\s<>]+)/i',
                 '/url\(\s*["\']?\s*((?:https?:)?\/\/[^)"\'\s]+)/i',
             ],
             'css' => [
@@ -409,8 +517,16 @@ final class TemplateCatalog
             $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
             $refs = [];
 
-            if ($extension === 'html') {
+            if (in_array($extension, ['html', 'htm'], true)) {
                 if (preg_match_all('/(?:src|href)\s*=\s*["\']([^"\'#<>]+)(?:#[^"\']*)?["\']/i', $bytes, $matches) !== false) {
+                    $refs = array_merge($refs, $matches[1]);
+                }
+
+                if (preg_match_all('/url\(\s*["\']?([^)"\'#]+)(?:#[^)"\']*)?["\']?\s*\)/i', $bytes, $matches) !== false) {
+                    $refs = array_merge($refs, $matches[1]);
+                }
+            } elseif ($extension === 'svg') {
+                if (preg_match_all('/(?:xlink:href|href|src)\s*=\s*["\']([^"\'#<>]+)(?:#[^"\']*)?["\']/i', $bytes, $matches) !== false) {
                     $refs = array_merge($refs, $matches[1]);
                 }
 
@@ -486,8 +602,15 @@ final class TemplateCatalog
     private function validateSkill(string $key, string $dir): array
     {
         $where = "Template [{$key}]";
-        $source = is_file($dir.'/skill/SKILL.md') ? (string) file_get_contents($dir.'/skill/SKILL.md') : null;
-        $bundled = is_file($dir.'/files/SKILL.md') ? (string) file_get_contents($dir.'/files/SKILL.md') : null;
+        $skillSourcePath = $dir.'/skill/SKILL.md';
+        $skillBundledPath = $dir.'/files/SKILL.md';
+
+        if (is_link($dir.'/skill') || is_link($skillSourcePath) || is_link($skillBundledPath)) {
+            return ["{$where} skill files cannot be symbolic links."];
+        }
+
+        $source = is_file($skillSourcePath) ? (string) file_get_contents($skillSourcePath) : null;
+        $bundled = is_file($skillBundledPath) ? (string) file_get_contents($skillBundledPath) : null;
 
         if ($source === null) {
             return ["{$where} is missing skill/SKILL.md; the skill text is the single source the bundle and the guidance serve."];
@@ -507,7 +630,7 @@ final class TemplateCatalog
     /** Charset rule shared with the spec-20 transport limits. */
     private static function isDocName(string $value, int $max): bool
     {
-        return $value !== '' && strlen($value) <= $max && preg_match('/^[A-Za-z0-9._-]+$/', $value) === 1;
+        return $value !== '' && strlen($value) <= $max && ! str_starts_with($value, '.') && preg_match('/^[A-Za-z0-9._-]+$/', $value) === 1;
     }
 
     /**

@@ -3,10 +3,12 @@
 namespace App\Services\Templates;
 
 use App\Enums\ArtifactType;
+use App\Enums\TeamRole;
 use App\Models\TemplatePullRecord;
 use App\Services\Artifacts\ArtifactPublish;
 use App\Services\Artifacts\ArtifactPublisher;
 use App\Services\Artifacts\PublishFailedException;
+use App\Services\Auth\OrgJwtService;
 use App\Services\Collections\CollectionService;
 use App\Services\FeatureFlags;
 use Illuminate\Support\Facades\Cache;
@@ -98,10 +100,10 @@ final class TemplatePuller
         if ($requestId !== null) {
             $existing = TemplatePullRecord::query()
                 ->where('team_id', $pull->team->id)
+                ->where('actor', $pull->actor)
                 ->where('template_key', $template->key)
                 ->where('request_id', $requestId)
                 ->first();
-
             if ($existing !== null) {
                 return [
                     'id' => $existing->artifact_id,
@@ -178,7 +180,7 @@ final class TemplatePuller
         );
 
         $lock = $requestId !== null
-            ? Cache::lock("template-pull:{$pull->team->id}:{$template->key}:{$requestId}", 60)
+            ? Cache::lock('template-pull:'.hash('sha256', $pull->team->id."\0".$pull->actor."\0".$template->key."\0".$requestId), 60)
             : null;
 
         try {
@@ -187,6 +189,7 @@ final class TemplatePuller
             if ($requestId !== null) {
                 $existing = TemplatePullRecord::query()
                     ->where('team_id', $pull->team->id)
+                    ->where('actor', $pull->actor)
                     ->where('template_key', $template->key)
                     ->where('request_id', $requestId)
                     ->first();
@@ -208,6 +211,7 @@ final class TemplatePuller
             if ($requestId !== null) {
                 TemplatePullRecord::query()->create([
                     'team_id' => $pull->team->id,
+                    'actor' => $pull->actor,
                     'template_key' => $template->key,
                     'request_id' => $requestId,
                     'artifact_id' => $published['id'],
@@ -270,7 +274,15 @@ final class TemplatePuller
                 return;
             }
 
-            Http::withToken($pull->credentialToken)
+            $cleanupToken = OrgJwtService::default()->mintFor(
+                $pull->team->slug,
+                $pull->actor,
+                TeamRole::Admin,
+                60,
+                ['artifacts:delete'],
+            )['token'];
+
+            Http::withToken($cleanupToken)
                 ->delete(rtrim($workerBaseUrl, '/').'/v1/artifacts/'.$artifactId);
         } catch (\Throwable $exception) {
             report($exception);

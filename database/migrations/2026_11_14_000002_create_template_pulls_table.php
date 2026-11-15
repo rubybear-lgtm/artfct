@@ -17,12 +17,13 @@ return new class extends Migration
         Schema::create('template_pulls', function (Blueprint $table) {
             $table->id();
             $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+            $table->string('actor', 64);
             $table->string('template_key', 64);
             $table->string('request_id', 64);
             $table->string('artifact_id', 128);
             $table->timestamps();
 
-            $table->unique(['team_id', 'template_key', 'request_id']);
+            $table->unique(['team_id', 'actor', 'template_key', 'request_id']);
             $table->index(['created_at']);
         });
     }

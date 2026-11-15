@@ -242,6 +242,7 @@ test('list_templates_marks_unavailable_templates', function () {
 });
 
 test('library_pull_runs_without_an_mcp_connection_and_cleans_up_on_failure', function () {
+    configureSigning(testSigningKey());
     $team = Team::factory()->create(['plan' => Plan::Team]);
     releaseTemplates($team);
 
@@ -297,8 +298,14 @@ test('library_pull_runs_without_an_mcp_connection_and_cleans_up_on_failure', fun
         expect($exception->errorCode)->toBe('deployment_rejected');
     }
 
-    Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-        && str_ends_with((string) $request->url(), '/v1/artifacts/cccccccccccccccccccccccccccccccc'));
+    Http::assertSent(function ($request): bool {
+        $auth = $request->header('Authorization')[0] ?? '';
+
+        return $request->method() === 'DELETE'
+            && str_ends_with((string) $request->url(), '/v1/artifacts/cccccccccccccccccccccccccccccccc')
+            && $auth !== 'Bearer library-token'
+            && str_starts_with($auth, 'Bearer ');
+    });
 
     expect(TemplatePullRecord::query()->where('request_id', 'req-lib-2')->exists())->toBeFalse();
 });
@@ -324,5 +331,91 @@ test('pull_records_the_mcp_client_as_the_publishing_agent', function () {
         return is_array($provenance)
             && ($provenance['agent'] ?? null) === 'Grok Bot'
             && ($provenance['sources']['agent'] ?? null) === 'client_info';
+    });
+});
+
+test('pull_idempotency_is_scoped_by_actor_for_private_pulls', function () {
+    configureSigning(testSigningKey());
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    releaseTemplates($team);
+
+    $alice = memberOfTeam($team, TeamRole::Admin);
+    $bob = memberOfTeam($team, TeamRole::Member);
+    $aliceToken = OrgJwtService::default()->mint($team, $alice, TeamRole::Admin, 300, ['artifacts:deploy', 'artifacts:read', 'data:read', 'data:write'])['token'];
+    $bobToken = OrgJwtService::default()->mint($team, $bob, TeamRole::Member, 300, ['artifacts:deploy', 'artifacts:read', 'data:read', 'data:write'])['token'];
+
+    $ids = ['11111111111111111111111111111111', '22222222222222222222222222222222'];
+    $index = 0;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => function () use (&$index, $ids) {
+            $id = $ids[$index++] ?? $ids[0];
+
+            return Http::response([
+                'id' => $id, 'version' => 1, 'url' => 'https://worker.test/p/'.$id,
+                'tier' => 'private', 'sharing' => 'private', 'missing_files' => [],
+            ], 201);
+        },
+        'worker.test/v1/artifacts/*/files/*' => Http::response('', 204),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $first = test()->withToken($aliceToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'pull_template', 'arguments' => [
+            'template' => 'fixture', 'sharing' => 'private', 'request_id' => 'shared-req-1',
+        ]],
+    ])->assertOk()->json('result.structuredContent');
+
+    $second = test()->withToken($bobToken)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'pull_template', 'arguments' => [
+            'template' => 'fixture', 'sharing' => 'private', 'request_id' => 'shared-req-1',
+        ]],
+    ])->assertOk()->json('result.structuredContent');
+
+    expect($first['id'])->toBe($ids[0])
+        ->and($first['created'])->toBeTrue()
+        ->and($second['id'])->toBe($ids[1])
+        ->and($second['created'])->toBeTrue();
+});
+
+test('pull_cleanup_uses_minted_delete_token_when_caller_lacks_artifacts_delete', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    releaseTemplates($team);
+    $token = pullToken($team, ['artifacts:deploy', 'artifacts:read', 'data:read', 'data:write']);
+
+    $indexSha = hash('sha256', (string) file_get_contents(base_path('tests/Fixtures/templates/fixture/files/index.html')));
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => 'dddddddddddddddddddddddddddddddd', 'version' => 1,
+            'url' => 'https://worker.test/p/dddddddddddddddddddddddddddddddd',
+            'tier' => 'secure', 'sharing' => 'team',
+            'missing_files' => [$indexSha],
+        ], 201),
+        'worker.test/v1/artifacts/*/files/*' => Http::response('fail', 500),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $response = test()->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'pull_template', 'arguments' => ['template' => 'fixture']],
+    ])->assertOk();
+
+    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('deployment_rejected');
+
+    Http::assertSent(function ($request): bool {
+        if ($request->method() !== 'DELETE' || ! str_ends_with((string) $request->url(), '/v1/artifacts/dddddddddddddddddddddddddddddddd')) {
+            return false;
+        }
+
+        $auth = (string) ($request->header('Authorization')[0] ?? '');
+        $jwt = str_starts_with($auth, 'Bearer ') ? substr($auth, 7) : '';
+        $claims = OrgJwtService::default()->verify($jwt);
+
+        return ($claims['scope'] ?? null) === 'artifacts:delete';
     });
 });

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * @property int $id
  * @property int $team_id
+ * @property string $actor
  * @property string $template_key
  * @property string $request_id
  * @property string $artifact_id
@@ -19,7 +20,7 @@ final class TemplatePullRecord extends Model
 {
     protected $table = 'template_pulls';
 
-    protected $fillable = ['team_id', 'template_key', 'request_id', 'artifact_id'];
+    protected $fillable = ['team_id', 'actor', 'template_key', 'request_id', 'artifact_id'];
 
     /** @return BelongsTo<Team, $this> */
     public function team(): BelongsTo

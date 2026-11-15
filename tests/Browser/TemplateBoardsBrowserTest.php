@@ -42,9 +42,13 @@ function templateBoardHtml(string $key, string $mode = 'ok', array $extraRows = 
         .'window.fetch=function(url,opts){opts=opts||{};var u=String(url);'
         .'function rec(m){var b=null;try{b=opts.body?JSON.parse(opts.body):null;}catch(e){}window.__calls.push({method:m,url:u,body:b});}'
         .'function resp(d,s){return Promise.resolve(new Response(JSON.stringify(d),{status:s||200,headers:{"Content-Type":"application/json"}}));}'
+        .'var hdrs=opts.headers||{};var dbHdr=(typeof hdrs.get==="function")?hdrs.get("X-Artfct-Db"):(hdrs["X-Artfct-Db"]||hdrs["x-artfct-db"]);'
+        .'if(dbHdr!=="1")return resp({error:{code:"forbidden"}},403);'
         .'if(u.indexOf("/__artfct/db/session")!==-1){rec("GET");'
         .'if(window.__mode==="expired")return resp({error:{code:"forbidden"}},401);'
-        .'return resp({token:"test-token",expires_at:"2999-01-01T00:00:00Z",role:"owner"});}'
+        .'if(window.__mode==="reader")return resp({token:"test-token",expires_at:"2999-01-01T00:00:00Z",role:"reader",sharing:"team",is_owner:false});'
+        .'if(window.__mode==="editor")return resp({token:"test-token",expires_at:"2999-01-01T00:00:00Z",role:"writer",sharing:"team",is_owner:false});'
+        .'return resp({token:"test-token",expires_at:"2999-01-01T00:00:00Z",role:"writer",sharing:"team",is_owner:true});}'
         .'var m=u.match(/\\/__artfct\\/db\\/([A-Za-z0-9._-]+)(?:\\/([A-Za-z0-9._-]+))?(\\?.*)?$/);'
         .'if(!m)return Promise.resolve(new Response("not found",{status:404}));'
         .'var col=m[1],id=m[2]||null,q=m[3]||"";'
@@ -53,7 +57,7 @@ function templateBoardHtml(string $key, string $mode = 'ok', array $extraRows = 
         .'function ver(){var v=q.match(/if_version=(\\d+)/);return v?parseInt(v[1],10):null;}'
         .'if((opts.method||"GET")==="GET"&&!id){rec("GET");return resp({docs:rows(),cursor:null});}'
         .'if((opts.method||"GET")==="GET"){rec("GET");var d=one();return d?resp(d):resp({error:{code:"not_found"}},404);}'
-        .'if(window.__mode==="expired")return resp({error:{code:"forbidden"}},403);'
+        .'if(window.__mode==="expired"||window.__mode==="reader")return resp({error:{code:"forbidden"}},403);'
         .'if(opts.method==="PUT"||opts.method==="PATCH"){rec(opts.method);var cur=one()||null;var iv=ver();'
         .'if(cur&&iv!==null&&cur.version!==iv)return resp({error:{code:"version_conflict"},current:cur},409);'
         .'var nb=opts.body?JSON.parse(opts.body):{};'
@@ -244,4 +248,43 @@ test('announcement_board_escapes_html_and_rejects_non_http_links', function () {
         ->assertNoJavaScriptErrors();
     expect($page->script('document.querySelectorAll("#posts img, #posts svg").length'))->toBe(0)
         ->and($page->script('document.querySelectorAll(\'#posts a[href^="javascript:"]\').length'))->toBe(0);
+});
+
+test('kanban_board_renders_read_only_for_reader', function () {
+    $page = openTemplateBoard('kanban', 'reader');
+
+    $page->assertSee('This is a card')
+        ->assertNoJavaScriptErrors();
+    expect($page->script('document.querySelector("#session-banner").hidden'))->toBeTrue()
+        ->and($page->script('document.querySelector(\'[data-column="todo"] [data-add] button\').disabled'))->toBeTrue()
+        ->and($page->script('document.querySelector(\'[data-column="todo"] [data-action="right"]\').disabled'))->toBeTrue();
+});
+
+test('team_wiki_renders_read_only_for_reader', function () {
+    $page = openTemplateBoard('team-wiki', 'reader');
+
+    $page->assertSee('Wiki overview')
+        ->assertSee('Read-only')
+        ->assertNoJavaScriptErrors();
+
+    $page->script('document.querySelector(\'.page-list a[href="#/page/overview"]\').click();');
+    sleep(1);
+    $page->assertSee('Read-only — this role cannot edit pages.');
+    expect($page->script('document.querySelector("#page-edit") === null'))->toBeTrue();
+});
+
+test('announcement_board_renders_read_only_for_reader_and_hides_delete_for_editor', function () {
+    $reader = openTemplateBoard('announcements', 'reader');
+
+    $reader->assertSee('Welcome to the announcement board')
+        ->assertNoJavaScriptErrors();
+    expect($reader->script('document.querySelector("#readonly-banner").hidden'))->toBeFalse()
+        ->and($reader->script('document.querySelector("#composer-section").hidden'))->toBeTrue()
+        ->and($reader->script('document.querySelectorAll("[data-act]").length'))->toBe(0);
+
+    $editor = openTemplateBoard('announcements', 'editor');
+    $editor->assertSee('Welcome to the announcement board')
+        ->assertNoJavaScriptErrors();
+    expect($editor->script('document.querySelectorAll(\'[data-act="edit"]\').length'))->toBe(1)
+        ->and($editor->script('document.querySelectorAll(\'[data-act="delete"]\').length'))->toBe(0);
 });
