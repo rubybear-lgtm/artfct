@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Team wiki — knowledge base</title>
+        <style>
+            :root {
+                --bone: #f7f5f2;
+                --paper: #fbfaf8;
+                --hairline: #dedad2;
+                --ink: #262624;
+                --muted: #55544e;
+                --quiet: #69675f;
+                --oxblood: #701a24;
+                --oxblood-deep: #58141c;
+                --tint: #f1e4e5;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--bone);
+                color: var(--ink);
+                font-family:
+                    -apple-system, BlinkMacSystemFont, 'Segoe UI', Manrope,
+                    Helvetica, Arial, sans-serif;
+                font-size: 16px;
+                line-height: 1.55;
+            }
+            .wrap {
+                max-width: 1120px;
+                margin: 0 auto;
+                padding: 0 20px;
+            }
+            header.page {
+                padding: 48px 0 8px;
+            }
+            .eyebrow {
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--oxblood);
+                font-weight: 700;
+                margin: 0 0 12px;
+            }
+            h1 {
+                font-family: Georgia, 'Times New Roman', serif;
+                font-weight: 400;
+                letter-spacing: -0.02em;
+                font-size: clamp(40px, 6vw, 60px);
+                line-height: 1.04;
+                margin: 0 0 12px;
+            }
+            h1 em {
+                color: var(--oxblood);
+                font-style: italic;
+            }
+            .lede {
+                color: var(--muted);
+                max-width: 65ch;
+                margin: 0 0 16px;
+            }
+            .mode {
+                display: inline-block;
+                font-size: 13px;
+                color: var(--muted);
+                border: 1px solid var(--hairline);
+                border-radius: 20px;
+                padding: 4px 14px;
+                background: var(--paper);
+                margin-bottom: 24px;
+            }
+            .mode strong {
+                color: var(--oxblood);
+                font-weight: 600;
+            }
+            .banner {
+                background: var(--tint);
+                border: 1px solid var(--oxblood);
+                border-radius: 8px;
+                padding: 12px 16px;
+                margin-bottom: 16px;
+                font-size: 14px;
+            }
+            .banner button {
+                font: inherit;
+                font-size: 14px;
+                font-weight: 600;
+                background: var(--oxblood);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                cursor: pointer;
+                margin-left: 12px;
+            }
+            .btn {
+                font: inherit;
+                font-size: 14px;
+                font-weight: 600;
+                background: var(--oxblood);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                cursor: pointer;
+            }
+            .btn:hover {
+                background: var(--oxblood-deep);
+            }
+            .btn[disabled] {
+                opacity: 0.5;
+                cursor: default;
+            }
+            .btn-ghost {
+                font: inherit;
+                font-size: 14px;
+                font-weight: 600;
+                background: transparent;
+                color: var(--ink);
+                border: 1px solid var(--hairline);
+                border-radius: 6px;
+                padding: 8px 16px;
+                cursor: pointer;
+            }
+            .btn-ghost[aria-pressed='true'] {
+                background: var(--tint);
+                border-color: var(--oxblood);
+                color: var(--oxblood);
+            }
+            .tabs {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 16px;
+                flex-wrap: wrap;
+            }
+            .filter {
+                width: 100%;
+                font: inherit;
+                font-size: 15px;
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 8px;
+                padding: 10px 14px;
+                margin-bottom: 16px;
+                color: var(--ink);
+            }
+            .filter:focus {
+                outline: none;
+                border-color: var(--oxblood);
+                box-shadow: 0 0 0 3px var(--tint);
+            }
+            .kind-filter {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 16px;
+                flex-wrap: wrap;
+            }
+            .page-list {
+                list-style: none;
+                margin: 0 0 40px;
+                padding: 0;
+                border-top: 1px solid var(--hairline);
+            }
+            .page-list li {
+                border-bottom: 1px solid var(--hairline);
+            }
+            .page-list a {
+                display: block;
+                padding: 16px 4px;
+                text-decoration: none;
+                color: inherit;
+                border-left: 2px solid transparent;
+            }
+            .page-list a:hover {
+                background: var(--paper);
+                border-left-color: var(--oxblood);
+            }
+            .page-list h3 {
+                margin: 0 0 4px;
+                font-size: 17px;
+                font-weight: 600;
+            }
+            .page-list h3 .link {
+                color: var(--oxblood);
+                font-weight: 400;
+            }
+            .page-list p {
+                margin: 0 0 6px;
+                font-size: 14px;
+                color: var(--muted);
+            }
+            .sources {
+                font-size: 13px;
+                color: var(--quiet);
+            }
+            .orphan-tag {
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--quiet);
+                border: 1px solid var(--hairline);
+                border-radius: 4px;
+                padding: 1px 6px;
+                margin-left: 8px;
+                vertical-align: middle;
+            }
+            .pager {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                margin-bottom: 40px;
+            }
+            .graph-wrap {
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 10px;
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+            .graph-wrap svg {
+                width: 100%;
+                height: auto;
+                display: block;
+            }
+            .graph-wrap .node {
+                cursor: pointer;
+            }
+            .graph-wrap .node circle {
+                fill: var(--paper);
+                stroke: var(--oxblood);
+                stroke-width: 2;
+            }
+            .graph-wrap .node:hover circle {
+                fill: var(--tint);
+            }
+            .graph-wrap .node.orphan circle {
+                stroke: var(--quiet);
+                stroke-dasharray: 4 3;
+            }
+            .graph-wrap .node text {
+                font-size: 12px;
+                fill: var(--muted);
+                text-anchor: middle;
+            }
+            .graph-wrap .edge {
+                stroke: var(--hairline);
+                stroke-width: 1.5;
+            }
+            article.doc {
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 10px;
+                padding: 28px 32px;
+                margin-bottom: 16px;
+            }
+            article.doc h2 {
+                font-family: Georgia, serif;
+                font-weight: 500;
+                font-size: 30px;
+                margin: 0 0 12px;
+            }
+            article.doc p {
+                margin: 0 0 12px;
+                max-width: 70ch;
+            }
+            article.doc a {
+                color: var(--oxblood);
+            }
+            .dangling {
+                color: var(--quiet);
+                border-bottom: 1px dashed var(--quiet);
+            }
+            .doc-meta {
+                font-size: 13px;
+                color: var(--quiet);
+                border-top: 1px solid var(--hairline);
+                padding-top: 12px;
+                margin-top: 16px;
+            }
+            .doc-edit textarea {
+                width: 100%;
+                min-height: 220px;
+                font: inherit;
+                font-size: 15px;
+                background: var(--bone);
+                color: var(--ink);
+                border: 1px solid var(--hairline);
+                border-radius: 8px;
+                padding: 12px 14px;
+                margin: 12px 0;
+            }
+            .doc-edit textarea:focus {
+                outline: none;
+                border-color: var(--oxblood);
+                box-shadow: 0 0 0 3px var(--tint);
+            }
+            .doc-actions {
+                display: flex;
+                gap: 8px;
+                margin-top: 16px;
+                flex-wrap: wrap;
+            }
+            .back {
+                display: inline-block;
+                margin-bottom: 16px;
+                color: var(--oxblood);
+                text-decoration: none;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .log-list {
+                list-style: none;
+                margin: 0 0 40px;
+                padding: 0;
+                border-top: 1px solid var(--hairline);
+            }
+            .log-list li {
+                padding: 12px 4px;
+                border-bottom: 1px solid var(--hairline);
+                font-size: 14px;
+            }
+            .log-list .kind {
+                display: inline-block;
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--oxblood);
+                background: var(--tint);
+                border-radius: 4px;
+                padding: 2px 8px;
+                margin-right: 10px;
+            }
+            .log-list time {
+                color: var(--quiet);
+                font-size: 13px;
+                margin-left: 10px;
+            }
+            footer.page {
+                border-top: 1px solid var(--hairline);
+                padding: 20px 0 48px;
+                color: var(--quiet);
+                font-size: 13px;
+            }
+            footer.page a {
+                color: var(--oxblood);
+            }
+            .empty {
+                color: var(--quiet);
+                font-size: 14px;
+                padding: 24px 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <header class="wrap page">
+            <p class="eyebrow">Team wiki</p>
+            <h1>Team <em>wiki</em></h1>
+            <p class="lede">
+                What the team knows, kept current. The wiki compounds —
+                cross-references already linked, contradictions already flagged,
+                every answer filed back for the next question.
+            </p>
+            <span class="mode" id="mode-badge"
+                ><strong>Team wiki</strong> · shared with the team</span
+            >
+        </header>
+        <div class="wrap">
+            <div class="banner" id="banner" hidden></div>
+            <nav class="tabs" aria-label="Wiki views">
+                <button
+                    class="btn-ghost"
+                    type="button"
+                    data-view="index"
+                    aria-pressed="true"
+                >
+                    Index
+                </button>
+                <button
+                    class="btn-ghost"
+                    type="button"
+                    data-view="graph"
+                    aria-pressed="false"
+                >
+                    Graph
+                </button>
+                <button
+                    class="btn-ghost"
+                    type="button"
+                    data-view="log"
+                    aria-pressed="false"
+                >
+                    Activity log
+                </button>
+            </nav>
+        </div>
+        <main class="wrap" id="wiki"></main>
+        <footer class="wrap page">
+            Kept current by the team and its agents — the upkeep rules live in
+            <a href="SKILL.md">SKILL.md</a>.
+        </footer>
+        <script src="app.js"></script>
+    </body>
+</html>

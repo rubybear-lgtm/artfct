@@ -20,7 +20,9 @@ test('scope labels name the capability in plain team language', function () {
         ->and(McpScope::ArtifactsDelete->label())->toBe('Delete shared work')
         ->and(McpScope::CollectionsRead->label())->toBe("See your team's collections")
         ->and(McpScope::CollectionsWrite->label())->toBe('Create collections and add work to them')
-        ->and(McpScope::UsageRead->label())->toBe('See usage and plan limits');
+        ->and(McpScope::UsageRead->label())->toBe('See usage and plan limits')
+        ->and(McpScope::DataRead->label())->toBe("Read the data kept inside your team's shared work")
+        ->and(McpScope::DataWrite->label())->toBe("Change the data kept inside your team's shared work");
 });
 
 test('scope labels avoid workspace and deploy wording', function () {

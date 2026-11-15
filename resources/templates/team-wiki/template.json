@@ -1,0 +1,75 @@
+{
+    "artifact_type": "document",
+    "db": {
+        "collections": {
+            "activity": {
+                "index": "ts"
+            },
+            "pages": {
+                "index": "title"
+            }
+        },
+        "seed": [
+            {
+                "collection": "pages",
+                "doc_id": "overview",
+                "body": {
+                    "body_md": "This wiki is the team's shared memory. People and agents read it; agents keep it current.\n\nStart at the index: every page with its one-line summary and source count. Follow cross-links to move between pages, and watch the activity log to see what changed and when.\n\nGood answers get filed back here as new pages — ask a question, keep the synthesis. How pages, summaries, sources, and the log fit together lives in [[index-conventions]]; the habit that makes it all work is [[llm-bookkeeping]].",
+                    "sources": [],
+                    "title": "Wiki overview",
+                    "updated_at": "2026-11-14T00:00:00Z",
+                    "visibility": "shared"
+                }
+            },
+            {
+                "collection": "pages",
+                "doc_id": "index-conventions",
+                "body": {
+                    "body_md": "Three layers. Raw sources live outside the wiki and are never edited — threads, docs, decisions, wherever the team already keeps them. The wiki layer (pages, index, log) is owned by the agent that maintains it. This skill text is the schema.\n\nEach page carries a title, a one-line summary (the first line of its body), a source list, and a visibility. The index shows every page, orphans under their own heading so [[overview]] always has something to point lint at. The log is append-only: ingest, query, lint.\n\nPages link with double-bracketed slugs. A link whose slug has no page renders as a dangling link — either a page to write or a slug to fix.",
+                    "sources": [
+                        {
+                            "label": "LLM Wiki gist",
+                            "ref": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"
+                        }
+                    ],
+                    "title": "Index conventions",
+                    "updated_at": "2026-11-14T00:00:00Z",
+                    "visibility": "shared"
+                }
+            },
+            {
+                "collection": "pages",
+                "doc_id": "llm-bookkeeping",
+                "body": {
+                    "body_md": "A team accumulates knowledge faster than it organizes it. Retrieval-only tools re-derive the synthesis on every question; a wiki compounds instead — cross-references already linked, contradictions already flagged, each answer filed back for the next question.\n\nThe LLM does the bookkeeping it never gets bored of: ingest compiles sources into pages, query answers from the index with citations, lint checks the whole thing on request. Humans curate sources and ask the questions. See [[overview]] for how to read this wiki and [[index-conventions]] for the layers that keep it honest.",
+                    "sources": [
+                        {
+                            "label": "LLM Wiki gist",
+                            "ref": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"
+                        }
+                    ],
+                    "title": "The bookkeeping habit",
+                    "updated_at": "2026-11-14T00:00:00Z",
+                    "visibility": "shared"
+                }
+            },
+            {
+                "collection": "activity",
+                "doc_id": "seed-ingest-1",
+                "body": {
+                    "summary": "ingest | seed: wrote overview, index-conventions, and llm-bookkeeping from the wiki pattern",
+                    "ts": "2026-11-14T00:00:00Z",
+                    "kind": "ingest"
+                }
+            }
+        ]
+    },
+    "description": "A shared knowledge base with an index, cross-linked pages, an activity log, and a knowledge graph — plus the skill that keeps it current.",
+    "edit_access": "edit",
+    "entrypoint": "index.html",
+    "key": "team-wiki",
+    "requires": ["artifact-db"],
+    "sharing": "team",
+    "title": "Team wiki",
+    "version": 1
+}

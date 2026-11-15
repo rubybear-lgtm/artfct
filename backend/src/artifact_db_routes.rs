@@ -19,11 +19,11 @@ use super::*;
 use serde_json::json;
 
 use crate::artifact_db::{
-    bytes_added, db_allowed, db_role, exceeds_db_quota, guard_request, index_value, is_db_path,
-    mint_db_token, parse_agent_db_path, parse_db_path, parse_document_body, verify_db_token,
-    within_write_rate, BodyRefusal, DbGrant, DbLimits, DbManifest, DbRollout, DbRoute, GuardFacts,
-    DB_PATH_PREFIX, DB_REQUEST_HEADER, DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES,
-    MAX_BODY_BYTES, MAX_PAGE_LIMIT,
+    bytes_added, db_allowed, db_role, exceeds_db_quota, guard_request, index_value,
+    is_artifact_owner, is_db_path, mint_db_token, parse_agent_db_path, parse_db_path,
+    parse_document_body, verify_db_token, within_write_rate, BodyRefusal, DbGrant, DbLimits,
+    DbManifest, DbRollout, DbRoute, GuardFacts, DB_PATH_PREFIX, DB_REQUEST_HEADER,
+    DB_TOKEN_TTL_SECS, DEFAULT_PAGE_LIMIT, MAX_BATCH_WRITES, MAX_BODY_BYTES, MAX_PAGE_LIMIT,
 };
 use crate::artifact_origin::{
     access_token_from_cookie, artifact_origin_suffix, artifact_token_secret,
@@ -514,11 +514,14 @@ fn session(
     let Some(token) = mint_db_token(secret, &row.id, expires_at, &viewer, role) else {
         return db_error("forbidden", "No access to this artifact's data.", 403);
     };
+    let is_owner = is_artifact_owner(token_viewer.as_ref(), row.user_id.as_deref());
     db_json(
         json!({
             "token": token,
             "expires_at": expires_at.to_rfc3339_opts(SecondsFormat::Secs, true),
             "role": role.as_str(),
+            "sharing": sharing.as_str(),
+            "is_owner": is_owner,
         }),
         200,
     )

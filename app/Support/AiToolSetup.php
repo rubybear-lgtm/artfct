@@ -299,6 +299,8 @@ class AiToolSetup
             ['name' => 'resolve_artifact_comment', 'does' => 'Mark a comment thread resolved, or reopen it.', 'permission' => 'comments:write'],
             ['name' => 'deploy_artifact', 'does' => 'Publish a page, report or document to your team, either as one self-contained HTML file or as a set of files. Choose who can open it: your whole team, only you, or anyone with the link. To update something you published before, pass its id (and the version you built on, so a newer change is never overwritten): the new version keeps the same link. Publishing the same content again returns the same artifact.', 'permission' => 'artifacts:deploy'],
             ['name' => 'delete_artifact', 'does' => 'Permanently remove an artifact, unless it is on legal hold.', 'permission' => 'artifacts:delete'],
+            ['name' => 'list_templates', 'does' => 'List the Artfct-authored templates the team can pull into its library, and whether each one is available.', 'permission' => 'artifacts:read'],
+            ['name' => 'pull_template', 'does' => 'Pull a template into the library as a new artifact you own, with fresh seed rows for data-backed templates.', 'permission' => 'artifacts:deploy'],
             ['name' => 'list_collections', 'does' => 'List your team’s collections.', 'permission' => 'collections:read'],
             ['name' => 'create_collection', 'does' => 'Create a collection.', 'permission' => 'collections:write'],
             ['name' => 'add_collection_artifact', 'does' => 'Add an artifact to a collection.', 'permission' => 'collections:write'],

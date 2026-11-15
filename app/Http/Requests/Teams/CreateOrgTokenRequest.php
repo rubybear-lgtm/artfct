@@ -6,6 +6,7 @@ use App\Enums\McpScope;
 use App\Enums\OrgTokenKind;
 use App\Enums\TeamRole;
 use App\Models\Team;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -65,6 +66,21 @@ class CreateOrgTokenRequest extends FormRequest
             $team = $this->route('team');
             $kind = OrgTokenKind::tryFrom((string) $this->input('kind', OrgTokenKind::Api->value)) ?? OrgTokenKind::Api;
             $allowed = McpScope::forRole($this->user()?->teamRole($team));
+            if ($kind === OrgTokenKind::Api) {
+                $targetRole = TeamRole::tryFrom((string) $this->input('role'));
+                if ($targetRole !== null) {
+                    $allowed = array_values(array_intersect($allowed, McpScope::forRole($targetRole)));
+                }
+            } elseif ($kind === OrgTokenKind::Agent) {
+                $botId = $this->input('bot_id');
+                if (is_numeric($botId)) {
+                    $bot = User::query()->whereKey((int) $botId)->first();
+                    if ($bot instanceof User && $bot->is_bot && $bot->belongsToTeam($team)) {
+                        $botRole = $bot->teamRole($team) ?? TeamRole::Member;
+                        $allowed = array_values(array_intersect($allowed, McpScope::forRole($botRole)));
+                    }
+                }
+            }
             $scopes = array_values(array_unique(array_filter(
                 (array) $this->input('scopes', []),
                 static fn (mixed $scope): bool => is_string($scope),

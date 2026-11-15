@@ -6,8 +6,10 @@ use App\Models\OAuthClient;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Templates\TemplateCatalog;
 use App\Services\WorkerEvents\WorkerEventSignature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -197,6 +199,26 @@ function oauthConsentToken(array $parameters): string
 function oauthChallenge(string $verifier): string
 {
     return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+}
+
+/*
+ * The template fixture catalog lives here rather than in one of the
+ * `tests/Feature/Templates/*` files: both the catalog tests and the pull
+ * tests copy `tests/Fixtures/templates` into a temp dir, and two file-local
+ * helpers with the same name fatal when the suite loads both files.
+ */
+
+/**
+ * Copy the template fixtures to a temp dir, bind it as the catalog, and
+ * return it. Pass an explicit dir when the test mutates the copy in place.
+ */
+function fixtureCatalog(?string $copyTo = null): TemplateCatalog
+{
+    $dir = $copyTo ?? sys_get_temp_dir().'/templates-'.uniqid();
+    File::copyDirectory(base_path('tests/Fixtures/templates'), $dir);
+    app()->bind(TemplateCatalog::class, fn () => new TemplateCatalog($dir));
+
+    return new TemplateCatalog($dir);
 }
 
 function remoteMcpToken(Team $team, TeamRole $role = TeamRole::Admin): string

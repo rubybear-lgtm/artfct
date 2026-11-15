@@ -133,6 +133,12 @@ export default [
             'resources/js/components/ui/*',
             'resources/js/routes/**',
             'resources/js/wayfinder/**',
+            // Template fixture bundles are content under test, not shipped code.
+            'tests/Fixtures/**',
+            // Template payloads are reviewed content validated by
+            // TemplateCatalog (no inline script, no on*=, size caps),
+            // not app code; app JS style rules do not apply to them.
+            'resources/templates/**',
         ],
     },
     {

@@ -719,7 +719,7 @@ test('logs why a token request was rejected without exposing the code or verifie
         && $context['reason'] === 'code_unknown_or_used')->once();
 });
 
-test('does not mint mutation scopes for a viewer', function () {
+test('does not mint mutation scopes for a viewer', function (string $mutationScope) {
     $verifier = str_repeat('v', 64);
     $user = User::factory()->create();
     $team = Team::factory()->create();
@@ -727,7 +727,7 @@ test('does not mint mutation scopes for a viewer', function () {
     configureSigning(testSigningKey());
 
     $parameters = oauthParameters(oauthChallenge($verifier), [
-        'scope' => 'artifacts:deploy',
+        'scope' => $mutationScope,
     ]);
     $authorization = $this->actingAs($user)->post('/oauth/authorize', [
         ...$parameters,
@@ -745,7 +745,7 @@ test('does not mint mutation scopes for a viewer', function () {
     ])->assertStatus(400)->assertJsonPath('error', 'invalid_scope');
 
     expect(OrgToken::query()->where('team_id', $team->id)->exists())->toBeFalse();
-});
+})->with(['artifacts:deploy', 'data:write']);
 
 test('denying a request returns an OAuth error without issuing a code', function () {
     $user = User::factory()->create();

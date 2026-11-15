@@ -403,6 +403,20 @@ pub(crate) fn db_role(
     }
 }
 
+/// Whether the verified access cookie names the artifact's own owner (and not
+/// the internal `system` renderer). Used by `/__artfct/db/session` so owner-only
+/// UI affordances (e.g. announcement delete) reflect true ownership rather than
+/// assuming every writer is an owner.
+pub(crate) fn is_artifact_owner(token: Option<&TokenViewer>, owner_user_id: Option<&str>) -> bool {
+    token.is_some_and(|token| {
+        matches!(
+            (token.viewer.as_deref(), owner_user_id),
+            (Some(viewer), Some(owner))
+                if viewer != SYSTEM_VIEWER && !owner.is_empty() && viewer == owner
+        )
+    })
+}
+
 /// A verified db write grant: who, and what they may do, for one artifact.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DbGrant {
@@ -908,6 +922,19 @@ mod tests {
                 Some(DbRole::Writer)
             );
         }
+    }
+
+    #[test]
+    fn is_artifact_owner_matches_owner_only() {
+        let owner = named("user-1", false);
+        let admin = named("user-9", true);
+        let system = named("system", true);
+        assert!(is_artifact_owner(Some(&owner), Some("user-1")));
+        assert!(!is_artifact_owner(Some(&admin), Some("user-1")));
+        assert!(!is_artifact_owner(Some(&system), Some("system")));
+        assert!(!is_artifact_owner(Some(&owner), None));
+        assert!(!is_artifact_owner(Some(&owner), Some("")));
+        assert!(!is_artifact_owner(None, Some("user-1")));
     }
 
     #[test]
