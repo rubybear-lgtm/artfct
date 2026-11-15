@@ -41,6 +41,7 @@ enum AuditEventType: string
     case TeamDeleted = 'team.deleted';
     case MemberLeft = 'member.left';
     case PublicSharingChanged = 'public_sharing.changed';
+    case TeamPreferenceChanged = 'team.preference_changed';
     case SubscriptionCancelled = 'billing.subscription_cancelled';
     case SubscriptionResumed = 'billing.subscription_resumed';
     case McpConnectionCreated = 'mcp.connection_created';
@@ -100,6 +101,7 @@ enum AuditEventType: string
             self::TeamDeleted => 'Team deleted',
             self::MemberLeft => 'Member left',
             self::PublicSharingChanged => 'Public links changed',
+            self::TeamPreferenceChanged => 'Team preference changed',
             self::SubscriptionCancelled => 'Subscription cancelled',
             self::SubscriptionResumed => 'Subscription resumed',
             self::McpConnectionCreated => 'AI tool connected',

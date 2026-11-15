@@ -6,6 +6,8 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpTelemetry;
 use App\Mcp\Support\McpTimestamp;
 use App\Models\ArtifactIndexEntry;
+use App\Models\User;
+use App\Services\Preferences\PreferenceStore;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -19,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Inspect the authenticated artfct MCP connection without exposing credentials.')]
+#[Description('Inspect the authenticated artfct MCP connection without exposing credentials. Also returns the signed-in person\'s preferences, each with its value, where it came from (user, team or default) and the values it allows; change one with set_preference.')]
 #[Name('get_connection')]
 #[Title('Show connection')]
 #[IsReadOnly]
@@ -36,12 +38,12 @@ final class GetConnectionTool extends Tool
         $this->meta = [
             'artfct' => [
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.0.0',
+                'toolVersion' => '1.1.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => [],
                 'compatibility' => 'stable',
                 'examples' => [[
-                    'description' => 'Inspect the current authenticated workspace and client.',
+                    'description' => 'Inspect the current authenticated workspace, client and preferences.',
                     'arguments' => (object) [],
                 ]],
             ],
@@ -74,6 +76,12 @@ final class GetConnectionTool extends Tool
             'client' => $httpRequest->header('MCP-Client-Name') ?? $agentName,
             'session_id' => $request->sessionId(),
             'search' => $this->searchReadiness($team->id),
+            // The person's own choices, else their team's default, else the
+            // built-in default, with where each came from (spec RUB-545).
+            'preferences' => app(PreferenceStore::class)->effective(
+                ctype_digit($claims['user_id']) ? User::query()->find((int) $claims['user_id']) : null,
+                $team,
+            ),
         ]);
 
         app(McpTelemetry::class)->record('get_connection', 'success', $startedAt);

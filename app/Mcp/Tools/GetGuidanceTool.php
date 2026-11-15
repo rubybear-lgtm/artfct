@@ -3,7 +3,10 @@
 namespace App\Mcp\Tools;
 
 use App\Mcp\Support\ArtifactGuidance;
+use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
+use App\Models\User;
+use App\Services\Onboarding\OnboardingChecklist;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
@@ -18,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Return Artfct\'s rules for one task: publish (publishing and updating), search (finding and reading), collaborate (safe updates and comments), data (the artifact database) or onboarding (set-up steps for the app you run in, passed as host), with the current artifact types and limits. Read it before publishing or answering from the library, and call onboarding once after you connect. The rules apply even if you did not read them.')]
+#[Description('Return Artfct\'s rules for one task: publish (publishing and updating), search (finding and reading), collaborate (safe updates and comments), data (the artifact database) or onboarding (set-up steps for the app you run in, passed as host), with the current artifact types and limits. Read it before publishing or answering from the library, and call onboarding once after you connect: it also says which steps are already done or skipped and which comes next, so a set-up that stopped can resume. The rules apply even if you did not read them.')]
 #[Name('get_guidance')]
 #[Title('Get guidance')]
 #[IsReadOnly]
@@ -31,8 +34,8 @@ final class GetGuidanceTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.2.0',
-            'toolVersion' => '1.0.0',
+            'guidanceVersion' => '1.3.0',
+            'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [],
             'compatibility' => 'stable',
@@ -43,7 +46,7 @@ final class GetGuidanceTool extends Tool
         ],
     ];
 
-    public function handle(Request $request): ResponseFactory
+    public function handle(Request $request, OnboardingChecklist $checklist): ResponseFactory
     {
         // Accept any string first so an unknown topic can list the allowed
         // values instead of Laravel's generic `in:` validation message.
@@ -68,6 +71,18 @@ final class GetGuidanceTool extends Tool
                 'Unknown guidance topic. Allowed topics: '.implode(', ', ArtifactGuidance::TOPICS).'.',
                 'invalid_request',
             );
+        }
+
+        // Where this person left off, so a set-up that stopped resumes and a
+        // second run does not repeat finished steps. Only for a host the
+        // playbook knows: with no host there are no steps to track yet.
+        if ($validated['topic'] === 'onboarding' && ($guidance['mode'] ?? 'hybrid') !== 'hybrid') {
+            $actorId = McpContext::actor();
+            $actor = ctype_digit($actorId) ? User::query()->find((int) $actorId) : null;
+
+            if ($actor !== null) {
+                $guidance = [...$guidance, ...$checklist->report($actor, McpContext::team(), $guidance['mode'])];
+            }
         }
 
         return Response::structured($guidance);

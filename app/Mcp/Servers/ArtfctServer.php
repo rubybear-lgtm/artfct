@@ -24,10 +24,12 @@ use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
 use App\Mcp\Tools\ReadArtifactTool;
+use App\Mcp\Tools\RecordOnboardingStepTool;
 use App\Mcp\Tools\RemoveCollectionArtifactTool;
 use App\Mcp\Tools\ResolveArtifactCommentTool;
 use App\Mcp\Tools\SearchArtifactsTool;
 use App\Mcp\Tools\SetAvatarTool;
+use App\Mcp\Tools\SetPreferenceTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -72,6 +74,8 @@ final class ArtfctServer extends Server
         DeleteCollectionTool::class,
         DeleteArtifactTool::class,
         SetAvatarTool::class,
+        SetPreferenceTool::class,
+        RecordOnboardingStepTool::class,
         // Released per team through the `artifact-db` feature; see DatabaseTool.
         DbSchemaTool::class,
         DbGetTool::class,

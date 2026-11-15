@@ -119,6 +119,15 @@ return [
         'token_ttl_minutes' => (int) env('ARTFCT_ARTIFACT_TOKEN_TTL_MINUTES', 60),
     ],
 
+    // The Claude plugin the pasted setup prompt installs in Claude Code
+    // (RUB-545). `tag` pins the install to a reviewed release of the plugin
+    // repository; it stays unset until that tag exists, and the prompt then
+    // installs from the repository's default branch.
+    'artfct_plugin' => [
+        'marketplace' => env('ARTFCT_PLUGIN_MARKETPLACE', 'artfct-dev/artfct-plugin'),
+        'tag' => env('ARTFCT_PLUGIN_TAG'),
+    ],
+
     'worker_events' => [
         'secret' => env('ARTFCT_WORKER_EVENT_SECRET'),
     ],

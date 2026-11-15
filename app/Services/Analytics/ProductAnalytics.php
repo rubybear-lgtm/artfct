@@ -39,6 +39,8 @@ final class ProductAnalytics
 
     public const ARTIFACT_DELETED = 'artifact_deleted';
 
+    public const ONBOARDING_STEP_RECORDED = 'onboarding_step_recorded';
+
     public const TRIAL_STARTED = 'trial_started';
 
     public const TRIAL_ENDED = 'trial_ended';
@@ -229,6 +231,21 @@ final class ProductAnalytics
     public function artifactDeleted(User|string|null $actor, Team $team, array $properties = []): void
     {
         $this->captureTeamEvent(self::ARTIFACT_DELETED, $actor, $team, 'worker', $properties);
+    }
+
+    /**
+     * An agent reported an onboarding step the server cannot see for itself.
+     * Carries only ids and fixed words, so how far people get through set-up is
+     * measurable without any of their content.
+     */
+    public function onboardingStepRecorded(User $actor, Team $team, string $step, string $outcome, ?string $host, bool $complete): void
+    {
+        $this->captureTeamEvent(self::ONBOARDING_STEP_RECORDED, $actor, $team, 'mcp', [
+            'step' => $step,
+            'outcome' => $outcome,
+            'host' => $host,
+            'complete' => $complete,
+        ]);
     }
 
     public function isInternalUser(?User $user): bool

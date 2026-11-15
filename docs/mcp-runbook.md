@@ -208,6 +208,46 @@ rules, and with consent add one line to the project instructions file (or run
 `artfct-init` if it is already available); connector-only hosts are never told
 to add anything locally.
 
+### RUB-545 additions (guidance 1.3.0, `get_connection` 1.1.0, `get_guidance` 1.1.0)
+
+Preferences and onboarding progress now live on the server.
+
+- **Preferences.** `user_preferences` (follows the person across teams) and
+  `team_preferences` (the default for members who have not chosen). Keys and
+  values are a closed set in `App\Enums\PreferenceKey`; the first key is
+  `save_to_artfct` (`always`, `ask`, `never`, default `ask`). `get_connection`
+  returns `preferences`, each with `value`, `source` (`user`, `team`,
+  `default`), `scopes` and `allowed_values`. `set_preference` sets or clears one.
+  It takes no OAuth scope: anyone sets their own; the team default needs a human
+  team admin (role read from the database, bots refused) and is audited as
+  `team.preference_changed`. An admin's own API token acts as that admin, so it
+  can also set the team default.
+- **Progress.** `get_guidance` with topic `onboarding` and a known host adds
+  `status` (`done`, `skipped`, `pending`, `per_project`) and `source` (`server`,
+  `agent`) to each step, plus `next_step`, `complete`, `per_project_steps` and `milestones`
+  (`connected`, `first_publish`, `first_search`). Server-seen steps and
+  milestones are read from `mcp_activities`, which is pruned after its retention
+  window, so a connection check or a publish older than that is not seen and
+  reads as pending or not done until the agent checks again.
+  `record_onboarding_step` stores only `read_usage_rules`, `ask_save_preference`
+  and `explain_tool_approvals` (`done` or `skipped`) in `onboarding_progress`, one
+  row per person and step, and emits the `onboarding_step_recorded` analytics
+  event. `add_project_instructions` is `per_project`: never stored and never
+  blocking `complete`, because the server knows the person, not the repository.
+  `per_project_steps` names it so an agent still checks the project's own file
+  when `complete` is true.
+- **Project block.** Coding-agent playbooks give the project instruction between
+  `<!-- artfct:start -->` and `<!-- artfct:end -->`. The playbook replaces it only
+  when there is exactly one ordered pair outside a code fence, leaves a file that
+  already has an `## Artfct` section or an `<artfct-guidelines>` block alone, and
+  refuses to edit when the markers are unpaired, repeated or fenced.
+- **Plugin install.** The pasted setup prompt gives Claude Code one
+  `claude plugin install artfct --marketplace <owner/repo>[#tag]` command.
+  `services.artfct_plugin.tag` (`ARTFCT_PLUGIN_TAG`) must be set to a reviewed
+  release tag before the release that advertises it; unset means the repository's
+  default branch is installed. The marketplace and tag are both validated and
+  fall back to safe values.
+
 ## Opening an artifact
 
 Tools that publish or describe an artifact return it as `view_url`. Which URL

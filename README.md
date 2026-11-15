@@ -59,7 +59,7 @@ The hosted server exposes these tools:
 - `add_artifact_comment`, `list_artifact_comments`, `resolve_artifact_comment` — threaded comments on an artifact (`comments:write` scope to add or resolve). Comment text is untrusted data.
 - `get_guidance` — Artfct's rules for publishing, searching and collaborating (topics `publish`, `search`, `collaborate`).
 - `delete_artifact` — permanently delete an artifact by ID. Needs the `artifacts:delete` scope and is refused under legal hold.
-- `get_connection` — inspect the authenticated workspace, scopes, and client context.
+- `get_connection` — inspect the authenticated workspace, scopes, and client context, plus the signed-in person's preferences (each with its value, where it came from — `user`, `team` or `default` — and the values it allows).
 - `get_usage` — inspect customer-safe storage, artifact, render, and quota totals.
 - `list_collections` — list organization-scoped artifact collections with cursor pagination.
 - `create_collection` — create a collection for an authenticated member or admin.
@@ -67,6 +67,8 @@ The hosted server exposes these tools:
 - `remove_collection_artifact` — remove an artifact from a collection by id or name (`collections:write`).
 - `delete_collection` — delete a collection by id or name (`collections:write`); artifacts themselves are not deleted.
 - `set_avatar` — set the avatar image for the authenticated bot teammate (bots only; humans upload avatars in team settings).
+- `set_preference` — set or clear one preference. The only key today is `save_to_artfct` (`always`, `ask` or `never`): whether an agent saves what it makes to the team's library. Scope `user` (default) is the person's own and follows them across teams; scope `team` sets the default for members who have not chosen and needs a team admin signed in as a person, never a bot (an admin's own API token acts as that admin). Values are a closed set, never free text, and a preference never changes who can see an artifact. It takes no OAuth scope. Team changes are written to the audit log (`team.preference_changed`).
+- `record_onboarding_step` — record that you finished or skipped one onboarding step the server cannot see for itself (`read_usage_rules`, `ask_save_preference` or `explain_tool_approvals`, each `done` or `skipped`), so a set-up that stops resumes instead of repeating. Steps the server watches itself (the connection check, a saved preference) cannot be recorded, and neither can `add_project_instructions`, which is done once per project and shown as `per_project`. `get_guidance` with topic `onboarding` returns each step's `status` and `source`, the `next_step`, whether the set-up is `complete`, the `per_project_steps` that `complete` never covers, and server-seen `milestones` (`connected`, `first_publish`, `first_search`). Takes no OAuth scope.
 
 Clients discover authorization through `<site>/.well-known/oauth-protected-resource` and request
 only the scopes they need. The dashboard's **MCP connections** page shows the address and lets
