@@ -248,7 +248,7 @@ Preferences and onboarding progress now live on the server.
   default branch is installed. The marketplace and tag are both validated and
   fall back to safe values.
 
-### RUB-550 additions (guidance 1.4.0)
+### RUB-550 additions (guidance 1.4.0, app detection 1.4.1)
 
 Agents are told to use Artfct, not the built-in artifact, and to follow the save
 setting, in every place that instructs them.
@@ -270,6 +270,7 @@ setting, in every place that instructs them.
   `AGENTS.md` only when no `CLAUDE.md` exists. Ask if neither exists. A `CLAUDE.md`
   above the project is named and confirmed before writing. `CLAUDE.local.md` also
   stops Claude Code reading `AGENTS.md` and is not handled yet.
+- **Which app (1.4.1).** The Claude app can run code in a sandbox (`/home/claude`), so a shell and file tools do not mean Claude Code. The `onboard` skill says an agent is `claude-code` only on the person's own computer in a project folder, defaults to `claude-app` when unsure, and the `claude-code` playbook tells an agent in a scratch folder to write nothing and ask for `claude-app` instead. Found when a Claude app run created `/home/claude/CLAUDE.md` and skipped the memory note.
 - **Chat apps.** `claude-app`, `chatgpt` and `grok` gain the consent step
   `save_memory_note`: show the person one short note, and save it in the app's own
   memory only if the app has memory and they agree, otherwise skip. It is part of

@@ -1,6 +1,6 @@
 # Set up Artfct in Claude Code
 
-You are a coding agent. Do these steps in order. Never ask the person to run a command, and ask first before any step marked "ask".
+You are a coding agent. First check that is true: your working folder must be a project on the person's own computer. If it is a scratch folder such as `/home/claude` or `/mnt/user-data`, or your files vanish when the chat ends, you are the Claude app with a code sandbox, not Claude Code. Then write no file, call `get_guidance` again with `host` set to `claude-app`, and follow that instead. Otherwise do these steps in order. Never ask the person to run a command, and ask first before any step marked "ask".
 
 `get_guidance` also tells you where you left off. Each step has a `status` (`done`, `skipped`, `pending` or `per_project`) and the response names the `next_step`: start there, and do not repeat a step that is `done` or `skipped` unless the person asks. Record what the server cannot see with `record_onboarding_step`, passing the step id, `done` or `skipped`, and your `host`: `read_usage_rules` after you read the rules, `ask_save_preference` as `skipped` only if the person would rather not answer, and `explain_tool_approvals` after you tell them about approvals. The server sees the connection check and a saved preference itself, and the project instructions are done once per project and checked in that project's own file (the response shows that step as `per_project` and it never blocks `complete`), so do not record those.
 
