@@ -166,7 +166,10 @@ test('connector-only hosts are never told to add anything to the computer', func
         ->and($text)->not->toContain('install')
         // The only step that needs the person's say-so is a question about
         // their own preference. Nothing is changed on their computer.
-        ->and(collect($result['steps'])->where('requires_consent', true)->pluck('id')->all())->toBe(['ask_save_preference']);
+        // Both are questions put to the person. The memory note lives in the
+        // app's own memory, not on the person's computer, and is skipped when
+        // the app has none.
+        ->and(collect($result['steps'])->where('requires_consent', true)->pluck('id')->all())->toBe(['ask_save_preference', 'save_memory_note']);
 })->with(['claude-app', 'chatgpt', 'grok']);
 
 /*

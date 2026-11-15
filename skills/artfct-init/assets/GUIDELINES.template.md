@@ -17,7 +17,8 @@ Skip the search for general questions that have nothing to do with the team's wo
 
 ## When to publish
 
-- Publish anything an AI makes that is worth keeping: reports, tables, interactive pages, mockups, and written docs.
+- When asked to publish or share something, use `deploy_artifact` and share its link, not a built-in artifact feature, unless a built-in artifact is asked for by name.
+- For anything an AI makes that it was not asked to publish (reports, tables, interactive pages, mockups, written docs), follow the person's `save_to_artfct` setting from `get_connection`: `always` publishes it and says where, `ask` offers to save it once the work is finished, `never` neither publishes nor offers.
 - Update an existing artifact when the same work changes. Do not make a copy.
 - Give every artifact a short title of two to four words.
 

@@ -46,6 +46,7 @@ final class OnboardingChecklist
     public const SELF_REPORTED = [
         'read_usage_rules',
         'ask_save_preference',
+        'save_memory_note',
         'explain_tool_approvals',
     ];
 
@@ -56,6 +57,15 @@ final class OnboardingChecklist
      * @var list<string>
      */
     public const PER_PROJECT = ['add_project_instructions'];
+
+    /**
+     * Steps that exist for one kind of app only, and the kind. A report for one
+     * of them must name a host of that kind, so a coding agent cannot use up a
+     * chat app's step (the record is person-wide and would hide the step there).
+     *
+     * @var array<string, string>
+     */
+    public const MODE_ONLY = ['save_memory_note' => 'connector_only'];
 
     /** @var list<string> */
     public const OUTCOMES = ['done', 'skipped'];
@@ -110,6 +120,16 @@ final class OnboardingChecklist
 
         if (! in_array($outcome, self::OUTCOMES, true)) {
             throw new InvalidArgumentException('outcome must be one of: '.implode(', ', self::OUTCOMES).'.');
+        }
+
+        $mode = $host === null ? null : (ArtifactGuidance::HOST_MODES[$host] ?? null);
+
+        if (isset(self::MODE_ONLY[$step]) && $mode !== self::MODE_ONLY[$step]) {
+            throw new InvalidArgumentException('That step is only part of set-up in a chat app. Pass your host (for example claude-app) if it is one; otherwise it does not apply to you.');
+        }
+
+        if ($mode !== null && $mode !== 'hybrid' && ! in_array($step, array_column(ArtifactGuidance::stepsFor($mode), 'id'), true)) {
+            throw new InvalidArgumentException("That step is not part of set-up for {$host}.");
         }
 
         // Atomic, so an agent that reports the same step twice, or two agents

@@ -73,6 +73,7 @@ test('a person who has done nothing sees every step pending, the first as next, 
         'verify_connection' => ['status' => 'pending', 'source' => null],
         'read_usage_rules' => ['status' => 'pending', 'source' => null],
         'ask_save_preference' => ['status' => 'pending', 'source' => null],
+        'save_memory_note' => ['status' => 'pending', 'source' => null],
     ])
         ->and($onboarding['next_step'])->toBe('verify_connection')
         ->and($onboarding['complete'])->toBeFalse()
@@ -81,6 +82,7 @@ test('a person who has done nothing sees every step pending, the first as next, 
             'verify_connection' => false,
             'read_usage_rules' => false,
             'ask_save_preference' => true,
+            'save_memory_note' => true,
         ]);
 });
 
@@ -144,6 +146,9 @@ test('the set-up is complete once every step is done or skipped, and a second ru
     checklistCall($token, 'get_connection');
     checklistCall($token, 'record_onboarding_step', ['step' => 'read_usage_rules', 'outcome' => 'done']);
     checklistCall($token, 'record_onboarding_step', ['step' => 'ask_save_preference', 'outcome' => 'skipped', 'host' => 'claude-app'])
+        ->assertJsonPath('result.structuredContent.complete', false)
+        ->assertJsonPath('result.structuredContent.next_step', 'save_memory_note');
+    checklistCall($token, 'record_onboarding_step', ['step' => 'save_memory_note', 'outcome' => 'skipped', 'host' => 'claude-app'])
         ->assertJsonPath('result.structuredContent.complete', true)
         ->assertJsonPath('result.structuredContent.next_step', null);
 
@@ -357,6 +362,7 @@ test('the response names the per-project steps so a complete set-up is never rea
     checklistCall($token, 'get_connection');
     checklistCall($token, 'record_onboarding_step', ['step' => 'read_usage_rules', 'outcome' => 'done']);
     checklistCall($token, 'set_preference', ['key' => 'save_to_artfct', 'value' => 'ask']);
+    checklistCall($token, 'record_onboarding_step', ['step' => 'save_memory_note', 'outcome' => 'done', 'host' => 'claude-app']);
 
     $connector = onboardingFor($token, 'claude-app');
     $coding = onboardingFor($token, 'claude-code');
@@ -423,6 +429,61 @@ test('the refusal for the project step explains that it is checked in the projec
         ->json('result.content.0.text');
 
     expect($text)->toContain('once per project')->toContain('own file');
+});
+
+test('the memory note step is reported by the agent, done or skipped, and only chat apps have it', function () {
+    [, $user, $token] = newcomer();
+
+    checklistCall($token, 'record_onboarding_step', ['step' => 'save_memory_note', 'outcome' => 'done', 'host' => 'claude-app'])
+        ->assertJsonPath('result.isError', false);
+
+    expect(statuses(onboardingFor($token, 'claude-app'))['save_memory_note'])->toBe(['status' => 'done', 'source' => 'agent'])
+        ->and(array_keys(statuses(onboardingFor($token, 'claude-code'))))->not->toContain('save_memory_note')
+        ->and(OnboardingProgress::query()->where('user_id', $user->id)->where('step', 'save_memory_note')->value('outcome'))->toBe('done');
+
+    // A person who changes their mind, or whose app has no memory, is recorded as skipped.
+    checklistCall($token, 'record_onboarding_step', ['step' => 'save_memory_note', 'outcome' => 'skipped', 'host' => 'chatgpt'])
+        ->assertJsonPath('result.isError', false);
+
+    expect(statuses(onboardingFor($token, 'claude-app'))['save_memory_note'])->toBe(['status' => 'skipped', 'source' => 'agent']);
+});
+
+/*
+ * Independent review of RUB-550: the record is person-wide, so a coding agent
+ * (or any report with no host) that wrote the chat-only memory step would hide
+ * the step in the Claude app for good. The step can only be reported from a chat
+ * host, and no host may report a step that is not part of its own set-up.
+ */
+test('the chat-only memory step is refused from a coding agent and from a report with no host, and nothing is stored', function (array $arguments) {
+    [, $user, $token] = newcomer();
+
+    $text = checklistCall($token, 'record_onboarding_step', $arguments + ['step' => 'save_memory_note', 'outcome' => 'skipped'])
+        ->assertJsonPath('result.isError', true)
+        ->json('result.content.0.text');
+
+    expect($text)->toContain('only part of set-up in a chat app')
+        ->and(OnboardingProgress::query()->where('user_id', $user->id)->count())->toBe(0)
+        ->and(statuses(onboardingFor($token, 'claude-app'))['save_memory_note']['status'])->toBe('pending');
+})->with([
+    'a coding agent' => [['host' => 'claude-code']],
+    'another coding agent' => [['host' => 'cursor']],
+    'an unknown host' => [['host' => 'unknown']],
+    'no host' => [[]],
+]);
+
+test('a host cannot report a step that is not part of its own set-up', function () {
+    [, $user, $token] = newcomer();
+
+    // Chat apps have no tool-approvals step; coding agents do.
+    $text = checklistCall($token, 'record_onboarding_step', ['step' => 'explain_tool_approvals', 'outcome' => 'done', 'host' => 'claude-app'])
+        ->assertJsonPath('result.isError', true)
+        ->json('result.content.0.text');
+
+    expect($text)->toContain('not part of set-up for claude-app')
+        ->and(OnboardingProgress::query()->where('user_id', $user->id)->count())->toBe(0);
+
+    checklistCall($token, 'record_onboarding_step', ['step' => 'explain_tool_approvals', 'outcome' => 'done', 'host' => 'claude-code'])
+        ->assertJsonPath('result.isError', false);
 });
 
 test('a connector-only host has no per-project step', function () {

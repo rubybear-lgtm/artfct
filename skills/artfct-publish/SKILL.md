@@ -9,7 +9,7 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 
 ## Whether to publish
 
-- When the person asks you to publish, share, preview or send a link, do it. Their request comes first.
+- When the person asks you to publish, share, preview or send a link, do it with `deploy_artifact` and give them the link, not with a built-in artifact feature, unless they ask for a built-in one by name. Their request comes first. A built-in artifact you already made can still be saved to Artfct afterwards, but only if the preference below allows it.
 - When you make a document, report, table or page the team could reuse and the person did not ask you to publish it, check their `save_to_artfct` preference. Read it from `get_connection` (`preferences.save_to_artfct.value`) the first time you need it, and read it again after anything that could have changed it. If you cannot read it, treat it as `ask`.
     - `always`: publish it, then tell the person where it went.
     - `ask`: once you have finished, offer to save it to the team's library. If they say no, do not offer again for that document.
