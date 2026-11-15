@@ -984,9 +984,10 @@ export default function Docs({ contract, setup }: DocsProps) {
                             Many AI tools read a project instructions file
                             before they start: <Code>AGENTS.md</Code>,{' '}
                             <Code>CLAUDE.md</Code> or Cursor rules. Paste this
-                            in so your tool checks what your team already made
-                            and saves what is worth keeping, without being asked
-                            each time.
+                            in so your tool checks what your team already made,
+                            publishes to Artfct when you ask it to, and saves
+                            what it makes only the way you have chosen: always,
+                            after asking, or never.
                         </Prose>
                         <CodeBlock code={setup.projectInstructions} />
                         <SubHeading id="connect-agent-prompt">

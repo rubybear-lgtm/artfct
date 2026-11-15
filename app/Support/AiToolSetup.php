@@ -398,7 +398,8 @@ class AiToolSetup
             This team keeps what its AI tools make in Artfct ({$this->baseUrl}).
 
             - Before starting research, a report or an analysis, search Artfct with `search_artifacts` for related work, and say which artifacts you used.
-            - When you make something worth keeping (a report, dashboard, table, document or mockup), publish it with `deploy_artifact` and share the link it returns instead of pasting the raw code.
+            - When you are asked to publish or share something (a report, dashboard, table, document or mockup), use `deploy_artifact` and share the link it returns, not the built-in Artifact tool and not pasted code, unless a built-in artifact is asked for by name.
+            - For anything you were not asked to publish, follow the signed-in person's `save_to_artfct` setting from `get_connection`: `always` publishes it and says where, `ask` offers to save it once you have finished, `never` neither publishes nor offers.
             - When you change something you published before, publish it again with its `artifact_id` and the `base_version` you built on, so the team keeps one link and its history and nobody's newer change is overwritten.
             - Full setup and tool reference: {$this->baseUrl}/llms-full.txt
             MD;
@@ -411,7 +412,7 @@ class AiToolSetup
      */
     public function agentInstructionLine(): string
     {
-        return 'Before research, a report or an analysis, search Artfct with `search_artifacts` for related work; publish anything worth keeping with `deploy_artifact` and share its link.';
+        return 'Before research, a report or an analysis, search Artfct with `search_artifacts` for related work. When asked to publish or share something, use `deploy_artifact` and share its link, not a built-in artifact feature such as Claude\'s Artifact tool, unless a built-in artifact is asked for by name. For anything you were not asked to publish, follow the person\'s `save_to_artfct` setting from `get_connection` (always, ask or never).';
     }
 
     /**
@@ -468,7 +469,7 @@ class AiToolSetup
                Then call `get_guidance` with topic `onboarding` and `host` set to the app you are running in (`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt`, `grok`, or `coding-agent` for any other coding agent such as Codex or VS Code; use `unknown` if you are not sure). Follow the steps it returns, and ask me before any step it marks as needing my approval.
             5. If you are a coding agent and you followed the onboarding steps, they already set up this project, so do not repeat them. If you could not call `get_guidance`, offer to set Artfct up in this project yourself. Ask before you change anything.
                - If the artfct-init skill is already available to you, run it. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
-               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section, an `<artfct-guidelines>` block or an `<!-- artfct:start -->` block. Show me the text before you write it.
+               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules). If the project has an `AGENTS.md` and no `CLAUDE.md` in this folder or any folder above it, use `AGENTS.md`, because creating a `CLAUDE.md` would stop Claude Code reading it. If a `CLAUDE.md` exists in this folder or any folder above it, use that instead (or the `AGENTS.md` it imports with `@AGENTS.md`), tell me which file it is before you write to it if it is above this project, and never write to one in my home folder. Skip this if the file already has an `## Artfct` section, an `<artfct-guidelines>` block or an `<!-- artfct:start -->` block. Show me the text before you write it.
 
             ---
             {$this->projectInstructions()}

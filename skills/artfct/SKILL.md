@@ -17,7 +17,7 @@ Call `deploy_artifact` when the output is:
 - An HTML email preview
 - Any visual artifact the user wants to view, share, or bookmark
 
-When the user says "show me", "preview this", or "make it shareable" — deploy.
+When the user says "show me", "preview this", "share this" or "make it shareable" — deploy with `deploy_artifact` and give them the link. Do not use a built-in artifact feature for that unless they ask for a built-in one by name.
 
 When the user did not ask you to publish it, follow their `save_to_artfct` preference instead (`always`, `ask` or `never`, from `get_connection`; treat an unreadable value as `ask`). The `artfct-publish` skill has the exact rules.
 

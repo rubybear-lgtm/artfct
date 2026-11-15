@@ -248,6 +248,36 @@ Preferences and onboarding progress now live on the server.
   default branch is installed. The marketplace and tag are both validated and
   fall back to safe values.
 
+### RUB-550 additions (guidance 1.4.0)
+
+Agents are told to use Artfct, not the built-in artifact, and to follow the save
+setting, in every place that instructs them.
+
+- **Which tool.** When the person asks to publish or share, the publish guidance,
+  the server instructions, the `artfct` and `artfct-publish` skills and every
+  project block say to use `deploy_artifact` and give the link, not a built-in
+  artifact feature, unless a built-in one is asked for by name. A built-in
+  artifact already made can still be saved afterwards, but only if the preference
+  allows it. The built-in artifact is not blocked.
+- **The project block** no longer says "publish anything worth keeping". For
+  anything unasked it follows `save_to_artfct`. This covers the one-line rule, the
+  long block on `/docs` and in `llms-full.txt`, the pasted prompt, and the
+  `artfct-init` assets.
+- **Which project file** (Claude Code playbook). `CLAUDE.md` or `.claude/CLAUDE.md`
+  in this folder or any folder above it, unless it imports `AGENTS.md`, in which
+  case `AGENTS.md`. `AGENTS.md` only when there is no `CLAUDE.md` in this folder or
+  above it, and never create a `CLAUDE.md` then, because Claude Code reads
+  `AGENTS.md` only when no `CLAUDE.md` exists. Ask if neither exists. A `CLAUDE.md`
+  above the project is named and confirmed before writing. `CLAUDE.local.md` also
+  stops Claude Code reading `AGENTS.md` and is not handled yet.
+- **Chat apps.** `claude-app`, `chatgpt` and `grok` gain the consent step
+  `save_memory_note`: show the person one short note, and save it in the app's own
+  memory only if the app has memory and they agree, otherwise skip. It is part of
+  `complete` for those hosts, so people who finished onboarding earlier see one
+  new question on their next run. It can only be reported with a chat host
+  (`record_onboarding_step` refuses it from a coding agent or with no host), so a
+  coding agent cannot use up the chat step.
+
 ## Opening an artifact
 
 Tools that publish or describe an artifact return it as `view_url`. Which URL
