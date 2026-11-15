@@ -65,6 +65,12 @@ class CreateOrgTokenRequest extends FormRequest
             $team = $this->route('team');
             $kind = OrgTokenKind::tryFrom((string) $this->input('kind', OrgTokenKind::Api->value)) ?? OrgTokenKind::Api;
             $allowed = McpScope::forRole($this->user()?->teamRole($team));
+            if ($kind === OrgTokenKind::Api) {
+                $targetRole = TeamRole::tryFrom((string) $this->input('role'));
+                if ($targetRole !== null) {
+                    $allowed = array_values(array_intersect($allowed, McpScope::forRole($targetRole)));
+                }
+            }
             $scopes = array_values(array_unique(array_filter(
                 (array) $this->input('scopes', []),
                 static fn (mixed $scope): bool => is_string($scope),

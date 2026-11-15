@@ -5,7 +5,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 /*
- * Specs 22-24 Unit C: the shipped template bundles work in a real browser.
+ * Specs 23-25 Unit C: the shipped template bundles work in a real browser.
  * The harness serves each template's real `index.html` + `app.js` (inlined)
  * with `window.fetch` stubbed at the Worker contract boundary: the stub keeps
  * an in-memory row store seeded from the template's own seed rows and answers
@@ -16,7 +16,7 @@ uses(RefreshDatabase::class);
  * asserted in the Feature suites.
  */
 
-function templateBoardHtml(string $key, string $mode = 'ok'): string
+function templateBoardHtml(string $key, string $mode = 'ok', array $extraRows = []): string
 {
     $files = resource_path("templates/{$key}/files");
     $html = (string) file_get_contents($files.'/index.html');
@@ -33,6 +33,9 @@ function templateBoardHtml(string $key, string $mode = 'ok'): string
             'updated_at' => '2026-11-14T00:00:00Z',
             'updated_by' => 'artfct',
         ];
+    }
+    foreach ($extraRows as $row) {
+        $rows[] = $row;
     }
 
     $stub = 'window.__calls=[];window.__db='.json_encode($rows).';window.__mode='.json_encode($mode).';'
@@ -68,11 +71,11 @@ function templateBoardHtml(string $key, string $mode = 'ok'): string
     return str_replace('<script src="app.js"></script>', $bundle, $html);
 }
 
-function openTemplateBoard(string $key, string $mode = 'ok')
+function openTemplateBoard(string $key, string $mode = 'ok', array $extraRows = [])
 {
     $page = visit('/');
 
-    $page->script('document.open();document.write('.json_encode(templateBoardHtml($key, $mode)).');document.close();');
+    $page->script('document.open();document.write('.json_encode(templateBoardHtml($key, $mode, $extraRows)).');document.close();');
     sleep(2);
 
     return $page;
@@ -182,4 +185,63 @@ test('announcement_board_posts_newest_first_and_filters_by_tag', function () {
     $page->script('document.querySelector(\'[data-tag="launch"]\').click();');
     $page->assertSee('Shipped v2');
     expect($page->script('document.querySelectorAll(".posts > li").length'))->toBe(1);
+});
+
+test('kanban_board_escapes_html_in_card_fields', function () {
+    $page = openTemplateBoard('kanban');
+    $page->assertSee('This is a card');
+
+    $page->script('var f=document.querySelector(\'[data-column="todo"] [data-add]\');'
+        .'f.querySelector("input").value="<img src=x onerror=alert(1)>";f.requestSubmit();');
+    sleep(1);
+
+    $page->assertSee('<img src=x onerror=alert(1)>')
+        ->assertNoJavaScriptErrors();
+    expect($page->script('document.querySelectorAll("#board img").length'))->toBe(0);
+});
+
+test('team_wiki_escapes_html_and_ignores_unsafe_schemes', function () {
+    $page = openTemplateBoard('team-wiki', 'ok', [[
+        'collection' => 'pages',
+        'doc_id' => 'xss-test',
+        'body' => [
+            'title' => '<img src=x onerror=alert(1)>',
+            'body_md' => 'Hello <script>alert(1)</script> [[javascript:alert(1)]]',
+            'sources' => [['label' => '<b>Bad</b>', 'ref' => 'javascript:alert(1)']],
+            'visibility' => 'shared',
+            'updated_at' => '2026-11-14T00:00:00Z',
+        ],
+        'version' => 1,
+        'updated_at' => '2026-11-14T00:00:00Z',
+        'updated_by' => 'tester',
+    ]]);
+    $page->assertSee('Wiki overview')
+        ->assertSee('<img src=x onerror=alert(1)>');
+
+    expect($page->script('document.querySelectorAll("#wiki img, #wiki script").length'))->toBe(0);
+
+    $page->script('window.location.hash="#/page/xss-test";');
+    sleep(1);
+
+    $page->assertSee('<img src=x onerror=alert(1)>')
+        ->assertSee('<b>Bad</b>')
+        ->assertNoJavaScriptErrors();
+    expect($page->script('document.querySelectorAll("#wiki img, #wiki script").length'))->toBe(0)
+        ->and($page->script('document.querySelectorAll(\'#wiki a[href^="javascript:"]\').length'))->toBe(0);
+});
+
+test('announcement_board_escapes_html_and_rejects_non_http_links', function () {
+    $page = openTemplateBoard('announcements');
+    $page->assertSee('Welcome to the announcement board');
+
+    $page->script('document.querySelector("#f-title").value="<img src=x onerror=alert(1)>";'
+        .'document.querySelector("#f-body").value="Check [bad](javascript:alert(1)) and <svg onload=alert(1)>";'
+        .'document.querySelector("#f-tag").value="note";'
+        .'document.querySelector("#composer").requestSubmit();');
+    sleep(1);
+
+    $page->assertSee('<img src=x onerror=alert(1)>')
+        ->assertNoJavaScriptErrors();
+    expect($page->script('document.querySelectorAll("#posts img, #posts svg").length'))->toBe(0)
+        ->and($page->script('document.querySelectorAll(\'#posts a[href^="javascript:"]\').length'))->toBe(0);
 });

@@ -259,6 +259,24 @@ test('api tokens without kind keep working for rest and mcp', function () {
     agentMcpInitialize($response->json('token'))->assertOk();
 });
 
+test('viewer api token cannot be minted with mutation scopes', function () {
+    configureOrgJwt();
+    $team = Team::factory()->create(['plan' => Plan::Team]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
+        'name' => 'ro-ci',
+        'role' => 'viewer',
+        'scopes' => [McpScope::ArtifactsRead->value, McpScope::DataWrite->value],
+    ])->assertInvalid(['scopes']);
+
+    test()->actingAs($admin)->postJson("/settings/teams/{$team->slug}/tokens", [
+        'name' => 'ro-ci-deploy',
+        'role' => 'viewer',
+        'scopes' => [McpScope::ArtifactsDeploy->value],
+    ])->assertInvalid(['scopes']);
+});
+
 test('tokens page exposes agent token props', function () {
     $team = Team::factory()->create(['plan' => Plan::Team]);
     $admin = memberOfTeam($team, TeamRole::Admin);

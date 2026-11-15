@@ -57,6 +57,9 @@ Each spec is independently verifiable and safe to stop at. **Every spec follows 
 | 16 | [Collections and usage ranking](16-collections.md) | A canonical artifact outranks a semantically closer one nobody has opened |
 | 18 | [Blog content service](18-blog-content-service.md) | A Markdown draft lints against the claim allowlist and renders the review document and the live post from one source |
 | 21 | [Artifact templates](21-artifact-templates.md) | A new team pulls the kanban template into its library and gets its own working board: its own rows, the puller as owner, one board per pull |
+| 23 | [Kanban template + skill](23-kanban-template.md) | A new team pulls the kanban template and gets its own working board, in private and team modes, with the skill in the bundle |
+| 24 | [Team wiki template + skill](24-team-wiki-template.md) | A new team pulls the wiki template and gets its own compounding knowledge base, with ingest/query/lint working in both modes |
+| 25 | [Announcement board template + skill](25-announcement-board-template.md) | A new team pulls the announcement board and gets its own newest-first log, with check-before-work demonstrated |
 
 → **Thesis testable.**
 

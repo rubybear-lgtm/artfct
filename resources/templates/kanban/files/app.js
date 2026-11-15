@@ -250,8 +250,13 @@
     }
 
     function refocus(id) {
-        var el = board.querySelector('[data-id="' + id + '"]');
-        if (el) el.focus();
+        var els = board.querySelectorAll('[data-id]');
+        for (var i = 0; i < els.length; i++) {
+            if (els[i].getAttribute('data-id') === String(id)) {
+                els[i].focus();
+                return;
+            }
+        }
     }
 
     function findCard(id) {

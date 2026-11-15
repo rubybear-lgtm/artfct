@@ -172,11 +172,11 @@ test('viewers cannot grant scopes beyond their team role when creating a connect
 
     test()->actingAs($viewer)->post(route('teams.mcp-connections.store', $team), [
         'client_name' => 'viewer agent',
-        'scopes' => ['artifacts:read', 'artifacts:deploy', 'collections:write', 'usage:read'],
+        'scopes' => ['artifacts:read', 'artifacts:deploy', 'collections:write', 'usage:read', 'data:read', 'data:write'],
     ])->assertRedirect();
 
     $connection = McpConnection::query()->where('team_id', $team->id)->sole();
-    expect($connection->scopes)->toBe(['artifacts:read', 'usage:read']);
+    expect($connection->scopes)->toBe(['artifacts:read', 'usage:read', 'data:read']);
 });
 
 test('forcing reauthorization revokes live credentials without revoking the connection', function () {

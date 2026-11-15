@@ -36,11 +36,12 @@ On request, check: contradictions between pages, stale claims superseded by newe
 
 ## Private vs team
 
-On `private`, anything goes. On `team`, choose `visibility` per page:
+On a `private` wiki (`sharing: private`), anything goes. On a `team` wiki (`sharing: team`), Spec 20 has no row-level ACLs, so **every row is readable by everyone on the team** — `visibility` is an organizational tag only, not an access boundary:
 
 - `shared`: team decisions, architecture, runbooks, domain concepts, and vetted syntheses — cite sources (`{label, ref}`) and file shared answers back here.
-- `personal`: scratch notes, unvetted hypotheses, or individual drafts kept on a team wiki before they are ready for the team.
-  Never put secrets, credentials, HR/personal data, or private 1:1 context into a `shared` page; keep sensitive material out entirely, and say when an answer was withheld for that reason.
+- `personal`: rough or unvetted drafts kept visible on the team wiki before they are ready for the team.
+
+Never store secrets, credentials, HR/personal data, or private 1:1 context anywhere on a `team` wiki (not even in a `personal`-tagged page). Direct the user to pull a separate `sharing: private` wiki for private knowledge, and say when an answer was withheld for that reason.
 
 ## Invariants
 

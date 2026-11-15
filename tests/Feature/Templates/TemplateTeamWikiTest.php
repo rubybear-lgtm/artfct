@@ -75,6 +75,7 @@ test('team_wiki_template_loads_with_valid_manifest_and_seed', function () {
         ->and($template->db['seed'])->toHaveCount(4)
         ->and($template->skill)->toContain('ingest')
         ->and($template->skill)->toContain('disambiguate')
+        ->and($template->skill)->toContain('no row-level ACLs')
         ->and($catalog->validate('team-wiki'))->toBe([]);
 });
 

@@ -11,7 +11,7 @@
  * X-Artfct-Db: 1. Page writes are full-document PUTs carrying if_version; a
  * 409 re-reads and shows "changed underneath you" instead of overwriting.
  * Auth refusal shows the reload banner and stops writes. Endpoint shapes
- * follow plan 22 unit A3; if the merged spec-20 table diverges, it wins.
+ * follow plan 24 unit A3; if the merged spec-20 table diverges, it wins.
  */
 (function () {
     'use strict';
