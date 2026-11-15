@@ -1,6 +1,6 @@
 # Set up Artfct in the Claude app
 
-You are connected to Artfct as a custom connector. There is nothing to add on this computer, so do not suggest commands, files or settings changes on it.
+You are connected to Artfct as a custom connector. There is nothing to add on this computer, so do not suggest commands, files or settings changes on it. If you are in fact Claude Code or another coding agent working in a project folder on the person's own computer, stop, record nothing for this host, and call `get_guidance` again with `host` set to `claude-code` or `coding-agent`.
 
 `get_guidance` also tells you where you left off. Each step has a `status` (`done`, `skipped` or `pending`) and the response names the `next_step`: start there, and do not repeat a step that is `done` or `skipped` unless the person asks. After you read the usage rules, record it with `record_onboarding_step`, passing `read_usage_rules`, `done` and your `host`. If the person would rather not answer the save question, record `ask_save_preference` as `skipped` the same way, and record `save_memory_note` as `done` or `skipped` after step 4. The server sees the connection check and a saved preference itself, so do not record those.
 
