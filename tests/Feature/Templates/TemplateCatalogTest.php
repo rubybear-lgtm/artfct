@@ -72,6 +72,14 @@ test('catalog rejects malformed templates', function (string $case, Closure $bre
             file_put_contents($dir.'/template.json', (string) json_encode($manifest));
         },
         'undeclared collection'],
+    'server-owned field in a seed body' => ['seed-server-field',
+        function (string $dir): void {
+            $manifest = json_decode((string) file_get_contents($dir.'/template.json'), true);
+            $collection = array_key_first($manifest['db']['collections']);
+            $manifest['db']['seed'][] = ['collection' => $collection, 'doc_id' => 'stamped', 'body' => ['updated_at' => '2026-11-14T00:00:00Z']];
+            file_put_contents($dir.'/template.json', (string) json_encode($manifest));
+        },
+        'server-owned fields [updated_at]'],
     'missing entrypoint' => ['missing-entrypoint',
         fn (string $dir) => unlink($dir.'/files/index.html'),
         'entrypoint'],

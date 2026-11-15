@@ -26,6 +26,14 @@ final class TemplateCatalog
 
     public const MAX_BODY_BYTES = 64 * 1024;
 
+    /**
+     * Row fields the Worker owns (`SERVER_FIELDS` in backend/src/artifact_db.rs).
+     * A seed body that carries one is refused at publish with a 422.
+     *
+     * @var list<string>
+     */
+    private const SERVER_FIELDS = ['version', 'updated_at', 'updated_by'];
+
     /** @var list<string> */
     private const RESERVED_COLLECTION_NAMES = ['session', 'batch', 'schema'];
 
@@ -222,6 +230,11 @@ final class TemplateCatalog
 
                 if ($bodyBytes > self::MAX_BODY_BYTES) {
                     $errors[] = "{$where} `body` is {$bodyBytes} bytes; the per-row limit is ".self::MAX_BODY_BYTES.'.';
+                }
+
+                $serverFields = array_intersect(self::SERVER_FIELDS, array_keys($row['body']));
+                if ($serverFields !== []) {
+                    $errors[] = "{$where} `body` carries server-owned fields [".implode(', ', $serverFields).']; the Worker sets these, so a seed row may not.';
                 }
             }
         }

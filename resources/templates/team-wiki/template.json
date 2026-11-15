@@ -17,7 +17,6 @@
                     "body_md": "This wiki is the team's shared memory. People and agents read it; agents keep it current.\n\nStart at the index: every page with its one-line summary and source count. Follow cross-links to move between pages, and watch the activity log to see what changed and when.\n\nGood answers get filed back here as new pages — ask a question, keep the synthesis. How pages, summaries, sources, and the log fit together lives in [[index-conventions]]; the habit that makes it all work is [[llm-bookkeeping]].",
                     "sources": [],
                     "title": "Wiki overview",
-                    "updated_at": "2026-11-14T00:00:00Z",
                     "visibility": "shared"
                 }
             },
@@ -33,7 +32,6 @@
                         }
                     ],
                     "title": "Index conventions",
-                    "updated_at": "2026-11-14T00:00:00Z",
                     "visibility": "shared"
                 }
             },
@@ -49,7 +47,6 @@
                         }
                     ],
                     "title": "The bookkeeping habit",
-                    "updated_at": "2026-11-14T00:00:00Z",
                     "visibility": "shared"
                 }
             },
