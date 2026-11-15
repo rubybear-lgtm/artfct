@@ -4,6 +4,7 @@ namespace App\Services\Onboarding;
 
 use App\Enums\PreferenceKey;
 use App\Mcp\Support\ArtifactGuidance;
+use App\Mcp\Support\McpTimestamp;
 use App\Models\McpActivity;
 use App\Models\OnboardingProgress;
 use App\Models\Team;
@@ -19,8 +20,19 @@ use InvalidArgumentException;
  * A step is either seen by the server itself or reported by the person's own
  * agent. Server-seen steps are read from real data (MCP activity, the stored
  * preference), never stored, so they cannot drift from what happened. Only the
- * steps no server can see (the agent read the rules, it added the project
- * instructions) are stored, one row per person and step.
+ * steps no server can see (the agent read the rules, it explained the tool
+ * approvals) are stored, one row per person and step.
+ *
+ * A step that belongs to one project (the project instructions) is neither
+ * stored nor counted. The server knows the person, not which repository they
+ * are in, so remembering it per person would skip every project after the
+ * first. The agent checks that project's own file instead, and the marker
+ * block makes doing it again safe.
+ *
+ * What the server saw comes from MCP activity, which is pruned after its
+ * retention window. A connection check or a first publish older than that is
+ * not seen, so the step reads as pending until the agent checks again, which
+ * costs one call and changes nothing.
  */
 final class OnboardingChecklist
 {
@@ -34,16 +46,23 @@ final class OnboardingChecklist
     public const SELF_REPORTED = [
         'read_usage_rules',
         'ask_save_preference',
-        'add_project_instructions',
         'explain_tool_approvals',
     ];
+
+    /**
+     * Steps done once per project, not once per person. They are reported as
+     * `per_project`, never stored, and never block `complete`.
+     *
+     * @var list<string>
+     */
+    public const PER_PROJECT = ['add_project_instructions'];
 
     /** @var list<string> */
     public const OUTCOMES = ['done', 'skipped'];
 
     /**
      * @return array{
-     *     steps: list<array{id: string, requires_consent: bool, status: 'done'|'skipped'|'pending', source: 'server'|'agent'|null}>,
+     *     steps: list<array{id: string, requires_consent: bool, status: 'done'|'skipped'|'pending'|'per_project', source: 'server'|'agent'|null}>,
      *     next_step: string|null,
      *     complete: bool,
      *     milestones: array<string, array{done: bool, at: string|null}>
@@ -76,7 +95,9 @@ final class OnboardingChecklist
     public function record(User $user, string $step, string $outcome, ?string $host): void
     {
         if (! in_array($step, self::SELF_REPORTED, true)) {
-            throw new InvalidArgumentException('That step is watched by the server. Report one of: '.implode(', ', self::SELF_REPORTED).'.');
+            throw new InvalidArgumentException(in_array($step, self::PER_PROJECT, true)
+                ? 'That step is done once per project, so the server does not keep it. Check the project\'s own file instead.'
+                : 'That step is watched by the server. Report one of: '.implode(', ', self::SELF_REPORTED).'.');
         }
 
         if (! in_array($outcome, self::OUTCOMES, true)) {
@@ -100,10 +121,14 @@ final class OnboardingChecklist
 
     /**
      * @param  array<string, string>  $reported
-     * @return array{0: 'done'|'skipped'|'pending', 1: 'server'|'agent'|null}
+     * @return array{0: 'done'|'skipped'|'pending'|'per_project', 1: 'server'|'agent'|null}
      */
     private function resolve(string $step, User $user, Team $team, array $reported): array
     {
+        if (in_array($step, self::PER_PROJECT, true)) {
+            return ['per_project', null];
+        }
+
         if ($step === 'verify_connection' && $this->firstSuccess($user, $team, 'get_connection') !== null) {
             return ['done', 'server'];
         }
@@ -166,6 +191,6 @@ final class OnboardingChecklist
             ->orderBy('created_at')
             ->value('created_at');
 
-        return $at === null ? null : Carbon::parse($at)->toIso8601String();
+        return McpTimestamp::format($at === null ? null : Carbon::parse($at));
     }
 }

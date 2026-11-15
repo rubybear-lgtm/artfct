@@ -23,7 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Record that you finished or skipped one onboarding step the server cannot see for itself, so a set-up that stops can pick up where it left off and is never repeated. Call it after a step from get_guidance (topic onboarding): read_usage_rules, ask_save_preference (only when the person chose not to answer), add_project_instructions or explain_tool_approvals. Use `done` when you did it and `skipped` when the person declined or it did not apply. Steps the server watches itself, such as the connection check and a saved preference, cannot be recorded. Pass `host` to also get the next step back.')]
+#[Description('Record that you finished or skipped one onboarding step the server cannot see for itself, so a set-up that stops can pick up where it left off and is never repeated. Call it after a step from get_guidance (topic onboarding): read_usage_rules, explain_tool_approvals, or ask_save_preference (only when the person chose not to answer). Use `done` when you did it and `skipped` when the person declined or it did not apply. Steps the server watches itself, such as the connection check and a saved preference, cannot be recorded, and neither can add_project_instructions, which is done once per project and checked in that project\'s own file. Pass a real `host` (not `unknown`) to also get the next step back.')]
 #[Name('record_onboarding_step')]
 #[Title('Record onboarding step')]
 #[IsReadOnly(false)]
