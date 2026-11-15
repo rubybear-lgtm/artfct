@@ -17,7 +17,6 @@ use App\Services\Billing\DailyPublishLimiter;
 use App\Services\Billing\QuotaService;
 use App\Services\Collections\CollectionService;
 use App\Services\FeatureFlags;
-use App\Services\Governance\AuditLogger;
 use App\Services\Indexing\ExtractionHeuristics;
 use App\Support\ClientIp;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -89,8 +88,6 @@ final class DeployArtifactTool extends Tool
     ];
 
     private const CONTENT_TYPE = 'text/html; charset=utf-8';
-
-    public function __construct(private readonly AuditLogger $audit) {}
 
     /**
      * Handle the tool request.
