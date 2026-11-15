@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Sprint board</title>
+        <style>
+            /* Font slots: vendored woff2 would be declared here once licensed.
+     Fallback-first: local() sources never fetch, so a missing file
+     never blocks rendering; the system stack below always applies. */
+            @font-face {
+                font-family: 'Manrope';
+                src: local('Manrope'), local('Manrope-Regular');
+                font-weight: 400 700;
+                font-display: swap;
+            }
+            @font-face {
+                font-family: 'Newsreader';
+                src: local('Newsreader'), local('Newsreader-Regular');
+                font-weight: 400 500;
+                font-display: swap;
+            }
+            :root {
+                --bone: #f7f5f2;
+                --paper: #fbfaf8;
+                --hairline: #dedad2;
+                --ink: #262624;
+                --muted: #55544e;
+                --quiet: #69675f;
+                --oxblood: #701a24;
+                --oxblood-deep: #58141c;
+                --tint: #f1e4e5;
+                --row: #efece6;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--bone);
+                color: var(--ink);
+                font-family:
+                    -apple-system, BlinkMacSystemFont, 'Segoe UI', Manrope,
+                    Helvetica, Arial, sans-serif;
+                font-size: 16px;
+                line-height: 1.55;
+            }
+            .wrap {
+                max-width: 1120px;
+                margin: 0 auto;
+                padding: 0 20px;
+            }
+            header.page {
+                padding: 48px 0 8px;
+            }
+            .eyebrow {
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--oxblood);
+                font-weight: 700;
+                margin: 0 0 12px;
+            }
+            h1 {
+                font-family: Newsreader, Georgia, 'Times New Roman', serif;
+                font-weight: 400;
+                letter-spacing: -0.02em;
+                font-size: clamp(40px, 6vw, 60px);
+                line-height: 1.04;
+                margin: 0 0 12px;
+            }
+            h1 em {
+                color: var(--oxblood);
+                font-style: italic;
+            }
+            .lede {
+                color: var(--muted);
+                max-width: 65ch;
+                margin: 0 0 16px;
+            }
+            .mode {
+                display: inline-block;
+                font-size: 13px;
+                color: var(--muted);
+                border: 1px solid var(--hairline);
+                border-radius: 20px;
+                padding: 4px 14px;
+                background: var(--paper);
+                margin-bottom: 24px;
+            }
+            .mode strong {
+                color: var(--oxblood);
+                font-weight: 600;
+            }
+            .toolbar {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin: 0 0 16px;
+            }
+            .toolbar input[type='search'] {
+                font: inherit;
+                font-size: 14px;
+                color: var(--ink);
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 8px;
+                padding: 8px 10px;
+                min-width: 220px;
+            }
+            .toolbar input[type='search']:focus {
+                outline: none;
+                border-color: var(--oxblood);
+                box-shadow: 0 0 0 3px var(--tint);
+            }
+            .page-line {
+                font-size: 13px;
+                color: var(--quiet);
+            }
+            .pager {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                margin: 0 0 24px;
+            }
+            .pager button {
+                font: inherit;
+                font-size: 14px;
+                background: var(--paper);
+                color: var(--ink);
+                border: 1px solid var(--hairline);
+                border-radius: 6px;
+                padding: 8px 14px;
+                min-height: 44px;
+                cursor: pointer;
+            }
+            .pager button:hover:not(:disabled) {
+                border-color: var(--oxblood);
+                color: var(--oxblood);
+            }
+            .pager button:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+            .board {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 0;
+                border-top: 1px solid var(--hairline);
+                padding-bottom: 32px;
+            }
+            .col {
+                padding: 20px 20px 8px;
+                border-left: 1px solid var(--hairline);
+                min-width: 0;
+            }
+            .col:first-child {
+                border-left: none;
+                padding-left: 0;
+            }
+            .col-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                margin-bottom: 12px;
+            }
+            .col-head h2 {
+                font-family: Newsreader, Georgia, serif;
+                font-weight: 500;
+                font-size: 22px;
+                margin: 0;
+            }
+            .count {
+                font-size: 13px;
+                color: var(--quiet);
+                background: var(--row);
+                border-radius: 12px;
+                padding: 1px 10px;
+            }
+            .cards {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+            .card {
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 10px;
+                padding: 14px 14px 10px;
+                box-shadow: 0 1px 2px rgba(38, 38, 36, 0.05);
+            }
+            .card:focus-visible {
+                outline: 2px solid var(--oxblood);
+                outline-offset: 2px;
+            }
+            .card h3 {
+                margin: 0 0 4px;
+                font-size: 15px;
+                font-weight: 600;
+            }
+            .card p {
+                margin: 0 0 10px;
+                font-size: 14px;
+                color: var(--muted);
+            }
+            .card-meta {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .owner {
+                font-size: 12px;
+                color: var(--quiet);
+                background: var(--row);
+                border-radius: 4px;
+                padding: 2px 8px;
+            }
+            .card-actions {
+                display: flex;
+                gap: 4px;
+            }
+            .icon-btn {
+                border: 1px solid transparent;
+                background: none;
+                color: var(--quiet);
+                font-size: 15px;
+                line-height: 1;
+                border-radius: 6px;
+                min-width: 44px;
+                min-height: 44px;
+                padding: 4px 8px;
+                cursor: pointer;
+            }
+            .icon-btn:hover {
+                background: var(--tint);
+                color: var(--oxblood);
+            }
+            .icon-btn:disabled {
+                opacity: 0.3;
+                cursor: default;
+                background: none;
+                color: var(--quiet);
+            }
+            .card.drop-before {
+                box-shadow: 0 -3px 0 var(--oxblood);
+            }
+            .card.dragging {
+                opacity: 0.4;
+            }
+            .empty {
+                font-size: 14px;
+                color: var(--quiet);
+                margin: 0;
+                padding: 12px 2px;
+            }
+            .edit-form {
+                margin-top: 10px;
+                border-top: 1px dashed var(--hairline);
+                padding-top: 10px;
+            }
+            .edit-form input,
+            .edit-form textarea {
+                width: 100%;
+                font: inherit;
+                font-size: 14px;
+                color: var(--ink);
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 8px;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+            }
+            .edit-form input:focus,
+            .edit-form textarea:focus {
+                outline: none;
+                border-color: var(--oxblood);
+                box-shadow: 0 0 0 3px var(--tint);
+            }
+            .edit-row {
+                display: flex;
+                gap: 8px;
+            }
+            .add-form {
+                margin-top: 12px;
+                border-top: 1px dashed var(--hairline);
+                padding-top: 12px;
+            }
+            .add-form input {
+                width: 100%;
+                font: inherit;
+                font-size: 14px;
+                background: var(--paper);
+                border: 1px solid var(--hairline);
+                border-radius: 8px;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                color: var(--ink);
+            }
+            .add-form input:focus {
+                outline: none;
+                border-color: var(--oxblood);
+                box-shadow: 0 0 0 3px var(--tint);
+            }
+            .btn {
+                font: inherit;
+                font-size: 14px;
+                font-weight: 600;
+                background: var(--oxblood);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                min-height: 44px;
+                cursor: pointer;
+            }
+            .btn:hover {
+                background: var(--oxblood-deep);
+            }
+            .btn-secondary {
+                font: inherit;
+                font-size: 14px;
+                font-weight: 600;
+                background: var(--paper);
+                color: var(--ink);
+                border: 1px solid var(--hairline);
+                border-radius: 6px;
+                padding: 8px 16px;
+                min-height: 44px;
+                cursor: pointer;
+            }
+            .btn-secondary:hover {
+                border-color: var(--oxblood);
+                color: var(--oxblood);
+            }
+            footer.page {
+                border-top: 1px solid var(--hairline);
+                padding: 20px 0 48px;
+                color: var(--quiet);
+                font-size: 13px;
+            }
+            footer.page a {
+                color: var(--oxblood);
+            }
+            .hint {
+                font-size: 13px;
+                color: var(--quiet);
+                margin: 0 0 24px;
+            }
+            kbd {
+                font-family: inherit;
+                font-size: 12px;
+                background: var(--row);
+                border: 1px solid var(--hairline);
+                border-radius: 4px;
+                padding: 0 6px;
+            }
+            .banner {
+                background: var(--paper);
+                border: 1px solid var(--oxblood);
+                border-radius: 10px;
+                padding: 16px 20px;
+                margin-bottom: 24px;
+            }
+            .banner p {
+                margin: 0 0 12px;
+                font-size: 14px;
+                color: var(--ink);
+            }
+            .toast {
+                position: fixed;
+                left: 50%;
+                bottom: 24px;
+                transform: translateX(-50%);
+                background: var(--ink);
+                color: var(--bone);
+                font-size: 14px;
+                border-radius: 8px;
+                padding: 10px 18px;
+                max-width: 90vw;
+            }
+            @media (max-width: 760px) {
+                .board {
+                    grid-template-columns: 1fr;
+                }
+                .col {
+                    border-left: none;
+                    border-top: 1px solid var(--hairline);
+                    padding-left: 0;
+                }
+                .col:first-child {
+                    border-top: none;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header class="wrap page">
+            <p class="eyebrow">Kanban</p>
+            <h1>Sprint <em>board</em></h1>
+            <p class="lede">
+                Where the work stands. Columns, cards, and nothing else — the
+                team and its agents share this board, and the agents keep it
+                updated as work moves.
+            </p>
+            <span class="mode" id="mode-pill"
+                ><strong>Shared with the team</strong> · anyone with edit access
+                can move cards</span
+            >
+            <p class="hint">
+                Drag cards between columns, or keyboard: <kbd>Tab</kbd> to a
+                card, <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> to move it,
+                <kbd>Enter</kbd> to edit, <kbd>Delete</kbd> to delete.
+            </p>
+        </header>
+        <div class="wrap" id="session-banner" hidden>
+            <section class="banner" aria-label="Session expired" role="alert">
+                <p>This board needs to be reloaded to keep saving.</p>
+                <button class="btn" type="button" id="reload-btn">
+                    Reload board
+                </button>
+            </section>
+        </div>
+        <div class="wrap">
+            <div class="toolbar">
+                <input
+                    type="search"
+                    id="search"
+                    aria-label="Filter cards"
+                    placeholder="Filter cards…"
+                />
+                <span class="page-line" id="page-line"></span>
+            </div>
+            <div class="pager">
+                <button type="button" id="prev-page">← Newer</button>
+                <button type="button" id="next-page">Older →</button>
+            </div>
+        </div>
+        <main class="wrap board" id="board">
+            <section class="col" data-column="todo" aria-label="To do">
+                <div class="col-head">
+                    <h2>To do</h2>
+                    <span class="count" data-count></span>
+                </div>
+                <ul class="cards" data-cards></ul>
+                <form class="add-form" data-add>
+                    <input
+                        type="text"
+                        name="title"
+                        placeholder="Add a card…"
+                        aria-label="New card title in To do"
+                        maxlength="200"
+                    />
+                    <button class="btn" type="submit">Add</button>
+                </form>
+            </section>
+            <section class="col" data-column="doing" aria-label="Doing">
+                <div class="col-head">
+                    <h2>Doing</h2>
+                    <span class="count" data-count></span>
+                </div>
+                <ul class="cards" data-cards></ul>
+                <form class="add-form" data-add>
+                    <input
+                        type="text"
+                        name="title"
+                        placeholder="Add a card…"
+                        aria-label="New card title in Doing"
+                        maxlength="200"
+                    />
+                    <button class="btn" type="submit">Add</button>
+                </form>
+            </section>
+            <section class="col" data-column="done" aria-label="Done">
+                <div class="col-head">
+                    <h2>Done</h2>
+                    <span class="count" data-count></span>
+                </div>
+                <ul class="cards" data-cards></ul>
+                <form class="add-form" data-add>
+                    <input
+                        type="text"
+                        name="title"
+                        placeholder="Add a card…"
+                        aria-label="New card title in Done"
+                        maxlength="200"
+                    />
+                    <button class="btn" type="submit">Add</button>
+                </form>
+            </section>
+        </main>
+        <footer class="wrap page">
+            The upkeep rules for this board live in
+            <a href="SKILL.md">SKILL.md</a>.
+        </footer>
+        <div class="toast" id="toast" hidden></div>
+        <script src="app.js"></script>
+    </body>
+</html>

@@ -1,0 +1,30 @@
+{
+    "artifact_type": "document",
+    "db": {
+        "collections": {
+            "posts": {
+                "index": "published_at"
+            }
+        },
+        "seed": [
+            {
+                "collection": "posts",
+                "doc_id": "p-98232396399999-welcome",
+                "body": {
+                    "body": "Post what the team should know: decisions that were made, things that launched or broke, dates or owners that changed, anything the team agreed is worth remembering. Skip working notes, speculation, and anything sensitive or private — if it is not worth remembering next month, it does not belong here. This welcome post stays as the board's first row; do not duplicate it.",
+                    "published_at": "2026-01-05T09:00:00Z",
+                    "tag": "note",
+                    "title": "Welcome to the announcement board"
+                }
+            }
+        ]
+    },
+    "description": "A chronological board for team news: decisions, launches, and date changes, newest first.",
+    "edit_access": "edit",
+    "entrypoint": "index.html",
+    "key": "announcements",
+    "requires": ["artifact-db"],
+    "sharing": "team",
+    "title": "Announcement board",
+    "version": 1
+}
