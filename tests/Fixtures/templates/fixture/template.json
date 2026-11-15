@@ -1,0 +1,19 @@
+{
+    "key": "fixture",
+    "version": 3,
+    "title": "Fixture board",
+    "description": "A minimal template that exercises the catalog, used only by tests.",
+    "artifact_type": "table",
+    "entrypoint": "index.html",
+    "sharing": "team",
+    "edit_access": "edit",
+    "requires": ["artifact-db"],
+    "db": {
+        "collections": {
+            "cards": { "index": "column" }
+        },
+        "seed": [
+            { "collection": "cards", "doc_id": "welcome", "body": { "column": "todo", "title": "Welcome" } }
+        ]
+    }
+}

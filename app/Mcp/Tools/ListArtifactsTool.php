@@ -520,6 +520,7 @@ final class ListArtifactsTool extends Tool
                 'version' => $artifact['version'] ?? null,
                 'kind' => $artifact['kind'] ?? null,
                 'artifact_type' => $types[$id] ?? null,
+                'database' => $artifact['database'] ?? null,
                 'created_at' => $this->timestamp($artifact['created_at'] ?? null),
                 'updated_at' => $this->timestamp($artifact['updated_at'] ?? null),
                 'view_count' => $row['view_count'],

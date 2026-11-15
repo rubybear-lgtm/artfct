@@ -56,6 +56,7 @@ use App\Services\Slack\FakeSlackPost;
 use App\Services\Slack\RealArtifactSharing;
 use App\Services\Slack\RealSlackPost;
 use App\Services\Slack\SlackPostContract;
+use App\Services\Templates\TemplateCatalog;
 use App\Services\Tenancy\FakeTenantProvisioner;
 use App\Services\Tenancy\RealTenantProvisioner;
 use App\Services\Tenancy\TenantProvisionerContract;
@@ -104,6 +105,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(WorkerEventHandlers::class);
         $this->app->bind(OrgLimitsWriter::class, fn (): OrgLimitsWriter => OrgLimitsWriter::default());
         $this->app->bind(OrgSettingsWriter::class, fn (): OrgSettingsWriter => OrgSettingsWriter::default());
+        $this->app->bind(TemplateCatalog::class, fn (): TemplateCatalog => TemplateCatalog::default());
 
         $workosConfigured = ! app()->environment('testing')
             && config('services.workos.client_id')

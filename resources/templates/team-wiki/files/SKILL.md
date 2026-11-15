@@ -28,15 +28,19 @@ Read the source, discuss takeaways when the user is present, then write or updat
 
 ## Query
 
-Read the index first, then only the pages it points at. Answer with citations (`[[slug]]`). File good answers back as new pages plus one activity entry.
+Read the index first (`db_list` on `pages` — at most 100 rows per page; page through all cursors before filtering so pages beyond the first page are not missed), then read only the pages it points at. Answer with citations (`[[slug]]`). When several pages match a query (e.g. a general overview and a specific decision page), disambiguate by citing both, preferring the page with the more recent or authoritative source, and stating how they relate. File good answers back as new pages plus one activity entry (`query | <topic>`).
 
 ## Lint
 
-On request, check: contradictions between pages, stale claims superseded by newer sources, orphans (nothing links to them), important mentions lacking their own page, missing cross-references, data gaps worth a search. Report findings first; apply fixes on a `team` board only with approval.
+On request, check: contradictions between pages, stale claims superseded by newer sources, orphans (nothing links to them), important mentions lacking their own page, missing cross-references, data gaps worth a search. When a newer source supersedes an older claim, revise the claim in place to reflect the current truth, keep the historical context only if it prevents confusion, update `sources[]` with the superseding reference, and log `lint | superseded <slug>`. Report findings first; apply fixes on a `team` board only with approval.
 
 ## Private vs team
 
-On `private`, anything goes. On `team` with `visibility: shared`: cite sources, keep private or sensitive material in `personal` pages or out entirely, and say when an answer was withheld for that reason.
+On `private`, anything goes. On `team`, choose `visibility` per page:
+
+- `shared`: team decisions, architecture, runbooks, domain concepts, and vetted syntheses — cite sources (`{label, ref}`) and file shared answers back here.
+- `personal`: scratch notes, unvetted hypotheses, or individual drafts kept on a team wiki before they are ready for the team.
+  Never put secrets, credentials, HR/personal data, or private 1:1 context into a `shared` page; keep sensitive material out entirely, and say when an answer was withheld for that reason.
 
 ## Invariants
 

@@ -23,6 +23,8 @@ use App\Mcp\Tools\GetUsageTool;
 use App\Mcp\Tools\ListArtifactCommentsTool;
 use App\Mcp\Tools\ListArtifactsTool;
 use App\Mcp\Tools\ListCollectionsTool;
+use App\Mcp\Tools\ListTemplatesTool;
+use App\Mcp\Tools\PullTemplateTool;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Mcp\Tools\RecordOnboardingStepTool;
 use App\Mcp\Tools\RemoveCollectionArtifactTool;
@@ -73,6 +75,8 @@ final class ArtfctServer extends Server
         RemoveCollectionArtifactTool::class,
         DeleteCollectionTool::class,
         DeleteArtifactTool::class,
+        ListTemplatesTool::class,
+        PullTemplateTool::class,
         SetAvatarTool::class,
         SetPreferenceTool::class,
         RecordOnboardingStepTool::class,

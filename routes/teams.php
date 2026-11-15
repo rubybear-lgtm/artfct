@@ -71,6 +71,7 @@ Route::middleware(['auth', EnsureTeamSignIn::class])->group(function () {
     Route::get('settings/teams/{team}/mcp-connections', [McpConnectionController::class, 'index'])->name('teams.mcp-connections.index');
 
     Route::get('settings/teams/{team}/console', [ConsoleController::class, 'index'])->name('console.index');
+    Route::post('settings/teams/{team}/console/templates/{template}/pull', [ConsoleController::class, 'pull'])->name('console.templates.pull');
     Route::get('settings/teams/{team}/console/artifacts/{artifactId}/open', [ConsoleController::class, 'open'])->name('console.open');
     Route::get('settings/teams/{team}/console/artifacts/{artifactId}/versions', [ArtifactVersionController::class, 'show'])->name('console.versions');
     Route::post('settings/teams/{team}/console/artifacts/{artifactId}/versions/{version}/restore', [ArtifactVersionController::class, 'restore'])->whereNumber('version')->name('console.versions.restore');
