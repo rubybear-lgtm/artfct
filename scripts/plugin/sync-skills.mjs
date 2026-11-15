@@ -28,6 +28,10 @@ export const PLUGIN_SKILLS = [
     'artfct-search',
     'artfct-collaborate',
     'artfct-data',
+    'artfct-templates',
+    'artfct-kanban',
+    'artfct-team-wiki',
+    'artfct-announcements',
     'onboard',
 ];
 
