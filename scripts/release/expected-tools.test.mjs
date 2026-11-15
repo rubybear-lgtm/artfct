@@ -30,6 +30,8 @@ test('flag-gated MCP tools are read separately and never overlap the base catalo
         'db_schema',
         'db_set',
         'db_update',
+        'list_templates',
+        'pull_template',
     ]);
     assert.ok(flagged.every((name) => !base.includes(name)));
 });
