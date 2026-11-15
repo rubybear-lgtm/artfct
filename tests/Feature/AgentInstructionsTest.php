@@ -186,19 +186,57 @@ test('coding agents have no memory step: their project file is where the instruc
         ->and(array_column(ArtifactGuidance::stepsFor(ArtifactGuidance::HOST_MODES[$host]), 'id'))->not->toContain('save_memory_note');
 })->with(['claude-code', 'cursor', 'grok-build', 'coding-agent']);
 
-test('the onboard skill works out the app from its tools, does not ask, and treats Cowork as the Claude app', function () {
+test('the onboard skill works out the app from where it runs, does not ask, and treats Cowork as the Claude app', function () {
     $skill = file_get_contents(base_path('skills/onboard/SKILL.md'));
 
-    expect($skill)->toContain('working it out from the tools you have. Do not ask.')
-        ->toContain('If you can run shell commands and edit files in a project, you are a coding agent: use `claude-code`')
-        ->toContain('If you only have chat and connector tools')
-        ->toContain('use `claude-app`')
-        ->toContain('Cowork counts as the Claude app: use `claude-app` there even if you can work in a folder')
+    expect($skill)->toContain('working it out from where you run. Do not ask.')
+        ->toContain('You are `claude-code` only if you are Claude Code running in a project folder on the person\'s own computer')
+        // The mistake that shipped: a shell and file tools were taken to mean Claude Code.
+        ->toContain('Having a shell and file tools is not enough')
+        ->toContain('`/home/claude`')
+        ->toContain('If you are unsure, use `claude-app`')
+        ->not->toContain('If you can run shell commands and edit files in a project, you are a coding agent')
+        ->toContain('That is `claude-app`, and so is Cowork')
         ->toContain('Ask the person only if that really does not settle it')
         ->and($skill)->toContain('`save_memory_note`')
         ->toContain('write exactly the note the server gives you');
 });
 
+/*
+ * A Claude app run with code execution has a shell, file tools and a folder
+ * (/home/claude). It was taken for Claude Code and wrote a CLAUDE.md into a
+ * sandbox that disappears, and the memory note was never offered. The playbook
+ * an agent receives after a wrong guess must send it back to the right one.
+ */
+test('the Claude Code playbook sends an agent in a scratch folder back to the Claude app playbook before it writes anything', function () {
+    $text = blockAt('claude-code playbook');
+
+    expect($text)->toContain('your working folder must be a project on the person\'s own computer')
+        ->toContain('`/home/claude`')
+        ->toContain('you are the Claude app with a code sandbox, not Claude Code')
+        ->toContain('write no file, call `get_guidance` again with `host` set to `claude-app`')
+        ->toContain('A real project that happens to sit under a folder with that name is fine')
+        // The check comes before the steps.
+        ->and(strpos($text, 'First check that is true'))->not->toBeFalse()
+        ->and(strpos($text, '1. Check the connection'))->not->toBeFalse()
+        ->and(strpos($text, 'First check that is true'))->toBeLessThan(strpos($text, '1. Check the connection'));
+});
+
+test('the other generic playbooks catch the same mistake from their side', function () {
+    $coding = blockAt('coding-agent playbook');
+    $app = ArtifactGuidance::topic('onboarding', 'claude-app')['text'];
+    $unknown = ArtifactGuidance::topic('onboarding', 'unknown')['text'];
+
+    expect($coding)->toContain('you are a chat app with a code sandbox, not a coding agent')
+        ->toContain('`/home/claude`')
+        ->toContain('call `get_guidance` again with `host` set to your chat app (`claude-app`, `chatgpt` or `grok`)')
+        ->and(strpos($coding, 'First check that is true'))->toBeLessThan(strpos($coding, '1. Check the connection'))
+        // The way back: a real coding agent labelled claude-app must be able to leave.
+        ->and($app)->toContain('If you are in fact Claude Code or another coding agent working in a project folder on the person\'s own computer, stop, record nothing for this host, and call `get_guidance` again with `host` set to `claude-code` or `coding-agent`')
+        ->and($unknown)->toContain('A chat app that can run code in a sandbox')
+        ->toContain('is still a chat app, not a coding agent');
+});
+
 test('the guidance version moved with the text', function () {
-    expect(ArtifactGuidance::VERSION)->toBe('1.4.0');
+    expect(ArtifactGuidance::VERSION)->toBe('1.4.1');
 });
