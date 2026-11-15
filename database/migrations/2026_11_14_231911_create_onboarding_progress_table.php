@@ -10,10 +10,12 @@ return new class extends Migration
      * Run the migrations.
      *
      * The onboarding steps only the person's own agent can see (it read the
-     * rules, it added the project instructions) and the person's answer to
-     * each: `done` or `skipped`. Steps the server can see for itself, such as
-     * the first connection, are read from MCP activity instead and never
-     * stored here, so this table cannot disagree with what really happened.
+     * rules, it explained the tool approvals) and the person's answer to each:
+     * `done` or `skipped`. Steps the server can see for itself, such as the
+     * first connection, are read from MCP activity instead and never stored
+     * here, so this table cannot disagree with what really happened. The
+     * project instructions are done once per project, not once per person, so
+     * they are never stored here either.
      */
     public function up(): void
     {

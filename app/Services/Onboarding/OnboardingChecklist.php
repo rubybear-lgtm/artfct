@@ -65,6 +65,7 @@ final class OnboardingChecklist
      *     steps: list<array{id: string, requires_consent: bool, status: 'done'|'skipped'|'pending'|'per_project', source: 'server'|'agent'|null}>,
      *     next_step: string|null,
      *     complete: bool,
+     *     per_project_steps: list<string>,
      *     milestones: array<string, array{done: bool, at: string|null}>
      * }
      */
@@ -85,6 +86,13 @@ final class OnboardingChecklist
             'steps' => $steps,
             'next_step' => $pending[0]['id'] ?? null,
             'complete' => $steps !== [] && $pending === [],
+            // Steps the person's own set-up never covers, so `complete` can be
+            // true and the agent must still check this project's own file. The
+            // data names them so the agent does not have to infer it.
+            'per_project_steps' => array_values(array_map(
+                static fn (array $step): string => $step['id'],
+                array_filter($steps, static fn (array $step): bool => $step['status'] === 'per_project'),
+            )),
             'milestones' => $this->milestones($user, $team),
         ];
     }

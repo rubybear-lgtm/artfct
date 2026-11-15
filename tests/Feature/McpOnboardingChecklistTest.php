@@ -13,6 +13,7 @@ use App\Models\UserPreference;
 use App\Services\Analytics\FakeAnalytics;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Auth\OrgJwtService;
+use App\Services\Onboarding\OnboardingChecklist;
 use App\Support\AiToolSetup;
 use Illuminate\Testing\TestResponse;
 use Laravel\Mcp\Server\Transport\FakeTransporter;
@@ -312,9 +313,68 @@ test('coding-agent playbooks refuse to guess when the markers are not one clean 
         ->toContain('If it has none of these, add the block at the end of the file');
 })->with(['claude-code', 'cursor', 'grok-build', 'coding-agent']);
 
-test('the project block and the pasted prompt agree on when a file already has the instructions', function () {
-    expect((new AiToolSetup('https://example.test'))->agentSetupPrompt())
-        ->toContain('unless it already has an `## Artfct` section or an `<!-- artfct:start -->` block');
+test('the project block and the pasted prompt recognize the same three existing forms, so no path adds a second one', function () {
+    $prompt = (new AiToolSetup('https://example.test'))->agentSetupPrompt();
+    $forms = ['`## Artfct` section', '`<artfct-guidelines>` block', '`<!-- artfct:start -->`'];
+
+    foreach ($forms as $form) {
+        expect($prompt)->toContain($form);
+
+        foreach (['claude-code', 'cursor', 'grok-build', 'coding-agent'] as $host) {
+            expect(ArtifactGuidance::topic('onboarding', $host)['text'])->toContain($form);
+        }
+    }
+});
+
+/*
+ * Round 2 of the independent review: reverting the playbook sentence that names
+ * the steps to record brings back "a coding agent can never reach complete",
+ * and no test failed. These pin every step the server waits for to the text an
+ * agent actually follows, for every host.
+ */
+test('every playbook names each step the server waits for the agent to report, and the per-project step where there is one', function (string $host, string $mode) {
+    $text = ArtifactGuidance::topic('onboarding', $host)['text'];
+    $stepIds = array_column(ArtifactGuidance::stepsFor($mode), 'id');
+
+    foreach (array_intersect($stepIds, OnboardingChecklist::SELF_REPORTED) as $id) {
+        expect($text)->toContain("`{$id}`");
+    }
+
+    foreach (array_intersect($stepIds, OnboardingChecklist::PER_PROJECT) as $id) {
+        expect($text)->toContain('`per_project`')->toContain('never blocks `complete`');
+        // The project step is explained in the text, not recorded.
+        expect($text)->not->toContain("record `{$id}`");
+    }
+
+    // Nothing the playbook tells the agent to record may be a step the server refuses.
+    preg_match_all('/`(read_usage_rules|ask_save_preference|explain_tool_approvals|add_project_instructions|verify_connection)`/', $text, $named);
+    expect(array_diff(
+        array_unique($named[1]),
+        [...OnboardingChecklist::SELF_REPORTED, ...OnboardingChecklist::PER_PROJECT, 'verify_connection'],
+    ))->toBe([]);
+})->with(collect(ArtifactGuidance::HOST_MODES)->reject(fn (string $mode): bool => $mode === 'hybrid')->map(fn (string $mode, string $host): array => [$host, $mode])->values()->all());
+
+test('the response names the per-project steps so a complete set-up is never read as done for this project', function () {
+    [, , $token] = newcomer();
+
+    checklistCall($token, 'get_connection');
+    checklistCall($token, 'record_onboarding_step', ['step' => 'read_usage_rules', 'outcome' => 'done']);
+    checklistCall($token, 'set_preference', ['key' => 'save_to_artfct', 'value' => 'ask']);
+
+    $connector = onboardingFor($token, 'claude-app');
+    $coding = onboardingFor($token, 'claude-code');
+
+    expect($connector['complete'])->toBeTrue()
+        ->and($connector['per_project_steps'])->toBe([])
+        ->and($coding['per_project_steps'])->toBe(['add_project_instructions'])
+        ->and($coding['complete'])->toBeFalse();
+
+    checklistCall($token, 'record_onboarding_step', ['step' => 'explain_tool_approvals', 'outcome' => 'done']);
+
+    // Complete for the person, and still pointing at the project step.
+    expect(onboardingFor($token, 'claude-code'))
+        ->complete->toBeTrue()
+        ->per_project_steps->toBe(['add_project_instructions']);
 });
 
 test('connector-only playbooks never mention a project file or marker block', function (string $host) {
@@ -420,9 +480,11 @@ test('a connection that is not signed in as a person has no preferences and no s
         'params' => ['name' => $tool, 'arguments' => $arguments],
     ]);
 
-    // Either the connection is refused outright or the tool refuses; it must
-    // never write a row for an actor that is not a user.
-    expect($response->getStatusCode() === 200 ? $response->json('result.isError') : true)->toBeTrue()
+    // Either the connection is refused outright or the tool refuses cleanly.
+    // A server error would also write nothing, so rule it out: the refusal has
+    // to be a decision, not a crash, and it must never write a row.
+    expect($response->getStatusCode())->toBeLessThan(500)
+        ->and($response->getStatusCode() === 200 ? $response->json('result.isError') : true)->toBeTrue()
         ->and(OnboardingProgress::query()->count())->toBe(0)
         ->and(UserPreference::query()->count())->toBe(0);
 })->with([
@@ -455,7 +517,7 @@ test('the onboard skill only names tools the server really has and response fiel
     [, , $token] = newcomer();
     $onboarding = onboardingFor($token);
 
-    foreach (['steps', 'next_step', 'complete'] as $field) {
+    foreach (['steps', 'next_step', 'complete', 'per_project_steps'] as $field) {
         expect($onboarding)->toHaveKey($field)->and($skill)->toContain("`{$field}`");
     }
 

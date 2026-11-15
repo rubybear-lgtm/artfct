@@ -468,7 +468,7 @@ class AiToolSetup
                Then call `get_guidance` with topic `onboarding` and `host` set to the app you are running in (`claude-code`, `cursor`, `grok-build`, `claude-app`, `chatgpt`, `grok`, or `coding-agent` for any other coding agent such as Codex or VS Code; use `unknown` if you are not sure). Follow the steps it returns, and ask me before any step it marks as needing my approval.
             5. If you are a coding agent and you followed the onboarding steps, they already set up this project, so do not repeat them. If you could not call `get_guidance`, offer to set Artfct up in this project yourself. Ask before you change anything.
                - If the artfct-init skill is already available to you, run it. It asks whether the setup is for all my projects, just me in this project, or the whole team in this repo.
-               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section or an `<!-- artfct:start -->` block. Show me the text before you write it.
+               - Otherwise, add the block between the lines below to the file your app reads for project instructions (`AGENTS.md`, `CLAUDE.md` or Cursor rules), unless it already has an `## Artfct` section, an `<artfct-guidelines>` block or an `<!-- artfct:start -->` block. Show me the text before you write it.
 
             ---
             {$this->projectInstructions()}

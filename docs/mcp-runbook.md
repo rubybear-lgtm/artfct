@@ -224,7 +224,7 @@ Preferences and onboarding progress now live on the server.
   can also set the team default.
 - **Progress.** `get_guidance` with topic `onboarding` and a known host adds
   `status` (`done`, `skipped`, `pending`, `per_project`) and `source` (`server`,
-  `agent`) to each step, plus `next_step`, `complete` and `milestones`
+  `agent`) to each step, plus `next_step`, `complete`, `per_project_steps` and `milestones`
   (`connected`, `first_publish`, `first_search`). Server-seen steps and
   milestones are read from `mcp_activities`, which is pruned after its retention
   window, so a connection check or a publish older than that is not seen and
@@ -234,6 +234,8 @@ Preferences and onboarding progress now live on the server.
   row per person and step, and emits the `onboarding_step_recorded` analytics
   event. `add_project_instructions` is `per_project`: never stored and never
   blocking `complete`, because the server knows the person, not the repository.
+  `per_project_steps` names it so an agent still checks the project's own file
+  when `complete` is true.
 - **Project block.** Coding-agent playbooks give the project instruction between
   `<!-- artfct:start -->` and `<!-- artfct:end -->`. The playbook replaces it only
   when there is exactly one ordered pair outside a code fence, leaves a file that
