@@ -1,0 +1,55 @@
+/* Demo frame: browser window (RUB-578, spec 44). Chrome is decorative and aria-hidden in the markup. */
+.frame-browser {
+  --frame-line: #DEDAD2;
+  --frame-paper: #FBFAF8;
+  --frame-bar: #EFEDE8;
+  --frame-dot: #C9C4BA;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  border: 1px solid var(--frame-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--frame-paper);
+}
+
+.frame-browser .frame-chrome {
+  position: relative;
+  height: 32px;
+  background: var(--frame-bar);
+  border-bottom: 1px solid var(--frame-line);
+}
+
+.frame-browser .frame-chrome::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 12px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--frame-dot);
+  box-shadow: 15px 0 0 var(--frame-dot), 30px 0 0 var(--frame-dot);
+}
+
+.frame-browser .frame-chrome::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 80px;
+  right: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--frame-paper);
+  border: 1px solid var(--frame-line);
+}
+
+.frame-browser .frame-slot {
+  margin: 0;
+  line-height: 0;
+}
+
+.frame-browser .frame-slot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
