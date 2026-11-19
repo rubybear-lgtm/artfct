@@ -38,7 +38,7 @@ Known gaps (recorded, not closed here):
 - The whole `post.reads` collection is not validated. It is declared only (RUB-581 enforces it), so any write to it passes the tools unchecked.
 - `replaced_by` is checked only for shape: no existence, same-team or self-reference check.
 - Cross-field rules are not enforced (for example `superseded` without `replaced_by`). A partial update would need the stored document to check them.
-- The starter's "no other request" check is a regex and would miss dynamic request forms. The CSP and the single same-origin `fetch` are the real control.
+- The starter's "no other request" check is a regex and would miss dynamic request forms. The CSP and the two same-origin GETs are the real control.
 
 Why not the Worker: spec 20 declares only an index per collection, so a per-field rule would be new Rust schema work. Agent writes enter through these tools, and the Worker still enforces scope, role, edit access, versions and quotas. Known gap: a direct REST caller holding a `data:write` token can skip the field rule.
 
