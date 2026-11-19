@@ -977,3 +977,48 @@ test('the handoff guidance tells the bot to publish HANDOFF.md inside a mockup b
         ->toContain('artifact_type: mockup')
         ->toContain('index.html');
 });
+
+/*
+ * RUB-565 / spec 42: the flier and email sections live inside the team-doc topic.
+ * These helpers read inside one "## " section so page-wide words cannot pass a test.
+ */
+function teamDocSection(string $heading): string
+{
+    $text = teamDocGuidance();
+    $start = strpos($text, "\n## {$heading}\n");
+
+    if ($start === false) {
+        return '';
+    }
+
+    $end = strpos($text, "\n## ", $start + 1);
+
+    return substr($text, $start, $end === false ? null : $end - $start);
+}
+
+test('the team doc guidance has flier and email sections naming both templates', function () {
+    $flier = teamDocSection('Flier');
+    $email = teamDocSection('Customer email');
+
+    expect($flier)->toContain('skills/artfct-team-doc/assets/flier-starter/')
+        ->and($flier)->toContain('sheet--fixed')
+        ->and($email)->toContain('skills/artfct-team-doc/assets/email-template/')
+        ->and($email)->toContain('logo.svg');
+});
+
+test('the team doc guidance gives flier print-craft rules', function () {
+    $flier = teamDocSection('Flier');
+
+    foreach (['dominant headline', 'what, when, where, cost', 'flat color', '4 percent', 'Letter and A4', 'grayscale'] as $rule) {
+        expect($flier)->toContain($rule);
+    }
+});
+
+test('the team doc guidance says email is not sent from Artfct', function () {
+    expect(teamDocSection('Customer email'))->toContain('not sent from Artfct');
+});
+
+test('the team doc flier and email sections follow the Brand and voice post', function () {
+    expect(teamDocSection('Flier'))->toContain('"Brand and voice"')
+        ->and(teamDocSection('Customer email'))->toContain('"Brand and voice"');
+});
