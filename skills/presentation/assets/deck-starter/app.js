@@ -315,19 +315,13 @@
     return error;
   }
 
-  function nextFrames(count) {
+  // Two timer ticks, not animation frames: a cross-origin frame that is off
+  // screen does not get animation frames, so a rAF wait never resolves there.
+  function settle() {
     return new Promise(function (resolve) {
-      function step(remaining) {
-        if (remaining <= 0) {
-          resolve();
-        } else {
-          window.requestAnimationFrame(function () {
-            step(remaining - 1);
-          });
-        }
-      }
-
-      step(count);
+      window.setTimeout(function () {
+        window.setTimeout(resolve, 16);
+      }, 16);
     });
   }
 
@@ -339,7 +333,7 @@
 
       stage.style.transform = 'none';
 
-      return nextFrames(2).then(function () {
+      return settle().then(function () {
         return html2canvas(slides[index], {
           width: STAGE_WIDTH,
           height: STAGE_HEIGHT,
