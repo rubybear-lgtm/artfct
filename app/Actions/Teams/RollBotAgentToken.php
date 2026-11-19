@@ -53,6 +53,8 @@ class RollBotAgentToken
             McpScope::ArtifactsDeploy->value,
             McpScope::CollectionsRead->value,
             McpScope::UsageRead->value,
+            McpScope::DataRead->value,
+            McpScope::DataWrite->value,
         ];
         $scopes = array_values(array_intersect(McpScope::forRole(TeamRole::Member), $scopes));
         abort_if($scopes === [], 422, __('Choose at least one permission for this agent token.'));
