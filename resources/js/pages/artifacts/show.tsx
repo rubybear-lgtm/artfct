@@ -113,7 +113,7 @@ function pptxFailureMessage(error: unknown): string {
             ? (error as Error & { code?: string }).code
             : undefined;
 
-    if (code === 'capture_unsupported') {
+    if (code === 'capture_unsupported' || code === 'capture_unavailable') {
         return 'This deck was published before PowerPoint export. Publish it again to export it.';
     }
 
