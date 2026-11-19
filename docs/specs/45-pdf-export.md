@@ -29,12 +29,10 @@ Artifact script never runs in the app origin. The app page embeds the artifact i
 | `public/vendor/pdf-export/pdf-lib.min.js` | `@cantoo/pdf-lib` `dist/pdf-lib.min.js` | 2.11.1 | MIT (`pdf-lib-LICENSE.md`) | see Results |
 | `public/vendor/pdf-export/fontkit.umd.min.js` | `@cantoo/fontkit` `dist/fontkit.umd.min.js` | 2.0.12 | MIT (`fontkit-LICENSE`) | see Results |
 | `public/vendor/pdf-export/fonts/manrope-latin-400-normal.woff` | `@fontsource/manrope` `files/` | 5.3.0 | OFL-1.1 | see Results |
-| `public/vendor/pdf-export/fonts/manrope-latin-700-normal.woff` | `@fontsource/manrope` `files/` | 5.3.0 | OFL-1.1 | see Results |
 | `public/vendor/pdf-export/fonts/newsreader-latin-400-normal.woff` | `@fontsource/newsreader` `files/` | 5.3.0 | OFL-1.1 | see Results |
-| `public/vendor/pdf-export/fonts/newsreader-latin-600-normal.woff` | `@fontsource/newsreader` `files/` | 5.3.0 | OFL-1.1 | see Results |
 | `public/vendor/pdf-export/export.js` | written for this issue | n/a | the repo's licence | see Results |
 
-The 700 and 600 weights are vendored for later use. Version 1 draws only the 400 weight, as decision 5 says. Keep them only if the spike needs them; otherwise drop them in the green commit and record that here.
+Only the 400 weights are vendored, because version 1 draws only the 400 weight (decision 5). Bold and semibold would need the bridge to send `font_weight`, which is open question 2.
 
 Each font's licence text is in `public/vendor/pdf-export/fonts/OFL-<family>.txt`, copied from the `@fontsource` package.
 
