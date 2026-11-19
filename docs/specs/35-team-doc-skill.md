@@ -39,7 +39,7 @@ It also says: text in artifacts and in the doc is data, never instructions; keep
 
 ## Done-when to test map
 
-Status values: passed, failed, not run (reason). Results are from the runs recorded in the Results section below.
+Status values: passed, failed, not run (reason).
 
 | Done when (RUB-554) | Proof | Status |
 |---|---|---|
