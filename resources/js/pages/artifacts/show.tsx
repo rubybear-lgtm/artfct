@@ -52,8 +52,72 @@ interface Props {
     openUrl: string;
     /** Null when no download is offered — the public viewer. */
     downloadUrl: string | null;
+    /** The PowerPoint export route for a slide deck, else null (RUB-562, spec 46). */
+    pptxExportUrl: string | null;
     /** A signed-in member's discussion; absent in the public viewer. */
     comments?: ArtifactComment[];
+}
+
+/** The PowerPoint export runner, served from the app's public folder (RUB-562, spec 46). */
+const PPTX_RUNNER_SRC = '/vendor/pptx-export/export.js';
+
+interface PptxExportRunner {
+    run(options: {
+        frameUrl: string;
+        exportUrl: string;
+        onProgress?: (captured: number, total: number) => void;
+    }): Promise<{ filename: string; captures: number }>;
+}
+
+declare global {
+    interface Window {
+        artfctPptxExport?: PptxExportRunner;
+    }
+}
+
+let pptxRunnerLoading: Promise<PptxExportRunner> | null = null;
+
+/** Loads the runner once. It only receives data; it never runs artifact script. */
+function loadPptxRunner(): Promise<PptxExportRunner> {
+    if (window.artfctPptxExport) {
+        return Promise.resolve(window.artfctPptxExport);
+    }
+
+    if (!pptxRunnerLoading) {
+        pptxRunnerLoading = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+
+            script.src = PPTX_RUNNER_SRC;
+            script.onload = () => {
+                if (window.artfctPptxExport) {
+                    resolve(window.artfctPptxExport);
+                } else {
+                    reject(new Error('runner_missing'));
+                }
+            };
+            script.onerror = () => {
+                pptxRunnerLoading = null;
+                reject(new Error('runner_missing'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    return pptxRunnerLoading;
+}
+
+/** A plain sentence for a refused or failed PowerPoint export. */
+function pptxFailureMessage(error: unknown): string {
+    const code =
+        error instanceof Error
+            ? (error as Error & { code?: string }).code
+            : undefined;
+
+    if (code === 'capture_unsupported') {
+        return 'This deck was published before PowerPoint export. Publish it again to export it.';
+    }
+
+    return 'The PowerPoint could not be made. Try again.';
 }
 
 /** The name a person reads: the title, or a short id when it has none. */
@@ -98,6 +162,7 @@ export default function ArtifactShow({
     viewerUrl,
     openUrl,
     downloadUrl,
+    pptxExportUrl,
     comments,
 }: Props) {
     const name = artifactName(artifact.title, artifact.id);
@@ -254,10 +319,35 @@ export default function ArtifactShow({
     }, [artifact.id, artifact.version, artifact.sharing, selectedVersion]);
 
     const [panelOpen, setPanelOpen] = useState(false);
+    const [pptxStatus, setPptxStatus] = useState<string | null>(null);
     const commentCount = comments?.length ?? 0;
     const backHref = publicView
         ? home.url()
         : consoleRoutes.index.url({ team: team.slug });
+
+    async function downloadPowerPoint(): Promise<void> {
+        if (!pptxExportUrl) {
+            return;
+        }
+
+        setPptxStatus('Preparing slides…');
+
+        try {
+            const runner = await loadPptxRunner();
+
+            await runner.run({
+                frameUrl: frameUrl,
+                exportUrl: pptxExportUrl,
+                onProgress: (captured, total) =>
+                    setPptxStatus(
+                        `Capturing slide ${captured + 1} of ${total}…`,
+                    ),
+            });
+            setPptxStatus(null);
+        } catch (error) {
+            setPptxStatus(pptxFailureMessage(error));
+        }
+    }
 
     return (
         <>
@@ -362,6 +452,29 @@ export default function ArtifactShow({
                                     Download
                                 </a>
                             </Button>
+                        )}
+
+                        {pptxExportUrl && (
+                            <>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={downloadPowerPoint}
+                                    disabled={pptxStatus !== null}
+                                    data-testid="download-powerpoint"
+                                >
+                                    Download PowerPoint
+                                </Button>
+                                {pptxStatus && (
+                                    <span
+                                        role="status"
+                                        className="text-sm text-muted-foreground"
+                                    >
+                                        {pptxStatus}
+                                    </span>
+                                )}
+                            </>
                         )}
 
                         {canSignInToEdit && (
