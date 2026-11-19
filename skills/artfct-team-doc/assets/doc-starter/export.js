@@ -26,11 +26,13 @@
 
   function reply(source, origin, id, body) {
     var message = { channel: CHANNEL, v: PROTOCOL, id: id };
+
     for (var key in body) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         message[key] = body[key];
       }
     }
+
     source.postMessage(message, origin);
   }
 
@@ -54,6 +56,7 @@
     var isFixed = sheet.classList.contains('sheet--fixed');
     var pageCount = isFixed ? 1 : Math.max(1, Math.ceil(contentHeight / printableHeight));
     var breaks = [];
+
     for (var b = 1; b < pageCount; b++) {
       breaks.push(b * printableHeight);
     }
@@ -61,11 +64,14 @@
     var runs = [];
     var walker = document.createTreeWalker(sheet, NodeFilter.SHOW_TEXT);
     var node;
+
     while ((node = walker.nextNode())) {
       var text = node.nodeValue.replace(/\s+/g, ' ').trim();
+
       if (text === '' || !node.parentElement) {
         continue;
       }
+
       var range = document.createRange();
       range.selectNodeContents(node);
       var rect = range.getBoundingClientRect();
@@ -84,11 +90,14 @@
 
     var images = [];
     var imageNodes = sheet.querySelectorAll('img');
+
     for (var i = 0; i < imageNodes.length; i++) {
       var src = imageNodes[i].getAttribute('src') || '';
+
       if (src === '' || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) {
         continue;
       }
+
       var imageRect = imageNodes[i].getBoundingClientRect();
       images.push({
         src: src,
@@ -100,6 +109,7 @@
     }
 
     var pages = [];
+
     for (var p = 0; p < pageCount; p++) {
       var top = p * printableHeight;
       var bottom = top + printableHeight;
@@ -128,14 +138,17 @@
     if (event.source !== window.parent) {
       return;
     }
+
     if (!isHttpOrigin(event.origin)) {
       return;
     }
 
     var message = event.data;
+
     if (!message || typeof message !== 'object' || message.channel !== CHANNEL) {
       return;
     }
+
     if (message.v !== PROTOCOL || typeof message.id !== 'string') {
       return;
     }
@@ -146,6 +159,7 @@
         ok: true,
         result: { starter: STARTER, protocol: PROTOCOL, commands: ['ready', 'describe'] }
       });
+
       return;
     }
 
@@ -155,6 +169,7 @@
 
     if (message.cmd === 'describe') {
       reply(event.source, event.origin, message.id, { ok: true, result: describe() });
+
       return;
     }
 
