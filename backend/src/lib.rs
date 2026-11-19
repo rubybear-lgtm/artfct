@@ -1820,6 +1820,8 @@ mod tests {
         let content = artifact_routes::build_org_content_response(
             "abcdefghijklm",
             &artifact_routes::ContentRow {
+                row_id: 9,
+                entrypoint: "index.html".to_string(),
                 content_hash: "a".repeat(64),
                 content_type: "text/html".to_string(),
                 tier: "public".to_string(),
@@ -1830,7 +1832,25 @@ mod tests {
                 current_version: 2,
             },
             "<h1>rendered</h1>",
+            &[
+                artifact_routes::ContentFileRow {
+                    path: "app.js".to_string(),
+                    content_hash: "b".repeat(64),
+                    content_type: "text/javascript".to_string(),
+                    size_bytes: 12,
+                },
+                artifact_routes::ContentFileRow {
+                    path: "index.html".to_string(),
+                    content_hash: "a".repeat(64),
+                    content_type: "text/html".to_string(),
+                    size_bytes: 16,
+                },
+            ],
         );
+        assert_eq!(content["entrypoint"], "index.html");
+        assert_eq!(content["files"][0]["path"], "app.js");
+        assert_eq!(content["files"][0]["sha256"], "b".repeat(64));
+        assert_eq!(content["files"][1]["size_bytes"], 16);
         validate_schema(
             &contract,
             operation_response_schema(

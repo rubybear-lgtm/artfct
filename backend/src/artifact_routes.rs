@@ -12,6 +12,8 @@ use crate::sharing::{
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
+    pub(crate) row_id: i64,
+    pub(crate) entrypoint: String,
     pub(crate) content_hash: String,
     pub(crate) content_type: String,
     pub(crate) tier: String,
@@ -22,17 +24,41 @@ pub(crate) struct ContentRow {
     pub(crate) current_version: i64,
 }
 
-/// The org-credentialed content read's JSON body. Shared by the handler and
-/// its contract test.
+/// One file of the current version's bundle, as the org content read lists it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ContentFileRow {
+    pub(crate) path: String,
+    pub(crate) content_hash: String,
+    pub(crate) content_type: String,
+    pub(crate) size_bytes: i64,
+}
+
+/// The org-credentialed content read's JSON body. `files` lists every file of
+/// the current version, sorted by path, so a server-side packager can fetch
+/// each one by its sha256. Shared by the handler and its contract test.
 pub(crate) fn build_org_content_response(
     artifact_id: &str,
     row: &ContentRow,
     content: &str,
+    files: &[ContentFileRow],
 ) -> Value {
+    let files: Vec<Value> = files
+        .iter()
+        .map(|file| {
+            serde_json::json!({
+                "path": file.path,
+                "sha256": file.content_hash,
+                "content_type": file.content_type,
+                "size_bytes": file.size_bytes,
+            })
+        })
+        .collect();
     serde_json::json!({
         "id": artifact_id,
         "version": row.current_version,
         "content_type": row.content_type,
+        "entrypoint": row.entrypoint,
+        "files": files,
         "tier": row.tier,
         "sharing": Sharing::from_tier(&row.tier),
         "owner_user_id": row.user_id,
@@ -108,7 +134,7 @@ pub(crate) async fn get_org_artifact_content(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let row = storage
         .database
-        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, a.user_id AS user_id, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT a.row_id AS row_id, a.entrypoint AS entrypoint, f.content_hash, f.content_type, a.tier AS tier, a.user_id AS user_id, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<ContentRow>(None)
         .await?;
@@ -138,8 +164,15 @@ pub(crate) async fn get_org_artifact_content(
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
     let bytes = body.bytes().await?;
+    let files = storage
+        .database
+        .prepare("SELECT path, content_hash, content_type, size_bytes FROM files WHERE artifact_row_id = ? ORDER BY path")
+        .bind(&[JsValue::from_f64(row.row_id as f64)])?
+        .all()
+        .await?
+        .results::<ContentFileRow>()?;
     JsonResponseDefinition::json(
-        build_org_content_response(artifact_id, &row, &String::from_utf8_lossy(&bytes)),
+        build_org_content_response(artifact_id, &row, &String::from_utf8_lossy(&bytes), &files),
         200,
     )
     .into_worker_response()

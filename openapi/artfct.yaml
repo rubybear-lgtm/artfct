@@ -626,7 +626,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The entrypoint text and provenance.",
+            "description": "The entrypoint text, the bundle file list and provenance.",
             "content": {
               "application/json": {
                 "schema": {
@@ -638,6 +638,21 @@
                     "owner_user_id": { "type": ["string", "null"], "description": "Server-side callers (system reads with artifacts:read_private) must apply the Private rule themselves before showing or linking the artifact." },
                     "version": { "type": "integer", "minimum": 1, "description": "The current version whose entrypoint is returned." },
                     "content_type": { "type": "string" },
+                    "entrypoint": { "type": "string", "description": "The path of the entrypoint file in the current version's bundle." },
+                    "files": {
+                      "type": "array",
+                      "description": "Every file of the current version's bundle, sorted by path. Fetch a file's bytes with GET /v1/blobs/{sha256}.",
+                      "items": {
+                        "type": "object",
+                        "required": ["path", "sha256", "content_type", "size_bytes"],
+                        "properties": {
+                          "path": { "type": "string" },
+                          "sha256": { "type": "string", "description": "Lowercase hex SHA-256 of the file bytes." },
+                          "content_type": { "type": "string" },
+                          "size_bytes": { "type": "integer", "minimum": 0 }
+                        }
+                      }
+                    },
                     "provenance": {
                       "type": "object",
                       "properties": {
