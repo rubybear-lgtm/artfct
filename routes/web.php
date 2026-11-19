@@ -124,6 +124,7 @@ Route::middleware('auth')->group(function () {
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
     Route::get('a/{artifactId}/download.html', [ArtifactViewerController::class, 'downloadHtml'])->name('artifacts.download.html');
     Route::get('a/{artifactId}/download-handoff.zip', [ArtifactViewerController::class, 'downloadHandoff'])->name('artifacts.download.handoff');
+    Route::post('a/{artifactId}/export/pptx', [ArtifactViewerController::class, 'exportPptx'])->middleware('throttle:artifact-pptx-export')->name('artifacts.export.pptx');
 });
 
 // ── identity (spec 06) ──────────────────────────────────────────────────────
