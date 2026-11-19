@@ -148,3 +148,11 @@ test('doc starter describe without a sheet replies with an error instead of thro
         ->assertScript('window.results.describe.ok', false)
         ->assertScript('window.results.describe.error.code', 'no_sheet');
 });
+
+test('doc starter ignores an id longer than 128 characters and echoes one of 128', function () {
+    visit(docStarterDriverUrl('flowing'))
+        ->waitForText('done')
+        ->assertScript('window.results.longIdReply', null)
+        ->assertScript('window.results.boundaryIdReply !== null', true)
+        ->assertScript('window.results.boundaryIdReply.id.length', 128);
+});

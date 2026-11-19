@@ -12,6 +12,7 @@
   var CHANNEL = 'artfct-export';
   var PROTOCOL = 1;
   var STARTER = 'doc@1';
+  var ID_MAX = 128;
   var PT_PER_PX = 0.75;
   var PAGE_PT = { letter: [612, 792], a4: [595.28, 841.89] };
   var handshaken = false;
@@ -149,7 +150,7 @@
       return;
     }
 
-    if (message.v !== PROTOCOL || typeof message.id !== 'string') {
+    if (message.v !== PROTOCOL || typeof message.id !== 'string' || message.id.length > ID_MAX) {
       return;
     }
 
