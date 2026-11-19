@@ -35,8 +35,8 @@ Use the one-pager starter when the person asks for a one-pager that a seller wil
 2. Fill only the content slots in `index.html`. Keep the placeholder text in each `data-tweak` element; a reader without JavaScript sees it.
 3. Pass this `db` argument to `deploy_artifact`: `{"collections": {"tweaks": {"index": "customer_name"}}}`. The values live in collection `tweaks`, document `fields`. Do not seed the document; the page shows the declared defaults until someone saves.
 4. The shipped one-pager declares three fields in `tweaks.json`:
-   - `customer_name`: text, at most 80 characters.
-   - `tier`: choice, one of the `choices` in `tweaks.json`.
-   - `logo_path`: image, a relative path to a file in the bundle, such as `logo.png`, or an empty string for no logo.
+    - `customer_name`: text, at most 80 characters.
+    - `tier`: choice, one of the `choices` in `tweaks.json`.
+    - `logo_path`: image, a relative path to a file in the bundle, such as `logo.png`, or an empty string for no logo.
 5. A value written with `db_update` or `db_set` on collection `tweaks`, document `fields`, must follow the constraints for its control type: text within its `max`, choice one of its `choices`, color a hex value such as #701a24, toggle `true` or `false`, range a number within its `min` and `max`, image a bundle file path or empty. The server will not refuse an out-of-constraint value. The edit panel and this guidance are the only enforcement, so do not write a value that breaks them.
 6. The panel renders only the fields `tweaks.json` declares. To add a field, change the declaration and republish the bundle; do not add a field to `tweaks.js`.
