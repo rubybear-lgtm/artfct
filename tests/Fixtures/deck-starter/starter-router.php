@@ -4,14 +4,16 @@
  * Test fixture only: serves the deck starter bundle the way the Worker serves an
  * isolated artifact page. The CSP mirrors backend/src/artifact_origin.rs, with
  * frame-ancestors opened to the parent fixture origin given by
- * DECK_STARTER_PARENT_ORIGIN. ?variant=noscale renders the same index.html with
+ * DECK_STARTER_PARENT_ORIGIN. /images-fixture.html is a test-only deck page from
+ * this folder; every other path is served from the bundle. ?variant=noscale renders the same index.html with
  * the noscale attribute on the stage, so the no-scale path is exercised.
  */
 
 $parentOrigin = getenv('DECK_STARTER_PARENT_ORIGIN') ?: 'http://127.0.0.1';
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
-$file = realpath(getenv('DECK_STARTER_DIR').$path);
-$root = realpath(getenv('DECK_STARTER_DIR'));
+$isImagesFixture = $path === '/images-fixture.html';
+$root = $isImagesFixture ? __DIR__ : realpath(getenv('DECK_STARTER_DIR'));
+$file = realpath(($isImagesFixture ? __DIR__ : (string) getenv('DECK_STARTER_DIR')).$path);
 
 if ($file === false || $root === false || ! str_starts_with($file, $root.DIRECTORY_SEPARATOR) || ! is_file($file)) {
     http_response_code(404);

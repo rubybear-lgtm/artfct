@@ -71,7 +71,7 @@
         document.getElementById('status').textContent = 'done';
       });
 
-      starter.src = starterOrigin + '/index.html';
+      starter.src = starterOrigin + '/' + (params.get('deck') || 'index.html');
     })();
   </script>
 </body>

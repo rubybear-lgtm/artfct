@@ -72,11 +72,11 @@ function deckStarterOrigins(): array
     return $origins;
 }
 
-function deckStarterParentUrl(): string
+function deckStarterParentUrl(string $deck = 'index.html'): string
 {
     $origins = deckStarterOrigins();
 
-    return $origins['parent'].'/parent.html?starter='.urlencode($origins['starter']);
+    return $origins['parent'].'/parent.html?starter='.urlencode($origins['starter']).'&deck='.urlencode($deck);
 }
 
 function deckStarterUrl(string $query = ''): string
@@ -102,6 +102,13 @@ test('deck starter describe returns the three slides', function () {
         ->assertScript('window.results.replies.describe.data.result.slides[0].notes', 'Speaker notes for slide 1.')
         ->assertScript('window.results.replies.describe.data.result.slides[2].index', 2)
         ->assertScript('window.results.replies.describe.data.result.slides[1].images.length', 0);
+});
+
+test('describe keeps only relative image sources and counts the rest', function () {
+    visit(deckStarterParentUrl('images-fixture.html'))
+        ->waitForText('done')
+        ->assertScript('JSON.stringify(window.results.replies.describe.data.result.slides[0].images.map((image) => image.src))', '["images/a.png"]')
+        ->assertScript('window.results.replies.describe.data.result.droppedImages', 4);
 });
 
 test('deck starter goTo answers in range and refuses out-of-range indexes', function () {
