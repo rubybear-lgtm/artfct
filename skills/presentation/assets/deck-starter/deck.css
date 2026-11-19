@@ -9,6 +9,10 @@
   --deck-rule: #d4d1cb;
   --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --deck-unit: calc(100vw / 1920);
+  --type-kicker: calc(var(--deck-unit) * 28);
+  --type-title: calc(var(--deck-unit) * 120);
+  --type-heading: calc(var(--deck-unit) * 84);
+  --type-body: calc(var(--deck-unit) * 44);
 }
 
 html.deck-js {
@@ -44,7 +48,7 @@ body {
 
 .slide .kicker {
   margin: 0 0 calc(var(--deck-unit) * 24);
-  font-size: calc(var(--deck-unit) * 28);
+  font-size: var(--type-kicker);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--deck-accent);
@@ -52,20 +56,20 @@ body {
 
 .slide h1 {
   margin: 0 0 calc(var(--deck-unit) * 40);
-  font-size: calc(var(--deck-unit) * 120);
+  font-size: var(--type-title);
   line-height: 1.05;
 }
 
 .slide h2 {
   margin: 0 0 calc(var(--deck-unit) * 40);
-  font-size: calc(var(--deck-unit) * 84);
+  font-size: var(--type-heading);
   line-height: 1.1;
 }
 
 .slide p,
 .slide li {
   margin: 0 0 calc(var(--deck-unit) * 20);
-  font-size: calc(var(--deck-unit) * 44);
+  font-size: var(--type-body);
   line-height: 1.4;
   color: var(--deck-muted);
 }
