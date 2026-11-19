@@ -20,12 +20,12 @@ use Illuminate\Testing\TestResponse;
 
 const POST_ARTIFACT_ID = 'abc123def456x';
 
-function postReleaseArtifactDb(Team $team): void
+function postReleaseArtifactDb(Team ...$teams): void
 {
     FeatureRelease::factory()->create([
         'key' => 'artifact-db',
         'state' => FeatureReleaseState::SelectedTeams,
-        'selected_team_ids' => [$team->id],
+        'selected_team_ids' => array_map(fn (Team $team): int => $team->id, $teams),
     ]);
     app(FeatureFlags::class)->flush();
 }
@@ -199,10 +199,11 @@ test('a token without data:write gets insufficient_scope on post details', funct
 
 test('a token from another team gets not_found on post details (Worker faked, not isolation)', function () {
     $team = Team::factory()->create(['slug' => 'post-other-team']);
-    postReleaseArtifactDb($team);
+    $otherTeam = Team::factory()->create(['slug' => 'post-other-owner']);
+    postReleaseArtifactDb($team, $otherTeam);
     Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'not_found', 'message' => 'Not found.']], 404)]);
 
-    $tokenForOtherTeam = remoteMcpToken($team);
+    $tokenForOtherTeam = remoteMcpToken($otherTeam);
 
     postCallMcpTool($tokenForOtherTeam, 'db_update', [
         'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
