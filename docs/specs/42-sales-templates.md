@@ -48,4 +48,12 @@ A seller asks the bot for a customer email or a single-page flier. The bot start
 
 ## Results (recorded at implementation)
 
-Pending.
+Commits: spec `66f1c37`, red `fd9030b`, templates `c66cc5f`, guidance and version `7d054c6`.
+
+- Red (before files and text existed): `SalesTemplatesTest` 6 groups failed for missing files, `McpGuidanceTest` flier and email sections failed on empty section text, `AgentInstructionsTest` "the guidance version moved with the text" failed (`1.11.0` against `1.12.0`).
+- Green: `SalesTemplatesTest` 15 passed, including "the flier passes the publish contract", "the email passes the publish contract", "the publish contract refuses violating copies of the flier" (4 datasets), "... of the email" (4 datasets), "the email lays out in tables at 600px with no div grid", "the flier is one fixed sheet that reuses the doc starter's doc.css".
+- Guidance tests: "the team doc guidance has flier and email sections naming both templates", "the team doc guidance gives flier print-craft rules", "the team doc guidance says email is not sent from Artfct", "the team doc flier and email sections follow the Brand and voice post", "the guidance version moved with the text" (1.12.0). Related run of `tests/Feature/Starters`, `tests/Feature/Templates`, `McpGuidanceTest`, `AgentInstructionsTest`, `HandoffPackDownloadTest`: 369 passed.
+- `npm run test:skills`: 8/8 files passed. `npm run test:plugin`: 3/3 passed. Pint `--dirty`: passed. Prettier check on `team-doc.md`: passed.
+- Guard breaks, each run then restored: email width 580 (layout test fails), `<div>` added to the email (layout test fails), flier `sheet--fixed` removed (fixed-sheet test fails), flier `doc.css` drift (byte-identity test fails), "not sent from Artfct" removed from guidance (guidance test fails), validator `on*=` check disabled (email onclick refusal fails, 1 of 4 email refusal datasets).
+
+Not verified: the staging render check (both samples show, zero CSP console errors, flier prints on one page with print emulated) was not run; this session has no staging deploy from here. Screenshots are not in this branch. CI, PR review and the Done-when item about develop's version at merge are the orchestrator's.
