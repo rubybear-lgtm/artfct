@@ -12,9 +12,6 @@ use Symfony\Component\Process\Process;
 const DECK_STARTER_FIXTURES = __DIR__.'/../Fixtures/deck-starter';
 const DECK_STARTER_BUNDLE = __DIR__.'/../../skills/presentation/assets/deck-starter';
 
-/** @var list<Process> */
-$deckStarterServers = [];
-
 /** @return int a free loopback TCP port */
 function deckStarterFreePort(): int
 {
