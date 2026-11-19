@@ -12,7 +12,10 @@ use App\Models\User;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Artifacts\HandoffPackBuilder;
+use App\Services\Artifacts\HandoffPackException;
 use App\Services\Artifacts\StandaloneBundlePacker;
 use App\Services\Artifacts\StandalonePackException;
 use App\Services\Governance\AuditLogger;
@@ -27,6 +30,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * The artifact viewer (RUB-438), addressed by one short route for every sharing
@@ -568,6 +572,51 @@ final class ArtifactViewerController extends Controller
             // the app origin its inline script must not run with the app's access.
             'Content-Security-Policy' => 'sandbox',
         ]);
+    }
+
+    /**
+     * The engineering handoff pack for a mockup (RUB-564, spec 41): a zip of the
+     * bundle with its HANDOFF.md promoted to README.md. Visibility is decided as
+     * for `download`, and every refusal of visibility is the same 404. A mockup
+     * the pack cannot be built for is answered in JSON with its `code`.
+     */
+    public function downloadHandoff(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        ArtifactContentSource $content,
+        ArtifactTypeResolver $types,
+        HandoffPackBuilder $builder,
+    ): BinaryFileResponse|JsonResponse {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        Gate::authorize('view', $team);
+
+        $entry = $content->fetch($team->slug, $artifactId);
+
+        abort_if($entry === null, 404);
+
+        abort_unless(
+            ArtifactVisibility::canView($entry['sharing'] ?? null, $entry['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
+
+        try {
+            $path = $builder->build($team->slug, $artifactId, $entry, $types->typesFor($team, [$artifactId])[$artifactId] ?? null);
+        } catch (HandoffPackException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+                'errors' => $exception->errors,
+            ], $exception->status);
+        }
+
+        $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'-handoff.zip';
+
+        return response()->download($path, $filename)->deleteFileAfterSend();
     }
 
     /**

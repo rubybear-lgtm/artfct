@@ -66,6 +66,7 @@ function notPages(): array
         'teams.audit.export' => 'file download', 'console.export' => 'zip download',
         'artifacts.download' => 'file download',
         'artifacts.download.html' => 'file download (standalone HTML, StandaloneHtmlDownloadTest)',
+        'artifacts.download.handoff' => 'file download (handoff zip, HandoffPackDownloadTest)',
         'artifacts.freshness' => 'viewer freshness JSON poll (ArtifactViewerTest)',
         'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
