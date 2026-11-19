@@ -45,3 +45,31 @@ Use the one-pager starter when the person asks for a one-pager that a seller wil
     - `logo_path`: image, a relative path to a file in the bundle, such as `logo.png`, or an empty string for no logo.
 5. A value written with `db_update` or `db_set` on collection `tweaks`, document `fields`, must follow the constraints for its control type: text within its `max`, choice one of its `choices`, color a hex value such as #701a24, toggle `true` or `false`, range a number within its `min` and `max`, image a bundle file path or empty. The server will not refuse an out-of-constraint value. The edit panel and this guidance are the only enforcement, so do not write a value that breaks them.
 6. The panel renders only the fields `tweaks.json` declares. To add a field, change the declaration and republish the bundle; do not add a field to `tweaks.js`.
+
+## Flier
+
+Use the flier when the person asks for a single-page sales flier: one Letter sheet that a seller hands to a customer or prints for an event.
+
+1. Copy the two files from `skills/artfct-team-doc/assets/flier-starter/`: `index.html` and `doc.css`. Copy them unchanged, at the same relative paths. `doc.css` is the doc starter's stylesheet, copied unchanged, so a flier and a doc match. Deploy the bundle with `entrypoint: index.html` and `artifact_type: document`.
+2. The page is one fixed sheet: `<main class="sheet sheet--fixed">`. It fills exactly one Letter sheet. Overflow is clipped, not reflowed, so cut the text rather than adding a second sheet.
+3. Fill the slots in `index.html`: the headline (one `<h1>`), the byline, the five facts in the `flier-facts` table, and the footer contact line. Do not add scripts, styles or other chrome.
+4. Follow the "Brand and voice" post for colors, type and tone. Search for it with `search_artifacts` as the publish topic says, and use its primary color for the flat color blocks.
+5. Print craft, in these rules:
+    - One dominant headline, readable across a room. Everything else is smaller.
+    - The five Ws (what, when, where, cost, one way to act) are grouped tight and scannable, in the facts table. Never scatter them through prose.
+    - Use flat color blocks and vector shapes. Do not use photos or gradients.
+    - Keep everything inside at least 4 percent of the page on every edge.
+    - The fixed sheet fills its box and fits Letter and A4 without overlap. Check both before you publish.
+    - Colors still read in grayscale. If a fact only shows by color, add a label.
+
+## Customer email
+
+Use the email template when the person asks for a customer email. Email is not sent from Artfct. The template is the text and layout that the sender copies into their own email client.
+
+1. Copy `index.html` and `logo.svg` from `skills/artfct-team-doc/assets/email-template/`, unchanged, at the same relative paths. Deploy the bundle with `entrypoint: index.html` and `artifact_type: document`.
+2. The layout is a table, 600px wide, with inline `style=` attributes. Keep the table layout. Do not rebuild it with `<div>` blocks, and do not add a `<script>`.
+3. The logo is the bundled `logo.svg` path. Replace the placeholder mark only with a bundled file, not a link.
+4. Fill the greeting, the two short paragraphs and the sign-off. Keep each paragraph to what the reader needs.
+5. Follow the "Brand and voice" post for voice and colors. Search for it with `search_artifacts` as the publish topic says.
+6. The publish contract forbids external links and images, so the template has none. Say in your reply that the sender adds the real links in their email client.
+7. Email is not sent from Artfct. Do not claim that the email was sent, and do not offer a send path in this skill.
