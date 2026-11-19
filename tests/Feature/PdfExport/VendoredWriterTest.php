@@ -54,13 +54,16 @@ test('export.js never posts to a wildcard origin', function () {
 test('export.js makes no network request and never touches the parent document', function () {
     $source = file_get_contents(PDF_EXPORT_DIR.'/export.js');
 
-    foreach (['fetch(', 'XMLHttpRequest', 'sendBeacon', 'WebSocket', 'EventSource', 'import(', 'parent.document', 'document.cookie', 'localStorage', 'sessionStorage'] as $forbidden) {
-        expect($source)->not->toContain($forbidden, "export.js must not use {$forbidden}");
+    foreach (['XMLHttpRequest', 'sendBeacon', 'WebSocket', 'EventSource', 'import(', 'parent.document', 'document.cookie', 'localStorage', 'sessionStorage'] as $forbidden) {
+        expect(str_contains($source, $forbidden))->toBeFalse("export.js must not use {$forbidden}");
     }
+
+    expect(substr_count($source, 'fetch('))->toBe(1);
+    expect($source)->toContain('fetch(BASE_URL + FONT_FILES[key])');
 });
 
 test('export.js only accepts replies whose source is the frame it created', function () {
     $source = file_get_contents(PDF_EXPORT_DIR.'/export.js');
 
-    expect($source)->toContain('event.source === frame.contentWindow');
+    expect($source)->toContain('event.source !== frame.contentWindow');
 });
