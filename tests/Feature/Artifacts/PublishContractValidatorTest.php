@@ -6,13 +6,13 @@ use App\Services\Artifacts\PublishContractValidator;
  * @param  array<string, string>  $files
  * @return list<string>
  */
-function validateBundle(array $files, ?string $entrypoint = 'index.html'): array
+function publishContractErrors(array $files, ?string $entrypoint = 'index.html'): array
 {
     return (new PublishContractValidator)->validate($files, 'Bundle', $entrypoint);
 }
 
 test('a valid bundle returns no errors', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><link rel="stylesheet" href="styles/app.css"><script src="app.js"></script><img src="img/logo.svg" alt="">',
         'app.js' => 'fetch("/api/data");',
         'styles/app.css' => 'body { background: url("../img/bg.png"); }',
@@ -24,7 +24,7 @@ test('a valid bundle returns no errors', function () {
 });
 
 test('flags an inline script in html', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><script>alert(1)</script>',
     ]);
 
@@ -32,7 +32,7 @@ test('flags an inline script in html', function () {
 });
 
 test('flags a script element in svg', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html>',
         'icon.svg' => '<svg><script>alert(1)</script></svg>',
     ]);
@@ -41,7 +41,7 @@ test('flags a script element in svg', function () {
 });
 
 test('flags a foreignObject element in svg', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html>',
         'icon.svg' => '<svg><foreignObject><div>hi</div></foreignObject></svg>',
     ]);
@@ -50,7 +50,7 @@ test('flags a foreignObject element in svg', function () {
 });
 
 test('flags an on*= handler', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><button onclick="go()">Go</button>',
     ]);
 
@@ -58,7 +58,7 @@ test('flags an on*= handler', function () {
 });
 
 test('flags a data URI', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><img src="data:image/png;base64,AAAA" alt="">',
     ]);
 
@@ -66,7 +66,7 @@ test('flags a data URI', function () {
 });
 
 test('flags an external origin in css', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html>',
         'styles.css' => '@import "https://fonts.example.com/font.css";',
     ]);
@@ -75,7 +75,7 @@ test('flags an external origin in css', function () {
 });
 
 test('flags an external origin in html and js', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><script src="https://cdn.example.com/lib.js"></script>',
         'app.js' => 'fetch("https://api.example.com/data");',
     ]);
@@ -85,7 +85,7 @@ test('flags an external origin in html and js', function () {
 });
 
 test('flags a reference that is not in the bundle', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html><link rel="stylesheet" href="missing.css">',
     ]);
 
@@ -93,7 +93,7 @@ test('flags a reference that is not in the bundle', function () {
 });
 
 test('flags a missing entrypoint', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'other.html' => '<!doctype html>',
     ]);
 
@@ -101,10 +101,52 @@ test('flags a missing entrypoint', function () {
 });
 
 test('flags a reserved __artfct prefix', function () {
-    $errors = validateBundle([
+    $errors = publishContractErrors([
         'index.html' => '<!doctype html>',
         '__artfct/secret.js' => 'x',
     ]);
 
     expect($errors)->toContain('Bundle file [__artfct/secret.js] lives under the reserved `__artfct/` prefix.');
+});
+
+test('flags an absolute-path reference', function () {
+    $errors = publishContractErrors([
+        'index.html' => '<!doctype html><link rel="stylesheet" href="/styles.css">',
+        'styles.css' => 'body {}',
+    ]);
+
+    expect($errors)->toContain('Bundle file [index.html] references absolute path [/styles.css]; use a relative path inside files/.');
+});
+
+test('flags an on*= handler in svg', function () {
+    $errors = publishContractErrors([
+        'index.html' => '<!doctype html>',
+        'icon.svg' => '<svg onload="go()"><rect width="1" height="1"/></svg>',
+    ]);
+
+    expect($errors)->toContain('Bundle file [icon.svg] has an `on*=` handler; move interactivity into a bundled script file.');
+});
+
+test('flags an external origin in svg', function () {
+    $errors = publishContractErrors([
+        'index.html' => '<!doctype html>',
+        'icon.svg' => '<svg><image href="https://cdn.example.com/a.png"/></svg>',
+    ]);
+
+    expect($errors)->toContain('Bundle file [icon.svg] loads an external origin [https://cdn.example.com/a.png]; bundle every asset in files/.');
+});
+
+test('flags an invalid relative path', function () {
+    $errors = publishContractErrors([
+        'index.html' => '<!doctype html>',
+        '../escape.js' => 'x',
+    ]);
+
+    expect($errors)->toContain('Bundle file [../escape.js] is not a valid relative bundle path.');
+});
+
+test('skips the entrypoint check when no entrypoint is given', function () {
+    $errors = publishContractErrors(['other.html' => '<!doctype html>'], null);
+
+    expect($errors)->toBe([]);
 });
