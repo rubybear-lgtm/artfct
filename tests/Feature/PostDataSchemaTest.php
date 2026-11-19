@@ -114,7 +114,7 @@ test('post details refuses an unknown status before anything is sent', function 
     Http::assertNothingSent();
 });
 
-test('post details refuses a replaced_by that is neither null nor a string', function () {
+test('post details refuses a replaced_by that is not null or a permanent artifact id', function () {
     $team = Team::factory()->create(['slug' => 'post-replaced']);
     postReleaseArtifactDb($team);
     Http::fake();
@@ -197,7 +197,7 @@ test('a token without data:write gets insufficient_scope on post details', funct
     Http::assertNothingSent();
 });
 
-test('another team gets not_found on post details', function () {
+test('a token from another team gets not_found on post details (Worker faked, not isolation)', function () {
     $team = Team::factory()->create(['slug' => 'post-other-team']);
     postReleaseArtifactDb($team);
     Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'not_found', 'message' => 'Not found.']], 404)]);
@@ -275,4 +275,35 @@ test('db_batch refuses a post details set with an unknown field and applies none
         ->assertJsonPath('result.structuredContent.code', 'invalid_request');
 
     Http::assertNothingSent();
+});
+
+test('a valid post details write passes through to the Worker', function () {
+    $team = Team::factory()->create(['slug' => 'post-valid-write']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['data' => ['status' => 'current']], 200)]);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'current', 'replaced_by' => null],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', false);
+
+    Http::assertSentCount(1);
+});
+
+test('a db_batch with a valid post details set and a delete passes through', function () {
+    $team = Team::factory()->create(['slug' => 'post-valid-batch']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['applied' => 2], 200)]);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_batch', [
+        'id' => POST_ARTIFACT_ID,
+        'writes' => [
+            ['op' => 'set', 'collection' => 'post', 'doc_id' => 'details', 'data' => ['kind' => 'decision', 'owner' => 'Ana', 'status' => 'draft', 'replaced_by' => null]],
+            ['op' => 'delete', 'collection' => 'post', 'doc_id' => 'old'],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', false);
+
+    Http::assertSentCount(1);
 });

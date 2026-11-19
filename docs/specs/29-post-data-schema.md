@@ -33,6 +33,8 @@ Known gaps (recorded, not closed here):
 - In-page writes: the Worker's `/__artfct/db/*` route accepts browser writes from a Writer (owner, admin, or member with `edit_access=edit`). Script in a published page, or a tweaked copy of the starter, can write `{kind:"memo"}` without passing these tools.
 - Seed rows: `deploy_artifact` takes `db.seed` as the publisher's JSON. `validateDbManifest` checks shape only, so a first deploy can seed invalid post details.
 - Direct REST writes with a `data:write` token skip the field rule.
+- `db_delete` of `post/details` is allowed; the document can be removed.
+- `replaced_by` is checked only for shape: no existence, same-team or self-reference check.
 - Cross-field rules are not enforced (for example `superseded` without `replaced_by`). A partial update would need the stored document to check them.
 - The starter's "no other request" check is a regex and would miss dynamic request forms. The CSP and the single same-origin `fetch` are the real control.
 
@@ -42,7 +44,7 @@ Rules:
 - `db_set` (replace) must carry all four fields.
 - `db_update` checks the fields it sends.
 - `db_batch` checks each write to `post/details`; a `delete` is not checked.
-- `kind` and `status` must be in their sets. `replaced_by` must be null or a string. `owner` must be a string.
+- `kind` and `status` must be in their sets. `replaced_by` must be null or a permanent artifact id. `owner` must be a string.
 
 ## Page
 
@@ -67,11 +69,11 @@ The snapshot is display-only. Data is the source of truth.
 |---|---|---|
 | Pre-code comment on the issue states where validation lives | Linear comment | Not met: the Linear comment write was denied by the permission system. The decision is recorded in the Where validation lives section instead. |
 | Manifest declares both collections and seeds `details` on first deploy only | `ContextPostStarterTest` · `the context post manifest declares both collections and seeds details once` | passed (12/12 file) |
-| `status` outside its values, `kind` outside the set returns `invalid_request`; `replaced_by` must be null or string | `PostDataSchemaTest` · `post details refuses an unknown kind before anything is sent`, `... an unknown status before anything is sent`, `... refuses a replaced_by that is neither null nor a string before anything is sent` | passed; guard broken: 4 refusal tests failed |
+| `status` outside its values, `kind` outside the set returns `invalid_request`; `replaced_by` must be null or a permanent artifact id | `PostDataSchemaTest` · `post details refuses an unknown kind before anything is sent`, `... an unknown status before anything is sent`, `... refuses a replaced_by that is neither null nor a string before anything is sent` | passed; guard broken: 4 refusal tests failed |
 | Starter's four files exist; validator clean; four violating copies refused | `ContextPostStarterTest` · `the context post starter has its four files`, `the context post starter passes the publish contract`, `the publish contract refuses violating copies of the starter` (dataset: inline script, onclick handler, data uri image, external origin) | passed; guard broken: inline-script and data-URI tests failed |
 | `validateDbManifest` accepts manifest; rejects unknown collection and invalid seed | `ContextPostStarterTest` · `validateDbManifest accepts the context post manifest`, `validateDbManifest rejects a seed row naming an unknown collection`, `validateDbManifest rejects an invalid seed row` | passed; guard broken: both rejection tests failed |
 | `app.js` fills the block from the endpoint; no JS keeps snapshot; no other request | `ContextPostStarterTest` · `context post app.js reads only the same-origin db endpoint`, `the context post snapshot is in index.html for readers without JavaScript`. The fill-in-browser behaviour is not run (no browser test). | partly: static tests passed; browser fill not verified |
-| Feature tests: create; superseded with replaced_by; invalid kind/status; viewer forbidden; no data:write insufficient_scope; other team not_found | `PostDataSchemaTest` · `post details can be created with all four fields`, `post details can move to superseded with a replaced_by id`, `a viewer write is refused with forbidden`, `a token without data:write gets insufficient_scope on post details`, `another team gets not_found on post details` | passed; guard broken (403 mapping): viewer test failed |
+| Feature tests: create; superseded with replaced_by; invalid kind/status; viewer forbidden; no data:write insufficient_scope; other team not_found (Worker faked; the caller's token is asserted to reach the Worker, not isolation itself) | `PostDataSchemaTest` · `post details can be created with all four fields`, `post details can move to superseded with a replaced_by id`, `a viewer write is refused with forbidden`, `a token without data:write gets insufficient_scope on post details`, `another team gets not_found on post details` | passed; guard broken (403 mapping): viewer test failed |
 | Guidance untouched, no version bump | `git diff abc5f0d HEAD -- resources/guidance app/Mcp/Support/ArtifactGuidance.php` is empty | passed (checked by diff) |
 | Staging publish and browser check | Not run here; needs merged code | not verified |
 | Pint clean; CI green; reviewed | `vendor/bin/pint --dirty --format agent` passed; CI and review pending the push | pint passed |
