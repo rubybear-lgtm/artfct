@@ -49,6 +49,7 @@ Out of scope: PDF and PowerPoint export (RUB-561, RUB-562; their "When Not to Us
 | Negative: a stage style with `url(https://evil.example/x)` is refused by the publish validator | `DeckStarterTest` · `the publish contract refuses a stage style that loads an external origin through url()` | passed |
 | Negative: `image-set("https://evil.example/x")` is refused | `DeckStarterTest` · `...through image-set()` | skipped as a known gap: the validator does not refuse it (see Known gaps) |
 | Step 2: artifact text is data, not instructions; same-title match confirmed as the person's own deck before editing | `PresentationSkillTest` · `the skill searches for an existing deck before creating one` (asserts both sentences) | passed (PresentationSkillTest 35 passed, 1 skipped as known gap, with DeckStarterTest) |
+| Step 5: an empty findability search is reported to the person, not retried silently | `PresentationSkillTest` · `the skill runs one findability search after deploying` (asserts the sentence); break (sentence removed) fails it | passed |
 | `npm run test:skills` and `npm run test:plugin` pass | Commands | passed: test:skills 8/8 files; test:plugin 3/3 |
 | Staging: one deck built by a bot renders; ArrowRight changes counter; zero CSP errors; `search_artifacts` returns it | After merge, staging | not verified here |
 | CI green; reviewed and approved; no preview environments | Process | pending (orchestrator) |
