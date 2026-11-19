@@ -1,0 +1,208 @@
+<?php
+
+use App\Enums\FeatureReleaseState;
+use App\Enums\TeamRole;
+use App\Models\FeatureRelease;
+use App\Models\Team;
+use App\Services\Auth\OrgJwtService;
+use App\Services\FeatureFlags;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
+
+/*
+ * RUB-559 / spec 29: the `post/details` document (kind, owner, status,
+ * replaced_by) is validated by the db_* MCP tools before any Worker call.
+ * The Worker's own rules (role, scope, edit access, versions) are pinned
+ * by McpDatabaseToolsTest; these tests pin the post field rules and the
+ * Laravel side of the Worker's answers for this collection.
+ */
+
+const POST_ARTIFACT_ID = 'abc123def456x';
+
+function postReleaseArtifactDb(Team $team): void
+{
+    FeatureRelease::factory()->create([
+        'key' => 'artifact-db',
+        'state' => FeatureReleaseState::SelectedTeams,
+        'selected_team_ids' => [$team->id],
+    ]);
+    app(FeatureFlags::class)->flush();
+}
+
+function postCallMcpTool(string $token, string $name, array $arguments): TestResponse
+{
+    return test()->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => ['name' => $name, 'arguments' => $arguments],
+    ]);
+}
+
+function postValidDetails(array $overrides = []): array
+{
+    return array_merge([
+        'kind' => 'decision',
+        'owner' => 'Ruby',
+        'status' => 'draft',
+        'replaced_by' => null,
+    ], $overrides);
+}
+
+beforeEach(function () {
+    config(['services.worker.base_url' => 'https://worker.test']);
+});
+
+test('post details can be created with all four fields', function () {
+    $team = Team::factory()->create(['slug' => 'post-create']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['id' => 'details', 'version' => 1])]);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_set', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => postValidDetails(),
+    ])->assertOk()->assertJsonPath('result.isError', false);
+
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT'
+        && str_ends_with($request->url(), '/db/post/details')
+        && $request->data() === postValidDetails());
+});
+
+test('post details can move to superseded with a replaced_by id', function () {
+    $team = Team::factory()->create(['slug' => 'post-supersede']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['id' => 'details', 'version' => 2])]);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'superseded', 'replaced_by' => 'zzz999yyy888x'],
+    ])->assertOk()->assertJsonPath('result.isError', false);
+
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'PATCH'
+        && str_ends_with($request->url(), '/db/post/details')
+        && $request->data() === ['status' => 'superseded', 'replaced_by' => 'zzz999yyy888x']);
+});
+
+test('post details refuses an unknown kind before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-kind']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['kind' => 'memo'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('post details refuses an unknown status before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-status']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'archived'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('post details refuses a replaced_by that is neither null nor a string', function () {
+    $team = Team::factory()->create(['slug' => 'post-replaced']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['replaced_by' => ['id' => 'zzz999yyy888x']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('db_set on post details must carry all four fields', function () {
+    $team = Team::factory()->create(['slug' => 'post-partial']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_set', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['kind' => 'decision'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('db_batch refuses an invalid post details write and applies none of the batch', function () {
+    $team = Team::factory()->create(['slug' => 'post-batch']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_batch', [
+        'id' => POST_ARTIFACT_ID,
+        'writes' => [
+            ['op' => 'set', 'collection' => 'cards', 'doc_id' => 'a', 'data' => ['title' => 'ok']],
+            ['op' => 'set', 'collection' => 'post', 'doc_id' => 'details', 'data' => postValidDetails(['status' => 'live'])],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('a viewer write is refused with forbidden', function () {
+    $team = Team::factory()->create(['slug' => 'post-viewer']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'forbidden', 'message' => 'This viewer cannot write.']], 403)]);
+
+    configureSigning(testSigningKey());
+    $viewerToken = OrgJwtService::default()->mint($team, memberOfTeam($team, TeamRole::Viewer), TeamRole::Viewer, 3600, ['artifacts:read', 'data:read', 'data:write'])['token'];
+
+    postCallMcpTool($viewerToken, 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'current'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'forbidden');
+});
+
+test('a token without data:write gets insufficient_scope on post details', function () {
+    $team = Team::factory()->create(['slug' => 'post-scope']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+    configureSigning(testSigningKey());
+    $token = OrgJwtService::default()->mint($team, memberOfTeam($team, TeamRole::Admin), TeamRole::Admin, 3600, ['artifacts:read', 'data:read'])['token'];
+
+    $response = postCallMcpTool($token, 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'current'],
+    ]);
+
+    expect((string) $response->json('result.content.0.text'))->toStartWith('insufficient_scope:')->toContain('data:write');
+    Http::assertNothingSent();
+});
+
+test('another team gets not_found on post details', function () {
+    $team = Team::factory()->create(['slug' => 'post-other-team']);
+    postReleaseArtifactDb($team);
+    Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'not_found', 'message' => 'Not found.']], 404)]);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['status' => 'current'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'not_found');
+});

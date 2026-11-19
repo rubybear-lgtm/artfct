@@ -61,6 +61,11 @@ final class DbSetTool extends DatabaseTool
             'if_version' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        $refusal = $this->postDetailsRefusal($validated['collection'], $validated['doc_id'], $validated['data'], true);
+        if ($refusal !== null) {
+            return $this->refuseInvalidWrite('db_set', $startedAt, $refusal);
+        }
+
         return $this->send('db_set', $startedAt, 'PUT', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,
         ], $validated['data']);

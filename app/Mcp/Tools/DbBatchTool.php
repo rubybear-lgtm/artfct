@@ -78,6 +78,16 @@ final class DbBatchTool extends DatabaseTool
             'writes.*.if_version' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        foreach ($validated['writes'] as $write) {
+            if (($write['op'] ?? null) !== 'set') {
+                continue;
+            }
+            $refusal = $this->postDetailsRefusal($write['collection'], $write['doc_id'], $write['data'] ?? [], true);
+            if ($refusal !== null) {
+                return $this->refuseInvalidWrite('db_batch', $startedAt, $refusal);
+            }
+        }
+
         $writes = array_map(static function (array $write): array {
             $write = array_filter($write, static fn ($value): bool => $value !== null);
             if (isset($write['data']) && $write['data'] === []) {
