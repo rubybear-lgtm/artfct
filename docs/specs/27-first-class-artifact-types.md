@@ -25,7 +25,7 @@ Teams filter by kind. A bot asked "what did we decide on pricing?" should see de
 | Done when (RUB-575) | Proof |
 |---|---|
 | Both cases exist with docblocks; `values()` returns them | enum; exercised by all type tests |
-| `deploy_artifact` accepts and keeps `post` and `design_system`; list and search filter by them | `McpArtifactTypeTest`: "post and design_system are declared types…" (2 datasets), "search and list filter by post and design_system" |
+| `deploy_artifact` accepts and keeps `post` and `design_system`; list and search filter by them | `McpArtifactTypeTest`: "post and design_system are declared types…" (2 datasets), "list filters by post and design_system" and "search filters by post and design_system" |
 | Enum lists and descriptions name both | `DeployArtifactTool`, `SearchArtifactsTool`, `ListArtifactsTool` descriptions |
 | Resolver infers neither | "the resolver never infers post or design_system" |
 | Declared type kept on a second version | "a declared post is kept on a later version without a type" |
