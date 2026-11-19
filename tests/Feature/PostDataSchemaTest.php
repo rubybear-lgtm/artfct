@@ -344,3 +344,18 @@ test('db_batch refuses a post details set missing a field and applies none of th
 
     Http::assertNothingSent();
 });
+
+test('a name ending in a newline is refused before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-newline-name']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => "details\n",
+        'data' => ['status' => 'current'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.content.0.text', 'The doc id field format is invalid.');
+
+    Http::assertNothingSent();
+});

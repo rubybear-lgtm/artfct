@@ -45,7 +45,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
     }
 
     /** Collection and document names the Worker accepts. */
-    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/'];
+    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*\z/'];
 
     /** @return array<string, list<string>> */
     protected function targetRules(bool $withDocument = true): array
