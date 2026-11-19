@@ -63,8 +63,8 @@ test('the old template is gone and nothing names it', function () {
 test('the skill requires a confirmed outline before building', function () {
     $skill = presentationSkill();
 
-    expect(strtolower($skill))->toContain('outline')
-        ->and($skill)->toMatch('/outline.*confirm|confirm.*outline/is')
+    expect($skill)->toContain('1. **Outline.** Draft the slide titles, each with a one-line point. Show the outline to the person and wait for their confirmation before building.')
+        ->and($skill)->toContain('Skip the confirmation only when they said to just build it.')
         ->and($skill)->toContain('slide titles')
         ->and($skill)->toContain('just build');
 });
