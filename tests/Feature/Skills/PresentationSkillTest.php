@@ -88,13 +88,13 @@ test('the skill searches for an existing deck before creating one', function () 
 
 test('the skill runs one findability search after deploying', function () {
     $skill = presentationSkill();
-    $deployAt = strpos($skill, 'deploy_artifact');
-    $searchAt = strpos($skill, 'one findability search');
+    $deployStepAt = strpos($skill, '**Deploy** with `deploy_artifact`');
+    $searchStepAt = strpos($skill, '**Check it can be found.**');
 
-    expect($searchAt)->not->toBeFalse()
-        ->and($deployAt)->not->toBeFalse()
-        ->and($searchAt)->toBeGreaterThan($deployAt)
-        ->and($skill)->toMatch('/findability.*search_artifacts|search_artifacts.*findability/is');
+    expect($deployStepAt)->not->toBeFalse()
+        ->and($searchStepAt)->not->toBeFalse()
+        ->and($searchStepAt)->toBeGreaterThan($deployStepAt)
+        ->and($skill)->toMatch('/\*\*Check it can be found\.\*\*[^\n]*one findability search[^\n]*search_artifacts/');
 });
 
 test('the skill sets the title grammar and bans punchline titles', function () {
