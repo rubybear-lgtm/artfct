@@ -45,6 +45,14 @@
     return document.querySelector('.sheet');
   }
 
+  // Allowlist: a src is kept only when it is a plain relative path under the
+  // bundle (no scheme, host, backslash, absolute path or `..` segment).
+  function isRelativeImageSrc(src) {
+    return /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(src) &&
+      src.indexOf('\\') === -1 &&
+      src.split('/').indexOf('..') === -1;
+  }
+
   function describe() {
     var sheet = sheetElement();
     var kind = pageKind();
@@ -90,12 +98,14 @@
     }
 
     var images = [];
+    var droppedImages = 0;
     var imageNodes = sheet.querySelectorAll('img');
 
     for (var i = 0; i < imageNodes.length; i++) {
-      var src = imageNodes[i].getAttribute('src') || '';
+      var src = (imageNodes[i].getAttribute('src') || '').trim();
 
-      if (src === '' || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) {
+      if (!isRelativeImageSrc(src)) {
+        droppedImages += 1;
         continue;
       }
 
@@ -132,7 +142,7 @@
       });
     }
 
-    return { pages: pages };
+    return { pages: pages, droppedImages: droppedImages };
   }
 
   window.addEventListener('message', function (event) {

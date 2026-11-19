@@ -141,6 +141,14 @@ test('doc starter describe splits a flowing sheet into several pages', function 
         ->assertScript('window.results.describe.result.pages[1].runs.length > 0', true);
 });
 
+test('doc starter describe keeps only relative image sources and counts the rest', function () {
+    visit(docStarterDriverUrl('images'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        ->assertScript('JSON.stringify(window.results.describe.result.pages[0].images.map((image) => image.src))', '["images/a.png"]')
+        ->assertScript('window.results.describe.result.droppedImages', 4);
+});
+
 test('doc starter describe without a sheet replies with an error instead of throwing', function () {
     visit(docStarterDriverUrl('no-sheet'))
         ->waitForText('done')
