@@ -46,6 +46,8 @@ Out of scope: PDF and PowerPoint export (RUB-561, RUB-562; their "When Not to Us
 | No Solarized; points at `--deck-*` for theming | `PresentationSkillTest` · `the skill names none of the old template, its tokens or Solarized` | passed (`the skill names none of the old template...`); Solarized absent from skills/presentation |
 | `PresentationSkillTest` asserts: names `deck-starter`, `slide_deck`, `search_artifacts`, `base_version`; every asset path it names exists; names none of `presentation-template.html`, `{{`, `Solarized` | the same file (the first three tests above) | passed (`the skill names the deck starter, slide_deck, search_artifacts and base_version`, `every asset and reference path the skill names exists`, `the skill names none of the old template...`) |
 | Every `--deck-*` and `--type-*` name in SKILL.md is declared in `deck.css` | `PresentationSkillTest` · `every --deck and --type token the skill names is declared in deck.css`; `DeckStarterTest` · `deck.css declares the --type tokens on :root` | passed (`every --deck and --type token the skill names is declared in deck.css`; DeckStarterTest `deck.css declares the --type tokens on :root`) |
+| Negative: a stage style with `url(https://evil.example/x)` is refused by the publish validator | `DeckStarterTest` · `the publish contract refuses a stage style that loads an external origin through url()` | passed |
+| Negative: `image-set("https://evil.example/x")` is refused | `DeckStarterTest` · `...through image-set()` | skipped as a known gap: the validator does not refuse it (see Known gaps) |
 | `npm run test:skills` and `npm run test:plugin` pass | Commands | passed: test:skills 8/8 files; test:plugin 3/3 |
 | Staging: one deck built by a bot renders; ArrowRight changes counter; zero CSP errors; `search_artifacts` returns it | After merge, staging | not verified here |
 | CI green; reviewed and approved; no preview environments | Process | pending (orchestrator) |
@@ -66,6 +68,10 @@ Run on this branch: all eight breaks made their named test fail (result `failed`
 | Outline gate | Remove the step-1 sentence "wait for their confirmation before building" | `the skill requires a confirmed outline...` (exact-sentence assertion; the earlier regex matched across the file and passed with the sentence removed) |
 | Findability search | Swap workflow steps 4 (deploy) and 5 (findability search) | `the skill runs one findability search...` (ordering now anchored to the step labels; the old `deploy_artifact` anchor matched the frontmatter) |
 | `--type` tokens in starter | Remove `--type-body` from `deck.css` | `deck.css declares the --type tokens on :root` |
+
+## Known gaps
+
+- **`image-set()` origins are not refused.** `PublishContractValidator` matches external origins in `url(...)`, `src`, `href` and similar attributes, but not in `image-set("https://…")`. A deck whose stage style is `background-image:image-set("https://evil.example/x")` passes the contract. Test `the publish contract refuses a stage style that loads an external origin through image-set()` is skipped with this reason and its assertion is kept. Fix belongs in the validator (spec 26 contract), not in this skill; the `url()` case is refused and tested.
 
 ## Open questions
 

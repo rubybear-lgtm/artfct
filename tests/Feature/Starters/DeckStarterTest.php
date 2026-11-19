@@ -161,3 +161,25 @@ test('a deck themed with a style attribute on the stage passes the publish contr
 
     expect((new PublishContractValidator)->validate(deckStarterFiles(['index.html' => $html]), 'Deck starter', 'index.html'))->toBe([]);
 });
+
+/** @return list<string> */
+function deckStageStyleErrors(string $style): array
+{
+    $html = str_replace(
+        '<main class="deck-stage" aria-label="Slides">',
+        '<main class="deck-stage" aria-label="Slides" style="'.$style.'">',
+        deckStarterFiles()['index.html'],
+    );
+
+    return (new PublishContractValidator)->validate(deckStarterFiles(['index.html' => $html]), 'Deck starter', 'index.html');
+}
+
+test('the publish contract refuses a stage style that loads an external origin through url()', function () {
+    expect(deckStageStyleErrors('background:url(https://evil.example/x)'))
+        ->toContain('Deck starter file [index.html] loads an external origin [https://evil.example/x]; bundle every asset in files/.');
+});
+
+test('the publish contract refuses a stage style that loads an external origin through image-set()', function () {
+    expect(deckStageStyleErrors('background-image:image-set("https://evil.example/x")'))
+        ->toContain('Deck starter file [index.html] loads an external origin [https://evil.example/x]; bundle every asset in files/.');
+})->skip('known gap (spec 33): PublishContractValidator does not refuse image-set() origins');
