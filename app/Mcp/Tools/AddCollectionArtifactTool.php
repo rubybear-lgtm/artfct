@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Use when the person asks to add a page to a board or collection, by collection id or name. Requires collections:write and is idempotent; it never changes the page\'s content. Pass collection_id or collection, or both if they name the same collection. To take the page off, use remove_collection_artifact, not delete_artifact.')]
+#[Description('Use when the person asks to add a page to a board or collection, by collection id or name. Requires collections:write and is idempotent; it never changes the page\'s content. Pass collection_id, collection (name), or both; if both are given and they resolve to different collections, the call fails with a validation error and writes nothing. To take the page off, use remove_collection_artifact, not delete_artifact.')]
 #[Name('add_collection_artifact')]
 #[Title('Add artifact to collection')]
 #[IsReadOnly(false)]
