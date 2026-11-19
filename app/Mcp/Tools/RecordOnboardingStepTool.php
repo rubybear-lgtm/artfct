@@ -23,7 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Record that you finished or skipped one onboarding step the server cannot see for itself, so a set-up that stops can pick up where it left off and is never repeated. Call it after a step from get_guidance (topic onboarding): read_usage_rules, explain_tool_approvals, save_memory_note (chat apps only, so pass your `host`; `done` once the person agreed and you saved it, `skipped` if they said no or your app has no memory), or ask_save_preference (only when the person chose not to answer). Use `done` when you did it and `skipped` when the person declined or it did not apply. Steps the server watches itself, such as the connection check and a saved preference, cannot be recorded, and neither can add_project_instructions, which is done once per project and checked in that project\'s own file. Pass a real `host` (not `unknown`) to also get the next step back.')]
+#[Description('Use when you have finished or skipped a set-up step the server cannot see, so Artfct onboarding can resume later. Call it only during set-up, after the person\'s consent, never for ordinary publish or search work. Steps from get_guidance (topic onboarding): read_usage_rules, explain_tool_approvals, save_memory_note (chat apps only; pass host) and ask_save_preference. Use done when you did it and skipped when the person declined or it did not apply. Pass a real host, not unknown, to get the next step back. The connection check, a saved preference and add_project_instructions cannot be recorded here.')]
 #[Name('record_onboarding_step')]
 #[Title('Record onboarding step')]
 #[IsReadOnly(false)]

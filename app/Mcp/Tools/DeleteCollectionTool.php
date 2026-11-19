@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Delete a workspace collection by id or name. Requires collections:write. Membership rows are removed with the collection; artifacts themselves are not deleted. You may pass collection_id, collection (name), or both; if both are given and they resolve to different collections, the call fails with a validation error and writes nothing.')]
+#[Description('Use when the person asks to delete a board or collection itself, not the pages in it. Requires collections:write. The artifacts that were in it remain; only membership is removed. To take one page off a board, use remove_collection_artifact.')]
 #[Name('delete_collection')]
 #[Title('Delete collection')]
 #[IsReadOnly(false)]

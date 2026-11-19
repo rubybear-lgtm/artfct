@@ -27,7 +27,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Rules in get_guidance (topic search) apply even if you have not read them. Search the authenticated workspace by meaning, provenance, repository, agent, or date. Returns summaries, snippets and a view_url per result, never full artifact contents; call read_artifact with a result id to read its text when a snippet is not enough. Each view_url is the app\'s own open route, so it works when a member clicks it while signed in and mints a signed link only for a secure artifact.')]
+#[Description('Use when the person asks what the team agreed, about a pricing decision, an announcement, or anything the team already wrote or published. Search in their words, then read_artifact on a promising id and cite id and version; do not answer from a snippet alone. Rules in get_guidance (topic search) apply even if you have not read them. Searches by meaning, provenance, repository, agent or date and returns summaries, snippets and a view_url per result, never full contents. If the first search is thin, rephrase once or twice before saying not found. For a list by owner, date or collection, use list_artifacts instead.')]
 #[Name('search_artifacts')]
 #[Title('Search artifacts')]
 #[IsReadOnly]
@@ -40,7 +40,7 @@ final class SearchArtifactsTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.9.0',
+            'guidanceVersion' => '1.10.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:read'],

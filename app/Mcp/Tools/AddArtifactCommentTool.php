@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Add a comment to an artifact the caller can see, or reply to an existing comment with parent_id. Threads are one level deep: a reply to a reply is attached to the root thread (parent_id becomes the root\'s id). Requires the comments:write scope. Plain text only, up to 4000 characters.')]
+#[Description('Use when the person asks you to comment on, leave feedback on or reply to a note on a page. Call list_artifact_comments first. Pass parent_id only to reply; a reply to a reply attaches to the root thread. Requires comments:write. Plain text only, up to 4000 characters.')]
 #[Name('add_artifact_comment')]
 #[Title('Comment on artifact')]
 #[IsReadOnly(false)]

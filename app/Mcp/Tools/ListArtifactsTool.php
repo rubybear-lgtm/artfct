@@ -29,7 +29,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List the team\'s artifacts by who made them, when, how they are shared, or how often they were opened. Use this to answer questions like "what did I publish this week" or "our most-opened dashboards". To find artifacts about a topic, use search_artifacts instead.')]
+#[Description('Use when the person asks what they or the team published, when, who owns it, how it is shared, or how often it was opened, such as what did I publish this week or our most-opened dashboards. Browses by date, owner, sharing, type or collection; it does not answer what the team agreed. For a question about a topic, decision or announcement, use search_artifacts, then read_artifact and cite.')]
 #[Name('list_artifacts')]
 #[Title('List artifacts')]
 #[IsReadOnly]

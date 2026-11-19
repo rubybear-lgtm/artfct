@@ -15,7 +15,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Apply up to 25 writes to an artifact\'s database together: every write is checked first and one failing write applies none. Each write is `set` (needs `data`) or `delete`, on a collection and doc_id, with an optional `if_version`. Use it to move several cards at once. Needs the data:write scope and edit access to the artifact.')]
+#[Description('Use when you need to move or update several cards or rows together, so they succeed or fail as one (at most 25 writes). Each write is set or delete on a collection and doc_id. Needs data:write and edit access. Read first and pass if_version on each write when you have it. For a single write, use db_set, db_update or db_delete.')]
 #[Name('db_batch')]
 #[Title('Write several database documents')]
 #[IsReadOnly(false)]
@@ -28,7 +28,7 @@ final class DbBatchTool extends DatabaseTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.9.0',
+            'guidanceVersion' => '1.10.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [
