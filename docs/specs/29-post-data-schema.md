@@ -58,16 +58,16 @@ The snapshot is display-only. Data is the source of truth.
 
 | Done when (RUB-559) | Proof | Status |
 |---|---|---|
-| Pre-code comment on the issue states where validation lives | Linear comment | Not met: the comment write was denied by the permission system. Decision recorded in this spec instead. |
-| Manifest declares both collections and seeds `details` on first deploy only | `ContextPostStarterTest` · `context post manifest declares both collections and the details seed` | pending |
-| `status` outside its values, `kind` outside the set returns `invalid_request`; `replaced_by` must be null or string | `PostDataSchemaTest` · `post details refuses an unknown kind`, `... an unknown status`, `... a non-string replaced_by` | pending |
-| Starter's four files exist; validator clean; four violating copies refused | `ContextPostStarterTest` · `context post starter passes the publish contract`, `... refuses a copy with an inline script`, `... onclick handler`, `... data URI`, `... external origin` | pending |
-| `validateDbManifest` accepts manifest; rejects unknown collection and invalid seed | `ContextPostStarterTest` · `validateDbManifest accepts the context post manifest`, `... rejects a seed naming an unknown collection`, `... rejects an invalid seed` | pending |
-| `app.js` fills the block from the endpoint; no JS keeps snapshot; no other request | `ContextPostStarterTest` · `context post app.js reads only the same-origin db endpoint`, `... snapshot is in index.html` | pending |
-| Feature tests: create; superseded with replaced_by; invalid kind/status; viewer forbidden; no data:write insufficient_scope; other team not_found | `PostDataSchemaTest` · `post details can be created`, `... set to superseded with replaced_by`, `... viewer write is forbidden`, `... a token without data:write gets insufficient_scope`, `... another team gets not_found` | pending |
-| Guidance untouched, no version bump | `git diff` shows no change under `resources/guidance` or `ArtifactGuidance::VERSION` | pending |
+| Pre-code comment on the issue states where validation lives | Linear comment | Not met: the Linear comment write was denied by the permission system. The decision is recorded in the Where validation lives section instead. |
+| Manifest declares both collections and seeds `details` on first deploy only | `ContextPostStarterTest` · `the context post manifest declares both collections and seeds details once` | passed (12/12 file) |
+| `status` outside its values, `kind` outside the set returns `invalid_request`; `replaced_by` must be null or string | `PostDataSchemaTest` · `post details refuses an unknown kind before anything is sent`, `... an unknown status before anything is sent`, `... refuses a replaced_by that is neither null nor a string before anything is sent` | passed; guard broken: 4 refusal tests failed |
+| Starter's four files exist; validator clean; four violating copies refused | `ContextPostStarterTest` · `the context post starter has its four files`, `the context post starter passes the publish contract`, `the publish contract refuses violating copies of the starter` (dataset: inline script, onclick handler, data uri image, external origin) | passed; guard broken: inline-script and data-URI tests failed |
+| `validateDbManifest` accepts manifest; rejects unknown collection and invalid seed | `ContextPostStarterTest` · `validateDbManifest accepts the context post manifest`, `validateDbManifest rejects a seed row naming an unknown collection`, `validateDbManifest rejects an invalid seed row` | passed; guard broken: both rejection tests failed |
+| `app.js` fills the block from the endpoint; no JS keeps snapshot; no other request | `ContextPostStarterTest` · `context post app.js reads only the same-origin db endpoint`, `the context post snapshot is in index.html for readers without JavaScript`. The fill-in-browser behaviour is not run (no browser test). | partly: static tests passed; browser fill not verified |
+| Feature tests: create; superseded with replaced_by; invalid kind/status; viewer forbidden; no data:write insufficient_scope; other team not_found | `PostDataSchemaTest` · `post details can be created with all four fields`, `post details can move to superseded with a replaced_by id`, `a viewer write is refused with forbidden`, `a token without data:write gets insufficient_scope on post details`, `another team gets not_found on post details` | passed; guard broken (403 mapping): viewer test failed |
+| Guidance untouched, no version bump | `git diff abc5f0d HEAD -- resources/guidance app/Mcp/Support/ArtifactGuidance.php` is empty | passed (checked by diff) |
 | Staging publish and browser check | Not run here; needs merged code | not verified |
-| Pint clean; CI green; reviewed | `vendor/bin/pint --dirty --format agent`; CI; review | pending |
+| Pint clean; CI green; reviewed | `vendor/bin/pint --dirty --format agent` passed; CI and review pending the push | pint passed |
 
 ## Out of scope
 
