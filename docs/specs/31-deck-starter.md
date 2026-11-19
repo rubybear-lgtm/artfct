@@ -132,28 +132,42 @@ Reply from the bridge:
 
 ## Done-when to test map
 
-Each RUB-558 item with the test that proves it. Status is filled in by running the tests on this branch.
+Each RUB-558 item with the test that proves it. Status is the result of running the test on this branch.
 
 | Done when (RUB-558) | Proof | Status |
 |---|---|---|
-| Three files exist under `deck-starter/`; `index.html` has no inline script, no `on*=`, no `data:`, no external origin; loads `deck.css` and `app.js` by relative path | `DeckStarterTest` · `the deck starter has its three files`, `the deck starter passes the publish contract`, `index.html has one script tag, app.js, loaded with defer` | pending |
-| `index.html` has `artfct-starter` `deck@1` meta and a top comment naming slots and upgrade rule | `DeckStarterTest` · `index.html carries the deck@1 meta and the slot and upgrade comment` | pending |
-| Stage 1920 by 1080, scaled by `app.js`; `section.slide`; hidden `p.notes` present in DOM; `--deck-*` tokens, system font stack; no Solarized | `DeckStarterBrowserTest` · `the deck stage is 1920 by 1080 and scales to the viewport`, `notes are hidden on stage but present in the DOM`; `DeckStarterTest` · `deck.css declares --deck tokens with the system font stack and no Solarized` | pending |
-| ArrowLeft/Right, Space, PageUp/Down, buttons, `n / total` counter, `#n` deep link; `app.js` makes no network calls | `DeckStarterBrowserTest` · `the keyboard and buttons move the counter`, `#3 opens slide 3`; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | pending |
-| `app.js` exposes `goTo(n)`, `slideCount`, `data-deck-active` | `DeckStarterBrowserTest` · `window.artfctDeck.goTo(2) marks the third slide active` | pending |
-| `noscale` disables scaling; slides at true 1920 by 1080 | `DeckStarterBrowserTest` · `noscale renders the stage at 1920 by 1080 in a narrower viewport` | pending |
-| Bridge: `ready`, `describe`, `goTo`; answers `window.parent` only; no `parent.document`; no network | `DeckStarterBrowserTest` · bridge cases below; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | pending |
-| Parent on a different origin completes the handshake and gets three slides from `describe` | `DeckStarterBrowserTest` · `deck starter handshake works from a different origin`, `deck starter describe returns the three slides` | pending |
-| Message from an undeclared origin ignored; message before handshake ignored | `DeckStarterBrowserTest` · `deck starter ignores sibling-frame and pre-handshake messages`; `deck starter ignores a null-origin parent` | pending |
+| Three files exist; no inline script, `on*=`, `data:` or external origin; loads `deck.css` and `app.js` by relative path | `DeckStarterTest` · `the deck starter has its three files`, `the deck starter passes the publish contract`, `index.html has one script tag, app.js, loaded with defer` | passed (Feature, 15/15 file) |
+| `index.html` has `artfct-starter` `deck@1` meta and a top comment naming slots and upgrade rule | `DeckStarterTest` · `index.html carries the deck@1 meta and the slot and upgrade comment` | passed |
+| Stage 1920 by 1080, scaled by `app.js`; `section.slide`; hidden `p.notes` present in DOM; `--deck-*` tokens, system font stack; no Solarized | `DeckStarterBrowserTest` · `the stage scales to the viewport`, `the notes are hidden on stage but stay in the DOM`; `DeckStarterTest` · `deck.css declares --deck tokens with the system font stack and no Solarized` | passed |
+| Keyboard, buttons, `n / total` counter, `#n` deep link; no network calls in `app.js` | `DeckStarterBrowserTest` · `the keyboard moves the counter`, `the on-screen buttons move the counter`, `a deep link opens the slide it names and an out-of-range one shows slide 1`; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | passed. Space is tested on a focused button only (see Unverified) |
+| `app.js` exposes `goTo(n)`, `slideCount`, `data-deck-active` | `DeckStarterBrowserTest` · `window.artfctDeck goTo and slideCount drive the active slide`; `DeckStarterTest` · `app.js exposes the navigation API the export clients drive` | passed |
+| `noscale` disables scaling; slides at true 1920 by 1080 | `DeckStarterBrowserTest` · `noscale renders the stage at 1920 by 1080 in a narrower viewport` (uses `?variant=noscale` in the fixture router) | passed |
+| Bridge: `ready`, `describe`, `goTo`; answers `window.parent` only; no `parent.document`; no network | `DeckStarterBrowserTest` · bridge tests below; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | passed |
+| Parent on a different origin completes the handshake and gets three slides from `describe` | `DeckStarterBrowserTest` · `deck starter handshake works from a different origin`, `deck starter describe returns the three slides` | passed |
+| Message from an undeclared (non-parent) source ignored; message before handshake ignored | `DeckStarterBrowserTest` · `deck starter ignores sibling-frame and pre-handshake messages` | passed. A null-origin parent is not testable (see Unverified) |
 | Independent review focused on origin isolation (big-PR rule) | Process check, recorded in the PR | pending (orchestrator) |
-| Speaker notes only in `<p class="notes">`; no script block for notes | `DeckStarterTest` · `the notes live only in p.notes and no script carries them`; `DeckStarterBrowserTest` · describe `notes` text equals the fixture notes | pending |
-| Slides literal static markup; each text run in a leaf element; animation keyed on `data-deck-active` | `DeckStarterTest` · `app.js builds no slides (no createElement or innerHTML)` | pending |
-| `deck.css` prints one slide per page with `@page { size: 1920px 1080px; margin: 0 }` | `DeckStarterTest` · `deck.css declares the one-slide-per-page print rules` | pending (text check only; print pagination not run) |
-| `tests/Feature/Starters/DeckStarterTest.php`: validator passes the bundle; four mutated copies refused; `app.js` relative `src` and exists; no banned network calls; `deck@1` meta | `DeckStarterTest`: `the publish contract refuses violating copies of the deck starter` (four datasets) and the tests above | pending |
-| Staging render check (publish sample, ArrowRight `1 / 3` to `2 / 3`, `#3`, zero CSP errors, print three pages) | After merge, on staging. Locally, the browser test covers navigation and CSP through the fixture router | not verified here (staging) |
-| `npm run test:plugin` passes | Command | pending |
-| PR screenshot or `No UI changes`; `vendor/bin/pint --dirty --format agent` clean | PR check | pending |
+| Speaker notes only in `<p class="notes">`; no script block for them | `DeckStarterTest` · `the notes live only in p.notes and no script carries them`; `DeckStarterBrowserTest` · `the notes are hidden on stage but stay in the DOM` | passed |
+| Slides literal static markup; no script-generated slides | `DeckStarterTest` · `app.js writes no markup from strings and builds no slides` | passed. Only the nav controls are built by script |
+| `deck.css` prints one slide per page with `@page { size: 1920px 1080px; margin: 0 }` | `DeckStarterTest` · `deck.css declares the one-slide-per-page print rules` | text check only; print pagination not run |
+| Contract tests: validator passes the bundle; four mutated copies refused; `app.js` relative `src`; no banned calls; `deck@1` meta | `DeckStarterTest`: `the publish contract refuses violating copies of the deck starter` (4 datasets) plus the tests above | passed |
+| Staging render check (publish sample, counter, `#3`, zero CSP errors, print three pages) | After merge, on staging | not verified here |
+| `npm run test:plugin` passes | Command | passed (3/3) |
+| PR screenshot or `No UI changes`; `vendor/bin/pint --dirty --format agent` clean | PR check | Pint passes on each commit; screenshot is a PR step |
 | CI green and approved; no PR preview environments | Process check | pending |
+
+### Guard breaks run
+
+Each row is one guard broken in `app.js` or the validator, the named test run, the failure seen, then the guard restored (`git diff` clean after each).
+
+| Guard removed | Test that failed |
+|---|---|
+| Parent-source check (`event.source !== window.parent`) | `deck starter ignores sibling-frame and pre-handshake messages` |
+| Handshake gate | same test |
+| Protocol version check (`v !== 1`) | same test (the `v: 2` describe got a reply) |
+| Index range and integer check | `deck starter goTo answers in range and refuses out-of-range indexes` |
+| Reply target changed to `'*'` | `app.js replies to the parent origin and never with a wildcard target` (Feature). The browser suite still passes: it cannot see the target |
+| Validator inline-script check | `the publish contract refuses violating copies of the deck starter` (inline script dataset) |
+| Origin check (`isHttpOrigin`) | No test failed. See Unverified |
 
 ### Bridge browser test cases
 
@@ -167,11 +181,11 @@ The parent fixture (`tests/Fixtures/deck-starter/parent.html`) runs on origin A.
 - Parent sends `goTo` with `index: 9`, `-1`, `1.5`: `out_of_range` each; active slide unchanged.
 - Parent sends `explode`: `unknown_command`.
 - Parent sends `v: 2`: no reply.
-- Parent sends `ready` with a payload `origin`: reply goes to origin A, payload origin ignored.
+- Parent sends `ready` with a payload `origin`: reply reaches the parent (so it went to the parent origin), payload origin ignored.
 
 ## Negative tests and guard breaks
 
-Every refusal above has a test that fails when its guard is removed. For each, the guard is broken in `app.js` or `index.html`, the test is run and seen to fail for the stated reason, and the guard is restored. Results are recorded in the Done-when status column.
+See the guard-break table under the Done-when map.
 
 ## Open questions
 
@@ -188,4 +202,14 @@ Open:
 
 7. **Print in the browser suite.** Whether the Pest browser setup can emulate print media is not confirmed. If not, the print check stays a text check plus the staging step.
 8. **Staging parameters.** `artifact_type: slide_deck` exists (`app/Enums/ArtifactType.php`). The `entrypoint` and `files` shape for `deploy_artifact` is checked during the staging step, not here.
-9. **Screenshot.** A rendered screenshot needs a browser capture; it is taken if a browser tool is available in the session, otherwise the PR records `No UI changes` is not allowed, and the PR says the screenshot is missing.
+9. **Screenshot.** Not captured on this branch. The PR needs a before-less screenshot of the sample (this is a new UI), or it must say why it is missing. `No UI changes` does not apply.
+
+## Unverified
+
+- **Null-origin parent.** Not browser-tested. A parent with origin `null` cannot frame the deck, because the artifact CSP `frame-ancestors` allows only the app origin. The `isHttpOrigin` guard is therefore untested; removing it did not fail any test.
+- **Space on the page.** Space is tested only on a focused button, where the handler skips it and the native click moves one slide. A Space press with focus on the body is not tested, because Pest's key press on `body` did not reach the document listener.
+- **Print.** Only the CSS text is checked. Pagination (three pages) was not run.
+- **Reply target.** The browser suite cannot see a `'*'` target; the Feature string test covers it.
+- **CSP console errors.** `assertNoJavaScriptErrors` runs on the navigation tests; CSP reports were not read from the console separately.
+- **Staging.** Not run.
+
