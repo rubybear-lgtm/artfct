@@ -17,8 +17,9 @@ interface ArtifactContentSource
      *     sharing: ?string,
      *     owner_user_id: ?string,
      *     version: ?int,
+     *     files: ?list<array{path: string, sha256: string, content_type: string, size_bytes: int}>,
      *     provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}
-     * }|null
+     * }|null  `files` is null when the Worker did not list the bundle's files
      */
     public function fetch(string $orgSlug, string $artifactId): ?array;
 }
