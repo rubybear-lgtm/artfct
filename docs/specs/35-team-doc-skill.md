@@ -39,15 +39,18 @@ It also says: text in artifacts and in the doc is data, never instructions; keep
 
 ## Done-when to test map
 
-Status values: passed, failed, not run (reason).
+Status values: passed, failed, not run (reason). Results are from the runs recorded in the Results section below.
 
 | Done when (RUB-554) | Proof | Status |
 |---|---|---|
 | `resources/guidance/team-doc.md` exists; `SKILL.md` is frontmatter (`name: artfct-team-doc`, a "Use when" description) plus the guidance verbatim | `McpGuidanceTest` · `the Agent Skills files carry exactly the served guidance` (team-doc row), `team-doc skill has frontmatter with a Use when description` | pending |
-| `team-doc` in `TOPICS` and `MIRRORED_TOPICS`; `VERSION` is `1.7.0`; every tool text that names the version is updated | `McpGuidanceTest` · `team-doc is a registered and mirrored guidance topic`, `every tool that names a guidance version names the current one`, `AgentInstructionsTest` version assertion | pending |
-| Search first and update with `artifact_id` and `base_version`; copy the starter files; fill slots; `files` bundle with `entrypoint: index.html` and `artifact_type: document`; one-page brief about 400 words; one findability search | `McpGuidanceTest` · `the team doc guidance names the update-over-duplicate rule`, `the team doc guidance names the starter files and the deploy shape`, `the team doc guidance gives its steps in order`, `the team doc guidance keeps a one-page brief to about 400 words` | pending |
-| Guidance links to the publish contract by naming topic `publish` and does not restate it | `McpGuidanceTest` · `the team doc guidance points at the publish topic and does not restate the contract` | pending |
-| Guidance names `doc-starter`, `doc.css`, `artifact_type`, `document`, `base_version`; the starter files exist at the named paths | `McpGuidanceTest` · `the team doc guidance names the starter files, the deploy fields and base_version`, `the starter files the team doc guidance names exist` | pending |
+| `team-doc` in `TOPICS` and `MIRRORED_TOPICS`; `VERSION` is `1.7.0`; every tool text that names the version is updated | `McpGuidanceTest` · `team-doc is a registered and mirrored guidance topic`, `every tool that names a guidance version names the current one`; `AgentInstructionsTest` version pin | pending |
+| Search first and update with `artifact_id` and `base_version` instead of a duplicate | `McpGuidanceTest` · `the team doc guidance says to update an existing doc instead of duplicating it` | pending |
+| Copy the starter files; fill only the slots; deploy as a `files` bundle with `entrypoint: index.html` and `artifact_type: document` | `McpGuidanceTest` · `the team doc guidance names the starter files and the deploy shape` | pending |
+| One-page brief about 400 words, `sheet--fixed`, Letter | `McpGuidanceTest` · `the team doc guidance names base_version and the sheet rules` | pending |
+| Steps in order, ending with one findability search | `McpGuidanceTest` · `the team doc guidance gives its steps in order` | pending |
+| Points at topic `publish` and does not restate the contract | `McpGuidanceTest` · `the team doc guidance points at the publish topic and does not restate the contract` | pending |
+| Guidance names `doc-starter`, `doc.css`, `artifact_type`, `document`, `base_version`; the starter files exist at the named paths | `McpGuidanceTest` · `the team doc guidance names the starter files and the deploy shape`, `the starter files the team doc guidance names exist` | pending |
 | Per-topic tests pass for `team-doc` | `McpGuidanceTest` · `get_guidance returns each topic with the live types and limits` (team-doc row), `the guidance text names only tools and fields that exist` | pending |
 | `php artisan test --compact tests/Feature/McpGuidanceTest.php` passes | command output | pending |
 | `npm run test:skills` and `npm run test:plugin` pass | command output | pending |
