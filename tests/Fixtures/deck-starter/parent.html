@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Deck starter parent fixture</title>
+</head>
+<body>
+  <p id="status">running</p>
+  <iframe id="starter" name="starter" title="starter" width="960" height="540"></iframe>
+  <iframe id="sibling" src="sibling.html" title="sibling" width="10" height="10"></iframe>
+  <script>
+    // Test fixture only (not part of the bundle). Drives the bridge from the
+    // parent window, and asks a sibling frame to send a rogue ready message.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var starterOrigin = params.get('starter');
+      var starter = document.getElementById('starter');
+      var sibling = document.getElementById('sibling');
+      var channel = 'artfct-export';
+      window.results = { ids: [], replies: {}, siblingReplies: [], done: false };
+
+      window.addEventListener('message', function (event) {
+        if (event.source === sibling.contentWindow) {
+          if (event.data && event.data.fromSibling) {
+            window.results.siblingReplies.push(event.data.id);
+          }
+          return;
+        }
+        if (event.source !== starter.contentWindow) {
+          return;
+        }
+        var data = event.data || {};
+        window.results.ids.push(data.id);
+        window.results.replies[data.id] = { origin: event.origin, data: data };
+      });
+
+      function send(id, cmd, extra) {
+        var message = Object.assign({ channel: channel, v: 1, id: id, cmd: cmd }, extra || {});
+        starter.contentWindow.postMessage(message, starterOrigin);
+      }
+
+      function wait(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+      }
+
+      starter.addEventListener('load', async function () {
+        if (starter.getAttribute('src') === null) {
+          return;
+        }
+        send('pre', 'describe');
+        await wait(300);
+        sibling.contentWindow.postMessage({ go: true, starterOrigin: starterOrigin }, location.origin);
+        await wait(300);
+        send('ready', 'ready');
+        await wait(300);
+        send('describe', 'describe');
+        await wait(300);
+        send('goto2', 'goTo', { index: 2 });
+        await wait(300);
+        send('goto9', 'goTo', { index: 9 });
+        send('gotoNeg', 'goTo', { index: -1 });
+        send('gotoFrac', 'goTo', { index: 1.5 });
+        await wait(300);
+        send('unknown', 'explode');
+        await wait(300);
+        send('badv', 'describe', { v: 2 });
+        await wait(300);
+        send('payload', 'ready', { origin: 'https://evil.example' });
+        await wait(300);
+        window.results.done = true;
+        document.getElementById('status').textContent = 'done';
+      });
+
+      starter.src = starterOrigin + '/index.html';
+    })();
+  </script>
+</body>
+</html>
