@@ -25,12 +25,12 @@ Each item is checked by a test in `scripts/plugin/skill-pack.test.mjs` unless no
 
 | Done-when (Linear RUB-567) | Test name | Status |
 |---|---|---|
-| `skills/pack.json` exists and lists exactly the seven skills | `the pack lists exactly the seven skills, each with a folder and SKILL.md` | to verify |
-| Each listed skill: folder exists, frontmatter `name` equals folder, `description` starts "Use when" and is at most 1024 characters (`presentation` exempt from the start) | `each pack skill has a folder, a SKILL.md with name equal to its folder, and a description of at most 1024 characters` and `every pack description starts with "Use when" except presentation` | to verify |
-| No type skill tells a bot to use an inline `<script>`, an `on*=` handler or a `data:` image | `no type skill tells a bot to use a script, an on-handler or a data image` | to verify |
-| `artfct-context-post` and `artfct-team-doc` each name `get_guidance` topic `publish` | `the context-post and team-doc skills name get_guidance topic publish` | to verify (context-post currently fails) |
-| README has a "Skill pack" section: seven skills one line each, links to the four connect pages, no duplicated install steps | `README has a Skill pack section with the seven skills and the four connect pages, and no install steps` | to verify |
-| `npm run test:skills` and `npm run test:plugin` pass | run both commands | to verify |
+| `skills/pack.json` exists and lists exactly the seven skills | `the pack lists exactly the seven skills, each with a folder and SKILL.md` | passes |
+| Each listed skill: folder exists, frontmatter `name` equals folder, `description` starts "Use when" and is at most 1024 characters (`presentation` exempt from the start) | `each pack skill has a folder, a SKILL.md with name equal to its folder, and a description of at most 1024 characters` and `every pack description starts with "Use when" except presentation` | passes |
+| No type skill tells a bot to use an inline `<script>`, an `on*=` handler or a `data:` image | `no type skill tells a bot to use a script, an on-handler or a data image` | passes |
+| `artfct-context-post` and `artfct-team-doc` each name `get_guidance` topic `publish` | `the context-post and team-doc skills name get_guidance topic publish` | passes (failed red, see Results) |
+| README has a "Skill pack" section: seven skills one line each, links to the four connect pages, no duplicated install steps | `README has a Skill pack section with the seven skills and the four connect pages, and no install steps` | passes |
+| `npm run test:skills` and `npm run test:plugin` pass | run both commands | passes |
 | Staging: nothing served from a hosted endpoint beyond RUB-553 and RUB-554 | none | not verifiable in this session, see below |
 | CI green; PR reviewed and approved; no PR preview environments | none | owned by the orchestrator and reviewers |
 
@@ -51,7 +51,39 @@ Negative tests (guards to break and restore): the "Use when" check, the length c
 2. **Plugin shipping.** `scripts/plugin/sync-skills.mjs` lists `PLUGIN_SKILLS`, and `presentation` is not in it, so the Claude plugin does not ship the deck skill that the pack lists. Confirm whether the plugin should carry the pack.
 3. **Manifest consumer.** `skills/pack.json` is only read by the new test. Confirm whether `sync-skills.mjs` or the connect pages should read it.
 
+
+## Results
+
+Recorded during the run on branch `rub-567-skill-pack`.
+
+**Red (before any implementation).** `node --test scripts/plugin/skill-pack.test.mjs` on the spec commit: three tests failed for their stated reasons.
+
+- `the pack lists exactly the seven skills, each with a folder and SKILL.md`: `skills/pack.json is missing`.
+- `the context-post and team-doc skills name get_guidance topic publish`: `artfct-context-post does not name get_guidance topic publish`. This is a real gap on base, not a test error.
+- `README has a Skill pack section with the seven skills and the four connect pages, and no install steps`: `README has no "### Skill pack" section`.
+
+Three guard tests passed on base, before the fix: the name and length check, the "Use when" check and the forbidden-pattern check. They are guards, so they were checked by breaking them (below) rather than by a red run.
+
+**Green.** Commits: manifest, then the context-post guidance with the version bump to 1.13.0, then the README section. The full `skill-pack.test.mjs` file: 6 of 6 pass. `npm run test:plugin`: 9 of 9 pass. `npm run test:skills`: 8 of 8 test files pass. `php artisan test --compact tests/Feature/AgentInstructionsTest.php`: 48 passed. `php artisan test --compact tests/Feature/McpGuidanceTest.php`: 168 passed.
+
+**Guards broken and restored.** Each break was run against `scripts/plugin/skill-pack.test.mjs` and restored from git.
+
+| Guard | Break | Test that failed |
+|---|---|---|
+| exact seven | extra `artfct-data` in `pack.json` | exact seven |
+| name equals folder | `name: artfct-team-docs` | name and length |
+| length at most 1024 | description value of 1109 characters | name and length |
+| "Use when" start | `description: "Use it when` on `artfct-publish` | "Use when" start |
+| forbidden pattern | unnegated `<script>` and `onclick=` in `artfct-team-doc` | forbidden pattern |
+| forbidden pattern, data image | unnegated `data:image/png;base64` in `presentation` | forbidden pattern |
+| publish reference | `topic \`search\`` in place of `publish` in `artfct-team-doc` | publish reference |
+| README install step | `npx skills add` line in the section | README section |
+| README connect link | ChatGPT link removed | README section |
+| README skill line | `presentation` line removed | README section |
+
+**Known pre-existing issue, not changed.** `npx prettier --check README.md` fails on base too (the connect table and the example blocks). The new section adds no Prettier diff of its own.
+
 ## Unverified in this session
 
-- Staging: no hosted check was run. The issue's staging item is limited to what RUB-553 and RUB-554 already verified.
+- Staging: no hosted check was run. The Done-when staging item needs nothing beyond RUB-553 and RUB-554, which are already verified.
 - CI, PR review and approval: owned by the orchestrator.
