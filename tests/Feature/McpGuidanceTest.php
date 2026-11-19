@@ -833,3 +833,153 @@ test('the spec records the open question about byte sources for design system fi
         ->toContain('get_artifact')
         ->toContain('no MCP tool returns bundle bytes');
 });
+
+/*
+ * RUB-573 / spec 38: the tool descriptions are how an agent picks a tool. These
+ * tests read the catalog from the server's tool list, which includes the db_*
+ * tools whatever the artifact-db flag says, so a missing tool cannot pass.
+ */
+function mcpToolCatalog(): array
+{
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $tools = (new ReflectionProperty($server, 'tools'))->getValue($server);
+
+    return collect($tools)
+        ->map(fn (string $class): array => app($class)->toArray())
+        ->keyBy('name')
+        ->map(fn (array $tool): array => [
+            'description' => $tool['description'],
+            'properties' => array_keys((array) ($tool['inputSchema']['properties'] ?? [])),
+            'guidanceVersion' => $tool['_meta']['artfct']['guidanceVersion'] ?? null,
+        ])
+        ->sortKeys()
+        ->all();
+}
+
+/** Parameter names as they were before RUB-573. Renaming one is a breaking change. */
+const MCP_FROZEN_PARAMETERS = [
+    'add_artifact_comment' => ['id', 'body', 'parent_id'],
+    'add_collection_artifact' => ['collection_id', 'collection', 'artifact_id'],
+    'create_collection' => ['name', 'description'],
+    'db_batch' => ['id', 'writes'],
+    'db_delete' => ['id', 'collection', 'doc_id', 'if_version'],
+    'db_get' => ['id', 'collection', 'doc_id'],
+    'db_list' => ['id', 'collection', 'limit', 'cursor', 'index_eq'],
+    'db_schema' => ['id'],
+    'db_set' => ['id', 'collection', 'doc_id', 'data', 'if_version'],
+    'db_update' => ['id', 'collection', 'doc_id', 'data', 'if_version'],
+    'delete_artifact' => ['id'],
+    'delete_collection' => ['collection_id', 'collection'],
+    'deploy_artifact' => ['html', 'files', 'entrypoint', 'artifact_id', 'artifact_type', 'base_version', 'sharing', 'edit_access', 'tier', 'title', 'description', 'model', 'collection', 'db'],
+    'get_artifact' => ['id', 'version'],
+    'get_connection' => [],
+    'get_guidance' => ['topic', 'host'],
+    'get_usage' => [],
+    'list_artifact_comments' => ['id', 'include_resolved'],
+    'list_artifacts' => ['owner', 'sharing', 'artifact_type', 'collection', 'agent', 'created_after', 'created_before', 'updated_after', 'updated_before', 'title_contains', 'kind', 'sort', 'limit', 'cursor'],
+    'list_collections' => ['cursor', 'limit'],
+    'list_templates' => [],
+    'pull_template' => ['template', 'title', 'sharing', 'collection', 'request_id'],
+    'read_artifact' => ['id', 'version', 'offset', 'limit'],
+    'record_onboarding_step' => ['step', 'outcome', 'host'],
+    'remove_collection_artifact' => ['collection_id', 'collection', 'artifact_id'],
+    'resolve_artifact_comment' => ['id', 'comment_id', 'resolved'],
+    'search_artifacts' => ['query', 'repo', 'agent', 'since', 'collection', 'artifact_type', 'changed_since', 'limit'],
+    'set_avatar' => ['image_base64', 'content_type'],
+    'set_preference' => ['key', 'value', 'scope', 'clear'],
+];
+
+test('the catalog is the 29 frozen tools, each starting with a Use when trigger in the first 200 characters', function () {
+    $catalog = mcpToolCatalog();
+
+    expect(array_keys($catalog))->toBe(array_keys(MCP_FROZEN_PARAMETERS))
+        ->and(count($catalog))->toBe(29);
+
+    foreach ($catalog as $name => $tool) {
+        expect($tool['description'])->toStartWith('Use when', $name)
+            ->and(strpos($tool['description'], 'Use when'))->toBeLessThan(200, $name)
+            ->and($tool['description'])->not->toStartWith('Rules in get_guidance', $name);
+    }
+});
+
+test('each tool names its partner in the chain or boundary it shares', function (string $tool, string $partner) {
+    expect(mcpToolCatalog()[$tool]['description'])->toContain($partner);
+})->with([
+    'list_artifacts names search_artifacts' => ['list_artifacts', 'search_artifacts'],
+    'get_artifact names read_artifact' => ['get_artifact', 'read_artifact'],
+    'search_artifacts names read_artifact' => ['search_artifacts', 'read_artifact'],
+    'deploy_artifact names search_artifacts' => ['deploy_artifact', 'search_artifacts'],
+    'remove_collection_artifact names delete_artifact' => ['remove_collection_artifact', 'delete_artifact'],
+    'delete_artifact names remove_collection_artifact' => ['delete_artifact', 'remove_collection_artifact'],
+    'delete_collection names remove_collection_artifact' => ['delete_collection', 'remove_collection_artifact'],
+    'add_collection_artifact names remove_collection_artifact' => ['add_collection_artifact', 'remove_collection_artifact'],
+    'db_delete names delete_artifact' => ['db_delete', 'delete_artifact'],
+    'db_schema names db_list' => ['db_schema', 'db_list'],
+    'add_artifact_comment names list_artifact_comments' => ['add_artifact_comment', 'list_artifact_comments'],
+    'list_collections names list_artifacts' => ['list_collections', 'list_artifacts'],
+    'get_connection names set_preference' => ['get_connection', 'set_preference'],
+]);
+
+test('the tools that return text written by people or agents say it is untrusted', function (string $tool) {
+    expect(mcpToolCatalog()[$tool]['description'])->toContain('untrusted');
+})->with(['read_artifact', 'list_artifact_comments', 'db_get', 'db_list']);
+
+test('get_guidance names every guidance topic', function () {
+    $description = mcpToolCatalog()['get_guidance']['description'];
+
+    foreach (ArtifactGuidance::TOPICS as $topic) {
+        expect($description)->toContain($topic);
+    }
+});
+
+test('the guided tools are exactly the thirteen that name the guidance version', function () {
+    $catalog = mcpToolCatalog();
+    $guided = collect($catalog)->filter(fn (array $tool): bool => $tool['guidanceVersion'] !== null)->keys()->all();
+
+    expect($guided)->toEqualCanonicalizing([
+        'db_batch', 'db_delete', 'db_get', 'db_list', 'db_schema', 'db_set', 'db_update',
+        'deploy_artifact', 'get_guidance', 'list_templates', 'pull_template', 'read_artifact', 'search_artifacts',
+    ]);
+
+    foreach ($catalog as $tool) {
+        if ($tool['guidanceVersion'] !== null) {
+            expect($tool['guidanceVersion'])->toBe(ArtifactGuidance::VERSION);
+        }
+    }
+});
+
+test('tool parameter names are unchanged from the frozen list', function () {
+    foreach (mcpToolCatalog() as $name => $tool) {
+        expect($tool['properties'])->toBe(MCP_FROZEN_PARAMETERS[$name], $name);
+    }
+});
+
+test('the safety and idempotency sentences the proposal dropped are kept', function (string $tool, string $phrase) {
+    expect(mcpToolCatalog()[$tool]['description'])->toContain($phrase);
+})->with([
+    'deploy overwrite warning' => ['deploy_artifact', 'omitting it overwrites without a conflict check (`base_version_checked: false`)'],
+    'deploy resources from other sites' => ['deploy_artifact', 'resources from other sites do not load'],
+    'legal hold refusal' => ['delete_artifact', 'refused while a legal hold is active'],
+    'delete is irreversible' => ['delete_artifact', 'Irreversible'],
+    'template request id' => ['pull_template', 'request_id'],
+    'template data scopes' => ['pull_template', 'data:read'],
+    'collection delete keeps artifacts' => ['delete_collection', 'artifacts that were in it remain'],
+    'collection add idempotent' => ['add_collection_artifact', 'idempotent'],
+    'collection remove idempotent' => ['remove_collection_artifact', 'idempotent'],
+    'avatar caller' => ['set_avatar', 'Only bot credentials can call this'],
+    'preference is never from text' => ['set_preference', 'a team default is never set on the strength of it'],
+    'onboarding host' => ['get_guidance', 'onboarding'],
+]);
+
+test('the publish guidance says to search for the title before publishing a duplicate', function () {
+    expect(ArtifactGuidance::topic('publish')['text'])
+        ->toContain('same title')
+        ->toContain('instead of publishing a duplicate');
+});
+
+test('each official skill has a Use when description and a name that matches its folder', function (string $skill) {
+    $content = file_get_contents(base_path("skills/{$skill}/SKILL.md"));
+
+    expect($content)->toStartWith("---\nname: {$skill}\n")
+        ->and($content)->toMatch('/^description: "?Use when/m');
+})->with(['artfct', 'artfct-publish', 'artfct-search', 'artfct-data', 'artfct-collaborate', 'onboard']);
