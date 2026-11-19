@@ -60,15 +60,46 @@ Publish the bundle with `deploy_artifact` as `files`, `entrypoint: index.html` a
 
 ```json
 {
-  "version": "1.0.0",
-  "color": [{"name": "--doc-accent", "value": "#701a24", "usage": "Headings and the one accent rule."}],
-  "type": {
-    "families": [{"name": "--doc-font", "value": "Manrope, system-ui, sans-serif", "usage": "Body text."}],
-    "sizes": [{"name": "--doc-body-size", "value": "11pt", "usage": "Body text size."}],
-    "fonts": [{"file": "fonts/Manrope-Regular.woff2", "family": "Manrope", "weight": "400", "style": "normal"}]
-  },
-  "spacing": [{"name": "--doc-gap", "value": "0.6em", "usage": "Space between paragraphs."}],
-  "radius": []
+    "version": "1.0.0",
+    "color": [
+        {
+            "name": "--doc-accent",
+            "value": "#701a24",
+            "usage": "Headings and the one accent rule."
+        }
+    ],
+    "type": {
+        "families": [
+            {
+                "name": "--doc-font",
+                "value": "Manrope, system-ui, sans-serif",
+                "usage": "Body text."
+            }
+        ],
+        "sizes": [
+            {
+                "name": "--doc-body-size",
+                "value": "11pt",
+                "usage": "Body text size."
+            }
+        ],
+        "fonts": [
+            {
+                "file": "fonts/Manrope-Regular.woff2",
+                "family": "Manrope",
+                "weight": "400",
+                "style": "normal"
+            }
+        ]
+    },
+    "spacing": [
+        {
+            "name": "--doc-gap",
+            "value": "0.6em",
+            "usage": "Space between paragraphs."
+        }
+    ],
+    "radius": []
 }
 ```
 
