@@ -8,16 +8,32 @@
   <p id="status">running</p>
   <script src="/vendor/pptx-export/export.js"></script>
   <script>
-    // Test fixture only (not part of the app). Runs the export runner from the
-    // parent origin against the deck starter on its own origin.
+    // Test fixture only (not part of the app). Checks the deck from the parent side,
+    // then runs the export runner against the same deck.
     (function () {
       var params = new URLSearchParams(location.search);
-      var starterUrl = params.get('starter') + '/index.html';
+      var starter = params.get('starter');
+      var deckUrl = starter + '/index.html';
       window.results = {};
+
+      function ask(frame, cmd, id) {
+        return new Promise(function (resolve) {
+          function onMessage(event) {
+            if (event.source !== frame.contentWindow || !event.data || event.data.id !== id) {
+              return;
+            }
+            window.removeEventListener('message', onMessage);
+            resolve(event.data);
+          }
+
+          window.addEventListener('message', onMessage);
+          frame.contentWindow.postMessage({ channel: 'artfct-export', v: 1, id: id, cmd: cmd }, starter);
+        });
+      }
 
       var probe = document.createElement('iframe');
       probe.title = 'probe';
-      probe.src = starterUrl;
+      probe.src = deckUrl;
       document.body.appendChild(probe);
 
       probe.addEventListener('load', function () {
@@ -27,16 +43,25 @@
         } catch (error) {
           window.results.crossOriginAccess = error.name;
         }
-        probe.remove();
 
-        window.artfctPptxExport.run({ frameUrl: starterUrl, exportUrl: location.origin + '/export' }).then(function (file) {
-          window.results.filename = file.filename;
-          window.results.captures = file.captures;
-          document.getElementById('status').textContent = 'done';
-        }, function (error) {
-          window.results.error = error.code || error.message;
-          document.getElementById('status').textContent = 'failed';
-        });
+        ask(probe, 'ready', 'probe-ready')
+          .then(function () {
+            return ask(probe, 'describe', 'probe-describe');
+          })
+          .then(function (reply) {
+            window.results.deckParentAccess = reply.result.slides[0].notes;
+            probe.remove();
+
+            return window.artfctPptxExport.run({ frameUrl: deckUrl, exportUrl: location.origin + '/export' });
+          })
+          .then(function (file) {
+            window.results.filename = file.filename;
+            window.results.captures = file.captures;
+            document.getElementById('status').textContent = 'done';
+          }, function (error) {
+            window.results.error = error.code || error.message;
+            document.getElementById('status').textContent = 'failed';
+          });
       });
     })();
   </script>
