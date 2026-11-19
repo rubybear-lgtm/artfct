@@ -1,11 +1,13 @@
 (function () {
   var block = document.querySelector('[data-post-details]');
+
   if (!block || typeof window.fetch !== 'function') {
     return;
   }
 
   function setField(name, value) {
     var target = block.querySelector('[data-field="' + name + '"]');
+
     if (target) {
       target.textContent = value;
     }
