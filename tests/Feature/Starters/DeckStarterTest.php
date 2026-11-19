@@ -202,3 +202,9 @@ test('app.js lazy-loads capture.js for the capture command and advertises it in 
         ->and($script)->toContain("'capture.js'")
         ->and($script)->not->toContain('<script');
 });
+
+test('the publish contract accepts the bundle with the vendored capture.js (RUB-562, spec 46)', function () {
+    $files = deckStarterFiles(['capture.js' => (string) file_get_contents(DECK_STARTER_DIR.'/capture.js')]);
+
+    expect((new PublishContractValidator)->validate($files, 'Deck starter', 'index.html'))->toBe([]);
+})->skip('known gap (RUB-562, spec 46): the publish contract refuses the vendored html2canvas build (a data: string and an http XML namespace literal in its code). Needs an owner decision before the skill can copy capture.js.');
