@@ -143,27 +143,26 @@ Refusal boundary: the bridge refuses by ignoring, not by replying with an error,
 
 ## Done-when to test map
 
-Each RUB-557 item with the test that proves it. Status is filled in as work lands.
+Each RUB-557 item with the test that proves it. Results were recorded by running the tests on this branch. Guard breaks were run as described in the Status column.
 
 | Done when (RUB-557) | Proof | Status |
 |---|---|---|
-| `index.html` and `doc.css` exist; `index.html` has no inline script, no `on*=`, no `data:`, no external origin; its only script is `export.js`; it links `doc.css` relatively | `DocStarterTest` · `the doc starter has its three files`, `the doc starter passes the publish contract`, `index.html has one script tag, export.js, loaded with defer` | pending |
-| `index.html` carries `<meta name="artfct-starter" content="doc@1">` and a top comment naming the slots and the upgrade rule | `DocStarterTest` · `index.html carries the doc@1 meta and the slot and upgrade comment` | pending |
-| `@page` Letter with margin; `.sheet` 8.5in wide and at least 11in tall; print has no shadow and fills the page; `sheet-a4` gives 210mm by 297mm; `--doc-*` tokens on `:root`; system fonts | `DocStarterTest` · `the doc starter stylesheet declares Letter paper and print geometry`, `the doc starter uses no external fonts and no viewport units or fixed positioning` | pending |
-| Print discipline: real CSS columns, `column-span: all`, `<thead>`, `break-before: page`, `break-inside: avoid`, `orphans: 3; widows: 3`, no `position: fixed` or viewport units | `DocStarterTest` · `the doc starter stylesheet carries the flowing print discipline` | pending |
-| Both page shapes: flowing, and `.sheet--fixed` (one page, clips overflow) | `DocStarterTest` · `the doc starter stylesheet declares Letter paper and print geometry` (fixed-sheet rules); print behaviour in `DocStarterBrowserTest` | pending |
-| Export bridge: `ready` handshake works cross-origin; `describe` returns the expected runs; undeclared-origin and pre-handshake messages are ignored | `DocStarterBrowserTest` · `doc starter handshake works from a different origin`, `doc starter describe returns the fixture runs`, `doc starter ignores undeclared-origin and pre-handshake messages` | pending |
-| Replies go to the browser-reported parent origin, never `'*'` | `DocStarterTest` · `export.js replies to the parent origin and never with a wildcard target` | pending |
-| Bridge makes no network request and never touches `parent.document` | `DocStarterTest` · `export.js makes no network request and never touches the parent document` | pending |
-| Browser flowing and fixed fixtures: flowing spans two printed pages; fixed prints one page | `DocStarterBrowserTest` · `flowing fixture prints across two pages`, `fixed sheet prints on exactly one page` | pending |
-| Zero CSP console errors on the starter | `DocStarterBrowserTest` · `doc starter loads with zero CSP errors` | pending |
-| Four violating copies return the matching error | `DocStarterTest` · `the publish contract refuses violating copies of the doc starter` (dataset: inline script, `onclick=`, `data:` image, external font URL) | pending |
-| Every relative reference resolves inside the bundle | `DocStarterTest` · `every relative reference in the doc starter resolves inside the bundle` | pending |
-| Independent review focused on origin isolation | Process check: fresh reviewer recorded in the PR | pending |
-| Staging render check (`deploy_artifact`, `files`, `entrypoint: index.html`, `artifact_type: document`) | After merge, on staging. Artifact id and screenshot go in the PR | not verified here |
-| `npm run test:plugin` passes | Command run and output recorded | pending |
-| PR screenshot or `No UI changes`; `vendor/bin/pint --dirty --format agent` clean | Process check | pending |
-| CI green and approved; no PR preview environments | Process check | pending |
+| `index.html` and `doc.css` exist; no inline script, no `on*=`, no `data:`, no external origin; only script is `export.js`; links `doc.css` relatively | `DocStarterTest` · `the doc starter has its three files`, `the doc starter passes the publish contract`, `index.html has one script tag, export.js, loaded with defer`, `every relative reference in the doc starter resolves inside the bundle` | passed (14/14 file) |
+| `index.html` carries `doc@1` meta and a top comment naming the slots and upgrade rule | `DocStarterTest` · `index.html carries the doc@1 meta and the slot and upgrade comment` | passed |
+| `@page` Letter with margin; `.sheet` 8.5in by at least 11in; print no shadow and fills page; `sheet-a4` 210mm by 297mm; `--doc-*` tokens on `:root`; system fonts | `DocStarterTest` · `the doc starter stylesheet declares Letter paper and print geometry`, `the doc starter uses no external fonts and no viewport units or fixed positioning` | passed (CSS text checks only; computed layout not measured) |
+| Print discipline: real columns, `column-span: all`, `thead`, `break-before: page`, `break-inside: avoid`, `orphans`/`widows` 3, no `position: fixed` or viewport units | `DocStarterTest` · `the doc starter stylesheet carries the flowing print discipline` | passed (text checks only) |
+| Both page shapes: flowing and `.sheet--fixed` | `DocStarterTest` checks the `.sheet--fixed` rules | partly: rules present; print pagination not run |
+| Bridge: `ready` handshake works cross-origin; `describe` returns runs; undeclared-origin and pre-handshake messages ignored | `DocStarterBrowserTest` · `doc starter handshake works from a different origin`, `doc starter describe returns the fixture runs`, `doc starter ignores undeclared-origin and pre-handshake messages` | passed (4/4 file) |
+| Replies go to the browser-reported parent origin, never `'*'` | `DocStarterTest` · `export.js replies to the parent origin and never with a wildcard target` | passed; guard broken (`'*'`): one test failed (13/14); the browser test does not catch this, the string test does |
+| Bridge makes no network request and never touches the parent document | `DocStarterTest` · `export.js makes no network request and never touches the parent document` | passed |
+| Starter script runs under the artifact CSP (no blocked script) | `DocStarterBrowserTest` · `doc starter script runs under the artifact CSP` | passed; a blocked script would fail the handshake. Console CSP-error capture is not wired, so "zero CSP console errors" is not literally checked |
+| Four violating copies refused with the matching error | `DocStarterTest` · `the publish contract refuses violating copies of the doc starter` (inline script, `onclick=`, `data:` image, external font URL) | passed; each validator guard broken in turn: one test failed (13/14), restored |
+| Flowing and fixed fixtures print one or two pages | Not built | not verified: no print-emulation test |
+| Independent review focused on origin isolation | Process check: fresh reviewer, recorded in the PR | pending |
+| Staging render check (`deploy_artifact`, `files`, `entrypoint: index.html`, `artifact_type: document`) | After merge, on staging | not verified here |
+| `npm run test:plugin` passes | `npm run test:plugin`: pass 3, fail 0 | passed |
+| PR screenshot or `No UI changes`; `vendor/bin/pint --dirty --format agent` clean | Pint passed on each commit. Screenshot: not taken (no print or desktop capture was run) | partly |
+| CI green and approved; no PR preview environments | Process check after push | pending |
 
 ## Open questions
 
