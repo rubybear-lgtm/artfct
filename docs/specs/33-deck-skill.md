@@ -64,7 +64,7 @@ Run on this branch: all eight breaks made their named test fail (result `failed`
 | Token declaration | Name `--type-missing` in SKILL.md | `every --deck and --type token...` |
 | Starter file list | Remove `app.js` from the copy step | `the skill copies the three starter files...` |
 | Outline gate | Remove the step-1 sentence "wait for their confirmation before building" | `the skill requires a confirmed outline...` (exact-sentence assertion; the earlier regex matched across the file and passed with the sentence removed) |
-| Findability search | Remove the search step | `the skill runs one findability search...` |
+| Findability search | Swap workflow steps 4 (deploy) and 5 (findability search) | `the skill runs one findability search...` (ordering now anchored to the step labels; the old `deploy_artifact` anchor matched the frontmatter) |
 | `--type` tokens in starter | Remove `--type-body` from `deck.css` | `deck.css declares the --type tokens on :root` |
 
 ## Open questions
