@@ -650,3 +650,95 @@ test('the brand section names every theme token the starters declare', function 
         expect(brandSection())->toContain("`{$token}`");
     }
 });
+
+/*
+ * RUB-568 / spec 36: the publish guidance tells a bot to publish a design system,
+ * to follow it before the brand post, to copy its files verbatim and to record
+ * which system and version it followed.
+ */
+function designSystemSection(): string
+{
+    $text = ArtifactGuidance::topic('publish')['text'] ?? '';
+    preg_match('/^## Design systems\n(.*?)(?=^## |\z)/ms', $text, $match);
+
+    return $match[1] ?? '';
+}
+
+test('the publish guidance has a Design systems section before Brand and voice', function () {
+    $text = ArtifactGuidance::topic('publish')['text'] ?? '';
+
+    expect(designSystemSection())->not->toBe('')
+        ->and(strpos($text, '## Design systems'))->toBeLessThan(strpos($text, '## Brand and voice'));
+});
+
+test('the design system guidance names the bundle files and the deploy shape', function () {
+    foreach (['artifact_type: design_system', 'entrypoint: index.html', 'README.md', 'tokens.json', '`fonts/`', '`assets/`'] as $name) {
+        expect(designSystemSection())->toContain($name);
+    }
+});
+
+test('the design system guidance documents the tokens.json shape and its rules', function () {
+    $section = designSystemSection();
+
+    foreach (['"version"', '"color"', '"spacing"', '"radius"', '"type"', '"families"', '"sizes"', '"fonts"', '`file`', '`family`', '`weight`', '`style`'] as $name) {
+        expect($section)->toContain($name);
+    }
+
+    expect($section)->toContain('no `var(`')
+        ->toContain('no nesting')
+        ->toContain('`--doc-`, `--deck-` or `--type-`');
+});
+
+test('the design system guidance has the three-step consume order', function () {
+    $section = designSystemSection();
+
+    $markers = [
+        'artifact_type: design_system',
+        'design_system/details',
+        'replaced_by',
+        'Brand and voice',
+        'neutral default',
+    ];
+
+    $positions = array_map(fn (string $marker): int|false => strpos($section, $marker), $markers);
+
+    expect(in_array(false, $positions, true))->toBeFalse();
+    expect($positions)->toBe(collect($positions)->sort()->values()->all());
+});
+
+test('the design system guidance copies fonts and assets verbatim', function () {
+    expect(designSystemSection())->toContain('verbatim')
+        ->toContain('Never re-type or re-download');
+});
+
+test('the design system guidance sets the tokens in one style element and leaves the chrome alone', function () {
+    expect(designSystemSection())->toContain('one `<style>` element in `index.html`')
+        ->toContain('chrome files');
+});
+
+test('the design system guidance requires the provenance line in the description', function () {
+    expect(designSystemSection())->toContain('Follows design system "<title>" version <version> (<artifact id>).');
+});
+
+test('the design system guidance chains revisions with status and replaced_by', function () {
+    $section = designSystemSection();
+
+    expect($section)->toContain('`superseded`')
+        ->toContain('`replaced_by`')
+        ->toContain('`current`')
+        ->toContain('up to three hops');
+});
+
+test('every token the design system guidance names is one a starter declares', function () {
+    $starterCss = implode("\n", array_map(
+        fn (string $path): string => (string) file_get_contents($path),
+        [base_path('skills/artfct-team-doc/assets/doc-starter/doc.css'), base_path('skills/presentation/assets/deck-starter/deck.css')],
+    ));
+
+    preg_match_all('/--(?:doc|deck|type)-[a-z0-9-]+/', designSystemSection(), $matches);
+
+    expect($matches[0])->not->toBeEmpty();
+    foreach (array_unique($matches[0]) as $token) {
+        expect($starterCss)->toContain("{$token}:");
+    }
+});

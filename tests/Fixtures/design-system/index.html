@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sample design system</title>
+  <style>
+    :root {
+      --doc-ink: #262624;
+      --doc-paper: #fbfaf8;
+      --doc-accent: #701a24;
+    }
+    body { font-family: Manrope, system-ui, sans-serif; color: var(--doc-ink); background: var(--doc-paper); margin: 2rem; }
+    .swatch { display: inline-block; width: 3rem; height: 3rem; margin-right: .5rem; border: 1px solid #dedad2; }
+  </style>
+</head>
+<body>
+  <h1 style="color: var(--doc-accent)">Sample design system</h1>
+  <p>The brand book is in README.md. Tokens are in tokens.json.</p>
+  <div>
+    <span class="swatch" style="background: #262624" title="ink"></span>
+    <span class="swatch" style="background: #fbfaf8" title="paper"></span>
+    <span class="swatch" style="background: #701a24" title="accent"></span>
+  </div>
+  <p style="font-family: Manrope, sans-serif">Manrope specimen: Aa Bb Cc 0123456789</p>
+  <img src="assets/logo.svg" alt="Sample logo" width="120" height="40">
+</body>
+</html>
