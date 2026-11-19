@@ -44,15 +44,15 @@ No new files except this spec. No new dependencies, no new folders.
 
 | Done when (RUB-556) | Proof | Status |
 |---|---|---|
-| publish.md has "Brand and voice"; SKILL.md carries the same text; VERSION bumped one minor; every tool text naming the version updated | `McpGuidanceTest` · `the Agent Skills files carry exactly the served guidance` (dataset `publish`); `McpGuidanceTest` · `every tool that names a guidance version names the current one`; `AgentInstructionsTest` · `the guidance version moved with the text` | pending |
-| Search for "Brand and voice" with `artifact_type: post`; confirm kind `brand` and status `current` with `db_get` on `post/details`; `read_artifact` only for content | `McpGuidanceTest` · `the brand section searches by the exact title and the post type`; `the brand section reads kind and status from post data with db_get`; `the brand section says read_artifact is for content only` | pending |
-| Superseded: follow `replaced_by` in data, up to 3 hops, `post/details` on each hop; stop on longer, broken or unreadable chains; snapshot fallback said plainly | `McpGuidanceTest` · `the brand section follows replaced_by up to three hops and stops when the chain fails`; `the brand section falls back to the snapshot only when data is unreadable` | pending |
-| No post: say "no Brand and voice post found", use the neutral default, do not call it the team brand, offer to create | `McpGuidanceTest` · `the brand section says what to do when no brand post exists` | pending |
-| Contents list in order; every `--doc-*`, `--deck-*` and `--type-*` token the starters declare is named | `McpGuidanceTest` · `the brand section lists what a brand post contains, in order`; `the brand section names every theme token the starters declare` | pending |
-| McpGuidanceTest asserts `Brand and voice`, `db_get`, `post/details`, `brand`, `current`, `superseded`, `replaced_by` and the no-post sentence | the tests above | pending |
-| `php artisan test --compact tests/Feature/McpGuidanceTest.php` passes | command | pending |
-| `npm run test:skills` and `npm run test:plugin` pass | command | pending |
-| `vendor/bin/pint --dirty --format agent` clean | command | pending |
+| publish.md has "Brand and voice"; SKILL.md carries the same text; VERSION bumped one minor; every tool text naming the version updated | `McpGuidanceTest` · `the Agent Skills files carry exactly the served guidance` (dataset `publish`); `McpGuidanceTest` · `every tool that names a guidance version names the current one`; `AgentInstructionsTest` · `the guidance version moved with the text` | passed (all three; 140 tests across McpGuidanceTest, AgentInstructionsTest and VerificationGapsConfigTest) |
+| Search for "Brand and voice" with `artifact_type: post`; confirm kind `brand` and status `current` with `db_get` on `post/details`; `read_artifact` only for content | `McpGuidanceTest` · `the brand section searches by the exact title and the post type`; `the brand section reads kind and status from post data with db_get`; `the brand section says read_artifact is for content only` | passed (all three) |
+| Superseded: follow `replaced_by` in data, up to 3 hops, `post/details` on each hop; stop on longer, broken or unreadable chains; snapshot fallback said plainly | `McpGuidanceTest` · `the brand section follows replaced_by up to three hops and stops when the chain fails`; `the brand section falls back to the snapshot only when data is unreadable` | passed (both) |
+| No post: say "no Brand and voice post found", use the neutral default, do not call it the team brand, offer to create | `McpGuidanceTest` · `the brand section says what to do when no brand post exists` | passed |
+| Contents list in order; every `--doc-*`, `--deck-*` and `--type-*` token the starters declare is named | `McpGuidanceTest` · `the brand section lists what a brand post contains, in order`; `the brand section names every theme token the starters declare` | passed (both). The order test matches headings case-insensitively; the bullets are capitalised |
+| McpGuidanceTest asserts `Brand and voice`, `db_get`, `post/details`, `brand`, `current`, `superseded`, `replaced_by` and the no-post sentence | the tests above | passed |
+| `php artisan test --compact tests/Feature/McpGuidanceTest.php` passes | command | passed (McpGuidanceTest 9 brand tests green; full file run with AgentInstructionsTest: 140 passed, 0 failed) |
+| `npm run test:skills` and `npm run test:plugin` pass | command | passed: test:skills 8/8 files; test:plugin 3/3 |
+| `vendor/bin/pint --dirty --format agent` clean | command | passed before each PHP commit |
 | Staging: two recorded runs (brand search and db_get visible in MCP activity; superseded post followed via `replaced_by` in data) | After merge, staging | not verified here |
 | CI green; reviewed and approved; no preview environments | Process | pending (orchestrator) |
 
@@ -60,17 +60,17 @@ Test names above are the exact Pest names. Test file: `tests/Feature/McpGuidance
 
 ## Negative tests and guard breaks
 
-Each guard is broken on purpose, the named test is run and must fail, then the guard is restored and the test passes again. Recorded in the PR and in this table once run.
+Each guard is broken on purpose, the named test is run and must fail, then the guard is restored and the test passes again. Run on this branch: every break failed its named test (exit 1) after the two weak assertions were tightened; the original versions of those two tests passed under their breaks, which is why they were tightened. Restored and rerun: 9/9 brand tests pass.
 
 | Guard | Break | Test expected to fail |
 |---|---|---|
 | Kind and status come from data | Remove "read kind and status" wording | `the brand section reads kind and status from post data with db_get` |
-| Content-only read | Remove "never for status or kind" sentence | `the brand section says read_artifact is for content only` |
-| Hop limit | Change "up to 3 hops" to "up to 5 hops" | `the brand section follows replaced_by up to three hops and stops when the chain fails` |
-| Stop rule | Remove "stop and tell the person" after the chain | same test |
-| Snapshot fallback | Remove "say so plainly" | `the brand section falls back to the snapshot only when data is unreadable` |
-| No-post sentence | Remove the exact sentence `no Brand and voice post found` | `the brand section says what to do when no brand post exists` |
-| Token coverage | Remove `--type-body` from the visual foundations text | `the brand section names every theme token the starters declare` |
+| Content-only read | Remove "never for status or kind" sentence (failed) | `the brand section says read_artifact is for content only` |
+| Hop limit | Change "up to 3 hops" to "up to 5 hops" (failed) | `the brand section follows replaced_by up to three hops and stops when the chain fails` |
+| Stop rule | Replace the chain-failure sentence with "keep going" (failed) | same test |
+| Snapshot fallback | Remove "say so plainly" (failed) | `the brand section falls back to the snapshot only when data is unreadable` |
+| No-post sentence | Replace the sentence with "nothing found" (failed) | `the brand section says what to do when no brand post exists` |
+| Token coverage | Misspell `--type-title` in the token list (failed) | `the brand section names every theme token the starters declare` |
 
 ## Open questions
 
