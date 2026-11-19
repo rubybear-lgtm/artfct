@@ -410,3 +410,86 @@ test('the guidance rule matches the isolated origin policy the Worker builds', f
         ->not->toContain('img-src')
         ->not->toContain('font-src');
 });
+
+/*
+ * RUB-556: the publish guidance tells a bot to follow the team's "Brand and
+ * voice" post before customer-facing work. The post is found by search, then
+ * its kind and status are read from post data, never from the snapshot.
+ */
+function brandSection(): string
+{
+    $text = ArtifactGuidance::topic('publish')['text'];
+
+    preg_match('/^## Brand and voice\n(.*?)(?=^## |\z)/ms', $text, $match);
+
+    return $match[1] ?? '';
+}
+
+test('the publish guidance has a Brand and voice section', function () {
+    expect(ArtifactGuidance::topic('publish')['text'])->toContain('## Brand and voice')
+        ->and(brandSection())->not->toBeEmpty();
+});
+
+test('the brand section searches by the exact title and the post type', function () {
+    expect(brandSection())->toContain('`search_artifacts`')
+        ->toContain('query `Brand and voice`')
+        ->toContain('`artifact_type: post`');
+});
+
+test('the brand section reads kind and status from post data with db_get', function () {
+    expect(brandSection())->toContain('`db_get`')
+        ->toContain('`post/details`')
+        ->toContain('`brand`')
+        ->toContain('`current`')
+        ->toContain('data is the source of truth');
+});
+
+test('the brand section says read_artifact is for content only', function () {
+    expect(brandSection())->toContain('`read_artifact`')
+        ->toContain('never for status or kind');
+});
+
+test('the brand section follows replaced_by up to three hops and stops when the chain fails', function () {
+    expect(brandSection())->toContain('`superseded`')
+        ->toContain('`replaced_by`')
+        ->toContain('up to 3 hops')
+        ->toContain('stop and tell the person');
+});
+
+test('the brand section falls back to the snapshot only when data is unreadable', function () {
+    expect(brandSection())->toContain('no readable `post/details` data')
+        ->toContain('use its snapshot and say so plainly');
+});
+
+test('the brand section says what to do when no brand post exists', function () {
+    expect(brandSection())->toContain('no Brand and voice post found')
+        ->toContain('neutral default')
+        ->toContain('do not describe the result as the team brand')
+        ->toContain('offer to create the post');
+});
+
+test('the brand section lists what a brand post contains, in order', function () {
+    $text = brandSection();
+
+    $markers = ['voice summary', 'visual foundations', 'logo rules', 'worked examples'];
+    $positions = array_map(fn (string $marker): int|false => strpos($text, $marker), $markers);
+
+    expect(in_array(false, $positions, true))->toBeFalse()
+        ->and($positions)->toBe(collect($positions)->sort()->values()->all());
+});
+
+test('the brand section names every theme token the starters declare', function () {
+    $files = array_merge(
+        glob(base_path('skills/artfct-team-doc/assets/doc-starter/*.css')) ?: [],
+        glob(base_path('skills/presentation/assets/deck-starter/*.css')) ?: [],
+    );
+
+    preg_match_all('/(--(?:doc|deck|type)-[a-z0-9-]+)\s*:/', implode("\n", array_map('file_get_contents', $files)), $matches);
+    $tokens = array_values(array_unique($matches[1]));
+
+    expect($tokens)->not->toBeEmpty();
+
+    foreach ($tokens as $token) {
+        expect(brandSection())->toContain("`{$token}`");
+    }
+});
