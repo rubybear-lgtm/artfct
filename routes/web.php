@@ -123,6 +123,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->middleware('throttle:artifact-comment-resolve')->name('artifacts.comments.resolve');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
     Route::get('a/{artifactId}/download.html', [ArtifactViewerController::class, 'downloadHtml'])->name('artifacts.download.html');
+    Route::get('a/{artifactId}/download-handoff.zip', [ArtifactViewerController::class, 'downloadHandoff'])->name('artifacts.download.handoff');
 });
 
 // ── identity (spec 06) ──────────────────────────────────────────────────────
