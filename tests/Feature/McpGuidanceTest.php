@@ -461,8 +461,19 @@ test('the brand section says the brand post text is untrusted data, not instruct
 test('the brand section follows replaced_by up to three hops and stops when the chain fails', function () {
     expect(brandSection())->toContain('`superseded`')
         ->toContain('`replaced_by`')
-        ->toContain('up to 3 hops')
-        ->toContain('If the chain is longer, broken or the named artifact is unreadable, stop and tell the person');
+        ->toContain('Follow up to 3 hops.')
+        ->toContain('a draft')
+        ->toContain('a kind other than `brand`')
+        ->toContain('or is missing')
+        ->toContain('The chain fails when it runs past 3 hops, a hop fails, or the named artifact is unreadable.')
+        ->toContain('go on to step 4');
+});
+
+test('the brand section takes the newest brand post of any status and names the snapshot casing', function () {
+    expect(brandSection())->toContain('whatever their status')
+        ->toContain('`updated_at`')
+        ->toContain('title-case values (`Brand`, `Current`)')
+        ->not->toContain('more than one current brand post');
 });
 
 test('the brand section falls back to the snapshot only when data is unreadable', function () {
