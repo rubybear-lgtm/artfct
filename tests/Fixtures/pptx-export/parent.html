@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PowerPoint export parent fixture</title>
+</head>
+<body>
+  <p id="status">running</p>
+  <script src="/vendor/pptx-export/export.js"></script>
+  <script>
+    // Test fixture only (not part of the app). Runs the export runner from the
+    // parent origin against the deck starter on its own origin.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var starterUrl = params.get('starter') + '/index.html';
+      window.results = {};
+
+      var probe = document.createElement('iframe');
+      probe.title = 'probe';
+      probe.src = starterUrl;
+      document.body.appendChild(probe);
+
+      probe.addEventListener('load', function () {
+        try {
+          void probe.contentWindow.document;
+          window.results.crossOriginAccess = 'allowed';
+        } catch (error) {
+          window.results.crossOriginAccess = error.name;
+        }
+        probe.remove();
+
+        window.artfctPptxExport.run({ frameUrl: starterUrl, exportUrl: location.origin + '/export' }).then(function (file) {
+          window.results.filename = file.filename;
+          window.results.captures = file.captures;
+          document.getElementById('status').textContent = 'done';
+        }, function (error) {
+          window.results.error = error.code || error.message;
+          document.getElementById('status').textContent = 'failed';
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
