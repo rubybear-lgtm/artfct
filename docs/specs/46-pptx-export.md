@@ -98,28 +98,61 @@ Additive to the RUB-558 contract (spec 31, "Export bridge contract"). Everything
 
 ## Done-when to test map
 
-RUB-562 Done-when, with the test that proves each item. **Status** is the result of running the test on this branch. Nothing is marked passed unless its test was run and passed.
+RUB-562 Done-when, with the test that proves each item. **Status** is the result of running the test on this branch. Nothing is marked met unless its test ran and passed.
 
-| Done-when (RUB-562) | Test | Status |
+| Done-when (RUB-562) | Test (file · name) | Result |
 |---|---|---|
-| Comment with the three checks, Ruben approves | Process: Linear comment, not posted by this branch | **not met**: no approval claimed |
-| `capture(n)` returns a true 1920 by 1080 PNG; works cross-origin after handshake; ignored before handshake or from an undeclared source | see **Bridge** tests below | pending |
-| Route accepts captures and returns the file; no access 404; non-deck 422 | Pest feature tests in `tests/Feature/Artifacts/PptxExportTest.php` | pending |
-| Input limits: 30 slides, 40 MB, PNG magic and 1920 by 1080, distinct 422 codes | Pest feature tests, one per limit | pending |
-| Pest: three access cases; a three-slide fixture returns a zip with exactly three `ppt/slides/slide*.xml`; each slide's notes contain the view URL | `PptxExportTest.php` | pending |
-| Browser test: one capture per slide arrives at the route; download begins | `tests/Browser/PptxExportBrowserTest.php` | pending |
-| Security: artifact script never runs in the app origin; `parent.document` gives `SecurityError` | Browser test, fixture deck | pending |
-| Independent review, focused on origin isolation | Process, PR | not run here |
-| Staging: export a staging deck, open in PowerPoint or Keynote, check count, order, full-bleed, notes | After merge, on staging | **not verified** |
-| `presentation/SKILL.md` "When Not to Use" line points to Download PowerPoint | `tests/Feature/Skills/PresentationSkillTest.php` | pending |
-| PR screenshot; Pint clean; CI green; approved | Process | pending |
+| Comment with the three checks; Ruben approves them | Process: Linear comment, not posted by this branch | **not met**: no approval claimed |
+| Bridge `capture(n)` returns a true 1920 by 1080 PNG; works cross-origin after the handshake; ignored before it | `DeckStarterBrowserTest` · `deck starter capture returns a true 1920 by 1080 PNG after the handshake` (PNG signature and IHDR width read from the bytes); `deck starter capture is ignored before the handshake and refuses an out-of-range index` | passed (2/2) |
+| Bridge refuses an undeclared source | Existing `deck starter ignores sibling-frame and pre-handshake messages` (covers `ready`; the same `event.source` check guards `capture`) | passed. Not separately run for `capture` |
+| Route accepts captures and returns the file; no access 404; non-deck 422 | `PptxExportTest` · `a member exports a slide deck as a pptx with one slide per capture`, `a user outside the owning team gets the same 404 as a missing artifact`, `a guest is sent to sign in and nothing is exported`, `a teammate gets the same 404 for a private deck owned by someone else`, `a non-deck artifact is refused with 422 not_a_slide_deck` | passed (10/10 in file) |
+| Input limits: 30 slides, 40 MB, PNG magic, 1920 by 1080, distinct 422 codes | `PptxCaptureValidatorTest` (7 tests, one per limit, plus the base64 and decode cases); `PptxExportTest` · `more than 30 slides is refused with 422 too_many_slides`, `a request with no captures is refused with 422 invalid_captures`, `a capture without the PNG signature is refused with 422 invalid_png`, `a PNG that is not 1920 by 1080 is refused with 422 wrong_dimensions` | passed (7/7 unit; route cases in 10/10) |
+| Feature: three access cases; a three-slide fixture returns a zip with three `ppt/slides/slide*.xml`; each slide's notes hold the view URL | `PptxExportTest` · `a member exports a slide deck...` (checks three slide parts and the view URL in notes) | passed |
+| Browser: one capture per slide reaches the route; the download begins | `PptxExportBrowserTest` · `exporting the deck sends one capture per slide and starts the download` (3 captures, server count file reads `3`, filename `fixture-deck.pptx`) | passed (2/2 in file) |
+| Security: artifact script never runs in the app origin; `parent.document` gives `SecurityError` | `PptxExportBrowserTest` · `the parent cannot read the starter document, so the artifact script never runs in the app origin` (cross-origin access from the parent throws `SecurityError`) | passed. This shows the parent cannot reach the deck's document. It does not run a deck script that tries `parent.document`, which is not built |
+| Independent review, focused on origin isolation | Process, PR | pending (orchestrator) |
+| Staging: export a staging deck; open in PowerPoint or Keynote; count, order, full-bleed, notes | After merge, on staging | **not verified** |
+| `presentation/SKILL.md` "When Not to Use" points to Download PowerPoint | `PresentationSkillTest` · `the skill keeps the PDF refusal and points PowerPoint requests to the Download PowerPoint action` | passed (18/18 in file) |
+| PR screenshot; `vendor/bin/pint --dirty --format agent` clean; CI green; approved | Process; Pint runs before each PHP commit | pint passed on each commit; screenshot, CI and approval pending |
 
-Test names and results are added here as each one runs.
+Supporting tests added on this branch: `PptxExporterTest` · `writes one full-bleed picture per capture, in order, with the view url in the notes` (1/1); `DeckStarterTest` · `the deck starter vendors html2canvas as capture.js, MIT licensed and unmodified in its header` and `app.js lazy-loads capture.js for the capture command and advertises it in ready` (pass); `ArtifactViewerTest` · `a member viewing a slide deck is offered the PowerPoint export, and a document is not` (pass, 34/34 in file); `ArtifactViewerBrowserTest` · `a slide deck shows the Download PowerPoint action beside Download, and a document does not` (pass, 13/13 in file).
+
+### Guard breaks run
+
+| Guard removed | Test that failed |
+|---|---|
+| Non-deck refusal (`not_a_slide_deck`) | `a non-deck artifact is refused with 422 not_a_slide_deck` (1 failed) |
+| Export visibility check (`canView`) | `a teammate gets the same 404 for a private deck owned by someone else` (1 failed). The outsider test passes without it, because `resolveArtifact` already refuses non-members |
+| Dimension check (`wrong_dimensions`) | `PptxCaptureValidatorTest` (6 of 7 passed; the dimension case failed) |
+| Body-size check (`payload_too_large`) | `PptxCaptureValidatorTest` (6 of 7 passed; the body case failed) |
+| Bridge `capture` index check | `deck starter capture is ignored before the handshake and refuses an out-of-range index` (1 failed) |
+| Viewer button condition (`pptxExportUrl`) | `a slide deck shows the Download PowerPoint action...` (1 failed) |
+
+## Deviations and decisions made while building
+
+- **`--with-all-dependencies` not used.** It upgraded 22 unrelated packages in a dry run. The lock change is the exact require without the flag: six packages added, none upgraded.
+- **`composer require` ran Boost's post-install hook.** It rewrote `AGENTS.md`, `CLAUDE.md`, `boost.json` and `.claude/skills`. Those were reverted and the untracked Boost skill folders removed, so this branch's diff is only the dependency and its code.
+- **ESLint ignores the vendored `capture.js`.** `eslint.config.js` lists it next to `public`, because it is an unmodified third-party minified build. Without that the pre-commit lint fails on it.
+- **Standalone download test changed.** `StandaloneHtmlDownloadTest` now expects the single relative reference `capture.js`. The offline file is never framed by the runner, so it does not pack the library. This is the only existing test changed in expectation.
+- **Starter bundle has four files.** Spec 31's "three files" is now `index.html`, `deck.css`, `app.js` and `capture.js`. `index.html` still has one script tag. The upgrade rule now covers `capture.js` with the other chrome files.
+- **The runner is plain JavaScript in `public/vendor/pptx-export/export.js`.** It follows the PDF branch's pattern, so the fixture page can load it directly. The viewer loads it on first click. It is not Vite-bundled, which keeps the browser test close to the real code path.
+- **Frame wait uses timers, not animation frames.** An off-screen cross-origin frame gets no animation frames, so the first version of the capture never resolved in the browser. `app.js` now waits two 16 ms timer ticks before rendering.
+- **Hosts must set `post_max_size` to at least 40M.** Laravel's `ValidatePostSize` answers `413` before the route when the declared body exceeds PHP's `post_max_size`. The repo does not set that value (production PHP config is on the host), and this CLI has 2M. The `payload_too_large` rule is therefore unit-tested in `PptxCaptureValidatorTest`, not through the route. Raising the limit in `phpunit.xml` did not work, because `post_max_size` is read at request time and is not changeable at run time.
+- **`invalid_captures` is an extra code.** The brief listed four distinct codes. An empty or non-list `captures` gets its own code, so a malformed request is not reported as a PNG problem.
+- **Viewer button was written before its browser test.** Its test was then run, and broken on purpose to confirm it fails. This is the wrong order for TDD and is recorded here.
+- **No `ArtifactGuidance::VERSION` bump.** `presentation` is a plain skill, not a guidance topic, and no guidance file changed.
+
+## Known issues
+
+- **PHP 8.5 deprecation in the writer.** The spike (plain CLI) printed three `Deprecated: Using null as an array offset` notices from `HashTable.php` line 74. Under Pest the notices did not appear in any run. The output is correct either way. The owner should decide whether to keep 1.2.0 (no later stable release exists) or patch around it.
+- **phppresentation's reader returns no text.** It reads back zero text elements from files it wrote, though the text is in the XML. The tests check text by parsing the package XML directly. PowerPoint and Keynote display of that text is not verified here.
+- **html2canvas fidelity.** Known gaps for the starter's CSS are listed under Rasterizer. Not measured against a real render.
 
 ## Unverified (and why)
 
-- **Staging export and PowerPoint/Keynote open.** Needs a staging deck and a desktop Office app. Not available to this run.
-- **PR screenshots.** Require the viewer button running locally or on staging. Recorded for the PR step.
-- **CSP console errors on a real artifact origin.** Only the test router's CSP is exercised.
-- **html2canvas fidelity against the real starter.** Only the fixture deck is rendered. Not compared pixel by pixel.
-- **PowerPoint and Keynote display of the phppresentation text (CDATA).** See Spike.
+- **Staging export and PowerPoint/Keynote open.** Needs a staging deck and a desktop Office app, neither available to this run.
+- **PR screenshots (before and after).** Need the viewer button running locally or on staging. Required before the PR is marked ready.
+- **CSP console errors on a real artifact origin.** The browser tests use the starter test router's CSP, not the Worker's. Not checked with `assertNoJavaScriptErrors` on the runner page.
+- **Visual check of the export output.** No pixel comparison of a real deck's captures against a browser render.
+- **Owner approval of the rasterizer and pin.** Linear Done-when item 1 is a comment Ruben must approve. Not posted, not claimed.
+- **LGPL-3.0 for phppresentation and phpoffice/common.** Used unmodified as a server-side dependency. Owner to confirm the licence is acceptable.
