@@ -1,6 +1,6 @@
 ---
 name: artfct-publish
-description: "Use when publishing or updating an artifact with deploy_artifact: whether to publish at all (the person's save_to_artfct preference), title and description rules, artifact type, base_version updates, secrets, and the one findability check after publishing."
+description: "Use when the person asks to publish, share, or update a decision, announcement, report, or other team page: check save_to_artfct, search first to avoid duplicates, follow title and type rules, pass base_version on updates, and run one findability search after."
 ---
 
 # Publishing to Artfct
@@ -36,6 +36,7 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 ## Updating
 
 - To update something you published before, pass its `artifact_id` and the `base_version` you built on (from `get_artifact` or `read_artifact`).
+- Before you publish a page the team may already have, search for its title. If a page with the same title exists, update it with its `artifact_id` and `base_version` instead of publishing a duplicate.
 - If you get `stale_base`, someone changed it since. Read the live version with `read_artifact`, merge your change into it, and publish again with the new `base_version`. Do not retry the same publish.
 - Publishing the same content again returns the same artifact and creates no new version.
 

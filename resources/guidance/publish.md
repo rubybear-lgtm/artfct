@@ -31,6 +31,7 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 ## Updating
 
 - To update something you published before, pass its `artifact_id` and the `base_version` you built on (from `get_artifact` or `read_artifact`).
+- Before you publish a page the team may already have, search for its title. If a page with the same title exists, update it with its `artifact_id` and `base_version` instead of publishing a duplicate.
 - If you get `stale_base`, someone changed it since. Read the live version with `read_artifact`, merge your change into it, and publish again with the new `base_version`. Do not retry the same publish.
 - Publishing the same content again returns the same artifact and creates no new version.
 
