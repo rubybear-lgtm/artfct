@@ -52,25 +52,50 @@ The index is `customer_name`, so a bot can find a one-pager by customer with `db
 
 ## Done-when to test map
 
-Status values: **passed** (test ran and passed), **guard broken** (test failed when the guard was removed), **not run** (could not run here, with reason).
+Status values: **passed** (test ran and passed), **guard broken** (test failed when the guard was removed and then restored), **not run** (could not run here, with reason).
 
 | Done when (RUB-560) | Proof | Status |
 |---|---|---|
-| Starter files exist and pass `PublishContractValidator`; four violating-copy checks | `OnePagerStarterTest` · `the one-pager starter has its four files`, `the one-pager starter passes the publish contract`, `the publish contract refuses violating copies of the one-pager starter` (dataset: inline script, onclick handler, data uri image, external font url) | pending |
-| `tweaks.json` ships in the bundle; a missing file fails loudly on the page | `OnePagerStarterTest` · `tweaks.json is in the bundle as an ordered declaration`; `OnePagerTweaksBrowserTest` · `a bundle without tweaks.json shows a visible panel error` | pending |
-| Placeholders readable with JavaScript off | `OnePagerStarterTest` · `every data-tweak element holds a placeholder in index.html`. A browser run with JavaScript disabled is not in the test suite. | partly: static only |
-| Client-side refusals (max, choice, color, range, toggle, image path), with the error beside the control | `OnePagerTweaksBrowserTest` · `tweaks.js refuses text over max`, `... a choice outside choices`, `... a color that is not hex`, `... a range outside min and max`, `... a toggle that is not boolean`, `... an image path that is not a file in the bundle` | pending |
-| Refused values are never sent | `OnePagerTweaksBrowserTest` · `a refused value sends no save request` | pending |
-| Guidance states the constraints and that the server will not refuse | `McpGuidanceTest` · `the one-pager guidance states the tweak constraints and that the server does not refuse them` | pending |
-| Edit panel visible for writer, absent for reader | `OnePagerTweaksBrowserTest` · `the edit panel is shown to a writer`, `the edit panel is absent for a reader` | pending |
-| Saving writes the declared fields; reload shows them | `OnePagerTweaksBrowserTest` · `saving the tweaks writes the declared fields and a reload shows them` | pending |
-| Declaration-driven: a fourth field renders and saves with no change to `tweaks.js` | `OnePagerTweaksBrowserTest` · `a fourth declared field renders and saves with no change to tweaks.js` (fixture: `tests/Fixtures/one-pager-four-fields/tweaks.json`) | pending |
-| Guidance names the one-pager starter, the three fields, the `tweaks` collection and `fields` document | `McpGuidanceTest` · `the team doc guidance names the one-pager starter and its three fields`, `the team doc guidance names the tweaks collection and the db argument`; `OnePagerStarterTest` · `the db argument in the guidance is a valid manifest` | pending |
+| Starter files exist and pass `PublishContractValidator`; four violating-copy checks | `OnePagerStarterTest` · `the one-pager starter has its four files`, `the one-pager starter passes the publish contract`, `the publish contract refuses violating copies of the one-pager starter` (4 datasets: inline script, onclick handler, data uri image, external font url) | passed |
+| `tweaks.json` ships in the bundle; a missing file fails loudly on the page | `OnePagerStarterTest` · `the one-pager starter has its four files` (file exists); `OnePagerTweaksBrowserTest` · `a bundle without tweaks.json shows a visible panel error` | passed |
+| Placeholders readable with JavaScript off | `OnePagerStarterTest` · `every data-tweak element in index.html names a declared field and holds a placeholder`. A browser run with JavaScript disabled is not in the suite. | partly: static only |
+| `tweaks.js` refuses text over max, choice outside choices, non-hex colour, range outside min/max, non-boolean toggle, image path not in bundle; error shown beside the control | `OnePagerTweaksBrowserTest` · `tweaks.js refuses text over its max`, `... a choice outside its choices`, `... a colour that is not hex`, `... a range outside its min and max`, `... a toggle that is not boolean`, `... an image path that is not a file in the bundle`, `... an image path that escapes the bundle without a request` | passed; guard broken for each (see below) |
+| Refused values are never sent | Each refusal test asserts the fixture save count is 0 | passed; guard broken (save gate) failed 6 tests |
+| Guidance states the constraints and that the server does not refuse | `McpGuidanceTest` · `the one-pager guidance states the tweak constraints and that the server does not refuse them` | passed |
+| Edit panel visible for writer, absent for reader | `OnePagerTweaksBrowserTest` · `the edit panel is shown to a writer`, `the edit panel is absent for a reader` | passed; guard broken (writer-only panel) failed |
+| Saving writes the declared fields; reload shows them | `OnePagerTweaksBrowserTest` · `saving the tweaks writes the declared fields and a reload shows them` | passed |
+| Declaration-driven: fourth field renders and saves with no change to `tweaks.js` | `OnePagerTweaksBrowserTest` · `a fourth declared field renders and saves with no change to tweaks.js` (fixture `tests/Fixtures/one-pager-four-fields/tweaks.json`) | passed |
+| Guidance names the one-pager starter, the three fields, the `tweaks` collection and `fields` document; db argument valid | `McpGuidanceTest` · `the team doc guidance names the one-pager starter and its three fields`, `the team doc guidance names the tweaks collection and the db argument`; `OnePagerStarterTest` · `the db argument the team-doc guidance gives is a valid manifest` | passed |
 | `ArtifactGuidance::VERSION` bumped at merge | Not in this PR (merge-time step) | deferred by the issue |
-| `McpGuidanceTest`, `npm run test:skills`, `npm run test:plugin` pass | Run before push | pending |
-| Staging: change fields as a member, see them as a viewer with no panel, zero CSP console errors | Not run: needs merged code and staging | not run |
-| PR screenshots (desktop and mobile) | Not run: the PR is opened by the orchestrator; the fixture can produce them | not run |
-| `vendor/bin/pint --dirty --format agent` clean; CI green; reviewed | Pint before each PHP commit; CI and review happen after the push | pending |
+| `McpGuidanceTest`, `npm run test:skills`, `npm run test:plugin` pass | Ran: Starters, McpGuidanceTest, one-pager, doc and context-post browser suites: 242 passed; `test:skills` passed; `test:plugin` 8/8 files passed | passed |
+| Staging: change fields as a member, see them as a viewer with no panel, zero CSP console errors | Not run: needs merged code and a staging artifact. The fixture server applies the same CSP shape, and `assertNoJavaScriptErrors` passes in the browser tests. | not run |
+| PR screenshots (desktop and mobile) | Not run: the PR is opened by the orchestrator. A screenshot of the fixture page exists under `tests/Browser/Screenshots/` from a failing run, but it is not a final capture. | not run |
+| `vendor/bin/pint --dirty --format agent` clean; CI green; reviewed | Pint ran before each PHP commit and passed. CI and review happen after the push. | pint passed; CI and review pending |
+
+### Guard breaks (each restored after the run)
+
+| Guard broken in `tweaks.js` | Result |
+|---|---|
+| text max check disabled | max refusal test failed |
+| choice membership check disabled | choice refusal test failed |
+| hex check disabled | colour refusal test failed |
+| range bounds check disabled | range refusal test failed |
+| boolean check disabled | toggle refusal test failed |
+| bundle-file response check disabled | image not-in-bundle test failed |
+| image shape check disabled (regex and `..` check) | escape test failed |
+| save gate removed | 6 refusal tests failed |
+| writer-only panel gate removed | reader-absent test failed |
+| untouched-control rule removed (save reads the control) | 3 stored-invalid-value tests failed |
+
+### Process note
+
+The browser tests were committed after `tweaks.js` (`a98500d`), so the red run was against that committed starter. It exposed two bugs, fixed in `812f7de`: the Save button shadowed the `save` function, and an untouched control replaced a stored invalid value with what it displayed.
+
+### Assumptions to verify on staging
+
+- The GET response for a stored document carries the values under `data`, as in the context-post starter.
+- The image existence check uses GET on the bundle path, not HEAD.
+- The session response's `role` is `writer` or `reader`, as in `backend/src/artifact_db.rs`.
 
 ## Open questions (for the owner)
 
