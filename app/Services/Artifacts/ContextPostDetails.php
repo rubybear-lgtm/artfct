@@ -57,8 +57,8 @@ final class ContextPostDetails
             return 'status must be one of: '.implode(', ', self::STATUSES).'.';
         }
 
-        if (array_key_exists('replaced_by', $data) && $data['replaced_by'] !== null && ! is_string($data['replaced_by'])) {
-            return 'replaced_by must be null or an artifact id string.';
+        if (array_key_exists('replaced_by', $data) && $data['replaced_by'] !== null && (! is_string($data['replaced_by']) || ! ArtifactIdShape::isPermanent($data['replaced_by']))) {
+            return 'replaced_by must be null or a permanent artifact id.';
         }
 
         if (array_key_exists('owner', $data) && ! is_string($data['owner'])) {

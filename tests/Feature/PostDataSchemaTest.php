@@ -176,6 +176,9 @@ test('a viewer write is refused with forbidden', function () {
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.structuredContent.code', 'forbidden');
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/v1/artifacts/'.POST_ARTIFACT_ID.'/db/')
+        && $request->header('Authorization') === ['Bearer '.$viewerToken]);
 });
 
 test('a token without data:write gets insufficient_scope on post details', function () {
@@ -199,10 +202,77 @@ test('another team gets not_found on post details', function () {
     postReleaseArtifactDb($team);
     Http::fake(['worker.test/*' => Http::response(['error' => ['code' => 'not_found', 'message' => 'Not found.']], 404)]);
 
-    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+    $tokenForOtherTeam = remoteMcpToken($team);
+
+    postCallMcpTool($tokenForOtherTeam, 'db_update', [
         'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
         'data' => ['status' => 'current'],
     ])->assertOk()
         ->assertJsonPath('result.isError', true)
         ->assertJsonPath('result.structuredContent.code', 'not_found');
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/v1/artifacts/'.POST_ARTIFACT_ID.'/db/')
+        && $request->header('Authorization') === ['Bearer '.$tokenForOtherTeam]);
+});
+
+test('post details refuses a replaced_by that is not a permanent artifact id', function () {
+    $team = Team::factory()->create(['slug' => 'post-replaced-id']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['replaced_by' => 'hello'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('post details refuses a field it does not define before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-unknown-field']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['memo' => 'not a field'],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('post details refuses a non-string owner before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-owner-type']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_update', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => ['owner' => ['name' => 'Ana']],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('db_batch refuses a post details set with an unknown field and applies none of it', function () {
+    $team = Team::factory()->create(['slug' => 'post-batch-unknown']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_batch', [
+        'id' => POST_ARTIFACT_ID,
+        'writes' => [
+            ['op' => 'set', 'collection' => 'post', 'doc_id' => 'details', 'data' => ['memo' => 'x']],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
 });

@@ -29,6 +29,13 @@ Seed for `post` / `details`: `{kind: "decision", owner: "", status: "draft", rep
 
 Decision: the MCP tools `db_set`, `db_update` and `db_batch` check writes to `post/details` in a new class, `App\Services\Artifacts\ContextPostDetails`, before any Worker request. A refusal returns `invalid_request` and sends nothing.
 
+Known gaps (recorded, not closed here):
+- In-page writes: the Worker's `/__artfct/db/*` route accepts browser writes from a Writer (owner, admin, or member with `edit_access=edit`). Script in a published page, or a tweaked copy of the starter, can write `{kind:"memo"}` without passing these tools.
+- Seed rows: `deploy_artifact` takes `db.seed` as the publisher's JSON. `validateDbManifest` checks shape only, so a first deploy can seed invalid post details.
+- Direct REST writes with a `data:write` token skip the field rule.
+- Cross-field rules are not enforced (for example `superseded` without `replaced_by`). A partial update would need the stored document to check them.
+- The starter's "no other request" check is a regex and would miss dynamic request forms. The CSP and the single same-origin `fetch` are the real control.
+
 Why not the Worker: spec 20 declares only an index per collection, so a per-field rule would be new Rust schema work. Agent writes enter through these tools, and the Worker still enforces scope, role, edit access, versions and quotas. Known gap: a direct REST caller holding a `data:write` token can skip the field rule.
 
 Rules:

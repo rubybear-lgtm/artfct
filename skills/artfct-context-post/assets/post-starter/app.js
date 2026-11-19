@@ -32,9 +32,9 @@
     .then(function (response) {
       return response.ok ? response.json() : null;
     })
-    .then(function (document) {
-      if (document && document.data) {
-        fill(document.data);
+    .then(function (response) {
+      if (response && response.data) {
+        fill(response.data);
       }
     })
     .catch(function () {
