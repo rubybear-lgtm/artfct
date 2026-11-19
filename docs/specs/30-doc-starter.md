@@ -96,13 +96,13 @@ Replies from the bridge:
 ```
 
 - `v` is the protocol version. A message with `v` other than `1` is ignored. Later commands (PDF, PowerPoint) extend the commands list in `ready`, not the envelope.
-- `id` correlates request and reply. The bridge echoes it and does not interpret it. A missing or non-string `id` is ignored.
+- `id` correlates request and reply. The bridge echoes it and does not interpret it. A missing or non-string `id` is ignored, and so is an `id` longer than 128 characters (see Open questions).
 - Anything that is not an object with `channel === "artfct-export"` is ignored with no reply.
 
 ### Commands
 
 - **`ready`** returns `result: { starter: "doc@1", protocol: 1, commands: ["ready", "describe"] }` and sets the handshaken flag.
-- **`describe`** (after handshake) returns `result: { pages: [...] }`. For each printed page:
+- **`describe`** (after handshake) returns `result: { pages: [...] }`, or `ok: false`, `error.code: no_sheet` when the page has no `.sheet` element. It never throws. For each printed page:
   - `index`, `width_pt`, `height_pt`;
   - `runs`: `{ text, x, y, w, h, font_family, font_size_pt, color }` in page points;
   - `images`: `{ src, x, y, w, h }` where `src` is a bundle-relative path (never a `data:` URI or absolute URL);
@@ -135,8 +135,10 @@ The starter makes no data calls: `export.js` does no fetch or XHR, and the start
 | Parent `event.origin` is `"null"` | Ignored, no reply |
 | `window.parent === window` | Inert |
 | Unknown command after handshake | `ok: false`, `unknown_command` |
+| `describe` on a page with no `.sheet` | `ok: false`, `error.code: no_sheet`; no exception, so the runner gets a reply |
+| `id` longer than 128 characters | Ignored, no reply; a 128-character `id` is echoed |
 | Message with `v` other than 1, or no `id` | Ignored |
-| Fixed sheet with too much content | Clipped, never reflowed; prints as one page |
+| Fixed sheet with too much content | Clipped, never reflowed; `describe` returns one page |
 | Flowing sheet with a long table | Header row repeats on each printed page (`thead`) |
 
 Refusal boundary: the bridge refuses by ignoring, not by replying with an error, for every case a sender could use to probe it. An error reply goes only to a parent that has completed the handshake.
@@ -151,13 +153,14 @@ Each RUB-557 item with the test that proves it. Results were recorded by running
 | `index.html` carries `doc@1` meta and a top comment naming the slots and upgrade rule | `DocStarterTest` · `index.html carries the doc@1 meta and the slot and upgrade comment` | passed |
 | `@page` Letter with margin; `.sheet` 8.5in by at least 11in; print no shadow and fills page; `sheet-a4` 210mm by 297mm; `--doc-*` tokens on `:root`; system fonts | `DocStarterTest` · `the doc starter stylesheet declares Letter paper and print geometry`, `the doc starter uses no external fonts and no viewport units or fixed positioning` | passed (CSS text checks only; computed layout not measured) |
 | Print discipline: real columns, `column-span: all`, `thead`, `break-before: page`, `break-inside: avoid`, `orphans`/`widows` 3, no `position: fixed` or viewport units | `DocStarterTest` · `the doc starter stylesheet carries the flowing print discipline` | passed (text checks only) |
-| Both page shapes: flowing and `.sheet--fixed` | `DocStarterTest` checks the `.sheet--fixed` rules | partly: rules present; print pagination not run |
+| Both page shapes: flowing and `.sheet--fixed` | `DocStarterTest` · `the doc starter stylesheet declares Letter paper and print geometry` (rules). `DocStarterBrowserTest` · `doc starter describe keeps a fixed sheet to one page` (1 page, no breaks, 4 pages when the flag is broken), `doc starter describe splits a flowing sheet into several pages` (more than 1 page, breaks = pages - 1, Letter size) | passed (browser: 8/8 file). Describe-level structure only; print pagination not run |
+| Bridge: `describe` with no `.sheet` replies with an error; `id` capped at 128 | `DocStarterBrowserTest` · `doc starter describe without a sheet replies with an error instead of throwing`, `doc starter ignores an id longer than 128 characters and echoes one of 128` | passed (browser: 8/8 file). Both were red before their fixes |
 | Bridge: `ready` handshake works cross-origin; `describe` returns runs; undeclared-origin and pre-handshake messages ignored | `DocStarterBrowserTest` · `doc starter handshake works from a different origin`, `doc starter describe returns the fixture runs`, `doc starter ignores undeclared-origin and pre-handshake messages` | passed (4/4 file) |
 | Replies go to the browser-reported parent origin, never `'*'` | `DocStarterTest` · `export.js replies to the parent origin and never with a wildcard target` | passed; guard broken (`'*'`): one test failed (13/14); the browser test does not catch this, the string test does |
 | Bridge makes no network request and never touches the parent document | `DocStarterTest` · `export.js makes no network request and never touches the parent document` | passed |
 | Starter script runs under the artifact CSP (no blocked script) | `DocStarterBrowserTest` · `doc starter script runs under the artifact CSP` | passed; a blocked script would fail the handshake. Console CSP-error capture is not wired, so "zero CSP console errors" is not literally checked |
 | Four violating copies refused with the matching error | `DocStarterTest` · `the publish contract refuses violating copies of the doc starter` (inline script, `onclick=`, `data:` image, external font URL) | passed; each validator guard broken in turn: one test failed (13/14), restored |
-| Flowing and fixed fixtures print one or two pages | Not built | not verified: no print-emulation test |
+| Flowing and fixed fixtures print one or two pages | Describe predicts the page count (row above); no print emulation was run | not verified: print pagination not run |
 | Independent review focused on origin isolation | Process check: fresh reviewer, recorded in the PR | pending |
 | Staging render check (`deploy_artifact`, `files`, `entrypoint: index.html`, `artifact_type: document`) | After merge, on staging | not verified here |
 | `npm run test:plugin` passes | `npm run test:plugin`: pass 3, fail 0 | passed |
@@ -173,3 +176,5 @@ Each RUB-557 item with the test that proves it. Results were recorded by running
 5. **A4 via named pages.** The `page` property and the `html.sheet-a4` switch need a browser check in Chrome at implementation time.
 6. **Two-origin browser harness.** How the fixtures are served from a second origin under Pest 4 and this environment is not yet confirmed. If it cannot be set up, the cross-origin browser items stay unverified and are reported as such.
 7. **`describe` output size.** No cap on runs or pages is set. A large document could return a large reply.
+8. **Id cap (decided).** An `id` longer than 128 characters is ignored, not truncated. Truncating would make the echoed id differ from the one the runner sent, so the reply could not be matched. The length is JavaScript string length (UTF-16 code units). The runner must keep ids at or below 128. Deck starter (RUB-558) must use the same cap.
+9. **No-sheet error shape.** `describe` on a page without `.sheet` replies `error: { code: "no_sheet" }`, the same object shape as `unknown_command`, so the runner reads one error form.
