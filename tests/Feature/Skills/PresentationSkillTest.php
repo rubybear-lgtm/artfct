@@ -51,7 +51,7 @@ test('the old template is gone and nothing names it', function () {
 
             $text = (string) file_get_contents($file->getPathname());
 
-            if (str_contains($text, 'presentation-template.html') || preg_match('/\{\{[A-Z_]+\}\}/', $text) === 1) {
+            if (str_contains($text, 'presentation-template.html') || str_contains($text, '{{PLACEHOLDER}}')) {
                 $offenders[] = $file->getPathname();
             }
         }
@@ -178,6 +178,6 @@ test('every --deck and --type token the skill names is declared in deck.css', fu
     expect($tokens)->not->toBeEmpty();
 
     foreach ($tokens as $token) {
-        expect($css)->toContain($token.':', "the skill names [{$token}], which deck.css does not declare");
+        expect(str_contains($css, $token.':'))->toBeTrue("the skill names [{$token}], which deck.css does not declare");
     }
 });

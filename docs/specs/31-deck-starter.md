@@ -8,7 +8,7 @@ This page is both the spec and the plan. It is one combined page because the iss
 
 A bot that publishes a slide deck should start from an official Artfct deck starter. The starter already handles stage size, scaling, navigation and print, and it passes the publish contract, so the bot writes slides instead of hand-rolling chrome.
 
-Today `skills/presentation/assets/presentation-template.html` has an inline `<script>` (line 250). Every author has to split it into `index.html` and `app.js` by hand. The deck starter replaces that step.
+Today the presentation skill's old single-file template (removed by RUB-555) has an inline `<script>`. Every author has to split it into `index.html` and `app.js` by hand. The deck starter replaces that step.
 
 The starter also has an export bridge. PDF (RUB-561) and PowerPoint (RUB-562) exports run the deck in an iframe at its isolated artifact origin and drive it through the bridge. Epic decision 9 says artifact script never runs in the app origin, so the bridge is the only channel between the app page and the deck.
 
@@ -30,7 +30,7 @@ skills/presentation/assets/deck-starter/
   app.js       chrome: scaling, navigation, export bridge, goTo / slideCount API
 ```
 
-- `skills/presentation/` already exists (`SKILL.md`, `assets/presentation-template.html`, `references/`). The starter is added to its `assets/` folder. No new top-level folder.
+- `skills/presentation/` already exists (`SKILL.md`, the old single-file template (removed by RUB-555), `references/`). The starter is added to its `assets/` folder. No new top-level folder.
 - `skills/presentation` is the deck skill (RUB-555 updates its text). It is not a guidance topic.
 
 ### index.html
