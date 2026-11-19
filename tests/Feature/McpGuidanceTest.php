@@ -441,6 +441,7 @@ test('the brand section reads kind and status from post data with db_get', funct
         ->toContain('`post/details`')
         ->toContain('`brand`')
         ->toContain('`current`')
+        ->toContain('Read `kind` and `status` from that data.')
         ->toContain('data is the source of truth');
 });
 
@@ -453,7 +454,7 @@ test('the brand section follows replaced_by up to three hops and stops when the 
     expect(brandSection())->toContain('`superseded`')
         ->toContain('`replaced_by`')
         ->toContain('up to 3 hops')
-        ->toContain('stop and tell the person');
+        ->toContain('If the chain is longer, broken or the named artifact is unreadable, stop and tell the person');
 });
 
 test('the brand section falls back to the snapshot only when data is unreadable', function () {
