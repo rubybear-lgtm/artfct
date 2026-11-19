@@ -264,6 +264,9 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
+            'pptxExportUrl' => (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value
+                ? route('artifacts.export.pptx', ['artifactId' => $artifactId])
+                : null,
             'comments' => ArtifactComment::query()
                 ->where('team_id', $team->id)
                 ->where('artifact_id', $artifactId)
@@ -355,6 +358,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
+            'pptxExportUrl' => null,
         ];
 
         // The public read names no per-version history, only how many there
