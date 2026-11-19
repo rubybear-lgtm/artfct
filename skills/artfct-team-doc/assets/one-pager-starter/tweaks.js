@@ -10,7 +10,7 @@
   var TYPES = ['text', 'choice', 'color', 'toggle', 'range', 'image'];
   var NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
   var HEX = /^#[0-9a-fA-F]{6}$/;
-  var IMAGE_PATH = /^[A-Za-z0-9][A-Za-z0-9._\/-]*\.(png|jpe?g|gif|webp|svg)$/i;
+  var IMAGE_PATH = /^[A-Za-z0-9][A-Za-z0-9._/-]*\.(png|jpe?g|gif|webp|svg)$/i;
   var NOT_IN_BUNDLE = 'That file is not in this bundle.';
 
   var fields = [];
@@ -170,6 +170,7 @@
     if (field.type === 'image') {
       if (value === '') {
         element.textContent = placeholders.get(element);
+
         return;
       }
 
@@ -184,6 +185,7 @@
         element.textContent = '';
         element.appendChild(image);
       });
+
       return;
     }
 
@@ -230,6 +232,7 @@
         option.selected = choice === value;
         input.appendChild(option);
       });
+
       return input;
     }
 
@@ -349,13 +352,17 @@
       fields.map(function (field) {
         return checkValue(field, body[field.name]).then(function (error) {
           showControlError(field.name, error);
+
           return error;
         });
       })
     )
       .then(function (errors) {
-        if (errors.some(function (error) { return error !== null; })) {
+        if (errors.some(function (error) {
+ return error !== null; 
+})) {
           setStatus('Fix the highlighted fields before saving.');
+
           return null;
         }
 
@@ -399,7 +406,7 @@
 
         try {
           list = JSON.parse(text);
-        } catch (parseError) {
+        } catch {
           throw new Error('tweaks.json is not valid JSON, so the tweak fields cannot load.');
         }
 
