@@ -93,7 +93,7 @@ The counter (`1 / N`) updates when slides are added or removed. A deep link such
 ## When Not to Use This Skill
 
 - User wants a PDF — build a print-optimized HTML page with `@media print` styles instead, or note that `Ctrl+P → Save as PDF` works from the deployed URL
-- User wants Keynote/PowerPoint format — artfct only hosts HTML; suggest they copy the outline into their preferred tool
+- User wants a PowerPoint file — use the Download PowerPoint action on the deck's page. It saves one full-bleed image per slide, so the text is not editable; native, editable PowerPoint is not offered
 - User wants a speaker view or a timed presenter screen — not in the starter. The talk track sits in each slide's notes, so the presenter can read it from their own notes.
 - User wants slide animations/fragments — use Reveal.js instead (see `references/presentation-libraries.md`)
 
