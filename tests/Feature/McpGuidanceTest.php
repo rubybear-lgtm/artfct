@@ -478,7 +478,8 @@ test('the brand section takes the newest brand post of any status and names the 
 
 test('the brand section falls back to the snapshot only when data is unreadable', function () {
     expect(brandSection())->toContain('no readable `post/details` data')
-        ->toContain('use its snapshot and say so plainly');
+        ->toContain('use its snapshot and say so plainly')
+        ->toContain('a last resort, used only when data cannot be read');
 });
 
 test('the brand section says what to do when no brand post exists', function () {
