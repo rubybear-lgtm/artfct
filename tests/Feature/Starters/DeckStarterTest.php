@@ -123,6 +123,16 @@ test('app.js replies to the parent origin and never with a wildcard target', fun
         ->and($script)->not->toMatch("/postMessage\\([^)]*['\"]\\*['\"]/");
 });
 
+test('app.js has one postMessage call and it targets the reply origin', function () {
+    // Pins the text of the single postMessage call: a literal '*' or any other
+    // target fails. It does not stop `origin` itself being reassigned to '*'.
+    $script = deckStarterFiles()['app.js'];
+
+    preg_match_all('/\bpostMessage\s*\(([^()]*)\)/', $script, $calls);
+
+    expect($calls[1])->toBe(['message, origin']);
+});
+
 test('app.js exposes the navigation API the export clients drive', function () {
     $script = deckStarterFiles()['app.js'];
 
