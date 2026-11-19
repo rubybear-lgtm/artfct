@@ -20,17 +20,33 @@
     setField('replaced_by', data.replaced_by || 'None');
   }
 
-  fetch('/__artfct/db/post/details', {
+  function readJson(response) {
+    return response.ok ? response.json() : null;
+  }
+
+  fetch('/__artfct/db/session', {
     method: 'GET',
     credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
       'X-Artfct-Db': '1'
     }
   })
-    .then(function (response) {
-      return response.ok ? response.json() : null;
+    .then(readJson)
+    .then(function (session) {
+      if (!session || !session.token) {
+        return null;
+      }
+
+      return fetch('/__artfct/db/post/details', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          Authorization: 'Bearer ' + session.token,
+          'X-Artfct-Db': '1'
+        }
+      }).then(readJson);
     })
     .then(function (response) {
       if (response && response.data) {

@@ -51,7 +51,7 @@ Rules:
 `skills/artfct-context-post/assets/post-starter/`:
 - `index.html`: content slots only (title, body, and a `post-details` block holding a snapshot of the four fields).
 - `post.css`: all chrome.
-- `app.js`: fetches `/__artfct/db/post/details` on the same origin (sends `X-Artfct-Db: 1` and `Content-Type: application/json`) and fills the block. It makes no other request. With JavaScript off, the snapshot stays readable.
+- `app.js`: makes two same-origin GET requests and no others. First `GET /__artfct/db/session` for the short-lived token (spec 20), then `GET /__artfct/db/post/details` with `Authorization: Bearer <token>` (the Worker returns 401 without it). It sends `X-Artfct-Db: 1` on both. If the session call fails, the snapshot stays in place. With JavaScript off, the snapshot stays readable.
 - `manifest.json`: the `db` declaration (both collections, the seed above). Passed as the `db` argument of `deploy_artifact`.
 
 The snapshot is display-only. Data is the source of truth.

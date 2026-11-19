@@ -97,13 +97,22 @@ test('the publish contract refuses violating copies of the starter', function (s
     ],
 ]);
 
-test('context post app.js reads only the same-origin db endpoint', function () {
+test('context post app.js makes exactly two same-origin GETs: the session, then the post details', function () {
     $script = postStarterFiles()['app.js'];
 
-    expect($script)->toContain('/__artfct/db/post/details')
+    preg_match_all('/\bfetch\s*\(\s*\'([^\']*)\'\s*,\s*\{([^}]*)\}/', $script, $calls, PREG_SET_ORDER);
+
+    expect(preg_match_all('/\bfetch\s*\(/', $script))->toBe(2)
+        ->and(array_column($calls, 1))->toBe(['/__artfct/db/session', '/__artfct/db/post/details'])
         ->and($script)->not->toMatch('/https?:\/\//')
-        ->and($script)->not->toMatch('/\bXMLHttpRequest\b|\bWebSocket\b|\bsendBeacon\b|\bEventSource\b/')
-        ->and(preg_match_all('/\bfetch\s*\(/', $script))->toBe(1);
+        ->and($script)->not->toMatch('/\bXMLHttpRequest\b|\bWebSocket\b|\bsendBeacon\b|\bEventSource\b/');
+
+    foreach ($calls as $call) {
+        expect($call[2])->toMatch('/method:\s*\'GET\'/')
+            ->and($call[2])->not->toMatch('/method:\s*\'(POST|PUT|PATCH|DELETE)\'/i');
+    }
+
+    expect($calls[1][2])->toContain('Authorization: \'Bearer \' + session.token');
 });
 
 test('the context post snapshot is in index.html for readers without JavaScript', function () {
