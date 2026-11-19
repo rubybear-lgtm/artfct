@@ -114,6 +114,8 @@ export default [
             'vendor',
             'node_modules',
             'public',
+            // Vendored third-party build (html2canvas, RUB-562, spec 46): not linted.
+            'skills/presentation/assets/deck-starter/capture.js',
             'backend/build',
             'backend/target',
             'backend/.wrangler/**',
