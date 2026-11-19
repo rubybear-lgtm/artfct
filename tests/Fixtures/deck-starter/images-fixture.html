@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="artfct-starter" content="deck@1">
+  <title>Images fixture</title>
+  <link rel="stylesheet" href="deck.css">
+</head>
+<body>
+  <!-- Test fixture only: one slide whose images cover each bad src form and one good relative src. -->
+  <main class="deck-stage" aria-label="Slides">
+    <section class="slide">
+      <h1>Images</h1>
+      <img src=" https://evil.example/x.png" alt="">
+      <img src="\\evil.com/x" alt="">
+      <img src="../../x" alt="">
+      <img src="/x" alt="">
+      <img src="images/a.png" alt="">
+    </section>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

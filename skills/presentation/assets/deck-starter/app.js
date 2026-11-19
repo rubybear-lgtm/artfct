@@ -259,69 +259,80 @@
     source.postMessage(message, origin);
   }
 
+  // Allowlist: a src is kept only when it is a plain relative path under the
+  // bundle (no scheme, host, backslash, absolute path or `..` segment).
+  function isRelativeImageSrc(src) {
+    return /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(src) &&
+      src.indexOf('\\') === -1 &&
+      src.split('/').indexOf('..') === -1;
+  }
+
   function describe() {
     var stageRect = stage.getBoundingClientRect();
     var scale = stageRect.width / STAGE_WIDTH || 1;
+    var droppedImages = 0;
 
-    return {
-      slides: slides.map(function (slide, index) {
-        var runs = [];
-        var images = [];
-        var walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT);
-        var node;
+    var slideReports = slides.map(function (slide, index) {
+      var runs = [];
+      var images = [];
+      var walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT);
+      var node;
 
-        while ((node = walker.nextNode())) {
-          var text = node.nodeValue.replace(/\s+/g, ' ').trim();
+      while ((node = walker.nextNode())) {
+        var text = node.nodeValue.replace(/\s+/g, ' ').trim();
 
-          if (text === '' || !node.parentElement || node.parentElement.closest('.notes')) {
-            continue;
-          }
-
-          var range = document.createRange();
-          range.selectNodeContents(node);
-          var rect = range.getBoundingClientRect();
-          var style = window.getComputedStyle(node.parentElement);
-
-          runs.push({
-            text: text,
-            x: (rect.left - stageRect.left) / scale,
-            y: (rect.top - stageRect.top) / scale,
-            w: rect.width / scale,
-            h: rect.height / scale,
-            font_family: style.fontFamily,
-            font_size_px: parseFloat(style.fontSize),
-            color: style.color
-          });
+        if (text === '' || !node.parentElement || node.parentElement.closest('.notes')) {
+          continue;
         }
 
-        slide.querySelectorAll('img').forEach(function (image) {
-          var src = image.getAttribute('src') || '';
+        var range = document.createRange();
+        range.selectNodeContents(node);
+        var rect = range.getBoundingClientRect();
+        var style = window.getComputedStyle(node.parentElement);
 
-          if (src === '' || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) {
-            return;
-          }
-
-          var imageRect = image.getBoundingClientRect();
-
-          images.push({
-            src: src,
-            x: (imageRect.left - stageRect.left) / scale,
-            y: (imageRect.top - stageRect.top) / scale,
-            w: imageRect.width / scale,
-            h: imageRect.height / scale
-          });
+        runs.push({
+          text: text,
+          x: (rect.left - stageRect.left) / scale,
+          y: (rect.top - stageRect.top) / scale,
+          w: rect.width / scale,
+          h: rect.height / scale,
+          font_family: style.fontFamily,
+          font_size_px: parseFloat(style.fontSize),
+          color: style.color
         });
+      }
 
-        var notesNode = slide.querySelector('p.notes');
+      slide.querySelectorAll('img').forEach(function (image) {
+        var src = (image.getAttribute('src') || '').trim();
 
-        return {
-          index: index,
-          notes: notesNode ? notesNode.textContent.replace(/\s+/g, ' ').trim() : '',
-          runs: runs,
-          images: images
-        };
-      })
-    };
+        if (!isRelativeImageSrc(src)) {
+          droppedImages += 1;
+
+          return;
+        }
+
+        var imageRect = image.getBoundingClientRect();
+
+        images.push({
+          src: src,
+          x: (imageRect.left - stageRect.left) / scale,
+          y: (imageRect.top - stageRect.top) / scale,
+          w: imageRect.width / scale,
+          h: imageRect.height / scale
+        });
+      });
+
+      var notesNode = slide.querySelector('p.notes');
+
+      return {
+        index: index,
+        notes: notesNode ? notesNode.textContent.replace(/\s+/g, ' ').trim() : '',
+        runs: runs,
+        images: images
+      };
+    });
+
+    return { slides: slideReports, droppedImages: droppedImages };
   }
 
   buildControls();
