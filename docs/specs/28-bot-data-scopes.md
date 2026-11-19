@@ -8,7 +8,7 @@ A bot teammate's agent token carries the scopes it was minted with. The default 
 
 ## Where the defaults live
 
-Three copies of the same default list:
+Four copies of the same default list:
 - `app/Http/Controllers/Teams/TeamController.php` (`botDefaultScopes`, the form's preselection)
 - `app/Actions/Teams/RollBotAgentToken.php` (default when rolling with no explicit scopes)
 - `app/Http/Controllers/Teams/BotTeammateController.php` (default when creating a bot with no explicit scopes)
@@ -20,7 +20,7 @@ Not changed: `app/Http/Controllers/Teams/OrgTokenController.php` `defaultScopes`
 
 1. Add `data:read` and `data:write` to all three defaults. Members get both; viewers are capped by `forRole` (viewers keep `data:read` only, unchanged).
 2. Existing tokens are NOT silently widened. The re-issue path is the API: `POST settings/teams/{team}/bots/{user}/roll` with an explicit `scopes` list including `data:read` and `data:write`. The team settings roll dialog sends no scopes, so from the UI a roll keeps the old set; a UI scope picker is out of scope here and is named in the PR.
-   Edge case: a roll when no active token exists falls back to the defaults, which now include the data scopes. This is an explicit admin roll of a bot with no live credential, and the spec accepts it. `RollBotAgentToken` already reuses the previous token's scopes when none are given, so an old token keeps its old scopes. An upgrade is an explicit roll: an admin rolls the token with `scopes` including `data:read` and `data:write`. Silent escalation of live credentials is refused.
+   Edge case: a roll falls back to the defaults, which now include the data scopes, whenever no unexpired token exists. That includes a bot whose narrow token has simply expired, so a plain Roll in the UI can grant `data:write` to a bot that never had it. The spec accepts this as an explicit admin action on a bot with no live credential; a stricter variant (derive the fallback from the latest non-revoked token regardless of expiry) is a follow-up if owners object. `RollBotAgentToken` already reuses the previous token's scopes when none are given, so an old token keeps its old scopes. An upgrade is an explicit roll: an admin rolls the token with `scopes` including `data:read` and `data:write`. Silent escalation of live credentials is refused.
 3. Free plan keeps no bot access: the existing `plan_required` gate in `BotTeammateController` is untouched.
 4. Grantability is unchanged: `data:*` already appear in `McpScope::values()` and `forRole`, so an explicit choice already works.
 
