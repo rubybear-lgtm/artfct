@@ -11,9 +11,6 @@ use Symfony\Component\Process\Process;
 const DOC_STARTER_FIXTURES = __DIR__.'/../Fixtures/doc-starter';
 const DOC_STARTER_BUNDLE = __DIR__.'/../../skills/artfct-team-doc/assets/doc-starter';
 
-/** @var list<Process> */
-$docStarterServers = [];
-
 /** @return int a free loopback TCP port */
 function docStarterFreePort(): int
 {

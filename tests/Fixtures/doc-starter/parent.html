@@ -19,7 +19,7 @@
       window.results = { ids: [], describeRuns: 0, describeHasTitle: false, ready: null, unknown: null, done: false, siblingReplies: [] };
 
       window.addEventListener('message', function (event) {
-        if (event.source === document.getElementById("sibling").contentWindow) {
+        if (event.source === document.getElementById('sibling').contentWindow) {
           if (event.data && event.data.fromSibling) {
             window.results.siblingReplies.push(event.data.data);
           }
@@ -53,7 +53,7 @@
       }
 
       starter.addEventListener('load', async function () {
-        if (starter.getAttribute("src") === null) {
+        if (starter.getAttribute('src') === null) {
           return;
         }
         send('pre', 'describe');
