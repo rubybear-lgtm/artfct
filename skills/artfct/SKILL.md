@@ -1,6 +1,6 @@
 ---
 name: artfct
-description: This skill should be used when the agent has generated or is about to generate self-contained HTML, a dashboard, chart, data visualization, report, or interactive demo that the user needs to view or share. Triggered by user phrases like "show me", "preview this", "deploy this", "make it shareable", "send me a link", "I want to share this", or whenever producing visual HTML output. Covers the deploy_artifact MCP tool, sharing selection, and best practices for self-contained HTML.
+description: "Use when the person asks to preview, share, or get a link to a decision, report, dashboard, or other page: this skill covers self-contained HTML and when to call deploy_artifact. Load artfct-publish before you publish, and artfct-search before you answer from the library."
 ---
 
 # artfct — Artifact Deployment Skill
