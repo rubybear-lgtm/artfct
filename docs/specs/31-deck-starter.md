@@ -102,7 +102,8 @@ Reply from the bridge:
 - **`describe`** (after handshake) returns `result: { slides: [...] }`, one entry per slide in document order, in stage pixels (the 1920 by 1080 coordinate space, unscaled):
   - `index` (0-based), `notes` (the text of `p.notes`, `""` when absent);
   - `runs`: `{ text, x, y, w, h, font_family, font_size_px, color }` for each text node with visible text, positions relative to the stage;
-  - `images`: `{ src, x, y, w, h }` for each `img` whose `src` is a relative path inside the bundle (no `data:`, no absolute or external URL).
+  - `images`: `{ src, x, y, w, h }` for each `img` whose trimmed `src` passes an allowlist: `/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/`, no `\`, and no `..` path segment. Anything else (a scheme or host, a leading space before `https`, a backslash, `../`, an absolute `/` path, an empty src) is dropped from `images`.
+  - `droppedImages` (top level, next to `slides`): the count of `img` elements that failed the allowlist. Dropped images are counted, not listed.
   - `describe` reads layout only. It never writes to the page. A deck with zero slides returns `slides: []`.
 - **`goTo`** (after handshake) takes `index`, an integer from 0 to `slideCount - 1`. It sets `data-deck-active` on that slide and returns `result: { index, slideCount }`. An index that is not an integer, is below 0, or is at or above `slideCount` returns `ok: false, error: { code: "out_of_range" }`, and the active slide is unchanged.
 - Any other command after handshake returns `ok: false, error: { code: "unknown_command" }`.
@@ -125,6 +126,8 @@ Reply from the bridge:
 | `describe` on a deck with zero slides | `ok: true`, `slides: []` |
 | Unknown command after handshake | `ok: false`, `unknown_command` |
 | Hash `#n` out of range on load | Slide 1 shown; counter reads `1 / 3` |
+| `img` src with a leading space and `https`, a backslash host, `../../x`, or `/x` | Dropped from `describe` `images` and counted in `droppedImages`; `images/a.png` kept |
+| Space keydown on the document with no focused button | Advances one slide (`2 / 3` from slide 1) |
 | Deck with no notes | Valid; `notes` is `""` |
 | Notes placed in a `<script>` | Rejected by the validator (no script without `src`) |
 | `app.js` contains `fetch`, `XMLHttpRequest` or `import(` | Test fails |
@@ -136,15 +139,17 @@ Each RUB-558 item with the test that proves it. Status is the result of running 
 
 | Done when (RUB-558) | Proof | Status |
 |---|---|---|
-| Three files exist; no inline script, `on*=`, `data:` or external origin; loads `deck.css` and `app.js` by relative path | `DeckStarterTest` · `the deck starter has its three files`, `the deck starter passes the publish contract`, `index.html has one script tag, app.js, loaded with defer` | passed (Feature, 15/15 file) |
+| Three files exist; no inline script, `on*=`, `data:` or external origin; loads `deck.css` and `app.js` by relative path | `DeckStarterTest` · `the deck starter has its three files`, `the deck starter passes the publish contract`, `index.html has one script tag, app.js, loaded with defer` | passed (Feature file 16/16) |
 | `index.html` has `artfct-starter` `deck@1` meta and a top comment naming slots and upgrade rule | `DeckStarterTest` · `index.html carries the deck@1 meta and the slot and upgrade comment` | passed |
 | Stage 1920 by 1080, scaled by `app.js`; `section.slide`; hidden `p.notes` present in DOM; `--deck-*` tokens, system font stack; no Solarized | `DeckStarterBrowserTest` · `the stage scales to the viewport`, `the notes are hidden on stage but stay in the DOM`; `DeckStarterTest` · `deck.css declares --deck tokens with the system font stack and no Solarized` | passed |
-| Keyboard, buttons, `n / total` counter, `#n` deep link; no network calls in `app.js` | `DeckStarterBrowserTest` · `the keyboard moves the counter`, `the on-screen buttons move the counter`, `a deep link opens the slide it names and an out-of-range one shows slide 1`; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | passed. Space is tested on a focused button only (see Unverified) |
+| Keyboard, buttons, `n / total` counter, `#n` deep link; no network calls in `app.js` | `DeckStarterBrowserTest` · `the keyboard moves the counter`, `a space key dispatched on the document moves the deck forward`, `the on-screen buttons move the counter`, `a deep link opens the slide it names and an out-of-range one shows slide 1`; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | passed. Space with no focus is tested with a dispatched keydown, not a physical key press (see Unverified) |
+| `describe` images: relative sources only; bad forms dropped and counted | `DeckStarterBrowserTest` · `describe keeps only relative image sources and counts the rest` (fixture `images-fixture.html`, served by `starter-router.php`, four bad forms and one good) | passed. Written first, failed with the three bad forms in the output, then passed after the allowlist |
 | `app.js` exposes `goTo(n)`, `slideCount`, `data-deck-active` | `DeckStarterBrowserTest` · `window.artfctDeck goTo and slideCount drive the active slide`; `DeckStarterTest` · `app.js exposes the navigation API the export clients drive` | passed |
 | `noscale` disables scaling; slides at true 1920 by 1080 | `DeckStarterBrowserTest` · `noscale renders the stage at 1920 by 1080 in a narrower viewport` (uses `?variant=noscale` in the fixture router) | passed |
 | Bridge: `ready`, `describe`, `goTo`; answers `window.parent` only; no `parent.document`; no network | `DeckStarterBrowserTest` · bridge tests below; `DeckStarterTest` · `app.js makes no network request and never touches the parent document` | passed |
 | Parent on a different origin completes the handshake and gets three slides from `describe` | `DeckStarterBrowserTest` · `deck starter handshake works from a different origin`, `deck starter describe returns the three slides` | passed |
 | Message from an undeclared (non-parent) source ignored; message before handshake ignored | `DeckStarterBrowserTest` · `deck starter ignores sibling-frame and pre-handshake messages` | passed. A null-origin parent is not testable (see Unverified) |
+| Replies never use a wildcard target | `DeckStarterTest` · `app.js has one postMessage call and it targets the reply origin` (pins the call's argument text to `message, origin`) and `app.js replies to the parent origin and never with a wildcard target` | passed. Static only: the browser cannot see the target (see Unverified) |
 | Independent review focused on origin isolation (big-PR rule) | Process check, recorded in the PR | pending (orchestrator) |
 | Speaker notes only in `<p class="notes">`; no script block for them | `DeckStarterTest` · `the notes live only in p.notes and no script carries them`; `DeckStarterBrowserTest` · `the notes are hidden on stage but stay in the DOM` | passed |
 | Slides literal static markup; no script-generated slides | `DeckStarterTest` · `app.js writes no markup from strings and builds no slides` | passed. Only the nav controls are built by script |
@@ -165,9 +170,10 @@ Each row is one guard broken in `app.js` or the validator, the named test run, t
 | Handshake gate | same test |
 | Protocol version check (`v !== 1`) | same test (the `v: 2` describe got a reply) |
 | Index range and integer check | `deck starter goTo answers in range and refuses out-of-range indexes` |
-| Reply target changed to `'*'` | `app.js replies to the parent origin and never with a wildcard target` (Feature). The browser suite still passes: it cannot see the target |
+| Reply target changed to `'*'` | `app.js replies to the parent origin and never with a wildcard target` and `app.js has one postMessage call and it targets the reply origin` (Feature). The browser suite still passes: it cannot see the target |
+| Image allowlist removed (old scheme-only filter) | `describe keeps only relative image sources and counts the rest` (leaked three bad forms before the fix) |
 | Validator inline-script check | `the publish contract refuses violating copies of the deck starter` (inline script dataset) |
-| Origin check (`isHttpOrigin`) | No test failed. See Unverified |
+| Origin check (`isHttpOrigin`) | No test failed. See Unverified: defence in depth, not independently tested |
 
 ### Bridge browser test cases
 
@@ -206,10 +212,20 @@ Open:
 
 ## Unverified
 
-- **Null-origin parent.** Not browser-tested. A parent with origin `null` cannot frame the deck, because the artifact CSP `frame-ancestors` allows only the app origin. The `isHttpOrigin` guard is therefore untested; removing it did not fail any test.
-- **Space on the page.** Space is tested only on a focused button, where the handler skips it and the native click moves one slide. A Space press with focus on the body is not tested, because Pest's key press on `body` did not reach the document listener.
+- **Null-origin parent (`isHttpOrigin`).** Not tested. The guard is defence in depth, not independently tested. The starter accepts a message only when `event.source === window.parent`, and the artifact CSP `frame-ancestors` admits only the app's http origin. A parent with origin `"null"` (a sandboxed frame) would need a `frame-ancestors` source that matches an opaque origin, which the CSP does not allow, so the starter would not load under it. A fixture with a sandboxed parent would therefore be blocked from loading, and any "no reply" result would come from that block, not from the guard. Removing the guard did not fail any test. This reasoning is not checked in a browser.
+- **Space on the page.** The focused-button case is tested with a real key press. The document case is tested with a dispatched `keydown` event (`new KeyboardEvent`), not a physical key press, because Pest's key press on `body` did not reach the document listener. The dispatched event exercises the same listener, but it is not a native key event.
 - **Print.** Only the CSS text is checked. Pagination (three pages) was not run.
-- **Reply target.** The browser suite cannot see a `'*'` target; the Feature string test covers it.
+- **Reply target.** The browser suite cannot see a `'*'` target: a reply to the parent reaches it whatever the target origin. The Feature test pins the single `postMessage` call's argument text to `message, origin`. It does not stop `origin` itself being reassigned to `'*'`, and it cannot prove a wildcard is never used in other code.
 - **CSP console errors.** `assertNoJavaScriptErrors` runs on the navigation tests; CSP reports were not read from the console separately.
 - **Staging.** Not run.
 
+## Fix round (review findings on PR 157)
+
+Commits on `rub-558-deck-starter` after the review:
+
+- `4daa906` image allowlist and `droppedImages`. Test first: `describe keeps only relative image sources and counts the rest` failed with `" https://evil.example/x.png"`, `"\\evil.com/x"` and `"../../x"` in the output. Then fixed; passes.
+- `9e1d75b` single `postMessage` target pinned. `app.js has one postMessage call and it targets the reply origin` passes.
+- `ec08e0d` space keydown on the document. `a space key dispatched on the document moves the deck forward` passes.
+- `6289942` removed the unused `$deckStarterServers` global.
+
+Test results on this branch (`php artisan test --compact tests/Browser/DeckStarterBrowserTest.php tests/Feature/Starters/DeckStarterTest.php`): 31 passed, 102 assertions. Before the fix round it was 28 passed. Lint: `npx eslint skills/presentation/assets/deck-starter/app.js` passes. `npm run lint:check` and the push hook are run in the push step.
