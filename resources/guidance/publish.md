@@ -42,6 +42,26 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 
 - Run one `search_artifacts` for the artifact's own title to confirm it can be found, report the result in one line, and stop. Do not loop.
 
+## Brand and voice
+
+Before you write customer-facing work (a one-pager, deck, flier, email or announcement to customers), follow the team's brand post. Do this without asking the person first.
+
+1. Call `search_artifacts` with query `Brand and voice` and `artifact_type: post`. Keep only the results whose title is exactly `Brand and voice`.
+2. For each kept result, call `db_get` with its artifact `id`, collection `post` and doc_id `details`. Read `kind` and `status` from that data. The data is the source of truth: the snapshot on the page can be stale, so do not use it to decide. Follow the result whose kind is `brand` and whose status is `current`. If more than one current brand post is left, stop and tell the person.
+3. If the chosen post's status is `superseded`, follow its `replaced_by` in data and call `db_get` on `post/details` for each hop. Follow up to 3 hops. If the chain is longer, broken or the named artifact is unreadable, stop and tell the person. The post you reach must have kind `brand` and status `current`.
+4. If a candidate has no readable `post/details` data, use its snapshot and say so plainly. A candidate with neither data nor snapshot does not count.
+5. Call `read_artifact` on the brand post for its content only: voice, colours and typography. `read_artifact` is for content only, never for status or kind.
+6. If no candidate exists, say "no Brand and voice post found", use the starter's neutral default, do not describe the result as the team brand, and offer to create the post.
+
+### What a brand post contains
+
+Write the brand post in this order:
+
+- **Voice summary:** one paragraph, with two or three do and don't example pairs covering personality, casing, pronouns, emoji and greetings.
+- **Visual foundations:** colours with hex values and when to use each; typography families and sizes; spacing and corner-radius habits; imagery tone; iconography rules. Name each theme token the starters read, so a bot can set it without guessing: `--doc-accent`, `--doc-body-size`, `--doc-column-gap`, `--doc-font`, `--doc-gap`, `--doc-ink`, `--doc-muted`, `--doc-page-margin`, `--doc-paper`, `--doc-rule`, `--doc-serif`, `--deck-accent`, `--deck-font`, `--deck-ground`, `--deck-ink`, `--deck-muted`, `--deck-paper`, `--deck-rule`, `--type-body`, `--type-heading`, `--type-kicker` and `--type-title`. `--deck-unit` sets the deck's scale; leave it as the starter sets it.
+- **Logo rules:** clear space, minimum size, approved versions and what not to do.
+- **Worked examples:** one or two sentences or headlines rewritten on-brand and off-brand.
+
 ## Do not publish
 
 - Pages that pretend to be a real person, company or record, fabricated records presented as genuine, or content aimed at a private individual. Leave anything that could mislead if shared further for the person to decide.
