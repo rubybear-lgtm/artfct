@@ -167,7 +167,7 @@ final class PublishContractValidator
 
     /**
      * Every relative asset reference must resolve to a file in the bundle,
-     * so a template cannot ship a page that 404s its own script or style.
+     * so a published page cannot 404 its own script or style.
      *
      * @param  array<string, string>  $files
      * @return list<string>

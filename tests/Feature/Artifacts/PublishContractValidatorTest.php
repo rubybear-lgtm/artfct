@@ -150,3 +150,16 @@ test('skips the entrypoint check when no entrypoint is given', function () {
 
     expect($errors)->toBe([]);
 });
+
+test('flags a bundle over the file-count limit', function () {
+    $files = ['index.html' => '<!doctype html>'];
+    for ($index = 1; $index <= PublishContractValidator::MAX_BUNDLE_FILES; $index++) {
+        $files["files/{$index}.txt"] = 'x';
+    }
+
+    expect(publishContractErrors($files))->toContain('Bundle has '.count($files).' files; the bundle limit is '.PublishContractValidator::MAX_BUNDLE_FILES.'.');
+});
+
+test('flags an empty bundle total', function () {
+    expect(publishContractErrors(['index.html' => '']))->toContain('Bundle totals 0 bytes; the bundle limit is '.PublishContractValidator::MAX_BUNDLE_BYTES.'.');
+});
