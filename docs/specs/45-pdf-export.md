@@ -86,10 +86,61 @@ Negative tests (guards to break and restore): the wildcard-origin test, the no-n
 
 ## Spike
 
-To be recorded in the Results section after the spike runs. The spike is time-boxed to two days in the issue; this run covers the three fixtures in one pass.
+Time-boxed to two days in the issue. Run once on this branch, on the starters as published in the repo (no changes to the starters).
+
+**Method.** The runner (`public/vendor/pdf-export/export.js`) ran in headless Chromium (Playwright from the repo's `node_modules`) against four fixtures served by PHP's built-in server with the starters' real CSP. The PDFs were checked with the Python `pypdf` 6.14.2 module, because Poppler (`pdfinfo`, `pdftotext`) is not installed here and its install was not allowed in this session. `pypdf` text extraction stands in for `pdftotext`. Visual checks were not done: no PDF rasteriser was available.
+
+| Fixture | Source | Expected pages | Pages written | Result |
+|---|---|---|---|---|
+| Flowing doc (60 paragraphs) | `tests/Fixtures/doc-starter/cases/flowing` | 4 by print geometry (not independently measured) | 4 | Text: all 60 `Paragraph N.` strings present. Header and body text selectable. Fonts: Manrope and Newsreader, both `FontFile2` (embedded subset). |
+| Fixed sheet (one page) | `cases/fixed` | 1 | 1 | Pass. |
+| Long table (60 rows, `<thead>`) | `cases/long-table` (new fixture) | 3 by print geometry (not independently measured) | 3 | All 60 rows present. **Header does not repeat.** The table heading `Item` appears once, on page 1 only. **FAIL** against the Done-when. |
+| Three-slide deck | `skills/presentation/assets/deck-starter/index.html` | 3 | 3 | Pass. Headings and body text present. Fonts embedded. |
+| Probe (one short flowing page, `cases/probe`) | `cases/probe` (new fixture) | 1 | **2** | **FAIL.** A short flowing doc exports as two pages. The starter's `.sheet` has `min-height: 11in` plus page padding, so the sheet is taller than the printable height and the writer paginates it. The second page is nearly empty. The one-page doc criterion (staging) would fail the same way. |
+
+Output sizes: flowing 16,340 bytes; fixed 8,942; long table 22,026; deck 7,426. The probe output size was not recorded.
+
+**Glyphs.** No glyph was replaced in any fixture (`replacedCharacters` 0). The fixtures are ASCII.
+
+**Images.** Not in any fixture. Not embedded (open question 3).
+
+**Weight.** Headings draw at weight 400, as decision 5 says.
+
+**Lines near the bottom of a page.** The writer skips lines whose top is below the page height, not below the printable height. Text can run into the bottom margin and the footer. Not checked visually.
+
+### Spike verdict
+
+Two of the four criteria are met in the spike: text is selectable and fonts are embedded (pass), and page counts match the print geometry for the fixed sheet, the deck and the flowing doc. Two fail:
+
+1. **Table header repetition.** The bridge (`describe`) sends runs and page breaks, but not which rows are the table header, and the writer does not repeat it. Fixing it needs a bridge change (a `repeat_header` field in `describe`), which is a protocol change in both starters. The issue says a failed spike is replanned before more work.
+2. **Short flowing doc page count.** The `.sheet` min-height (11in plus padding) produces an extra page. The fix is either in the export (measure the content, not `scrollHeight`) or in the starter's print CSS. The starter's own print output was not tested here, so it is not known whether browsers print the same extra page.
+
+**Result: the spike does not pass the issue's own criteria.** Per the issue, the owner should replan (including the fallback of the print dialog only) before the UI action and the staging check. Browser tests for the export runner were added and pass. The "Download PDF" action was not built.
 
 ## Results
 
-Recorded during the run on branch `rub-561-pdf-export`.
+Recorded on branch `rub-561-pdf-export`.
 
-(pending)
+**Vendoring tests** (`tests/Feature/PdfExport/VendoredWriterTest.php`, 5 tests): red commit `31928f1` showed all five failing (two for missing files, three for missing `export.js`, and a font test on an empty glob). Green commit `f3c6404` passes all five. Guard breaks: wildcard `postMessage` target broken, shown to fail (1 failed), restored; `event.source` check broken, shown to fail (1 failed), restored; `XMLHttpRequest` line added to `export.js`, shown to fail (1 failed), restored. A first run of the no-network test was not a valid guard because of a Pest message-argument issue in the assertion; it was fixed to `str_contains` and re-broken, then shown to fail.
+
+**Browser tests** (`tests/Browser/PdfExportBrowserTest.php`, 7 tests, all passing in commit `6cafcc4`):
+- `exporting the doc fixture produces a PDF that starts with %PDF-` (flowing, 4 pages)
+- `exporting the long-table doc fixture produces the expected page count` (3 pages)
+- `exporting the fixed doc fixture keeps a one-page sheet to one page` (1 page)
+- `exporting the deck fixture produces a PDF that starts with %PDF-` (3 pages)
+- `a frame that does not answer the bridge reports no_bridge for the print fallback`
+- `a bundle script that reads parent.document gets a SecurityError and the export still completes`
+- `the export page loads no artifact script in the app origin`
+
+These were written after the runner, not before, so they were not shown to fail first. Negative breaks of the browser guards were not done.
+
+Existing suites re-run after the starter router change: `tests/Browser/DocStarterBrowserTest.php` 9 passed; `tests/Browser/DeckStarterBrowserTest.php` 15 passed.
+
+**Not done or not verified:**
+- "Download PDF" action on the artifact page, and the print fallback UI. Not built: the spike failed and the issue requires replan first. No screenshots.
+- Presentation skill "When Not to Use" line. Not changed.
+- Staging render with `pdfinfo` and `pdftotext` output. Not run. Poppler is not installed and its install was not allowed in this session.
+- Access feature test (viewer 200, outside 404). No bundle-data endpoint in scope; not written.
+- Security test with the iframe in the real viewer. The browser test covers the fixture only.
+- Independent review, Pint on the full branch, CI. Owned by the orchestrator.
+- `npm run test:skills` and `npm run test:plugin`: not run, because no skill file changed.
