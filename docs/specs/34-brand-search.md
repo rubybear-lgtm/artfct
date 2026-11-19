@@ -14,6 +14,7 @@ Out of scope: a design-token compiler, the design-system artifact type (RUB-568)
 
 - **RUB-551 decision 4.** The brand artifact is a `post` titled exactly "Brand and voice". The bot finds candidates by `search_artifacts` for that title with `artifact_type: post`. It then confirms kind `brand` and status `current` from post data with `db_get` on `post/details`. The page's `post-details` snapshot is display only and may be stale.
 - **RUB-551 decision 8.** This change edits `resources/guidance/publish.md` and `skills/artfct-publish/SKILL.md`, so it bumps `ArtifactGuidance::VERSION` one minor. The base is 1.5.0, so the new value is **1.6.0**. Every guided tool's `guidanceVersion` moves with it. `tests/Feature/AgentInstructionsTest.php` also pins the version and moves too.
+- **CHANGELOG.** The RUB-556 line in CHANGELOG.md says "Guidance is 1.6.0". If the version changes at merge, that line becomes historical and should be left as written.
 - **Base versus develop.** The issue says the bump is one minor above develop's value at merge time. develop reads 1.4.1 today; the branch base reads 1.5.0 (RUB-575 and RUB-553 are in the base). This branch bumps from the base, as the orchestrator asked. The merge will need a rebase onto whatever develop carries, and the version may need to be re-checked then.
 - **Decision 2 (data first).** Status and replaced-by are read from data, never from the snapshot. The snapshot is not used to decide anything except in the stated fallback.
 
