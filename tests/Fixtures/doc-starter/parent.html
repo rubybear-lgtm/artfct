@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Doc starter parent fixture</title>
+</head>
+<body>
+  <p id="status">running</p>
+  <iframe id="starter" name="starter" title="starter" width="900" height="1200"></iframe>
+  <iframe id="sibling" src="sibling.html" title="sibling" width="10" height="10"></iframe>
+  <script>
+    // Test fixture only (not part of the bundle). Drives the bridge from the
+    // parent window, and asks a sibling frame to send the rogue messages.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var starterOrigin = params.get('starter');
+      var starter = document.getElementById('starter');
+      var channel = 'artfct-export';
+      window.results = { ids: [], describeRuns: 0, describeHasTitle: false, ready: null, unknown: null, done: false, siblingReplies: [] };
+
+      window.addEventListener('message', function (event) {
+        if (event.source === document.getElementById("sibling").contentWindow) {
+          if (event.data && event.data.fromSibling) {
+            window.results.siblingReplies.push(event.data.data);
+          }
+          return;
+        }
+        if (event.source !== starter.contentWindow) {
+          return;
+        }
+        var data = event.data || {};
+        window.results.ids.push(data.id);
+        if (data.id === 'ready') {
+          window.results.ready = data;
+        }
+        if (data.id === 'unknown') {
+          window.results.unknown = data;
+        }
+        if (data.id === 'describe' && data.ok) {
+          var runs = data.result.pages[0].runs;
+          window.results.describeRuns = runs.length;
+          window.results.describeHasTitle = runs.some(function (run) { return run.text === 'Document title'; });
+        }
+      });
+
+      function send(id, cmd, extra) {
+        var message = Object.assign({ channel: channel, v: 1, id: id, cmd: cmd }, extra || {});
+        starter.contentWindow.postMessage(message, starterOrigin);
+      }
+
+      function wait(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+      }
+
+      starter.addEventListener('load', async function () {
+        if (starter.getAttribute("src") === null) {
+          return;
+        }
+        send('pre', 'describe');
+        await wait(300);
+        // A sibling frame that is not window.parent sends ready; the bridge must ignore it.
+        document.getElementById('sibling').contentWindow.postMessage('go', '*');
+        await wait(300);
+        send('ready', 'ready');
+        await wait(300);
+        send('describe', 'describe');
+        await wait(300);
+        send('unknown', 'explode');
+        await wait(300);
+        send('badv', 'describe', { v: 2 });
+        await wait(300);
+        send('payload', 'ready', { origin: 'https://evil.example' });
+        await wait(300);
+        window.results.done = true;
+        document.getElementById('status').textContent = 'done';
+      });
+
+      starter.src = starterOrigin + '/index.html';
+    })();
+  </script>
+</body>
+</html>
