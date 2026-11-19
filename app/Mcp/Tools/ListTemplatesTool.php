@@ -35,7 +35,7 @@ final class ListTemplatesTool extends FeatureFlaggedTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.5.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:read'],

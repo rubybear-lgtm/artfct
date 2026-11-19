@@ -713,7 +713,7 @@ final class ListArtifactsTool extends Tool
         return [
             'owner' => $schema->string()->max(255)->description('Filter by owner: `me`, `anyone` or a team member\'s email address.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Only artifacts with this sharing level.')->nullable(),
-            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Only artifacts of this type: report, table, document, mockup, slide_deck, dashboard or other.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Only artifacts of this type: report, table, document, mockup, slide_deck, dashboard, post, design_system or other.')->nullable(),
             'collection' => $schema->string()->max(255)->description('Only artifacts in this collection, named by id or name.')->nullable(),
             'agent' => $schema->string()->max(100)->description('Only artifacts published by this agent identity.')->nullable(),
             'created_after' => $schema->string()->description('Only artifacts created at or after this ISO 8601 time.')->nullable(),
