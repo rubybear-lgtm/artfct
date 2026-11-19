@@ -140,3 +140,11 @@ test('doc starter describe splits a flowing sheet into several pages', function 
         ->assertScript('JSON.stringify([window.results.describe.result.pages[0].width_pt, window.results.describe.result.pages[0].height_pt])', '[612,792]')
         ->assertScript('window.results.describe.result.pages[1].runs.length > 0', true);
 });
+
+test('doc starter describe without a sheet replies with an error instead of throwing', function () {
+    visit(docStarterDriverUrl('no-sheet'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe !== null', true)
+        ->assertScript('window.results.describe.ok', false)
+        ->assertScript('window.results.describe.error.code', 'no_sheet');
+});

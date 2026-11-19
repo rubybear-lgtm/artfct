@@ -168,6 +168,12 @@
     }
 
     if (message.cmd === 'describe') {
+      if (sheetElement() === null) {
+        reply(event.source, event.origin, message.id, { ok: false, error: { code: 'no_sheet' } });
+
+        return;
+      }
+
       reply(event.source, event.origin, message.id, { ok: true, result: describe() });
 
       return;
