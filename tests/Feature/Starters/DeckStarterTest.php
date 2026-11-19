@@ -183,3 +183,22 @@ test('the publish contract refuses a stage style that loads an external origin t
     expect(deckStageStyleErrors('background-image:image-set("https://evil.example/x")'))
         ->toContain('Deck starter file [index.html] loads an external origin [https://evil.example/x]; bundle every asset in files/.');
 })->skip('known gap (spec 33): PublishContractValidator does not refuse image-set() origins');
+
+test('the deck starter vendors html2canvas as capture.js, MIT licensed and unmodified in its header', function () {
+    $path = DECK_STARTER_DIR.'/capture.js';
+
+    expect(is_file($path))->toBeTrue();
+
+    $source = (string) file_get_contents($path);
+
+    expect($source)->toContain('html2canvas 1.4.1')
+        ->and($source)->toContain('MIT');
+});
+
+test('app.js lazy-loads capture.js for the capture command and advertises it in ready', function () {
+    $script = deckStarterFiles()['app.js'];
+
+    expect($script)->toContain("commands: ['ready', 'describe', 'goTo', 'capture']")
+        ->and($script)->toContain("'capture.js'")
+        ->and($script)->not->toContain('<script');
+});

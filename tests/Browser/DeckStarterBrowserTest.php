@@ -223,3 +223,21 @@ test('noscale renders the stage at 1920 by 1080 in a narrower viewport', functio
         ->assertScript('Math.round(document.querySelector(".deck-stage").getBoundingClientRect().width)', 1920)
         ->assertScript('Math.round(document.querySelector(".slide").getBoundingClientRect().height)', 1080);
 });
+
+test('deck starter capture returns a true 1920 by 1080 PNG after the handshake', function () {
+    visit(deckStarterParentUrl())
+        ->waitForText('done')
+        ->assertScript('window.results.replies.capture1.data.ok', true)
+        ->assertScript('window.results.replies.capture1.data.result.width', 1920)
+        ->assertScript('window.results.replies.capture1.data.result.height', 1080)
+        ->assertScript('window.results.replies.capture1.data.result.png_base64.slice(0, 8)', 'iVBORw0K')
+        ->assertScript('(() => { const bytes = atob(window.results.replies.capture1.data.result.png_base64); return ((bytes.charCodeAt(16) << 24) | (bytes.charCodeAt(17) << 16) | (bytes.charCodeAt(18) << 8) | bytes.charCodeAt(19)); })()', 1920);
+});
+
+test('deck starter capture is ignored before the handshake and refuses an out-of-range index', function () {
+    visit(deckStarterParentUrl())
+        ->waitForText('done')
+        ->assertScript('window.results.replies.preCapture === undefined', true)
+        ->assertScript('window.results.replies.captureBad.data.ok', false)
+        ->assertScript('window.results.replies.captureBad.data.error.code', 'out_of_range');
+});
