@@ -8,10 +8,22 @@
 
 $parentOrigin = getenv('DOC_STARTER_PARENT_ORIGIN') ?: 'http://127.0.0.1';
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
-$file = realpath(getenv('DOC_STARTER_DIR').$path);
-$root = realpath(getenv('DOC_STARTER_DIR'));
+$root = (string) getenv('DOC_STARTER_DIR');
+$relative = ltrim($path, '/');
 
-if ($file === false || $root === false || ! str_starts_with($file, $root.DIRECTORY_SEPARATOR) || ! is_file($file)) {
+// Fixture cases: /cases/<name>/index.html is the case page; its doc.css and
+// export.js always come from the real bundle, so each case runs the shipped chrome.
+if (preg_match('#^/cases/([a-z-]+)/index\.html$#', $path, $case)) {
+    $root = __DIR__.'/cases/'.$case[1];
+    $relative = 'index.html';
+} elseif (preg_match('#^/cases/[a-z-]+/(doc\.css|export\.js)$#', $path, $asset)) {
+    $relative = $asset[1];
+}
+
+$file = realpath($root.'/'.$relative);
+$rootReal = realpath($root);
+
+if ($file === false || $rootReal === false || ! str_starts_with($file, $rootReal.DIRECTORY_SEPARATOR) || ! is_file($file)) {
     http_response_code(404);
 
     return;

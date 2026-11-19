@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Doc starter driver fixture</title>
+</head>
+<body>
+  <p id="status">running</p>
+  <iframe id="starter" title="starter" width="900" height="1200"></iframe>
+  <script>
+    // Test fixture only (not part of the bundle). Frames one starter case, runs
+    // the handshake and describe through the bridge, and records each reply.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var starterOrigin = params.get('starter');
+      var caseName = params.get('case');
+      var starter = document.getElementById('starter');
+      var channel = 'artfct-export';
+      var pending = {};
+      window.results = { ready: null, describe: null, longIdReply: null, boundaryIdReply: null, done: false };
+
+      window.addEventListener('message', function (event) {
+        if (event.source !== starter.contentWindow) {
+          return;
+        }
+        var data = event.data || {};
+        if (typeof pending[data.id] === 'function') {
+          pending[data.id](data);
+        }
+      });
+
+      // Resolves with the reply that echoes this id, or null if none arrives.
+      function request(id, cmd) {
+        return new Promise(function (resolve) {
+          var timer = setTimeout(function () {
+            delete pending[id];
+            resolve(null);
+          }, 800);
+          pending[id] = function (data) {
+            clearTimeout(timer);
+            delete pending[id];
+            resolve(data);
+          };
+          starter.contentWindow.postMessage({ channel: channel, v: 1, id: id, cmd: cmd }, starterOrigin);
+        });
+      }
+
+      starter.addEventListener('load', async function () {
+        window.results.ready = await request('ready', 'ready');
+        window.results.describe = await request('describe', 'describe');
+        window.results.longIdReply = await request(new Array(130).join('a'), 'describe');
+        window.results.boundaryIdReply = await request(new Array(129).join('b'), 'describe');
+        window.results.done = true;
+        document.getElementById('status').textContent = 'done';
+      });
+
+      starter.src = starterOrigin + '/cases/' + encodeURIComponent(caseName) + '/index.html';
+    })();
+  </script>
+</body>
+</html>

@@ -110,3 +110,33 @@ test('doc starter script runs under the artifact CSP', function () {
         ->waitForText('done')
         ->assertScript('window.results.ready !== null', true);
 });
+
+/** @return string the driver page, which frames one starter case through the bridge */
+function docStarterDriverUrl(string $case): string
+{
+    $origins = docStarterOrigins();
+
+    return $origins['parent'].'/driver.html?'.http_build_query(['starter' => $origins['starter'], 'case' => $case]);
+}
+
+// The fixed and flowing cases carry the same long body. Only the .sheet--fixed
+// class differs, so one page versus several pages proves describe reads the flag.
+test('doc starter describe keeps a fixed sheet to one page', function () {
+    visit(docStarterDriverUrl('fixed'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        ->assertScript('window.results.describe.result.pages.length', 1)
+        ->assertScript('JSON.stringify(window.results.describe.result.pages[0].breaks)', '[]')
+        ->assertScript('window.results.describe.result.pages[0].runs.length > 0', true);
+});
+
+test('doc starter describe splits a flowing sheet into several pages', function () {
+    visit(docStarterDriverUrl('flowing'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        ->assertScript('window.results.describe.result.pages.length > 1', true)
+        ->assertScript('window.results.describe.result.pages.every((page, index) => page.index === index)', true)
+        ->assertScript('window.results.describe.result.pages[0].breaks.length === window.results.describe.result.pages.length - 1', true)
+        ->assertScript('JSON.stringify([window.results.describe.result.pages[0].width_pt, window.results.describe.result.pages[0].height_pt])', '[612,792]')
+        ->assertScript('window.results.describe.result.pages[1].runs.length > 0', true);
+});
