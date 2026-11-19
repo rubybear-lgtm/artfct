@@ -205,8 +205,12 @@ test('the packed bytes are identical when the same artifact is packed twice', fu
 test('the download is a 404 for a caller who cannot see the artifact', function () {
     $team = Team::factory()->create(['slug' => STANDALONE_TEAM_SLUG, 'name' => 'Standalone Team']);
     $member = memberOfTeam($team, TeamRole::Member);
-    seedStandaloneArtifact($team, ['sharing' => 'private']);
+    seedStandaloneArtifact($team, ['sharing' => 'private', 'user_id' => 424242]);
     seedStandaloneBundle($team, standaloneFixtureBundle());
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, standaloneFixtureBundle()['index.html'], sharing: 'private', ownerUserId: '424242');
 
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/download.html')->assertNotFound();
 });
