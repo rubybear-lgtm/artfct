@@ -89,8 +89,10 @@ test('exporting the deck sends one capture per slide and starts the download', f
     expect(file_get_contents(sys_get_temp_dir().'/artfct-pptx-export-fixture-count.txt'))->toBe('3');
 });
 
-test('the parent cannot read the starter document, so the artifact script never runs in the app origin', function () {
+test('deck script that reads the parent document gets SecurityError, and the export still completes', function () {
     visit(pptxExportParentUrl())
         ->waitForText('done')
-        ->assertScript('window.results.crossOriginAccess', 'SecurityError');
+        ->assertScript('window.results.crossOriginAccess', 'SecurityError')
+        ->assertScript('window.results.deckParentAccess', 'parent document: SecurityError')
+        ->assertScript('window.results.captures', 3);
 });
