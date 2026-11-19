@@ -202,7 +202,7 @@
           result: {
             starter: STARTER,
             protocol: PROTOCOL,
-            commands: ['ready', 'describe', 'goTo'],
+            commands: ['ready', 'describe', 'goTo', 'capture'],
             slideCount: slides.length
           }
         });
@@ -236,11 +236,140 @@
         return;
       }
 
+      if (message.cmd === 'capture') {
+        if (!isOrdinaryIndex(message.index)) {
+          reply(event.source, event.origin, message.id, {
+            ok: false,
+            error: { code: 'out_of_range' }
+          });
+
+          return;
+        }
+
+        var source = event.source;
+        var origin = event.origin;
+        var id = message.id;
+        var index = message.index;
+
+        queueCapture(index).then(function (dataUrl) {
+          reply(source, origin, id, {
+            ok: true,
+            result: {
+              index: index,
+              width: STAGE_WIDTH,
+              height: STAGE_HEIGHT,
+              png_base64: dataUrl.slice(dataUrl.indexOf(',') + 1)
+            }
+          });
+        }, function (error) {
+          reply(source, origin, id, {
+            ok: false,
+            error: { code: error && error.code === 'capture_unavailable' ? 'capture_unavailable' : 'capture_failed' }
+          });
+        });
+
+        return;
+      }
+
       reply(event.source, event.origin, message.id, {
         ok: false,
         error: { code: 'unknown_command' }
       });
     });
+  }
+
+  // Capture (RUB-562, spec 46): the slide is rendered by the vendored
+  // html2canvas file at this origin. The library is loaded on the first
+  // capture only, and captures run one at a time.
+  var captureLibrary = null;
+  var captureQueue = Promise.resolve();
+
+  function loadCaptureLibrary() {
+    if (!captureLibrary) {
+      captureLibrary = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+
+        script.src = 'capture.js';
+        script.onload = function () {
+          if (typeof window.html2canvas === 'function') {
+            resolve(window.html2canvas);
+          } else {
+            reject(unavailable());
+          }
+        };
+        script.onerror = function () {
+          reject(unavailable());
+        };
+        document.head.appendChild(script);
+      });
+    }
+
+    return captureLibrary;
+  }
+
+  function unavailable() {
+    var error = new Error('capture unavailable');
+
+    error.code = 'capture_unavailable';
+
+    return error;
+  }
+
+  function nextFrames(count) {
+    return new Promise(function (resolve) {
+      function step(remaining) {
+        if (remaining <= 0) {
+          resolve();
+        } else {
+          window.requestAnimationFrame(function () {
+            step(remaining - 1);
+          });
+        }
+      }
+
+      step(count);
+    });
+  }
+
+  function captureSlide(index) {
+    return loadCaptureLibrary().then(function (html2canvas) {
+      goTo(index);
+
+      var previousTransform = stage.style.transform;
+
+      stage.style.transform = 'none';
+
+      return nextFrames(2).then(function () {
+        return html2canvas(slides[index], {
+          width: STAGE_WIDTH,
+          height: STAGE_HEIGHT,
+          windowWidth: STAGE_WIDTH,
+          windowHeight: STAGE_HEIGHT,
+          scale: 1,
+          logging: false,
+          useCORS: false,
+          allowTaint: false
+        });
+      }).then(function (canvas) {
+        stage.style.transform = previousTransform;
+
+        return canvas.toDataURL('image/png');
+      }, function (error) {
+        stage.style.transform = previousTransform;
+
+        throw error;
+      });
+    });
+  }
+
+  function queueCapture(index) {
+    var run = captureQueue.then(function () {
+      return captureSlide(index);
+    });
+
+    captureQueue = run.catch(function () {});
+
+    return run;
   }
 
   function isHttpOrigin(origin) {

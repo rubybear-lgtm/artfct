@@ -123,7 +123,7 @@ test('deck starter ignores sibling-frame and pre-handshake messages', function (
         ->waitForText('done')
         // Only the parent's commands get replies, in order. The pre-handshake describe,
         // the sibling ready and the v=2 message get none.
-        ->assertScript('JSON.stringify(window.results.ids)', '["ready","describe","goto2","goto9","gotoNeg","gotoFrac","unknown","payload"]')
+        ->assertScript('JSON.stringify(window.results.ids.filter((id) => !/^capture/.test(id)))', '["ready","describe","goto2","goto9","gotoNeg","gotoFrac","unknown","payload"]')
         ->assertScript('JSON.stringify(window.results.siblingReplies)', '[]')
         ->assertScript('window.results.replies.pre === undefined', true)
         ->assertScript('window.results.replies.badv === undefined', true)
