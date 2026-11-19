@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PDF export parent fixture</title>
+</head>
+<body>
+  <p id="status">running</p>
+  <script src="/vendor/pdf-export/pdf-lib.min.js"></script>
+  <script src="/vendor/pdf-export/fontkit.umd.min.js"></script>
+  <script src="/vendor/pdf-export/export.js"></script>
+  <script>
+    // Test fixture only (not part of the bundle). Runs the app-origin export
+    // runner against one starter frame and records the result on window.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      window.exportResult = null;
+      window.exportError = null;
+      window.exportBytes = null;
+      window.probeOutcome = null;
+
+      window.addEventListener('message', function (event) {
+        if (event.data && event.data.channel === 'pdf-export-probe') {
+          window.probeOutcome = event.data.outcome;
+        }
+      });
+
+      ArtfctPdfExport.exportArtifact({
+        frameUrl: params.get('frame'),
+        artifactOrigin: params.get('origin'),
+        footerUrl: params.get('footer') || 'https://artfct.example/a/fixture',
+        fileName: 'fixture.pdf'
+      }).then(function (result) {
+        window.exportBytes = result.bytes;
+        window.exportResult = {
+          pageCount: result.pageCount,
+          replacedCharacters: result.replacedCharacters,
+          starter: result.starter,
+          header: String.fromCharCode.apply(null, result.bytes.slice(0, 5)),
+          byteLength: result.bytes.length
+        };
+        document.getElementById('status').textContent = 'done';
+      }, function (error) {
+        window.exportError = error && error.code ? error.code : String(error);
+        document.getElementById('status').textContent = 'done';
+      });
+    })();
+  </script>
+</body>
+</html>

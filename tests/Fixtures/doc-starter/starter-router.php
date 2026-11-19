@@ -18,6 +18,9 @@ if (preg_match('#^/cases/([a-z-]+)/index\.html$#', $path, $case)) {
     $relative = 'index.html';
 } elseif (preg_match('#^/cases/[a-z-]+/(doc\.css|export\.js)$#', $path, $asset)) {
     $relative = $asset[1];
+} elseif (preg_match('#^/cases/([a-z-]+)/probe\.js$#', $path, $probe)) {
+    $root = __DIR__.'/cases/'.$probe[1];
+    $relative = 'probe.js';
 }
 
 $file = realpath($root.'/'.$relative);
