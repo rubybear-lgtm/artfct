@@ -71,6 +71,7 @@ final class HttpArtifactContentSource implements ArtifactContentSource
             'owner_user_id' => is_string($ownerUserId) ? $ownerUserId : null,
             // The bundle's files for the current version. An older Worker omits
             // the list; null then tells a packer to refuse rather than guess.
+            'entrypoint' => is_string($response->json('entrypoint')) ? $response->json('entrypoint') : null,
             'files' => $this->bundleFiles($response->json('files')),
             'provenance' => [
                 'agent' => $response->json('provenance.agent'),

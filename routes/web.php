@@ -122,6 +122,7 @@ Route::middleware('auth')->group(function () {
     Route::post('a/{artifactId}/comments', [ArtifactViewerController::class, 'storeComment'])->middleware('throttle:artifact-comment-store')->name('artifacts.comments.store');
     Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->middleware('throttle:artifact-comment-resolve')->name('artifacts.comments.resolve');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
+    Route::get('a/{artifactId}/download.html', [ArtifactViewerController::class, 'downloadHtml'])->name('artifacts.download.html');
 });
 
 // ── identity (spec 06) ──────────────────────────────────────────────────────
