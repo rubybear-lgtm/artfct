@@ -15,6 +15,14 @@ use RuntimeException;
 final class PptxExporter
 {
     /**
+     * The 16:9 screen layout in pixels (10 by 5.625 inches at 96 per inch). A
+     * picture filling these exactly is full-bleed.
+     */
+    private const SLIDE_WIDTH_PIXELS = 960;
+
+    private const SLIDE_HEIGHT_PIXELS = 540;
+
+    /**
      * @param  list<string>  $captures  Raw PNG bytes, one per slide, in slide order.
      * @param  list<string>  $notes  The speaker-notes text for each slide, same order as $captures.
      * @return string Absolute path to a temporary .pptx file; the caller deletes it.
@@ -25,8 +33,6 @@ final class PptxExporter
     {
         $presentation = new PhpPresentation;
         $presentation->getLayout()->setDocumentLayout(DocumentLayout::LAYOUT_SCREEN_16X9);
-        $width = $presentation->getLayout()->getCX(DocumentLayout::UNIT_PIXEL);
-        $height = $presentation->getLayout()->getCY(DocumentLayout::UNIT_PIXEL);
 
         $imagePaths = [];
 
@@ -45,7 +51,7 @@ final class PptxExporter
                 $picture->setName('Slide '.($index + 1));
                 $picture->setPath($imagePath);
                 $picture->setOffsetX(0)->setOffsetY(0);
-                $picture->setWidth($width)->setHeight($height);
+                $picture->setWidth(self::SLIDE_WIDTH_PIXELS)->setHeight(self::SLIDE_HEIGHT_PIXELS);
 
                 $slide->getNote()->createRichTextShape()->createText($notes[$index] ?? '');
             }
