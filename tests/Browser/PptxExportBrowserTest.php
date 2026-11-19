@@ -38,6 +38,7 @@ function pptxExportOrigins(): array
         null,
         [
             'DECK_STARTER_DIR' => PPTX_STARTER_BUNDLE,
+            'DECK_STARTER_OVERLAY' => PPTX_EXPORT_FIXTURES.'/deck',
             'DECK_STARTER_PARENT_ORIGIN' => $origins['parent'],
         ],
     );
