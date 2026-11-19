@@ -1,0 +1,5 @@
+[
+  { "name": "accent", "label": "Accent colour", "type": "color", "default": "#701a24" },
+  { "name": "show_terms", "label": "Show terms", "type": "toggle", "default": true },
+  { "name": "copies", "label": "Copies", "type": "range", "min": 1, "max": 5, "step": 1, "default": 1 }
+]
