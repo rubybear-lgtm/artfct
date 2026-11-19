@@ -55,3 +55,14 @@ Negative tests (guards to break and restore): the four violating-copy tests, the
 ## Results
 
 Recorded during the run on branch `rub-578-demo-frames`.
+
+**Red.** `FramesTest.php` on the red commit: all eight tests fail because the frame files are missing (`browser.css` does not exist; the sample `index.html` cannot be read). `PresentationSkillTest` new test `the skill lists the three demo frames in its resources section, one line each` fails: "the resources section must list assets/frames/browser.css on one line; actual size 0".
+
+**Green.** `php artisan test --compact tests/Feature/Starters/FramesTest.php` passes 8 of 8 (27 assertions). `tests/Feature/Skills/PresentationSkillTest.php` passes 18 of 18, including the new test and the RUB-555 tests. Affected set (`FramesTest`, `PresentationSkillTest`, `DeckStarterTest`, `PublishContractValidatorTest`): 63 passed, 0 failed.
+
+**Guard breaks (each broken, shown to fail, restored).**
+- Sample: `aria-hidden` removed from one `frame-chrome` element. `every frame chrome element is aria-hidden` fails (expected `'true'`, got `''`). Restored, green.
+- Sample: one `alt` emptied. `every slide image has a non-empty alt` fails. Restored, green.
+- Validator `PublishContractValidator`: inline-script check disabled, fails `a sample with an inline script fails the publish contract`. On-handler check disabled, fails `a sample with an on-handler fails the publish contract`. Data-URI check disabled, fails `a sample with a data image fails the publish contract`. External-origin check disabled, fails `a sample with an external origin fails the publish contract`. Each restored with `git checkout`, then green.
+
+**Not verified.** Staging render check (publish as `mockup`, zero CSP console errors): not run in this session. Screenshots for the PR: not captured in this session.
