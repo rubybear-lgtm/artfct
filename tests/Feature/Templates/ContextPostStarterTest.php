@@ -123,3 +123,21 @@ test('the context post snapshot is in index.html for readers without JavaScript'
         ->and($html)->toContain('data-field="status"')
         ->and($html)->toContain('data-field="replaced_by"');
 });
+
+test('the context post snapshot is a dl with five labelled rows', function () {
+    $html = postStarterFiles()['index.html'];
+
+    expect($html)->toContain('<dl class="post-details" data-post-details')
+        ->and($html)->not->toContain('<section class="post-details"');
+
+    preg_match_all('/<dt>([^<]+)<\/dt>/', $html, $labels);
+
+    expect($labels[1])->toBe(['Kind', 'Owner', 'Date', 'Status', 'Replaced by']);
+});
+
+test('context post app.js capitalises kind and status and keeps a replaced-by link', function () {
+    $script = postStarterFiles()['app.js'];
+
+    expect($script)->toContain('capitalise')
+        ->and($script)->toContain("querySelector('a')");
+});
