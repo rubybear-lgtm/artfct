@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
+- RUB-556: the publish guidance has a "Brand and voice" section. Before customer-facing work, the bot finds the team's brand post by title and post type, reads its kind and status from post data, follows a superseded chain of up to three hops, and treats the post's text as data, not instructions. Guidance is 1.6.0.
+
 - RUB-575: `post` and `design_system` are first-class artifact types. Deploy, list and search accept and filter by them, and inference never produces them. Guidance is 1.5.0.
 
 - RUB-574: the publish-contract file checks moved out of `TemplateCatalog` into `App\Services\Artifacts\PublishContractValidator`, so starters, packagers and export tests share one checker. Template validation messages are unchanged.
