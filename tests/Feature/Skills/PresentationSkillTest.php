@@ -97,7 +97,8 @@ test('the skill runs one findability search after deploying', function () {
     expect($deployStepAt)->not->toBeFalse()
         ->and($searchStepAt)->not->toBeFalse()
         ->and($searchStepAt)->toBeGreaterThan($deployStepAt)
-        ->and($skill)->toMatch('/\*\*Check it can be found\.\*\*[^\n]*one findability search[^\n]*search_artifacts/');
+        ->and($skill)->toMatch('/\*\*Check it can be found\.\*\*[^\n]*one findability search[^\n]*search_artifacts/')
+        ->and($skill)->toContain('report that to the person rather than retrying silently');
 });
 
 test('the skill sets the title grammar and bans punchline titles', function () {
