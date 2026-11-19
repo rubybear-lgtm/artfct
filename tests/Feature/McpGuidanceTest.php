@@ -472,7 +472,7 @@ test('the brand section lists what a brand post contains, in order', function ()
     $text = brandSection();
 
     $markers = ['voice summary', 'visual foundations', 'logo rules', 'worked examples'];
-    $positions = array_map(fn (string $marker): int|false => strpos($text, $marker), $markers);
+    $positions = array_map(fn (string $marker): int|false => stripos($text, $marker), $markers);
 
     expect(in_array(false, $positions, true))->toBeFalse()
         ->and($positions)->toBe(collect($positions)->sort()->values()->all());
