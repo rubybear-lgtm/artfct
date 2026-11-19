@@ -307,3 +307,39 @@ test('a db_batch with a valid post details set and a delete passes through', fun
 
     Http::assertSentCount(1);
 });
+
+test('db_set on post details refuses a field it does not define before anything is sent', function () {
+    $team = Team::factory()->create(['slug' => 'post-set-unknown']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    postCallMcpTool(remoteMcpToken($team), 'db_set', [
+        'id' => POST_ARTIFACT_ID, 'collection' => 'post', 'doc_id' => 'details',
+        'data' => postValidDetails(['memo' => 'not a field']),
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
+test('db_batch refuses a post details set missing a field and applies none of the batch', function () {
+    $team = Team::factory()->create(['slug' => 'post-batch-missing']);
+    postReleaseArtifactDb($team);
+    Http::fake();
+
+    $details = postValidDetails();
+    unset($details['replaced_by']);
+
+    postCallMcpTool(remoteMcpToken($team), 'db_batch', [
+        'id' => POST_ARTIFACT_ID,
+        'writes' => [
+            ['op' => 'set', 'collection' => 'cards', 'doc_id' => 'a', 'data' => ['title' => 'ok']],
+            ['op' => 'set', 'collection' => 'post', 'doc_id' => 'details', 'data' => $details],
+        ],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
