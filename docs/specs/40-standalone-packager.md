@@ -59,11 +59,45 @@ Status values: **passed** (test ran and passed), **guard broken** (test failed w
 
 | Done when (RUB-563) | Proof | Status |
 |---|---|---|
-| Route `artifacts.download.html` returns one HTML file for a viewable artifact; no access gives `404` | (to be filled) | not run |
-| Packed fixture (index, CSS, JS, one PNG, one font) has no `http://`, `https://`, or relative `src`/`href`; has `<style>`, `<script>` and `data:` URIs | (to be filled) | not run |
-| Fixture failing the validator returns `422` with the validator's message; nothing packed | (to be filled) | not run |
-| Pest tests for the three behaviours above and determinism (same bytes twice) | (to be filled) | not run |
-| Staging pack of the deck starter, network disabled, navigation works, screenshot | Needs merged Worker and staging deploy | not run |
-| Packed file shows readable static content with JavaScript disabled | (to be filled; static assertion on the deck and doc starters) | not run |
-| Unresolvable code-referenced assets are reported, not dropped; resolving and refusal fixtures | (to be filled) | not run |
-| `vendor/bin/pint --dirty --format agent` clean; CI green; PR reviewed | Pint runs before each PHP commit; CI and review happen after the push | pending |
+| Route `artifacts.download.html` returns one HTML file for a viewable artifact; no access gives `404` | `StandaloneHtmlDownloadTest` · `a member downloads a bundle as one HTML file with its assets inline` (200, headers); `the download is a 404 for a caller who cannot see the artifact` | passed; guard broken (visibility 404) failed |
+| Packed fixture (index, CSS, JS, one PNG, one font) has no `http://`, `https://` or relative `src`/`href`; has `<style>`, `<script>`, `data:` URIs | `StandaloneHtmlDownloadTest` · `a member downloads a bundle as one HTML file with its assets inline`; `a font referenced from a stylesheet in a folder resolves against that stylesheet` | passed |
+| Bundle failing the validator returns `422` with the validator's message; nothing packed | `StandaloneHtmlDownloadTest` · `a bundle that fails the publish contract is refused with the validator message and nothing is packed` | passed; guard broken (validator refusal) failed |
+| Pest tests for the behaviours above and determinism | `StandaloneHtmlDownloadTest` · `the packed bytes are identical when the same artifact is packed twice` | passed |
+| Staging: pack the deck sample, open with network disabled, navigation works, screenshot | Needs the Worker change deployed and a staging artifact; this branch cannot deploy | not run |
+| Packed file readable with JavaScript disabled; no-JS stacking survives | `StandaloneHtmlDownloadTest` · `the real deck starter packs with its static slides and its no-JavaScript rules intact`, `the real doc starter packs with its static content intact` (static checks only: `html.deck-js` rules and slide markup survive, no external script). A browser run with JavaScript disabled was not done. | partly: static only |
+| Unresolvable code-referenced assets reported, not dropped; resolving and refusal fixtures | `StandaloneHtmlDownloadTest` · `an image referenced from a script string resolves and is inlined` (resolving); `a script string naming a file that is not in the bundle is reported and nothing is packed` (refusal, lists `missing-logo.png`) | passed; guard broken (missing literal) failed |
+| Pint clean; CI green; reviewed | `vendor/bin/pint --dirty --format agent` passes before each PHP commit; PHPStan clean on changed files. CI and review follow the push. | pint and PHPStan passed; CI and review pending |
+
+Additional tests written for the spec's own rules:
+
+| Rule | Proof | Status |
+|---|---|---|
+| Worker lists `entrypoint` and `files` (decision 3) | Rust `metadata_and_content_responses_match_documented_schemas` (`cargo test -p artfct-backend --lib`: 300 passed) | passed |
+| Content source reads the file list; `null` when an older Worker omits it (decision 3) | `HttpArtifactContentSourceTest` · two tests | passed |
+| Older Worker refused with 503 (decision 3) | `StandaloneHtmlDownloadTest` · `a bundle whose Worker does not list its files is refused with 503 and nothing is packed` | passed; guard not broken |
+| Module scripts refused (decision 6) | `... a module script is refused ...` | passed; guard broken failed |
+| Relative link to another page refused (decision 6) | `... a relative link to another bundle page is refused ...` | passed; guard broken failed |
+| `srcset` candidate must resolve (decision 6) | `... a srcset candidate that names a missing file is refused` | passed; guard broken failed |
+| Relative `@import` refused (decision 6) | `... a relative stylesheet import is refused ...` | passed |
+| `</script` in inlined code is escaped (decision 6) | `... a script that closes its own element is escaped ...` | passed |
+| Deferred script moves to the end of the body (decision 6) | `... a deferred script moves to the end of the body ...` | passed |
+| `Content-Security-Policy: sandbox`, `nosniff`, attachment (decision 5) | asserted in `a member downloads a bundle ...` | passed |
+
+### Guard breaks (each restored after the run)
+
+| Guard broken | Test that failed |
+|---|---|
+| Validator refusal (`if ($errors !== [])`) | `a bundle that fails the publish contract ...` |
+| Visibility `404` in `downloadHtml` | `the download is a 404 for a caller who cannot see the artifact` |
+| Module script refusal | `a module script is refused ...` |
+| Missing script literal refusal | `a script string naming a file that is not in the bundle ...` |
+| `srcset` missing-candidate refusal | `a srcset candidate that names a missing file is refused` |
+| Relative link refusal | `a relative link to another bundle page is refused ...` |
+
+The guard breaks ran on the packer before one refactor that moved the final refusal check from `pack()` into `packDocument()`. They were rerun after that refactor, with the same results.
+
+## Verification run
+
+- `cargo test -p artfct-backend --lib`: 300 passed.
+- `php artisan test --compact tests/Feature/Artifacts tests/Feature/ArtifactViewerTest.php tests/Feature/Indexing/EventDrivenIndexingTest.php tests/Feature/Starters`: 133 passed.
+- `vendor/bin/phpstan analyse --memory-limit=1G` on the changed PHP files: no errors.
