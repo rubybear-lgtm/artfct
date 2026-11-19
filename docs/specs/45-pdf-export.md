@@ -39,30 +39,30 @@ Each font's licence text is in `public/vendor/pdf-export/fonts/OFL-<family>.txt`
 
 ## Done-when to test map
 
-Linear RUB-561 Done-when, mapped to tests. Tests named below are planned. Status is updated in Results.
+Linear RUB-561 Done-when, mapped to tests. Status column points to Results, which has the run outcome.
 
 | Done-when (Linear RUB-561) | Test name | Status |
 |---|---|---|
-| Spike: three fixtures (flowing doc with a long table, fixed sheet, three-slide deck) produce PDFs; `pdftotext` returns headings and body; page counts exact; table header repeats | `the spike renders three fixtures with exact page counts` (manual, see Spike) | pending |
+| Spike: three fixtures (flowing doc with a long table, fixed sheet, three-slide deck) produce PDFs; `pdftotext` returns headings and body; page counts exact; table header repeats | `the spike renders three fixtures with exact page counts` (manual, see Spike) | see Results |
 | Writer pick, version and bundle size recorded; font decision recorded | this spec, Decisions 1 to 6 and the vendored files table | done in this commit |
-| The action exists for official-starter `document` and `slide_deck` artifacts; non-starter shows the print fallback | `the export action appears for a starter document and a starter deck` and `the export action falls back to print for a non-starter artifact` in `tests/Browser/PdfExportBrowserTest.php` | pending |
-| Security: artifact renders only in its isolated iframe; a bundle script that reads `parent.document` gets `SecurityError` and export still completes | `a fixture bundle script that reads parent.document gets SecurityError and the export completes` in `tests/Browser/PdfExportBrowserTest.php` | pending |
-| Security: no artifact script runs in the app origin | `the export page loads no artifact script in the app origin` in `tests/Browser/PdfExportBrowserTest.php` | pending |
-| Browser test on a fixture doc and a fixture three-slide deck: download fires and the file starts with `%PDF-` | `exporting the doc fixture produces a PDF that starts with %PDF-` and `exporting the deck fixture produces a PDF that starts with %PDF-` in `tests/Browser/PdfExportBrowserTest.php` | pending |
+| The action exists for official-starter `document` and `slide_deck` artifacts; non-starter shows the print fallback | `the export action appears for a starter document and a starter deck` and `the export action falls back to print for a non-starter artifact` in `tests/Browser/PdfExportBrowserTest.php` | see Results |
+| Security: artifact renders only in its isolated iframe; a bundle script that reads `parent.document` gets `SecurityError` and export still completes | `a fixture bundle script that reads parent.document gets SecurityError and the export completes` in `tests/Browser/PdfExportBrowserTest.php` | see Results |
+| Security: no artifact script runs in the app origin | `the export page loads no artifact script in the app origin` in `tests/Browser/PdfExportBrowserTest.php` | see Results |
+| Browser test on a fixture doc and a fixture three-slide deck: download fires and the file starts with `%PDF-` | `exporting the doc fixture produces a PDF that starts with %PDF-` and `exporting the deck fixture produces a PDF that starts with %PDF-` in `tests/Browser/PdfExportBrowserTest.php` | see Results |
 | Access: bundle data requested with the viewer's own access; viewer succeeds, outside caller gets 404 | none yet | not started, see Open questions |
 | Staging `pdfinfo` and `pdftotext` output, page counts, footer URL | none in CI | not verifiable here, see Results |
-| `presentation/SKILL.md` "When Not to Use" line points to the Download PDF action | `the presentation skill points PDF requests to the Download PDF action` in `tests/Feature/Skills/PresentationSkillTest.php` | pending |
+| `presentation/SKILL.md` "When Not to Use" line points to the Download PDF action | `the presentation skill points PDF requests to the Download PDF action` in `tests/Feature/Skills/PresentationSkillTest.php` | see Results |
 | Independent review, screenshot, Pint clean, CI green, approved | none | owned by the orchestrator |
 
 Vendoring guards (Feature, `tests/Feature/PdfExport/VendoredWriterTest.php`):
 
 | Guard | Test name | Status |
 |---|---|---|
-| Every vendored file exists and has a licence text beside it | `every vendored pdf export file exists with its licence` | pending |
-| Every bundled font is OFL-1.1 | `every bundled pdf export font has an OFL licence text` | pending |
-| `export.js` posts with an explicit origin and never `'*'` | `export.js never posts to a wildcard origin` | pending |
-| `export.js` makes no network request and never reads `parent.document` | `export.js makes no network request and never touches the parent document` | pending |
-| `export.js` only accepts replies whose source is the iframe window | `export.js checks event.source against the frame it created` | pending |
+| Every vendored file exists and has a licence text beside it | `every vendored pdf export file exists with its licence` | see Results |
+| Every bundled font is OFL-1.1 | `every bundled pdf export font has an OFL licence text` | see Results |
+| `export.js` posts with an explicit origin and never `'*'` | `export.js never posts to a wildcard origin` | see Results |
+| `export.js` makes no network request and never reads `parent.document` | `export.js makes no network request and never touches the parent document` | see Results |
+| `export.js` only accepts replies whose source is the iframe window | `export.js checks event.source against the frame it created` | see Results |
 
 Negative tests (guards to break and restore): the wildcard-origin test, the no-network test and the `event.source` test, each broken on purpose in a copy of `export.js`, shown to fail, then restored. The `SecurityError` browser test is a guard for origin isolation: it is broken by serving the fixture bundle without the isolated origin, shown to fail, then restored.
 
