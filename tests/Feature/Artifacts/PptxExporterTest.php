@@ -12,7 +12,6 @@ function pptxFixturePng(int $red): string
 
     ob_start();
     imagepng($image);
-    imagedestroy($image);
 
     return (string) ob_get_clean();
 }
