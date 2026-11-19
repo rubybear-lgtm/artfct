@@ -46,14 +46,27 @@ Status values: passed, failed, not run (reason).
 
 | Done when (RUB-568) | Proof | Status |
 |---|---|---|
-| `design_system` type case and filters are live (RUB-575) | `McpArtifactTypeTest` (existing, base chain) | pending |
-| Sample system (README, tokens.json, one font, one logo) passes `PublishContractValidator` | `DesignSystemSampleTest` · `the sample design system passes the publish contract validator` | pending |
+| `design_system` type case and filters are live (RUB-575) | `McpArtifactTypeTest` (existing, base chain): passed, 60 tests with `Starters` in one run |
+| Sample system (README, tokens.json, one font, one logo) passes `PublishContractValidator` | `DesignSystemSampleTest` · `the sample design system passes the publish contract validator`: passed |
 | Sample system publishes as `design_system`, renders on staging with zero CSP errors, `search_artifacts` returns it | not run: no staging deploy from this worktree | not verified (reason above) |
-| `tokens.json` shape documented in the publish guidance; a Pest test validates a sample against it | `McpGuidanceTest` · `the design system guidance documents the tokens.json shape`; `DesignSystemSampleTest` · `the sample tokens.json matches the documented shape` | pending |
-| Three-step fallback, verbatim copy, provenance line | `McpGuidanceTest` · `the design system guidance has the three-step consume order`, `the design system guidance copies fonts and assets verbatim`, `the design system guidance requires the provenance line` | pending |
-| `VERSION` bumped one minor; `McpGuidanceTest`, `npm run test:skills`, `npm run test:plugin` pass | `AgentInstructionsTest` · `the guidance version moved with the text`; `McpGuidanceTest` · `every tool that names a guidance version names the current one`; command output | pending |
+| `tokens.json` shape documented in the publish guidance; a Pest test validates a sample against it | `McpGuidanceTest` · `the design system guidance documents the tokens.json shape`; `DesignSystemSampleTest` · `the sample tokens.json matches the documented shape`: passed; McpGuidanceTest `the design system guidance documents the tokens.json shape and its rules`: passed |
+| Three-step fallback, verbatim copy, provenance line | `McpGuidanceTest` · `the design system guidance has the three-step consume order`, `the design system guidance copies fonts and assets verbatim`, `the design system guidance requires the provenance line`: passed |
+| `VERSION` bumped one minor; `McpGuidanceTest`, `npm run test:skills`, `npm run test:plugin` pass | `AgentInstructionsTest` · `the guidance version moved with the text`; `McpGuidanceTest` · `every tool that names a guidance version names the current one`; command output: passed (AgentInstructionsTest and McpGuidanceTest 163 tests passed; test:skills 8/8; test:plugin 3/3) |
 | Staging: publish the sample, a bot publishes a deck that follows it (colours, font files, provenance line) | not run: staging serves `develop` (not this branch) and needs a live bot run | not verified (reason above) |
-| `vendor/bin/pint --dirty --format agent` clean; CI green; reviewed and approved | pint output; CI and review after push and PR | pint pending; CI and review not verified (reason above) |
+| `vendor/bin/pint --dirty --format agent` clean; CI green; reviewed and approved | pint passed (pre-commit hook); CI and review not verified (reason above) |
+
+## Guard breaks (step 4)
+
+Each guard was broken once, its named test run, and the file restored (checked by `cmp`).
+
+- Drop the `var(` rule from the shape helper: `the shape check refuses a token value that uses var()` failed.
+- Stop checking that a font file exists in the bundle: `the shape check refuses a font entry whose file is missing from the bundle` failed.
+- Rename `verbatim` in the publish guidance to `as-is`: `the design system guidance copies fonts and assets verbatim` failed.
+- Rename the provenance sentence opener: `the design system guidance requires the provenance line in the description` failed.
+- Put the neutral default before the brand post in the consume order: `the design system guidance has the three-step consume order` failed.
+- Name `--doc-ghost` for `--doc-gap` in the sample: `every sample token name is a custom property a starter declares` failed.
+
+A first attempt at the consume-order break left the order unchanged and passed; the markers are first occurrences, so the break had to move the fallback text, not just the words after it.
 
 ## Out of scope
 
