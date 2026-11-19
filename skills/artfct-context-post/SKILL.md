@@ -43,7 +43,7 @@ The page also carries a snapshot block for search and for readers without JavaSc
             "doc_id": "details",
             "body": {
                 "kind": "decision",
-                "owner": "Dana Lee",
+                "owner": "<name of the person who owns the decision>",
                 "status": "current",
                 "replaced_by": null
             }
