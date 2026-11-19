@@ -55,6 +55,30 @@ Seed `status` as `current` for a post you publish now. Use `draft` only when the
    b. Republish the old post with `artifact_id` and its `base_version`. Its snapshot shows Status `Superseded` and a Replaced by link to the new view URL.
 7. Run one findability search: `search_artifacts` with the post title. If the post comes back, stop. If it does not, say so once. Do not publish again to fix it.
 
+## Options
+
+Use this when the person asks for a choice between alternatives, and the post's `kind` is `options`. The team comments on each alternative and links to it. When they pick one, the post becomes a decision.
+
+Structure: keep the `post-details` snapshot as in the post shape, with Kind `Options`. Then write one `<section class="option" id="option-a">` per alternative, labelled A, B, C and so on: `<section class="option" id="option-b">` for B, and so on. Each section has `<h2>A. Title</h2>`, a paragraph saying what it is, `<h3>Trade-offs</h3>` and `<h3>What it costs</h3>`.
+
+- Two or three alternatives per round. If the person asks for more, ask them which to cut.
+- Every alternative has a title, what it is, trade-offs and cost. Ask for a missing label or detail; never invent one.
+- Anchors are `option-a`, `option-b` and so on, one per alternative, unique across the whole post. The newest round goes on top of the page and older rounds stay below. New alternatives continue the letters (round two starts at `option-d`).
+- Ids and letters are never renumbered when the post is updated.
+- Link to one alternative with the options post's `view_url` plus its fragment, for example `<view_url>#option-b`.
+
+Close the loop, in order:
+
+1. Publish the decision post with `artifact_type: post` and kind `decision`. Name the chosen option and link `<options view_url>#option-x`.
+2. `db_update` the options post's `post/details` with `status: "superseded"` and `replaced_by` set to the decision's artifact id.
+3. Republish the options post with `artifact_id` and `base_version`. Its snapshot shows Status `Superseded` and a Replaced by link.
+
+Refusals:
+
+- A superseded options post is never edited beyond step 3. Its alternatives do not change. A new choice is a new round on a new options post, or a decision.
+- If the decision names an option id that is not on the post, stop and ask which option was chosen.
+- Images per option and voting in the post are out of scope. Say so and do not add them.
+
 ## Rules
 
 - If the owner or the decision cannot be taken from the person's words, ask them. Never invent an owner.
