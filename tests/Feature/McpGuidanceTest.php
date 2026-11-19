@@ -124,6 +124,78 @@ test('every guidance topic is either mirrored as a skill or is onboarding', func
     expect(array_values(array_diff(ArtifactGuidance::TOPICS, ArtifactGuidance::MIRRORED_TOPICS)))->toBe(['onboarding']);
 });
 
+/*
+ * RUB-553: the context-post skill is a guidance topic like kanban, team-wiki and
+ * announcements. Its text is the contract a bot follows when it publishes a
+ * decision or announcement post, so these tests name what must be in it.
+ */
+function contextPostGuidance(): string
+{
+    return ArtifactGuidance::topic('context-post')['text'] ?? '';
+}
+
+test('context-post is a registered and mirrored guidance topic', function () {
+    expect(ArtifactGuidance::TOPICS)->toContain('context-post')
+        ->and(ArtifactGuidance::MIRRORED_TOPICS)->toContain('context-post');
+});
+
+test('the context post guidance names the post-details labels, kinds and statuses', function () {
+    $text = contextPostGuidance();
+
+    expect($text)->toContain('<dl class="post-details">')
+        ->toContain('Kind')
+        ->toContain('Owner')
+        ->toContain('Date')
+        ->toContain('Status')
+        ->toContain('Replaced by')
+        ->toContain('YYYY-MM-DD')
+        ->toContain('`Decision`')
+        ->toContain('`Announcement`')
+        ->toContain('`Topic`')
+        ->toContain('`Policy`')
+        ->toContain('`Options`')
+        ->toContain('`Brand`')
+        ->toContain('`Draft`')
+        ->toContain('`Current`')
+        ->toContain('`Superseded`')
+        ->toContain('`None`');
+});
+
+test('the context post guidance names the tools and fields it relies on', function () {
+    $text = contextPostGuidance();
+
+    foreach (['artifact_type', 'post', 'db_update', 'base_version', 'artifact_id', 'search_artifacts', 'read_artifact', 'replaced_by', 'view_url'] as $name) {
+        expect($text)->toContain($name);
+    }
+});
+
+test('the context post guidance gives its steps in order', function () {
+    $text = contextPostGuidance();
+
+    $markers = [
+        'search_artifacts',
+        'read_artifact',
+        'instead of publishing a duplicate',
+        'declare the `post` collections',
+        'artifact_type: post',
+        'Republish the old post',
+        'findability',
+    ];
+
+    $positions = array_map(fn (string $marker): int|false => strpos($text, $marker), $markers);
+
+    expect(in_array(false, $positions, true))->toBeFalse();
+    expect($positions)->toBe(collect($positions)->sort()->values()->all());
+});
+
+test('the context post guidance says ask and never invent an owner', function () {
+    expect(contextPostGuidance())->toContain('Never invent an owner')->toContain('ask them');
+});
+
+test('the context post guidance points at the announcement board skill', function () {
+    expect(contextPostGuidance())->toContain('artfct-announcements');
+});
+
 function onboardingGuidance(?string $host): array
 {
     $arguments = ['topic' => 'onboarding'] + ($host === null ? [] : ['host' => $host]);
