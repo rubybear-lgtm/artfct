@@ -252,6 +252,17 @@
     return input;
   }
 
+  // A control the reader has not touched keeps the stored value, so a stored
+  // value the control cannot show (an out-of-range number, a choice that is not
+  // listed) is still checked on save instead of being replaced by the control.
+  function markDirty(name) {
+    return function () {
+      if (controls[name]) {
+        controls[name].dirty = true;
+      }
+    };
+  }
+
   function readControl(field) {
     var control = controls[field.name];
 
@@ -298,13 +309,15 @@
       wrapper.appendChild(error);
       form.appendChild(wrapper);
 
-      controls[field.name] = { input: input, error: error };
+      controls[field.name] = { input: input, error: error, dirty: false };
+      input.addEventListener('input', markDirty(field.name));
+      input.addEventListener('change', markDirty(field.name));
     });
 
-    var save = document.createElement('button');
-    save.type = 'submit';
-    save.textContent = 'Save';
-    form.appendChild(save);
+    var saveButton = document.createElement('button');
+    saveButton.type = 'submit';
+    saveButton.textContent = 'Save';
+    form.appendChild(saveButton);
 
     var status = document.createElement('p');
     status.className = 'tweak-status';
@@ -327,7 +340,7 @@
     var body = {};
 
     fields.forEach(function (field) {
-      body[field.name] = readControl(field);
+      body[field.name] = controls[field.name].dirty ? readControl(field) : values[field.name];
     });
 
     setStatus('Saving…');
