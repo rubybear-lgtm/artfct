@@ -47,7 +47,7 @@ final class DeployArtifactTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.10.0',
+            'guidanceVersion' => '1.11.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],

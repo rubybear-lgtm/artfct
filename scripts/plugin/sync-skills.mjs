@@ -34,6 +34,7 @@ export const PLUGIN_SKILLS = [
     'artfct-announcements',
     'artfct-context-post',
     'artfct-team-doc',
+    'artfct-handoff',
     'onboard',
 ];
 
