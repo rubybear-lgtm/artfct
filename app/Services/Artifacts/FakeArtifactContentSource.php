@@ -48,4 +48,13 @@ final class FakeArtifactContentSource implements ArtifactContentSource
     {
         return $this->artifacts[$orgSlug][$artifactId] ?? null;
     }
+
+    /**
+     * Test hook: the Worker stops listing this artifact's files, as an older
+     * Worker does, so the packer must refuse.
+     */
+    public function markFilesUnknown(string $orgSlug, string $artifactId): void
+    {
+        $this->artifacts[$orgSlug][$artifactId]['files'] = null;
+    }
 }
