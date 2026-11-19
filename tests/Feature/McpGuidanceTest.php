@@ -640,8 +640,8 @@ test('the design system guidance has the three-step consume order', function () 
     $section = designSystemSection();
 
     $markers = [
-        'artifact_type: design_system',
-        'design_system/details',
+        '`search_artifacts` with `artifact_type: design_system`',
+        'collection `design_system`',
         'replaced_by',
         'Brand and voice',
         'neutral default',
