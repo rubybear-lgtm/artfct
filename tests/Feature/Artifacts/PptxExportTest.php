@@ -117,7 +117,22 @@ test('a guest is sent to sign in and nothing is exported', function () {
     [$team] = pptxMember();
     pptxSeedArtifact($team);
 
-    pptxExportPost(ARTIFACT_LINK_ID, [pptxCapturePng()])->assertUnauthorized();
+    pptxExportPost(ARTIFACT_LINK_ID, [pptxCapturePng()])->assertRedirect();
+});
+
+test('a teammate gets the same 404 for a private deck owned by someone else', function () {
+    [$team, $teammate] = pptxMember();
+    pptxSeedArtifact($team);
+
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
+
+    /** @var FakeArtifactContentSource $content */
+    $content = app(ArtifactContentSource::class);
+    $content->seed($team->slug, ARTIFACT_LINK_ID, $html, sharing: 'private', ownerUserId: (string) $owner->id);
+
+    test()->actingAs($teammate);
+    pptxExportPost(ARTIFACT_LINK_ID, [pptxCapturePng()])->assertNotFound();
 });
 
 test('a non-deck artifact is refused with 422 not_a_slide_deck', function () {
