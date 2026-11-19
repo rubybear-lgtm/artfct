@@ -44,3 +44,18 @@ An engineer or coding agent downloads a zip that holds a posted mockup and a sho
 2. **README conflict.** A bundle that already has `README.md` is refused with `handoff_readme_conflict`. The alternative is to rename the bundle file. Confirm.
 3. **Guidance version at merge.** The base is `1.10.0`, so this change sets `1.11.0`. If develop has moved since, the bump must be one minor above develop at merge time (the Done-when says so), which means renumbering the pins again.
 4. **Route path.** `download-handoff.zip` is chosen to keep the `artifacts.download.handoff` name and a clear file extension. Confirm if the owner prefers another path.
+
+## Results (recorded at implementation)
+
+Commits: spec `49cec0c`, guidance and version `d50ca74`, route and builder `d9ab3e9`.
+
+- `HandoffPackDownloadTest`: 10 passed. Names: "a member downloads a mockup handoff pack as a zip with the bundle and a README", "the README first line links the artifact version and names its number", "the download is a 404 for a caller who cannot see the artifact", "a signed-out visitor is sent to sign in, not given the zip", "a bundle without HANDOFF.md is refused with handoff_missing and nothing is packed", "a bundle that already has a README.md is refused with handoff_readme_conflict", "an artifact that is not a mockup is refused with handoff_not_mockup", "a mockup with no recorded type is refused with handoff_not_mockup", "a bundle whose Worker does not list its files is refused with 503", "HANDOFF.md passes the one shared publish contract checker alongside the mockup".
+- `McpGuidanceTest`, `AgentInstructionsTest`, `McpOnboardingChecklistTest`: 294 passed, including the four new handoff guidance tests.
+- `StandaloneHtmlDownloadTest`: 17 passed. `SmokeAllPagesTest`: 6 passed (route accounting includes `artifacts.download.handoff`).
+- `npm run test:skills`: 8/8 files passed. `npm run test:plugin`: 3/3 passed.
+- PHPStan on the three changed PHP files: 0 errors. Pint `--dirty`: passed.
+- Guard breaks, each run then restored: no-access visibility check (the 404 test fails), `handoff_missing` (1 fails), not-mockup (2 fail), README conflict (1 fails).
+
+Checked during implementation: `PublishContractValidator` only checks the content of `html`, `htm`, `css`, `js`, `mjs` and `svg` files and skips other extensions, so `HANDOFF.md` is not refused.
+
+Not verified: the staging check (publish a sample mockup with `HANDOFF.md`, download it, attach the listing) was not run, so this session has no staging access. CI, PR review and the PR screenshot rule do not apply to this branch yet.
