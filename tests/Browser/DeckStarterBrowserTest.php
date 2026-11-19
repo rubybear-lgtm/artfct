@@ -170,6 +170,14 @@ test('the keyboard moves the counter', function () {
         ->assertNoJavaScriptErrors();
 });
 
+test('a space key dispatched on the document moves the deck forward', function () {
+    // The listener is on the document, so a space with no focused button must advance.
+    visit(deckStarterUrl())
+        ->assertScript('(document.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })), document.querySelector(".deck-counter").textContent)', '2 / 3')
+        ->assertScript('document.querySelectorAll(".slide")[1].hasAttribute("data-deck-active")', true)
+        ->assertNoJavaScriptErrors();
+});
+
 test('the on-screen buttons move the counter', function () {
     visit(deckStarterUrl())
         ->click('button[aria-label="Next slide"]')
