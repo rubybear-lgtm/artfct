@@ -63,7 +63,7 @@ Run on this branch: all eight breaks made their named test fail (result `failed`
 | Asset path existence | Name `assets/deck-starter/missing.js` in SKILL.md | `every asset and reference path the skill names exists` |
 | Token declaration | Name `--type-missing` in SKILL.md | `every --deck and --type token...` |
 | Starter file list | Remove `app.js` from the copy step | `the skill copies the three starter files...` |
-| Outline gate | Remove the confirmation sentence | `the skill requires a confirmed outline...` |
+| Outline gate | Remove the step-1 sentence "wait for their confirmation before building" | `the skill requires a confirmed outline...` (exact-sentence assertion; the earlier regex matched across the file and passed with the sentence removed) |
 | Findability search | Remove the search step | `the skill runs one findability search...` |
 | `--type` tokens in starter | Remove `--type-body` from `deck.css` | `deck.css declares the --type tokens on :root` |
 
