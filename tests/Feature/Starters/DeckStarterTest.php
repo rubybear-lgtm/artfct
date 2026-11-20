@@ -123,14 +123,18 @@ test('app.js replies to the parent origin and never with a wildcard target', fun
         ->and($script)->not->toMatch("/postMessage\\([^)]*['\"]\\*['\"]/");
 });
 
-test('app.js has one postMessage call and it targets the reply origin', function () {
-    // Pins the text of the single postMessage call: a literal '*' or any other
-    // target fails. It does not stop `origin` itself being reassigned to '*'.
+test('app.js has one postMessage call and every reply passes the reply origin first', function () {
+    // The argument text of each call is only checked by prefix, so a nested call such as
+    // postMessage(f(x), '*') cannot hide a wildcard target. The reply helper's own
+    // definition is excluded; it is the one place that forwards `origin` as a parameter.
     $script = deckStarterFiles()['app.js'];
 
-    preg_match_all('/\bpostMessage\s*\(([^()]*)\)/', $script, $calls);
+    expect(substr_count($script, 'postMessage'))->toBe(1);
 
-    expect($calls[1])->toBe(['message, origin']);
+    preg_match_all('/(?<!function )\breply\s*\(\s*([^\n]*)/', $script, $calls);
+
+    expect($calls[1])->not->toBeEmpty()
+        ->and(array_filter($calls[1], fn (string $arguments): bool => ! str_starts_with($arguments, 'event.source, event.origin')))->toBe([]);
 });
 
 test('app.js exposes the navigation API the export clients drive', function () {

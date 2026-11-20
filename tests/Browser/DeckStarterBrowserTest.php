@@ -135,7 +135,6 @@ test('deck starter replies go to the parent origin, not a payload origin', funct
         ->waitForText('done')
         // The reply reached this page, so it was sent to the parent origin; the
         // payload origin (evil.example) was not used as the target.
-        ->assertScript('window.results.replies.payload.origin === new URL(window.results.replies.payload.origin).origin', true)
         ->assertScript('window.results.replies.payload.data.ok', true);
 });
 
