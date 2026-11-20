@@ -4,6 +4,7 @@
   --frame-paper: #FBFAF8;
   --frame-bar: #EFEDE8;
   --frame-dot: #C9C4BA;
+  box-sizing: border-box;
   width: min(960px, 100%);
   margin: 0 auto;
   border: 1px solid var(--frame-line);

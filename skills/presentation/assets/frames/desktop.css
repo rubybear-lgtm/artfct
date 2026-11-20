@@ -2,6 +2,7 @@
 .frame-desktop {
   --frame-body: #262624;
   --frame-screen: #FBFAF8;
+  box-sizing: border-box;
   width: min(960px, 100%);
   margin: 0 auto;
   padding: 10px 10px 0;

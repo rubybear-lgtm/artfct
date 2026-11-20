@@ -110,3 +110,12 @@ test('every slide image has a non-empty alt', function () {
         expect(trim($image->getAttribute('alt')))->not->toBe('');
     }
 });
+
+test('each frame root rule uses border-box so padding and borders stay inside its width', function () {
+    foreach (['desktop' => 'desktop.css', 'browser' => 'browser.css', 'phone' => 'phone.css'] as $frame => $file) {
+        $css = (string) file_get_contents(FRAMES_DIR.'/'.$file);
+
+        expect(preg_match('/\.frame-'.$frame.'\s*\{([^}]*)\}/', $css, $matches))->toBe(1, "{$file} must have a .frame-{$frame} root rule")
+            ->and($matches[1])->toMatch('/box-sizing\s*:\s*border-box/', "{$file} root rule must set box-sizing: border-box");
+    }
+});
