@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
+- RUB-575: `post` and `design_system` are first-class artifact types. Deploy, list and search accept and filter by them, and inference never produces them. Guidance is 1.5.0.
+
 - RUB-574: the publish-contract file checks moved out of `TemplateCatalog` into `App\Services\Artifacts\PublishContractValidator`, so starters, packagers and export tests share one checker. Template validation messages are unchanged.
 
 - RUB-381: secret-redaction coverage for the hosted MCP. Feature tests assert that authorization codes, access tokens and refresh tokens never appear in application logs (authorize, token, MCP bearer, refresh, revoke), client-visible MCP error payloads, activity telemetry, the AI-tool connections page, the agent setup prompt or the homepage. The verification matrix marks `robustness.secret_redaction` covered. The original CLI config-writer half of this acceptance criteria was retired with the local `mcp-server/` package (RUB-432).

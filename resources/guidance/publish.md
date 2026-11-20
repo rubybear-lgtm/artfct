@@ -26,7 +26,7 @@ Follow these rules whenever you call `deploy_artifact`, even if you did not load
 
 ## Type
 
-- Set `artifact_type` to one of: report, table, document, mockup, slide_deck, dashboard, other. If you leave it out it is inferred. A type you declared is kept on later versions.
+- Set `artifact_type` to one of: report, table, document, mockup, slide_deck, dashboard, post, design_system, other. Use `post` for a team context post (a decision, announcement or brand note) and `design_system` for a team design system. If you leave it out it is inferred. A type you declared is kept on later versions.
 
 ## Updating
 

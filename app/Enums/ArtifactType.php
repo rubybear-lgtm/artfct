@@ -13,6 +13,10 @@ enum ArtifactType: string
     case Mockup = 'mockup';
     case SlideDeck = 'slide_deck';
     case Dashboard = 'dashboard';
+    /** A team context post: a decision, announcement or brand note people and bots ask about. Not the marketing blog's BlogPost. */
+    case Post = 'post';
+    /** A team's design system: tokens and components that publish skills consume. */
+    case DesignSystem = 'design_system';
     case Other = 'other';
 
     /**

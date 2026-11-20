@@ -47,7 +47,7 @@ final class DeployArtifactTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.5.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
@@ -348,7 +348,7 @@ final class DeployArtifactTool extends Tool
             ]))->max(self::MAX_BUNDLE_FILES)->description('A multi-file bundle (up to 500 files, 8 MB in total) in place of `html`. For markdown, include a `.md`/`.markdown` entrypoint such as `README.md`. Pages reference other files by relative path.')->nullable(),
             'entrypoint' => $schema->string()->max(255)->description('Path of the file people open first; defaults to `index.html`. Must be one of `files`. Use `README.md` (or another `.md`/`.markdown` path) to publish markdown.')->nullable(),
             'artifact_id' => $schema->string()->max(128)->description('To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact. Omitted title, description, sharing, edit_access and collection keep their previous values.')->nullable(),
-            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('What this is: report, table, document, mockup, slide_deck, dashboard or other. Optional; inferred from the content when omitted, and a later version keeps a type you declared.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('What this is: report, table, document, mockup, slide_deck, dashboard, post, design_system or other. Optional; inferred from the content when omitted, and a later version keeps a type you declared.')->nullable(),
             'base_version' => $schema->integer()->min(1)->description('Optional. With `artifact_id`: the version your change is built on (from get_artifact or read_artifact). When omitted, the publish overwrites without a conflict check and the response sets base_version_checked to false. When given and the artifact has moved on, nothing is published and a stale_base error returns live_version so you can read it, merge and publish again. A base_version ahead of the live version is rejected as invalid_request.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Who can open it: team (default, everyone on your team), private (only you and team admins) or public (anyone with the link). A version published with `artifact_id` never changes sharing.')->nullable(),
             'edit_access' => $schema->string()->enum(['view', 'edit'])->description('Whether the people it is shared with can publish new versions. Defaults to view. A version published with `artifact_id` never changes it.')->nullable(),
