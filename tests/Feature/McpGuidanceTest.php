@@ -271,6 +271,24 @@ test('the team doc guidance points at the publish topic and does not restate the
         ->not->toContain('a permanent artifact');
 });
 
+test('the team doc guidance applies the brand before it writes or sizes the doc', function () {
+    $text = teamDocGuidance();
+
+    $brand = strpos($text, 'Brand and voice');
+
+    expect($brand)->not->toBeFalse()
+        ->and($brand)->toBeLessThan(strpos($text, 'Fill only the slots'))
+        ->and($brand)->toBeLessThan(strpos($text, 'about 400 words'));
+});
+
+test('the team doc guidance does not forbid the documented brand tokens', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->not->toContain('Do not add scripts, styles or other chrome')
+        ->toContain('--doc-')
+        ->toContain('could not apply');
+});
+
 test('the starter files the team doc guidance names exist', function () {
     foreach (['index.html', 'doc.css', 'export.js'] as $name) {
         expect(base_path("skills/artfct-team-doc/assets/doc-starter/{$name}"))->toBeFile();
