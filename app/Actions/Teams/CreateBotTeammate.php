@@ -41,6 +41,8 @@ class CreateBotTeammate
             McpScope::ArtifactsDeploy->value,
             McpScope::CollectionsRead->value,
             McpScope::UsageRead->value,
+            McpScope::DataRead->value,
+            McpScope::DataWrite->value,
         ];
         $scopes = array_values(array_intersect(McpScope::forRole(TeamRole::Member), $scopes));
         $ttlSeconds ??= 31536000;
