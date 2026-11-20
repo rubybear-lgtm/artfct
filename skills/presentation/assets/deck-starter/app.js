@@ -246,13 +246,11 @@
           return;
         }
 
-        var source = event.source;
-        var origin = event.origin;
         var id = message.id;
         var index = message.index;
 
         queueCapture(index).then(function (dataUrl) {
-          reply(source, origin, id, {
+          reply(event.source, event.origin, id, {
             ok: true,
             result: {
               index: index,
@@ -262,7 +260,7 @@
             }
           });
         }, function (error) {
-          reply(source, origin, id, {
+          reply(event.source, event.origin, id, {
             ok: false,
             error: { code: error && error.code === 'capture_unavailable' ? 'capture_unavailable' : 'capture_failed' }
           });
