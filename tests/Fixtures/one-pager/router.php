@@ -36,6 +36,16 @@ if ($path === '/__artfct/db/session') {
 
 if ($path === '/__artfct/db/tweaks/fields') {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        if (! str_starts_with($_SERVER['HTTP_AUTHORIZATION'] ?? '', 'Bearer ')) {
+            $json(['error' => 'unauthorized'], 401);
+
+            return;
+        }
+        if (isset($state['get_status'])) {
+            $json(['error' => 'forced'], (int) $state['get_status']);
+
+            return;
+        }
         if (! isset($state['doc'])) {
             $json(['error' => 'not_found'], 404);
 

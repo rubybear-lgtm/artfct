@@ -127,6 +127,29 @@ test('saving the tweaks writes the declared fields and a reload shows them', fun
         ->assertScript('document.querySelector("[data-tweak=\"tier\"]").textContent', 'Tier two');
 });
 
+test('a reload after a save shows the saved values to the writer', function () {
+    onePagerSetState(['role' => 'writer', 'doc' => ['customer_name' => 'Reload Co', 'tier' => 'Tier three', 'logo_path' => '']]);
+
+    visit(onePagerPage())
+        ->waitForText('Edit fields')
+        ->assertScript('document.querySelector("[data-tweak=\"customer_name\"]").textContent', 'Reload Co')
+        ->assertScript('document.querySelector("[data-tweak=\"tier\"]").textContent', 'Tier three')
+        ->assertScript('document.querySelector("#tweak-customer_name").value', 'Reload Co')
+        ->assertNoJavaScriptErrors();
+});
+
+test('a writer whose stored read is refused does not save defaults over the stored document', function () {
+    onePagerSetState(['role' => 'writer', 'get_status' => 503, 'doc' => ['customer_name' => 'Keep Me', 'tier' => 'Tier two', 'logo_path' => '']]);
+
+    visit(onePagerPage())
+        ->waitForText('Edit fields')
+        ->click('Save')
+        ->waitForText('nothing was saved');
+
+    expect(onePagerSaveCount())->toBe(0)
+        ->and(onePagerState()['doc'])->toBe(['customer_name' => 'Keep Me', 'tier' => 'Tier two', 'logo_path' => '']);
+});
+
 test('a bundle without tweaks.json shows a visible panel error', function () {
     onePagerSetState(['role' => 'writer']);
 
