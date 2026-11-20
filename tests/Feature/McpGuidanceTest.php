@@ -281,12 +281,43 @@ test('the team doc guidance applies the brand before it writes or sizes the doc'
         ->and($brand)->toBeLessThan(strpos($text, 'about 400 words'));
 });
 
-test('the team doc guidance does not forbid the documented brand tokens', function () {
+test('the team doc guidance allows one style block after the doc.css link that overrides only the --doc tokens', function () {
     $text = teamDocGuidance();
 
-    expect($text)->not->toContain('Do not add scripts, styles or other chrome')
-        ->toContain('--doc-')
-        ->toContain('could not apply');
+    expect($text)->toContain('one `<style>` block')
+        ->toContain('after the `<link rel="stylesheet" href="doc.css">` line')
+        ->toContain('`:root`')
+        ->toContain('only the `--doc-*` custom properties')
+        ->toContain('Nothing else goes in that block')
+        ->toContain('`doc.css` unchanged');
+});
+
+test('the team doc guidance does not say the brand cannot be applied', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->not->toContain('could not apply')
+        ->not->toContain('cannot take brand tokens')
+        ->not->toContain('cannot show the brand')
+        ->not->toContain('Do not add scripts, `<style>` blocks');
+});
+
+test('the team doc guidance still forbids scripts and says what to do without a brand post', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('Add no scripts')
+        ->toContain('no brand post')
+        ->toContain('leave the defaults')
+        ->toContain('do not say the doc follows a brand you did not apply');
+});
+
+test('the team doc guidance puts the brand style block before the slots and the sheet size', function () {
+    $text = teamDocGuidance();
+
+    $style = strpos($text, 'one `<style>` block');
+
+    expect($style)->not->toBeFalse()
+        ->and($style)->toBeLessThan(strpos($text, 'Fill only the slots'))
+        ->and($style)->toBeLessThan(strpos($text, 'about 400 words'));
 });
 
 test('the starter files the team doc guidance names exist', function () {
