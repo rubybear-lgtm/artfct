@@ -583,6 +583,14 @@ test('deploy_artifact tells agents inline scripts do not run', function () {
         ->and(json_encode($tool['inputSchema']))->toContain('without inline scripts');
 });
 
+test('deploy_artifact keeps the database guidance: null turns it off, omitting keeps it, and db_* holds the data', function () {
+    $description = mcpToolCatalog()['deploy_artifact']['description'];
+
+    expect($description)->toContain('`db: null` turns the database off.')
+        ->and($description)->toContain('Omitting `db` keeps the existing database.')
+        ->and($description)->toContain('The db_* tools and get_guidance topic data hold the data.');
+});
+
 test('get_guidance names its own guidance version like the guided tools', function () {
     $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
     $server->start();
