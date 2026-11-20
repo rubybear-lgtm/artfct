@@ -466,20 +466,24 @@ test('the brand section follows replaced_by up to three hops and stops when the 
         ->toContain('a kind other than `brand`')
         ->toContain('or is missing')
         ->toContain('The chain fails when it runs past 3 hops, a hop fails, or the named artifact is unreadable.')
-        ->toContain('go on to step 4');
+        ->toContain('go to step 6 (the "no brand post found" path)');
 });
 
-test('the brand section takes the newest brand post of any status and names the snapshot casing', function () {
-    expect(brandSection())->toContain('whatever their status')
+test('the brand section takes the newest current or superseded brand post and ignores drafts', function () {
+    expect(brandSection())->toContain('Take the newest brand post whose status is `current` or `superseded`, by the `updated_at`')
+        ->toContain('Drafts are ignored entirely.')
+        ->not->toContain('whatever their status')
         ->toContain('`updated_at`')
         ->toContain('title-case values (`Brand`, `Current`)')
         ->not->toContain('more than one current brand post');
 });
 
-test('the brand section falls back to the snapshot only when data is unreadable', function () {
-    expect(brandSection())->toContain('no readable `post/details` data')
-        ->toContain('use its snapshot and say so plainly')
-        ->toContain('a last resort, used only when data cannot be read');
+test('a failed hop chain goes to the no-post step, and the snapshot applies only to unreadable data', function () {
+    expect(brandSection())->toContain('When the chain fails, tell the person which hop failed and go to step 6 (the "no brand post found" path).')
+        ->not->toContain('go on to step 4')
+        ->not->toContain('candidate')
+        ->toContain('The snapshot is a last resort, used only when the chosen post\'s data cannot be read.')
+        ->toContain('If the chosen post has no readable `post/details` data, use its snapshot and say so plainly.');
 });
 
 test('the brand section says what to do when no brand post exists', function () {
