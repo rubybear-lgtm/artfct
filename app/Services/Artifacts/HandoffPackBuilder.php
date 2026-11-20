@@ -52,9 +52,14 @@ final class HandoffPackBuilder
 
         $handoff = $this->readFile($orgSlug, $artifactId, $files, $entry, self::HANDOFF_FILE);
 
-        $version = (int) ($entry['version'] ?? 1);
-        $viewUrl = route('artifacts.version', ['artifactId' => $artifactId, 'version' => $version]);
-        $readme = "Artifact view: {$viewUrl} (version {$version})\n\n".$handoff;
+        $version = $entry['version'] ?? null;
+
+        if (! is_int($version) || $version < 1) {
+            $readme = 'Artifact view: '.route('artifacts.show', ['artifactId' => $artifactId])."\n\n".$handoff;
+        } else {
+            $viewUrl = route('artifacts.version', ['artifactId' => $artifactId, 'version' => $version]);
+            $readme = "Artifact view: {$viewUrl} (version {$version})\n\n".$handoff;
+        }
 
         $path = tempnam(sys_get_temp_dir(), 'artfct-handoff-');
 

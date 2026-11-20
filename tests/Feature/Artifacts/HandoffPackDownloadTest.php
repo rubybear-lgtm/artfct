@@ -29,7 +29,7 @@ const HANDOFF_README = "# Overview\n\nA dashboard mockup.\n\n# About these files
  *
  * @param  array<string, string>  $files
  */
-function seedHandoffBundle(Team $team, array $files, int $version = 1, ?string $artifactType = 'mockup'): void
+function seedHandoffBundle(Team $team, array $files, ?int $version = 1, ?string $artifactType = 'mockup'): void
 {
     /** @var FakeArtifactDirectory $directory */
     $directory = app(ArtifactDirectory::class);
@@ -149,6 +149,21 @@ test('the README first line links the artifact version and names its number', fu
 
     expect($firstLine)->toContain($viewUrl)
         ->toContain('version 3');
+});
+
+test('an unknown version links the current artifact view and writes no version number', function () {
+    [$team, $member] = handoffMember();
+    seedHandoffBundle($team, handoffFixtureBundle(), version: null);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/download-handoff.zip');
+
+    $readme = handoffZipEntries($response)['README.md'];
+    $firstLine = strtok($readme, "\n");
+    $viewUrl = route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]);
+
+    expect($firstLine)->toBe('Artifact view: '.$viewUrl)
+        ->and($readme)->not->toContain('/v/1')
+        ->and($readme)->not->toContain('version 1');
 });
 
 test('the download is a 404 for a caller who cannot see the artifact', function () {
