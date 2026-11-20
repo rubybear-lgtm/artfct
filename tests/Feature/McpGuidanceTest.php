@@ -742,3 +742,30 @@ test('every token the design system guidance names is one a starter declares', f
         expect($starterCss)->toContain("{$token}:");
     }
 });
+
+test('the design system guidance tells the consumer to emit an @font-face rule for each type.fonts entry', function () {
+    $section = designSystemSection();
+
+    expect($section)->toContain('`@font-face`')
+        ->toContain('`type.fonts`')
+        ->toContain('`src: url(')
+        ->toContain('copied file path');
+});
+
+test('the design system guidance puts the token style after the doc.css link', function () {
+    expect(designSystemSection())->toContain('after `<link rel="stylesheet" href="doc.css">`')
+        ->toContain('the later rule wins');
+});
+
+test('the design system guidance says to report fonts that could not be copied', function () {
+    expect(designSystemSection())->toContain('could not copy the font files');
+});
+
+test('the spec records the open question about byte sources for design system files', function () {
+    $spec = (string) file_get_contents(base_path('docs/specs/36-design-system.md'));
+
+    expect($spec)->toContain('## Known gaps / open questions')
+        ->toContain('read_artifact')
+        ->toContain('get_artifact')
+        ->toContain('no MCP tool returns bundle bytes');
+});

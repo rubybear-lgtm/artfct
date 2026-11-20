@@ -68,6 +68,10 @@ Each guard was broken once, its named test run, and the file restored (checked b
 
 A first attempt at the consume-order break left the order unchanged and passed; the markers are first occurrences, so the break had to move the fallback text, not just the words after it.
 
+## Known gaps / open questions
+
+- **Open: where a consumer gets the bytes of `fonts/` and `assets/`.** The guidance says to copy these files verbatim, but no MCP tool returns bundle bytes. Checked: `read_artifact` returns indexed text only (README and tokens.json as text, no binary files); `get_artifact` returns metadata and no bundle files. Missing: a tool or URL that serves a design system's binary files. Until one exists, the guidance tells the consumer to report that it could not copy the font files, not to skip them silently. No mechanism is invented here.
+
 ## Out of scope
 
 The component compiler, live component previews, Figma import, a list-systems action (search covers it), server-side validation of `design_system/details`, the staging end-to-end run, and the PR itself (opened by the orchestrator).

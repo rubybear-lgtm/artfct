@@ -25,3 +25,5 @@ Plain, warm and direct. Say what the thing does in the first sentence.
 
 - On brand: "Your team's notes, one search away."
 - Off brand: "The ultimate AI knowledge revolution!"
+
+> Placeholder: `fonts/Sample-Regular.woff2` is a placeholder file with the WOFF2 signature, not a licensed font. It exists to exercise the bundle rules and is not meant to render.
