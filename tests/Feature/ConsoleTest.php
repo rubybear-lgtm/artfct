@@ -660,16 +660,33 @@ test('an_unknown_type_is_ignored_and_lists_every_artifact', function () {
         );
 });
 
+test('an_array_type_is_ignored_and_lists_every_artifact', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'design-one' => ArtifactType::DesignSystem,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type[]=post")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 4)
+            ->where('filters.type', null)
+        );
+});
+
 test('the_type_filter_is_scoped_to_the_viewing_team', function () {
     $team = Team::factory()->create(['slug' => 'test-org']);
     $other = Team::factory()->create(['slug' => 'other-org']);
     $admin = memberOfTeam($team, TeamRole::Admin);
     seedTypedConsoleArtifacts($team, ['mine' => ArtifactType::Post]);
-    ArtifactTypeAssignment::factory()->create([
-        'team_id' => $other->id,
-        'artifact_id' => 'theirs',
-        'artifact_type' => ArtifactType::Post,
-    ]);
+
+    // The other team's post is a real row in the directory, and the fake
+    // serves whichever org asks, so it would be listed here if the id lookup
+    // ever stopped being scoped to the viewing team.
+    seedTypedConsoleArtifacts($other, ['theirs' => ArtifactType::Post]);
 
     test()->actingAs($admin)
         ->get("/settings/teams/{$team->slug}/console?type=post")
@@ -678,6 +695,45 @@ test('the_type_filter_is_scoped_to_the_viewing_team', function () {
             ->has('artifacts', 1)
             ->where('artifacts.0.id', 'mine')
         );
+});
+
+test('the_type_filter_is_flagged_when_it_is_capped', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    foreach (range(1, 201) as $number) {
+        ArtifactTypeAssignment::factory()->create([
+            'team_id' => $team->id,
+            'artifact_id' => "post-{$number}",
+            'artifact_type' => ArtifactType::Post,
+        ]);
+    }
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=post")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('typeFilterCapped', true));
+});
+
+test('the_type_filter_is_not_flagged_when_it_fits', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'post-two' => ArtifactType::Post,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=post")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 2)
+            ->where('typeFilterCapped', false)
+        );
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console")
+        ->assertInertia(fn ($page) => $page->where('typeFilterCapped', false));
 });
 
 test('the_page_is_given_a_type_option_for_every_artifact_type', function () {

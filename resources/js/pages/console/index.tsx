@@ -69,6 +69,8 @@ interface ConsoleIndexProps {
     agents: string[];
     /** Every artifact type, from the server's enum, for the type filter. */
     artifactTypes: { value: string; label: string }[];
+    /** True when the type filter matched more artifacts than the page lists. */
+    typeFilterCapped: boolean;
     filters: {
         user_id: string | null;
         repo_url: string | null;
@@ -172,6 +174,7 @@ export default function ConsoleIndex({
     previewUrls,
     agents,
     artifactTypes,
+    typeFilterCapped,
     filters,
     nextCursor,
     cursor,
@@ -708,6 +711,16 @@ export default function ConsoleIndex({
                         ))}
                     </ul>
                 </section>
+            )}
+
+            {typeFilterCapped && artifacts.length > 0 && (
+                <p
+                    className="mb-3 text-sm text-muted-foreground"
+                    data-testid="type-filter-capped"
+                >
+                    Showing the 200 most recent of this type. Narrow the filter
+                    to see others.
+                </p>
             )}
 
             {/* Editorial Hairline Artifact List */}

@@ -71,14 +71,17 @@ class ConsoleController extends Controller
 
         Gate::authorize('view', $team);
 
+        $typeInput = $request->query('type');
+
         $filters = [
             'user_id' => $request->query('user_id'),
             'repo_url' => $request->query('repo_url'),
             'agent' => $request->query('agent'),
             'q' => $request->query('q'),
-            // An unknown type is ignored, like any other filter the page does
-            // not offer, so a stale link still lists the library.
-            'type' => ArtifactType::tryFrom((string) $request->query('type'))?->value,
+            // An unknown or malformed type (`?type[]=post`) is ignored, like any
+            // other filter the page does not offer, so a stale link still lists
+            // the library.
+            'type' => is_string($typeInput) ? ArtifactType::tryFrom($typeInput)?->value : null,
         ];
 
         $cursor = $request->query('cursor');
@@ -124,6 +127,7 @@ class ConsoleController extends Controller
             'artifacts' => $data['artifacts'],
             'agents' => $agents,
             'artifactTypes' => ArtifactType::options(),
+            'typeFilterCapped' => $data['type_filter_capped'],
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
             'cursor' => is_string($cursor) ? $cursor : null,
@@ -156,24 +160,26 @@ class ConsoleController extends Controller
      * does, because the Worker has no notion of an artifact's type.
      *
      * @param  array{user_id: mixed, repo_url: mixed, agent: mixed, q: mixed, type: ?string}  $filters
-     * @return array{artifacts: list<array<string, mixed>>, next_cursor: ?string}
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: ?string, type_filter_capped: bool}
      */
     private function listFilteredArtifacts(Team $team, array $filters, ?string $cursor, int $limit): array
     {
         $type = $filters['type'];
+        $capped = false;
         unset($filters['type']);
 
         if ($type !== null) {
             $ids = app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($type));
 
             if ($ids === []) {
-                return ['artifacts' => [], 'next_cursor' => null];
+                return ['artifacts' => [], 'next_cursor' => null, 'type_filter_capped' => false];
             }
 
+            $capped = count($ids) > self::MAX_TYPE_FILTER_IDS;
             $filters['ids'] = implode(',', array_slice($ids, 0, self::MAX_TYPE_FILTER_IDS));
         }
 
-        return $this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit);
+        return [...$this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit), 'type_filter_capped' => $capped];
     }
 
     /**
