@@ -15,6 +15,7 @@
   var ID_MAX = 128;
   var PT_PER_PX = 0.75;
   var PAGE_PT = { letter: [612, 792], a4: [595.28, 841.89] };
+  var EPSILON_PT = 1;
   var handshaken = false;
 
   if (window.parent === window) {
@@ -53,21 +54,71 @@
       src.split('/').indexOf('..') === -1;
   }
 
+  // Page starts in content points (0 is the printable top). A page starts at 0,
+  // at every .page-start element (a forced break), and every printableHeight
+  // after the last start. A start at or past the content end is not a page.
+  function pageStarts(printableHeight, contentHeight, forcedTops) {
+    var starts = [0];
+    var start = 0;
+
+    if (printableHeight <= 0) {
+      return starts;
+    }
+
+    while (true) {
+      var limit = start + printableHeight;
+      var next = limit;
+      var nextForced = null;
+
+      for (var f = 0; f < forcedTops.length; f++) {
+        if (forcedTops[f] > start + EPSILON_PT) {
+          nextForced = forcedTops[f];
+          break;
+        }
+      }
+
+      if (nextForced !== null && nextForced <= limit) {
+        next = nextForced;
+      }
+
+      if (next >= contentHeight - EPSILON_PT) {
+        return starts;
+      }
+
+      starts.push(next);
+      start = next;
+    }
+  }
+
   function describe() {
     var sheet = sheetElement();
     var kind = pageKind();
     var size = PAGE_PT[kind];
     var sheetStyle = window.getComputedStyle(sheet);
+    // Print puts the margin outside the sheet's content box, so the printable
+    // area is the content box, not the padded border box that scrollHeight measures.
     var marginPt = parseFloat(sheetStyle.paddingTop) * PT_PER_PX;
     var printableHeight = size[1] - 2 * marginPt;
     var sheetRect = sheet.getBoundingClientRect();
-    var contentHeight = sheet.scrollHeight * PT_PER_PX;
+    var contentHeight = sheet.scrollHeight * PT_PER_PX - 2 * marginPt;
     var isFixed = sheet.classList.contains('sheet--fixed');
-    var pageCount = isFixed ? 1 : Math.max(1, Math.ceil(contentHeight / printableHeight));
-    var breaks = [];
+    var forcedTops = [];
+    var forcedNodes = sheet.querySelectorAll('.page-start');
 
-    for (var b = 1; b < pageCount; b++) {
-      breaks.push(b * printableHeight);
+    for (var g = 0; g < forcedNodes.length; g++) {
+      forcedTops.push((forcedNodes[g].getBoundingClientRect().top - sheetRect.top) * PT_PER_PX - marginPt);
+    }
+
+    forcedTops.sort(function (a, b) {
+      return a - b;
+    });
+
+    var starts = isFixed ? [0] : pageStarts(printableHeight, contentHeight, forcedTops);
+    var breaks = starts.slice(1);
+
+    // Content coordinates: y is measured from the printable top, not the sheet top.
+    function contentTop(rect) {
+      return (rect.top - sheetRect.top) * PT_PER_PX - marginPt;
     }
 
     var runs = [];
@@ -88,7 +139,7 @@
       runs.push({
         text: text,
         x: (rect.left - sheetRect.left) * PT_PER_PX,
-        y: (rect.top - sheetRect.top) * PT_PER_PX,
+        y: contentTop(rect),
         w: rect.width * PT_PER_PX,
         h: rect.height * PT_PER_PX,
         font_family: style.fontFamily,
@@ -113,7 +164,7 @@
       images.push({
         src: src,
         x: (imageRect.left - sheetRect.left) * PT_PER_PX,
-        y: (imageRect.top - sheetRect.top) * PT_PER_PX,
+        y: contentTop(imageRect),
         w: imageRect.width * PT_PER_PX,
         h: imageRect.height * PT_PER_PX
       });
@@ -121,9 +172,10 @@
 
     var pages = [];
 
-    for (var p = 0; p < pageCount; p++) {
-      var top = p * printableHeight;
-      var bottom = top + printableHeight;
+    for (var p = 0; p < starts.length; p++) {
+      var top = starts[p];
+      // A fixed sheet clips at the printable edge; a flowing page ends at the next start.
+      var bottom = p + 1 < starts.length ? starts[p + 1] : (isFixed ? top + printableHeight : Infinity);
       pages.push({
         index: p,
         width_pt: size[0],

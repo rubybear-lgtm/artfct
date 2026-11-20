@@ -104,15 +104,22 @@ Replies from the bridge:
 - **`ready`** returns `result: { starter: "doc@1", protocol: 1, commands: ["ready", "describe"] }` and sets the handshaken flag.
 - **`describe`** (after handshake) returns `result: { pages: [...] }`, or `ok: false`, `error.code: no_sheet` when the page has no `.sheet` element. It never throws. For each printed page:
   - `index`, `width_pt`, `height_pt`;
-  - `runs`: `{ text, x, y, w, h, font_family, font_size_pt, color }` in page points;
-  - `images`: `{ src, x, y, w, h }` where `src` is a bundle-relative path (never a `data:` URI or absolute URL). A src is kept only when, after trimming, it is a plain relative path: no scheme, host, backslash, leading `/` or `..` segment. Anything else is dropped and counted in `droppedImages` at the top level of the result;
+  - `runs`: `{ text, x, y, w, h, font_family, font_size_pt, color }` in page points. `y` is measured from the printable top of that page, not the paper top. A run belongs to the page where its top edge falls;
+  - `images`: `{ src, x, y, w, h }` (`y` measured the same way) where `src` is a bundle-relative path (never a `data:` URI or absolute URL). A src is kept only when, after trimming, it is a plain relative path: no scheme, host, backslash, leading `/` or `..` segment. Anything else is dropped and counted in `droppedImages` at the top level of the result;
   - `breaks`: the page-break positions the bridge computed.
 - `describe` reads layout only. It never writes to the page.
 - Any other command after handshake returns `ok: false`, `error.code: "unknown_command"`.
 
 ### What describe can and cannot compute
 
-Script cannot observe where the print engine breaks pages. `describe` computes breaks by slicing the laid-out content at the printable height. These are predicted breaks, not observed ones (see Open questions).
+Script cannot observe where the print engine breaks pages. `describe` predicts the breaks from the on-screen layout, which uses the same 7in measure as print:
+
+- **Printable area.** The printable height is the paper height minus two margins (`792pt - 2 × 54pt` for Letter, `841.89pt - 2 × 54pt` for A4). The content height is the sheet's `scrollHeight` minus its top and bottom padding, so a one-page sheet (min-height 11in) measures exactly one printable page and reports one page.
+- **Forced breaks.** Each `.page-start` element starts a new page at its top edge. Content before it keeps its own pages.
+- **Height breaks.** Otherwise a page ends every printable height after the last start.
+- **Not honoured.** `break-inside: avoid` on callouts, figures, images and code blocks, `break-after: avoid` on headings, and `orphans` / `widows` are not applied. A predicted break can split one of these blocks, so the runs and images near that break can sit on either side of it. Authors keep blocks shorter than a page (see `doc.css`) and the print engine may place them differently.
+
+These are predicted breaks, not observed ones (see Open questions).
 
 ### Artifact data
 
@@ -161,7 +168,7 @@ Each RUB-557 item with the test that proves it. Results were recorded by running
 | Bridge makes no network request and never touches the parent document | `DocStarterTest` · `export.js makes no network request and never touches the parent document` | passed |
 | Starter script runs under the artifact CSP (no blocked script) | `DocStarterBrowserTest` · `doc starter script runs under the artifact CSP` | passed; a blocked script would fail the handshake. Console CSP-error capture is not wired, so "zero CSP console errors" is not literally checked |
 | Four violating copies refused with the matching error | `DocStarterTest` · `the publish contract refuses violating copies of the doc starter` (inline script, `onclick=`, `data:` image, external font URL) | passed; each validator guard broken in turn: one test failed (13/14), restored |
-| Flowing and fixed fixtures print one or two pages | Describe predicts the page count (row above); no print emulation was run | not verified: print pagination not run |
+| Flowing and fixed fixtures print one or two pages | `DocStarterBrowserTest` · `doc starter describe reports a one-page memo as exactly one page` (1 page, no breaks; was 2 pages before the fix), `doc starter describe keeps a run that crosses a page boundary on the page where it starts` (red on the padded-offset code, green after), `doc starter describe starts a new page at a page-start element` (forced break). No print emulation was run | predicted pages only; print pagination not run |
 | Independent review focused on origin isolation | Process check: fresh reviewer, recorded in the PR | pending |
 | Staging render check (`deploy_artifact`, `files`, `entrypoint: index.html`, `artifact_type: document`) | After merge, on staging | not verified here |
 | `npm run test:plugin` passes | `npm run test:plugin`: pass 3, fail 0 | passed |
@@ -173,7 +180,7 @@ Each RUB-557 item with the test that proves it. Results were recorded by running
 1. **Spec number.** Spec 26 is the validator, 27 first-class types, 29 post data schema. This spec is 30.
 2. **Deck starter (RUB-558).** No deck spec is in this repo. The envelope above (`artfct-export`, `v: 1`, reply to `event.origin`) is the proposal to match. Both starters must agree before either merges, or there are two bridges.
 3. **Viewer iframe sandbox.** The viewer uses `allow-scripts allow-same-origin`, so its origin is not `null`. The preview uses `sandbox=""`, whose origin is `null`. RUB-561's comment about a sandboxed iframe's origin should be checked. The bridge depends only on `event.source` and `event.origin` from the parent, so this spec is unaffected.
-4. **Page breaks.** `describe` predicts breaks by layout slicing; the print engine may break differently. This is a fidelity risk to RUB-561, not blocking here.
+4. **Page breaks.** `describe` predicts breaks from the on-screen layout: content-box height against printable height, plus `.page-start` forced breaks. It does not apply `break-inside: avoid`, `break-after: avoid` or `orphans` / `widows`, and a run is placed by its top edge. The print engine may break differently. This is a fidelity risk to RUB-561, not blocking here.
 5. **A4 via named pages.** The `page` property and the `html.sheet-a4` switch need a browser check in Chrome at implementation time.
 6. **Two-origin browser harness.** How the fixtures are served from a second origin under Pest 4 and this environment is not yet confirmed. If it cannot be set up, the cross-origin browser items stay unverified and are reported as such.
 7. **`describe` output size.** No cap on runs or pages is set. A large document could return a large reply.

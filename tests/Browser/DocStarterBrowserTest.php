@@ -164,3 +164,39 @@ test('doc starter ignores an id longer than 128 characters and echoes one of 128
         ->assertScript('window.results.boundaryIdReply !== null', true)
         ->assertScript('window.results.boundaryIdReply.id.length', 128);
 });
+
+// RUB-557 fix: describe predicts pages from the printable area (the sheet's
+// content box against 11in minus two margins), so a one-page memo is one page.
+test('doc starter describe reports a one-page memo as exactly one page', function () {
+    visit(docStarterDriverUrl('short'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        ->assertScript('window.results.describe.result.pages.length', 1)
+        ->assertScript('JSON.stringify(window.results.describe.result.pages[0].breaks)', '[]')
+        ->assertScript('window.results.describe.result.pages[0].runs.some((run) => run.text.startsWith("One short paragraph"))', true);
+});
+
+// A run is placed on the page where its top edge falls, at its offset from that
+// page's printable top. Before the fix the padding offset put it on page 1.
+test('doc starter describe keeps a run that crosses a page boundary on the page where it starts', function () {
+    visit(docStarterDriverUrl('crossing'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        // Precondition: the marker starts above the printable bottom (684pt) and ends below it.
+        ->assertScript('(() => { const run = window.results.describe.result.pages[0].runs.find((r) => r.text.startsWith("Crossing marker")); return run !== undefined && run.y < 684 && run.y + run.h > 684; })()', true)
+        ->assertScript('window.results.describe.result.pages.length', 2)
+        ->assertScript('window.results.describe.result.pages[0].runs.some((run) => run.text.startsWith("Crossing marker"))', true)
+        ->assertScript('window.results.describe.result.pages[1].runs.some((run) => run.text.startsWith("Crossing marker"))', false)
+        ->assertScript('window.results.describe.result.pages[1].runs.some((run) => run.text.startsWith("Following paragraph"))', true);
+});
+
+test('doc starter describe starts a new page at a page-start element', function () {
+    visit(docStarterDriverUrl('page-start'))
+        ->waitForText('done')
+        ->assertScript('window.results.describe.ok', true)
+        ->assertScript('window.results.describe.result.pages.length', 2)
+        ->assertScript('window.results.describe.result.pages[0].runs.some((run) => run.text.startsWith("Page two starts"))', false)
+        ->assertScript('window.results.describe.result.pages[1].runs[0].text', 'Page two starts here.')
+        ->assertScript('window.results.describe.result.pages[1].runs[0].y < 12', true)
+        ->assertScript('window.results.describe.result.pages[0].breaks.length', 1);
+});
