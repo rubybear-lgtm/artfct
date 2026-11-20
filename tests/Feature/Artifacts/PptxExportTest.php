@@ -185,6 +185,39 @@ test('a PNG that is not 1920 by 1080 is refused with 422 wrong_dimensions', func
         ->assertJsonPath('code', 'wrong_dimensions');
 });
 
+test('a truncated PNG with only the signature is refused with 422 wrong_dimensions, not a 500', function () {
+    [$team, $member] = pptxMember();
+    pptxSeedArtifact($team);
+
+    test()->actingAs($member);
+    pptxExportPost(ARTIFACT_LINK_ID, ["\x89PNG\r\n\x1a\n"])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'wrong_dimensions');
+});
+
+test('a truncated PNG with the signature and 10 more bytes is refused with 422 wrong_dimensions, not a 500', function () {
+    [$team, $member] = pptxMember();
+    pptxSeedArtifact($team);
+
+    test()->actingAs($member);
+    pptxExportPost(ARTIFACT_LINK_ID, ["\x89PNG\r\n\x1a\n".str_repeat("\x00", 10)])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'wrong_dimensions');
+});
+
+test('a PNG whose first chunk is not IHDR is refused with 422 wrong_dimensions', function () {
+    [$team, $member] = pptxMember();
+    pptxSeedArtifact($team);
+
+    $png = pptxCapturePng();
+    $withWrongChunk = substr_replace($png, 'XXXX', 12, 4);
+
+    test()->actingAs($member);
+    pptxExportPost(ARTIFACT_LINK_ID, [$withWrongChunk])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'wrong_dimensions');
+});
+
 test('the export is rate limited to 10 requests per minute per user', function () {
     [$team, $member] = pptxMember();
     pptxSeedArtifact($team);

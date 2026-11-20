@@ -19,6 +19,11 @@ final class PptxCaptureValidator
 
     private const PNG_SIGNATURE = "\x89PNG\r\n\x1a\n";
 
+    /** The IHDR chunk name at bytes 12-15, then width and height at 16-23. */
+    private const IHDR_CHUNK_NAME = 'IHDR';
+
+    private const IHDR_END_OFFSET = 24;
+
     /**
      * @param  mixed  $captures  The request's `captures` value: a list of base64 PNG strings.
      * @param  int  $bodyBytes  The size of the request body in bytes.
@@ -58,6 +63,10 @@ final class PptxCaptureValidator
 
         if ($png === false || ! str_starts_with($png, self::PNG_SIGNATURE)) {
             throw $this->refusal('invalid_png', "Slide {$slideNumber} is not a PNG.");
+        }
+
+        if (strlen($png) < self::IHDR_END_OFFSET || substr($png, 12, 4) !== self::IHDR_CHUNK_NAME) {
+            throw $this->refusal('wrong_dimensions', "Slide {$slideNumber} must be 1920 by 1080 pixels.");
         }
 
         $dimensions = unpack('Nwidth/Nheight', substr($png, 16, 8));
