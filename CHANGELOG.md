@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
+- RUB-574: the publish-contract file checks moved out of `TemplateCatalog` into `App\Services\Artifacts\PublishContractValidator`, so starters, packagers and export tests share one checker. Template validation messages are unchanged.
+
 - RUB-381: secret-redaction coverage for the hosted MCP. Feature tests assert that authorization codes, access tokens and refresh tokens never appear in application logs (authorize, token, MCP bearer, refresh, revoke), client-visible MCP error payloads, activity telemetry, the AI-tool connections page, the agent setup prompt or the homepage. The verification matrix marks `robustness.secret_redaction` covered. The original CLI config-writer half of this acceptance criteria was retired with the local `mcp-server/` package (RUB-432).
 
 - RUB-444: `deploy_artifact` returns a `warnings` list when published HTML still contains an inline `<script>` (or `onclick=`-style handler). The page is still published — CSP `script-src 'self'` continues to block those scripts — but the tool result now says to move the script into a separate file such as `app.js`. Guidance and the negative Worker CSP assertion from earlier still apply.
