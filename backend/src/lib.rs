@@ -1820,7 +1820,7 @@ mod tests {
         let content = artifact_routes::build_org_content_response(
             "abcdefghijklm",
             &artifact_routes::ContentRow {
-                row_id: 9,
+                row_id: "0f8fad5bd9cb469fa16570867728950e".to_string(),
                 entrypoint: "index.html".to_string(),
                 content_hash: "a".repeat(64),
                 content_type: "text/html".to_string(),
@@ -1863,6 +1863,28 @@ mod tests {
             &content,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn content_rows_deserialize_the_text_artifact_row_id() {
+        // `artifacts.row_id` is a TEXT uuid (migrations/0001_storage.sql); the
+        // content read selects it and rebinds it to list the file rows. A
+        // numeric type here made every org content read a 500 (RUB-563).
+        let row_id = "0f8fad5bd9cb469fa16570867728950e";
+        let row: artifact_routes::ContentRow = serde_json::from_value(serde_json::json!({
+            "row_id": row_id,
+            "entrypoint": "index.html",
+            "content_hash": "a".repeat(64),
+            "content_type": "text/html",
+            "tier": "secure",
+            "user_id": null,
+            "agent": null,
+            "repo_url": null,
+            "commit_sha": null,
+            "current_version": 1,
+        }))
+        .expect("a D1 content row with a uuid row_id deserializes");
+        assert_eq!(row.row_id, row_id);
     }
 
     #[test]
