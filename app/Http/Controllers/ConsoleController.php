@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Enums\McpScope;
 use App\Enums\TeamRole;
@@ -15,6 +16,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactServiceUnavailableException;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\OrganizationExportArchive;
 use App\Services\Artifacts\WorkerCredential;
 use App\Services\FeatureFlags;
@@ -49,6 +51,9 @@ class ConsoleController extends Controller
 {
     use AuthorizesRequests;
 
+    /** The most ids one type filter sends to the Worker, as in `list_artifacts`. */
+    private const MAX_TYPE_FILTER_IDS = 200;
+
     public function __construct(
         private readonly ArtifactDirectory $artifacts,
         private readonly AuditLogger $auditLogger,
@@ -71,12 +76,15 @@ class ConsoleController extends Controller
             'repo_url' => $request->query('repo_url'),
             'agent' => $request->query('agent'),
             'q' => $request->query('q'),
+            // An unknown type is ignored, like any other filter the page does
+            // not offer, so a stale link still lists the library.
+            'type' => ArtifactType::tryFrom((string) $request->query('type'))?->value,
         ];
 
         $cursor = $request->query('cursor');
         $limit = 50;
 
-        $data = $this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit);
+        $data = $this->listFilteredArtifacts($team, $filters, is_string($cursor) ? $cursor : null, $limit);
 
         // The filter's tool list is built from the artifacts on screen rather
         // than a hardcoded subset, so a tool the org actually uses can never be
@@ -115,6 +123,7 @@ class ConsoleController extends Controller
             'team' => $team,
             'artifacts' => $data['artifacts'],
             'agents' => $agents,
+            'artifactTypes' => ArtifactType::options(),
             'filters' => $filters,
             'nextCursor' => $data['next_cursor'],
             'cursor' => is_string($cursor) ? $cursor : null,
@@ -139,6 +148,32 @@ class ConsoleController extends Controller
                 ->limit(20)
                 ->get(['artifact_id', 'attempts', 'reason', 'failed_at']),
         ]);
+    }
+
+    /**
+     * List the team's artifacts through the Worker. A type filter resolves to
+     * the ids the type assignments hold, exactly as the `list_artifacts` tool
+     * does, because the Worker has no notion of an artifact's type.
+     *
+     * @param  array{user_id: mixed, repo_url: mixed, agent: mixed, q: mixed, type: ?string}  $filters
+     * @return array{artifacts: list<array<string, mixed>>, next_cursor: ?string}
+     */
+    private function listFilteredArtifacts(Team $team, array $filters, ?string $cursor, int $limit): array
+    {
+        $type = $filters['type'];
+        unset($filters['type']);
+
+        if ($type !== null) {
+            $ids = app(ArtifactTypeResolver::class)->artifactIdsOfType($team, ArtifactType::from($type));
+
+            if ($ids === []) {
+                return ['artifacts' => [], 'next_cursor' => null];
+            }
+
+            $filters['ids'] = implode(',', array_slice($ids, 0, self::MAX_TYPE_FILTER_IDS));
+        }
+
+        return $this->artifacts->listArtifacts($team->slug, $filters, $cursor, $limit);
     }
 
     /**

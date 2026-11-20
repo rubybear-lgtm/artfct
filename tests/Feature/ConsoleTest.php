@@ -2,9 +2,11 @@
 
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Enums\TeamRole;
 use App\Models\ArtifactIndexEntry;
+use App\Models\ArtifactTypeAssignment;
 use App\Models\AuditEvent;
 use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
@@ -534,4 +536,161 @@ test('console preview urls change with the current artifact version and omit rev
     $directory->seedArtifact([...$artifact, 'version' => 2, 'revoked_at' => now()->toIso8601String()]);
     test()->get("/settings/teams/{$team->slug}/console")
         ->assertInertia(fn ($page) => $page->missing('previewUrls.versioned-preview'));
+});
+
+/**
+ * Seeds one live artifact per id and tags the ones with a type, the way a
+ * publish records it, so the console filter has rows to narrow.
+ *
+ * @param  array<string, ArtifactType|null>  $typesById
+ */
+function seedTypedConsoleArtifacts(Team $team, array $typesById): void
+{
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+
+    foreach ($typesById as $id => $type) {
+        $directory->seedArtifact([
+            'id' => $id,
+            'org_id' => $team->slug,
+            'user_id' => 3,
+            'title' => "Typed {$id}",
+            'description' => 'Seeded for the type filter',
+            'content_hash' => 'aaaabbbbcccc',
+            'created_at' => now()->subDay()->toIso8601String(),
+            'revoked_at' => null,
+            'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+        ]);
+
+        if ($type !== null) {
+            ArtifactTypeAssignment::factory()->create([
+                'team_id' => $team->id,
+                'artifact_id' => $id,
+                'artifact_type' => $type,
+            ]);
+        }
+    }
+}
+
+test('the_type_filter_lists_only_posts', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'design-one' => ArtifactType::DesignSystem,
+        'report-one' => ArtifactType::Report,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=post")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('console/index')
+            ->has('artifacts', 1)
+            ->where('artifacts.0.id', 'post-one')
+            ->where('filters.type', 'post')
+        );
+});
+
+test('the_type_filter_lists_only_design_systems', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'design-one' => ArtifactType::DesignSystem,
+        'report-one' => ArtifactType::Report,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=design_system")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 1)
+            ->where('artifacts.0.id', 'design-one')
+            ->where('filters.type', 'design_system')
+        );
+});
+
+test('a_type_with_no_artifacts_lists_nothing', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, ['post-one' => ArtifactType::Post]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=dashboard")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 0)
+            ->where('nextCursor', null)
+        );
+});
+
+test('without_a_type_the_console_lists_every_artifact', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'design-one' => ArtifactType::DesignSystem,
+        'untyped-one' => null,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 5)
+            ->where('filters.type', null)
+        );
+});
+
+test('an_unknown_type_is_ignored_and_lists_every_artifact', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, [
+        'post-one' => ArtifactType::Post,
+        'design-one' => ArtifactType::DesignSystem,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=not-a-type")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 4)
+            ->where('filters.type', null)
+        );
+});
+
+test('the_type_filter_is_scoped_to_the_viewing_team', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $other = Team::factory()->create(['slug' => 'other-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+    seedTypedConsoleArtifacts($team, ['mine' => ArtifactType::Post]);
+    ArtifactTypeAssignment::factory()->create([
+        'team_id' => $other->id,
+        'artifact_id' => 'theirs',
+        'artifact_type' => ArtifactType::Post,
+    ]);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console?type=post")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifacts', 1)
+            ->where('artifacts.0.id', 'mine')
+        );
+});
+
+test('the_page_is_given_a_type_option_for_every_artifact_type', function () {
+    $team = Team::factory()->create(['slug' => 'test-org']);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)
+        ->get("/settings/teams/{$team->slug}/console")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('artifactTypes', count(ArtifactType::cases()))
+            ->where('artifactTypes', fn ($types) => $types->pluck('value')->all() === ArtifactType::values())
+            ->where('artifactTypes', fn ($types) => $types->contains(['value' => 'post', 'label' => 'Post'])
+                && $types->contains(['value' => 'design_system', 'label' => 'Design system']))
+        );
 });

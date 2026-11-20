@@ -67,10 +67,13 @@ interface ConsoleIndexProps {
     previewUrls: Record<string, string>;
     /** The AI tools the listed artifacts were produced with. */
     agents: string[];
+    /** Every artifact type, from the server's enum, for the type filter. */
+    artifactTypes: { value: string; label: string }[];
     filters: {
         user_id: string | null;
         repo_url: string | null;
         agent: string | null;
+        type: string | null;
         q: string | null;
     };
     nextCursor: string | null;
@@ -168,6 +171,7 @@ export default function ConsoleIndex({
     currentUserId,
     previewUrls,
     agents,
+    artifactTypes,
     filters,
     nextCursor,
     cursor,
@@ -222,7 +226,7 @@ export default function ConsoleIndex({
     };
     const [searchOpen, setSearchOpen] = useState(Boolean(filters.q));
     const [filtersOpen, setFiltersOpen] = useState(
-        Boolean(filters.repo_url || filters.agent),
+        Boolean(filters.repo_url || filters.agent || filters.type),
     );
     const pendingFilterVisit = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -231,7 +235,10 @@ export default function ConsoleIndex({
         isAdmin || canOpenArtifacts || (canCollect && collections.length > 0);
     // Yours (user_id) is a scope toggle, not a filter — Clear filters must not exit it.
     const hasActiveFilters = Boolean(
-        localFilters.q || localFilters.repo_url || localFilters.agent,
+        localFilters.q ||
+        localFilters.repo_url ||
+        localFilters.agent ||
+        localFilters.type,
     );
     const yoursOnly = Boolean(localFilters.user_id) && !hasActiveFilters;
     // Known tools are always offered, so narrowing to one tool never hides the
@@ -324,6 +331,7 @@ export default function ConsoleIndex({
             user_id: localFilters.user_id,
             repo_url: null,
             agent: null,
+            type: null,
             q: null,
         };
         setLocalFilters(cleared);
@@ -353,6 +361,7 @@ export default function ConsoleIndex({
                 ...localFilters,
                 repo_url: null,
                 agent: null,
+                type: null,
             };
             setLocalFilters(nextFilters);
             clearPendingFilterVisit();
@@ -448,7 +457,11 @@ export default function ConsoleIndex({
                         label="Filter artifacts"
                         pressed={
                             filtersOpen ||
-                            Boolean(localFilters.repo_url || localFilters.agent)
+                            Boolean(
+                                localFilters.repo_url ||
+                                localFilters.agent ||
+                                localFilters.type,
+                            )
                         }
                         onClick={toggleFiltersOpen}
                     >
@@ -507,7 +520,7 @@ export default function ConsoleIndex({
             )}
 
             {filtersOpen && (
-                <div className="mb-6 grid grid-cols-1 gap-3 rounded-[10px] border border-border bg-paper p-4 md:grid-cols-2">
+                <div className="mb-6 grid grid-cols-1 gap-3 rounded-[10px] border border-border bg-paper p-4 md:grid-cols-3">
                     <div>
                         <label
                             htmlFor="repo_url"
@@ -547,6 +560,30 @@ export default function ConsoleIndex({
                             {aiTools.map((agent) => (
                                 <option key={agent} value={agent}>
                                     {aiToolName(agent)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label
+                            htmlFor="type"
+                            className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                        >
+                            Type
+                        </label>
+                        <select
+                            id="type"
+                            name="type"
+                            value={localFilters.type || ''}
+                            onChange={(e) =>
+                                handleSelectChange('type', e.target.value)
+                            }
+                            className="h-9 w-full rounded-md border border-border bg-background/60 px-3 text-sm text-foreground max-md:min-h-[44px] max-md:text-base"
+                        >
+                            <option value="">All types</option>
+                            {artifactTypes.map((type) => (
+                                <option key={type.value} value={type.value}>
+                                    {type.label}
                                 </option>
                             ))}
                         </select>
