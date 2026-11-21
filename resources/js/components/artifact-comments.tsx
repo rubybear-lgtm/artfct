@@ -1,5 +1,6 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -74,6 +75,10 @@ export default function ArtifactComments({
             {
                 preserveScroll: true,
                 onSuccess: done,
+                onError: () =>
+                    toast.error(
+                        'Could not post your comment. Check it and try again.',
+                    ),
                 onFinish: () => setPending(null),
             },
         );

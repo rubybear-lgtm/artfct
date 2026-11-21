@@ -33,7 +33,6 @@ test('team members can inspect setup details and revoke an MCP connection', func
     $page->click('Revoke')
         ->assertSee('Confirm revoke?')
         ->click('Confirm revoke?')
-        ->wait(1)
         ->assertSee('revoked')
         ->assertNoJavaScriptErrors();
 
@@ -73,7 +72,6 @@ test('team members can start a new connection through the page', function () {
     $page->fill('client_name', 'Browser-created agent')
         ->check('scopes', 'artifacts:deploy')
         ->click('Start connection')
-        ->wait(1)
         ->assertSee('Browser-created agent')
         ->assertNoJavaScriptErrors();
 
@@ -118,7 +116,6 @@ test('an active connection can be forced through reauthorization', function () {
     $page->click('Reauthorize')
         ->assertSee('Confirm reauthorize?')
         ->click('Confirm reauthorize?')
-        ->wait(1)
         ->assertSee('Reauthorization required')
         ->assertNoJavaScriptErrors();
 

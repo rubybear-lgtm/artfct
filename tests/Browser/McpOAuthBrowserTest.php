@@ -9,6 +9,35 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
+test('cancelling OAuth consent returns access denied without an authorization code', function () {
+    $user = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($user, 'Consent Cancellation');
+    test()->actingAs($user);
+
+    $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
+    $parameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read',
+        'state' => 'cancel-state',
+        'code_challenge' => oauthChallenge(str_repeat('v', 64)),
+        'code_challenge_method' => 'S256',
+        'team' => $team->slug,
+    ]);
+
+    visit('/oauth/authorize?'.$parameters)
+        ->assertSee('Test native client wants to connect to Consent Cancellation')
+        ->click('Cancel')
+        ->assertHostIs('127.0.0.1')
+        ->assertPortIs((string) parse_url($callback, PHP_URL_PORT))
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('error', 'access_denied')
+        ->assertQueryStringHas('state', 'cancel-state')
+        ->assertQueryStringMissing('code');
+});
+
 test('OAuth consent identifies the client user workspace and requested scopes', function () {
     $user = User::factory()->create(['name' => 'Consent Reviewer']);
     $team = app(CreateTeam::class)->handle($user, 'Consent Workspace');
@@ -34,6 +63,7 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
         ->assertSee('Read and search your team\'s shared work')
         ->assertSee('Delete shared work')
         ->assertSee('See usage and plan limits')
+        ->assertNoAccessibilityIssues()
         ->assertNoJavaScriptErrors();
 });
 
