@@ -12,7 +12,7 @@ use App\Enums\ArtifactType;
 final class ArtifactGuidance
 {
     /** Bumped whenever a rule in the guidance or in a tool description changes. */
-    public const VERSION = '1.7.0';
+    public const VERSION = '1.8.0';
 
     /** @var list<string> */
     public const TOPICS = ['publish', 'search', 'collaborate', 'data', 'onboarding', 'templates', 'kanban', 'team-wiki', 'announcements', 'context-post', 'team-doc'];
