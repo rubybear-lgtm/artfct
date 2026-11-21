@@ -33,6 +33,7 @@ export const PLUGIN_SKILLS = [
     'artfct-team-wiki',
     'artfct-announcements',
     'artfct-context-post',
+    'artfct-team-doc',
     'onboard',
 ];
 

@@ -196,6 +196,138 @@ test('the context post guidance points at the announcement board skill', functio
     expect(contextPostGuidance())->toContain('artfct-announcements');
 });
 
+/*
+ * RUB-554 / spec 35: the team-doc skill is a guidance topic. Its text tells a bot
+ * to update an existing doc, copy the doc starter files and deploy a document bundle.
+ */
+function teamDocGuidance(): string
+{
+    return ArtifactGuidance::topic('team-doc')['text'] ?? '';
+}
+
+test('team-doc is a registered and mirrored guidance topic', function () {
+    expect(ArtifactGuidance::TOPICS)->toContain('team-doc')
+        ->and(ArtifactGuidance::MIRRORED_TOPICS)->toContain('team-doc');
+});
+
+test('team-doc skill has frontmatter with a Use when description', function () {
+    $skill = file_get_contents(base_path('skills/artfct-team-doc/SKILL.md'));
+
+    expect($skill)->toStartWith("---\nname: artfct-team-doc\n")
+        ->and($skill)->toMatch('/^description: ".*Use when.*"$/m');
+});
+
+test('the team doc guidance says to update an existing doc instead of duplicating it', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('search_artifacts')
+        ->toContain('same title')
+        ->toContain('`artifact_id`')
+        ->toContain('`base_version`')
+        ->toContain('instead of publishing a duplicate');
+});
+
+test('the team doc guidance names the starter files and the deploy shape', function () {
+    $text = teamDocGuidance();
+
+    foreach (['doc-starter', 'index.html', 'doc.css', 'export.js', 'files', 'entrypoint: index.html', 'artifact_type: document', 'deploy_artifact'] as $name) {
+        expect($text)->toContain($name);
+    }
+});
+
+test('the team doc guidance names base_version and the sheet rules', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('base_version')
+        ->toContain('about 400 words')
+        ->toContain('sheet--fixed')
+        ->toContain('Letter');
+});
+
+test('the team doc guidance gives its steps in order', function () {
+    $text = teamDocGuidance();
+
+    $markers = [
+        'same title',
+        'doc-starter',
+        'Fill only the slots',
+        'about 400 words',
+        'entrypoint: index.html',
+        'findability',
+    ];
+
+    $positions = array_map(fn (string $marker): int|false => strpos($text, $marker), $markers);
+
+    expect(in_array(false, $positions, true))->toBeFalse();
+    expect($positions)->toBe(collect($positions)->sort()->values()->all());
+});
+
+test('the team doc guidance points at the publish topic and does not restate the contract', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('topic `publish`')
+        ->toContain('Brand and voice')
+        ->not->toContain('Inline `<script>` blocks')
+        ->not->toContain('a permanent artifact');
+});
+
+test('the team doc guidance applies the brand before it writes or sizes the doc', function () {
+    $text = teamDocGuidance();
+
+    $brand = strpos($text, 'Brand and voice');
+
+    expect($brand)->not->toBeFalse()
+        ->and($brand)->toBeLessThan(strpos($text, 'Fill only the slots'))
+        ->and($brand)->toBeLessThan(strpos($text, 'about 400 words'));
+});
+
+test('the team doc guidance allows one style block after the doc.css link that overrides only the --doc tokens', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('one `<style>` block')
+        ->toContain('after the `<link rel="stylesheet" href="doc.css">` line')
+        ->toContain('`:root`')
+        ->toContain('only the `--doc-*` custom properties')
+        ->toContain('Nothing else goes in that block')
+        ->toContain('`doc.css` unchanged');
+});
+
+test('the team doc guidance does not say the brand cannot be applied', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->not->toContain('could not apply')
+        ->not->toContain('cannot take brand tokens')
+        ->not->toContain('cannot show the brand')
+        ->not->toContain('Do not add scripts, `<style>` blocks');
+});
+
+test('the team doc guidance still forbids scripts and says what to do without a brand post', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('Add no scripts')
+        ->toContain('no brand post')
+        ->toContain('leave the defaults')
+        ->toContain('do not say the doc follows a brand you did not apply');
+});
+
+test('the team doc guidance puts the brand style block before the slots and the sheet size', function () {
+    $text = teamDocGuidance();
+
+    $style = strpos($text, 'one `<style>` block');
+
+    expect($style)->not->toBeFalse()
+        ->and($style)->toBeLessThan(strpos($text, 'Fill only the slots'))
+        ->and($style)->toBeLessThan(strpos($text, 'about 400 words'));
+});
+
+test('the starter files the team doc guidance names exist', function () {
+    foreach (['index.html', 'doc.css', 'export.js'] as $name) {
+        expect(base_path("skills/artfct-team-doc/assets/doc-starter/{$name}"))->toBeFile();
+    }
+
+    expect(teamDocGuidance())->toContain('skills/artfct-team-doc/assets/doc-starter/');
+});
+
 function onboardingGuidance(?string $host): array
 {
     $arguments = ['topic' => 'onboarding'] + ($host === null ? [] : ['host' => $host]);
