@@ -163,16 +163,20 @@ export async function runStagingAcceptance(options) {
  * @param {string} token
  * @param {string} query
  * @param {Record<string, unknown>} [variables]
+ * @param {typeof fetch} [fetchImpl]
  */
-async function railwayGraphql(token, query, variables = {}) {
-    const response = await fetch('https://backboard.railway.com/graphql/v2', {
-        method: 'POST',
-        headers: {
-            ...railwayAuthHeaders(token),
-            'Content-Type': 'application/json',
+async function railwayGraphql(token, query, variables = {}, fetchImpl = fetch) {
+    const response = await fetchImpl(
+        'https://backboard.railway.com/graphql/v2',
+        {
+            method: 'POST',
+            headers: {
+                ...railwayAuthHeaders(token),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query, variables }),
         },
-        body: JSON.stringify({ query, variables }),
-    });
+    );
 
     if (!response.ok) {
         throw new Error(`Railway GraphQL HTTP ${response.status}`);
@@ -194,11 +198,14 @@ async function railwayGraphql(token, query, variables = {}) {
  *   token: string,
  *   projectId?: string,
  *   environmentId?: string,
+ *   fetchImpl?: typeof fetch,
  * }} options
  */
 export async function fetchStagingDeployments(options) {
     const projectId = options.projectId ?? STAGING_PROJECT_ID;
     const environmentId = options.environmentId ?? STAGING_ENVIRONMENT_ID;
+    // Railway's Service type has no deployments field; deployments are a
+    // top-level query filtered by project and environment.
     const data = await railwayGraphql(
         options.token,
         `query StagingDeployments($projectId: String!, $environmentId: String!) {
@@ -208,32 +215,50 @@ export async function fetchStagingDeployments(options) {
             node {
               id
               name
-              deployments(
-                first: 5
-                input: { environmentId: $environmentId }
-              ) {
-                edges {
-                  node {
-                    id
-                    status
-                    meta
-                  }
-                }
-              }
             }
+          }
+        }
+      }
+      deployments(
+        first: 50
+        input: { projectId: $projectId, environmentId: $environmentId }
+      ) {
+        edges {
+          node {
+            id
+            serviceId
+            status
+            createdAt
+            meta
           }
         }
       }
     }`,
         { projectId, environmentId },
+        options.fetchImpl,
     );
+
+    /** @type {Map<string, { id: string, serviceId: string, status: string, createdAt: string, meta?: unknown }>} */
+    const latestByService = new Map();
+
+    for (const edge of data?.deployments?.edges ?? []) {
+        const deployment = edge.node;
+        const current = latestByService.get(deployment.serviceId);
+
+        if (
+            !current ||
+            Date.parse(deployment.createdAt) > Date.parse(current.createdAt)
+        ) {
+            latestByService.set(deployment.serviceId, deployment);
+        }
+    }
 
     /** @type {Array<{ serviceName: string, status: string, meta?: unknown }>} */
     const deployments = [];
 
     for (const edge of data?.project?.services?.edges ?? []) {
         const service = edge.node;
-        const latest = service.deployments?.edges?.[0]?.node;
+        const latest = latestByService.get(service.id);
 
         if (!latest) {
             continue;
