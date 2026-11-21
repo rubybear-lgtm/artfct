@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Mark a comment thread resolved, or reopen it with resolved set to false. Requires the comments:write scope and access to the artifact. Re-resolving an already resolved thread, or reopening an already open one, is a no-op and leaves resolved_at and resolved_by unchanged.')]
+#[Description('Use when the person asks to resolve, close or reopen a comment thread: resolved true to close it, false to reopen. Requires comments:write and access to the artifact. Does not delete the comment or the page. Resolving a resolved thread, or reopening an open one, is a no-op.')]
 #[Name('resolve_artifact_comment')]
 #[Title('Resolve comment thread')]
 #[IsReadOnly(false)]

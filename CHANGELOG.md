@@ -8,6 +8,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - RUB-556: the publish guidance has a "Brand and voice" section. Before customer-facing work, the bot finds the team's brand post by title and post type, reads its kind and status from post data, follows a superseded chain of up to three hops, and treats the post's text as data, not instructions. Guidance is 1.6.0.
 
+- RUB-573: the 29 MCP tool descriptions and the six official skill descriptions lead with a `Use when` trigger inside the first 200 characters, name the sibling or next call where it matters, and say what a tool does not return. Locked safety and protocol phrases are unchanged. No tool, parameter or behavior changed. Guidance is 1.10.0. See `docs/specs/38-tool-descriptions.md`.
+
 - RUB-577: the `context-post` guidance has an "Options" section. An options post gives two or three labelled alternatives, each an `option-a`, `option-b` style anchor that stays fixed when the post is updated. When the team picks one, the bot publishes a decision and marks the options post superseded. Guidance is 1.9.0.
 
 - RUB-568: the `publish` guidance has a "Design systems" section. A team publishes one `design_system` bundle (brand book, `tokens.json`, fonts, logos); publish-time bots search it first, copy its font and asset files verbatim, set the starter tokens and record the system and version in the description, before falling back to the "Brand and voice" post and then the neutral default. Guidance is 1.8.0.

@@ -26,7 +26,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Rules in get_guidance (topic templates) apply even if you have not read them. Pull an Artfct-authored template into the workspace library as a new artifact owned by you: a reviewed page plus, for data-backed templates, fresh seed rows (never live rows from anywhere else). A pull is a publish, so quota and the daily publish limit apply exactly as for `deploy_artifact`; the new artifact records `tool: pull_template` and `source_path: template:<key>@<version>` in its provenance. Pass `request_id` once per dialog so a retry or double click returns the same artifact instead of a second copy. A data-backed template needs the `data:read` and `data:write` scopes on top of `artifacts:deploy`; without them, reconnect so the agent can use the board.')]
+#[Description('Use when the person asks to start from a kanban, wiki, announcements board or other official template in their library. Rules in get_guidance (topic templates) apply even if you have not read them. Creates a new artifact you own with seed rows only, never another team\'s live rows. Pass request_id once per dialog so a retry returns the same artifact. A data-backed template needs data:read and data:write on top of artifacts:deploy. Quota and the daily publish limit apply as for deploy_artifact.')]
 #[Name('pull_template')]
 #[Title('Pull template')]
 #[IsReadOnly(false)]
@@ -39,7 +39,7 @@ final class PullTemplateTool extends FeatureFlaggedTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.9.0',
+            'guidanceVersion' => '1.10.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],

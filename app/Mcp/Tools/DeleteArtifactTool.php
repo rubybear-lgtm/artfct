@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Permanently delete one artifact from the authenticated workspace. Requires the explicit artifacts:delete scope and is refused while a legal hold is active.')]
+#[Description('Use when the person clearly asks to permanently delete a page or artifact, not just remove it from a collection. Requires artifacts:delete. Irreversible, and refused while a legal hold is active. To leave a collection only, use remove_collection_artifact. To delete one card, page or row inside a board\'s database, use db_delete.')]
 #[Name('delete_artifact')]
 #[Title('Delete artifact')]
 #[IsReadOnly(false)]

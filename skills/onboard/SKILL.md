@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: "Use when the person asks to set up, get started with or finish setting up Artfct, runs /artfct:onboard, or asks what Artfct can do for them: checks the connection, reads the set-up steps for this app from the server, picks up where an earlier set-up stopped, and does the rest with the person's consent."
+description: "Use when the person asks to set up Artfct, get started, finish set-up, or run /artfct:onboard: check the connection, follow the server's steps for this app, and pick up where an earlier set-up stopped, with their consent."
 ---
 
 # Setting up Artfct

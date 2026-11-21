@@ -23,7 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Create an organization-scoped artifact collection. Requires collections:write and never grants access to artifacts outside the workspace. New collections are not canonical (`canonical: false`); only an admin can pin one so its members get a search ranking boost.')]
+#[Description('Use when the person asks to create a board, folder or named group for team pages. Requires collections:write. Then use add_collection_artifact to put pages in it. Does not grant access outside the workspace. New collections are not canonical; only an admin can pin one.')]
 #[Name('create_collection')]
 #[Title('Create collection')]
 #[IsReadOnly(false)]
