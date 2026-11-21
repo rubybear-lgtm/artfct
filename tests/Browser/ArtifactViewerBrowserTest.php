@@ -474,6 +474,7 @@ test('a_viewer_link_with_an_unsafe_fragment_does_not_pass_it_to_the_artifact_fra
     $page->script("window.location.assign('".viewerBrowserArtifactUrl().$fragment."')");
 
     $page->wait(1)
+        ->assertNoJavaScriptErrors()
         ->assertVisible('@artifact-frame')
         ->assertScript("{$frameSrc}.includes('#') === false")
         ->assertScript("{$frameSrc}.includes('token=')");
@@ -481,6 +482,54 @@ test('a_viewer_link_with_an_unsafe_fragment_does_not_pass_it_to_the_artifact_fra
     'encoded markup' => ['#%3Cimg%20src%3Dx%3E'],
     'script url' => ['#javascript:alert(1)'],
     'path-like' => ['#/../../secret'],
+    'a colon' => ['#a:b'],
+    'a second hash' => ['#a#b'],
+    'a query-like part' => ['#x?y'],
+    'an ampersand' => ['#a&b'],
+    'a text fragment' => ['#:~:text=foo'],
+    'unicode' => ['#caf%C3%A9'],
     'a bare hash' => ['#'],
     'over 128 characters' => ['#'.str_repeat('a', 129)],
 ]);
+
+test('a_viewer_link_fragment_with_dots_underscores_and_hyphens_is_passed_on', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Anchor Id', 'viewer-anchor@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#section_1.2-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript("{$frameSrc}.endsWith('#section_1.2-b')");
+});
+
+test('a_later_hash_change_does_not_reset_the_artifact_frame_src', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Hash Change', 'viewer-hashchange@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    // The frame src is read once: changing the viewer's hash afterwards leaves
+    // it alone, so an expired ?token= is never reloaded by a hash change.
+    $page->wait(1)
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
+
+    $page->script("window.location.hash = '#option-c'");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript('location.hash', '#option-c')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
+});

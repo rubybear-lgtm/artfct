@@ -149,7 +149,7 @@ interface Freshness {
 }
 
 /** The only fragments forwarded to the artifact frame: a plain anchor id. */
-const FRAME_FRAGMENT = /^#[A-Za-z0-9_.:-]{1,128}$/;
+const FRAME_FRAGMENT = /^#[A-Za-z0-9_.-]{1,128}$/;
 
 /** 45s between polls, ±10s so a fleet of open tabs does not poll in lockstep. */
 const FRESHNESS_INTERVAL_MS = 45_000;
@@ -218,7 +218,7 @@ export default function ArtifactShow({
      *
      * Anyone can put a fragment in a link, and the artifact page can read it
      * (and reaches its own data with the viewer's token), so only a plain
-     * anchor id is passed on: letters, digits and `_ . : -`, at most 128.
+     * anchor id is passed on: letters, digits and `_ . -`, at most 128.
      * Anything else is ignored and the artifact opens at the top, as before.
      */
     const frameRef = useRef<HTMLIFrameElement>(null);
