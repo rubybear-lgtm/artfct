@@ -50,7 +50,7 @@ body {
   color: var(--charcoal);
 }
 
-.post-details dl {
+dl.post-details {
   margin: 0 0 2rem;
 }
 

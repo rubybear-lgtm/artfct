@@ -15,7 +15,7 @@ final class ArtifactGuidance
     public const VERSION = '1.5.0';
 
     /** @var list<string> */
-    public const TOPICS = ['publish', 'search', 'collaborate', 'data', 'onboarding', 'templates', 'kanban', 'team-wiki', 'announcements'];
+    public const TOPICS = ['publish', 'search', 'collaborate', 'data', 'onboarding', 'templates', 'kanban', 'team-wiki', 'announcements', 'context-post'];
 
     /**
      * Topics mirrored word for word in `skills/artfct-{topic}/SKILL.md`.
@@ -24,7 +24,7 @@ final class ArtifactGuidance
      *
      * @var list<string>
      */
-    public const MIRRORED_TOPICS = ['publish', 'search', 'collaborate', 'data', 'templates', 'kanban', 'team-wiki', 'announcements'];
+    public const MIRRORED_TOPICS = ['publish', 'search', 'collaborate', 'data', 'templates', 'kanban', 'team-wiki', 'announcements', 'context-post'];
 
     /**
      * Each host the onboarding playbook knows, and how it is set up: `coding_agent`

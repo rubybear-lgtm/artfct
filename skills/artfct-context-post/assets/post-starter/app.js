@@ -13,11 +13,24 @@
     }
   }
 
+  function capitalise(value) {
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Not set';
+  }
+
   function fill(data) {
-    setField('kind', data.kind || 'Not set');
+    setField('kind', capitalise(data.kind));
     setField('owner', data.owner || 'Not set');
-    setField('status', data.status || 'Not set');
-    setField('replaced_by', data.replaced_by || 'None');
+    setField('status', capitalise(data.status));
+
+    // The snapshot may already link to the newer post; keep that link unless
+    // the data says there is no replacement.
+    var replacedBy = block.querySelector('[data-field="replaced_by"]');
+
+    if (data.replaced_by === null || data.replaced_by === undefined) {
+      setField('replaced_by', 'None');
+    } else if (replacedBy && !replacedBy.querySelector('a')) {
+      setField('replaced_by', data.replaced_by);
+    }
   }
 
   function readJson(response) {
