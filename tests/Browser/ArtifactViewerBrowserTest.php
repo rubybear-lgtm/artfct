@@ -456,6 +456,14 @@ test('the server-rendered viewer hydrates when the reader\'s date differs from t
         ->withTimezone('Pacific/Auckland')
         ->assertSee('Updated Nov 13, 2026')
         ->assertNoJavaScriptErrors();
+
+    // The server also renders en-US, so a reader with another locale disagrees
+    // with it even in the same time zone.
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('UTC')
+        ->withLocale('de-DE')
+        ->assertSee('Updated 12.11.2026')
+        ->assertNoJavaScriptErrors();
 })->skip(fn () => getenv('TEST_INERTIA_SSR') !== 'true', 'Needs the Inertia SSR server (php artisan inertia:start-ssr) and TEST_INERTIA_SSR=true; without it nothing is hydrated.');
 
 test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
