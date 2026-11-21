@@ -424,6 +424,40 @@ test('a slide deck offers Present, which puts the artifact frame in full screen,
         ->assertScript("{$frame}.hasAttribute('allow')", false);
 });
 
+test('the viewer shows the updated date in the reader\'s own time zone', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Zone', 'viewer-zone@example.com');
+    // 04:07 UTC on the 12th is still the 11th in Denver.
+    seedViewerBrowserArtifact($team, $owner, ['updated_at' => '2026-11-12T04:07:29Z']);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('America/Denver')
+        ->assertSee('Updated Nov 11, 2026')
+        ->assertNoJavaScriptErrors();
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('UTC')
+        ->assertSee('Updated Nov 12, 2026')
+        ->assertNoJavaScriptErrors();
+});
+
+test('the server-rendered viewer hydrates when the reader\'s date differs from the server\'s', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Hydrate', 'viewer-hydrate@example.com');
+    // 20:00 UTC on the 12th is already the 13th in Auckland, so a date formatted
+    // with the browser's time zone disagrees with one the server formatted.
+    seedViewerBrowserArtifact($team, $owner, ['updated_at' => '2026-11-12T20:00:00Z']);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('Pacific/Auckland')
+        ->assertSee('Updated Nov 13, 2026')
+        ->assertNoJavaScriptErrors();
+})->skip(fn () => getenv('TEST_INERTIA_SSR') !== 'true', 'Needs the Inertia SSR server (php artisan inertia:start-ssr) and TEST_INERTIA_SSR=true; without it nothing is hydrated.');
+
 test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
     configureViewerBrowserLinks();
 
