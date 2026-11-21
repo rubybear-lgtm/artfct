@@ -145,3 +145,41 @@ test('app.js exposes the navigation API the export clients drive', function () {
         ->and($script)->toContain('slideCount')
         ->and($script)->toContain('data-deck-active');
 });
+
+test('deck.css declares the --type tokens on :root', function () {
+    $css = deckStarterFiles()['deck.css'];
+
+    expect($css)->toMatch('/:root\s*\{[^}]*--type-kicker:[^}]*--type-title:[^}]*--type-heading:[^}]*--type-body:/s');
+});
+
+test('a deck themed with a style attribute on the stage passes the publish contract', function () {
+    $html = str_replace(
+        '<main class="deck-stage" aria-label="Slides">',
+        '<main class="deck-stage" aria-label="Slides" style="--deck-accent: #7a2e2e; --type-body: calc(var(--deck-unit) * 48)">',
+        deckStarterFiles()['index.html'],
+    );
+
+    expect((new PublishContractValidator)->validate(deckStarterFiles(['index.html' => $html]), 'Deck starter', 'index.html'))->toBe([]);
+});
+
+/** @return list<string> */
+function deckStageStyleErrors(string $style): array
+{
+    $html = str_replace(
+        '<main class="deck-stage" aria-label="Slides">',
+        '<main class="deck-stage" aria-label="Slides" style="'.$style.'">',
+        deckStarterFiles()['index.html'],
+    );
+
+    return (new PublishContractValidator)->validate(deckStarterFiles(['index.html' => $html]), 'Deck starter', 'index.html');
+}
+
+test('the publish contract refuses a stage style that loads an external origin through url()', function () {
+    expect(deckStageStyleErrors('background:url(https://evil.example/x)'))
+        ->toContain('Deck starter file [index.html] loads an external origin [https://evil.example/x]; bundle every asset in files/.');
+});
+
+test('the publish contract refuses a stage style that loads an external origin through image-set()', function () {
+    expect(deckStageStyleErrors('background-image:image-set("https://evil.example/x")'))
+        ->toContain('Deck starter file [index.html] loads an external origin [https://evil.example/x]; bundle every asset in files/.');
+})->skip('known gap (spec 33): PublishContractValidator does not refuse image-set() origins');
