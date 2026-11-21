@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sibling fixture</title>
+</head>
+<body>
+  <script>
+    // Test fixture only: a sibling frame (not window.parent of the starter). It
+    // sends a valid-looking ready when told to, and forwards every bridge
+    // message it receives to the parent so the test can see any reply.
+    window.addEventListener('message', function (event) {
+      if (event.source === window.parent) {
+        var starterOrigin = new URLSearchParams(window.parent.location.search).get('starter');
+        if (event.data === 'go') {
+          window.parent.frames.starter.postMessage(
+            { channel: 'artfct-export', v: 1, id: 'sibling', cmd: 'ready' },
+            starterOrigin
+          );
+        }
+        return;
+      }
+      if (event.data && event.data.channel === 'artfct-export') {
+        window.parent.postMessage({ fromSibling: true, data: event.data }, window.parent.location.origin);
+      }
+    });
+  </script>
+</body>
+</html>
