@@ -12,7 +12,8 @@ use crate::sharing::{
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
-    pub(crate) row_id: i64,
+    /// `artifacts.row_id`: a TEXT uuid, never an integer.
+    pub(crate) row_id: String,
     pub(crate) entrypoint: String,
     pub(crate) content_hash: String,
     pub(crate) content_type: String,
@@ -167,7 +168,7 @@ pub(crate) async fn get_org_artifact_content(
     let files = storage
         .database
         .prepare("SELECT path, content_hash, content_type, size_bytes FROM files WHERE artifact_row_id = ? ORDER BY path")
-        .bind(&[JsValue::from_f64(row.row_id as f64)])?
+        .bind(&[JsValue::from_str(&row.row_id)])?
         .all()
         .await?
         .results::<ContentFileRow>()?;
