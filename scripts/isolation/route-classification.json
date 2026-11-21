@@ -13,6 +13,7 @@
         "GET a/{artifactId}/v/{version}": "public",
         "GET a/{artifactId}/freshness": "public",
         "GET a/{artifactId}/download": "user",
+        "GET a/{artifactId}/download.html": "user",
         "PATCH a/{artifactId}/sharing": "user",
         "POST a/{artifactId}/comments": "user",
         "PATCH a/{artifactId}/comments/{commentId}": "user",
