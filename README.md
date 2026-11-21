@@ -245,6 +245,20 @@ The skill teaches agents:
 
 Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.
 
+### Skill pack
+
+The skill pack is seven skills that a team's bots load on any host. Each line names a skill and what it covers:
+
+- `artfct` — share a page, report or decision, and when to deploy it.
+- `artfct-search` — find and cite what the team already made before answering from it.
+- `artfct-publish` — publish or update a team page, with a findability check after.
+- `artfct-collaborate` — update a page others may have changed, and handle its comments.
+- `artfct-context-post` — publish a decision, announcement, policy or other team context post.
+- `artfct-team-doc` — publish a memo, letter, short report or one-page brief.
+- `presentation` — build a slide deck and deploy it as an artifact.
+
+Load instructions for each tool are on its connect page: [Claude](https://artfct.dev/connect/connect-claude), [Cursor](https://artfct.dev/connect/connect-cursor), [Codex](https://artfct.dev/connect/connect-codex) and [ChatGPT](https://artfct.dev/connect/connect-chatgpt).
+
 ## Development
 
 The project is a Cargo workspace with one crate and a Laravel frontend.
