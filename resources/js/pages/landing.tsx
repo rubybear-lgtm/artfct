@@ -20,16 +20,7 @@ import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAccountNav } from '@/components/site-chrome';
 import { Button } from '@/components/ui/button';
 import { backgroundPair } from '@/lib/backgrounds';
-import {
-    blog,
-    docs,
-    free,
-    home,
-    login,
-    privacy,
-    support,
-    terms,
-} from '@/routes';
+import { blog, docs, home, login, privacy, support, terms } from '@/routes';
 import blogRoutes from '@/routes/blog';
 import connectRoutes from '@/routes/connect';
 
@@ -575,9 +566,11 @@ const GUIDES: {
 function PricingSection({
     accountLabel,
     accountUrl,
+    signUpUrl,
 }: {
     accountLabel: string;
     accountUrl: string;
+    signUpUrl: string;
 }) {
     const [yearly, setYearly] = useState(false);
     const guestCta =
@@ -617,14 +610,16 @@ function PricingSection({
                 <div className="plan">
                     <div className="nm">Free</div>
                     <div className="for">
-                        Share a page as a link. A good way to try it.
+                        One person with your own AI tools. A good way to try it.
                     </div>
                     <ul>
-                        <li>Share a page with anyone</li>
-                        <li>Private link, no account needed to view</li>
+                        <li>Connect your AI tools</li>
+                        <li>Publish what they make, with monthly limits</li>
                     </ul>
                     <Button asChild className="btn btn-ghost">
-                        <Link href={free.url()}>Use Free</Link>
+                        <Link href={signUpUrl} data-testid="landing-free-plan">
+                            Use Free
+                        </Link>
                     </Button>
                 </div>
                 <div className="plan">
@@ -712,6 +707,9 @@ export default function Landing({
     const story = useStory();
     const navMenu = useRef<HTMLDetailsElement>(null);
     const { isAuthenticated, accountLabel, accountUrl } = useAccountNav();
+    const signUpUrl = isAuthenticated
+        ? accountUrl
+        : login.url({ query: { screen_hint: 'sign-up' } });
 
     // Keep :root.landing-page in sync on client navigations (RUB-476). Blade
     // only sets it on the first server render of this component.
@@ -1016,6 +1014,7 @@ export default function Landing({
                     <PricingSection
                         accountLabel={accountLabel}
                         accountUrl={accountUrl}
+                        signUpUrl={signUpUrl}
                     />
 
                     <section className="close pad rule">

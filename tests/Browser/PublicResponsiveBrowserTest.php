@@ -40,7 +40,6 @@ function assertPagesFitViewports(array $urls, ?string $expectedText = null): voi
 test('public reading pages fit every viewport without sideways scrolling', function () {
     assertPagesFitViewports([
         '/',
-        '/free',
         '/docs',
         '/blog',
         '/blog/what-is-an-ai-artifact',

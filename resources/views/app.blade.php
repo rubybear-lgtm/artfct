@@ -126,13 +126,6 @@
                     <p>{{ $pageDescription }}</p>
                     @break
 
-                @case('welcome')
-                    <h1>{{ $fallbackTitle }}</h1>
-                    <p>{{ $pageDescription }}</p>
-                    <p>artfct turns a self-contained HTML or Markdown file into a private, shareable link in seconds. No sign-up, no accounts. Every free link is encrypted in your browser before upload, and the preview is blurred by default, so only someone with the full link can read it. Links expire 5 days after the last visit, and you can change that from Recent deployments.</p>
-                    <p>Perfect for sharing UI prototypes, dashboard previews, AI-generated visual outputs, HTML demos, slide decks, markdown documents, Mermaid diagrams, JSON tables, API diffs, env-diffs, regex testers, and any other self-contained web content. No accounts required. Works in the browser, and with AI tools that support adding a remote connection.</p>
-                    @break
-
                 @case('docs')
                     <h1>{{ $fallbackTitle }}</h1>
                     <p>{{ $pageDescription }}</p>

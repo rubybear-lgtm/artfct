@@ -28,13 +28,13 @@ test('app, auth, site and legal pages server-render app-theme on <html>', functi
         ->toContain('class="app-theme"');
 })->with(['/docs', '/terms', '/privacy', '/support', '/login']);
 
-test('the free tool and landing page keep their own palette', function (string $path) {
+test('the landing page keeps its own palette', function (string $path) {
     $response = $this->get($path);
 
     $response->assertOk()->assertDontSee('class="app-theme"', false);
 
     expect(appThemeHtmlTag($response->getContent()))->not->toContain('app-theme');
-})->with(['/free', '/']);
+})->with(['/']);
 
 test('the saved theme choice is applied before first paint', function () {
     $html = $this->get('/login')->assertOk()->getContent();

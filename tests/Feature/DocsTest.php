@@ -354,14 +354,6 @@ test('the connections page links to the setup guide that exists on the docs page
         ->and($page)->toContain('id="mcp"');
 });
 
-test('the free tool page gives the prompt the endpoint of the environment serving it', function () {
-    $this->get(route('free'))
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->component('welcome')
-            ->where('mcpEndpoint', url('/mcp')));
-});
-
 /*
  * Guards the tab pattern the way the tests above guard the guide content:
  * the roving tabIndex and arrow keys are client-only, so a source assertion

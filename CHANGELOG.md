@@ -10,6 +10,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Removed
 
+- The `/free` page, the free tool that turned one HTML or Markdown file into a private link in the browser. `/free` now redirects permanently to the home page, like the other retired marketing URLs, and is out of the sitemap. The page, its components and its styles are gone. The landing page's Free plan card now describes a free account and goes to sign-up (or the console when signed in). Links already made with the free tool keep working, because the Worker that serves them is unchanged, and so does the browser encryption code the key-derivation test pins against the Worker's viewer.
+
 - The PowerPoint export (RUB-562). The Download PowerPoint button, the `POST /a/{id}/export/pptx` route and its rate limit, the PNG capture validator and `.pptx` writer, the `phpoffice/phppresentation` dependency (and with it `phpoffice/phpspreadsheet` and the `ext-gd` requirement), the deck starter's `capture` bridge command and vendored `capture.js`, and spec 46 are gone. Decks present with the Present button and the `F` key. The bridge keeps `ready`, `describe` and `goTo`. A deck published earlier that still carries `capture.js` is unaffected; the file is simply never loaded.
 
 ### Fixed

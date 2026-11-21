@@ -16,7 +16,7 @@ test('the landing_page root class follows client navigation', function () {
         true,
     );
 
-    $page->navigate('/free')
+    $page->navigate('/docs')
         ->assertScript(
             'document.documentElement.classList.contains("landing-page")',
             false,

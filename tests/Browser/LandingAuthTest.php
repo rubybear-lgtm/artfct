@@ -30,7 +30,10 @@ test('guest sees the guest account controls on the landing page and shared heade
         ->assertNoJavaScriptErrors()
         ->assertSeeIn('@landing-account', 'Sign in')
         ->assertSeeIn('@landing-account', 'Try Team free for 90 days')
-        ->assertAttributeContains('@landing-account-cta', 'href', '/login');
+        ->assertAttributeContains('@landing-account-cta', 'href', '/login')
+        // The Free plan card goes to sign-up now that the free tool page is gone.
+        ->assertSeeIn('@landing-free-plan', 'Use Free')
+        ->assertAttributeContains('@landing-free-plan', 'href', '/login?screen_hint=sign-up');
 
     visit('/blog')
         ->assertNoJavaScriptErrors()
@@ -51,6 +54,7 @@ test('signed-in user with a current team sees open console everywhere', function
         ->assertMissing('@landing-signin')
         ->assertAttributeContains('@landing-account-cta', 'href', $consoleUrl)
         ->assertAttributeContains('@landing-hero-cta', 'href', $consoleUrl)
+        ->assertAttributeContains('@landing-free-plan', 'href', $consoleUrl)
         ->assertSeeIn('@landing-pricing-cta', 'Open console')
         ->assertAttributeContains('@landing-pricing-cta', 'href', $consoleUrl)
         ->assertSeeIn('@landing-closing-cta', 'Open console')
