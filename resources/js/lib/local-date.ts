@@ -45,8 +45,9 @@ export interface DateConfig {
 }
 
 /**
- * `null` for a missing or invalid value. With no options the date follows the
- * locale's default short form, as `toLocaleDateString()` does.
+ * `null` for a missing or invalid value. With no options the date is
+ * `dateStyle: 'medium'`; pass `{}` for the locale's bare default short form, as
+ * `toLocaleDateString()` with no arguments gives.
  */
 export function formatLocalDate(
     value: string | number | null | undefined,
