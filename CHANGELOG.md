@@ -4,6 +4,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
+
 ### Changed
 
 - RUB-583: the console has a Type filter next to the AI tool filter, with an option for every artifact type including Post and Design system. An unknown `type` in the URL is ignored.

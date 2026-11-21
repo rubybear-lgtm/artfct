@@ -418,3 +418,118 @@ test('a slide deck shows the Download PowerPoint action beside Download, and a d
         ->assertVisible('@download-artifact')
         ->assertMissing('@download-powerpoint');
 });
+
+test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Fragment', 'viewer-fragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    // `visit()` drops a URL fragment, so load the artifact with its fragment
+    // from another page. The fragment is added after mount, so give the effect
+    // a moment to run.
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertScript('location.hash', '#option-b')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')")
+        // The token stays on the src, ahead of the fragment.
+        ->assertScript("{$frameSrc}.includes('token=')")
+        ->assertScript("{$frameSrc}.split('#').length === 2");
+});
+
+test('a_viewer_link_without_a_fragment_leaves_the_frame_src_untouched', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer No Fragment', 'viewer-nofragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->wait(0.5)
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+});
+
+test('a_viewer_link_with_an_unsafe_fragment_does_not_pass_it_to_the_artifact_frame', function (string $fragment) {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Unsafe Fragment', 'viewer-unsafe@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl().$fragment."')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+})->with([
+    'encoded markup' => ['#%3Cimg%20src%3Dx%3E'],
+    'script url' => ['#javascript:alert(1)'],
+    'path-like' => ['#/../../secret'],
+    'a colon' => ['#a:b'],
+    'a second hash' => ['#a#b'],
+    'a query-like part' => ['#x?y'],
+    'an ampersand' => ['#a&b'],
+    'a text fragment' => ['#:~:text=foo'],
+    'unicode' => ['#caf%C3%A9'],
+    'a bare hash' => ['#'],
+    'over 128 characters' => ['#'.str_repeat('a', 129)],
+]);
+
+test('a_viewer_link_fragment_with_dots_underscores_and_hyphens_is_passed_on', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Anchor Id', 'viewer-anchor@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#section_1.2-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript("{$frameSrc}.endsWith('#section_1.2-b')");
+});
+
+test('a_later_hash_change_does_not_reset_the_artifact_frame_src', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Hash Change', 'viewer-hashchange@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    // The frame src is read once: changing the viewer's hash afterwards leaves
+    // it alone, so an expired ?token= is never reloaded by a hash change.
+    $page->wait(1)
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
+
+    $page->script("window.location.hash = '#option-c'");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript('location.hash', '#option-c')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
+});
