@@ -336,10 +336,7 @@ test('the real deck starter packs with its static slides and its no-JavaScript r
 
     expect($html)->toContain('html.deck-js')
         ->toContain('<section class="slide"')
-        // app.js names capture.js (RUB-562, spec 46) and loads it only on a PowerPoint
-        // capture from the hosted deck. A single-file download is never framed by the
-        // export runner, so that one lazy reference is expected and is not packed.
-        ->and(standaloneRelativeReferences($html))->toBe(['capture.js'])
+        ->and(standaloneRelativeReferences($html))->toBe([])
         ->and(strpos($html, 'class="deck-stage"'))->not->toBeFalse();
 });
 

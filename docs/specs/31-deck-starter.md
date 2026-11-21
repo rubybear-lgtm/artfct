@@ -12,6 +12,8 @@ Today the presentation skill's old single-file template (removed by RUB-555) has
 
 The starter also has an export bridge. PDF (RUB-561) and PowerPoint (RUB-562) exports run the deck in an iframe at its isolated artifact origin and drive it through the bridge. Epic decision 9 says artifact script never runs in the app origin, so the bridge is the only channel between the app page and the deck.
 
+**2026-11-21:** the PowerPoint export (RUB-562) was removed, and the bridge's `capture` command and the vendored `capture.js` went with it. The bridge keeps `ready`, `describe` and `goTo`. Decks present through the viewer's Present button and the starter's `F` key instead.
+
 Out of scope: the deck skill text and the removal of the old template (RUB-555), PDF and PowerPoint writers (RUB-561, RUB-562), speaker view, animations, and PNG capture.
 
 ## Decisions this spec applies (epic RUB-551)

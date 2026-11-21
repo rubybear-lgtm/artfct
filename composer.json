@@ -10,7 +10,6 @@
     "license": "MIT",
     "require": {
         "php": "^8.5.12",
-        "ext-gd": "*",
         "ext-pcntl": "*",
         "ext-zip": "*",
         "firebase/php-jwt": "^7.0",
@@ -23,7 +22,6 @@
         "laravel/wayfinder": "^0.1.14",
         "laravel/workos": "^0.6.0",
         "league/commonmark": "^2.8",
-        "phpoffice/phppresentation": "1.2.0",
         "posthog/posthog-php": "^4.22"
     },
     "require-dev": {

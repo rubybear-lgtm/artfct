@@ -409,7 +409,6 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute($perMinute)->by('oauth-registration-burst:'.ClientIp::for($request));
         });
-        RateLimiter::for('artifact-pptx-export', fn (Request $request): Limit => Limit::perMinute(10)->by('pptx-export:'.($request->user()->id ?? ClientIp::for($request))));
         RateLimiter::for('artifact-comment-store', fn (Request $request): Limit => Limit::perMinute(30)->by('comment-store:'.($request->user()->id ?? ClientIp::for($request))));
         RateLimiter::for('artifact-comment-resolve', fn (Request $request): Limit => Limit::perMinute(60)->by('comment-resolve:'.($request->user()->id ?? ClientIp::for($request))));
         // The operator console (spec 17): per signed-in staff user, else per

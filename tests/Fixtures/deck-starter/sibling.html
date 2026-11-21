@@ -14,10 +14,6 @@
           { channel: 'artfct-export', v: 1, id: 'sibling', cmd: 'ready' },
           event.data.starterOrigin
         );
-        window.parent.frames.starter.postMessage(
-          { channel: 'artfct-export', v: 1, id: 'sibling-capture', cmd: 'capture', index: 0 },
-          event.data.starterOrigin
-        );
         return;
       }
       if (event.source === window.parent.frames.starter) {
