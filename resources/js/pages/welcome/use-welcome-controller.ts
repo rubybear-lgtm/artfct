@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from 'react';
 import type { DragEvent } from 'react';
 import {
     encryptArtifactBody,
@@ -56,6 +63,72 @@ function pickGradient(): [string, string] {
     const [a, b] = PAIRS[Math.floor(Math.random() * PAIRS.length)];
 
     return [ACCENTS[a], ACCENTS[b]];
+}
+
+/** Nothing to subscribe to: the value does not change while the page is open. */
+function subscribeToNothing(): () => void {
+    return () => undefined;
+}
+
+/**
+ * The server and the first render in the browser must agree, so both use this
+ * pair. The browser's own random pair, picked once per page load, follows.
+ */
+const DEFAULT_GRADIENT: [string, string] = [
+    ACCENTS[PAIRS[0][0]],
+    ACCENTS[PAIRS[0][1]],
+];
+const BROWSER_GRADIENT = pickGradient();
+
+const CACHED_LINKS_KEY = 'artfct_cached_links';
+const cachedLinksListeners = new Set<() => void>();
+
+/**
+ * The links saved in this browser live in localStorage, which the server cannot
+ * read. They are read as an external store, so the server render and the first
+ * browser render both show none, and a returning visitor's links appear right
+ * after hydrating instead of making React refuse to hydrate.
+ */
+function subscribeToCachedLinks(listener: () => void): () => void {
+    cachedLinksListeners.add(listener);
+    window.addEventListener('storage', listener);
+
+    return () => {
+        cachedLinksListeners.delete(listener);
+        window.removeEventListener('storage', listener);
+    };
+}
+
+function readCachedLinks(): string | null {
+    try {
+        return localStorage.getItem(CACHED_LINKS_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function parseCachedLinks(raw: string | null): CachedLink[] {
+    if (!raw) {
+        return [];
+    }
+
+    try {
+        return JSON.parse(raw) as CachedLink[];
+    } catch (error) {
+        console.error('Failed to parse cached links', error);
+
+        return [];
+    }
+}
+
+function writeCachedLinks(next: CachedLink[]): void {
+    try {
+        localStorage.setItem(CACHED_LINKS_KEY, JSON.stringify(next));
+    } catch {
+        // Storage is full or blocked: the links are simply not kept.
+    }
+
+    cachedLinksListeners.forEach((listener) => listener());
 }
 
 function getRemainingMinutes(expiresAtStr: string): number {
@@ -168,25 +241,23 @@ function useRotatingTypewriter(
 }
 
 export function useWelcomeController() {
-    const [gradient] = useState<[string, string]>(pickGradient);
+    const gradient = useSyncExternalStore(
+        subscribeToNothing,
+        () => BROWSER_GRADIENT,
+        () => DEFAULT_GRADIENT,
+    );
     const [phase, setPhase] = useState<WelcomePhase>({ t: 'idle' });
     const [dragOver, setDragOver] = useState(false);
     const [previewBlurred, setPreviewBlurred] = useState(true);
-    const [cachedLinks, setCachedLinks] = useState<CachedLink[]>(() => {
-        if (typeof window !== 'undefined') {
-            const raw = localStorage.getItem('artfct_cached_links');
-
-            if (raw) {
-                try {
-                    return JSON.parse(raw) as CachedLink[];
-                } catch (error) {
-                    console.error('Failed to parse cached links', error);
-                }
-            }
-        }
-
-        return [];
-    });
+    const rawCachedLinks = useSyncExternalStore(
+        subscribeToCachedLinks,
+        readCachedLinks,
+        () => null,
+    );
+    const cachedLinks = useMemo(
+        () => parseCachedLinks(rawCachedLinks),
+        [rawCachedLinks],
+    );
     const [managingLink, setManagingLink] = useState<CachedLink | null>(null);
     const [newTtlMinutes, setNewTtlMinutes] = useState(DEFAULT_TTL_MINUTES);
     const [isUpdatingTtl, setIsUpdatingTtl] = useState(false);
@@ -201,16 +272,11 @@ export function useWelcomeController() {
         (
             updater: CachedLink[] | ((previous: CachedLink[]) => CachedLink[]),
         ) => {
-            setCachedLinks((previous) => {
-                const next =
-                    typeof updater === 'function' ? updater(previous) : updater;
-                localStorage.setItem(
-                    'artfct_cached_links',
-                    JSON.stringify(next),
-                );
+            const previous = parseCachedLinks(readCachedLinks());
 
-                return next;
-            });
+            writeCachedLinks(
+                typeof updater === 'function' ? updater(previous) : updater,
+            );
         },
         [],
     );
