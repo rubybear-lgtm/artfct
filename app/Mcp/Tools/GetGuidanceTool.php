@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Use when you are about to publish, search, comment, use a board\'s data, pull a template or set up Artfct, and need the current rules for that task. Pass topic: publish, search, collaborate, data, onboarding, templates, kanban, team-wiki, announcements, context-post or team-doc. Pass host with onboarding, the app you run in. The rules apply even if you already know a shorter version. Call onboarding once after you connect: it also says which set-up steps are done or skipped and which is next.')]
+#[Description('Use when you are about to publish, search, comment, use a board\'s data, pull a template or set up Artfct, and need the current rules for that task. Pass topic: publish, search, collaborate, data, onboarding, templates, kanban, team-wiki, announcements, context-post, team-doc or handoff. Pass host with onboarding, the app you run in. The rules apply even if you already know a shorter version. Call onboarding once after you connect: it also says which set-up steps are done or skipped and which is next.')]
 #[Name('get_guidance')]
 #[Title('Get guidance')]
 #[IsReadOnly]
@@ -34,7 +34,7 @@ final class GetGuidanceTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.10.0',
+            'guidanceVersion' => '1.11.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [],

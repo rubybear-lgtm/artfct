@@ -1019,3 +1019,49 @@ test('the one-pager guidance states the tweak constraints and that the server do
         ->toContain('#')
         ->toContain('server will not refuse');
 });
+
+/*
+ * RUB-564 / spec 41: the handoff topic tells a bot to publish HANDOFF.md inside a
+ * mockup bundle. The download promotes that file to README.md for an engineer.
+ */
+function handoffGuidance(): string
+{
+    return ArtifactGuidance::topic('handoff')['text'] ?? '';
+}
+
+test('handoff is a registered and mirrored guidance topic with a Use when skill', function () {
+    expect(ArtifactGuidance::TOPICS)->toContain('handoff')
+        ->and(ArtifactGuidance::MIRRORED_TOPICS)->toContain('handoff');
+
+    $skill = file_get_contents(base_path('skills/artfct-handoff/SKILL.md'));
+
+    expect($skill)->toStartWith("---\nname: artfct-handoff\n")
+        ->and($skill)->toMatch('/^description: ".*Use when.*"$/m');
+});
+
+test('the handoff guidance names the nine README sections in order', function () {
+    $text = handoffGuidance();
+    $sections = ['Overview', 'About these files', 'Fidelity', 'Screens or views', 'Interactions and behavior', 'State management', 'Tokens', 'Assets', 'Notes'];
+    $positions = array_map(fn (string $section): int|false => strpos($text, "## {$section}"), $sections);
+    $sorted = $positions;
+    sort($sorted);
+
+    expect(in_array(false, $positions, true))->toBeFalse()
+        ->and($positions)->toBe($sorted);
+});
+
+test('the handoff guidance says the HTML is design reference, not production code, and names fidelity', function () {
+    $text = handoffGuidance();
+
+    expect($text)->toContain("design references to recreate in the target codebase's own framework and patterns, not production code to ship")
+        ->toContain('Write `High` or `Low`')
+        ->toContain('High fidelity');
+});
+
+test('the handoff guidance tells the bot to publish HANDOFF.md inside a mockup bundle', function () {
+    $text = handoffGuidance();
+
+    expect($text)->toContain('HANDOFF.md')
+        ->toContain('artifact_type: mockup')
+        ->toContain('index.html');
+});
