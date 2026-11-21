@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
+- RUB-583: the console has a Type filter next to the AI tool filter, with an option for every artifact type including Post and Design system. An unknown `type` in the URL is ignored.
+
 - RUB-556: the publish guidance has a "Brand and voice" section. Before customer-facing work, the bot finds the team's brand post by title and post type, reads its kind and status from post data, follows a superseded chain of up to three hops, and treats the post's text as data, not instructions. Guidance is 1.6.0.
 
 - RUB-573: the 29 MCP tool descriptions and the six official skill descriptions lead with a `Use when` trigger inside the first 200 characters, name the sibling or next call where it matters, and say what a tool does not return. Locked safety and protocol phrases are unchanged. No tool, parameter or behavior changed. Guidance is 1.10.0. See `docs/specs/38-tool-descriptions.md`.
