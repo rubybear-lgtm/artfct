@@ -104,6 +104,14 @@
     stage.style.transform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
   }
 
+  function isEditable(target) {
+    if (!target || !target.tagName) {
+      return false;
+    }
+
+    return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+  }
+
   function canFullscreen() {
     return Boolean(document.fullscreenEnabled && root.requestFullscreen);
   }
@@ -196,6 +204,11 @@
       return;
     }
 
+    // Typing in a field inside a slide is never a shortcut.
+    if (isEditable(event.target)) {
+      return;
+    }
+
     // A focused button already turns Space into a click; do not move twice.
     if (event.key === ' ' && event.target && event.target.tagName === 'BUTTON') {
       return;
@@ -213,9 +226,13 @@
     } else if (event.key === 'End') {
       event.preventDefault();
       goTo(slides.length - 1);
-    } else if (event.key === 'f' || event.key === 'F') {
+    } else if ((event.key === 'f' || event.key === 'F') && canFullscreen()) {
       event.preventDefault();
-      toggleFullscreen();
+
+      // Holding the key repeats keydown; one press is one toggle.
+      if (!event.repeat) {
+        toggleFullscreen();
+      }
     }
   });
 

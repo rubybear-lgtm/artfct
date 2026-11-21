@@ -188,6 +188,17 @@ test('the full screen button and the F key toggle full screen and keep the label
         ->assertNoJavaScriptErrors();
 });
 
+test('typing f in a field inside a slide types it and does not toggle full screen', function () {
+    $page = visit(deckStarterUrl());
+    $page->script('(() => { const field = document.createElement("input"); field.id = "probe"; document.body.appendChild(field); })()');
+
+    $page->keys('#probe', 'f')
+        ->wait(1)
+        ->assertScript('document.querySelector("#probe").value', 'f')
+        ->assertScript('document.fullscreenElement === null', true)
+        ->assertNoJavaScriptErrors();
+});
+
 test('full screen does not disturb the slide or the scale', function () {
     visit(deckStarterUrl('#2'))
         ->click('button[aria-label="Enter full screen"]')

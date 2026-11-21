@@ -6,7 +6,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
-- Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter. The public viewer does not show Present, because it does not know the artifact type.
+- Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
 
 ### Fixed
 

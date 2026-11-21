@@ -334,6 +334,12 @@ final class ArtifactViewerController extends Controller
         $versionCount = (int) ($artifact['version_count'] ?? 1);
         $version = (int) ($artifact['version'] ?? 1);
 
+        // The type is metadata about content the visitor may already read, so a
+        // public deck can offer Present like a member's view does.
+        $ownerTeam = Team::query()->where('slug', $org)->first();
+        $isSlideDeck = $ownerTeam !== null
+            && (app(ArtifactTypeResolver::class)->typesFor($ownerTeam, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
+
         $props = [
             'publicView' => true,
             'canSignInToEdit' => $canSignInToEdit,
@@ -360,7 +366,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
-            'isSlideDeck' => false,
+            'isSlideDeck' => $isSlideDeck,
             'pptxExportUrl' => null,
         ];
 
