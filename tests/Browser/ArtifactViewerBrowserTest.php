@@ -394,31 +394,6 @@ test('a_revoked_artifact_unmounts_the_frame_after_a_poll', function () {
         ->assertNoJavaScriptErrors();
 });
 
-test('a slide deck shows the Download PowerPoint action beside Download, and a document does not', function () {
-    configureViewerBrowserLinks();
-
-    [$team, $owner] = viewerBrowserOwner();
-    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
-    test()->actingAs($owner);
-
-    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
-
-    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::SlideDeck);
-
-    visit(viewerBrowserArtifactUrl())
-        ->assertNoJavaScriptErrors()
-        ->assertVisible('@download-artifact')
-        ->assertVisible('@download-powerpoint')
-        ->assertSee('Download PowerPoint');
-
-    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::Document);
-
-    visit(viewerBrowserArtifactUrl())
-        ->assertNoJavaScriptErrors()
-        ->assertVisible('@download-artifact')
-        ->assertMissing('@download-powerpoint');
-});
-
 test('a slide deck offers Present, which puts the artifact frame in full screen, and a document does not', function () {
     configureViewerBrowserLinks();
 

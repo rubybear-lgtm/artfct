@@ -755,26 +755,3 @@ test('a member viewing a slide deck is told it is a deck for the Present action,
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
         ->where('isSlideDeck', false));
 });
-
-test('a member viewing a slide deck is offered the PowerPoint export, and a document is not', function () {
-    configureArtifactLinks();
-
-    $team = viewerTeam('deck-team', 'Deck Team');
-    $member = memberOfTeam($team, TeamRole::Member);
-    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
-        'sharing' => 'team',
-        'owner_user_id' => (string) $member->id,
-        'can_change_sharing' => false,
-    ]);
-    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
-
-    app(ArtifactTypeResolver::class)->record($team, ARTIFACT_LINK_ID, $html, ArtifactType::SlideDeck);
-
-    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
-        ->where('pptxExportUrl', route('artifacts.export.pptx', ARTIFACT_LINK_ID)));
-
-    app(ArtifactTypeResolver::class)->record($team, ARTIFACT_LINK_ID, $html, ArtifactType::Document);
-
-    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
-        ->where('pptxExportUrl', null));
-});

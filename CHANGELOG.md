@@ -8,6 +8,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
 
+### Removed
+
+- The PowerPoint export (RUB-562). The Download PowerPoint button, the `POST /a/{id}/export/pptx` route and its rate limit, the PNG capture validator and `.pptx` writer, the `phpoffice/phppresentation` dependency (and with it `phpoffice/phpspreadsheet` and the `ext-gd` requirement), the deck starter's `capture` bridge command and vendored `capture.js`, and spec 46 are gone. Decks present with the Present button and the `F` key. The bridge keeps `ready`, `describe` and `goTo`. A deck published earlier that still carries `capture.js` is unaffected; the file is simply never loaded.
+
 ### Fixed
 
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.

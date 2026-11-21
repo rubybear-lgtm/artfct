@@ -95,7 +95,7 @@ Replies from the bridge:
 { "channel": "artfct-export", "v": 1, "id": "<echoed>", "ok": false, "error": { "code": "unknown_command" } }
 ```
 
-- `v` is the protocol version. A message with `v` other than `1` is ignored. Later commands (PDF, PowerPoint) extend the commands list in `ready`, not the envelope.
+- `v` is the protocol version. A message with `v` other than `1` is ignored. Later commands (PDF; PowerPoint was removed 2026-11-21) extend the commands list in `ready`, not the envelope.
 - `id` correlates request and reply. The bridge echoes it and does not interpret it. A missing or non-string `id` is ignored, and so is an `id` longer than 128 characters (see Open questions).
 - Anything that is not an object with `channel === "artfct-export"` is ignored with no reply.
 
