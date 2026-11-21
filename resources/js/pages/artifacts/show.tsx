@@ -2,10 +2,11 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     ExternalLink,
+    Maximize,
     PanelRightClose,
     PanelRightOpen,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import ArtifactComments from '@/components/artifact-comments';
 import type { ArtifactComment } from '@/components/artifact-comments';
@@ -52,6 +53,8 @@ interface Props {
     openUrl: string;
     /** Null when no download is offered — the public viewer. */
     downloadUrl: string | null;
+    /** True for a slide deck, which gets a Present (full screen) action. */
+    isSlideDeck: boolean;
     /** The PowerPoint export route for a slide deck, else null (RUB-562, spec 46). */
     pptxExportUrl: string | null;
     /** A signed-in member's discussion; absent in the public viewer. */
@@ -73,6 +76,19 @@ declare global {
     interface Window {
         artfctPptxExport?: PptxExportRunner;
     }
+}
+
+/** Nothing to subscribe to: whether the browser offers full screen does not change while the page is open. */
+function subscribeToNothing(): () => void {
+    return () => undefined;
+}
+
+/** False on the server and on browsers without the Fullscreen API, so the first render matches the server's. */
+function browserCanPresent(): boolean {
+    return (
+        document.fullscreenEnabled === true &&
+        typeof HTMLElement.prototype.requestFullscreen === 'function'
+    );
 }
 
 let pptxRunnerLoading: Promise<PptxExportRunner> | null = null;
@@ -165,6 +181,7 @@ export default function ArtifactShow({
     viewerUrl,
     openUrl,
     downloadUrl,
+    isSlideDeck,
     pptxExportUrl,
     comments,
 }: Props) {
@@ -347,12 +364,41 @@ export default function ArtifactShow({
         // baseline, and nothing else needs to.
     }, [artifact.id, artifact.version, artifact.sharing, selectedVersion]);
 
+    const canPresent =
+        useSyncExternalStore(
+            subscribeToNothing,
+            browserCanPresent,
+            () => false,
+        ) && isSlideDeck;
     const [panelOpen, setPanelOpen] = useState(false);
     const [pptxStatus, setPptxStatus] = useState<string | null>(null);
     const commentCount = comments?.length ?? 0;
     const backHref = publicView
         ? home.url()
         : consoleRoutes.index.url({ team: team.slug });
+
+    /**
+     * Full screen for the artifact frame itself, so it works for every deck,
+     * including ones that predate the starter's own button. The frame is focused
+     * afterwards so the deck's arrow keys work at once; Esc leaves full screen.
+     * A browser may refuse the request, and the page is fine either way.
+     */
+    function presentDeck(): void {
+        const frame = frameRef.current;
+
+        if (frame === null || !browserCanPresent()) {
+            return;
+        }
+
+        try {
+            void frame
+                .requestFullscreen()
+                .then(() => frame.focus())
+                .catch(() => undefined);
+        } catch {
+            // A browser that throws instead of rejecting is treated like a refusal.
+        }
+    }
 
     async function downloadPowerPoint(): Promise<void> {
         if (!pptxExportUrl) {
@@ -483,6 +529,18 @@ export default function ArtifactShow({
                             </Button>
                         )}
 
+                        {canPresent && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={presentDeck}
+                                data-testid="present-artifact"
+                            >
+                                <Maximize className="size-3.5" /> Present
+                            </Button>
+                        )}
+
                         {pptxExportUrl && (
                             <>
                                 <Button
@@ -579,6 +637,7 @@ export default function ArtifactShow({
                         src={frameUrl}
                         title={name}
                         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                        allow={isSlideDeck ? 'fullscreen' : undefined}
                         referrerPolicy="no-referrer"
                         data-testid="artifact-frame"
                         className="h-full min-w-0 flex-1 border-0 bg-paper"

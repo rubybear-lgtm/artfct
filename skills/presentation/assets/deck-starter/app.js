@@ -4,6 +4,10 @@
  * makes no network request, never reads the parent page DOM, and answers the
  * bridge only when the deck is framed by its parent.
  *
+ * Full screen: the F key and a button in the controls toggle the browser's full
+ * screen for the deck. The button is built only when the browser offers it, which
+ * a framed deck gets only if its parent allows it.
+ *
  * Navigation API for script on the same page:
  *   window.artfctDeck.goTo(index)   0-based; returns false when out of range
  *   window.artfctDeck.slideCount    number of slides
@@ -30,6 +34,7 @@
   var counter = null;
   var previousButton = null;
   var nextButton = null;
+  var fullscreenButton = null;
 
   root.classList.add('deck-js');
 
@@ -99,6 +104,48 @@
     stage.style.transform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
   }
 
+  function isEditable(target) {
+    if (!target || !target.tagName) {
+      return false;
+    }
+
+    return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+  }
+
+  function canFullscreen() {
+    return Boolean(document.fullscreenEnabled && root.requestFullscreen);
+  }
+
+  function ignoreRefusal(result) {
+    // A browser may refuse (no user gesture, policy). The deck keeps working either way.
+    if (result && typeof result.catch === 'function') {
+      result.catch(function () {});
+    }
+  }
+
+  function toggleFullscreen() {
+    if (!canFullscreen()) {
+      return;
+    }
+
+    if (document.fullscreenElement) {
+      ignoreRefusal(document.exitFullscreen());
+    } else {
+      ignoreRefusal(root.requestFullscreen());
+    }
+  }
+
+  function syncFullscreenButton() {
+    if (!fullscreenButton) {
+      return;
+    }
+
+    var active = Boolean(document.fullscreenElement);
+
+    fullscreenButton.setAttribute('aria-label', active ? 'Exit full screen' : 'Enter full screen');
+    fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
   function buildControls() {
     var nav = document.createElement('nav');
     nav.className = 'deck-controls';
@@ -127,6 +174,18 @@
     nav.appendChild(previousButton);
     nav.appendChild(counter);
     nav.appendChild(nextButton);
+
+    if (canFullscreen()) {
+      fullscreenButton = document.createElement('button');
+      fullscreenButton.type = 'button';
+      fullscreenButton.className = 'deck-fullscreen';
+      fullscreenButton.textContent = '\u26F6';
+      fullscreenButton.addEventListener('click', toggleFullscreen);
+      nav.appendChild(fullscreenButton);
+      syncFullscreenButton();
+      document.addEventListener('fullscreenchange', syncFullscreenButton);
+    }
+
     document.body.appendChild(nav);
   }
 
@@ -142,6 +201,11 @@
 
   document.addEventListener('keydown', function (event) {
     if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    // Typing in a field inside a slide is never a shortcut.
+    if (isEditable(event.target)) {
       return;
     }
 
@@ -162,6 +226,13 @@
     } else if (event.key === 'End') {
       event.preventDefault();
       goTo(slides.length - 1);
+    } else if ((event.key === 'f' || event.key === 'F') && canFullscreen()) {
+      event.preventDefault();
+
+      // Holding the key repeats keydown; one press is one toggle.
+      if (!event.repeat) {
+        toggleFullscreen();
+      }
     }
   });
 

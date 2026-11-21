@@ -3,8 +3,10 @@
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Enums\ArtifactType;
 use App\Enums\TeamRole;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -72,6 +74,7 @@ test('an anonymous visitor views a public artifact at the short link', function 
         // The owner's name is hidden and no Download is offered in public mode.
         ->where('artifact.ownerName', null)
         ->where('downloadUrl', null)
+        ->where('isSlideDeck', false)
         ->where('selectedVersion', null));
 
     $props = shortLinkProps($response);
@@ -283,4 +286,26 @@ test('the short link stays within the length budget', function () {
     // scheme+host+path plus 13 of id is 35.
     expect(strlen('https://artfct.dev/a/'.SHORT_LINK_ID))->toBeLessThanOrEqual(35)
         ->and(strlen(route('artifacts.show', ['artifactId' => SHORT_LINK_ID])))->toBeLessThanOrEqual(35);
+});
+
+test('a public slide deck is told it is a deck, so the viewer can offer Present', function () {
+    config(['services.artifact_access.origin_suffix' => '.artfct.dev']);
+    $team = Team::factory()->create(['slug' => 'short-deck-org']);
+    seedShortLinkPublicArtifact(SHORT_LINK_ID, 'short-deck-org');
+
+    app(ArtifactTypeResolver::class)->record(
+        $team,
+        SHORT_LINK_ID,
+        '<!doctype html><html><body><section class="slide"></section></body></html>',
+        ArtifactType::SlideDeck,
+    );
+
+    test()->get('/a/'.SHORT_LINK_ID)->assertOk()->assertInertia(fn (Assert $page) => $page
+        ->where('publicView', true)
+        ->where('isSlideDeck', true));
+
+    app(ArtifactTypeResolver::class)->record($team, SHORT_LINK_ID, '<!doctype html><html><body></body></html>', ArtifactType::Document);
+
+    test()->get('/a/'.SHORT_LINK_ID)->assertOk()->assertInertia(fn (Assert $page) => $page
+        ->where('isSlideDeck', false));
 });

@@ -237,6 +237,7 @@ final class ArtifactViewerController extends Controller
         }
 
         $versionCount = (int) ($artifact['version_count'] ?? 1);
+        $isSlideDeck = (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
 
         $props = [
             'publicView' => false,
@@ -264,7 +265,8 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
-            'pptxExportUrl' => (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value
+            'isSlideDeck' => $isSlideDeck,
+            'pptxExportUrl' => $isSlideDeck
                 ? route('artifacts.export.pptx', ['artifactId' => $artifactId])
                 : null,
             'comments' => ArtifactComment::query()
@@ -332,6 +334,12 @@ final class ArtifactViewerController extends Controller
         $versionCount = (int) ($artifact['version_count'] ?? 1);
         $version = (int) ($artifact['version'] ?? 1);
 
+        // The type is metadata about content the visitor may already read, so a
+        // public deck can offer Present like a member's view does.
+        $ownerTeam = Team::query()->where('slug', $org)->first();
+        $isSlideDeck = $ownerTeam !== null
+            && (app(ArtifactTypeResolver::class)->typesFor($ownerTeam, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
+
         $props = [
             'publicView' => true,
             'canSignInToEdit' => $canSignInToEdit,
@@ -358,6 +366,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
+            'isSlideDeck' => $isSlideDeck,
             'pptxExportUrl' => null,
         ];
 

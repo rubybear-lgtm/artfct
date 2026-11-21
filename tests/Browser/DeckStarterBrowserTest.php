@@ -166,6 +166,48 @@ test('the keyboard moves the counter', function () {
         ->assertNoJavaScriptErrors();
 });
 
+test('the full screen button and the F key toggle full screen and keep the label in step', function () {
+    $enter = 'button[aria-label="Enter full screen"]';
+    $exit = 'button[aria-label="Exit full screen"]';
+
+    // Real input events count as the user gesture the browser requires.
+    visit(deckStarterUrl())
+        ->assertScript('document.fullscreenElement === null', true)
+        ->assertScript('document.querySelector(".deck-fullscreen").getAttribute("aria-pressed")', 'false')
+        ->click($enter)
+        ->wait(1)
+        ->assertScript('document.fullscreenElement === document.documentElement', true)
+        ->assertScript('document.querySelector(".deck-fullscreen").getAttribute("aria-pressed")', 'true')
+        ->keys($exit, 'f')
+        ->wait(1)
+        ->assertScript('document.fullscreenElement === null', true)
+        ->assertScript('document.querySelector(".deck-fullscreen").getAttribute("aria-label")', 'Enter full screen')
+        ->keys($enter, 'F')
+        ->wait(1)
+        ->assertScript('document.fullscreenElement === document.documentElement', true)
+        ->assertNoJavaScriptErrors();
+});
+
+test('typing f in a field inside a slide types it and does not toggle full screen', function () {
+    $page = visit(deckStarterUrl());
+    $page->script('(() => { const field = document.createElement("input"); field.id = "probe"; document.body.appendChild(field); })()');
+
+    $page->keys('#probe', 'f')
+        ->wait(1)
+        ->assertScript('document.querySelector("#probe").value', 'f')
+        ->assertScript('document.fullscreenElement === null', true)
+        ->assertNoJavaScriptErrors();
+});
+
+test('full screen does not disturb the slide or the scale', function () {
+    visit(deckStarterUrl('#2'))
+        ->click('button[aria-label="Enter full screen"]')
+        ->wait(1)
+        ->assertScript('document.querySelector(".deck-counter").textContent', '2 / 3')
+        ->assertScript('document.querySelector(".deck-stage").style.transform.includes("scale(")', true)
+        ->assertNoJavaScriptErrors();
+});
+
 test('a space key dispatched on the document moves the deck forward', function () {
     // The listener is on the document, so a space with no focused button must advance.
     visit(deckStarterUrl())

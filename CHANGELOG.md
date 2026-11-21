@@ -4,6 +4,10 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
+
 ### Fixed
 
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
