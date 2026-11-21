@@ -3,6 +3,7 @@ import type { ComponentType } from 'react';
 
 import { BreakFigure, LoopFigure } from '@/components/contradicting-figures';
 import { SitePage } from '@/components/site-chrome';
+import { formatCalendarDay } from '@/lib/local-date';
 import { blog } from '@/routes';
 
 /** The closed set the renderer emits; a name outside it is a server bug. */
@@ -80,9 +81,7 @@ export default function BlogShow({ post }: BlogShowProps) {
                                 dateTime={post.date}
                                 className="font-semibold tracking-[0.08em] text-[var(--ink-quiet)] uppercase"
                             >
-                                {new Date(
-                                    post.date + 'T00:00:00',
-                                ).toLocaleDateString('en-GB', {
+                                {formatCalendarDay(post.date, 'en-GB', {
                                     day: 'numeric',
                                     month: 'long',
                                     year: 'numeric',

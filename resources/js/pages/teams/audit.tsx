@@ -2,6 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
+import LocalDate from '@/components/local-date';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -216,7 +217,11 @@ export default function Audit({
                                 {events.data.map((row) => (
                                     <TableRow key={row.id}>
                                         <TableCell className="text-xs whitespace-nowrap tabular-nums">
-                                            {new Date(row.at).toLocaleString()}
+                                            <LocalDate
+                                                value={row.at}
+                                                options={{}}
+                                                time
+                                            />
                                         </TableCell>
                                         <TableCell>
                                             <Badge>{row.typeLabel}</Badge>

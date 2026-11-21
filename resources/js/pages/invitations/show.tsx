@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
+import { formatLocalDate, useReader } from '@/lib/local-date';
 import { home, login, logout } from '@/routes';
 import invitations from '@/routes/invitations';
 
@@ -39,6 +40,7 @@ export default function InvitationShow({
     // seconds on a phone; without it the page looks idle and invites a second
     // tap. Reset when the page is restored from the back/forward cache.
     const [busy, setBusy] = useState(false);
+    const reader = useReader();
 
     useEffect(() => {
         const reset = (event: PageTransitionEvent) =>
@@ -94,12 +96,12 @@ export default function InvitationShow({
         );
 
     const article = /^[aeiou]/i.test(invitation.roleLabel) ? 'an' : 'a';
-    const expiresAt = invitation.expiresAt
-        ? new Date(invitation.expiresAt)
-        : null;
-    const expiryLabel = expiresAt
-        ? `This invitation works until ${expiresAt.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`
-        : null;
+    const expiry = formatLocalDate(invitation.expiresAt, reader, {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+    });
+    const expiryLabel = expiry ? `This invitation works until ${expiry}` : null;
 
     return (
         <>

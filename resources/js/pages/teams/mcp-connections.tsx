@@ -11,6 +11,7 @@ import {
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
+import LocalDate, { LocalNumber } from '@/components/local-date';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,17 +84,6 @@ interface Props {
     scopeOptions: string[];
     scopeLabels: Record<string, string>;
     defaultScopes: string[];
-}
-
-function formatDate(value: string | null): string {
-    if (!value) {
-        return 'Never';
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(new Date(value));
 }
 
 function statusFor(connection: Connection): 'active' | 'expired' | 'revoked' {
@@ -315,7 +305,7 @@ export default function McpConnections({
                                     Tool calls
                                 </p>
                                 <p className="mt-1 text-2xl font-semibold">
-                                    {usage.calls.toLocaleString()}
+                                    <LocalNumber value={usage.calls} />
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     Last {usage.periodDays} days
@@ -334,7 +324,9 @@ export default function McpConnections({
                                     {usage.successRate}%
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {usage.successfulCalls.toLocaleString()}{' '}
+                                    <LocalNumber
+                                        value={usage.successfulCalls}
+                                    />{' '}
                                     successful
                                 </p>
                             </div>
@@ -348,7 +340,7 @@ export default function McpConnections({
                                     Errors
                                 </p>
                                 <p className="mt-1 text-2xl font-semibold">
-                                    {usage.failedCalls.toLocaleString()}
+                                    <LocalNumber value={usage.failedCalls} />
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     Across all tools
@@ -404,7 +396,9 @@ export default function McpConnections({
                                                     {tool.tool}
                                                 </TableCell>
                                                 <TableCell>
-                                                    {tool.calls.toLocaleString()}
+                                                    <LocalNumber
+                                                        value={tool.calls}
+                                                    />
                                                 </TableCell>
                                                 <TableCell>
                                                     {tool.calls === 0
@@ -602,9 +596,19 @@ export default function McpConnections({
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-sm whitespace-nowrap">
-                                                        {formatDate(
-                                                            connection.lastUsedAt,
-                                                        )}
+                                                        <LocalDate
+                                                            value={
+                                                                connection.lastUsedAt
+                                                            }
+                                                            options={{
+                                                                dateStyle:
+                                                                    'medium',
+                                                                timeStyle:
+                                                                    'short',
+                                                            }}
+                                                            time
+                                                            fallback="Never"
+                                                        />
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-wrap items-center gap-2">
@@ -770,9 +774,15 @@ export default function McpConnections({
                                                     {entry.latencyMs} ms
                                                 </TableCell>
                                                 <TableCell className="text-sm whitespace-nowrap">
-                                                    {formatDate(
-                                                        entry.createdAt,
-                                                    )}
+                                                    <LocalDate
+                                                        value={entry.createdAt}
+                                                        options={{
+                                                            dateStyle: 'medium',
+                                                            timeStyle: 'short',
+                                                        }}
+                                                        time
+                                                        fallback="Never"
+                                                    />
                                                 </TableCell>
                                             </TableRow>
                                         ))}
