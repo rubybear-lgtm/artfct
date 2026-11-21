@@ -17,6 +17,7 @@ import type {
 } from '@/components/artifact-share-control';
 import { Button } from '@/components/ui/button';
 import ViewerLayout from '@/layouts/viewer-layout';
+import { useLocalDate } from '@/lib/local-date';
 import { home, login } from '@/routes';
 import artifacts from '@/routes/artifacts';
 import consoleRoutes from '@/routes/console';
@@ -77,18 +78,6 @@ function artifactName(title: string | null, id: string): string {
     return title && title !== '' ? title : id.slice(0, 8);
 }
 
-function formatDate(value: string | null): string | null {
-    if (!value) {
-        return null;
-    }
-
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime())
-        ? null
-        : date.toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
 function versionLabel(version: number, count: number): string {
     return count > 1 ? `Version ${version} of ${count}` : `Version ${version}`;
 }
@@ -125,7 +114,7 @@ export default function ArtifactShow({
         ? `${name} — ${artifact.description}`
         : name;
     const shownVersion = selectedVersion ?? artifact.version;
-    const updated = formatDate(artifact.updatedAt);
+    const updated = useLocalDate(artifact.updatedAt);
     const meta = [
         versionLabel(shownVersion, artifact.versionCount),
         artifact.ownerName,

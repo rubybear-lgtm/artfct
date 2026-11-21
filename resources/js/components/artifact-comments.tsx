@@ -1,6 +1,7 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 
+import LocalDate from '@/components/local-date';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import comments from '@/routes/artifacts/comments';
@@ -25,14 +26,6 @@ type PendingAction =
     | { kind: 'comment' }
     | { kind: 'reply'; rootId: number }
     | { kind: 'resolve'; commentId: number };
-
-function formatWhen(value: string): string {
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime())
-        ? ''
-        : date.toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
 
 function authorLabel(comment: ArtifactComment): string {
     const name = comment.author ?? 'Someone';
@@ -122,8 +115,10 @@ export default function ArtifactComments({
                             <div key={comment.id} className="mb-3 last:mb-0">
                                 <p className="text-xs text-muted-foreground">
                                     {authorLabel(comment)}
-                                    {formatWhen(comment.created_at) !== '' &&
-                                        ` · ${formatWhen(comment.created_at)}`}
+                                    <LocalDate
+                                        value={comment.created_at}
+                                        prefix=" · "
+                                    />
                                 </p>
                                 <p className="mt-0.5 text-sm whitespace-pre-wrap">
                                     {comment.body}
