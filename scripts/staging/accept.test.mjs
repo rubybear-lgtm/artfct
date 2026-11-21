@@ -158,6 +158,16 @@ test('fetchStagingDeployments lists deployments at the top level and keeps the n
                                     meta: { commitHash: 'new' },
                                 },
                             },
+                            {
+                                // Older and listed after the newer one: neither "first wins" nor "last wins" passes.
+                                node: {
+                                    id: 'd4',
+                                    serviceId: 'svc-queue',
+                                    status: 'FAILED',
+                                    createdAt: '2026-11-21T07:21:00Z',
+                                    meta: { commitHash: 'old' },
+                                },
+                            },
                         ],
                     },
                 },
