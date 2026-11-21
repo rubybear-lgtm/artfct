@@ -2,6 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     ExternalLink,
+    Maximize,
     PanelRightClose,
     PanelRightOpen,
 } from 'lucide-react';
@@ -52,6 +53,8 @@ interface Props {
     openUrl: string;
     /** Null when no download is offered — the public viewer. */
     downloadUrl: string | null;
+    /** True for a slide deck, which gets a Present (full screen) action. False in the public viewer, which does not know the type. */
+    isSlideDeck: boolean;
     /** The PowerPoint export route for a slide deck, else null (RUB-562, spec 46). */
     pptxExportUrl: string | null;
     /** A signed-in member's discussion; absent in the public viewer. */
@@ -165,6 +168,7 @@ export default function ArtifactShow({
     viewerUrl,
     openUrl,
     downloadUrl,
+    isSlideDeck,
     pptxExportUrl,
     comments,
 }: Props) {
@@ -354,6 +358,25 @@ export default function ArtifactShow({
         ? home.url()
         : consoleRoutes.index.url({ team: team.slug });
 
+    /**
+     * Full screen for the artifact frame itself, so it works for every deck,
+     * including ones that predate the starter's own button. The frame is focused
+     * afterwards so the deck's arrow keys work at once; Esc leaves full screen.
+     * A browser may refuse the request, and the page is fine either way.
+     */
+    function presentDeck(): void {
+        const frame = frameRef.current;
+
+        if (frame === null) {
+            return;
+        }
+
+        frame
+            .requestFullscreen()
+            .then(() => frame.focus())
+            .catch(() => undefined);
+    }
+
     async function downloadPowerPoint(): Promise<void> {
         if (!pptxExportUrl) {
             return;
@@ -483,6 +506,18 @@ export default function ArtifactShow({
                             </Button>
                         )}
 
+                        {isSlideDeck && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={presentDeck}
+                                data-testid="present-artifact"
+                            >
+                                <Maximize className="size-3.5" /> Present
+                            </Button>
+                        )}
+
                         {pptxExportUrl && (
                             <>
                                 <Button
@@ -579,6 +614,7 @@ export default function ArtifactShow({
                         src={frameUrl}
                         title={name}
                         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                        allow={isSlideDeck ? 'fullscreen' : undefined}
                         referrerPolicy="no-referrer"
                         data-testid="artifact-frame"
                         className="h-full min-w-0 flex-1 border-0 bg-paper"

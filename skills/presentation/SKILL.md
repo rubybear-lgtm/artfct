@@ -87,6 +87,9 @@ The starter ships with keyboard, button and touch navigation. No changes are nee
 | `Home` / `End` | First / last slide |
 | Touch swipe | Next / previous |
 | On-screen `←` `→` buttons | Next / previous |
+| `F` or the on-screen full screen button | Full screen on / off (`Esc` also leaves it) |
+
+The deck's page also has a Present button that puts the deck in full screen, with no change to the deck.
 
 The counter (`1 / N`) updates when slides are added or removed. A deep link such as `#3` opens slide 3.
 

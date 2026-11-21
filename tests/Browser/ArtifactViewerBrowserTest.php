@@ -419,6 +419,36 @@ test('a slide deck shows the Download PowerPoint action beside Download, and a d
         ->assertMissing('@download-powerpoint');
 });
 
+test('a slide deck offers Present, which puts the artifact frame in full screen, and a document does not', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Present', 'viewer-present@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
+    $frame = "document.querySelector('[data-testid=\"artifact-frame\"]')";
+
+    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::SlideDeck);
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@present-artifact')
+        ->assertScript("{$frame}.getAttribute('allow')", 'fullscreen')
+        ->assertScript('document.fullscreenElement === null', true)
+        ->click('@present-artifact')
+        ->wait(1)
+        ->assertScript("document.fullscreenElement === {$frame}", true)
+        ->assertNoJavaScriptErrors();
+
+    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::Document);
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertMissing('@present-artifact')
+        ->assertScript("{$frame}.hasAttribute('allow')", false);
+});
+
 test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
     configureViewerBrowserLinks();
 

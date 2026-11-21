@@ -237,6 +237,7 @@ final class ArtifactViewerController extends Controller
         }
 
         $versionCount = (int) ($artifact['version_count'] ?? 1);
+        $isSlideDeck = (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
 
         $props = [
             'publicView' => false,
@@ -264,7 +265,8 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
-            'pptxExportUrl' => (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value
+            'isSlideDeck' => $isSlideDeck,
+            'pptxExportUrl' => $isSlideDeck
                 ? route('artifacts.export.pptx', ['artifactId' => $artifactId])
                 : null,
             'comments' => ArtifactComment::query()
@@ -358,6 +360,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
+            'isSlideDeck' => false,
             'pptxExportUrl' => null,
         ];
 
