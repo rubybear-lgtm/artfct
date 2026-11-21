@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import Copyright from '@/components/copyright';
 import { ThemeSwitch } from '@/components/home/theme-switch';
 import { GITHUB } from '@/components/site-chrome';
 import { Alert } from '@/components/ui/alert';
@@ -1106,7 +1107,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             <span className="font-serif text-xl font-medium tracking-[-0.02em] text-foreground">
                                 Artfct
                             </span>
-                            <span>© {new Date().getFullYear()} Artfct</span>
+                            <Copyright />
                         </div>
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                             <Link

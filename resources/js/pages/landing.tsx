@@ -4,6 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { AiToolIcon } from '@/components/ai-tool-icon';
 import { CopyPrompt } from '@/components/connect/copy-prompt';
+import Copyright from '@/components/copyright';
 import {
     AgentWindow,
     AuthorMessages,
@@ -1077,7 +1078,7 @@ export default function Landing({
                 <footer className="pad">
                     <div className="l">
                         <span className="logo">Artfct</span>
-                        <span>© {new Date().getFullYear()} Artfct</span>
+                        <Copyright />
                     </div>
                     <div className="r">
                         <a href="#how">How it works</a>
