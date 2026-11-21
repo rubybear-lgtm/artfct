@@ -13,7 +13,7 @@ import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController'
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
 import { AiToolIcon } from '@/components/ai-tool-icon';
 import { ArtifactPreview } from '@/components/artifact-preview';
-import { RowIcon, shortDate } from '@/components/home/artifact-row';
+import { RowIcon, ShortDate } from '@/components/home/artifact-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -851,9 +851,11 @@ export default function ConsoleIndex({
                                                     ·
                                                 </span>
                                                 <span className="tabular-nums">
-                                                    {shortDate(
-                                                        artifact.created_at,
-                                                    )}
+                                                    <ShortDate
+                                                        iso={
+                                                            artifact.created_at
+                                                        }
+                                                    />
                                                 </span>
                                                 {artifact.revoked_at && (
                                                     <Badge variant="destructive">
@@ -1064,7 +1066,9 @@ export default function ConsoleIndex({
                                             )}
                                             <span aria-hidden="true">·</span>
                                             <span className="tabular-nums">
-                                                {shortDate(artifact.created_at)}
+                                                <ShortDate
+                                                    iso={artifact.created_at}
+                                                />
                                             </span>
                                             <span aria-hidden="true">·</span>
                                             <span data-testid="indexing-state">

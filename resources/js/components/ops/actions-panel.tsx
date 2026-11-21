@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { EN_US_READER, formatLocalNumber, useReader } from '@/lib/local-date';
 import {
     erase as eraseTenant,
     limits as pushLimits,
@@ -543,6 +544,7 @@ function EraseForm({
     slug: string;
     erasurePlan: ErasurePlan | null;
 }) {
+    const reader = useReader();
     const previewForm = useForm({});
     const form = useForm({ confirm_slug: '', reason: '' });
     const [confirming, setConfirming] = useState(false);
@@ -634,14 +636,18 @@ function EraseForm({
                         </p>
                     )}
                     <p>
-                        {erasurePlan.artifact_count.toLocaleString('en-US')}{' '}
+                        {formatLocalNumber(
+                            erasurePlan.artifact_count,
+                            EN_US_READER,
+                        )}{' '}
                         {erasurePlan.artifact_count === 1
                             ? 'artifact'
                             : 'artifacts'}{' '}
                         would be erased.
                     </p>
                     <p className="text-xs text-muted-foreground">
-                        Checked {formatDateTime(erasurePlan.generated_at)}.
+                        Checked{' '}
+                        {formatDateTime(erasurePlan.generated_at, reader)}.
                     </p>
                 </div>
             )}

@@ -106,6 +106,9 @@ jobs:
       - name: Test web startup
         run: node --test scripts/start-web.test.mjs
 
+      - name: Test the date and number formatters
+        run: node --experimental-strip-types --test scripts/local-date.test.mjs
+
       - name: Audit PHP dependencies
         run: composer audit --no-interaction
 

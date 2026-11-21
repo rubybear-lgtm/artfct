@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import OpsLayout from '@/layouts/ops-layout';
+import { useReader } from '@/lib/local-date';
 import {
     index as tenantsIndex,
     show as tenantShow,
@@ -105,6 +106,7 @@ export default function TenantsIndex({
     options,
     status,
 }: Props) {
+    const reader = useReader();
     const [search, setSearch] = useState(filters.q ?? '');
     const [announcement, setAnnouncement] = useState('');
 
@@ -342,7 +344,7 @@ export default function TenantsIndex({
                                         {tenant.schema_version ?? '-'}
                                     </TableCell>
                                     <TableCell className="text-xs whitespace-nowrap tabular-nums">
-                                        {formatDate(tenant.created_at)}
+                                        {formatDate(tenant.created_at, reader)}
                                     </TableCell>
                                     <TableCell>
                                         <StateBadge state={tenant.state} />

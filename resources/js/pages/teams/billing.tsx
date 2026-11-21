@@ -15,6 +15,11 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageHeader } from '@/components/ui/page-header';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import {
+    formatLocalDate,
+    formatLocalNumber,
+    useReader,
+} from '@/lib/local-date';
 import teams from '@/routes/teams';
 
 interface PlanLimits {
@@ -148,9 +153,10 @@ export default function Billing({
     const [confirmingCancel, setConfirmingCancel] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const [yearly, setYearly] = useState(false);
-    const periodEnd = team.renewsAt
-        ? new Date(team.renewsAt).toLocaleDateString()
-        : 'the end of the current billing period';
+    const reader = useReader();
+    const periodEnd =
+        formatLocalDate(team.renewsAt, reader, {}) ??
+        'the end of the current billing period';
 
     const startCheckout = (plan: 'pro' | 'team') => {
         router.post(teams.billing.checkout.url({ team: team.slug }), {
@@ -238,7 +244,7 @@ export default function Billing({
                     <Alert variant="warning">
                         Your subscription ends
                         {team.renewsAt
-                            ? ` on ${new Date(team.renewsAt).toLocaleDateString()}`
+                            ? ` on ${formatLocalDate(team.renewsAt, reader, {})}`
                             : ' at the end of the billing period'}
                         . Resume it to keep your plan.
                     </Alert>
@@ -269,7 +275,7 @@ export default function Billing({
                             {team.onTrial
                                 ? `Full Team features while the trial lasts. ${team.activeSeats} people on this workspace.`
                                 : paid
-                                  ? `${team.activeSeats} people on this workspace.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${new Date(team.renewsAt).toLocaleDateString()}.` : ''}`
+                                  ? `${team.activeSeats} people on this workspace.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${formatLocalDate(team.renewsAt, reader, {})}.` : ''}`
                                   : 'Free plan. Upgrade to Pro or Team when you need more.'}
                         </CardDescription>
                     </CardHeader>
@@ -408,9 +414,11 @@ export default function Billing({
                                             key={invoice.number ?? invoice.date}
                                         >
                                             <TableCell>
-                                                {new Date(
+                                                {formatLocalDate(
                                                     invoice.date * 1000,
-                                                ).toLocaleDateString()}
+                                                    reader,
+                                                    {},
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {invoice.number}
@@ -465,7 +473,7 @@ export default function Billing({
                             />
                             <Meter
                                 label="Artifacts"
-                                detail={`${usage.artifactsThisPeriod.toLocaleString()} / ${usage.artifactsLimit.toLocaleString()}`}
+                                detail={`${formatLocalNumber(usage.artifactsThisPeriod, reader)} / ${formatLocalNumber(usage.artifactsLimit, reader)}`}
                                 percent={usage.artifactsPercent}
                                 warning={usage.artifactsWarning}
                                 exceeded={usage.artifactsExceeded}
