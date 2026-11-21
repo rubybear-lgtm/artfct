@@ -7,6 +7,7 @@ use App\Mcp\Support\McpContext;
 use App\Mcp\Support\McpErrorResponse;
 use App\Mcp\Support\McpTelemetry;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ContextPostDetails;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Response;
@@ -44,7 +45,7 @@ abstract class DatabaseTool extends FeatureFlaggedTool
     }
 
     /** Collection and document names the Worker accepts. */
-    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/'];
+    protected const NAME_RULE = ['required', 'string', 'regex:/^[A-Za-z0-9_-][A-Za-z0-9._-]*\z/'];
 
     /** @return array<string, list<string>> */
     protected function targetRules(bool $withDocument = true): array
@@ -58,6 +59,28 @@ abstract class DatabaseTool extends FeatureFlaggedTool
         }
 
         return $rules;
+    }
+
+    /**
+     * The post field rules (spec 29) for a write, or null when none apply.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function postDetailsRefusal(string $collection, string $docId, array $data, bool $complete): ?string
+    {
+        if (! ContextPostDetails::appliesTo($collection, $docId)) {
+            return null;
+        }
+
+        return ContextPostDetails::refusal($data, $complete);
+    }
+
+    /** A write refused before any Worker request; nothing was sent. */
+    protected function refuseInvalidWrite(string $tool, int $startedAt, string $message): ResponseFactory
+    {
+        app(McpTelemetry::class)->record($tool, 'invalid_request', $startedAt);
+
+        return McpErrorResponse::error($message, 'invalid_request');
     }
 
     /**

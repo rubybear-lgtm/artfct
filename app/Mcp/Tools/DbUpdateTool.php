@@ -60,6 +60,11 @@ final class DbUpdateTool extends DatabaseTool
             'if_version' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        $refusal = $this->postDetailsRefusal($validated['collection'], $validated['doc_id'], $validated['data'], false);
+        if ($refusal !== null) {
+            return $this->refuseInvalidWrite('db_update', $startedAt, $refusal);
+        }
+
         return $this->send('db_update', $startedAt, 'PATCH', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,
         ], $validated['data']);
