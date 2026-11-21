@@ -1,6 +1,6 @@
 # Spec 31: Official deck-stage HTML starter (RUB-558)
 
-**Track:** Official artifact types (RUB-551 epic) · **Depends on:** 26 (publish contract validator, RUB-574) · **Blocks:** RUB-555 (deck skill), RUB-561 and RUB-562 (export clients of the bridge), RUB-571 · **Related:** RUB-444, RUB-445, spec 30 (doc starter, same bridge envelope)
+**Track:** Official artifact types (RUB-551 epic) · **Depends on:** 26 (publish contract validator, RUB-574) · **Blocks:** RUB-555 (deck skill), RUB-561 (export client of the bridge; RUB-562 was removed 2026-11-21), RUB-571 · **Related:** RUB-444, RUB-445, spec 30 (doc starter, same bridge envelope)
 
 This page is both the spec and the plan. It is one combined page because the issue is size M.
 
@@ -14,7 +14,7 @@ The starter also has an export bridge. PDF (RUB-561) and PowerPoint (RUB-562) ex
 
 **2026-11-21:** the PowerPoint export (RUB-562) was removed, and the bridge's `capture` command and the vendored `capture.js` went with it. The bridge keeps `ready`, `describe` and `goTo`. Decks present through the viewer's Present button and the starter's `F` key instead.
 
-Out of scope: the deck skill text and the removal of the old template (RUB-555), PDF and PowerPoint writers (RUB-561, RUB-562), speaker view, animations, and PNG capture.
+Out of scope: the deck skill text and the removal of the old template (RUB-555), the PDF writer (RUB-561) and the PowerPoint writer (RUB-562, since removed), speaker view, animations, and PNG capture.
 
 ## Decisions this spec applies (epic RUB-551)
 

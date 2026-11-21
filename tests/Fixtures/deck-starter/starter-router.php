@@ -15,15 +15,6 @@ $isImagesFixture = $path === '/images-fixture.html';
 $root = $isImagesFixture ? __DIR__ : realpath(getenv('DECK_STARTER_DIR'));
 $file = realpath(($isImagesFixture ? __DIR__ : (string) getenv('DECK_STARTER_DIR')).$path);
 
-// DECK_STARTER_OVERLAY (RUB-562): a test-only folder whose files win over the bundle.
-$overlayRoot = realpath((string) getenv('DECK_STARTER_OVERLAY'));
-$overlayFile = $overlayRoot === false ? false : realpath($overlayRoot.$path);
-
-if ($overlayFile !== false && str_starts_with($overlayFile, $overlayRoot.DIRECTORY_SEPARATOR) && is_file($overlayFile)) {
-    $root = $overlayRoot;
-    $file = $overlayFile;
-}
-
 if ($file === false || $root === false || ! str_starts_with($file, $root.DIRECTORY_SEPARATOR) || ! is_file($file)) {
     http_response_code(404);
 
