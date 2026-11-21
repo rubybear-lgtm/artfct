@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseArgs, runStagingAcceptance } from './accept.mjs';
+import {
+    fetchStagingDeployments,
+    parseArgs,
+    runStagingAcceptance,
+} from './accept.mjs';
 
 test('accept refuses production and preview targets before any SHA work', async () => {
     for (const baseUrl of [
@@ -94,4 +98,104 @@ test('parseArgs defaults to staging and read-only', () => {
     assert.equal(args.baseUrl, 'https://staging.artfct.dev');
     assert.equal(args.authorizeMutations, false);
     assert.equal(args.mutating, false);
+});
+
+test('fetchStagingDeployments lists deployments at the top level and keeps the newest per service', async () => {
+    /** @type {string | undefined} */
+    let sentQuery;
+    const fetchImpl = async (_url, init) => {
+        sentQuery = JSON.parse(init.body).query;
+
+        return {
+            ok: true,
+            json: async () => ({
+                data: {
+                    project: {
+                        services: {
+                            edges: [
+                                {
+                                    node: {
+                                        id: 'svc-web',
+                                        name: 'staging-web',
+                                    },
+                                },
+                                {
+                                    node: {
+                                        id: 'svc-queue',
+                                        name: 'staging-queue',
+                                    },
+                                },
+                                { node: { id: 'svc-idle', name: 'Postgres' } },
+                            ],
+                        },
+                    },
+                    deployments: {
+                        edges: [
+                            {
+                                node: {
+                                    id: 'd1',
+                                    serviceId: 'svc-web',
+                                    status: 'FAILED',
+                                    createdAt: '2026-11-21T07:21:00Z',
+                                    meta: { commitHash: 'old' },
+                                },
+                            },
+                            {
+                                node: {
+                                    id: 'd2',
+                                    serviceId: 'svc-web',
+                                    status: 'SUCCESS',
+                                    createdAt: '2026-11-21T07:41:00Z',
+                                    meta: { commitHash: 'new' },
+                                },
+                            },
+                            {
+                                node: {
+                                    id: 'd3',
+                                    serviceId: 'svc-queue',
+                                    status: 'SUCCESS',
+                                    createdAt: '2026-11-21T07:41:00Z',
+                                    meta: { commitHash: 'new' },
+                                },
+                            },
+                            {
+                                // Older and listed after the newer one: neither "first wins" nor "last wins" passes.
+                                node: {
+                                    id: 'd4',
+                                    serviceId: 'svc-queue',
+                                    status: 'FAILED',
+                                    createdAt: '2026-11-21T07:21:00Z',
+                                    meta: { commitHash: 'old' },
+                                },
+                            },
+                        ],
+                    },
+                },
+            }),
+        };
+    };
+
+    const deployments = await fetchStagingDeployments({
+        token: 't',
+        fetchImpl,
+    });
+
+    assert.deepEqual(deployments, [
+        {
+            serviceName: 'staging-web',
+            status: 'SUCCESS',
+            meta: { commitHash: 'new' },
+        },
+        {
+            serviceName: 'staging-queue',
+            status: 'SUCCESS',
+            meta: { commitHash: 'new' },
+        },
+    ]);
+    // Railway rejects `input` on Service.deployments with HTTP 400 (GRAPHQL_VALIDATION_FAILED).
+    assert.doesNotMatch(sentQuery ?? '', /name\s+deployments\s*\(/);
+    assert.match(
+        sentQuery ?? '',
+        /deployments\(\s*first: 50\s*input: \{ projectId: \$projectId, environmentId: \$environmentId \}/,
+    );
 });
