@@ -1,0 +1,292 @@
+/* Artfct doc starter (doc@1). All chrome lives here. Override the --doc-* tokens to re-brand. */
+
+:root {
+  --doc-paper: #fffdf9;
+  --doc-ink: #1f1f1d;
+  --doc-muted: #5f5d57;
+  --doc-rule: #dedad2;
+  --doc-accent: #3d3d3a;
+  --doc-font: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --doc-serif: Georgia, "Times New Roman", serif;
+  --doc-page-margin: 0.75in;
+  --doc-body-size: 11pt;
+  --doc-gap: 0.6em;
+  --doc-column-gap: 0.3in;
+}
+
+@page {
+  size: Letter;
+  margin: var(--doc-page-margin);
+}
+
+@page doc-letter {
+  size: Letter;
+  margin: var(--doc-page-margin);
+}
+
+@page doc-a4 {
+  size: A4;
+  margin: var(--doc-page-margin);
+}
+
+html {
+  background: #ece9e3;
+}
+
+body {
+  margin: 0;
+  background: #ece9e3;
+  color: var(--doc-ink);
+  font-family: var(--doc-font);
+  font-size: var(--doc-body-size);
+  line-height: 1.5;
+  orphans: 3;
+  widows: 3;
+}
+
+/* One sheet is one printed page. Letter is the default; A4 uses the named page. */
+.sheet {
+  box-sizing: border-box;
+  width: 8.5in;
+  min-height: 11in;
+  margin: 0.4in auto;
+  padding: var(--doc-page-margin);
+  background: var(--doc-paper);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  page: doc-letter;
+}
+
+html.sheet-a4 .sheet {
+  width: 210mm;
+  min-height: 297mm;
+  page: doc-a4;
+}
+
+/* Fixed sheet: exactly one page; overflow is clipped, never reflowed. */
+.sheet--fixed {
+  height: 11in;
+  overflow: hidden;
+}
+
+html.sheet-a4 .sheet--fixed {
+  height: 297mm;
+}
+
+.doc-title h1 {
+  margin: 0 0 0.25em;
+  font-family: var(--doc-serif);
+  font-size: 24pt;
+  font-weight: 600;
+  line-height: 1.15;
+  break-after: avoid;
+}
+
+.doc-kicker {
+  margin: 0 0 0.4em;
+  color: var(--doc-muted);
+  font-size: 9pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.doc-byline {
+  margin: 0 0 1.2em;
+  color: var(--doc-muted);
+  font-size: 10pt;
+  padding-bottom: 0.8em;
+  border-bottom: 1px solid var(--doc-rule);
+}
+
+.doc-body p,
+.doc-body li {
+  margin: 0 0 var(--doc-gap);
+}
+
+.doc-body h2 {
+  margin: 1.2em 0 0.4em;
+  font-family: var(--doc-serif);
+  font-size: 15pt;
+  break-after: avoid;
+}
+
+/* Multi-column text uses real CSS columns. Spanning headings opt out with column-span. */
+.doc-body.is-columns {
+  column-count: 2;
+  column-gap: var(--doc-column-gap);
+}
+
+.doc-body .span-all {
+  column-span: all;
+}
+
+/* Long tables repeat their header on every printed page. */
+.doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+}
+
+.doc-body thead {
+  display: table-header-group;
+}
+
+.doc-body th,
+.doc-body td {
+  padding: 0.35em 0.5em;
+  border-bottom: 1px solid var(--doc-rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-body img,
+.doc-body figure {
+  max-width: 100%;
+  break-inside: avoid;
+}
+
+/* Callouts, cards, figures and code blocks must each be shorter than a page. */
+.doc-body .callout,
+.doc-body pre,
+.doc-body figure {
+  break-inside: avoid;
+}
+
+.doc-body .callout {
+  margin: 0.8em 0;
+  padding: 0.6em 0.8em;
+  border-left: 3px solid var(--doc-accent);
+  background: #f5f3ee;
+}
+
+.doc-body pre {
+  margin: 0.8em 0;
+  padding: 0.6em 0.8em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: #f5f3ee;
+  font-size: 9pt;
+}
+
+.doc-body .page-start {
+  break-before: page;
+}
+
+.doc-footer {
+  margin-top: 1.5em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--doc-rule);
+  color: var(--doc-muted);
+  font-size: 9pt;
+}
+
+@media print {
+  html,
+  body {
+    background: none;
+  }
+
+  .sheet {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    background: none;
+  }
+
+  .sheet--fixed {
+    height: calc(11in - 2 * var(--doc-page-margin));
+    overflow: hidden;
+  }
+
+  html.sheet-a4 .sheet--fixed {
+    height: calc(297mm - 2 * var(--doc-page-margin));
+  }
+}
+
+/* One-pager chrome: the image slot, the edit panel and the declaration error. */
+.doc-logo {
+  display: inline-block;
+  min-height: 0.5in;
+  color: var(--doc-muted);
+  font-size: 9pt;
+}
+
+.doc-logo img {
+  display: block;
+  max-width: 2.5in;
+  max-height: 0.6in;
+}
+
+.tweak-panel {
+  box-sizing: border-box;
+  max-width: 8.5in;
+  margin: 1em auto;
+  padding: 1em;
+  background: var(--doc-paper);
+  border: 1px solid var(--doc-rule);
+  font-family: var(--doc-font);
+  font-size: 10pt;
+}
+
+.tweak-panel h2 {
+  margin: 0 0 0.6em;
+  font-size: 12pt;
+}
+
+.tweak-field {
+  margin: 0 0 0.7em;
+}
+
+.tweak-field label {
+  display: block;
+  margin-bottom: 0.25em;
+  font-weight: 600;
+}
+
+.tweak-field input[type="text"],
+.tweak-field select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.4em;
+  font: inherit;
+  border: 1px solid var(--doc-rule);
+  background: #fff;
+}
+
+.tweak-field-error,
+.tweak-error {
+  margin: 0.3em 0 0;
+  color: #701a24;
+  font-size: 9pt;
+}
+
+.tweak-error {
+  max-width: 8.5in;
+  margin: 1em auto;
+  padding: 0.6em 0.8em;
+  border: 1px solid #701a24;
+  background: #fff;
+}
+
+.tweak-panel button {
+  padding: 0.45em 1em;
+  font: inherit;
+  color: var(--doc-paper);
+  background: var(--doc-ink);
+  border: 1px solid var(--doc-ink);
+  cursor: pointer;
+}
+
+.tweak-status {
+  margin: 0.6em 0 0;
+  color: var(--doc-muted);
+  font-size: 9pt;
+}
+
+@media print {
+  .tweak-panel,
+  .tweak-error {
+    display: none;
+  }
+}

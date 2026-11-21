@@ -1,0 +1,5 @@
+[
+  { "name": "customer_name", "label": "Customer name", "type": "text", "max": 80, "default": "Customer name" },
+  { "name": "tier", "label": "Tier", "type": "choice", "choices": ["Tier one", "Tier two", "Tier three"], "default": "Tier one" },
+  { "name": "logo_path", "label": "Logo file in this bundle", "type": "image", "default": "" }
+]

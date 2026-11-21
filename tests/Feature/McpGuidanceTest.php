@@ -991,3 +991,31 @@ test('each official skill has a Use when description and a name that matches its
     expect($content)->toStartWith("---\nname: {$skill}\n")
         ->and($content)->toMatch('/^description: "?Use when/m');
 })->with(['artfct', 'artfct-publish', 'artfct-search', 'artfct-data', 'artfct-collaborate', 'onboard']);
+
+/*
+ * RUB-560 / spec 39: the one-pager starter and its declared tweak fields.
+ */
+test('the team doc guidance names the one-pager starter and its three fields', function () {
+    $text = teamDocGuidance();
+
+    foreach (['one-pager-starter', 'index.html', 'doc.css', 'tweaks.js', 'tweaks.json', 'customer_name', 'tier', 'logo_path'] as $name) {
+        expect($text)->toContain($name);
+    }
+});
+
+test('the team doc guidance names the tweaks collection and the db argument', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('`tweaks`')
+        ->toContain('`fields`')
+        ->toContain('"collections": {"tweaks": {"index": "customer_name"}}');
+});
+
+test('the one-pager guidance states the tweak constraints and that the server does not refuse them', function () {
+    $text = teamDocGuidance();
+
+    expect($text)->toContain('80 characters')
+        ->toContain('choices')
+        ->toContain('#')
+        ->toContain('server will not refuse');
+});
