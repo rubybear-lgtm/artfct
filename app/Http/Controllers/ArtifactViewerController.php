@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Models\ArtifactComment;
 use App\Models\Team;
@@ -16,6 +17,9 @@ use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\HandoffPackBuilder;
 use App\Services\Artifacts\HandoffPackException;
+use App\Services\Artifacts\PptxCaptureValidator;
+use App\Services\Artifacts\PptxExporter;
+use App\Services\Artifacts\PptxExportException;
 use App\Services\Artifacts\StandaloneBundlePacker;
 use App\Services\Artifacts\StandalonePackException;
 use App\Services\Governance\AuditLogger;
@@ -260,6 +264,9 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
+            'pptxExportUrl' => (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value
+                ? route('artifacts.export.pptx', ['artifactId' => $artifactId])
+                : null,
             'comments' => ArtifactComment::query()
                 ->where('team_id', $team->id)
                 ->where('artifact_id', $artifactId)
@@ -351,6 +358,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
+            'pptxExportUrl' => null,
         ];
 
         // The public read names no per-version history, only how many there
@@ -617,6 +625,62 @@ final class ArtifactViewerController extends Controller
         $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'-handoff.zip';
 
         return response()->download($path, $filename)->deleteFileAfterSend();
+    }
+
+    /**
+     * The deck as a PowerPoint file of full-bleed slide pictures (RUB-562, spec
+     * 46). The browser posts one PNG per slide and the server checks them before
+     * it writes the file. Visibility is decided as for `download`, and a
+     * non-deck artifact is refused with 422.
+     */
+    public function exportPptx(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        ArtifactContentSource $content,
+        ArtifactTypeResolver $types,
+        PptxCaptureValidator $captures,
+        PptxExporter $exporter,
+    ): BinaryFileResponse|JsonResponse {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        Gate::authorize('view', $team);
+
+        $entry = $content->fetch($team->slug, $artifactId);
+
+        abort_if($entry === null, 404);
+
+        abort_unless(
+            ArtifactVisibility::canView($entry['sharing'] ?? null, $entry['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
+
+        if (($types->typesFor($team, [$artifactId])[$artifactId] ?? null) !== ArtifactType::SlideDeck->value) {
+            return response()->json([
+                'message' => 'Only a slide deck exports to PowerPoint.',
+                'code' => 'not_a_slide_deck',
+            ], 422);
+        }
+
+        try {
+            $pngs = $captures->decode($request->input('captures'), strlen($request->getContent()));
+        } catch (PptxExportException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);
+        }
+
+        $path = $exporter->build($pngs, array_fill(0, count($pngs), route('artifacts.show', $artifactId)));
+
+        $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'.pptx';
+
+        return response()->download($path, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ])->deleteFileAfterSend();
     }
 
     /**

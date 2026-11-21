@@ -48,6 +48,7 @@
           return;
         }
         send('pre', 'describe');
+        send('preCapture', 'capture', { index: 0 });
         await wait(300);
         sibling.contentWindow.postMessage({ go: true, starterOrigin: starterOrigin }, location.origin);
         await wait(300);
@@ -58,6 +59,9 @@
         send('goto2', 'goTo', { index: 2 });
         await wait(300);
         send('goto9', 'goTo', { index: 9 });
+        send('capture1', 'capture', { index: 1 });
+        send('captureBad', 'capture', { index: 9 });
+        for (var waited = 0; waited < 60 && !window.results.replies.captureBad; waited++) { await wait(250); }
         send('gotoNeg', 'goTo', { index: -1 });
         send('gotoFrac', 'goTo', { index: 1.5 });
         await wait(300);

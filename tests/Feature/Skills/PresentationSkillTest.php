@@ -147,11 +147,12 @@ test('the skill names none of the old template, its placeholders or Solarized', 
         ->and($skill)->toContain('--deck-');
 });
 
-test('the skill keeps the PDF and PowerPoint refusals unchanged', function () {
+test('the skill keeps the PDF refusal and points PowerPoint requests to the Download PowerPoint action', function () {
     $skill = presentationSkill();
 
     expect($skill)->toContain('- User wants a PDF — build a print-optimized HTML page with `@media print` styles instead, or note that `Ctrl+P → Save as PDF` works from the deployed URL')
-        ->and($skill)->toContain('- User wants Keynote/PowerPoint format — artfct only hosts HTML; suggest they copy the outline into their preferred tool');
+        ->and($skill)->toContain('- User wants a PowerPoint file — use the Download PowerPoint action on the deck\'s page. It saves one full-bleed image per slide, so the text is not editable; native, editable PowerPoint is not offered')
+        ->and($skill)->not->toContain('artfct only hosts HTML; suggest they copy the outline');
 });
 
 test('the skill names the deck starter, slide_deck, search_artifacts and base_version', function () {
