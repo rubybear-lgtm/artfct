@@ -185,3 +185,15 @@ test('every --deck and --type token the skill names is declared in deck.css', fu
         expect(str_contains($css, $token.':'))->toBeTrue("the skill names [{$token}], which deck.css does not declare");
     }
 });
+
+test('the skill lists the three demo frames in its resources section, one line each', function () {
+    $skill = presentationSkill();
+    $resources = substr($skill, (int) strpos($skill, '## Additional Resources'));
+    $lines = array_filter(explode("\n", $resources), fn (string $line): bool => str_starts_with($line, '- '));
+
+    foreach (['browser', 'phone', 'desktop'] as $frame) {
+        $matching = array_filter($lines, fn (string $line): bool => str_contains($line, "assets/frames/{$frame}.css"));
+
+        expect($matching)->toHaveCount(1, "the resources section must list assets/frames/{$frame}.css on one line");
+    }
+});

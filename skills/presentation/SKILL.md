@@ -101,3 +101,6 @@ The counter (`1 / N`) updates when slides are added or removed. A deep link such
 
 - **`assets/deck-starter/`** — the official deck starter: `index.html` (the only file you fill), `deck.css` and `app.js` (chrome; copy unchanged)
 - **`references/presentation-libraries.md`** — Reveal.js bundle setup for animations and fragments
+- **`assets/frames/browser.css`** — CSS-only browser window frame around a screenshot in a `<figure class="frame-slot">`; sample in `assets/frames/index.html`
+- **`assets/frames/phone.css`** — CSS-only phone frame around a screenshot in a `<figure class="frame-slot">`
+- **`assets/frames/desktop.css`** — CSS-only desktop monitor frame with stand around a screenshot in a `<figure class="frame-slot">`
