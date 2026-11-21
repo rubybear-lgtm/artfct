@@ -328,6 +328,70 @@ test('the starter files the team doc guidance names exist', function () {
     expect(teamDocGuidance())->toContain('skills/artfct-team-doc/assets/doc-starter/');
 });
 
+/*
+ * RUB-577 / spec 37: the options post is an "Options" section of the context-post
+ * guidance. These tests read inside that section only, so the page-wide words
+ * "superseded" and "replaced_by" from the decision flow cannot satisfy them.
+ */
+function optionsGuidance(): string
+{
+    $text = contextPostGuidance();
+    $start = strpos($text, "\n## Options\n");
+
+    if ($start === false) {
+        return '';
+    }
+
+    $end = strpos($text, "\n## ", $start + 1);
+
+    return substr($text, $start, $end === false ? null : $end - $start);
+}
+
+test('the options section names the option markup, anchors and round order', function () {
+    expect(optionsGuidance())->toContain('<section class="option" id="option-a">')
+        ->toContain('id="option-b"')
+        ->toContain('option-a')
+        ->toContain('newest')
+        ->toContain('never renumbered');
+});
+
+test('the options section closes the loop in order', function () {
+    $text = optionsGuidance();
+
+    $markers = [
+        'Publish the decision post',
+        '`db_update`',
+        '`status: "superseded"`',
+        '`replaced_by`',
+        'Republish the options post',
+    ];
+
+    $positions = array_map(fn (string $marker): int|false => strpos($text, $marker), $markers);
+
+    expect(in_array(false, $positions, true))->toBeFalse();
+    expect($positions)->toBe(collect($positions)->sort()->values()->all());
+});
+
+test('the options section refuses to renumber an option', function () {
+    expect(optionsGuidance())->toContain('Ids and letters are never renumbered');
+});
+
+test('the options section refuses to edit a superseded options post', function () {
+    expect(optionsGuidance())->toContain('A superseded options post is never edited');
+});
+
+test('the options section asks for a missing label and never invents one', function () {
+    expect(optionsGuidance())->toContain('Ask for a missing label or detail; never invent one');
+});
+
+test('the options section stops when the decision names an unknown option', function () {
+    expect(optionsGuidance())->toContain('names an option id that is not on the post');
+});
+
+test('the options section limits a round to two or three alternatives', function () {
+    expect(optionsGuidance())->toContain('Two or three alternatives per round');
+});
+
 function onboardingGuidance(?string $host): array
 {
     $arguments = ['topic' => 'onboarding'] + ($host === null ? [] : ['host' => $host]);
