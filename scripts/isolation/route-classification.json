@@ -16,6 +16,7 @@
         "PATCH a/{artifactId}/sharing": "user",
         "POST a/{artifactId}/comments": "user",
         "PATCH a/{artifactId}/comments/{commentId}": "user",
+        "POST a/{artifactId}/export/pptx": "user",
         "GET api/collections": "token",
         "POST api/collections": "token",
         "POST api/collections/{collection}/artifacts": "token",
