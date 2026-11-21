@@ -418,3 +418,45 @@ test('a slide deck shows the Download PowerPoint action beside Download, and a d
         ->assertVisible('@download-artifact')
         ->assertMissing('@download-powerpoint');
 });
+
+test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Fragment', 'viewer-fragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    // `visit()` drops a URL fragment, so load the artifact with its fragment
+    // from another page. The fragment is added after mount, so give the effect
+    // a moment to run.
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertScript('location.hash', '#option-b')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')")
+        // The token stays on the src, ahead of the fragment.
+        ->assertScript("{$frameSrc}.includes('token=')")
+        ->assertScript("{$frameSrc}.split('#').length === 2");
+});
+
+test('a_viewer_link_without_a_fragment_leaves_the_frame_src_untouched', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer No Fragment', 'viewer-nofragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->wait(0.5)
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+});

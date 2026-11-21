@@ -202,6 +202,27 @@ export default function ArtifactShow({
     const [newerAvailable, setNewerAvailable] = useState(false);
     const knownRef = useRef(false);
 
+    /*
+     * A link to one part of an artifact is the viewer URL plus a fragment,
+     * for example `/a/{id}#option-b`. The fragment never reaches the artifact
+     * on its own, because the page runs in this sandboxed frame on another
+     * origin, so it is read once here and added to the frame's src. It is read
+     * after mount, not during render: the server has no `window`, and a
+     * different value on the first client render would not match the server
+     * markup, so the src is set on the element directly. It runs again only
+     * when the frame URL changes, never on a hash change: resetting the src
+     * later could reload the page on an expired ?token=.
+     */
+    const frameRef = useRef<HTMLIFrameElement>(null);
+
+    useEffect(() => {
+        const hash = window.location.hash;
+
+        if (frameRef.current !== null && hash.length > 1) {
+            frameRef.current.src = `${frameUrl.split('#')[0]}${hash}`;
+        }
+    }, [frameUrl]);
+
     useEffect(() => {
         // The rendered props are the baseline: a verdict that differs from
         // them means the artifact changed since this page was served.
@@ -546,6 +567,7 @@ export default function ArtifactShow({
                     </div>
                 ) : (
                     <iframe
+                        ref={frameRef}
                         src={frameUrl}
                         title={name}
                         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
