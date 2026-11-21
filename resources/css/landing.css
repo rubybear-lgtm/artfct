@@ -1401,6 +1401,18 @@
     }
 
     @media (max-width: 560px) {
+        & .frame > nav:not(.sitemap) {
+            gap: 8px;
+        }
+
+        & .navright {
+            gap: 8px;
+        }
+
+        & .navright > .btn {
+            display: none;
+        }
+
         & .cta .btn {
             width: 100%;
         }

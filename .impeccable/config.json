@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "instrument sans",
+        "createdAt": "2026-11-21T20:09:02.960Z",
+        "reason": "Project design context specifies Instrument Sans for UI text; existing free tool typography is intentional."
+      }
+    ]
+  }
+}
