@@ -460,3 +460,27 @@ test('a_viewer_link_without_a_fragment_leaves_the_frame_src_untouched', function
         ->assertScript("{$frameSrc}.includes('#') === false")
         ->assertScript("{$frameSrc}.includes('token=')");
 });
+
+test('a_viewer_link_with_an_unsafe_fragment_does_not_pass_it_to_the_artifact_frame', function (string $fragment) {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Unsafe Fragment', 'viewer-unsafe@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl().$fragment."')");
+
+    $page->wait(1)
+        ->assertVisible('@artifact-frame')
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+})->with([
+    'encoded markup' => ['#%3Cimg%20src%3Dx%3E'],
+    'script url' => ['#javascript:alert(1)'],
+    'path-like' => ['#/../../secret'],
+    'a bare hash' => ['#'],
+    'over 128 characters' => ['#'.str_repeat('a', 129)],
+]);

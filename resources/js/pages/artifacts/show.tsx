@@ -148,6 +148,9 @@ interface Freshness {
     revoked: boolean;
 }
 
+/** The only fragments forwarded to the artifact frame: a plain anchor id. */
+const FRAME_FRAGMENT = /^#[A-Za-z0-9_.:-]{1,128}$/;
+
 /** 45s between polls, ±10s so a fleet of open tabs does not poll in lockstep. */
 const FRESHNESS_INTERVAL_MS = 45_000;
 const FRESHNESS_JITTER_MS = 10_000;
@@ -212,13 +215,18 @@ export default function ArtifactShow({
      * markup, so the src is set on the element directly. It runs again only
      * when the frame URL changes, never on a hash change: resetting the src
      * later could reload the page on an expired ?token=.
+     *
+     * Anyone can put a fragment in a link, and the artifact page can read it
+     * (and reaches its own data with the viewer's token), so only a plain
+     * anchor id is passed on: letters, digits and `_ . : -`, at most 128.
+     * Anything else is ignored and the artifact opens at the top, as before.
      */
     const frameRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
         const hash = window.location.hash;
 
-        if (frameRef.current !== null && hash.length > 1) {
+        if (frameRef.current !== null && FRAME_FRAGMENT.test(hash)) {
             frameRef.current.src = `${frameUrl.split('#')[0]}${hash}`;
         }
     }, [frameUrl]);
