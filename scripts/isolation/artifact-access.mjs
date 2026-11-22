@@ -19,6 +19,7 @@
 // result. Nothing here depends on a value from another run: everything derives
 // from `run`.
 import { createHash } from 'node:crypto';
+import http from 'node:http';
 import {
     Session,
     authed,
@@ -68,6 +69,34 @@ const addMember = (email, slug, role) =>
     `);
 
 const digest = (text) => createHash('sha256').update(text).digest('hex');
+
+function readFrame(frameUrl) {
+    const frame = new URL(frameUrl);
+    const target = new URL(worker);
+
+    return new Promise((resolve, reject) => {
+        const request = http.get(
+            {
+                hostname: target.hostname,
+                port: target.port,
+                path: `${frame.pathname}${frame.search}`,
+                headers: { Host: frame.host },
+            },
+            (response) => {
+                const chunks = [];
+                response.on('data', (chunk) => chunks.push(chunk));
+                response.on('end', () =>
+                    resolve({
+                        status: response.statusCode,
+                        body: Buffer.concat(chunks).toString(),
+                    }),
+                );
+                response.on('error', reject);
+            },
+        );
+        request.on('error', reject);
+    });
+}
 
 /** The data-page props of an Inertia HTML response, or null for anything else. */
 function pageProps(text) {
@@ -1004,6 +1033,71 @@ export async function artifactAccess(world) {
                         : `${list.length} change(s), first: ${list[0]}`,
                 ok: list.length === 0,
             });
+        }
+    }
+
+    // Exercise the web sharing endpoint against the real Worker, then open
+    // the same link as a different member and as a signed-out visitor.
+    const transition = artifacts.public;
+
+    for (const level of ['team', 'private', 'public']) {
+        const changed = await actors.owner.session.request(
+            `/a/${transition.id}/sharing`,
+            { method: 'PATCH', json: { sharing: level } },
+        );
+        check(
+            `owner submits ${level} sharing through Laravel`,
+            [302, 303].includes(changed.status),
+            `status ${changed.status}`,
+        );
+
+        const metadata = await fetch(
+            `${worker}/v1/artifacts/${transition.id}`,
+            {
+                headers: authed(actors.owner.token),
+            },
+        );
+        const body = metadata.ok ? await metadata.json() : {};
+        check(
+            `Worker records ${level} sharing after the Laravel request`,
+            metadata.ok && body.sharing === level,
+            `status ${metadata.status}, sharing ${body.sharing}`,
+        );
+
+        for (const key of ['owner', 'member', 'anonymous']) {
+            const visible =
+                key === 'owner' ||
+                level === 'public' ||
+                (key === 'member' && level === 'team');
+            const viewer = await routes.viewer(actors[key], transition.id);
+            const props = pageProps(viewer.text);
+            const allowed =
+                viewer.status === 200 &&
+                props?.artifact?.id === transition.id &&
+                props.artifact.sharing === level &&
+                Boolean(props.frameUrl);
+            const denied =
+                key === 'anonymous'
+                    ? [302, 303].includes(viewer.status) &&
+                      viewer.location.endsWith('/login')
+                    : viewer.status === 404;
+            check(
+                `${key} ${visible ? 'opens' : 'cannot open'} the ${level} viewer after the change`,
+                visible
+                    ? allowed
+                    : denied && !viewer.text.includes(transition.title),
+                `status ${viewer.status}, sharing ${props?.artifact?.sharing}`,
+            );
+
+            if (visible && allowed) {
+                const content = await readFrame(props.frameUrl);
+                check(
+                    `${key} receives the ${level} artifact content from the Worker`,
+                    content.status === 200 &&
+                        content.body.includes(transition.marker),
+                    `status ${content.status}`,
+                );
+            }
         }
     }
 

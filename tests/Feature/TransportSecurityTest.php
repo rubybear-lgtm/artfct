@@ -24,6 +24,7 @@ test('an https response in production carries Strict-Transport-Security', functi
 
 test('an http response in production carries no Strict-Transport-Security', function () {
     app()->detectEnvironment(fn (): string => 'production');
+    config(['app.url' => 'http://artfct.example']);
 
     test()->get('http://artfct.example/up')
         ->assertOk()
