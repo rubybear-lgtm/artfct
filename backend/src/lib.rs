@@ -1,4 +1,3 @@
-use base64::Engine;
 use chrono::{SecondsFormat, Utc};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
@@ -18,7 +17,7 @@ mod artifact_db_routes;
 mod artifact_origin;
 mod artifact_routes;
 mod auth;
-mod ephemeral_routes;
+mod entry_routes;
 mod governance_routes;
 mod markdown;
 mod org_admin;
@@ -27,10 +26,7 @@ mod sharing;
 mod validation;
 mod version_routes;
 
-use preview::{
-    build_preview_response, default_preview_blurred, expired_response, html_error,
-    normalize_metadata_value, not_found_response, render_preview_shell,
-};
+use preview::{expired_response, html_error, not_found_response};
 
 use artifact_origin::{
     artifact_origin_suffix, artifact_token_secret, isolated_access_check,
@@ -48,21 +44,19 @@ use artifact_routes::{
     ArtifactLookupDecision, ArtifactOrgRow,
 };
 use auth::{
-    authorization_matches, check_and_increment_ip_rate_limit, check_and_increment_rate_limit,
-    connecting_ip, denylist_kv_key, require_org_scope, resolve_tenant_org, Jwks,
+    authorization_matches, check_and_increment_rate_limit, denylist_kv_key, require_org_scope,
+    resolve_tenant_org, Jwks,
 };
 #[cfg(test)]
 use auth::{
     bearer_token, credential_has_scope, decode_org_jwt, denylist_hit, extract_bearer_token,
-    parse_jwks, rate_limit_allows, rate_limit_kv_key_for_ip, rate_limit_kv_key_for_token,
-    resolve_org_credential, CredentialError, JwkKey, OrgCredential, OrgJwtClaims,
+    parse_jwks, rate_limit_allows, rate_limit_kv_key_for_token, resolve_org_credential,
+    CredentialError, JwkKey, OrgCredential, OrgJwtClaims,
 };
-#[cfg(test)]
-use ephemeral_routes::{build_create_artifact_response, build_update_artifact_response};
-use ephemeral_routes::{
+use entry_routes::{
     create_artifact, emit_artifact_created, emit_artifact_deleted, emit_artifact_sharing_changed,
-    emit_artifact_version_created, emit_artifact_viewed, resolve_artifact, update_artifact,
-    PermanentHashRow, PresenceRow,
+    emit_artifact_version_created, emit_artifact_viewed, resolve_artifact, PermanentHashRow,
+    PresenceRow,
 };
 use governance_routes::governance_route;
 use org_admin::{
@@ -77,16 +71,13 @@ use org_admin::{
 };
 use sharing::{EditAccess, Sharing};
 use validation::{
-    clipped_text, coalesce_clipped_text, ephemeral_manifest_is_invalid, is_valid_relative_path,
-    missing_manifest_files, upload_expired, uploaded_file_error, validate_permanent_manifest,
+    clipped_text, coalesce_clipped_text, is_valid_relative_path, missing_manifest_files,
+    upload_expired, uploaded_file_error, validate_permanent_manifest,
 };
 use version_routes::{get_version, parse_version_path, post_version};
 
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
-const DEFAULT_MAX_HTML_BYTES: usize = 1024 * 1024;
-const DEFAULT_TTL_MINUTES: u64 = 5 * 24 * 60;
-const MAX_TTL_MINUTES: u64 = 365 * 24 * 60;
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
 const ARTIFACT_ID_LENGTH: usize = 10;
 const MAX_BUNDLE_BYTES: usize = 50 * 1024 * 1024;
@@ -94,9 +85,6 @@ const MAX_FILE_BYTES: usize = 25 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 500;
 const MAX_PATH_BYTES: usize = 255;
 const NOT_IMPLEMENTED_STATUS: u16 = 501;
-const DEFAULT_ARTIFACT_TITLE: &str = "Encrypted artifact";
-const DEFAULT_ARTIFACT_DESCRIPTION: &str = "Encrypted HTML preview on artfct.";
-const DEFAULT_ARTIFACT_THUMBNAIL: &str = "https://artfct.dev/og-image.svg";
 const PREVIEW_CONTENT_SECURITY_POLICY: &str = "default-src 'self' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; style-src 'unsafe-inline' https:; font-src https: data:; img-src 'self' data: blob: https:; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads;";
 /// Default wildcard suffix for the per-artifact isolated origin scheme:
 /// `<tenant-slug>--<artifact-id>.artfct.dev`. One wildcard level, covered by
@@ -140,48 +128,13 @@ const JWKS_KV_KEY: &str = "auth:jwks";
 const DENYLIST_KV_PREFIX: &str = "auth:denylist:";
 /// KV key prefix for the per-token rate-limit counter.
 const RATE_LIMIT_TOKEN_KV_PREFIX: &str = "auth:ratelimit:token:";
-/// KV key prefix for the per-IP rate-limit counter used on the anonymous
-/// ephemeral-create path. Kept separate from the token prefix so the two
-/// limiters can never collide on the same key.
-const RATE_LIMIT_IP_KV_PREFIX: &str = "auth:ratelimit:ip:";
 /// Sliding window, in seconds, for both rate limiters.
 const RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 /// Requests allowed per token per window (spec 07 DoD item 8).
 const RATE_LIMIT_MAX_PER_TOKEN: u32 = 60;
-/// Anonymous create/PATCH requests allowed per IP per window (RUB-463).
-/// Matches the create WAF rule's intended ~60/min budget so `*--prod` /
-/// `*--stg` hosts stay limited even when edge rules are missing or partial.
-const RATE_LIMIT_MAX_PER_IP: u32 = 60;
 /// Token id used for the legacy static `ARTFCT_ORG_TOKEN` credential, which
 /// carries no `jti` of its own.
 const LEGACY_ORG_TOKEN_ID: &str = "legacy-static-org-token";
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct CreateArtifactRequest {
-    body_ciphertext_b64: String,
-    body_iv_b64: String,
-    tier: ArtifactTier,
-    ttl_minutes: Option<u64>,
-    title: Option<String>,
-    description: Option<String>,
-    thumbnail: Option<String>,
-    #[serde(default = "default_preview_blurred")]
-    preview_blurred: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-struct CreateArtifactResponse {
-    id: String,
-    url: String,
-    tier: ArtifactTier,
-    expires_at: String,
-    title: String,
-    description: String,
-    thumbnail: String,
-    preview_blurred: bool,
-}
 
 #[derive(Debug, Serialize)]
 struct PermanentCreateArtifactResponse {
@@ -214,12 +167,6 @@ struct PermanentManifestFile {
     content_type: String,
     size_bytes: usize,
     sha256: String,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateArtifactResponse {
-    id: String,
-    expires_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -309,43 +256,6 @@ struct JsonResponseDefinition {
 }
 
 #[derive(Debug)]
-struct HtmlResponseDefinition {
-    status: u16,
-    body: String,
-    headers: Vec<(&'static str, &'static str)>,
-}
-
-impl HtmlResponseDefinition {
-    fn preview(body: String, status: u16) -> Self {
-        Self {
-            status,
-            body,
-            headers: vec![
-                ("Content-Type", "text/html; charset=utf-8"),
-                ("X-Frame-Options", "DENY"),
-                ("X-Content-Type-Options", "nosniff"),
-                ("Content-Security-Policy", PREVIEW_CONTENT_SECURITY_POLICY),
-                // Ephemeral /p/* previews are share links, not marketing pages
-                // (RUB-513). Keep them out of the search index even when a
-                // crawler ignores robots.txt on the apex.
-                ("X-Robots-Tag", "noindex, nofollow"),
-            ],
-        }
-    }
-
-    fn into_worker_response(self) -> Result<Response> {
-        let headers = Headers::new();
-        for (name, value) in self.headers {
-            headers.set(name, value)?;
-        }
-
-        Ok(Response::from_html(&self.body)?
-            .with_headers(headers)
-            .with_status(self.status))
-    }
-}
-
-#[derive(Debug)]
 struct EmptyResponseDefinition {
     status: u16,
     headers: Vec<(&'static str, &'static str)>,
@@ -416,40 +326,6 @@ enum ArtifactTier {
     Public,
     Secure,
     Private,
-    Ephemeral,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct StoredArtifact {
-    body_ciphertext_b64: String,
-    body_iv_b64: String,
-    tier: ArtifactTier,
-    title: String,
-    description: String,
-    thumbnail: String,
-    preview_blurred: bool,
-    created_at: String,
-    expires_at: String,
-    /// TTL the record slides with, set at create and lowered by anonymous PATCH.
-    /// Absent on records written before it was persisted.
-    #[serde(default)]
-    ttl_minutes: Option<u64>,
-}
-
-/// Written in place of an ephemeral record on delete so a concurrent GET
-/// cannot resurrect it by sliding TTL (RUB-464). Workers KV has no CAS.
-const EPHEMERAL_TOMBSTONE_JSON: &str = r#"{"tombstone":true}"#;
-/// Keep the tombstone at least as long as the longest anonymous TTL.
-const EPHEMERAL_TOMBSTONE_TTL_SECONDS: u64 = MAX_TTL_MINUTES * 60;
-
-/// Whether a KV value is an ephemeral delete tombstone rather than a live
-/// artifact. Pure so unit tests cover it without a live KV binding.
-pub(crate) fn is_ephemeral_tombstone(raw: &str) -> bool {
-    serde_json::from_str::<Value>(raw)
-        .ok()
-        .and_then(|value| value.get("tombstone").and_then(Value::as_bool))
-        == Some(true)
 }
 
 #[event(fetch)]
@@ -509,9 +385,6 @@ pub async fn main(mut req: Request, env: Env, ctx: worker::Context) -> Result<Re
         }
         (Method::Patch, path) if parse_sharing_path(path).is_some() => {
             update_artifact_sharing(path, &mut req, &env, &ctx).await
-        }
-        (Method::Patch, path) if path.starts_with("/v1/artifacts/") => {
-            update_artifact(path, &mut req, &env).await
         }
         (Method::Put, path) if path.starts_with("/v1/artifacts/") && path.contains("/files/") => {
             upload_permanent_file(path, &mut req, &env, &ctx).await
@@ -575,11 +448,6 @@ fn is_valid_artifact_id(id: &str) -> bool {
         || store::is_permanent_id(id)
 }
 
-fn random_artifact_id(length: usize) -> String {
-    let encoded = Uuid::new_v4().simple().to_string();
-    encoded.chars().take(length).collect()
-}
-
 fn env_string(env: &Env, key: &str, default: &str) -> String {
     env.var(key)
         .map(|value| value.to_string())
@@ -588,10 +456,6 @@ fn env_string(env: &Env, key: &str, default: &str) -> String {
 
 fn env_u64(env: &Env, key: &str, default: u64) -> u64 {
     env_string(env, key, "").parse::<u64>().unwrap_or(default)
-}
-
-fn env_usize(env: &Env, key: &str, default: usize) -> usize {
-    env_string(env, key, "").parse::<usize>().unwrap_or(default)
 }
 
 fn json_response<T: Serialize>(value: &T, status: u16) -> Result<Response> {
@@ -769,9 +633,10 @@ mod tests {
         decode_governance_cursor, encode_governance_cursor, governance_authorized,
         parse_governance_path, GovernanceRoute,
     };
-    use crate::preview::{error_html_page, escape_json_script};
+    use crate::preview::error_html_page;
     use crate::sharing::{EditAccess, Sharing, Viewer};
     use crate::validation::{manifest_is_complete, normalized_content_type};
+    use base64::Engine;
 
     #[test]
     fn robots_txt_asks_every_crawler_to_stay_off_worker_hosts() {
@@ -1134,21 +999,6 @@ mod tests {
         &contract["paths"][path][method]["responses"][status]["content"][content_type]["schema"]
     }
 
-    fn stored_artifact() -> StoredArtifact {
-        StoredArtifact {
-            body_ciphertext_b64: "ciphertext".to_string(),
-            body_iv_b64: "nonce".to_string(),
-            tier: ArtifactTier::Ephemeral,
-            title: "Artifact".to_string(),
-            description: "An encrypted artifact".to_string(),
-            thumbnail: "https://artfct.dev/og-image.svg".to_string(),
-            preview_blurred: true,
-            created_at: "2026-09-02T00:00:00Z".to_string(),
-            expires_at: "2026-09-03T00:00:00Z".to_string(),
-            ttl_minutes: None,
-        }
-    }
-
     fn permanent_create_response_fixture() -> serde_json::Value {
         serde_json::to_value(PermanentCreateArtifactResponse {
             id: "permanent1".to_string(),
@@ -1160,27 +1010,6 @@ mod tests {
             missing_files: vec!["a".repeat(64)],
         })
         .expect("permanent create response serializes")
-    }
-
-    #[test]
-    fn create_ephemeral_response_matches_schema() {
-        let response =
-            build_create_artifact_response("abc1234567", "https://artfct.dev", &stored_artifact());
-
-        assert_eq!(response.status, 201);
-        assert_schema_matches("EphemeralArtifactResponse", &response.body);
-        assert_schema_matches("CreateArtifactResponse", &response.body);
-    }
-
-    #[test]
-    fn ephemeral_roundtrip_unchanged() {
-        let stored = stored_artifact();
-        let encoded = serde_json::to_string(&stored).expect("ephemeral artifact serializes");
-        let decoded: StoredArtifact =
-            serde_json::from_str(&encoded).expect("ephemeral artifact round-trips");
-        assert_eq!(decoded.body_ciphertext_b64, stored.body_ciphertext_b64);
-        assert_eq!(decoded.body_iv_b64, stored.body_iv_b64);
-        assert_eq!(decoded.tier, stored.tier);
     }
 
     #[test]
@@ -1441,25 +1270,6 @@ mod tests {
     }
 
     #[test]
-    fn clipped_string_matches_clipped_text_for_deserialized_fields() {
-        use crate::validation::clipped_string;
-        assert_eq!(
-            clipped_string(Some("  Title  ".to_string()), 200),
-            Some("Title".to_string())
-        );
-        assert_eq!(
-            clipped_string(Some("abcdef".to_string()), 3),
-            Some("abc".to_string())
-        );
-        assert_eq!(clipped_string(Some("   ".to_string()), 10), None);
-        assert_eq!(clipped_string(None, 10), None);
-        // Multi-megabyte anonymous metadata must not survive into KV (RUB-465).
-        let oversized = "x".repeat(crate::validation::MAX_TITLE_CHARS + 50);
-        let clipped = clipped_string(Some(oversized), crate::validation::MAX_TITLE_CHARS).unwrap();
-        assert_eq!(clipped.chars().count(), crate::validation::MAX_TITLE_CHARS);
-    }
-
-    #[test]
     fn org_quota_lock_key_cannot_collide_with_a_file_hash() {
         let org = "acme";
         let key = org_quota_lock_key(org);
@@ -1502,12 +1312,6 @@ mod tests {
         assert!(!authorization_matches(Some("token"), Some("Basic token")));
         assert!(!authorization_matches(Some("token"), Some("Bearer wrong")));
         assert!(authorization_matches(Some("token"), Some("Bearer token")));
-    }
-
-    #[test]
-    fn ephemeral_mode_rejects_manifest_field() {
-        let payload = serde_json::json!({"mode": "ephemeral", "manifest": {}});
-        assert!(ephemeral_manifest_is_invalid(&payload));
     }
 
     fn manifest_fixture(files: serde_json::Value, entrypoint: &str) -> Value {
@@ -2097,43 +1901,6 @@ mod tests {
     #[test]
     fn implemented_handler_success_responses_match_documented_schemas() {
         let contract = openapi_contract();
-        let update = build_update_artifact_response("abc1234567", &stored_artifact());
-        assert_eq!(update.status, 200);
-        validate_schema(
-            &contract,
-            operation_response_schema(
-                &contract,
-                "/v1/artifacts/{id}",
-                "patch",
-                "200",
-                "application/json",
-            ),
-            &update.body,
-        )
-        .unwrap();
-
-        let stored = stored_artifact();
-        let rendered = render_preview_shell(&stored, "https://artfct.dev/p/abc1234567");
-        let preview = build_preview_response(rendered);
-        assert_eq!(preview.status, 200);
-        assert_eq!(
-            preview.headers[0],
-            ("Content-Type", "text/html; charset=utf-8")
-        );
-        assert!(
-            preview
-                .headers
-                .iter()
-                .any(|&(name, value)| name == "X-Robots-Tag" && value == "noindex, nofollow"),
-            "ephemeral previews must stay out of the search index"
-        );
-        validate_schema(
-            &contract,
-            operation_response_schema(&contract, "/p/{id}", "get", "200", "text/html"),
-            &serde_json::Value::String(preview.body.clone()),
-        )
-        .unwrap();
-
         let delete = build_delete_response();
         assert_eq!(delete.status, 204);
         assert!(delete.headers.is_empty());
@@ -2169,30 +1936,6 @@ mod tests {
     }
 
     #[test]
-    fn default_ttl_is_five_days() {
-        assert_eq!(DEFAULT_TTL_MINUTES, 5 * 24 * 60);
-    }
-
-    #[test]
-    fn random_artifact_id_is_short_and_alphanumeric() {
-        let id = random_artifact_id(ARTIFACT_ID_LENGTH);
-
-        assert_eq!(id.len(), ARTIFACT_ID_LENGTH);
-        assert!(id.chars().all(|ch| ch.is_ascii_alphanumeric()));
-    }
-
-    #[test]
-    fn random_artifact_id_generates_varied_values() {
-        let mut ids = std::collections::HashSet::new();
-
-        for _ in 0..50 {
-            ids.insert(random_artifact_id(ARTIFACT_ID_LENGTH));
-        }
-
-        assert!(ids.len() > 1);
-    }
-
-    #[test]
     fn artifact_id_validation_requires_exact_length_and_charset() {
         assert!(is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH)));
         assert!(!is_valid_artifact_id(""));
@@ -2200,111 +1943,6 @@ mod tests {
         assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH - 1)));
         assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH + 1)));
         assert!(!is_valid_artifact_id("abc!defghi"));
-    }
-
-    #[test]
-    fn normalize_metadata_value_uses_default_for_empty_values() {
-        assert_eq!(
-            normalize_metadata_value(Some("   ".to_string()), "Fallback"),
-            "Fallback"
-        );
-        assert_eq!(normalize_metadata_value(None, "Fallback"), "Fallback");
-    }
-
-    #[test]
-    fn escape_json_script_escapes_angle_brackets() {
-        let escaped = escape_json_script(r#"{"title":"</script><b>&"}"#);
-        assert!(escaped.contains("\\u003c/script\\u003e"));
-        assert!(escaped.contains("\\u0026"));
-    }
-
-    #[test]
-    fn render_preview_shell_includes_public_metadata_and_ciphertext() {
-        let artifact = StoredArtifact {
-            body_ciphertext_b64: "ciphertext".to_string(),
-            body_iv_b64: "nonce".to_string(),
-            tier: ArtifactTier::Ephemeral,
-            title: "My Chart".to_string(),
-            description: "A chart preview".to_string(),
-            thumbnail: "https://example.com/thumb.png".to_string(),
-            preview_blurred: true,
-            created_at: "2026-06-08T00:00:00Z".to_string(),
-            expires_at: "2026-06-09T00:00:00Z".to_string(),
-            ttl_minutes: None,
-        };
-        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/abc1234567");
-
-        assert!(rendered.contains("My Chart"));
-        assert!(rendered.contains("A chart preview"));
-        assert!(rendered.contains("https://example.com/thumb.png"));
-        assert!(rendered.contains("ciphertext"));
-        assert!(rendered.contains("nonce"));
-        assert!(rendered.contains("previewBlurred"));
-        assert!(rendered.contains("preview-shell"));
-        assert!(rendered.contains("https://artfct.dev/p/abc1234567"));
-    }
-
-    #[test]
-    fn render_preview_shell_marks_blurred_state() {
-        let artifact = StoredArtifact {
-            body_ciphertext_b64: "ciphertext".to_string(),
-            body_iv_b64: "nonce".to_string(),
-            tier: ArtifactTier::Secure,
-            title: "Secure Deck".to_string(),
-            description: "Private preview".to_string(),
-            thumbnail: "https://example.com/thumb.png".to_string(),
-            preview_blurred: false,
-            created_at: "2026-06-08T00:00:00Z".to_string(),
-            expires_at: "2026-06-09T00:00:00Z".to_string(),
-            ttl_minutes: None,
-        };
-        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
-
-        assert!(rendered.contains("Waiting for the decryption key"));
-        assert!(rendered.contains("Link preview will start unblurred."));
-        assert!(rendered.contains("Secure Deck"));
-    }
-
-    #[test]
-    fn render_preview_shell_honors_hidden_attribute() {
-        let artifact = StoredArtifact {
-            body_ciphertext_b64: "ciphertext".to_string(),
-            body_iv_b64: "nonce".to_string(),
-            tier: ArtifactTier::Secure,
-            title: "Hidden Test".to_string(),
-            description: "Preview visibility".to_string(),
-            thumbnail: "https://example.com/thumb.png".to_string(),
-            preview_blurred: false,
-            created_at: "2026-06-08T00:00:00Z".to_string(),
-            expires_at: "2026-06-09T00:00:00Z".to_string(),
-            ttl_minutes: None,
-        };
-        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
-
-        assert!(rendered.contains("[hidden]{display:none !important;}"));
-        assert!(rendered.contains("id=\"artfct-overlay\" class=\"overlay\""));
-        assert!(rendered.contains("id=\"artfct-frame\" class=\"frame\" hidden"));
-    }
-
-    #[test]
-    fn render_preview_shell_allows_user_link_navigation_from_iframe() {
-        let artifact = StoredArtifact {
-            body_ciphertext_b64: "ciphertext".to_string(),
-            body_iv_b64: "nonce".to_string(),
-            tier: ArtifactTier::Public,
-            title: "Linked Artifact".to_string(),
-            description: "Preview with links".to_string(),
-            thumbnail: "https://example.com/thumb.png".to_string(),
-            preview_blurred: false,
-            created_at: "2026-06-08T00:00:00Z".to_string(),
-            expires_at: "2026-06-09T00:00:00Z".to_string(),
-            ttl_minutes: None,
-        };
-        let rendered = render_preview_shell(&artifact, "https://artfct.dev/p/xyz");
-
-        assert!(rendered.contains(
-            r#"sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation""#
-        ));
     }
 
     #[test]
@@ -3317,15 +2955,6 @@ mod tests {
     }
 
     #[test]
-    fn ephemeral_tombstone_json_is_recognised() {
-        assert!(is_ephemeral_tombstone(r#"{"tombstone":true}"#));
-        assert!(is_ephemeral_tombstone(r#"{"tombstone": true, "extra": 1}"#));
-        assert!(!is_ephemeral_tombstone(r#"{"tombstone":false}"#));
-        assert!(!is_ephemeral_tombstone(r#"{"body_ciphertext_b64":"x"}"#));
-        assert!(!is_ephemeral_tombstone("not-json"));
-    }
-
-    #[test]
     fn expired_jwt_rejected() {
         let now = Utc::now();
         let claims = test_claims("org-a", (now - chrono::Duration::minutes(1)).timestamp());
@@ -3469,26 +3098,6 @@ mod tests {
         assert!(rate_limit_allows(
             counts["token-b"],
             RATE_LIMIT_MAX_PER_TOKEN
-        ));
-    }
-
-    #[test]
-    fn anonymous_path_still_rate_limited_by_ip() {
-        let ip_key = rate_limit_kv_key_for_ip("203.0.113.4");
-        let token_key = rate_limit_kv_key_for_token("some-jti");
-
-        assert!(ip_key.starts_with(RATE_LIMIT_IP_KV_PREFIX));
-        assert!(!ip_key.starts_with(RATE_LIMIT_TOKEN_KV_PREFIX));
-        assert_ne!(ip_key, token_key);
-        // The IP budget matches the create WAF intent so Worker enforcement
-        // covers hosts the edge rule might miss (RUB-463).
-        assert!(!rate_limit_allows(
-            RATE_LIMIT_MAX_PER_IP,
-            RATE_LIMIT_MAX_PER_IP
-        ));
-        assert!(rate_limit_allows(
-            RATE_LIMIT_MAX_PER_IP - 1,
-            RATE_LIMIT_MAX_PER_IP
         ));
     }
 

@@ -1252,21 +1252,8 @@ pub(crate) async fn delete_artifact(
     if store::is_permanent_id(artifact_id) {
         return delete_permanent_artifact(artifact_id, req, env, ctx).await;
     }
-    if !is_valid_artifact_id(artifact_id) {
-        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
-    }
-
-    // Tombstone instead of a bare delete so a concurrent GET that already
-    // read the record cannot put it back with a fresh TTL (RUB-464).
-    store::KvArtifactStore::new(env.kv(KV_BINDING)?)
-        .put_record(
-            artifact_id,
-            EPHEMERAL_TOMBSTONE_JSON,
-            EPHEMERAL_TOMBSTONE_TTL_SECONDS,
-        )
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    build_delete_response().into_worker_response()
+    // Only permanent artifacts remain; the anonymous free-tool ids are gone.
+    json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400)
 }
 
 /// The validated query parameters for the org artifact list. Date bounds are
