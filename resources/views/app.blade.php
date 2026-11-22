@@ -2,7 +2,7 @@
 <html
     lang="{{ str_replace('_', '-', app()->getLocale()) }}"
     @class([
-        'app-theme' => ! in_array($page['component'] ?? null, ['welcome', 'landing'], true),
+        'app-theme' => ! in_array($page['component'] ?? null, ['landing'], true),
         'dark' => ($appearance ?? 'system') == 'dark',
         'landing-page' => ($page['component'] ?? null) === 'landing',
     ])

@@ -51,7 +51,7 @@
     --color-tint: var(--accent-tint, var(--surface-muted));
 }
 
-/* ── Base palette (the free tool's Solarized values) ── */
+/* ── Base palette (the public pages' Solarized values) ── */
 :root {
     --ground: #fdf6e3;
     --surface-muted: #eee8d5;
@@ -89,8 +89,8 @@
 }
 
 /* ── Oxblood & Bone: the signed-in app (see DESIGN.md) ─────────────────────
-   Scoped by a class that AppLayout puts on <html>, so the free tool and the
-   marketing pages keep their current look until they are redesigned. Remaps
+   Scoped by a class that AppLayout puts on <html>, so the marketing pages keep
+   their current look until they are redesigned. Remaps
    the semantic tokens above; always light, whatever the system theme. */
 :root:root.app-theme {
     --ground: #f7f5f2;
@@ -381,7 +381,7 @@ html {
 /* Modal animation */
 
 /* ── Public + auth responsive fixes (below 768px) ─────────────────────────
-   Scoped to the public shells (site pages, auth layout, free tool) so the
+   Scoped to the public shells (site pages, auth layout) so the
    signed-in app keeps its own styles. Desktop is untouched: everything here
    only applies below the mobile breakpoint. */
 @media (max-width: 767px) {

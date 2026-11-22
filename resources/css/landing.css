@@ -1,5 +1,5 @@
 /* Oxblood & Bone landing page (see DESIGN.md). Everything is scoped to
-   `.landing`, so the free tool and the app keep their own styles. */
+   `.landing`, so the app keeps its own styles. */
 
 @keyframes landing-rise {
     from {
