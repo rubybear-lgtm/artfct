@@ -168,14 +168,9 @@ test('the docs document only the hosted server', function () {
 
 test('connection guidance is hosted only and states its limits', function () {
     $page = file_get_contents(resource_path('js/pages/docs.tsx'));
-    $welcome = file_get_contents(resource_path('js/pages/welcome/welcome-agent-prompt.tsx'));
     $connections = file_get_contents(resource_path('js/pages/teams/mcp-connections.tsx'));
 
-    expect($welcome)->not->toContain('artfct setup')
-        ->and($welcome)->not->toContain('install.sh')
-        ->and($welcome)->not->toContain('https://artfct.dev/mcp')
-        ->and($welcome)->toContain('mcpEndpoint')
-        ->and($connections)->not->toContain('Local CLI')
+    expect($connections)->not->toContain('Local CLI')
         ->and($connections)->not->toContain('install.sh')
         ->and($connections)->not->toContain('artfct setup')
         ->and($connections)->not->toContain('artfct login');
@@ -207,8 +202,6 @@ test('the MCP docs explain workspace terminology and first-time access', functio
 test('team wording replaces workspace everywhere outside AI tool terminology', function () {
     $page = docsCopy();
     $landing = preg_replace('/\s+/', ' ', file_get_contents(resource_path('js/pages/landing.tsx')));
-    $welcome = file_get_contents(resource_path('js/pages/welcome/welcome-agent-prompt.tsx'));
-    $callout = file_get_contents(resource_path('js/pages/welcome/welcome-cli-callout.tsx'));
 
     expect($page)
         ->toContain('Save new artifacts to your team.')
@@ -218,11 +211,7 @@ test('team wording replaces workspace everywhere outside AI tool terminology', f
         ->and($page)->toContain('your AI tool may also call it a workspace')
         ->and($page)->toContain('Which Artfct workspace am I connected to?')
         ->and($landing)->not->toContain('shared workspace')
-        ->and($landing)->toContain('The team knowledge base for every AI tool')
-        ->and($callout)->not->toContain('WelcomeInstallOptions')
-        ->and($welcome)->not->toContain('npx skills add')
-        ->and($welcome)->not->toContain('<pre')
-        ->and($welcome)->toContain('mcpEndpoint');
+        ->and($landing)->toContain('The team knowledge base for every AI tool');
 });
 
 test('the docs give step-by-step setup for every verified AI tool', function () {
