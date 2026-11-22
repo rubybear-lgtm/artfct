@@ -59,11 +59,11 @@ final class DeleteArtifactTool extends Tool
             'id' => ['required', 'string', 'max:128'],
         ]);
 
-        if (! ArtifactIdShape::isPermanent($validated['id']) && ! ArtifactIdShape::isEphemeral($validated['id'])) {
+        if (! ArtifactIdShape::isPermanent($validated['id'])) {
             app(McpTelemetry::class)->record('delete_artifact', 'invalid_request', $startedAt);
 
             return McpErrorResponse::error(
-                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters) or a 10-character ephemeral artifact id.',
+                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters).',
                 'invalid_request',
             );
         }

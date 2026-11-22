@@ -2022,44 +2022,41 @@ async fn direct_worker_artifact_writes_enforce_role_and_oauth_scopes() -> Result
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
-async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
-    let context = require_context()?;
-    let response = RetryingClient::new()
-        .post(format!("{}/v1/artifacts", context.base))
-        .json(&json!({"mode": "ephemeral", "manifest": {}}))
-        .send()
-        .await?;
-    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires an isolated local Wrangler Worker"]
-async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
+async fn anonymous_free_tool_endpoints_are_gone() -> Result<(), Box<dyn Error>> {
     let context = require_context()?;
     let client = RetryingClient::new();
+
+    // An anonymous create (no `mode: permanent`, no credential) is refused.
     let created = client
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({
             "tier": "secure",
             "body_ciphertext_b64": "ZXBoZW1lcmFsLWludGVncmF0aW9u",
             "body_iv_b64": "AAAAAAAAAAAAAAAA",
-            "title": "Ephemeral integration"
+            "title": "Anonymous create"
         }))
         .send()
         .await?;
-    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
-    let created: Value = created.json().await?;
-    let preview_url = created["url"]
-        .as_str()
-        .ok_or("create response omitted url")?
-        .to_string();
-    assert!(preview_url.starts_with(&format!("{}/p/", context.base)));
-    let preview = client.get(preview_url).send().await?;
-    assert_eq!(preview.status(), reqwest::StatusCode::OK);
-    let body = preview.text().await?;
-    assert!(body.contains("bodyCiphertextB64"));
-    assert!(body.contains("Waiting for the decryption key"));
+    assert_eq!(created.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+
+    // The old ephemeral id shape no longer resolves, and the anonymous TTL
+    // update and delete routes do not exist for it.
+    let preview = client
+        .get(format!("{}/p/abcdefghij", context.base))
+        .send()
+        .await?;
+    assert_eq!(preview.status(), reqwest::StatusCode::NOT_FOUND);
+    let patched = client
+        .patch(format!("{}/v1/artifacts/abcdefghij", context.base))
+        .json(&json!({"ttl_minutes": 1}))
+        .send()
+        .await?;
+    assert_eq!(patched.status(), reqwest::StatusCode::NOT_FOUND);
+    let deleted = client
+        .delete(format!("{}/v1/artifacts/abcdefghij", context.base))
+        .send()
+        .await?;
+    assert_eq!(deleted.status(), reqwest::StatusCode::BAD_REQUEST);
     Ok(())
 }
 

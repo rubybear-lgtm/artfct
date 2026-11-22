@@ -17,7 +17,7 @@ pub(crate) fn isolated_artifact_hostname(
 /// Splits an isolated-origin `Host` header back into `(tenant_slug,
 /// artifact_id)`. Returns `None` for any host that isn't under `suffix`
 /// (this environment's `artifact_origin_suffix`), including the shared
-/// `artfct.dev` host used by free-tier `/p/{id}` links.
+/// `artfct.dev` host used by shared-origin `/p/{id}` links.
 pub(crate) fn parse_isolated_hostname(host: &str, suffix: &str) -> Option<(String, String)> {
     let label = host.strip_suffix(suffix)?;
     let (slug, artifact_id) = label.split_once("--")?;
@@ -320,7 +320,7 @@ pub(crate) fn isolated_content_security_policy_framed_by(
 ///
 /// `is_isolated` must be true only for a request that actually verified on
 /// an isolated `<slug>--<id>.artfct.dev` host — everything else (including
-/// every free-tier and legacy shared-origin `/p/{id}` request) gets the
+/// every shared-origin `/p/{id}` request) gets the
 /// pre-spec-05 `PREVIEW_CONTENT_SECURITY_POLICY` byte-identical, so the CSP
 /// derived from `external_origins`/`unsafe_eval` never silently tightens an
 /// existing artifact that never opted into isolation.
@@ -392,7 +392,7 @@ pub(crate) fn app_frame_ancestor(env: &Env) -> Option<String> {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum IsolatedAccess {
     /// The request did not arrive on an isolated `<slug>--<id>.artfct.dev`
-    /// host — free-tier and legacy shared-origin `/p/{id}` behavior applies
+    /// host — shared-origin `/p/{id}` behavior applies
     /// unchanged.
     NotIsolated,
     /// Arrived on this artifact's own isolated host — tenant slug and artifact

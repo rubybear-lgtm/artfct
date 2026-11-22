@@ -10,18 +10,18 @@ use std::{
 
 use chrono::Utc;
 use getrandom::getrandom;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
-use worker::{d1::D1Database, kv::KvStore, Bucket, Delay};
+use worker::{d1::D1Database, Bucket, Delay};
 
 use crate::governance::GovernanceError;
 
 pub const MAX_TENANT_SLUG_LENGTH: usize = 24;
 pub const PUBLIC_ID_LENGTH: usize = 32;
-/// Length of a stable artifact id. The three id shapes ([`STABLE_ID_LENGTH`]
-/// base36, [`PUBLIC_ID_LENGTH`] hex, and the 10-character ephemeral shape)
-/// never overlap, so a length alone is enough to tell them apart.
+/// Length of a stable artifact id. The two id shapes ([`STABLE_ID_LENGTH`]
+/// base36 and [`PUBLIC_ID_LENGTH`] hex) never overlap, so a length alone is
+/// enough to tell them apart.
 pub const STABLE_ID_LENGTH: usize = 13;
 /// The lowercase base36 alphabet (`0-9a-z`) a stable artifact id is drawn
 /// from. Lowercase because the id becomes a hostname label in an isolated
@@ -527,129 +527,6 @@ pub trait ArtifactStore {
     async fn get(&self, id: &ArtifactId) -> Result<Option<Artifact>, StoreError>;
     async fn delete(&self, id: &ArtifactId) -> Result<(), StoreError>;
     async fn list(&self, filter: ListFilter) -> Result<Page<ArtifactSummary>, StoreError>;
-}
-
-/// ArtifactStore implementation backed by Workers KV for ephemeral records.
-pub struct KvArtifactStore {
-    kv: Option<KvStore>,
-}
-
-impl KvArtifactStore {
-    pub fn new(kv: KvStore) -> Self {
-        Self { kv: Some(kv) }
-    }
-
-    pub fn without_binding() -> Self {
-        Self { kv: None }
-    }
-
-    pub async fn put_record(
-        &self,
-        key: &str,
-        value: &str,
-        ttl_seconds: u64,
-    ) -> Result<(), StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.put(key, value.to_string())
-            .map_err(|error| StoreError::Backend(error.to_string()))?
-            .expiration_ttl(ttl_seconds)
-            .execute()
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-
-    pub async fn get_record<T: DeserializeOwned>(
-        &self,
-        key: &str,
-    ) -> Result<Option<T>, StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.get(key)
-            .json()
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-
-    /// Raw text get so callers can distinguish tombstones from live records
-    /// without forcing a `StoredArtifact` deserialize (RUB-464).
-    pub async fn get_text(&self, key: &str) -> Result<Option<String>, StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.get(key)
-            .text()
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-
-    pub async fn delete_record(&self, key: &str) -> Result<(), StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.delete(key)
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-}
-
-impl ArtifactStore for KvArtifactStore {
-    async fn put(&self, artifact: NewArtifact) -> Result<StoredRef, StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        validate_slug(&artifact.org).map_err(StoreError::InvalidSlug)?;
-        let hash = content_hash(&artifact.content);
-        let id = ArtifactId(public_id(&artifact.org, &hash));
-        let stored = Artifact {
-            row_id: 0,
-            id: id.clone(),
-            org: artifact.org,
-            content_hash: hash.clone(),
-            content: artifact.content,
-            content_type: artifact.content_type,
-            entrypoint: artifact.entrypoint,
-            provenance: artifact.provenance,
-        };
-        kv.put(
-            &id.0,
-            serde_json::to_string(&stored)
-                .map_err(|error| StoreError::Backend(error.to_string()))?,
-        )
-        .map_err(|error| StoreError::Backend(error.to_string()))?
-        .execute()
-        .await
-        .map_err(|error| StoreError::Backend(error.to_string()))?;
-        Ok(StoredRef {
-            id,
-            content_hash: hash,
-        })
-    }
-
-    async fn get(&self, id: &ArtifactId) -> Result<Option<Artifact>, StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.get(&id.0)
-            .json()
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-
-    async fn delete(&self, id: &ArtifactId) -> Result<(), StoreError> {
-        let Some(kv) = &self.kv else {
-            return Err(StoreError::Unsupported("binding"));
-        };
-        kv.delete(&id.0)
-            .await
-            .map_err(|error| StoreError::Backend(error.to_string()))
-    }
-
-    async fn list(&self, _filter: ListFilter) -> Result<Page<ArtifactSummary>, StoreError> {
-        Err(StoreError::Unsupported("list"))
-    }
 }
 
 /// ArtifactStore implementation backed by D1 metadata and R2 content blobs.
@@ -1455,7 +1332,7 @@ pub struct MemoryArtifactStore {
     /// Row ids revoked via [`MemoryArtifactStore::revoke`]. Kept separate
     /// from `Artifact` itself (rather than adding a `revoked_at` field to
     /// that struct) so this in-memory soft-delete proof doesn't ripple into
-    /// the `KvArtifactStore`/`D1R2ArtifactStore` `Artifact` shape, which
+    /// the `D1R2ArtifactStore` `Artifact` shape, which
     /// spec 8 doesn't otherwise touch.
     revoked: Mutex<HashSet<u64>>,
     /// Row ids currently under legal hold (spec 11). Same "kept separate"
@@ -2012,10 +1889,10 @@ mod tests {
     }
 
     #[test]
-    fn is_permanent_id_covers_both_shapes_but_not_ephemeral() {
+    fn is_permanent_id_covers_both_shapes_but_not_ten_characters() {
         assert!(is_permanent_id(&mint_stable_id()));
         assert!(is_permanent_id(&"a".repeat(PUBLIC_ID_LENGTH)));
-        // A 10-character ephemeral id is not a permanent artifact id.
+        // The 10-character ids of the removed free tool are not artifact ids.
         assert!(!is_permanent_id(&"a".repeat(10)));
         assert!(!is_permanent_id(&"A".repeat(STABLE_ID_LENGTH)));
         assert!(!is_permanent_id(""));
@@ -2078,15 +1955,6 @@ mod tests {
         let reference = block_on(store.put(artifact("acme", b"same"))).unwrap();
         let stored = block_on(store.get(&reference.id)).unwrap().unwrap();
         assert_eq!(stored.provenance["unknown"], "retained");
-    }
-
-    #[test]
-    fn list_unimplemented_for_kv_backend() {
-        let store = KvArtifactStore::without_binding();
-        assert!(matches!(
-            block_on(store.list(ListFilter::default())),
-            Err(StoreError::Unsupported("list"))
-        ));
     }
 
     fn list_item(
