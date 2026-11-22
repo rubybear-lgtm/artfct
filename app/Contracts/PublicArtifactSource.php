@@ -9,7 +9,7 @@ namespace App\Contracts;
  * team, without ever naming a team they are not in.
  *
  * Null is the Worker's only other answer: missing, team, private, revoked,
- * pending and ephemeral artifacts are one and the same 404, so the viewer can
+ * and pending artifacts are one and the same 404, so the viewer can
  * never use this to confirm that a non-public id exists. Anything else is a
  * failure and is thrown rather than read as "not public".
  */

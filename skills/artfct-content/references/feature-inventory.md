@@ -138,7 +138,7 @@ One more category, because it is the most tempting: **inference from the archite
 
 - **"The labs give you no controls."** False since 2026. Claude Code Artifacts are admin-gated with share permissions; ChatGPT canvas sites have RBAC and per-site access modes. Pitching the absence of controls loses the room in front of anyone who has configured them. The true and structural claim is **cross-vendor**: no lab will index a competitor's output.
 - **"An artifact store."** To a platform lead that phrase means Artifactory or Harness — binaries, packages, SBOMs. Say "a record of what your agents built".
-- **"End-to-end encrypted."** True of the free ephemeral tier only. Permanent artifacts use org-held keys. Qualify it or drop it.
+- **"End-to-end encrypted."** Do not claim it. The free tool that encrypted in the browser was removed, and permanent artifacts use org-held keys.
 - **"Never used to train AI"** is the supported claim. **"We never see your data"** is not.
 - **Any certification** — SOC 2, ISO 27001, HIPAA, GDPR-compliant — unless it is in the certification list you were given for that page. Do not infer one from "passes a security review".
 - **Guarantees of any kind.** No SLA, no uptime number, no "never loses", no "always available".

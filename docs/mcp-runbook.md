@@ -292,8 +292,8 @@ that is depends on the artifact's tier:
   isolated origin. The mint is audited (`artifact.link_minted`, with the
   actor, the artifact and the expiry), and the token appears in the redirect
   only, never in the tool result.
-- **Ephemeral previews** — the Worker's `/p/{id}` URL. These are anonymous
-  KV records with no app row, so the app's open route cannot serve them.
+- **Ephemeral previews** — removed. The Worker no longer serves anonymous
+  `/p/{id}` previews from KV, and a 10-character id is not an artifact id.
 
 `view_url` replaces the earlier `url` field. An agent should present `view_url`
 rather than building a `/p/{id}` URL from an artifact id. For a permanent

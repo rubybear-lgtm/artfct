@@ -1,5 +1,7 @@
 # Spec 0 — API contract (OpenAPI)
 
+> **Note (2026-11-22):** the free tool (`/free`, the Worker's anonymous ephemeral artifacts and their KV store) was removed. Sections below that describe it are historical.
+
 **Track:** Foundation · **Depends on:** nothing · **Blocks:** every spec that touches the wire
 
 ## Scope

@@ -1528,7 +1528,7 @@ test('a public artifact still gets the short link with no signing secret configu
         ->toBe(route('artifacts.show', ['artifactId' => ARTIFACT_LINK_ID]));
 });
 
-test('get_artifact rejects a free-tool ephemeral id before contacting the Worker', function () {
+test('get_artifact rejects a non-permanent id before contacting the Worker', function () {
     configureArtifactLinks();
 
     $team = Team::factory()->create();
@@ -1536,9 +1536,9 @@ test('get_artifact rejects a free-tool ephemeral id before contacting the Worker
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake();
 
-    // Free-tool KV previews use a 10-character id with no D1 row. MCP only
+    // The 10-character ids the removed free tool minted have no D1 row. MCP only
     // addresses permanent artifacts, so the id fails closed at validation
-    // rather than round-tripping the Worker (RUB-452).
+    // rather than round-tripping the Worker.
     $this->withToken($token)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'get_artifact', 'arguments' => ['id' => 'abcdefghij']],
