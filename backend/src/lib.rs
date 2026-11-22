@@ -945,12 +945,6 @@ mod tests {
 
     fn matches_schema_pattern(pattern: &str, value: &str) -> bool {
         match pattern {
-            "^[A-Za-z0-9]{10}$" => {
-                value.len() == 10
-                    && value
-                        .chars()
-                        .all(|character| character.is_ascii_alphanumeric())
-            }
             "^(?:[a-z0-9]{13}|[a-f0-9]{32})$" => store::is_permanent_id(value),
             "^[a-f0-9]{64}$" => {
                 value.len() == 64
@@ -1456,8 +1450,8 @@ mod tests {
             "application/octet-stream"
         );
         // Real header-construction logic for the permanent-bundle serving
-        // site (`resolve_permanent_artifact`), not the unrelated ephemeral
-        // preview shell — deleting the nosniff header there must fail this.
+        // site (`resolve_permanent_artifact`) — deleting the nosniff header
+        // there must fail this.
         let manifest = PermanentManifest {
             entrypoint: "index.html".to_string(),
             files: Vec::new(),
@@ -2325,7 +2319,7 @@ mod tests {
         let manifest = permanent_manifest(vec!["https://declared.example.com"], false);
         let csp = isolated_content_security_policy(&manifest);
         // Exact token match, not substring: a permissive `https:` wildcard
-        // (today's ephemeral-preview CSP) would pass a substring check
+        // (the shared-origin CSP) would pass a substring check
         // against "https://declared.example.com" but must fail this.
         let tokens = csp_directive(&csp, "default-src");
         assert_eq!(tokens, vec!["'self'", "https://declared.example.com"]);
