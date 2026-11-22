@@ -74,4 +74,5 @@ export type SharedProps = {
     entitlements?: Entitlements;
     quota: Quota;
     analytics?: AnalyticsShared;
+    features?: Record<string, boolean>;
 };

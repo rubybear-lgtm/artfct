@@ -1,7 +1,9 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import teamRoutes from '@/routes/teams';
+import type { SharedProps } from '@/types/shared';
 
 type PlanName = 'free' | 'team' | 'enterprise';
 
@@ -152,4 +154,161 @@ export default function TeamAdmin({
     );
 }
 
-TeamAdmin.layout = (page: React.ReactNode) => <AppLayout>{page}</AppLayout>;
+type RailSharedProps = SharedProps & {
+    features?: Record<string, boolean>;
+};
+
+// AppLayout gains the optional railContext prop in the ShellRail slice; the
+// cast keeps this page compiling (and flag-off identical) either way.
+type AppLayoutWithRail = (props: {
+    children: React.ReactNode;
+    railContext?: React.ReactNode;
+}) => React.JSX.Element;
+const RailAppLayout = AppLayout as unknown as AppLayoutWithRail;
+
+// Secondary admin destinations, mirrored from AppLayout's adminSubNav so the
+// rail links route exactly as the sidebar sub-nav does today.
+function AdminRailContext() {
+    const { currentTeam, entitlements } = usePage<RailSharedProps>().props;
+    const { url } = usePage();
+    const team = currentTeam;
+
+    if (!team) {
+        return null;
+    }
+
+    const currentPath = url.split('?')[0];
+    const isActive = (href: string, exact = false) =>
+        currentPath === href || (!exact && url.startsWith(`${href}/`));
+    const navItem = (key: string) =>
+        entitlements?.nav?.find((item) => item.key === key);
+    const membersNav = navItem('members');
+    const botsNav = navItem('bots');
+    const billingNav = navItem('billing');
+    const lockedTitle = (reason: string | null | undefined) =>
+        reason ?? 'Upgrade your plan to unlock this.';
+
+    const items = [
+        {
+            href: teamRoutes.admin.show.url({ team: team.slug }),
+            label: 'Overview',
+            exact: true,
+            locked: false,
+            reason: null as string | null,
+            key: 'overview',
+        },
+        {
+            href: membersNav?.locked
+                ? teamRoutes.billing.show.url({ team: team.slug })
+                : teamRoutes.edit.url({ team: team.slug }),
+            label: 'Members',
+            exact: true,
+            locked: membersNav?.locked === true,
+            reason: membersNav?.reason ?? null,
+            key: 'members',
+        },
+        {
+            href: botsNav?.locked
+                ? teamRoutes.billing.show.url({ team: team.slug })
+                : teamRoutes.tokens.index.url({ team: team.slug }),
+            label: botsNav?.locked ? 'AI bot teammates' : 'Agent & API tokens',
+            exact: false,
+            locked: botsNav?.locked === true,
+            reason: botsNav?.reason ?? null,
+            key: 'tokens',
+        },
+        ...(billingNav?.visible !== false
+            ? [
+                  {
+                      href: teamRoutes.billing.show.url({
+                          team: team.slug,
+                      }),
+                      label: 'Billing',
+                      exact: false,
+                      locked: false,
+                      reason: null as string | null,
+                      key: 'billing',
+                  },
+              ]
+            : []),
+        {
+            href: teamRoutes.authentication.show.url({
+                team: team.slug,
+            }),
+            label: 'Sign-in and security',
+            exact: false,
+            locked: false,
+            reason: null as string | null,
+            key: 'authentication',
+        },
+        {
+            href: teamRoutes.governance.show.url({ team: team.slug }),
+            label: 'Retention and legal holds',
+            exact: false,
+            locked: false,
+            reason: null as string | null,
+            key: 'governance',
+        },
+        {
+            href: teamRoutes.audit.index.url({ team: team.slug }),
+            label: 'Audit log',
+            exact: false,
+            locked: false,
+            reason: null as string | null,
+            key: 'audit',
+        },
+    ];
+
+    return (
+        <nav aria-label="Admin" data-testid="admin-rail-subnav">
+            <p className="eyebrow">Admin</p>
+            <ul className="mt-2 flex flex-col gap-px">
+                {items.map((item) => {
+                    const active =
+                        !item.locked && isActive(item.href, item.exact);
+
+                    return (
+                        <li key={item.key}>
+                            <Link
+                                href={item.href}
+                                aria-current={active ? 'page' : undefined}
+                                data-testid={`admin-subnav-${item.key}`}
+                                data-locked={item.locked ? 'true' : 'false'}
+                                title={
+                                    item.locked
+                                        ? lockedTitle(item.reason)
+                                        : undefined
+                                }
+                                className={cn(
+                                    'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                                    active
+                                        ? 'bg-tint font-semibold text-foreground'
+                                        : 'text-muted-foreground',
+                                    item.locked && 'opacity-70',
+                                )}
+                            >
+                                {item.label}
+                                {item.locked ? ' · Upgrade' : ''}
+                            </Link>
+                        </li>
+                    );
+                })}
+            </ul>
+        </nav>
+    );
+}
+
+function TeamAdminLayout({ page }: { page: React.ReactNode }) {
+    const { features } = usePage<RailSharedProps>().props;
+    const unifiedRail = features?.['unified-rail'] === true;
+
+    return (
+        <RailAppLayout
+            railContext={unifiedRail ? <AdminRailContext /> : undefined}
+        >
+            {page}
+        </RailAppLayout>
+    );
+}
+
+TeamAdmin.layout = (page: React.ReactNode) => <TeamAdminLayout page={page} />;

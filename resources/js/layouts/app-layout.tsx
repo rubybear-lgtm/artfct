@@ -127,8 +127,14 @@ function quotaMessage(teamName: string, quota: Quota) {
     return `${teamName} has ${clauses.join(' and ')}.${suffix}`;
 }
 
-export default function AppLayout({ children }: { children: ReactNode }) {
-    const { auth, teams, currentTeam, quota, entitlements } =
+export default function AppLayout({
+    children,
+    railContext,
+}: {
+    children: ReactNode;
+    railContext?: ReactNode;
+}) {
+    const { auth, teams, currentTeam, quota, entitlements, features } =
         usePage<SharedProps>().props;
     const { flash, url } = usePage();
     const toastMessage = flash?.toast;
@@ -675,56 +681,64 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                         testId: 'nav-admin',
                                     })
                                 )}
-                                {onAdminPage && !collapsed && (
-                                    <div
-                                        data-testid="admin-subnav"
-                                        className="mt-0.5 mb-1 ml-[21px] flex flex-col gap-px border-l border-border pl-2.5"
-                                    >
-                                        {adminSubNav.map((item) => {
-                                            const active =
-                                                !item.locked &&
-                                                isActive(item.href, item.exact);
+                                {onAdminPage &&
+                                    !collapsed &&
+                                    !(
+                                        features?.['unified-rail'] === true &&
+                                        railContext
+                                    ) && (
+                                        <div
+                                            data-testid="admin-subnav"
+                                            className="mt-0.5 mb-1 ml-[21px] flex flex-col gap-px border-l border-border pl-2.5"
+                                        >
+                                            {adminSubNav.map((item) => {
+                                                const active =
+                                                    !item.locked &&
+                                                    isActive(
+                                                        item.href,
+                                                        item.exact,
+                                                    );
 
-                                            return (
-                                                <Link
-                                                    key={item.key}
-                                                    href={item.href}
-                                                    aria-current={
-                                                        active
-                                                            ? 'page'
-                                                            : undefined
-                                                    }
-                                                    data-testid={`admin-subnav-${item.key}`}
-                                                    data-locked={
-                                                        item.locked
-                                                            ? 'true'
-                                                            : 'false'
-                                                    }
-                                                    title={
-                                                        item.locked
-                                                            ? lockedTitle(
-                                                                  item.reason,
-                                                              )
-                                                            : undefined
-                                                    }
-                                                    className={cn(
-                                                        'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-                                                        active
-                                                            ? 'bg-tint font-semibold text-foreground'
-                                                            : 'text-muted-foreground',
-                                                        item.locked &&
-                                                            'opacity-70',
-                                                    )}
-                                                >
-                                                    {item.label}
-                                                    {item.locked
-                                                        ? ' · Upgrade'
-                                                        : ''}
-                                                </Link>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                                return (
+                                                    <Link
+                                                        key={item.key}
+                                                        href={item.href}
+                                                        aria-current={
+                                                            active
+                                                                ? 'page'
+                                                                : undefined
+                                                        }
+                                                        data-testid={`admin-subnav-${item.key}`}
+                                                        data-locked={
+                                                            item.locked
+                                                                ? 'true'
+                                                                : 'false'
+                                                        }
+                                                        title={
+                                                            item.locked
+                                                                ? lockedTitle(
+                                                                      item.reason,
+                                                                  )
+                                                                : undefined
+                                                        }
+                                                        className={cn(
+                                                            'flex min-h-8 items-center rounded-md px-2.5 py-1 text-[13px] leading-snug font-medium break-words transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                                                            active
+                                                                ? 'bg-tint font-semibold text-foreground'
+                                                                : 'text-muted-foreground',
+                                                            item.locked &&
+                                                                'opacity-70',
+                                                        )}
+                                                    >
+                                                        {item.label}
+                                                        {item.locked
+                                                            ? ' · Upgrade'
+                                                            : ''}
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                             </>
                         ) : membersNav?.visible ? (
                             sidebarLink({
@@ -741,6 +755,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         ) : null}
                     </nav>
                 )}
+                {features?.['unified-rail'] === true && railContext ? (
+                    <div
+                        data-testid="rail-context"
+                        className="min-h-0 overflow-y-auto border-t border-border pt-3"
+                    >
+                        {railContext}
+                    </div>
+                ) : null}
 
                 <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3">
                     <div
