@@ -40,7 +40,7 @@
         @php
             $meta = $page['props']['meta'] ?? [];
             $pageTitle = $meta['title'] ?? 'artfct';
-            $pageDescription = $meta['description'] ?? 'Share self-contained HTML files instantly. Drop a file, get a link. No sign-up required.';
+            $pageDescription = $meta['description'] ?? 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.';
             $blogPost = ($page['component'] ?? null) === 'blog-show' ? ($page['props']['post'] ?? null) : null;
         @endphp
 

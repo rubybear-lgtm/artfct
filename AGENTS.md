@@ -326,7 +326,7 @@ Use the `artfct-staging` MCP server to store what development and sessions produ
 
 **When** — publish at the end of the step that produced the artifact (spec agreed, plan approved, investigation concluded), not as an afterthought. This overrides the "documentation files" rule above only for artifact publishing: artfct artifacts are not repository files, so do not also commit them as docs unless asked.
 
-**Stitch MCP (design work)** — the `Artfct Editorial Terminal` design system and the landing-page explorations live in a Stitch project; the landing page they vary is `resources/js/pages/welcome.tsx`.
+**Stitch MCP (design work)** — the `Artfct Editorial Terminal` design system and the landing-page explorations live in a Stitch project; the landing page they vary is `resources/js/pages/landing.tsx`.
 
 Auth lives in `~/.config/mcp/mcp.json` and uses your gcloud ADC login. The Stitch API **rejects API keys outright** — there is no key to extract, and a `X-Goog-Api-Key` header will always fail with "API keys are not supported by this API". It needs an OAuth2 token plus a GCP quota project (`live-music-broadcast`, sent as `X-Goog-User-Project`) with `stitch.googleapis.com` enabled. Do not set ADC's own `quota_project_id` — that silently re-attributes every other Google tool on the machine. `requestTimeoutMs: 300000` is required: generation routinely runs past the default ~60s client timeout.
 
