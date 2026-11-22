@@ -58,7 +58,7 @@ A page shared as a free link is encrypted, protected by a passcode, and expires 
 
 Permanent artifacts work differently. They are held under the organization's keys, they do not expire, and they carry a record of how the artifact was published: the model when the caller supplied one, the tool that published it, and the session it came from.
 
-The [free tier](https://artfct.dev/free) is a way to try the sharing half of the product without connecting a tool. The permanent tier is what a team keeps. Setup for every supported tool is listed in the [full reference](https://artfct.dev/llms-full.txt).
+Permanent artifacts are what a team keeps. Setup for every supported tool is listed in the [full reference](https://artfct.dev/llms-full.txt).
 
 ## What this does not do
 

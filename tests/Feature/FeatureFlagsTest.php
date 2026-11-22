@@ -26,7 +26,7 @@ beforeEach(function () {
     app(FeatureFlags::class)->register();
 
     Route::middleware(['web', 'auth', EnsureTeamMembership::class])->get('/_release/{current_team:slug}', function (Team $current_team) {
-        return Inertia::render('welcome');
+        return Inertia::render('landing');
     })->middleware(EnsureFeatureIsEnabled::class.':test-feature');
 
     Mcp::web('/_release-mcp', ReleaseTestServer::class)->middleware(ReleaseTestContextMiddleware::class);

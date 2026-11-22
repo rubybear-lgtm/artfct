@@ -10,6 +10,7 @@ test('retired marketing shells permanently redirect to a live page', function (s
         ->assertStatus(301);
 })->with([
     ['/pricing', '/'],
+    ['/free', '/'],
     ['/signup', '/login?screen_hint=sign-up'],
     ['/app', '/'],
     ['/dashboard', '/'],
@@ -32,7 +33,7 @@ test('marketing pages stay indexable in production', function (string $path) {
     app()->detectEnvironment(fn (): string => 'production');
 
     test()->get($path)->assertHeaderMissing('X-Robots-Tag');
-})->with(['/', '/free', '/docs', '/blog', '/connect', '/terms', '/privacy', '/support']);
+})->with(['/', '/docs', '/blog', '/connect', '/terms', '/privacy', '/support']);
 
 test('production robots keeps marketing open and private paths closed', function () {
     app()->detectEnvironment(fn (): string => 'production');
@@ -55,6 +56,6 @@ test('the sitemap still lists only live marketing URLs', function () {
         ->and($content)->not->toContain('/signup')
         ->and($content)->not->toContain('/dashboard')
         ->and($content)->not->toContain('/a/')
-        ->and($content)->toContain(url('/free'))
+        ->and($content)->not->toContain('/free')
         ->and($content)->toContain(url('/connect'));
 });

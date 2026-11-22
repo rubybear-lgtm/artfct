@@ -28,7 +28,7 @@ function signedInPages(): array
 /** @return list<string> */
 function publicPages(): array
 {
-    return ['home', 'free', 'blog', 'docs', 'connect.index', 'terms', 'privacy', 'support', 'login'];
+    return ['home', 'blog', 'docs', 'connect.index', 'terms', 'privacy', 'support', 'login'];
 }
 
 /** @return array<string, string> route name => where it is covered */

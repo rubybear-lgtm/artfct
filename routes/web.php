@@ -43,14 +43,6 @@ Route::get('/media/landing/{file}', LandingMediaController::class)
     ->withoutMiddleware('web')
     ->name('landing.media');
 
-Route::get('/free', fn () => Inertia::render('welcome', [
-    'meta' => [
-        'title' => 'Share an HTML or Markdown file as a private link — Artfct',
-        'description' => 'Drop a self-contained HTML or Markdown file and get back a private, shareable link. No sign-up required. Encrypted in your browser, and the link expires when it goes unused.',
-    ],
-    'mcpEndpoint' => url('/mcp'),
-]))->name('free');
-
 Route::get('/docs', DocsController::class)->name('docs');
 
 // The /connect hub and one page per connectable AI tool. Both read
@@ -93,6 +85,8 @@ Route::get('/robots.txt', RobotsController::class)->name('robots');
 // GET-only, same shape as the retired blog redirect above, so the isolation
 // matrix keys them as ordinary public GETs.
 Route::get('/pricing', fn () => redirect('/', 301));
+// The free tool page was removed; links to it land on the home page.
+Route::get('/free', fn () => redirect('/', 301));
 Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));
 Route::get('/app', fn () => redirect('/', 301));
 Route::get('/dashboard', fn () => redirect('/', 301));

@@ -53,7 +53,7 @@ export const STAGING_RISK_PATTERNS = [
 
 /** @type {RegExp} */
 const LOW_RISK_ONLY =
-    /^(docs\/|resources\/(css|js\/pages\/welcome)\/|skills\/.*\/drafts\/|.*\.(md|mdx)$|\.github\/workflows\/(polis-advisories)\.yml$)/;
+    /^(docs\/|resources\/css\/|skills\/.*\/drafts\/|.*\.(md|mdx)$|\.github\/workflows\/(polis-advisories)\.yml$)/;
 
 /**
  * @param {{

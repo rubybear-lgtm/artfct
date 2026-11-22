@@ -4,9 +4,8 @@ What your team's AI makes, shared, stored and searchable by every AI tool you us
 
 Artifacts are anything an AI makes that is worth keeping: interactive HTML, reports, markdown
 docs, tables, mockups. Your team shares them to one workspace, and every AI tool you connect reads
-them back with sources (Claude Code, Codex, OpenCode and Antigravity are verified). A free single-file tool is also available
-at [artfct.dev](https://artfct.dev): drop an HTML file and get an encrypted, expiring link with
-no account.
+them back with sources (Claude Code, Codex, OpenCode and Antigravity are verified). There is a free plan
+for one person, and Pro and Team plans at [artfct.dev](https://artfct.dev).
 
 ---
 
@@ -17,12 +16,9 @@ no account.
 
 ## Web
 
-Visit [artfct.dev](https://artfct.dev). Drop or select an `.html` file. You get a
-link immediately — no account, no configuration.
-
-Links are encrypted and ephemeral by default: they expire 5 days after last
-access unless you set a custom TTL. Public metadata stays visible for link
-previews, while the fragment passcode is never sent to the server.
+Visit [artfct.dev](https://artfct.dev) and sign in. Connect your AI tool (below) and the pages it
+publishes are stored in your team's library, where every connected tool can search them. A page
+shared with a public link opens for anyone who has the link, with no account.
 
 ## Connect your AI tool
 

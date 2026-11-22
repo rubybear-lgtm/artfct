@@ -56,7 +56,7 @@ Yes, and the answer arrives through the same index. Someone describes what they 
 
 The store also answers inside Slack. A team member runs a search command and the results are returned privately to that person rather than posted to the channel, which keeps a half-formed question from becoming a public one. Setup for every supported tool is listed in the [full reference](https://artfct.dev/llms-full.txt).
 
-A team that wants to try the sharing half without connecting a tool can [publish a single page as a link](https://artfct.dev/free), which needs no account to open.
+A team that wants to try this first can start on the free plan, which is one person with monthly limits. A public page opens for anyone holding the link, with no account.
 
 ## What this does not do
 
