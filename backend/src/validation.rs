@@ -197,7 +197,7 @@ pub(crate) fn validate_permanent_manifest(
     Ok((manifest, store::content_hash(&canonical)))
 }
 
-/// Title / description maxima shared by permanent and ephemeral creates (RUB-465).
+/// Title / description maxima used by permanent creates (RUB-465).
 pub(crate) const MAX_TITLE_CHARS: usize = 200;
 pub(crate) const MAX_DESCRIPTION_CHARS: usize = 1000;
 /// A string field trimmed to `max` characters; empty or non-string is `None`.

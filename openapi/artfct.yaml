@@ -1373,7 +1373,7 @@
         "description": "Artifact identifier: a 13-character lowercase base36 stable id (new permanent artifacts), or a 32-character hex id (permanent artifacts published before versioning). The stable id survives new versions.",
         "schema": {
           "type": "string",
-          "pattern": "^(?:[A-Za-z0-9]{10}|[a-z0-9]{13}|[a-f0-9]{32})$"
+          "pattern": "^(?:[a-z0-9]{13}|[a-f0-9]{32})$"
         }
       },
       "OrganizationId": {

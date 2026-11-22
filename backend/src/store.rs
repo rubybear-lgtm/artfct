@@ -19,9 +19,9 @@ use crate::governance::GovernanceError;
 
 pub const MAX_TENANT_SLUG_LENGTH: usize = 24;
 pub const PUBLIC_ID_LENGTH: usize = 32;
-/// Length of a stable artifact id. The three id shapes ([`STABLE_ID_LENGTH`]
-/// base36, [`PUBLIC_ID_LENGTH`] hex, and the 10-character ephemeral shape)
-/// never overlap, so a length alone is enough to tell them apart.
+/// Length of a stable artifact id. The two id shapes ([`STABLE_ID_LENGTH`]
+/// base36 and [`PUBLIC_ID_LENGTH`] hex) never overlap, so a length alone is
+/// enough to tell them apart.
 pub const STABLE_ID_LENGTH: usize = 13;
 /// The lowercase base36 alphabet (`0-9a-z`) a stable artifact id is drawn
 /// from. Lowercase because the id becomes a hostname label in an isolated
@@ -1889,10 +1889,10 @@ mod tests {
     }
 
     #[test]
-    fn is_permanent_id_covers_both_shapes_but_not_ephemeral() {
+    fn is_permanent_id_covers_both_shapes_but_not_ten_characters() {
         assert!(is_permanent_id(&mint_stable_id()));
         assert!(is_permanent_id(&"a".repeat(PUBLIC_ID_LENGTH)));
-        // A 10-character ephemeral id is not a permanent artifact id.
+        // The 10-character ids of the removed free tool are not artifact ids.
         assert!(!is_permanent_id(&"a".repeat(10)));
         assert!(!is_permanent_id(&"A".repeat(STABLE_ID_LENGTH)));
         assert!(!is_permanent_id(""));

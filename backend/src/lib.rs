@@ -79,7 +79,6 @@ use version_routes::{get_version, parse_version_path, post_version};
 const KV_BINDING: &str = "ARTIFACTS_KV";
 const DEFAULT_BASE_URL: &str = "https://artfct.dev";
 const MIN_EXPIRATION_TTL_SECONDS: u64 = 60;
-const ARTIFACT_ID_LENGTH: usize = 10;
 const MAX_BUNDLE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 25 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 500;
@@ -444,8 +443,7 @@ fn json_error(code: ErrorCode, message: &str, status: u16) -> Result<Response> {
     build_error_response(code, message, status).into_worker_response()
 }
 fn is_valid_artifact_id(id: &str) -> bool {
-    (id.len() == ARTIFACT_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-        || store::is_permanent_id(id)
+    store::is_permanent_id(id)
 }
 
 fn env_string(env: &Env, key: &str, default: &str) -> String {
@@ -953,13 +951,7 @@ mod tests {
                         .chars()
                         .all(|character| character.is_ascii_alphanumeric())
             }
-            "^(?:[A-Za-z0-9]{10}|[a-z0-9]{13}|[a-f0-9]{32})$" => {
-                (value.len() == 10
-                    && value
-                        .chars()
-                        .all(|character| character.is_ascii_alphanumeric()))
-                    || store::is_permanent_id(value)
-            }
+            "^(?:[a-z0-9]{13}|[a-f0-9]{32})$" => store::is_permanent_id(value),
             "^[a-f0-9]{64}$" => {
                 value.len() == 64
                     && value.chars().all(|character| {
@@ -1937,12 +1929,14 @@ mod tests {
 
     #[test]
     fn artifact_id_validation_requires_exact_length_and_charset() {
-        assert!(is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH)));
+        assert!(is_valid_artifact_id(&"a".repeat(13)));
+        assert!(is_valid_artifact_id(&"a".repeat(32)));
         assert!(!is_valid_artifact_id(""));
         assert!(!is_valid_artifact_id("12345"));
-        assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH - 1)));
-        assert!(!is_valid_artifact_id(&"a".repeat(ARTIFACT_ID_LENGTH + 1)));
-        assert!(!is_valid_artifact_id("abc!defghi"));
+        assert!(!is_valid_artifact_id(&"a".repeat(10)));
+        assert!(!is_valid_artifact_id(&"a".repeat(12)));
+        assert!(!is_valid_artifact_id(&"a".repeat(14)));
+        assert!(!is_valid_artifact_id("abc!defghijkl"));
     }
 
     #[test]

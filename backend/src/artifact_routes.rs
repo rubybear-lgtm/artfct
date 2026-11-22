@@ -1045,8 +1045,8 @@ pub(crate) async fn resolve_permanent_artifact(
         }
     }
     // RUB-439: an old shared-origin link to a public artifact's entrypoint
-    // lands on the app's viewer. Subresources, isolated hosts, ephemeral
-    // artifacts and every non-public level keep their behaviour.
+    // lands on the app's viewer. Subresources, isolated hosts and every
+    // non-public level keep their behaviour.
     let is_navigation = req
         .headers()
         .get("Sec-Fetch-Dest")?
@@ -1623,8 +1623,7 @@ pub(crate) async fn existing_permanent_response(
 
 /// Splits `/v1/artifacts/{id}/sharing` into `id`. Pure, so the dispatch guard
 /// and its tests share one definition. Shape-only: the handler answers a
-/// non-permanent id with 404 rather than letting the generic PATCH arm treat it
-/// as an ephemeral update.
+/// non-permanent id with 404.
 pub(crate) fn parse_sharing_path(path: &str) -> Option<&str> {
     let id = path
         .strip_prefix("/v1/artifacts/")?
@@ -2552,7 +2551,7 @@ pub(crate) fn build_public_artifact_metadata(
 /// `GET /v1/public/artifacts/{id}` — unauthenticated metadata for a live,
 /// complete, public permanent artifact, for the app's `/a/{id}` viewer when the
 /// visitor is signed out or from another team. Every other case (bad id,
-/// missing, team, private, revoked, pending, ephemeral) is the same 404, so the
+/// missing, team, private, revoked, pending) is the same 404, so the
 /// endpoint never confirms that a non-public id exists.
 pub(crate) async fn get_public_artifact_metadata(path: &str, env: &Env) -> Result<Response> {
     let artifact_id = path
