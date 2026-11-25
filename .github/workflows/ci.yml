@@ -227,12 +227,15 @@ jobs:
         run: npm run build
 
       - name: Run Pest (unit and feature)
-        run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Unit,Feature
+        run: php -d memory_limit=512M vendor/bin/pest --parallel --passthru-php='-d memory_limit=512M' --compact --display-skipped --testsuite=Unit,Feature
 
       - name: Run pgvector integration tests
         env:
           DB_PORT: '55432'
-        run: php -d memory_limit=512M vendor/bin/pest --configuration phpunit.pgsql.xml --compact tests/Feature/Indexing/PgVectorIndexTest.php
+        run: php -d memory_limit=512M vendor/bin/pest --configuration phpunit.pgsql.xml --compact --fail-on-skipped tests/Feature/Indexing/PgVectorIndexTest.php
+
+      - name: Run team authorization against PostgreSQL
+        run: php -d memory_limit=512M vendor/bin/pest --configuration phpunit.pgsql.xml --compact --fail-on-skipped tests/Feature/Policy/TeamPolicyTest.php
 
   # Browser tests start a browser and their own server per worker, so they are
   # the one suite that cannot share a run with the rest: they get their own job
@@ -301,7 +304,7 @@ jobs:
         run: npm run build
 
       - name: Run Pest (browser)
-        run: php -d memory_limit=512M vendor/bin/pest --parallel --compact --testsuite=Browser
+        run: php -d memory_limit=512M vendor/bin/pest --parallel --passthru-php='-d memory_limit=512M' --compact --testsuite=Browser
 
   # RUB-517: gate/poller/notes unit tests for the manual production release
   # Action. Kept outside php_static so a Node-only change is cheap to re-run.

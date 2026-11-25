@@ -15,5 +15,10 @@ return [
             'name' => 'Artifact templates',
             'description' => 'Lets a team pull Artfct-authored templates (kanban board, team wiki, announcement board) into its library as working artifacts.',
         ],
+        'unified-rail' => [
+            'name' => 'Unified rail',
+            'description' => 'One sidebar, two zones: the global product nav up top and screen-contextual filters or anchors below, with the collections shelf above content rows. Applies to Home, Artifacts, Collections, AI tool connections and Admin.',
+            'expose_to_browser' => true,
+        ],
     ],
 ];
