@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
     assertRequiredChecksSucceeded,
     isIgnoredCheck,
+    isFinishedReleaseRun,
     isOwnRun,
     latestChecksByName,
 } from './ci-checks.mjs';
@@ -198,7 +199,11 @@ test('A5: all required checks green are accepted; Railway statuses ignored', asy
     });
 
     assert.equal(result.ok, true);
-    assert.ok(result.checks.every((c) => c.conclusion === 'success' || c.conclusion === 'skipped'));
+    assert.ok(
+        result.checks.every(
+            (c) => c.conclusion === 'success' || c.conclusion === 'skipped',
+        ),
+    );
     assert.equal(
         result.checks.some((c) => /artfct -/i.test(c.name)),
         false,
@@ -423,4 +428,126 @@ test('isOwnRun matches only the exact run id path segment', () => {
     assert.equal(isOwnRun({ detailsUrl: url }, '234'), false);
     assert.equal(isOwnRun({ detailsUrl: url }, undefined), false);
     assert.equal(isOwnRun({}, '1234'), false);
+});
+
+const passingRequiredChecks = () => [
+    ...['Pest (browser)', 'application'].map((name) => ({
+        name,
+        status: 'completed',
+        conclusion: 'success',
+        appSlug: 'github-actions',
+    })),
+    {
+        name: 'MCP local end-to-end (Postgres + Worker + hosted OAuth)',
+        status: 'completed',
+        conclusion: 'skipped',
+        appSlug: 'github-actions',
+    },
+];
+
+test('a non-required job skipped by its own condition does not fail the gate', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        sleep: async () => {},
+        listCheckRuns: async () => [
+            ...passingRequiredChecks(),
+            {
+                name: 'Stripe signature mutation pilot',
+                status: 'completed',
+                conclusion: 'skipped',
+                appSlug: 'github-actions',
+            },
+        ],
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('a skipped required check still fails the gate', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        sleep: async () => {},
+        listCheckRuns: async () =>
+            passingRequiredChecks().map((check) =>
+                check.name === 'Pest (browser)'
+                    ? { ...check, conclusion: 'skipped' }
+                    : check,
+            ),
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.failed, ['Pest (browser)']);
+});
+
+test('a non-required job that failed still fails the gate', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        sleep: async () => {},
+        listCheckRuns: async () => [
+            ...passingRequiredChecks(),
+            {
+                name: 'Stripe signature mutation pilot',
+                status: 'completed',
+                conclusion: 'failure',
+                appSlug: 'github-actions',
+            },
+        ],
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.failed, ['Stripe signature mutation pilot']);
+});
+
+test('an earlier failed release run on the same commit does not block the next one', async () => {
+    const result = await assertRequiredChecksSucceeded({
+        sha: 'abc',
+        ownRunId: '777',
+        sleep: async () => {},
+        listCheckRuns: async () => [
+            ...passingRequiredChecks(),
+            {
+                name: 'Release to production',
+                status: 'completed',
+                conclusion: 'failure',
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/555/job/1',
+            },
+            {
+                name: 'Release to production',
+                status: 'in_progress',
+                conclusion: null,
+                appSlug: 'github-actions',
+                detailsUrl: 'https://github.com/o/r/actions/runs/777/job/9',
+            },
+        ],
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('isFinishedReleaseRun keeps a release run that is still going', () => {
+    assert.equal(
+        isFinishedReleaseRun({
+            name: 'Release to production',
+            status: 'completed',
+            conclusion: 'failure',
+        }),
+        true,
+    );
+    assert.equal(
+        isFinishedReleaseRun({
+            name: 'Release to production',
+            status: 'in_progress',
+            conclusion: null,
+        }),
+        false,
+    );
+    assert.equal(
+        isFinishedReleaseRun({
+            name: 'application',
+            status: 'completed',
+            conclusion: 'failure',
+        }),
+        false,
+    );
 });
