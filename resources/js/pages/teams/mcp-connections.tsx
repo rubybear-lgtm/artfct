@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     Activity,
     Cable,
@@ -30,6 +30,7 @@ import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { docs } from '@/routes';
 import teamRoutes from '@/routes/teams';
+import type { SharedProps } from '@/types/shared';
 
 interface Connection {
     id: string;
@@ -120,11 +121,16 @@ export default function McpConnections({
 }: Props) {
     const labelForScope = (scope: string): string =>
         scopeLabels[scope] ?? scope;
+    const unifiedRail =
+        usePage<SharedProps>().props.features?.['unified-rail'] === true;
     const transports = [
         ...new Set(connections.map((connection) => connection.transport)),
     ];
 
     const [copied, setCopied] = useState<string | null>(null);
+    const [showAllTools, setShowAllTools] = useState(false);
+    const visibleTools =
+        unifiedRail && !showAllTools ? usage.byTool.slice(0, 6) : usage.byTool;
     const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
     const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
         string | null
@@ -205,7 +211,10 @@ export default function McpConnections({
                     available for audit purposes.
                 </Alert>
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'setup' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle>Connect an AI tool</CardTitle>
                         <CardDescription>
@@ -241,7 +250,10 @@ export default function McpConnections({
                                     : 'Copy address'}
                             </Button>
                         </div>
-                        <div className="rounded-lg border border-dashed p-4 md:col-span-2">
+                        <div
+                            id={unifiedRail ? 'permissions' : undefined}
+                            className={`rounded-lg border border-dashed p-4 md:col-span-2 ${unifiedRail ? 'scroll-mt-20' : ''}`}
+                        >
                             <p className="font-medium">What each tool can do</p>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 Each tool asks for these permissions when
@@ -368,7 +380,10 @@ export default function McpConnections({
                 </div>
 
                 {usage.byTool.length > 0 && (
-                    <Card>
+                    <Card
+                        id={unifiedRail ? 'usage' : undefined}
+                        className={unifiedRail ? 'scroll-mt-20' : undefined}
+                    >
                         <CardHeader>
                             <CardTitle>Usage by tool</CardTitle>
                             <CardDescription>
@@ -390,7 +405,7 @@ export default function McpConnections({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {usage.byTool.map((tool) => (
+                                        {visibleTools.map((tool) => (
                                             <TableRow key={tool.tool}>
                                                 <TableCell className="font-mono text-xs">
                                                     {tool.tool}
@@ -413,11 +428,29 @@ export default function McpConnections({
                                     </tbody>
                                 </Table>
                             </div>
+                            {unifiedRail && usage.byTool.length > 6 && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mt-3"
+                                    onClick={() =>
+                                        setShowAllTools((value) => !value)
+                                    }
+                                >
+                                    {showAllTools
+                                        ? 'Show less'
+                                        : `Show all ${usage.byTool.length}`}
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
                 )}
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'manual-setup' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle>Set up a tool manually</CardTitle>
                         <CardDescription>
@@ -797,6 +830,47 @@ export default function McpConnections({
     );
 }
 
+function ConnectionsRailContext() {
+    const { usage } = usePage<SharedProps & { usage: { byTool: unknown[] } }>()
+        .props;
+    const anchors = [
+        { id: 'setup', label: 'Setup' },
+        { id: 'permissions', label: 'Permissions' },
+        ...(usage.byTool.length > 0 ? [{ id: 'usage', label: 'Usage' }] : []),
+        { id: 'manual-setup', label: 'Manual setup' },
+    ];
+
+    return (
+        <nav aria-label="On this page" className="flex flex-col gap-0.5">
+            <p className="px-2.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                On this page
+            </p>
+            {anchors.map((anchor) => (
+                <a
+                    key={anchor.id}
+                    href={`#${anchor.id}`}
+                    className="rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                    {anchor.label}
+                </a>
+            ))}
+        </nav>
+    );
+}
+
+function McpConnectionsLayout({ page }: { page: React.ReactNode }) {
+    const { features } = usePage<SharedProps>().props;
+    const unifiedRail = features?.['unified-rail'] === true;
+
+    return (
+        <AppLayout
+            railContext={unifiedRail ? <ConnectionsRailContext /> : undefined}
+        >
+            {page}
+        </AppLayout>
+    );
+}
+
 McpConnections.layout = (page: React.ReactNode) => (
-    <AppLayout>{page}</AppLayout>
+    <McpConnectionsLayout page={page} />
 );

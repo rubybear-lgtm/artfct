@@ -1,7 +1,10 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
-import { CollectionList } from '@/components/home/collection-list';
+import {
+    CollectionList,
+    CollectionShelf,
+} from '@/components/home/collection-list';
 import { RecentArtifacts } from '@/components/home/recent-artifacts';
 import { SearchBlock } from '@/components/home/search-block';
 import { SearchResults } from '@/components/home/search-results';
@@ -24,7 +27,10 @@ export default function Dashboard({
     setup,
     home,
 }: DashboardProps) {
-    const { currentTeam } = usePage<SharedProps>().props;
+    const { currentTeam, features } = usePage<
+        SharedProps & { features?: Record<string, boolean> }
+    >().props;
+    const unifiedRail = features?.['unified-rail'] === true;
     const [declining, setDeclining] = useState<PendingInvitation | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -201,6 +207,12 @@ export default function Dashboard({
                                 />
                             ) : (
                                 <div className="flex flex-col gap-12">
+                                    {unifiedRail && (
+                                        <CollectionShelf
+                                            teamSlug={home.team.slug}
+                                            collections={home.collections}
+                                        />
+                                    )}
                                     <RecentArtifacts
                                         teamSlug={home.team.slug}
                                         scope={home.filters.scope}
@@ -210,10 +222,12 @@ export default function Dashboard({
                                         busy={busy}
                                         onScopeChange={changeScope}
                                     />
-                                    <CollectionList
-                                        teamSlug={home.team.slug}
-                                        collections={home.collections}
-                                    />
+                                    {!unifiedRail && (
+                                        <CollectionList
+                                            teamSlug={home.team.slug}
+                                            collections={home.collections}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>

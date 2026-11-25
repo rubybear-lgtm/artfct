@@ -123,3 +123,43 @@ test('the version history page renders one row per version with the current mark
 
     $page->assertMissing('@version-restore-3');
 });
+
+test('restoring_an_older_version_creates_a_new_current_version', function () {
+    [$team, $owner] = versioningBrowserUser('Version Restore Users', 'version-restore@example.com');
+    seedVersionedConsoleArtifact($team, $owner, BROWSER_VERSIONED_ARTIFACT_ID, revoked: false);
+    test()->actingAs($owner);
+
+    visit('/settings/teams/'.$team->slug.'/console/artifacts/'.BROWSER_VERSIONED_ARTIFACT_ID.'/versions')
+        ->click('@version-restore-1')
+        ->assertSee('Version 4')
+        ->assertSee('Restored from version 1')
+        ->assertMissing('@version-restore-4')
+        ->assertVisible('@version-restore-3')
+        ->assertNoJavaScriptErrors();
+
+    $history = app(ArtifactDirectory::class)->listVersions($team->slug, BROWSER_VERSIONED_ARTIFACT_ID);
+    expect($history['current_version'])->toBe(4)
+        ->and($history['versions'][0]['restored_from'])->toBe(1);
+});
+
+test('a_restore_conflict_preserves_history_and_explains_the_retry', function () {
+    [$team, $owner] = versioningBrowserUser('Version Conflict Users', 'version-conflict@example.com');
+    seedVersionedConsoleArtifact($team, $owner, BROWSER_VERSIONED_ARTIFACT_ID, revoked: false);
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->failRestore(BROWSER_VERSIONED_ARTIFACT_ID, 'conflict');
+    test()->actingAs($owner);
+
+    visit('/settings/teams/'.$team->slug.'/console/artifacts/'.BROWSER_VERSIONED_ARTIFACT_ID.'/versions')
+        ->click('@version-restore-1')
+        ->assertSee('Someone else published a version at the same moment. Try again.')
+        ->assertSee('Version 3')
+        ->assertMissing('@version-restore-3')
+        ->assertVisible('@version-restore-1')
+        ->assertDontSee('Version 4')
+        ->assertNoJavaScriptErrors();
+
+    $history = $directory->listVersions($team->slug, BROWSER_VERSIONED_ARTIFACT_ID);
+    expect($history['current_version'])->toBe(3)
+        ->and($history['versions'])->toHaveCount(3);
+});

@@ -1,4 +1,4 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import teamRoutes from '@/routes/teams';
+import type { SharedProps } from '@/types/shared';
 
 interface CollectionRow {
     id: number;
@@ -402,7 +403,8 @@ function CollectionCard({
     );
 }
 
-function CollectionPanel({
+/** Artifact rows shared by the dialog panel and the flag-on inline section. */
+function CollectionArtifactRows({
     team,
     collection,
     canEdit,
@@ -419,114 +421,90 @@ function CollectionPanel({
 
     return (
         <>
-            <section
-                id={`collection-panel-${collection.id}`}
-                aria-label={`${collection.name} artifacts`}
-                data-testid={`collection-panel-${collection.id}`}
-                className="min-w-0"
-            >
-                <DialogClose asChild>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute top-2 right-2 min-h-11 min-w-11"
-                        aria-label="Close"
-                        data-testid={`collection-close-${collection.id}`}
-                    >
-                        <span aria-hidden="true">✕</span>
-                    </Button>
-                </DialogClose>
-                <DialogTitle className="pr-12">{collection.name}</DialogTitle>
-                <DialogDescription className="mb-4">
-                    {artifactCountLabel(collection.artifactIds.length)}
-                </DialogDescription>
-                {collection.artifactIds.length === 0 ? (
-                    <EmptyState title="No artifacts yet." />
-                ) : (
-                    <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {collection.artifactIds.map((id) => {
-                            const name = artifactName(artifactOptions, id);
-                            const openUrl = collection.openUrls[id];
-                            const previewUrl = previewUrlFor(collection, id);
+            {collection.artifactIds.length === 0 ? (
+                <EmptyState title="No artifacts yet." />
+            ) : (
+                <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {collection.artifactIds.map((id) => {
+                        const name = artifactName(artifactOptions, id);
+                        const openUrl = collection.openUrls[id];
+                        const previewUrl = previewUrlFor(collection, id);
 
-                            return (
-                                <li
-                                    key={id}
-                                    data-testid={`collection-artifact-${collection.id}-${id}`}
-                                    className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-background"
-                                >
-                                    {previewUrl ? (
-                                        <ArtifactPreview
-                                            previewUrl={previewUrl}
-                                            title={`Preview of ${name}`}
-                                            className="border-b border-border"
-                                        />
-                                    ) : (
-                                        <div
-                                            aria-hidden="true"
-                                            className="flex aspect-[8/5] w-full items-center justify-center border-b border-dashed border-border bg-muted/40 px-4"
-                                        >
-                                            <span className="text-center font-mono text-xs break-all text-muted-foreground">
-                                                {id.slice(0, 8)}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                                        {canOpenArtifacts && openUrl ? (
-                                            <a
-                                                className="min-w-0 flex-1 break-words tabular-nums underline"
-                                                href={openUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                data-testid={`collection-open-title-${collection.id}-${id}`}
-                                            >
-                                                {name}
-                                            </a>
-                                        ) : (
-                                            <span className="min-w-0 flex-1 break-words tabular-nums">
-                                                {name}
-                                            </span>
-                                        )}
-                                        {(canOpenArtifacts && openUrl) ||
-                                        canEdit ? (
-                                            <div className="flex items-center gap-2">
-                                                {canOpenArtifacts &&
-                                                    openUrl && (
-                                                        <a
-                                                            href={openUrl}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            data-testid={`collection-open-${collection.id}-${id}`}
-                                                            className="inline-flex min-h-11 items-center font-medium text-primary hover:underline"
-                                                        >
-                                                            Open
-                                                        </a>
-                                                    )}
-                                                {canEdit && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="ml-auto min-h-11 shrink-0"
-                                                        aria-label={`Remove ${name} from ${collection.name}`}
-                                                        data-testid={`collection-remove-${collection.id}-${id}`}
-                                                        onClick={() =>
-                                                            setRemoving(id)
-                                                        }
-                                                    >
-                                                        Remove
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        ) : null}
+                        return (
+                            <li
+                                key={id}
+                                data-testid={`collection-artifact-${collection.id}-${id}`}
+                                className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-background"
+                            >
+                                {previewUrl ? (
+                                    <ArtifactPreview
+                                        previewUrl={previewUrl}
+                                        title={`Preview of ${name}`}
+                                        className="border-b border-border"
+                                    />
+                                ) : (
+                                    <div
+                                        aria-hidden="true"
+                                        className="flex aspect-[8/5] w-full items-center justify-center border-b border-dashed border-border bg-muted/40 px-4"
+                                    >
+                                        <span className="text-center font-mono text-xs break-all text-muted-foreground">
+                                            {id.slice(0, 8)}
+                                        </span>
                                     </div>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
-            </section>
+                                )}
+                                <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
+                                    {canOpenArtifacts && openUrl ? (
+                                        <a
+                                            className="min-w-0 flex-1 break-words tabular-nums underline"
+                                            href={openUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            data-testid={`collection-open-title-${collection.id}-${id}`}
+                                        >
+                                            {name}
+                                        </a>
+                                    ) : (
+                                        <span className="min-w-0 flex-1 break-words tabular-nums">
+                                            {name}
+                                        </span>
+                                    )}
+                                    {(canOpenArtifacts && openUrl) ||
+                                    canEdit ? (
+                                        <div className="flex items-center gap-2">
+                                            {canOpenArtifacts && openUrl && (
+                                                <a
+                                                    href={openUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    data-testid={`collection-open-${collection.id}-${id}`}
+                                                    className="inline-flex min-h-11 items-center font-medium text-primary hover:underline"
+                                                >
+                                                    Open
+                                                </a>
+                                            )}
+                                            {canEdit && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="ml-auto min-h-11 shrink-0"
+                                                    aria-label={`Remove ${name} from ${collection.name}`}
+                                                    data-testid={`collection-remove-${collection.id}-${id}`}
+                                                    onClick={() =>
+                                                        setRemoving(id)
+                                                    }
+                                                >
+                                                    Remove
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
 
             <ConfirmDialog
                 open={removing !== null}
@@ -554,6 +532,53 @@ function CollectionPanel({
     );
 }
 
+function CollectionPanel({
+    team,
+    collection,
+    canEdit,
+    canOpenArtifacts,
+    artifactOptions,
+}: {
+    team: string;
+    collection: CollectionRow;
+    canEdit: boolean;
+    canOpenArtifacts: boolean;
+    artifactOptions: ArtifactOption[];
+}) {
+    return (
+        <section
+            id={`collection-panel-${collection.id}`}
+            aria-label={`${collection.name} artifacts`}
+            data-testid={`collection-panel-${collection.id}`}
+            className="min-w-0"
+        >
+            <DialogClose asChild>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2 min-h-11 min-w-11"
+                    aria-label="Close"
+                    data-testid={`collection-close-${collection.id}`}
+                >
+                    <span aria-hidden="true">✕</span>
+                </Button>
+            </DialogClose>
+            <DialogTitle className="pr-12">{collection.name}</DialogTitle>
+            <DialogDescription className="mb-4">
+                {artifactCountLabel(collection.artifactIds.length)}
+            </DialogDescription>
+            <CollectionArtifactRows
+                team={team}
+                collection={collection}
+                canEdit={canEdit}
+                canOpenArtifacts={canOpenArtifacts}
+                artifactOptions={artifactOptions}
+            />
+        </section>
+    );
+}
+
 export default function Collections({
     team,
     canEdit,
@@ -567,8 +592,15 @@ export default function Collections({
     // visits — which swap props but keep this component mounted — never
     // close what the reader opened, even across reorderings.
     const [openId, setOpenId] = useState<number | null>(null);
+    // Flag on: shelf selection is separate from the dialog. Picking a tile
+    // selects the inline section below; only the card toggle opens the dialog.
+    const [selectedId, setSelectedId] = useState<number | null>(null);
 
     const openCollection = collections.find((c) => c.id === openId);
+    const { features } = usePage<SharedProps>().props;
+    const unifiedRail = features?.['unified-rail'] === true;
+    const activeCollection =
+        collections.find((c) => c.id === selectedId) ?? collections[0] ?? null;
 
     const create = (event: FormEvent) => {
         event.preventDefault();
@@ -611,28 +643,109 @@ export default function Collections({
                 </form>
             )}
 
-            <div
-                className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
-                data-testid="collection-rows"
-            >
-                {collections.length === 0 && (
-                    <div className="col-span-full">
-                        <EmptyState title="No collections yet." />
+            {unifiedRail ? (
+                <>
+                    <div
+                        aria-label="Collections"
+                        data-testid="collection-shelf"
+                        className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+                    >
+                        {collections.map((collection) => {
+                            const active =
+                                activeCollection?.id === collection.id;
+
+                            return (
+                                <button
+                                    key={collection.id}
+                                    type="button"
+                                    id={`collection-shelf-${collection.id}`}
+                                    data-testid={`collection-tile-${collection.id}`}
+                                    aria-pressed={active}
+                                    aria-label={`${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
+                                    onClick={() => setSelectedId(collection.id)}
+                                    className={
+                                        active
+                                            ? 'flex min-h-11 flex-col gap-1 rounded-lg border border-[var(--accent)] bg-tint p-3 text-left transition-colors motion-reduce:transition-none'
+                                            : 'flex min-h-11 flex-col gap-1 rounded-lg border border-border bg-muted/40 p-3 text-left transition-colors hover:bg-muted motion-reduce:transition-none'
+                                    }
+                                >
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                            {collection.name}
+                                        </span>
+                                        {collection.canonical && (
+                                            <Badge variant="success">
+                                                canonical
+                                            </Badge>
+                                        )}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {artifactCountLabel(
+                                            collection.artifactIds.length,
+                                        )}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
-                )}
-                {collections.map((collection) => (
-                    <CollectionCard
-                        key={collection.id}
-                        team={team.slug}
-                        collection={collection}
-                        expanded={openId === collection.id}
-                        onToggle={() => setOpenId(collection.id)}
-                        canEdit={canEdit}
-                        canPin={canPin}
-                        artifactOptions={artifactOptions}
-                    />
-                ))}
-            </div>
+                    {activeCollection ? (
+                        <section
+                            aria-label={`${activeCollection.name} artifacts`}
+                            data-testid="collection-active"
+                            className="flex min-w-0 flex-col gap-4"
+                        >
+                            <CollectionCard
+                                key={activeCollection.id}
+                                team={team.slug}
+                                collection={activeCollection}
+                                expanded={openId === activeCollection.id}
+                                onToggle={() => setOpenId(activeCollection.id)}
+                                canEdit={canEdit}
+                                canPin={canPin}
+                                artifactOptions={artifactOptions}
+                            />
+                            <h2 className="font-serif text-xl font-medium">
+                                {artifactCountLabel(
+                                    activeCollection.artifactIds.length,
+                                )}{' '}
+                                in {activeCollection.name}
+                            </h2>
+                            <CollectionArtifactRows
+                                team={team.slug}
+                                collection={activeCollection}
+                                canEdit={canEdit}
+                                canOpenArtifacts={canOpenArtifacts}
+                                artifactOptions={artifactOptions}
+                            />
+                        </section>
+                    ) : (
+                        <EmptyState title="No collections yet." />
+                    )}
+                </>
+            ) : (
+                <div
+                    className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                    data-testid="collection-rows"
+                >
+                    {collections.length === 0 && (
+                        <div className="col-span-full">
+                            <EmptyState title="No collections yet." />
+                        </div>
+                    )}
+                    {collections.map((collection) => (
+                        <CollectionCard
+                            key={collection.id}
+                            team={team.slug}
+                            collection={collection}
+                            expanded={openId === collection.id}
+                            onToggle={() => setOpenId(collection.id)}
+                            canEdit={canEdit}
+                            canPin={canPin}
+                            artifactOptions={artifactOptions}
+                        />
+                    ))}
+                </div>
+            )}
 
             <Dialog
                 open={openCollection !== undefined}
@@ -658,4 +771,55 @@ export default function Collections({
     );
 }
 
-Collections.layout = (page: React.ReactNode) => <AppLayout>{page}</AppLayout>;
+function CollectionsRailContext() {
+    const { collections } = usePage<
+        SharedProps & { collections: CollectionRow[] }
+    >().props;
+
+    if (collections.length === 0) {
+        return null;
+    }
+
+    return (
+        <nav aria-label="Collections" data-testid="collections-rail-index">
+            <p className="px-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Collections
+            </p>
+            <ul className="mt-1 flex flex-col gap-px">
+                {collections.map((collection) => (
+                    <li key={collection.id}>
+                        <a
+                            href={`#collection-shelf-${collection.id}`}
+                            data-testid={`collections-rail-${collection.id}`}
+                            className="flex min-h-9 items-center justify-between gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium break-words text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                        >
+                            <span className="min-w-0 truncate">
+                                {collection.name}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                                {collection.artifactIds.length}
+                            </span>
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </nav>
+    );
+}
+
+function CollectionsLayout({ page }: { page: React.ReactNode }) {
+    const { features } = usePage<SharedProps>().props;
+    const unifiedRail = features?.['unified-rail'] === true;
+
+    return (
+        <AppLayout
+            railContext={unifiedRail ? <CollectionsRailContext /> : undefined}
+        >
+            {page}
+        </AppLayout>
+    );
+}
+
+Collections.layout = (page: React.ReactNode) => (
+    <CollectionsLayout page={page} />
+);

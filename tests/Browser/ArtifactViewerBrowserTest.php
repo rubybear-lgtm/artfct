@@ -4,6 +4,7 @@ use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
 use App\Enums\ArtifactType;
+use App\Http\Controllers\ArtifactViewerController;
 use App\Models\ArtifactComment;
 use App\Models\Team;
 use App\Models\User;
@@ -11,6 +12,9 @@ use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 
 uses(RefreshDatabase::class);
 
@@ -108,6 +112,157 @@ test('the_header_renders_the_title_owner_version_and_share_control_for_an_owner'
     );
 });
 
+test('an_owner_can_change_sharing_and_edit_access_from_the_viewer', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Sharing', 'viewer-sharing@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->assertChecked('@share-option-team')
+        ->check('@share-option-private')
+        ->assertChecked('@share-option-private')
+        ->check('@edit-option-edit')
+        ->assertChecked('@edit-option-edit')
+        ->click('@share-close')
+        ->click('@share-control')
+        ->assertChecked('@share-option-private')
+        ->assertChecked('@edit-option-edit')
+        ->assertNoJavaScriptErrors();
+
+    $metadata = app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID);
+    expect($metadata['sharing'])->toBe('private')
+        ->and($metadata['edit_access'])->toBe('edit');
+});
+
+test('a_rejected_sharing_change_keeps_the_previous_access_level', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Sharing Error', 'viewer-sharing-error@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->failSharing(VIEWER_BROWSER_ARTIFACT_ID, 'forbidden');
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->click('@share-option-private')
+        ->assertSee('Only the owner or a team admin can change sharing.')
+        ->assertChecked('@share-option-team')
+        ->assertNoJavaScriptErrors();
+
+    expect($directory->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('team');
+});
+
+test('an_owner_can_switch_between_public_and_team_sharing', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Public Sharing', 'viewer-public-sharing@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->assertEnabled('@share-option-public')
+        ->check('@share-option-public')
+        ->assertChecked('@share-option-public');
+
+    expect(app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('public');
+
+    $page->check('@share-option-team')
+        ->assertChecked('@share-option-team')
+        ->click('@share-close')
+        ->click('@share-control')
+        ->assertChecked('@share-option-team')
+        ->assertNoJavaScriptErrors();
+
+    expect(app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('team');
+});
+
+test('copying_the_share_link_uses_the_session_aware_viewer_url_without_a_token', function (?int $version) {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Copy Link', 'viewer-copy-link@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 2, 'created_at' => now()->toIso8601String(), 'current' => true],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 2);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl().($version === null ? '' : '/v/'.$version))
+        ->click('@share-control');
+    $page->script("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.copiedArtifactLink = text; } } })");
+    $page->click('@copy-link')->assertSee('Link copied.')->assertNoJavaScriptErrors();
+
+    $expected = $version === null
+        ? route('artifacts.show', ['artifactId' => VIEWER_BROWSER_ARTIFACT_ID])
+        : route('artifacts.version', ['artifactId' => VIEWER_BROWSER_ARTIFACT_ID, 'version' => $version]);
+    expect($page->script('window.copiedArtifactLink'))->toBe($expected)
+        ->not->toContain('token=');
+})->with(['latest' => [null], 'pinned version' => [1]]);
+
+test('a_viewer_can_add_resolve_and_reopen_an_artifact_comment', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Comments', 'viewer-comments@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->click('@artifact-panel-toggle')
+        ->assertSee('No comments yet.')
+        ->type('textarea[aria-label="Add a comment"]', 'Please review the chart.')
+        ->click('Comment')
+        ->assertSee('Please review the chart.')
+        ->click('Reply')
+        ->type('textarea[aria-label="Reply"]', 'I will take a look.')
+        ->click('form:has(textarea[aria-label="Reply"]) button[type="submit"]')
+        ->assertSee('I will take a look.')
+        ->click('Resolve')
+        ->assertSee('Reopen');
+
+    $comment = ArtifactComment::query()->where('team_id', $team->id)->where('body', 'Please review the chart.')->sole();
+    expect($comment->resolved_at)->not->toBeNull();
+    expect(ArtifactComment::query()->where('parent_id', $comment->id)->where('body', 'I will take a look.')->exists())->toBeTrue();
+
+    $page->click('Reopen')
+        ->assertSee('Resolve')
+        ->assertNoJavaScriptErrors();
+
+    expect($comment->fresh()->resolved_at)->toBeNull();
+});
+
+test('a_failed_comment_keeps_its_draft_and_can_be_retried', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Comment Retry', 'viewer-comment-retry@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $attempts = 0;
+    Route::post('/a/{artifactId}/comments', function (Request $request, string $artifactId) use (&$attempts) {
+        if (++$attempts === 1) {
+            throw ValidationException::withMessages(['body' => 'Please try again.']);
+        }
+
+        return app(ArtifactViewerController::class)->storeComment($request, $artifactId, app(ArtifactDirectory::class));
+    })->middleware('web');
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@artifact-panel-toggle')
+        ->type('textarea[aria-label="Add a comment"]', 'A comment worth keeping')
+        ->click('Comment')
+        ->assertSee('Could not post your comment. Check it and try again.')
+        ->assertValue('textarea[aria-label="Add a comment"]', 'A comment worth keeping')
+        ->click('Comment')
+        ->assertSee('A comment worth keeping')
+        ->assertValue('textarea[aria-label="Add a comment"]', '')
+        ->assertNoJavaScriptErrors();
+
+    expect($attempts)->toBe(2)
+        ->and(ArtifactComment::query()->where('team_id', $team->id)->where('body', 'A comment worth keeping')->count())->toBe(1);
+});
+
 test('a_member_without_permission_sees_the_current_level_and_no_share_control', function () {
     configureViewerBrowserLinks();
 
@@ -160,6 +315,24 @@ test('the_share_dialog_stays_fixed_to_the_viewport', function () {
     expect($page->script('getComputedStyle(document.querySelector(\'[role="dialog"]\')).position'))->toBe('fixed');
 });
 
+test('the_sharing_dialog_supports_keyboard_dismissal_and_returns_focus', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Keyboard', 'viewer-keyboard@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoAccessibilityIssues()
+        ->keys('@share-control', 'Enter')
+        ->assertVisible('@share-close')
+        ->assertNoAccessibilityIssues();
+
+    $page->keys('@share-close', 'Escape')
+        ->assertMissing('@share-close')
+        ->assertScript('document.activeElement === document.querySelector(\'[data-testid="share-control"]\')')
+        ->assertNoJavaScriptErrors();
+});
+
 test('the_version_picker_offers_every_version_when_there_is_more_than_one', function () {
     configureViewerBrowserLinks();
 
@@ -184,7 +357,11 @@ test('the_version_picker_offers_every_version_when_there_is_more_than_one', func
         ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').value", '2')
         ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options.length", 3)
         // Newest first, so the current version is the first option.
-        ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options[0].text", 'Version 3 (current)');
+        ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options[0].text", 'Version 3 (current)')
+        ->select('@version-picker', '1')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID.'/v/1')
+        ->assertValue('@version-picker', '1')
+        ->assertNoJavaScriptErrors();
 });
 
 test('the_artifact_fills_the_page_and_the_details_panel_slides_in_beside_it', function () {

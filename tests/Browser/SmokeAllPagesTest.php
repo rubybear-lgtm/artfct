@@ -124,6 +124,10 @@ test('a docs link to one AI tool opens that tool\'s setup steps', function () {
 test('every_page_route_is_accounted_for', function () {
     $known = array_merge(signedInPages(), publicPages(), array_keys(coveredElsewhere()), array_keys(notPages()));
 
+    $stale = collect($known)->reject(fn (string $name): bool => Route::has($name))->values()->all();
+    expect($stale)->toBe([], 'These smoke inventory routes no longer exist: '.implode(', ', $stale));
+    expect(count($known))->toBe(count(array_unique($known)), 'A route appears more than once in the smoke inventory.');
+
     $unlisted = collect(Route::getRoutes()->getRoutes())
         ->filter(fn ($route) => in_array('GET', $route->methods(), true))
         ->map(fn ($route) => $route->getName())
