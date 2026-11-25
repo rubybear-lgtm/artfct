@@ -186,20 +186,24 @@ test('coding agents have no memory step: their project file is where the instruc
         ->and(array_column(ArtifactGuidance::stepsFor(ArtifactGuidance::HOST_MODES[$host]), 'id'))->not->toContain('save_memory_note');
 })->with(['claude-code', 'cursor', 'grok-build', 'coding-agent']);
 
-test('the onboard skill works out the app from where it runs, does not ask, and treats Cowork as the Claude app', function () {
+test('the onboard skill works out the app from where it runs, does not ask, and falls back to portable, not a Claude app', function () {
     $skill = file_get_contents(base_path('skills/onboard/SKILL.md'));
 
     expect($skill)->toContain('working it out from where you run. Do not ask.')
-        ->toContain('You are `claude-code` only if you are Claude Code running in a project folder on the person\'s own computer')
+        ->toContain('Name a specific app only when you are sure of it')
+        ->toContain('only when you work in a project folder on the person\'s own computer')
         // The mistake that shipped: a shell and file tools were taken to mean Claude Code.
         ->toContain('Having a shell and file tools is not enough')
         ->toContain('`/home/claude`')
-        ->toContain('If you are unsure, use `claude-app`')
         ->not->toContain('If you can run shell commands and edit files in a project, you are a coding agent')
-        ->toContain('That is `claude-app`, and so is Cowork')
-        ->toContain('Ask the person only if that really does not settle it')
+        ->toContain('`claude-app` (the Claude app and Cowork)')
+        // Any other app, or an unsure one, gets the set-up that writes nothing.
+        ->toContain('In any other app, or if you are unsure, use `portable`')
+        ->not->toContain('If you are unsure, use `claude-app`')
         ->and($skill)->toContain('`save_memory_note`')
         ->toContain('write exactly the note the server gives you');
+
+    expect(array_key_exists('portable', ArtifactGuidance::HOST_MODES))->toBeTrue();
 });
 
 /*
@@ -238,5 +242,5 @@ test('the other generic playbooks catch the same mistake from their side', funct
 });
 
 test('the guidance version moved with the text', function () {
-    expect(ArtifactGuidance::VERSION)->toBe('1.13.0');
+    expect(ArtifactGuidance::VERSION)->toBe('1.14.0');
 });

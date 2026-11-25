@@ -12,7 +12,7 @@ use App\Enums\ArtifactType;
 final class ArtifactGuidance
 {
     /** Bumped whenever a rule in the guidance or in a tool description changes. */
-    public const VERSION = '1.13.0';
+    public const VERSION = '1.14.0';
 
     /** @var list<string> */
     public const TOPICS = ['publish', 'search', 'collaborate', 'data', 'onboarding', 'templates', 'kanban', 'team-wiki', 'announcements', 'context-post', 'team-doc', 'handoff'];
@@ -29,8 +29,9 @@ final class ArtifactGuidance
     /**
      * Each host the onboarding playbook knows, and how it is set up: `coding_agent`
      * for agents that work in a project (no command is ever asked of the
-     * person), `connector_only` for chat apps where the connector is all there is, and
-     * `hybrid` when the host is not known yet.
+     * person), `connector_only` for chat apps where the connector is all there is,
+     * `portable` for any app (the default when no host is given), and `hybrid`
+     * when an agent asks for help working out its host.
      *
      * @var array<string, string>
      */
@@ -42,6 +43,7 @@ final class ArtifactGuidance
         'claude-app' => 'connector_only',
         'chatgpt' => 'connector_only',
         'grok' => 'connector_only',
+        'portable' => 'portable',
         'unknown' => 'hybrid',
     ];
 
@@ -67,6 +69,13 @@ final class ArtifactGuidance
             // equivalent. Asked first, skipped when there is no memory.
             ['id' => 'save_memory_note', 'requires_consent' => true],
         ],
+        // The default for any app: no file, no memory, just the connection and
+        // the save question, so a wrong guess never writes anything.
+        'portable' => [
+            ['id' => 'verify_connection', 'requires_consent' => false],
+            ['id' => 'read_usage_rules', 'requires_consent' => false],
+            ['id' => 'ask_save_preference', 'requires_consent' => true],
+        ],
         'hybrid' => [
             ['id' => 'detect_host', 'requires_consent' => false],
             ['id' => 'request_host_steps', 'requires_consent' => false],
@@ -82,7 +91,7 @@ final class ArtifactGuidance
             return null;
         }
 
-        $host ??= 'unknown';
+        $host ??= 'portable';
         $mode = self::HOST_MODES[$host] ?? null;
 
         if ($topic === 'onboarding' && $mode === null) {

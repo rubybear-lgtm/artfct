@@ -2,7 +2,7 @@
 
 The host was not given, so no setup steps are served yet.
 
-1. Work out which app you are running in. Pick one of: `claude-code`, `cursor`, `grok-build`, or `coding-agent` for any other coding agent such as Codex or VS Code (agents that work in a project), or `claude-app`, `chatgpt`, `grok` (chat apps connected through a custom connector). A chat app that can run code in a sandbox (a scratch folder such as `/home/claude`, files that vanish when the chat ends) is still a chat app, not a coding agent. If none fits, ask the person which one they use.
+1. Work out which app you are running in. Pick one of: `claude-code`, `cursor`, `grok-build`, or `coding-agent` for any other coding agent such as Codex or VS Code (agents that work in a project), or `claude-app`, `chatgpt`, `grok` (chat apps connected through a custom connector). A chat app that can run code in a sandbox (a scratch folder such as `/home/claude`, files that vanish when the chat ends) is still a chat app, not a coding agent. If none fits or you are not sure, use `portable`, the set-up that works in any app.
 2. Call `get_guidance` again with topic `onboarding` and that value as `host`.
 
 Do not guess a host. Do not change anything until you have the steps for your own host.

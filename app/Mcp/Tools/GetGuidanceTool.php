@@ -34,7 +34,7 @@ final class GetGuidanceTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.13.0',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [],
@@ -95,7 +95,7 @@ final class GetGuidanceTool extends Tool
     {
         return [
             'topic' => $schema->string()->enum(ArtifactGuidance::TOPICS)->description('publish, search, collaborate, data or onboarding.')->required(),
-            'host' => $schema->string()->enum(array_keys(ArtifactGuidance::HOST_MODES))->description('Only for onboarding: the app you run in. Use unknown, or leave it out, if you are not sure.'),
+            'host' => $schema->string()->enum(array_keys(ArtifactGuidance::HOST_MODES))->description('Only for onboarding: the app you run in. Use portable, or leave it out, if you are not sure.'),
         ];
     }
 }
