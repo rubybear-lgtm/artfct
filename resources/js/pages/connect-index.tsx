@@ -13,6 +13,7 @@ interface ConnectIndexProps {
     guides: AgentCard[];
     prompt: string;
     quickInstall: string;
+    pluginRepoUrl: string;
 }
 
 /**
@@ -26,6 +27,7 @@ export default function ConnectIndex({
     guides,
     prompt,
     quickInstall,
+    pluginRepoUrl,
 }: ConnectIndexProps) {
     const groups = AGENT_GROUPS.map((group) => ({
         ...group,
@@ -51,9 +53,9 @@ export default function ConnectIndex({
                         Every agent, one workspace
                     </h1>
                     <p className="max-w-[34em] text-lg text-balance text-muted-foreground">
-                        Connect each AI tool your team uses to the same Artfct
-                        workspace. Then what one agent publishes, the others can
-                        find.
+                        Install the Artfct plugin in each AI tool your team
+                        uses, all on the same workspace. Then what one agent
+                        publishes, the others can find.
                     </p>
                     <div className="mt-5 w-full sm:w-auto">
                         <CopyPrompt prompt={prompt} />
@@ -138,12 +140,35 @@ export default function ConnectIndex({
                 <section className="mt-16 grid items-center gap-7 rounded-[14px] border border-border bg-paper p-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
                     <div>
                         <h2 className="font-serif text-[26px] leading-tight font-normal">
-                            Set up several agents at once
+                            Agent not listed?
                         </h2>
                         <p className="mt-1.5 text-muted-foreground">
-                            Finds the agents on your computer and adds Artfct to
-                            each one you pick. Each still asks you to sign in
-                            the first time.
+                            If it installs{' '}
+                            <a
+                                href="https://agent-plugins.org/compatible-clients"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary underline-offset-4 hover:underline"
+                            >
+                                Agent Plugins
+                            </a>
+                            , add the Artfct plugin from this repository with
+                            its own plugin install. One install brings the
+                            skills and the connection.
+                        </p>
+                    </div>
+                    <CodeBlock code={pluginRepoUrl} />
+                </section>
+
+                <section className="mt-6 grid items-center gap-7 rounded-[14px] border border-border p-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+                    <div>
+                        <h2 className="font-serif text-[26px] leading-tight font-normal">
+                            No plugin support? Add the server to several agents
+                        </h2>
+                        <p className="mt-1.5 text-muted-foreground">
+                            Finds the agents on your computer and adds Artfct’s
+                            server to each one you pick, without the skills.
+                            Each still asks you to sign in the first time.
                         </p>
                     </div>
                     <CodeBlock code={quickInstall} />

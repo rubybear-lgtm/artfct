@@ -73,7 +73,8 @@ test('the MCP config block on the docs page is the hosted URL only', function ()
             ->where('setup.mcpUrl', 'https://staging.artfct.dev/mcp')
             ->where('setup.llmsFullUrl', 'https://staging.artfct.dev/llms-full.txt')
             ->where('setup.guides.0.id', 'connect-claude-code')
-            ->where('setup.guides.0.steps.0.code', 'claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
+            ->where('setup.guides.0.steps.0.code', "/plugin marketplace add artfct-dev/artfct-plugin\n/plugin install artfct@artfct")
+            ->where('setup.guides.0.fallback.steps.0.code', 'claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
             ->where('setup.quickInstall', 'npx add-mcp@latest https://staging.artfct.dev/mcp --name artfct --global'));
 
     expect(file_get_contents(resource_path('js/pages/docs.tsx')))
@@ -96,8 +97,8 @@ test('one-click install links carry the hosted MCP URL', function () {
 
     $guides = collect($setup->guides())->keyBy('id');
 
-    expect($guides['connect-cursor']['installLink'])->toBe($setup->cursorInstallLink())
-        ->and($guides['connect-vscode']['installLink'])->toBe($setup->vscodeInstallLink());
+    expect($guides['connect-cursor']['fallback']['installLink'])->toBe($setup->cursorInstallLink())
+        ->and($guides['connect-vscode']['fallback']['installLink'])->toBe($setup->vscodeInstallLink());
 
     config(['app.url' => 'https://staging.artfct.dev']);
 
@@ -119,8 +120,8 @@ test('the agent setup prompt connects, verifies and teaches the project, leaving
         ->toContain("\n\n{\n    \"mcpServers\": {\n        \"artfct\": {\n            \"type\": \"http\",\n            \"url\": \"https://staging.artfct.dev/mcp\"\n        }\n    }\n}\n\n")
         ->toContain('Work out which app you are running in')
         ->not->toContain('npx skills add')
-        ->toContain('If the artfct-init skill is already available to you, run it')
-        ->toContain('all my projects, just me in this project, or the whole team in this repo')
+        ->not->toContain('artfct-init')
+        ->toContain('If your app installs Agent Plugins from a repository')
         ->toContain('offer to help connect them to the same workspace')
         ->not->toContain('not yet tested')
         ->toContain('https://staging.artfct.dev/mcp')
@@ -219,15 +220,24 @@ test('the docs give step-by-step setup for every verified AI tool', function () 
     $guides = collect($setup->guides())->keyBy('id');
     $codes = fn (string $id): array => collect($guides[$id]['steps'])->pluck('code')->filter()->values()->all();
 
+    $fallbackCodes = fn (string $id): array => collect($guides[$id]['fallback']['steps'])->pluck('code')->filter()->values()->all();
+
+    // RUB-597: a plugin guide is verified only where the plugin install itself
+    // was run for real; OpenCode's verification is for its server steps.
     expect($guides->where('verified', true)->keys()->all())
-        ->toBe(['connect-claude-code', 'connect-codex', 'connect-opencode', 'connect-antigravity'])
-        ->and($codes('connect-claude-code'))->toContain('claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
-        ->and($codes('connect-codex'))->toBe(['codex mcp add artfct --url https://staging.artfct.dev/mcp', 'codex mcp login artfct'])
+        ->toBe(['connect-claude-code', 'connect-codex', 'connect-hermes', 'connect-openclaw', 'connect-opencode'])
+        ->and($codes('connect-claude-code'))->toBe(["/plugin marketplace add artfct-dev/artfct-plugin\n/plugin install artfct@artfct"])
+        ->and($fallbackCodes('connect-claude-code'))->toBe(['claude mcp add --transport http artfct https://staging.artfct.dev/mcp'])
+        ->and($codes('connect-codex'))->toBe(["codex plugin marketplace add artfct-dev/artfct-plugin\ncodex plugin add artfct@artfct", 'codex mcp login artfct'])
+        ->and($fallbackCodes('connect-codex'))->toBe(['codex mcp add artfct --url https://staging.artfct.dev/mcp', 'codex mcp login artfct'])
+        ->and($codes('connect-hermes'))->toBe(["hermes plugins install artfct-dev/artfct-plugin\nhermes plugins enable artfct"])
+        ->and($codes('connect-openclaw'))->toBe(['openclaw plugins install artfct --marketplace https://github.com/artfct-dev/artfct-plugin'])
         ->and($codes('connect-opencode'))->toBe(['opencode mcp add artfct --url https://staging.artfct.dev/mcp', 'opencode mcp auth artfct'])
         ->and($guides['connect-opencode']['steps'][1]['text'])->toContain('select Approve once')
-        ->and($codes('connect-antigravity')[0])->toBe('agy mcp add artfct https://staging.artfct.dev/mcp')
-        ->and(json_decode($codes('connect-antigravity')[1], true))->toBe(['artfct' => ['serverUrl' => 'https://staging.artfct.dev/mcp', 'oauth' => []]])
-        ->and($guides['connect-antigravity']['steps'][1]['text'])->toContain('~/.gemini/config/mcp_config.json');
+        ->and($codes('connect-antigravity'))->toBe(['agy plugin install https://github.com/artfct-dev/artfct-plugin'])
+        ->and($fallbackCodes('connect-antigravity')[0])->toBe('agy mcp add artfct https://staging.artfct.dev/mcp')
+        ->and(json_decode($fallbackCodes('connect-antigravity')[1], true))->toBe(['artfct' => ['serverUrl' => 'https://staging.artfct.dev/mcp', 'oauth' => []]])
+        ->and($guides['connect-antigravity']['fallback']['steps'][1]['text'])->toContain('~/.gemini/config/mcp_config.json');
 
     expect(docsCopy())
         ->toContain('Which Artfct workspace am I connected to?')
@@ -238,11 +248,11 @@ test('setup guides for tools we have not verified end to end carry their steps w
     $guides = collect((new AiToolSetup('https://artfct.dev'))->guides())->keyBy('id');
 
     expect($guides->where('verified', false)->keys()->all())
-        ->toBe(['connect-omp', 'connect-claude', 'connect-chatgpt', 'connect-cursor', 'connect-vscode', 'connect-windsurf', 'connect-zed', 'connect-other'])
+        ->toBe(['connect-copilot', 'connect-devin', 'connect-omp', 'connect-antigravity', 'connect-claude', 'connect-chatgpt', 'connect-perplexity', 'connect-grok-bot', 'connect-cursor', 'connect-vscode', 'connect-kiro', 'connect-windsurf', 'connect-zed', 'connect-openhands', 'connect-other'])
         ->and(json_decode(collect($guides['connect-omp']['steps'])->pluck('code')->filter()->values()->all()[0], true))->toBe(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and($guides['connect-omp']['steps'][0]['text'])->toContain('~/.omp/agent/mcp.json')
-        ->and(collect($guides['connect-cursor']['steps'])->pluck('code')->filter()->all())->toContain('cursor-agent mcp login artfct')
-        ->and(json_decode($guides['connect-vscode']['steps'][0]['code'], true))->toBe(['servers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
+        ->and(collect($guides['connect-cursor']['fallback']['steps'])->pluck('code')->filter()->all())->toContain('cursor-agent mcp login artfct')
+        ->and(json_decode($guides['connect-vscode']['fallback']['steps'][0]['code'], true))->toBe(['servers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and(json_decode($guides['connect-windsurf']['steps'][0]['code'], true))->toBe(['mcpServers' => ['artfct' => ['serverUrl' => 'https://artfct.dev/mcp']]]);
 
     expect(file_get_contents(resource_path('js/pages/docs.tsx')))

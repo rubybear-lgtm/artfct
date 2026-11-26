@@ -99,13 +99,15 @@ test('a guide page carries the setup prompt and only its own troubleshooting sen
     $this->get(route('connect.show', ['tool' => 'connect-codex']))
         ->assertInertia(fn (Assert $page) => $page
             ->where('prompt', $setup->agentSetupPrompt())
-            ->where('guide.initHost', 'codex')
+            ->missing('guide.initHost')
+            ->where('guide.method', 'Plugin')
+            ->has('guide.fallback.steps')
             ->where('troubleshooting.0.note', 'Codex: run codex mcp login artfct.')
             ->where('related.0.kind', 'terminal'));
 
     $this->get(route('connect.show', ['tool' => 'connect-chatgpt']))
         ->assertInertia(fn (Assert $page) => $page
-            ->missing('guide.initHost')
+            ->missing('guide.fallback')
             ->where('guide.kind', 'chat'));
 });
 

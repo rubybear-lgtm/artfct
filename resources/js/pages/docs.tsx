@@ -10,14 +10,18 @@ import { login, privacy, terms } from '@/routes';
 // ── AI tool setup (from App\\Support\\AiToolSetup) ─────────────────────────
 type SetupStep = { text: string; code?: string };
 
-type ConnectionGuide = {
-    id: string;
-    label: string;
-    verified: boolean;
+type SetupPath = {
     intro?: string;
     installLink?: string;
     installLinkFallback?: string;
     steps: SetupStep[];
+};
+
+type ConnectionGuide = SetupPath & {
+    id: string;
+    label: string;
+    verified: boolean;
+    fallback?: SetupPath;
 };
 
 type AgentTokenSetup = {
@@ -573,17 +577,17 @@ function Inline({ text }: { text: string }) {
     );
 }
 
-function GuideSteps({ guide }: { guide: ConnectionGuide }) {
+function SetupPathSteps({ path, label }: { path: SetupPath; label: string }) {
     return (
-        <div className="flex flex-col gap-4">
-            {guide.installLink && (
+        <>
+            {path.installLink && (
                 <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" asChild>
-                        <a href={guide.installLink}>Add to {guide.label}</a>
+                        <a href={path.installLink}>Add to {label}</a>
                     </Button>
-                    {guide.installLinkFallback && (
+                    {path.installLinkFallback && (
                         <a
-                            href={guide.installLinkFallback}
+                            href={path.installLinkFallback}
                             target="_blank"
                             rel="noreferrer"
                             className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
@@ -593,13 +597,13 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     )}
                 </div>
             )}
-            {guide.intro && (
+            {path.intro && (
                 <Prose>
-                    <Inline text={guide.intro} />
+                    <Inline text={path.intro} />
                 </Prose>
             )}
             <Steps>
-                {guide.steps.map((step) => (
+                {path.steps.map((step) => (
                     <Step key={step.text}>
                         <span>
                             <Inline text={step.text} />
@@ -608,6 +612,22 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     </Step>
                 ))}
             </Steps>
+        </>
+    );
+}
+
+function GuideSteps({ guide }: { guide: ConnectionGuide }) {
+    return (
+        <div className="flex flex-col gap-4">
+            <SetupPathSteps path={guide} label={guide.label} />
+            {guide.fallback && (
+                <>
+                    <Prose>
+                        <strong>Without the plugin</strong>
+                    </Prose>
+                    <SetupPathSteps path={guide.fallback} label={guide.label} />
+                </>
+            )}
             <Prose>
                 If these steps do not match what you see, or the tool does not
                 connect,{' '}
