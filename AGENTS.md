@@ -212,6 +212,18 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 
 </laravel-boost-guidelines>
 
+## pstack workflow (trial)
+
+Trial through 2026-12-03 (RUB-605); Ruben decides keep or revert.
+
+Cloud agents must load this from the repo without being told. Cursor also has an always-applied project rule at `.cursor/rules/pstack.mdc`.
+
+On every change, follow [pstack](https://github.com/cursor/plugins/tree/main/pstack) principles (Lauren Tan / poteto): **subtract-before-you-add**, **fix-root-causes**, **prove-it-works**, **minimize-reader-load**.
+
+Before declaring done, run the pstack verification step against the real artifact: exercise the changed behavior, run the focused tests, and use the repo verification skill / feature map at `.omp/skills/verify-artfct/` when the change touches a mapped journey. Put that evidence in the PR body.
+
+**Artifacts are ARTFCT-only.** pstack relies on artifacts (evidence, reports, proofs). This team uses its own artifact system, ARTFCT (artfct.dev, via the Artfct MCP/plugin), and never a third-party artifact store. Proof media goes as hosted artifacts in the PR body, never committed into the branch.
+
 ## Implementation invariants (confirmed by running the code, not by reading docs)
 
 Check these before touching storage, request routing, identity, cryptography, or any service with more than one caller. Each one was found the hard way.

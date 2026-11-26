@@ -50,7 +50,10 @@ yarn-error.log
 /.agents
 /.antigravitycli
 /.codex
-/.cursor
+# Keep project rules versioned; ignore the rest of local Cursor state.
+/.cursor/*
+!/.cursor/rules/
+!/.cursor/rules/**
 /.gemini
 /.pi
 /.pi-glla
