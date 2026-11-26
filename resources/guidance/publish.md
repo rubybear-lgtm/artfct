@@ -146,4 +146,4 @@ Write the brand post in this order:
 
 ## Do not publish
 
-- Pages that pretend to be a real person, company or record, fabricated records presented as genuine, or content aimed at a private individual. Leave anything that could mislead if shared further for the person to decide.
+- Pages that pose as a real person, company or record, fabricated records presented as genuine, or content aimed at a private individual. Leave anything that could mislead if shared further for the person to decide.

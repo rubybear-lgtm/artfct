@@ -413,13 +413,31 @@ test('onboarding guidance is served for each host with its mode and steps', func
         ->and(array_column($result['steps'], 'id'))->not->toBeEmpty();
 })->with(collect(ArtifactGuidance::HOST_MODES)->map(fn (string $mode, string $host): array => [$host, $mode])->values()->all());
 
-test('onboarding without a host asks the agent to find its host and call again', function () {
+test('onboarding without a host serves the set-up that works in any app', function () {
     $result = onboardingGuidance(null);
 
-    expect($result['host'])->toBe('unknown')
-        ->and($result['mode'])->toBe('hybrid')
+    expect($result['host'])->toBe('portable')
+        ->and($result['mode'])->toBe('portable')
+        ->and(array_column($result['steps'], 'id'))->toBe(['verify_connection', 'read_usage_rules', 'ask_save_preference'])
         ->and($result['text'])->toContain('get_guidance')->toContain('host')
         ->and($result['text'])->not->toContain('npx');
+});
+
+test('the portable playbook writes nothing and points sure agents to their own host', function () {
+    $text = onboardingGuidance('portable')['text'];
+
+    expect($text)->toContain('Do not add project files, memory notes, commands or settings changes')
+        ->toContain('If you are not sure, stay here')
+        ->not->toContain('artfct-init')
+        ->not->toContain('<!-- artfct:start -->');
+
+    foreach (['claude-code', 'cursor', 'grok-build', 'coding-agent', 'claude-app', 'chatgpt', 'grok'] as $host) {
+        expect($text)->toContain("`{$host}`");
+    }
+});
+
+test('the unknown playbook falls back to portable instead of asking the person', function () {
+    expect(onboardingGuidance('unknown')['text'])->toContain('use `portable`');
 });
 
 test('connector-only hosts are never told to add anything to the computer', function (string $host) {

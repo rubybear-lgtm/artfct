@@ -34,7 +34,7 @@ final class GetGuidanceTool extends Tool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.13.0',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [],
@@ -74,8 +74,8 @@ final class GetGuidanceTool extends Tool
         }
 
         // Where this person left off, so a set-up that stopped resumes and a
-        // second run does not repeat finished steps. Only for a host the
-        // playbook knows: with no host there are no steps to track yet.
+        // second run does not repeat finished steps. With no host the default
+        // `portable` steps are tracked; only `unknown` (hybrid) has none yet.
         if ($validated['topic'] === 'onboarding' && ($guidance['mode'] ?? 'hybrid') !== 'hybrid') {
             $actorId = McpContext::actor();
             $actor = ctype_digit($actorId) ? User::query()->find((int) $actorId) : null;
@@ -95,7 +95,7 @@ final class GetGuidanceTool extends Tool
     {
         return [
             'topic' => $schema->string()->enum(ArtifactGuidance::TOPICS)->description('publish, search, collaborate, data or onboarding.')->required(),
-            'host' => $schema->string()->enum(array_keys(ArtifactGuidance::HOST_MODES))->description('Only for onboarding: the app you run in. Use unknown, or leave it out, if you are not sure.'),
+            'host' => $schema->string()->enum(array_keys(ArtifactGuidance::HOST_MODES))->description('Only for onboarding: the app you run in. Use portable, or leave it out, if you are not sure.'),
         ];
     }
 }

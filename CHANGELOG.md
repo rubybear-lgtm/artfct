@@ -6,6 +6,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
+- A `portable` onboarding host (RUB-596), the set-up that works in any app: check the connection, read the usage rules and ask the save question, with no project file, memory note or settings change. It is now the default when `get_guidance` is called for `onboarding` without a host, and the `unknown` playbook falls back to it instead of asking the person. The onboard skill names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`, so Codex, Hermes, OpenClaw and other Agent Plugins clients no longer get the Claude app's steps. Guidance version 1.14.0.
 - Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
 
 ### Removed
