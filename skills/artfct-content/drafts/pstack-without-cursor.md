@@ -99,7 +99,7 @@ That matters most for exactly the people reading this. If you run pstack in Clau
 
 The other option is the reason I wrote this at all: [artfct-pstack](https://artfct.dev/blog/artfct-pstack), a plugin that carries pstack's skills and publishes each verification run's log, feature maps and evidence to your team's Artfct library, where any agent connected to the workspace can find it. Setup is two plugins; the [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp) guides cover connecting Artfct by hand. It's an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan.
 
-*pstack is MIT licensed, copyright 2026 Lauren Tan (poteto). Checked against the pstack README, the Claude Code adapter and each port's README on 26 November 2026.*
+*pstack is MIT licensed, copyright 2026 Lauren Tan (poteto). Checked against the pstack README, the Claude Code adapter and each port's README on 25 November 2026.*
 
 ## Questions
 

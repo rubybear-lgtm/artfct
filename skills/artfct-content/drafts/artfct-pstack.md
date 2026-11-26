@@ -78,4 +78,4 @@ Both plugins are free. Publishing needs an Artfct workspace: new teams get a 90-
 
 My verification skill is still in `.omp/skills/`. The proof it produces doesn't have to stay there.
 
-*Checked against the artfct-plugin and artfct-pstack READMEs and the supported-clients matrix on 26 November 2026.*
+*Checked against the artfct-plugin and artfct-pstack READMEs and the supported-clients matrix on 25 November 2026.*
