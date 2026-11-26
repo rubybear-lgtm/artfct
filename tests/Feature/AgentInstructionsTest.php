@@ -242,5 +242,5 @@ test('the other generic playbooks catch the same mistake from their side', funct
 });
 
 test('the guidance version moved with the text', function () {
-    expect(ArtifactGuidance::VERSION)->toBe('1.14.0');
+    expect(ArtifactGuidance::VERSION)->toBe('1.15.0');
 });

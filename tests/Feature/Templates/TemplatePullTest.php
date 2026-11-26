@@ -80,7 +80,9 @@ test('pull_creates_an_owned_artifact_with_seed_and_provenance', function () {
     expect($content['id'])->toBe(ARTIFACT_LINK_ID)
         ->and($content['template'])->toBe('fixture')
         ->and($content['created'])->toBeTrue()
-        ->and($content['sharing'])->toBe('team');
+        ->and($content['sharing'])->toBe('team')
+        ->and($content['organization'])->toBe($team->slug)
+        ->and($content['organization_name'])->toBe($team->name);
 
     Http::assertSent(function ($request): bool {
         if ($request->method() !== 'POST' || ! str_ends_with((string) $request->url(), '/v1/artifacts')) {

@@ -15,7 +15,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
     $expectedContracts = [
         'deploy_artifact' => [
             'scopes' => ['artifacts:deploy'],
-            'toolVersion' => '1.1.0',
+            'toolVersion' => '1.2.0',
             'annotations' => [
                 'readOnlyHint' => false,
                 'idempotentHint' => true,
@@ -34,7 +34,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
         ],
         'get_connection' => [
             'scopes' => [],
-            'toolVersion' => '1.1.0',
+            'toolVersion' => '1.2.0',
             'annotations' => [
                 'readOnlyHint' => true,
                 'idempotentHint' => true,
@@ -63,6 +63,7 @@ test('the hosted MCP catalog exposes the stable cross-transport contract', funct
         ],
         'get_usage' => [
             'scopes' => ['usage:read'],
+            'toolVersion' => '1.1.0',
             'annotations' => [
                 'readOnlyHint' => true,
                 'idempotentHint' => true,

@@ -39,8 +39,8 @@ final class PullTemplateTool extends FeatureFlaggedTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.14.0',
-            'toolVersion' => '1.0.0',
+            'guidanceVersion' => '1.15.0',
+            'toolVersion' => '1.1.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
             'compatibility' => 'stable',
@@ -142,6 +142,7 @@ final class PullTemplateTool extends FeatureFlaggedTool
             'sharing' => $result['sharing'],
             'created' => $result['created'],
             'organization' => McpContext::team()->slug,
+            'organization_name' => McpContext::team()->name,
         ]);
     }
 
