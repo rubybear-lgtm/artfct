@@ -84,7 +84,7 @@ npx add-mcp@latest <mcp-url> --name artfct --global
 
 Readiness varies by tool, and the distinction is worth keeping straight. Claude Code, Codex, OpenCode and Antigravity have been verified against staging. ChatGPT, Cursor, VS Code, Windsurf and Zed have documented paths rather than tested ones, and any other client that can reach a remote server can connect. A publishing skill for agents exists as well, installable with a single command.
 
-For the sharing half alone, one page can be [published as a link](https://artfct.dev/free) without an account, which is the shortest route to seeing what an artifact is. The same link then opens for a colleague, a client or a connected agent.
+For the sharing half alone, one page can be published from a connected AI tool as a public link that opens without an account, which is the shortest route to seeing what an artifact is. The same link then opens for a colleague, a client or a connected agent.
 
 ## What this does not do
 

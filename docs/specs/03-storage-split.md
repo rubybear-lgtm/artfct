@@ -1,5 +1,7 @@
 # Spec 3 — Storage split
 
+> **Note (2026-11-22):** the free tool (`/free`, the Worker's anonymous ephemeral artifacts and their KV store) was removed. Sections below that describe it are historical.
+
 **Track:** B (data plane) · **Depends on:** 0, 2 · **Blocks:** 4, 5, 7, 8, 9
 
 ## Scope

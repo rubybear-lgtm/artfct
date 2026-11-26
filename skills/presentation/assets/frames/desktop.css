@@ -1,0 +1,33 @@
+/* Demo frame: desktop monitor with stand (RUB-578, spec 44). Chrome is decorative and aria-hidden in the markup. */
+.frame-desktop {
+  --frame-body: #262624;
+  --frame-screen: #FBFAF8;
+  box-sizing: border-box;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 10px 10px 0;
+  border-radius: 14px 14px 6px 6px;
+  background: var(--frame-body);
+}
+
+.frame-desktop .frame-slot {
+  margin: 0;
+  line-height: 0;
+  background: var(--frame-screen);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.frame-desktop .frame-slot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.frame-desktop .frame-chrome {
+  width: 28%;
+  height: 22px;
+  margin: 0 auto;
+  background: var(--frame-body);
+  border-radius: 0 0 8px 8px;
+}

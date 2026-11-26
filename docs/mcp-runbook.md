@@ -270,7 +270,7 @@ setting, in every place that instructs them.
   `AGENTS.md` only when no `CLAUDE.md` exists. Ask if neither exists. A `CLAUDE.md`
   above the project is named and confirmed before writing. `CLAUDE.local.md` also
   stops Claude Code reading `AGENTS.md` and is not handled yet.
-- **Which app (1.4.1).** The Claude app can run code in a sandbox (`/home/claude`), so a shell and file tools do not mean Claude Code. The `onboard` skill says an agent is `claude-code` only on the person's own computer in a project folder and defaults to `claude-app` when unsure (the server does not pick a host: an agent that passes none still gets the `unknown` playbook, which now says a chat app with a code sandbox is still a chat app). The `claude-code` and `coding-agent` playbooks tell an agent in a scratch folder to write nothing and ask for its chat-app host instead, and `claude-app` sends a real coding agent back. Found when a Claude app run created `/home/claude/CLAUDE.md` and skipped the memory note.
+- **Which app (1.4.1).** The Claude app can run code in a sandbox (`/home/claude`), so a shell and file tools do not mean Claude Code. The `onboard` skill says an agent is `claude-code` only on the person's own computer in a project folder and defaults to `claude-app` when unsure (superseded in 1.14.0, below; at the time the server did not pick a host: an agent that passed none got the `unknown` playbook, which now says a chat app with a code sandbox is still a chat app). The `claude-code` and `coding-agent` playbooks tell an agent in a scratch folder to write nothing and ask for its chat-app host instead, and `claude-app` sends a real coding agent back. Found when a Claude app run created `/home/claude/CLAUDE.md` and skipped the memory note.
 - **Chat apps.** `claude-app`, `chatgpt` and `grok` gain the consent step
   `save_memory_note`: show the person one short note, and save it in the app's own
   memory only if the app has memory and they agree, otherwise skip. It is part of
@@ -278,6 +278,13 @@ setting, in every place that instructs them.
   new question on their next run. It can only be reported with a chat host
   (`record_onboarding_step` refuses it from a coding agent or with no host), so a
   coding agent cannot use up the chat step.
+
+### RUB-596 additions (guidance 1.14.0)
+
+- **`portable` host.** `get_guidance` and `record_onboarding_step` accept `host: portable`, mode `portable`. Its steps are `verify_connection`, `read_usage_rules` and `ask_save_preference`: no project file, memory note or settings change. The playbook (`resources/guidance/onboarding/portable.md`) names the fuller hosts so an agent that is sure of its app can switch, and progress carries over because the step ids are shared.
+- **Default host.** `get_guidance` for `onboarding` with no `host` now serves `portable`, not `unknown`. An explicit `unknown` still serves the hybrid "work out your app" playbook, which now falls back to `portable` instead of asking the person. `record_onboarding_step` with no host is unchanged: it stores the report and returns no next step.
+- **Onboard skill.** Names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`. The setup prompt in `AiToolSetup::agentSetupPrompt()` says the same.
+- **Publish guidance.** "Pages that pretend to be a real person" is now "Pages that pose as a real person". Hermes Agent's plugin install scanner read "pretend to be" as a prompt injection and blocked the plugin.
 
 ## Opening an artifact
 
@@ -292,8 +299,8 @@ that is depends on the artifact's tier:
   isolated origin. The mint is audited (`artifact.link_minted`, with the
   actor, the artifact and the expiry), and the token appears in the redirect
   only, never in the tool result.
-- **Ephemeral previews** — the Worker's `/p/{id}` URL. These are anonymous
-  KV records with no app row, so the app's open route cannot serve them.
+- **Ephemeral previews** — removed. The Worker no longer serves anonymous
+  `/p/{id}` previews from KV, and a 10-character id is not an artifact id.
 
 `view_url` replaces the earlier `url` field. An agent should present `view_url`
 rather than building a `/p/{id}` URL from an artifact id. For a permanent

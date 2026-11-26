@@ -181,6 +181,8 @@ class TeamController extends Controller
                 McpScope::ArtifactsDeploy->value,
                 McpScope::CollectionsRead->value,
                 McpScope::UsageRead->value,
+                McpScope::DataRead->value,
+                McpScope::DataWrite->value,
             ],
             'mcpEndpoint' => url('/mcp'),
             'invitations' => $team->invitations()

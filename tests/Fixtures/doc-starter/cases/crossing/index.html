@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="artfct-starter" content="doc@1">
+  <title>Doc starter crossing case</title>
+  <link rel="stylesheet" href="doc.css">
+</head>
+<body>
+  <!-- Test fixture only: a multi-line paragraph whose top sits on page 0 and whose bottom crosses the page boundary. -->
+  <main class="sheet">
+    <header class="doc-title">
+      <p class="doc-kicker">Fixture</p>
+      <h1>Document title</h1>
+    </header>
+    <p class="doc-byline">Fixture author, date, audience</p>
+    <article class="doc-body">
+      <div style="height: 752px"></div>
+      <p>Crossing marker. This paragraph is long enough to wrap onto several lines inside the sheet, so its text node starts on the first page and its last line runs past the printable bottom edge of that page into the next one.</p>
+      <p>Following paragraph. It sits after the crossing marker and gives the sheet a second page of content.</p>
+    </article>
+    <footer class="doc-footer">Source or contact line</footer>
+  </main>
+  <script src="export.js" defer></script>
+</body>
+</html>

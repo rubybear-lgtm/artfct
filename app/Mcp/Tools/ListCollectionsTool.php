@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List artifact collections in the authenticated workspace. Every collection a member created is included — there is no separate approval step. `canonical` is true when an admin pinned the collection so its members get a search ranking boost. `artifact_count` counts only artifacts that still exist (deleted artifacts are excluded, including stale membership rows). Returns bounded metadata and an opaque cursor, never the collection contents.')]
+#[Description('Use when the person asks which boards or groups of pages the team has, or you need a collection id or name before adding something. This lists collections, not the pages inside them; use list_artifacts with collection, or search_artifacts, to see members. Returns bounded metadata and a cursor. canonical is true when an admin pinned the collection.')]
 #[Name('list_collections')]
 #[Title('List collections')]
 #[IsReadOnly]

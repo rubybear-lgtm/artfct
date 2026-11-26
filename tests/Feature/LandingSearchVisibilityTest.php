@@ -85,12 +85,6 @@ test('current posts are not caught by the retired post redirect', function () {
     test()->get("/blog/{$slug}")->assertOk();
 });
 
-test('the free page title says what it does', function () {
-    test()->get(route('free'))
-        ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('meta.title', 'Share an HTML or Markdown file as a private link — Artfct'));
-});
-
 test('production robots lets Google-Extended read the site but not artifacts', function () {
     app()->detectEnvironment(fn (): string => 'production');
 

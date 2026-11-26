@@ -7,9 +7,8 @@ use App\Services\Artifacts\ArtifactIdShape;
  * link builders and the isolated-hostname minter cannot disagree about what a
  * permanent id looks like. The two permanent shapes are the 13-character
  * lowercase base36 id every new artifact gets and the 32-character lowercase
- * hex id artifacts used before versioning; the ephemeral shape is the
- * 10-character alphanumeric id the free-tool / Worker KV preview still mints
- * (MCP and the app viewer address only permanent ids — RUB-452).
+ * hex id artifacts used before versioning. The 10-character ids the removed
+ * free tool minted are not artifact ids any more.
  */
 
 test('stable ids are exactly 13 lowercase base36 characters', function () {
@@ -38,18 +37,14 @@ test('permanent ids accept either shape and reject everything else', function ()
         ->and(ArtifactIdShape::isPermanent('not-a-valid-id'))->toBeFalse();
 });
 
-test('ephemeral ids are exactly 10 alphanumeric characters', function () {
-    expect(ArtifactIdShape::isEphemeral('abcdefghij'))->toBeTrue()
-        ->and(ArtifactIdShape::isEphemeral('AbC123xYz9'))->toBeTrue()
-        ->and(ArtifactIdShape::isEphemeral('abcdefghi'))->toBeFalse()
-        ->and(ArtifactIdShape::isEphemeral('abcdefghijk'))->toBeFalse()
-        ->and(ArtifactIdShape::isEphemeral('abcdefgh-j'))->toBeFalse()
-        // A 13-character stable id is not an ephemeral id, and vice versa.
-        ->and(ArtifactIdShape::isEphemeral('abc123def4567'))->toBeFalse();
+test('the 10-character ids of the removed free tool are not artifact ids', function () {
+    expect(ArtifactIdShape::isStable('abcdefghij'))->toBeFalse()
+        ->and(ArtifactIdShape::isLegacy('abcdefghij'))->toBeFalse()
+        ->and(ArtifactIdShape::isPermanent('abcdefghij'))->toBeFalse()
+        ->and(ArtifactIdShape::isPermanent('AbC123xYz9'))->toBeFalse();
 });
 
 it('rejects an id with a trailing newline', function () {
     expect(ArtifactIdShape::isStable("0123456789abc\n"))->toBeFalse()
-        ->and(ArtifactIdShape::isLegacy(str_repeat('a', 32)."\n"))->toBeFalse()
-        ->and(ArtifactIdShape::isEphemeral("abcdefghij\n"))->toBeFalse();
+        ->and(ArtifactIdShape::isLegacy(str_repeat('a', 32)."\n"))->toBeFalse();
 });

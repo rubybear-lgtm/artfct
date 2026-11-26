@@ -12,6 +12,49 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
+test('a_search_service_failure_is_shown_as_an_error_instead_of_no_results', function () {
+    config(['indexing.enabled' => true]);
+
+    $owner = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($owner, 'Search Failure');
+    $index = Mockery::mock(VectorIndexContract::class);
+    $index->shouldReceive('hasIndexedChunks')->once()->with($team->slug)->andThrow(new RuntimeException('Index unavailable'));
+    app()->instance(VectorIndexContract::class, $index);
+    test()->actingAs($owner);
+
+    visit(route('dashboard', $team))
+        ->type('input[aria-label="Search query"]', 'billing')
+        ->keys('input[aria-label="Search query"]', 'Enter')
+        ->assertSee('Search is unavailable right now. Try again shortly.')
+        ->assertDontSee('Nothing matches')
+        ->assertNoJavaScriptErrors();
+});
+
+test('an_empty_search_can_be_cleared_and_retried', function () {
+    config(['indexing.enabled' => true]);
+
+    $owner = User::factory()->create();
+    $team = app(CreateTeam::class)->handle($owner, 'Empty Search');
+    test()->actingAs($owner);
+
+    visit(route('dashboard', $team))
+        ->type('input[aria-label="Search query"]', 'missing artifact')
+        ->keys('input[aria-label="Search query"]', 'Enter')
+        ->assertSee('Nothing matches')
+        ->assertSee('missing artifact')
+        ->click('Clear search')
+        ->assertValue('input[aria-label="Search query"]', '')
+        ->assertDontSee('Nothing matches')
+        ->type('input[aria-label="Search query"]', 'another query')
+        ->keys('input[aria-label="Search query"]', 'Enter')
+        ->assertSee('Nothing matches')
+        ->assertSee('another query')
+        ->keys('input[aria-label="Search query"]', 'Escape')
+        ->assertValue('input[aria-label="Search query"]', '')
+        ->assertDontSee('Nothing matches')
+        ->assertNoJavaScriptErrors();
+});
+
 /**
  * Team search, exercised in a browser (RUB-338).
  *
@@ -53,7 +96,6 @@ test('search_and_open_result', function () {
         ->assertNoJavaScriptErrors()
         ->type('input[aria-label="Search query"]', $text)
         ->keys('input[aria-label="Search query"]', 'Enter')
-        ->wait(1)
         ->assertSee('Billing dashboard')
         ->assertSee('Cursor')
         ->assertAttribute('@search-result-link', 'target', '_blank')

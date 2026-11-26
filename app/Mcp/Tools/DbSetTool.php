@@ -15,7 +15,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Create or replace one document in an artifact\'s database. `data` must be a JSON object up to 64 KiB; `version`, `updated_at` and `updated_by` are set by the server and cannot be written. Pass `if_version` (the version you read; 0 means it must not exist yet) to avoid overwriting someone else\'s change; without it the write wins. Needs the data:write scope and edit access to the artifact.')]
+#[Description('Use when you need to create or replace one card, page or row on a board the bot can edit. Read first with db_get or db_list and pass if_version, the version you read (0 means the document must not exist yet). Needs data:write and edit access. The server sets version, updated_at and updated_by. Without if_version the write wins. For several writes that must succeed or fail together, use db_batch.')]
 #[Name('db_set')]
 #[Title('Write a database document')]
 #[IsReadOnly(false)]
@@ -28,7 +28,7 @@ final class DbSetTool extends DatabaseTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [
@@ -60,6 +60,11 @@ final class DbSetTool extends DatabaseTool
             'data' => ['present', 'array'],
             'if_version' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        $refusal = $this->postDetailsRefusal($validated['collection'], $validated['doc_id'], $validated['data'], true);
+        if ($refusal !== null) {
+            return $this->refuseInvalidWrite('db_set', $startedAt, $refusal);
+        }
 
         return $this->send('db_set', $startedAt, 'PUT', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,

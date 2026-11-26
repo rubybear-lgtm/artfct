@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Set the avatar image for the authenticated bot teammate. Pass a base64-encoded PNG, JPEG or WebP image (optionally as a data URL). Only bot credentials can call this; humans upload avatars in team settings.')]
+#[Description('Use when the bot should set or change its own avatar image. Pass a base64-encoded PNG, JPEG or WebP image, optionally as a data URL. Only bot credentials can call this; humans upload avatars in team settings.')]
 #[Name('set_avatar')]
 #[Title('Set avatar')]
 #[IsReadOnly(false)]

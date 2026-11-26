@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Permanently delete one artifact from the authenticated workspace. Requires the explicit artifacts:delete scope and is refused while a legal hold is active.')]
+#[Description('Use when the person clearly asks to permanently delete a page or artifact, not just remove it from a collection. Requires artifacts:delete. Irreversible, and refused while a legal hold is active. To leave a collection only, use remove_collection_artifact. To delete one card, page or row inside a board\'s database, use db_delete.')]
 #[Name('delete_artifact')]
 #[Title('Delete artifact')]
 #[IsReadOnly(false)]
@@ -59,11 +59,11 @@ final class DeleteArtifactTool extends Tool
             'id' => ['required', 'string', 'max:128'],
         ]);
 
-        if (! ArtifactIdShape::isPermanent($validated['id']) && ! ArtifactIdShape::isEphemeral($validated['id'])) {
+        if (! ArtifactIdShape::isPermanent($validated['id'])) {
             app(McpTelemetry::class)->record('delete_artifact', 'invalid_request', $startedAt);
 
             return McpErrorResponse::error(
-                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters) or a 10-character ephemeral artifact id.',
+                'The id field must be a permanent artifact id (13 lowercase base36 or 32 hexadecimal characters).',
                 'invalid_request',
             );
         }

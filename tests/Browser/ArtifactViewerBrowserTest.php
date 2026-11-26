@@ -3,12 +3,18 @@
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Enums\ArtifactType;
+use App\Http\Controllers\ArtifactViewerController;
 use App\Models\ArtifactComment;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 
 uses(RefreshDatabase::class);
 
@@ -106,6 +112,157 @@ test('the_header_renders_the_title_owner_version_and_share_control_for_an_owner'
     );
 });
 
+test('an_owner_can_change_sharing_and_edit_access_from_the_viewer', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Sharing', 'viewer-sharing@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->assertChecked('@share-option-team')
+        ->check('@share-option-private')
+        ->assertChecked('@share-option-private')
+        ->check('@edit-option-edit')
+        ->assertChecked('@edit-option-edit')
+        ->click('@share-close')
+        ->click('@share-control')
+        ->assertChecked('@share-option-private')
+        ->assertChecked('@edit-option-edit')
+        ->assertNoJavaScriptErrors();
+
+    $metadata = app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID);
+    expect($metadata['sharing'])->toBe('private')
+        ->and($metadata['edit_access'])->toBe('edit');
+});
+
+test('a_rejected_sharing_change_keeps_the_previous_access_level', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Sharing Error', 'viewer-sharing-error@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->failSharing(VIEWER_BROWSER_ARTIFACT_ID, 'forbidden');
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->click('@share-option-private')
+        ->assertSee('Only the owner or a team admin can change sharing.')
+        ->assertChecked('@share-option-team')
+        ->assertNoJavaScriptErrors();
+
+    expect($directory->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('team');
+});
+
+test('an_owner_can_switch_between_public_and_team_sharing', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Public Sharing', 'viewer-public-sharing@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->click('@share-control')
+        ->assertEnabled('@share-option-public')
+        ->check('@share-option-public')
+        ->assertChecked('@share-option-public');
+
+    expect(app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('public');
+
+    $page->check('@share-option-team')
+        ->assertChecked('@share-option-team')
+        ->click('@share-close')
+        ->click('@share-control')
+        ->assertChecked('@share-option-team')
+        ->assertNoJavaScriptErrors();
+
+    expect(app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('team');
+});
+
+test('copying_the_share_link_uses_the_session_aware_viewer_url_without_a_token', function (?int $version) {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Copy Link', 'viewer-copy-link@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    $directory->seedVersions(VIEWER_BROWSER_ARTIFACT_ID, [
+        ['version' => 2, 'created_at' => now()->toIso8601String(), 'current' => true],
+        ['version' => 1, 'created_at' => now()->subDay()->toIso8601String(), 'current' => false],
+    ], 2);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl().($version === null ? '' : '/v/'.$version))
+        ->click('@share-control');
+    $page->script("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.copiedArtifactLink = text; } } })");
+    $page->click('@copy-link')->assertSee('Link copied.')->assertNoJavaScriptErrors();
+
+    $expected = $version === null
+        ? route('artifacts.show', ['artifactId' => VIEWER_BROWSER_ARTIFACT_ID])
+        : route('artifacts.version', ['artifactId' => VIEWER_BROWSER_ARTIFACT_ID, 'version' => $version]);
+    expect($page->script('window.copiedArtifactLink'))->toBe($expected)
+        ->not->toContain('token=');
+})->with(['latest' => [null], 'pinned version' => [1]]);
+
+test('a_viewer_can_add_resolve_and_reopen_an_artifact_comment', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Comments', 'viewer-comments@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->click('@artifact-panel-toggle')
+        ->assertSee('No comments yet.')
+        ->type('textarea[aria-label="Add a comment"]', 'Please review the chart.')
+        ->click('Comment')
+        ->assertSee('Please review the chart.')
+        ->click('Reply')
+        ->type('textarea[aria-label="Reply"]', 'I will take a look.')
+        ->click('form:has(textarea[aria-label="Reply"]) button[type="submit"]')
+        ->assertSee('I will take a look.')
+        ->click('Resolve')
+        ->assertSee('Reopen');
+
+    $comment = ArtifactComment::query()->where('team_id', $team->id)->where('body', 'Please review the chart.')->sole();
+    expect($comment->resolved_at)->not->toBeNull();
+    expect(ArtifactComment::query()->where('parent_id', $comment->id)->where('body', 'I will take a look.')->exists())->toBeTrue();
+
+    $page->click('Reopen')
+        ->assertSee('Resolve')
+        ->assertNoJavaScriptErrors();
+
+    expect($comment->fresh()->resolved_at)->toBeNull();
+});
+
+test('a_failed_comment_keeps_its_draft_and_can_be_retried', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Comment Retry', 'viewer-comment-retry@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $attempts = 0;
+    Route::post('/a/{artifactId}/comments', function (Request $request, string $artifactId) use (&$attempts) {
+        if (++$attempts === 1) {
+            throw ValidationException::withMessages(['body' => 'Please try again.']);
+        }
+
+        return app(ArtifactViewerController::class)->storeComment($request, $artifactId, app(ArtifactDirectory::class));
+    })->middleware('web');
+
+    visit(viewerBrowserArtifactUrl())
+        ->click('@artifact-panel-toggle')
+        ->type('textarea[aria-label="Add a comment"]', 'A comment worth keeping')
+        ->click('Comment')
+        ->assertSee('Could not post your comment. Check it and try again.')
+        ->assertValue('textarea[aria-label="Add a comment"]', 'A comment worth keeping')
+        ->click('Comment')
+        ->assertSee('A comment worth keeping')
+        ->assertValue('textarea[aria-label="Add a comment"]', '')
+        ->assertNoJavaScriptErrors();
+
+    expect($attempts)->toBe(2)
+        ->and(ArtifactComment::query()->where('team_id', $team->id)->where('body', 'A comment worth keeping')->count())->toBe(1);
+});
+
 test('a_member_without_permission_sees_the_current_level_and_no_share_control', function () {
     configureViewerBrowserLinks();
 
@@ -158,6 +315,24 @@ test('the_share_dialog_stays_fixed_to_the_viewport', function () {
     expect($page->script('getComputedStyle(document.querySelector(\'[role="dialog"]\')).position'))->toBe('fixed');
 });
 
+test('the_sharing_dialog_supports_keyboard_dismissal_and_returns_focus', function () {
+    configureViewerBrowserLinks();
+    [$team, $owner] = viewerBrowserOwner('Viewer Keyboard', 'viewer-keyboard@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoAccessibilityIssues()
+        ->keys('@share-control', 'Enter')
+        ->assertVisible('@share-close')
+        ->assertNoAccessibilityIssues();
+
+    $page->keys('@share-close', 'Escape')
+        ->assertMissing('@share-close')
+        ->assertScript('document.activeElement === document.querySelector(\'[data-testid="share-control"]\')')
+        ->assertNoJavaScriptErrors();
+});
+
 test('the_version_picker_offers_every_version_when_there_is_more_than_one', function () {
     configureViewerBrowserLinks();
 
@@ -182,7 +357,11 @@ test('the_version_picker_offers_every_version_when_there_is_more_than_one', func
         ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').value", '2')
         ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options.length", 3)
         // Newest first, so the current version is the first option.
-        ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options[0].text", 'Version 3 (current)');
+        ->assertScript("document.querySelector('[data-testid=\"version-picker\"]').options[0].text", 'Version 3 (current)')
+        ->select('@version-picker', '1')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID.'/v/1')
+        ->assertValue('@version-picker', '1')
+        ->assertNoJavaScriptErrors();
 });
 
 test('the_artifact_fills_the_page_and_the_details_panel_slides_in_beside_it', function () {
@@ -390,4 +569,191 @@ test('a_revoked_artifact_unmounts_the_frame_after_a_poll', function () {
         ->assertVisible('@artifact-revoked')
         ->assertMissing('@artifact-frame')
         ->assertNoJavaScriptErrors();
+});
+
+test('a slide deck offers Present, which puts the artifact frame in full screen, and a document does not', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Present', 'viewer-present@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['can_change_sharing' => true]);
+    test()->actingAs($owner);
+
+    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
+    $frame = "document.querySelector('[data-testid=\"artifact-frame\"]')";
+
+    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::SlideDeck);
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@present-artifact')
+        ->assertScript("{$frame}.getAttribute('allow')", 'fullscreen')
+        ->assertScript('document.fullscreenElement === null', true)
+        ->click('@present-artifact')
+        ->wait(1)
+        ->assertScript("document.fullscreenElement === {$frame}", true)
+        ->assertNoJavaScriptErrors();
+
+    app(ArtifactTypeResolver::class)->record($team, VIEWER_BROWSER_ARTIFACT_ID, $html, ArtifactType::Document);
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertMissing('@present-artifact')
+        ->assertScript("{$frame}.hasAttribute('allow')", false);
+});
+
+test('the viewer shows the updated date in the reader\'s own time zone', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Zone', 'viewer-zone@example.com');
+    // 04:07 UTC on the 12th is still the 11th in Denver.
+    seedViewerBrowserArtifact($team, $owner, ['updated_at' => '2026-11-12T04:07:29Z']);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('America/Denver')
+        ->assertSee('Updated Nov 11, 2026')
+        ->assertNoJavaScriptErrors();
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('UTC')
+        ->assertSee('Updated Nov 12, 2026')
+        ->assertNoJavaScriptErrors();
+});
+
+test('the server-rendered viewer hydrates when the reader\'s date differs from the server\'s', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Hydrate', 'viewer-hydrate@example.com');
+    // 20:00 UTC on the 12th is already the 13th in Auckland, so a date formatted
+    // with the browser's time zone disagrees with one the server formatted.
+    seedViewerBrowserArtifact($team, $owner, ['updated_at' => '2026-11-12T20:00:00Z']);
+    test()->actingAs($owner);
+
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('Pacific/Auckland')
+        ->assertSee('Updated Nov 13, 2026')
+        ->assertNoJavaScriptErrors();
+
+    // The server also renders en-US, so a reader with another locale disagrees
+    // with it even in the same time zone.
+    visit(viewerBrowserArtifactUrl())
+        ->withTimezone('UTC')
+        ->withLocale('de-DE')
+        ->assertSee('Updated 12.11.2026')
+        ->assertNoJavaScriptErrors();
+})->skip(fn () => getenv('TEST_INERTIA_SSR') !== 'true', 'Needs the Inertia SSR server (php artisan inertia:start-ssr) and TEST_INERTIA_SSR=true; without it nothing is hydrated.');
+
+test('a_viewer_link_with_a_fragment_passes_the_fragment_to_the_artifact_frame', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Fragment', 'viewer-fragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    // `visit()` drops a URL fragment, so load the artifact with its fragment
+    // from another page. The fragment is added after mount, so give the effect
+    // a moment to run.
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertScript('location.hash', '#option-b')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')")
+        // The token stays on the src, ahead of the fragment.
+        ->assertScript("{$frameSrc}.includes('token=')")
+        ->assertScript("{$frameSrc}.split('#').length === 2");
+});
+
+test('a_viewer_link_without_a_fragment_leaves_the_frame_src_untouched', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer No Fragment', 'viewer-nofragment@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->wait(0.5)
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+});
+
+test('a_viewer_link_with_an_unsafe_fragment_does_not_pass_it_to_the_artifact_frame', function (string $fragment) {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Unsafe Fragment', 'viewer-unsafe@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl().$fragment."')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertVisible('@artifact-frame')
+        ->assertScript("{$frameSrc}.includes('#') === false")
+        ->assertScript("{$frameSrc}.includes('token=')");
+})->with([
+    'encoded markup' => ['#%3Cimg%20src%3Dx%3E'],
+    'script url' => ['#javascript:alert(1)'],
+    'path-like' => ['#/../../secret'],
+    'a colon' => ['#a:b'],
+    'a second hash' => ['#a#b'],
+    'a query-like part' => ['#x?y'],
+    'an ampersand' => ['#a&b'],
+    'a text fragment' => ['#:~:text=foo'],
+    'unicode' => ['#caf%C3%A9'],
+    'a bare hash' => ['#'],
+    'over 128 characters' => ['#'.str_repeat('a', 129)],
+]);
+
+test('a_viewer_link_fragment_with_dots_underscores_and_hyphens_is_passed_on', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Anchor Id', 'viewer-anchor@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#section_1.2-b')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript("{$frameSrc}.endsWith('#section_1.2-b')");
+});
+
+test('a_later_hash_change_does_not_reset_the_artifact_frame_src', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Hash Change', 'viewer-hashchange@example.com');
+    seedViewerBrowserArtifact($team, $owner);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."#option-b')");
+
+    // The frame src is read once: changing the viewer's hash afterwards leaves
+    // it alone, so an expired ?token= is never reloaded by a hash change.
+    $page->wait(1)
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
+
+    $page->script("window.location.hash = '#option-c'");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertScript('location.hash', '#option-c')
+        ->assertScript("{$frameSrc}.endsWith('#option-b')");
 });

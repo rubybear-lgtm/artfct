@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Remove an artifact from a workspace collection by collection id or name. Requires collections:write and is idempotent: removing an artifact that is not in the collection still succeeds. You may pass collection_id, collection (name), or both; if both are given and they resolve to different collections, the call fails with a validation error and writes nothing.')]
+#[Description('Use when the person asks to take a page off a board or collection but keep the page. Requires collections:write and is idempotent: removing a page that is not in the collection still succeeds. Does not delete the artifact; use delete_artifact only if they want the page gone.')]
 #[Name('remove_collection_artifact')]
 #[Title('Remove artifact from collection')]
 #[IsReadOnly(false)]

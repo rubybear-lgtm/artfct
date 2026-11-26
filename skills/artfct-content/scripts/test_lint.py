@@ -41,7 +41,7 @@ CLEAN = """<!doctype html>
 <details class="q"><summary>Can an admin remove something?</summary><p>Yes, and the removal is recorded.</p></details>
 </section></main>
 <div class="byline"><div class="av">A</div><div class="who">The artfct team</div><p class="bio">Notes on how teams keep what their AI makes.</p></div>
-<section class="cta"><h2>Try it</h2><p>Share a page as a link.</p><a class="btn" href="https://artfct.dev/free">Start free</a></section>
+<section class="cta"><h2>Try it</h2><p>Publish a page from your AI tool and share the link.</p><a class="btn" href="https://artfct.dev/signup">Start free</a></section>
 <footer>artfct</footer></div></body></html>
 """
 

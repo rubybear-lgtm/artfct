@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useRef } from 'react';
+import Copyright from '@/components/copyright';
 import { ThemeSwitch } from '@/components/home/theme-switch';
 import { useAppTheme } from '@/lib/useAppTheme';
 import { blog, docs, home, login, privacy, support, terms } from '@/routes';
@@ -174,7 +175,7 @@ export function SiteFooter() {
             <div className="mx-auto flex max-w-[1120px] flex-wrap items-baseline justify-between gap-4 px-5 py-7 text-sm text-muted-foreground">
                 <div className="flex items-baseline gap-3">
                     <Wordmark className="text-xl text-foreground" />
-                    <span>© {new Date().getFullYear()} Artfct</span>
+                    <Copyright />
                 </div>
                 <div className="flex flex-wrap gap-x-5 gap-y-2">
                     <Link href={docs.url()}>Docs</Link>

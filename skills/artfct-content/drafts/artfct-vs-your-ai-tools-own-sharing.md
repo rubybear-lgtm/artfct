@@ -26,7 +26,7 @@ Artfct is a record of what a team's agents built. An artifact is a page, a repor
 
 There is one way in: the hosted server, added to a tool once and signed into once. Claude Code, Codex, OpenCode and Antigravity are verified against staging. ChatGPT, Cursor, VS Code, Windsurf and Zed have documented setup that has not been tested against staging, and any other client that can reach a remote server can follow the same path. A tool that can only run programs on the same machine cannot connect, because the server is hosted rather than installed.
 
-A team that only wants to hand someone a single page can [publish it as a link](https://artfct.dev/free) without an account, and the recipient opens it at the same address. For a team that runs several tools, the point is cumulative: every connected tool can read what every other one published.
+A team that only wants to hand someone a single page can publish it from a connected AI tool as a public link, and the recipient opens it at the same address without an account. For a team that runs several tools, the point is cumulative: every connected tool can read what every other one published.
 
 ## Why does a single-vendor index leave gaps?
 

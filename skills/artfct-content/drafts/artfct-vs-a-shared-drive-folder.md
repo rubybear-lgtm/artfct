@@ -85,7 +85,7 @@ The first sign is a store of rebuilt work. An engineer asks for an analysis a co
 
 The second sign is a question about origin. A model changes, a prompt is revised, a number is challenged in a review. A page that records the tool and the client that produced it gives that discussion a starting point.
 
-The third sign is reach. A team artifact is open to every member of the workspace, a private one is limited to the owner and the team administrators, and a public link opens for anyone holding it, with no account required. A single page can also be published as a link at no cost, and how each level is set is described in the [free tier](https://artfct.dev/free) and in [who sees what your AI makes](https://artfct.dev/blog/who-sees-what-your-ai-makes).
+The third sign is reach. A team artifact is open to every member of the workspace, a private one is limited to the owner and the team administrators, and a public link opens for anyone holding it, with no account required. A single page can also be published as a link on the free plan, and how each level is set is described in [who sees what your AI makes](https://artfct.dev/blog/who-sees-what-your-ai-makes).
 
 The two arrangements coexist in most teams. A drive keeps the material that people edit, and Artfct keeps the pages that the tools made and answers the search that follows.
 

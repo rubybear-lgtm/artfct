@@ -15,7 +15,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Merge fields into an existing document in an artifact\'s database (a shallow merge: the keys in `data` replace those keys, everything else stays). The document must exist. Pass `if_version` to refuse the change if the document moved on. Needs the data:write scope and edit access to the artifact.')]
+#[Description('Use when you need to change some fields on an existing card, page or row without replacing the whole record. The merge is shallow, and the document must already exist; use db_set to create one. Read first and pass if_version to refuse the change if the document moved on. Needs data:write and edit access.')]
 #[Name('db_update')]
 #[Title('Update a database document')]
 #[IsReadOnly(false)]
@@ -28,7 +28,7 @@ final class DbUpdateTool extends DatabaseTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [
@@ -59,6 +59,11 @@ final class DbUpdateTool extends DatabaseTool
             'data' => ['required', 'array', 'min:1'],
             'if_version' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        $refusal = $this->postDetailsRefusal($validated['collection'], $validated['doc_id'], $validated['data'], false);
+        if ($refusal !== null) {
+            return $this->refuseInvalidWrite('db_update', $startedAt, $refusal);
+        }
 
         return $this->send('db_update', $startedAt, 'PATCH', $validated['id'], $validated['collection'].'/'.$validated['doc_id'], [
             'if_version' => $validated['if_version'] ?? null,

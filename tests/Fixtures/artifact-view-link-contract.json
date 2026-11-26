@@ -1,5 +1,5 @@
 {
-  "_comment": "The artifact view-link shape the hosted MCP server is tested against. Read by tests/Feature/McpContractTest.php (App\\Services\\Artifacts\\ArtifactViewLink) so the field name and which link a tier gets cannot drift. Every permanent artifact — public included — gets the app's short link (`app_open_route`). Anonymous free-tool KV previews are not addressed by this contract; the free tool returns the Worker's URL directly (RUB-452).",
+  "_comment": "The artifact view-link shape the hosted MCP server is tested against. Read by tests/Feature/McpContractTest.php (App\\Services\\Artifacts\\ArtifactViewLink) so the field name and which link a tier gets cannot drift. Every permanent artifact — public included — gets the app's short link (`app_open_route`). The anonymous free-tool previews the Worker once served were removed.",
   "field": "view_url",
   "public_path_template": "/p/{artifact}",
   "versioned_public_path_template": "/p/{artifact}/v:{version}/",

@@ -1,10 +1,12 @@
 <?php
 
 use App\Enums\AuditEventType;
+use App\Enums\FeatureReleaseState;
 use App\Enums\McpScope;
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
 use App\Models\AuditEvent;
+use App\Models\FeatureRelease;
 use App\Models\McpActivity;
 use App\Models\McpConnection;
 use App\Models\OAuthRefreshToken;
@@ -14,6 +16,10 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function (): void {
+    $this->withoutVite();
+});
 
 test('team members can view connection metadata without credentials', function () {
     $team = Team::factory()->create();
@@ -293,8 +299,26 @@ test('a failed page-visit revocation redirects with an error toast instead of a 
         ->and($orgToken->fresh()->revoked_at)->toBeNull();
 });
 
-test('example', function () {
-    $response = $this->get('/');
+test('the connections page keeps its props with the unified rail on or off', function (bool $released) {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    $connection = McpConnection::factory()->create([
+        'team_id' => $team->id,
+        'user_id' => $member->id,
+        'name' => 'Cursor on laptop',
+    ]);
 
-    $response->assertStatus(200);
-});
+    if ($released) {
+        FeatureRelease::factory()->create(['key' => 'unified-rail', 'state' => FeatureReleaseState::Released]);
+    }
+
+    test()->actingAs($member)->get(route('teams.mcp-connections.index', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('teams/mcp-connections')
+            ->where('features.unified-rail', $released)
+            ->where('mcpEndpoint', url('/mcp'))
+            ->where('connections.0.name', 'Cursor on laptop')
+            ->where('connections.0.canRevoke', true)
+            ->has('usage.byTool'));
+})->with(['flag off' => false, 'flag on' => true]);

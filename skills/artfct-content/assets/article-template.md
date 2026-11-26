@@ -14,7 +14,7 @@ target: {{the query this page answers}}
 
 ## {{A question the reader asks}}
 
-{{One idea per section. Link out in the body — [a cross-post](https://artfct.dev/blog/another-slug), [the docs](https://artfct.dev/docs), [the free tool](https://artfct.dev/free) — because the corpus median is seven in-body links.}}
+{{One idea per section. Link out in the body — [a cross-post](https://artfct.dev/blog/another-slug), [the docs](https://artfct.dev/docs) — because the corpus median is seven in-body links.}}
 
 {{Bulleted lists, pipe tables, blockquotes, fenced code and figures all carry through:}}
 

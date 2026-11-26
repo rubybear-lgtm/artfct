@@ -16,7 +16,7 @@ test('the landing_page root class follows client navigation', function () {
         true,
     );
 
-    $page->navigate('/free')
+    $page->navigate('/docs')
         ->assertScript(
             'document.documentElement.classList.contains("landing-page")',
             false,
@@ -82,10 +82,10 @@ test('the tool strip shows a product mark beside each AI tool name', function ()
         ->assertNoJavaScriptErrors();
 });
 
-test('on a phone the headline, the demo and the tools strip fit one screen', function () {
+test('on a phone the hero flows into a readable demo and tools strip', function () {
     visit('/')
         ->resize(390, 844)
-        ->assertScript('document.querySelector(".strip").getBoundingClientRect().bottom <= window.innerHeight + 1', true)
+        ->assertScript('document.querySelector(".strip").getBoundingClientRect().top >= document.querySelector("[data-testid=landing-flow]").getBoundingClientRect().bottom - 1', true)
         ->assertScript('document.querySelector(\'[data-testid="landing-hero-cta"]\').getBoundingClientRect().bottom <= window.innerHeight', true)
         ->assertScript('document.querySelector(\'[data-testid="landing-flow"]\').getBoundingClientRect().height >= 260', true)
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)

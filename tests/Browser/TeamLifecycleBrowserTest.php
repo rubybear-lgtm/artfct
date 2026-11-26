@@ -2,9 +2,12 @@
 
 use App\Actions\Teams\CreateTeam;
 use App\Contracts\ArtifactDirectory;
+use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Billing\BillingContract;
+use App\Services\Billing\FakeBilling;
 use App\Services\Indexing\EmbeddingsContract;
 use App\Services\Indexing\VectorChunk;
 use App\Services\Indexing\VectorIndexContract;
@@ -12,6 +15,32 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
+
+test('the_owner_can_cancel_and_resume_a_subscription', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'stripe_subscription_id' => 'sub_browser', 'stripe_customer_id' => 'cus_browser']);
+    $owner = memberOfTeam($team, TeamRole::Admin);
+    $team->forceFill(['owner_user_id' => $owner->id])->save();
+    /** @var FakeBilling $billing */
+    $billing = app(BillingContract::class);
+    $billing->subscriptions['sub_browser'] = ['team_slug' => $team->slug, 'seat_count' => 1, 'cancelled' => false];
+    test()->actingAs($owner);
+
+    $page = visit(route('teams.billing.show', $team))
+        ->click('Cancel subscription')
+        ->assertSee('Cancel this subscription?')
+        ->click('[role="dialog"] button:last-child')
+        ->assertSee('Resume subscription');
+
+    expect($team->fresh()->cancel_at_period_end)->toBeTrue()
+        ->and($billing->subscriptions['sub_browser']['cancelled'])->toBeTrue();
+
+    $page->click('Resume subscription')
+        ->assertSee('Cancel subscription')
+        ->assertNoJavaScriptErrors();
+
+    expect($team->fresh()->cancel_at_period_end)->toBeFalse()
+        ->and($billing->subscriptions['sub_browser']['cancelled'])->toBeFalse();
+});
 
 test('new_user_signs_up_becomes_owner_and_invites_a_teammate', function () {
     $page = visit('/login');

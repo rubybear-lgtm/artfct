@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 
 import ArtifactVersionController from '@/actions/App/Http/Controllers/ArtifactVersionController';
 import ConsoleController from '@/actions/App/Http/Controllers/ConsoleController';
+import LocalDate from '@/components/local-date';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
@@ -29,18 +30,6 @@ interface Props {
 /** The name a person reads: the newest version's title, or a short id. */
 function artifactName(title: string | null, artifactId: string): string {
     return title && title !== '' ? title : artifactId.slice(0, 8);
-}
-
-function formatDate(value: string | null): string {
-    if (!value) {
-        return 'Unknown date';
-    }
-
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime())
-        ? 'Unknown date'
-        : date.toLocaleDateString();
 }
 
 function versionCountLabel(count: number): string {
@@ -119,8 +108,12 @@ export default function ArtifactVersions({
                                             </p>
                                         )}
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            {formatDate(version.created_at)} ·{' '}
-                                            {version.created_by ?? 'Unknown'}
+                                            <LocalDate
+                                                value={version.created_at}
+                                                options={{}}
+                                                fallback="Unknown date"
+                                            />{' '}
+                                            · {version.created_by ?? 'Unknown'}
                                             {version.agent
                                                 ? ` · ${version.agent}`
                                                 : ''}

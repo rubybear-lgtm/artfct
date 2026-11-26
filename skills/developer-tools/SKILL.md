@@ -20,7 +20,7 @@ Build and deploy interactive developer utilities as shareable HTML tools via art
 
 1. **Identify** which tool fits the request (table above)
 2. **Read** the corresponding asset file from `assets/`
-3. **Replace** `{{PLACEHOLDER}}` tokens with context-specific values
+3. **Replace** the placeholder values with context-specific values
 4. **Optionally pre-populate** data if the user provided it inline
 5. **Deploy** with `deploy_artifact` (see Deployment) — default `sharing: "team"`; use `"public"` only when the user asks for a link anyone can open
 

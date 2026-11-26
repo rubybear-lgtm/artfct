@@ -69,11 +69,41 @@ final class HttpArtifactContentSource implements ArtifactContentSource
             // unknown value fails closed to private there.
             'sharing' => is_string($sharing) ? $sharing : null,
             'owner_user_id' => is_string($ownerUserId) ? $ownerUserId : null,
+            // The bundle's files for the current version. An older Worker omits
+            // the list; null then tells a packer to refuse rather than guess.
+            'entrypoint' => is_string($response->json('entrypoint')) ? $response->json('entrypoint') : null,
+            'files' => $this->bundleFiles($response->json('files')),
             'provenance' => [
                 'agent' => $response->json('provenance.agent'),
                 'repo_url' => $response->json('provenance.repo_url'),
                 'commit_sha' => $response->json('provenance.commit_sha'),
             ],
         ];
+    }
+
+    /**
+     * @return ?list<array{path: string, sha256: string, content_type: string, size_bytes: int}>
+     */
+    private function bundleFiles(mixed $files): ?array
+    {
+        if (! is_array($files)) {
+            return null;
+        }
+
+        $bundleFiles = [];
+        foreach ($files as $file) {
+            if (! is_array($file) || ! is_string($file['path'] ?? null) || ! is_string($file['sha256'] ?? null)) {
+                return null;
+            }
+
+            $bundleFiles[] = [
+                'path' => $file['path'],
+                'sha256' => $file['sha256'],
+                'content_type' => is_string($file['content_type'] ?? null) ? $file['content_type'] : 'application/octet-stream',
+                'size_bytes' => is_numeric($file['size_bytes'] ?? null) ? (int) $file['size_bytes'] : 0,
+            ];
+        }
+
+        return $bundleFiles;
     }
 }

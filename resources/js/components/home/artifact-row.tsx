@@ -6,15 +6,25 @@ import type {
     HomeRecentArtifact,
     HomeSearchResult,
 } from '@/components/home/types';
+import LocalDate from '@/components/local-date';
 import { Badge } from '@/components/ui/badge';
 import { aiToolName } from '@/lib/ai-tools';
+import { formatLocalDate, useReader } from '@/lib/local-date';
+import type { Reader } from '@/lib/local-date';
 
-/** Short date as the reader expects it, e.g. "Oct 4". */
-export function shortDate(iso: string): string {
-    return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-    }).format(new Date(iso));
+const SHORT_DATE: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+};
+
+/** Short date as the reader expects it, e.g. "Oct 4". The month and day follow the reader's time zone; the wording is always en-US. */
+export function shortDate(iso: string, reader: Reader): string {
+    return formatLocalDate(iso, reader, SHORT_DATE, { locale: 'en-US' }) ?? '';
+}
+
+/** The same short date, where a component is easier than a string. */
+export function ShortDate({ iso }: { iso: string }) {
+    return <LocalDate value={iso} options={SHORT_DATE} locale="en-US" />;
 }
 
 /** The 30px icon well every artifact row starts with. */
@@ -83,10 +93,11 @@ export function RecentArtifactCard({
     item: HomeRecentArtifact;
     canOpenArtifacts: boolean;
 }) {
+    const reader = useReader();
     const clickable = canOpenArtifacts && !item.revoked;
     const meta = [
         ...(item.authorName ? [item.authorName] : []),
-        shortDate(item.createdAt),
+        shortDate(item.createdAt, reader),
         ...(item.agent ? [aiToolName(item.agent)] : []),
     ].join(' · ');
 

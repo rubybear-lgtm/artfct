@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Retrieve safe metadata for one artifact in the authenticated workspace. Returns lifecycle and provenance-adjacent metadata, never the HTML bundle. The returned view_url is where a person opens the artifact: for a secure artifact it is the app\'s own open route, which mints a fresh short-lived signed link at click time; for a public artifact it is the workspace\'s public artifact URL.')]
+#[Description('Use when you need a fresh link, current version, sharing or other metadata for a known artifact id. This does not return the written content. Use read_artifact to summarize or quote the page, then cite the version. The returned view_url is where a person opens the artifact; for a secure artifact it is minted at click time.')]
 #[Name('get_artifact')]
 #[Title('Get artifact details')]
 #[IsReadOnly]

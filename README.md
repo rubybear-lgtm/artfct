@@ -4,9 +4,8 @@ What your team's AI makes, shared, stored and searchable by every AI tool you us
 
 Artifacts are anything an AI makes that is worth keeping: interactive HTML, reports, markdown
 docs, tables, mockups. Your team shares them to one workspace, and every AI tool you connect reads
-them back with sources (Claude Code, Codex, OpenCode and Antigravity are verified). A free single-file tool is also available
-at [artfct.dev](https://artfct.dev): drop an HTML file and get an encrypted, expiring link with
-no account.
+them back with sources (Claude Code, Codex, OpenCode and Antigravity are verified). There is a free plan
+for one person, and Pro and Team plans at [artfct.dev](https://artfct.dev).
 
 ---
 
@@ -17,12 +16,9 @@ no account.
 
 ## Web
 
-Visit [artfct.dev](https://artfct.dev). Drop or select an `.html` file. You get a
-link immediately — no account, no configuration.
-
-Links are encrypted and ephemeral by default: they expire 5 days after last
-access unless you set a custom TTL. Public metadata stays visible for link
-previews, while the fragment passcode is never sent to the server.
+Visit [artfct.dev](https://artfct.dev) and sign in. Connect your AI tool (below) and the pages it
+publishes are stored in your team's library, where every connected tool can search them. A page
+shared with a public link opens for anyone who has the link, with no account.
 
 ## Connect your AI tool
 
@@ -244,6 +240,20 @@ The skill teaches agents:
 `skills/artfct-init/` sets artfct up in any coding agent (RUB-446, RUB-502), installed with `npx skills add rubybear-lgtm/artfct@artfct-init`. It checks the connection and search readiness, then works at the level the person picks: **global** (them, every project), **user** (them, this repo, git-excluded) or **repo** (committed for the team). It adds a managed block to the file that agent reads at that level, installs `GUIDELINES.md` and `DESIGN.md` at the repo level, grants only the tool permissions the user approves (Claude Code and Codex have tested writers), and stores optional personal preferences or reviewed team defaults. `skills/artfct-init/references/hosts.md` lists every agent's files per level with sources. Its scripts run on Node with no dependencies and are tested with `npm run test:skills`, which also checks that every skill's frontmatter parses for the skills.sh installer.
 
 Skills are resolved from the `skills/artfct/` directory in this repo and follow the [skills.sh](https://skills.sh) format — compatible with Claude Code, OpenAI Codex, OpenCode, and other agents that support the skills ecosystem.
+
+### Skill pack
+
+The skill pack is seven skills that a team's bots load on any host. Each line names a skill and what it covers:
+
+- `artfct` — share a page, report or decision, and when to deploy it.
+- `artfct-search` — find and cite what the team already made before answering from it.
+- `artfct-publish` — publish or update a team page, with a findability check after.
+- `artfct-collaborate` — update a page others may have changed, and handle its comments.
+- `artfct-context-post` — publish a decision, announcement, policy or other team context post.
+- `artfct-team-doc` — publish a memo, letter, short report or one-page brief.
+- `presentation` — build a slide deck and deploy it as an artifact.
+
+Load instructions for each tool are on its connect page: [Claude](https://artfct.dev/connect/connect-claude), [Cursor](https://artfct.dev/connect/connect-cursor), [Codex](https://artfct.dev/connect/connect-codex) and [ChatGPT](https://artfct.dev/connect/connect-chatgpt).
 
 ## Development
 

@@ -3,6 +3,7 @@
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Enums\FeatureReleaseState;
 use App\Enums\TeamRole;
@@ -10,6 +11,7 @@ use App\Models\ArtifactComment;
 use App\Models\AuditEvent;
 use App\Models\FeatureRelease;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\FakeArtifactContentSource;
 use App\Services\Artifacts\FakeArtifactDirectory;
 use App\Services\Artifacts\FakePublicArtifactSource;
@@ -729,4 +731,27 @@ test('a_freshness_poll_mints_no_link_and_writes_no_audit_row', function () {
     $response->assertOk();
 
     expect(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
+});
+
+test('a member viewing a slide deck is told it is a deck for the Present action, and a document is not', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('present-team', 'Present Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'team',
+        'owner_user_id' => (string) $member->id,
+        'can_change_sharing' => false,
+    ]);
+    $html = '<!doctype html><html><body><section class="slide"></section></body></html>';
+
+    app(ArtifactTypeResolver::class)->record($team, ARTIFACT_LINK_ID, $html, ArtifactType::SlideDeck);
+
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
+        ->where('isSlideDeck', true));
+
+    app(ArtifactTypeResolver::class)->record($team, ARTIFACT_LINK_ID, $html, ArtifactType::Document);
+
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
+        ->where('isSlideDeck', false));
 });

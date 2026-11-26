@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     Activity,
     Cable,
@@ -11,6 +11,7 @@ import {
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
+import LocalDate, { LocalNumber } from '@/components/local-date';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { docs } from '@/routes';
 import teamRoutes from '@/routes/teams';
+import type { SharedProps } from '@/types/shared';
 
 interface Connection {
     id: string;
@@ -85,17 +87,6 @@ interface Props {
     defaultScopes: string[];
 }
 
-function formatDate(value: string | null): string {
-    if (!value) {
-        return 'Never';
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(new Date(value));
-}
-
 function statusFor(connection: Connection): 'active' | 'expired' | 'revoked' {
     if (connection.revokedAt) {
         return 'revoked';
@@ -130,11 +121,16 @@ export default function McpConnections({
 }: Props) {
     const labelForScope = (scope: string): string =>
         scopeLabels[scope] ?? scope;
+    const unifiedRail =
+        usePage<SharedProps>().props.features?.['unified-rail'] === true;
     const transports = [
         ...new Set(connections.map((connection) => connection.transport)),
     ];
 
     const [copied, setCopied] = useState<string | null>(null);
+    const [showAllTools, setShowAllTools] = useState(false);
+    const visibleTools =
+        unifiedRail && !showAllTools ? usage.byTool.slice(0, 6) : usage.byTool;
     const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
     const [pendingReauthorizeId, setPendingReauthorizeId] = useState<
         string | null
@@ -215,7 +211,10 @@ export default function McpConnections({
                     available for audit purposes.
                 </Alert>
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'setup' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle>Connect an AI tool</CardTitle>
                         <CardDescription>
@@ -251,7 +250,10 @@ export default function McpConnections({
                                     : 'Copy address'}
                             </Button>
                         </div>
-                        <div className="rounded-lg border border-dashed p-4 md:col-span-2">
+                        <div
+                            id={unifiedRail ? 'permissions' : undefined}
+                            className={`rounded-lg border border-dashed p-4 md:col-span-2 ${unifiedRail ? 'scroll-mt-20' : ''}`}
+                        >
                             <p className="font-medium">What each tool can do</p>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 Each tool asks for these permissions when
@@ -315,7 +317,7 @@ export default function McpConnections({
                                     Tool calls
                                 </p>
                                 <p className="mt-1 text-2xl font-semibold">
-                                    {usage.calls.toLocaleString()}
+                                    <LocalNumber value={usage.calls} />
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     Last {usage.periodDays} days
@@ -334,7 +336,9 @@ export default function McpConnections({
                                     {usage.successRate}%
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {usage.successfulCalls.toLocaleString()}{' '}
+                                    <LocalNumber
+                                        value={usage.successfulCalls}
+                                    />{' '}
                                     successful
                                 </p>
                             </div>
@@ -348,7 +352,7 @@ export default function McpConnections({
                                     Errors
                                 </p>
                                 <p className="mt-1 text-2xl font-semibold">
-                                    {usage.failedCalls.toLocaleString()}
+                                    <LocalNumber value={usage.failedCalls} />
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     Across all tools
@@ -376,7 +380,10 @@ export default function McpConnections({
                 </div>
 
                 {usage.byTool.length > 0 && (
-                    <Card>
+                    <Card
+                        id={unifiedRail ? 'usage' : undefined}
+                        className={unifiedRail ? 'scroll-mt-20' : undefined}
+                    >
                         <CardHeader>
                             <CardTitle>Usage by tool</CardTitle>
                             <CardDescription>
@@ -398,13 +405,15 @@ export default function McpConnections({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {usage.byTool.map((tool) => (
+                                        {visibleTools.map((tool) => (
                                             <TableRow key={tool.tool}>
                                                 <TableCell className="font-mono text-xs">
                                                     {tool.tool}
                                                 </TableCell>
                                                 <TableCell>
-                                                    {tool.calls.toLocaleString()}
+                                                    <LocalNumber
+                                                        value={tool.calls}
+                                                    />
                                                 </TableCell>
                                                 <TableCell>
                                                     {tool.calls === 0
@@ -419,11 +428,29 @@ export default function McpConnections({
                                     </tbody>
                                 </Table>
                             </div>
+                            {unifiedRail && usage.byTool.length > 6 && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mt-3"
+                                    onClick={() =>
+                                        setShowAllTools((value) => !value)
+                                    }
+                                >
+                                    {showAllTools
+                                        ? 'Show less'
+                                        : `Show all ${usage.byTool.length}`}
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
                 )}
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'manual-setup' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle>Set up a tool manually</CardTitle>
                         <CardDescription>
@@ -602,9 +629,19 @@ export default function McpConnections({
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-sm whitespace-nowrap">
-                                                        {formatDate(
-                                                            connection.lastUsedAt,
-                                                        )}
+                                                        <LocalDate
+                                                            value={
+                                                                connection.lastUsedAt
+                                                            }
+                                                            options={{
+                                                                dateStyle:
+                                                                    'medium',
+                                                                timeStyle:
+                                                                    'short',
+                                                            }}
+                                                            time
+                                                            fallback="Never"
+                                                        />
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-wrap items-center gap-2">
@@ -770,9 +807,15 @@ export default function McpConnections({
                                                     {entry.latencyMs} ms
                                                 </TableCell>
                                                 <TableCell className="text-sm whitespace-nowrap">
-                                                    {formatDate(
-                                                        entry.createdAt,
-                                                    )}
+                                                    <LocalDate
+                                                        value={entry.createdAt}
+                                                        options={{
+                                                            dateStyle: 'medium',
+                                                            timeStyle: 'short',
+                                                        }}
+                                                        time
+                                                        fallback="Never"
+                                                    />
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -787,6 +830,47 @@ export default function McpConnections({
     );
 }
 
+function ConnectionsRailContext() {
+    const { usage } = usePage<SharedProps & { usage: { byTool: unknown[] } }>()
+        .props;
+    const anchors = [
+        { id: 'setup', label: 'Setup' },
+        { id: 'permissions', label: 'Permissions' },
+        ...(usage.byTool.length > 0 ? [{ id: 'usage', label: 'Usage' }] : []),
+        { id: 'manual-setup', label: 'Manual setup' },
+    ];
+
+    return (
+        <nav aria-label="On this page" className="flex flex-col gap-0.5">
+            <p className="px-2.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                On this page
+            </p>
+            {anchors.map((anchor) => (
+                <a
+                    key={anchor.id}
+                    href={`#${anchor.id}`}
+                    className="rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                    {anchor.label}
+                </a>
+            ))}
+        </nav>
+    );
+}
+
+function McpConnectionsLayout({ page }: { page: React.ReactNode }) {
+    const { features } = usePage<SharedProps>().props;
+    const unifiedRail = features?.['unified-rail'] === true;
+
+    return (
+        <AppLayout
+            railContext={unifiedRail ? <ConnectionsRailContext /> : undefined}
+        >
+            {page}
+        </AppLayout>
+    );
+}
+
 McpConnections.layout = (page: React.ReactNode) => (
-    <AppLayout>{page}</AppLayout>
+    <McpConnectionsLayout page={page} />
 );

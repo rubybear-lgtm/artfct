@@ -15,10 +15,8 @@ namespace App\Services\Artifacts;
  * what makes a link an agent returns work when a member clicks it while signed
  * in, and it is the link that is correct for a public artifact either way.
  *
- * Anonymous free-tool previews (Worker KV `ephemeral` tier) are not addressed
- * here: they have no D1 row, so no app route can resolve them. The free tool
- * returns the Worker's own `/p/{id}` URL directly and never calls this helper
- * (RUB-452). The Worker ephemeral path remains intentional.
+ * Only permanent artifacts are addressed here. The anonymous free-tool previews
+ * the Worker once served from KV were removed.
  */
 final class ArtifactViewLink
 {

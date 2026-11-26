@@ -45,6 +45,12 @@ class FakeArtifactDirectory implements ArtifactDirectory
     /** How many times `listArtifacts` has been called — RUB-478 Worker-call budgets. */
     private int $listCallCount = 0;
 
+    /**
+     * @var array<string, string> Test hook: file bytes by sha256, served by
+     *                            fetchBlob ahead of the generated demo bodies
+     */
+    private array $blobs = [];
+
     public function __construct()
     {
         // Initialize with some demo data
@@ -252,8 +258,21 @@ class FakeArtifactDirectory implements ArtifactDirectory
         ];
     }
 
+    /**
+     * Test hook: the bytes a bundle file with this sha256 holds. The hash is
+     * not checked, so a test can seed bytes that do not match the name.
+     */
+    public function seedBlob(string $sha256, string $bytes): void
+    {
+        $this->blobs[$sha256] = $bytes;
+    }
+
     public function fetchBlob(string $orgSlug, string $sha256): ?string
     {
+        if (array_key_exists($sha256, $this->blobs)) {
+            return $this->blobs[$sha256];
+        }
+
         foreach ($this->artifacts as $artifact) {
             $body = self::blobBody($artifact['content_hash']);
 

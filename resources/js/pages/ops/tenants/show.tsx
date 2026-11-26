@@ -26,6 +26,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import OpsLayout from '@/layouts/ops-layout';
+import { useReader } from '@/lib/local-date';
 import { index as tenantsIndex } from '@/routes/ops/tenants';
 
 interface Props {
@@ -147,6 +148,8 @@ function SsoPanel({ sso }: { sso?: TenantSso | TenantSsoError }) {
 }
 
 function UsagePanel({ usage }: { usage?: TenantUsage | TenantUsageError }) {
+    const reader = useReader();
+
     if (!usage) {
         return <UsageSkeleton />;
     }
@@ -162,7 +165,7 @@ function UsagePanel({ usage }: { usage?: TenantUsage | TenantUsageError }) {
     const { limits } = usage;
     const period =
         usage.period_start && usage.period_end
-            ? `${formatDate(usage.period_start)} to ${formatDate(usage.period_end)}`
+            ? `${formatDate(usage.period_start, reader)} to ${formatDate(usage.period_end, reader)}`
             : null;
 
     return (
@@ -191,8 +194,8 @@ function UsagePanel({ usage }: { usage?: TenantUsage | TenantUsageError }) {
                     </span>
                     <span className="text-muted-foreground tabular-nums">
                         {limits
-                            ? `${formatNumber(usage.artifacts_this_period)} of ${formatNumber(limits.artifacts_per_month)}`
-                            : `${formatNumber(usage.artifacts_this_period)}, limit unknown`}
+                            ? `${formatNumber(usage.artifacts_this_period, reader)} of ${formatNumber(limits.artifacts_per_month, reader)}`
+                            : `${formatNumber(usage.artifacts_this_period, reader)}, limit unknown`}
                     </span>
                 </div>
                 {limits && (
@@ -243,6 +246,7 @@ export default function TenantShow({
     erasure_plan,
     status,
 }: Props) {
+    const reader = useReader();
     const isDeleted = tenant.deleted_at !== null;
 
     return (
@@ -326,7 +330,10 @@ export default function TenantShow({
                             label: 'Current period ends',
                             value: orNone(
                                 tenant.current_period_end
-                                    ? formatDate(tenant.current_period_end)
+                                    ? formatDate(
+                                          tenant.current_period_end,
+                                          reader,
+                                      )
                                     : null,
                             ),
                         },
@@ -337,20 +344,23 @@ export default function TenantShow({
                         {
                             label: 'Created',
                             value: tenant.created_at
-                                ? formatDateTime(tenant.created_at)
+                                ? formatDateTime(tenant.created_at, reader)
                                 : 'Unknown',
                         },
                         {
                             label: 'Provisioned',
                             value: tenant.provisioned_at
-                                ? formatDateTime(tenant.provisioned_at)
+                                ? formatDateTime(tenant.provisioned_at, reader)
                                 : 'Not yet',
                         },
                         ...(tenant.deleted_at
                             ? [
                                   {
                                       label: 'Deleted',
-                                      value: formatDateTime(tenant.deleted_at),
+                                      value: formatDateTime(
+                                          tenant.deleted_at,
+                                          reader,
+                                      ),
                                   },
                               ]
                             : []),
@@ -401,7 +411,10 @@ export default function TenantShow({
                         },
                         {
                             label: 'MCP last used',
-                            value: formatDateTime(connections.mcp.last_used_at),
+                            value: formatDateTime(
+                                connections.mcp.last_used_at,
+                                reader,
+                            ),
                         },
                         {
                             label: 'Organization tokens',
@@ -411,6 +424,7 @@ export default function TenantShow({
                             label: 'Tokens last used',
                             value: formatDateTime(
                                 connections.org_tokens.last_used_at,
+                                reader,
                             ),
                         },
                     ]}
@@ -443,7 +457,7 @@ export default function TenantShow({
                                     dateTime={event.at}
                                     className="shrink-0 text-xs text-muted-foreground tabular-nums sm:w-44"
                                 >
-                                    {formatDateTime(event.at)}
+                                    {formatDateTime(event.at, reader)}
                                 </time>
                                 <div className="min-w-0 flex-1">
                                     <p className="font-medium break-words">

@@ -29,7 +29,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List the team\'s artifacts by who made them, when, how they are shared, or how often they were opened. Use this to answer questions like "what did I publish this week" or "our most-opened dashboards". To find artifacts about a topic, use search_artifacts instead.')]
+#[Description('Use when the person asks what they or the team published, when, who owns it, how it is shared, or how often it was opened, such as what did I publish this week or our most-opened dashboards. Browses by date, owner, sharing, type or collection; it does not answer what the team agreed. For a question about a topic, decision or announcement, use search_artifacts, then read_artifact and cite.')]
 #[Name('list_artifacts')]
 #[Title('List artifacts')]
 #[IsReadOnly]
@@ -713,7 +713,7 @@ final class ListArtifactsTool extends Tool
         return [
             'owner' => $schema->string()->max(255)->description('Filter by owner: `me`, `anyone` or a team member\'s email address.')->nullable(),
             'sharing' => $schema->string()->enum(['private', 'team', 'public'])->description('Only artifacts with this sharing level.')->nullable(),
-            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Only artifacts of this type: report, table, document, mockup, slide_deck, dashboard or other.')->nullable(),
+            'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Only artifacts of this type: report, table, document, mockup, slide_deck, dashboard, post, design_system or other.')->nullable(),
             'collection' => $schema->string()->max(255)->description('Only artifacts in this collection, named by id or name.')->nullable(),
             'agent' => $schema->string()->max(100)->description('Only artifacts published by this agent identity.')->nullable(),
             'created_after' => $schema->string()->description('Only artifacts created at or after this ISO 8601 time.')->nullable(),

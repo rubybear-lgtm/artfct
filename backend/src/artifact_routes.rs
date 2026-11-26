@@ -12,6 +12,9 @@ use crate::sharing::{
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ContentRow {
+    /// `artifacts.row_id`: a TEXT uuid, never an integer.
+    pub(crate) row_id: String,
+    pub(crate) entrypoint: String,
     pub(crate) content_hash: String,
     pub(crate) content_type: String,
     pub(crate) tier: String,
@@ -22,17 +25,41 @@ pub(crate) struct ContentRow {
     pub(crate) current_version: i64,
 }
 
-/// The org-credentialed content read's JSON body. Shared by the handler and
-/// its contract test.
+/// One file of the current version's bundle, as the org content read lists it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ContentFileRow {
+    pub(crate) path: String,
+    pub(crate) content_hash: String,
+    pub(crate) content_type: String,
+    pub(crate) size_bytes: i64,
+}
+
+/// The org-credentialed content read's JSON body. `files` lists every file of
+/// the current version, sorted by path, so a server-side packager can fetch
+/// each one by its sha256. Shared by the handler and its contract test.
 pub(crate) fn build_org_content_response(
     artifact_id: &str,
     row: &ContentRow,
     content: &str,
+    files: &[ContentFileRow],
 ) -> Value {
+    let files: Vec<Value> = files
+        .iter()
+        .map(|file| {
+            serde_json::json!({
+                "path": file.path,
+                "sha256": file.content_hash,
+                "content_type": file.content_type,
+                "size_bytes": file.size_bytes,
+            })
+        })
+        .collect();
     serde_json::json!({
         "id": artifact_id,
         "version": row.current_version,
         "content_type": row.content_type,
+        "entrypoint": row.entrypoint,
+        "files": files,
         "tier": row.tier,
         "sharing": Sharing::from_tier(&row.tier),
         "owner_user_id": row.user_id,
@@ -108,7 +135,7 @@ pub(crate) async fn get_org_artifact_content(
         store::D1R2ArtifactStore::new(env.d1("ARTIFACTS_DB")?, env.bucket("ARTIFACTS_BUCKET")?);
     let row = storage
         .database
-        .prepare("SELECT f.content_hash, f.content_type, a.tier AS tier, a.user_id AS user_id, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
+        .prepare("SELECT a.row_id AS row_id, a.entrypoint AS entrypoint, f.content_hash, f.content_type, a.tier AS tier, a.user_id AS user_id, a.current_version AS current_version, p.agent, p.repo_url, p.commit_sha FROM artifacts a JOIN files f ON f.artifact_row_id = a.row_id AND f.path = a.entrypoint JOIN orgs o ON o.id = a.org_id LEFT JOIN provenance p ON p.artifact_row_id = a.row_id WHERE a.id = ? AND o.slug = ? AND a.revoked_at IS NULL ORDER BY a.row_id LIMIT 1")
         .bind(&[JsValue::from_str(artifact_id), JsValue::from_str(org)])?
         .first::<ContentRow>(None)
         .await?;
@@ -138,8 +165,15 @@ pub(crate) async fn get_org_artifact_content(
         return json_error(ErrorCode::ArtifactNotFound, "Artifact not found.", 404);
     };
     let bytes = body.bytes().await?;
+    let files = storage
+        .database
+        .prepare("SELECT path, content_hash, content_type, size_bytes FROM files WHERE artifact_row_id = ? ORDER BY path")
+        .bind(&[JsValue::from_str(&row.row_id)])?
+        .all()
+        .await?
+        .results::<ContentFileRow>()?;
     JsonResponseDefinition::json(
-        build_org_content_response(artifact_id, &row, &String::from_utf8_lossy(&bytes)),
+        build_org_content_response(artifact_id, &row, &String::from_utf8_lossy(&bytes), &files),
         200,
     )
     .into_worker_response()
@@ -1011,8 +1045,8 @@ pub(crate) async fn resolve_permanent_artifact(
         }
     }
     // RUB-439: an old shared-origin link to a public artifact's entrypoint
-    // lands on the app's viewer. Subresources, isolated hosts, ephemeral
-    // artifacts and every non-public level keep their behaviour.
+    // lands on the app's viewer. Subresources, isolated hosts and every
+    // non-public level keep their behaviour.
     let is_navigation = req
         .headers()
         .get("Sec-Fetch-Dest")?
@@ -1218,21 +1252,8 @@ pub(crate) async fn delete_artifact(
     if store::is_permanent_id(artifact_id) {
         return delete_permanent_artifact(artifact_id, req, env, ctx).await;
     }
-    if !is_valid_artifact_id(artifact_id) {
-        return json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400);
-    }
-
-    // Tombstone instead of a bare delete so a concurrent GET that already
-    // read the record cannot put it back with a fresh TTL (RUB-464).
-    store::KvArtifactStore::new(env.kv(KV_BINDING)?)
-        .put_record(
-            artifact_id,
-            EPHEMERAL_TOMBSTONE_JSON,
-            EPHEMERAL_TOMBSTONE_TTL_SECONDS,
-        )
-        .await
-        .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    build_delete_response().into_worker_response()
+    // Only permanent artifacts remain; the anonymous free-tool ids are gone.
+    json_error(ErrorCode::InvalidArtifactId, "Invalid artifact id.", 400)
 }
 
 /// The validated query parameters for the org artifact list. Date bounds are
@@ -1602,8 +1623,7 @@ pub(crate) async fn existing_permanent_response(
 
 /// Splits `/v1/artifacts/{id}/sharing` into `id`. Pure, so the dispatch guard
 /// and its tests share one definition. Shape-only: the handler answers a
-/// non-permanent id with 404 rather than letting the generic PATCH arm treat it
-/// as an ephemeral update.
+/// non-permanent id with 404.
 pub(crate) fn parse_sharing_path(path: &str) -> Option<&str> {
     let id = path
         .strip_prefix("/v1/artifacts/")?
@@ -2531,7 +2551,7 @@ pub(crate) fn build_public_artifact_metadata(
 /// `GET /v1/public/artifacts/{id}` — unauthenticated metadata for a live,
 /// complete, public permanent artifact, for the app's `/a/{id}` viewer when the
 /// visitor is signed out or from another team. Every other case (bad id,
-/// missing, team, private, revoked, pending, ephemeral) is the same 404, so the
+/// missing, team, private, revoked, pending) is the same 404, so the
 /// endpoint never confirms that a non-public id exists.
 pub(crate) async fn get_public_artifact_metadata(path: &str, env: &Env) -> Result<Response> {
     let artifact_id = path

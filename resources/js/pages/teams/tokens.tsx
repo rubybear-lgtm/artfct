@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 
+import LocalDate from '@/components/local-date';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -73,17 +74,6 @@ function csrfToken(): string {
     const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/);
 
     return match ? decodeURIComponent(match[1]) : '';
-}
-
-function formatDate(value: string | null): string {
-    if (!value) {
-        return 'Never';
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(new Date(value));
 }
 
 const statusVariant = {
@@ -483,7 +473,15 @@ export default function Tokens({
                                                 …{token.lastFour}
                                             </TableCell>
                                             <TableCell className="text-muted-foreground">
-                                                {formatDate(token.lastUsedAt)}
+                                                <LocalDate
+                                                    value={token.lastUsedAt}
+                                                    options={{
+                                                        dateStyle: 'medium',
+                                                        timeStyle: 'short',
+                                                    }}
+                                                    time
+                                                    fallback="Never"
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 <Badge

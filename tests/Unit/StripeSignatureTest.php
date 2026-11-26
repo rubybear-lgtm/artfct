@@ -2,6 +2,8 @@
 
 use App\Services\Billing\StripeSignature;
 
+mutates(StripeSignature::class);
+
 test('valid_signature_verifies', function () {
     $header = StripeSignature::header('{"id":"evt_1"}', 'whsec_test', 1_700_000_000);
 
@@ -39,4 +41,26 @@ test('any_matching_v1_signature_is_accepted', function () {
     $good = hash_hmac('sha256', '1700000000.{}', 'whsec_test');
 
     expect(StripeSignature::verify("t=1700000000,v1=deadbeef,v1={$good}", '{}', 'whsec_test', 1_700_000_000))->toBeTrue();
+});
+
+test('signature_header_parts_may_have_surrounding_whitespace', function () {
+    $signature = hash_hmac('sha256', '1700000000.{}', 'whsec_test');
+
+    expect(StripeSignature::verify(" t=1700000000 , v1={$signature} ", '{}', 'whsec_test', 1_700_000_000))->toBeTrue();
+});
+
+test('a_matching_signature_with_a_nonnumeric_timestamp_is_rejected', function () {
+    $signature = hash_hmac('sha256', '1700000000x.{}', 'whsec_test');
+
+    expect(StripeSignature::verify("t=1700000000x,v1={$signature}", '{}', 'whsec_test', 1_700_000_000))->toBeFalse();
+});
+
+test('signature_timestamp_tolerance_is_enforced_in_both_directions', function () {
+    $timestamp = 1_700_000_000;
+    $header = StripeSignature::header('{}', 'whsec_test', $timestamp);
+
+    expect(StripeSignature::verify($header, '{}', 'whsec_test', $timestamp + 300))->toBeTrue()
+        ->and(StripeSignature::verify($header, '{}', 'whsec_test', $timestamp - 300))->toBeTrue()
+        ->and(StripeSignature::verify($header, '{}', 'whsec_test', $timestamp + 301))->toBeFalse()
+        ->and(StripeSignature::verify($header, '{}', 'whsec_test', $timestamp - 301))->toBeFalse();
 });

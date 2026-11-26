@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Inspect the authenticated artfct MCP connection without exposing credentials. Also returns the signed-in person\'s preferences, each with its value, where it came from (user, team or default) and the values it allows; change one with set_preference.')]
+#[Description('Use when you need to know who is signed in, which team, which scopes or the save_to_artfct preference, before you publish or answer from the library. Does not expose credentials or tokens. Also returns the person\'s preferences and the values each allows; change one with set_preference.')]
 #[Name('get_connection')]
 #[Title('Show connection')]
 #[IsReadOnly]
