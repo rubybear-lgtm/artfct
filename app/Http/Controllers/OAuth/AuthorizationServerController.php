@@ -6,6 +6,7 @@ use App\Actions\OAuth\ResolveOAuthBotInstallation;
 use App\Enums\AuditEventType;
 use App\Enums\AuthMode;
 use App\Enums\McpScope;
+use App\Enums\OAuthIdentityScope;
 use App\Enums\OrgTokenKind;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -60,10 +61,11 @@ final class AuthorizationServerController extends Controller
             'token_endpoint' => route('oauth.token'),
             'revocation_endpoint' => route('oauth.revoke'),
             'registration_endpoint' => route('oauth.register'),
+            'userinfo_endpoint' => route('oauth.userinfo'),
             'response_types_supported' => ['code'],
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'code_challenge_methods_supported' => ['S256'],
-            'scopes_supported' => McpScope::values(),
+            'scopes_supported' => OAuthIdentityScope::withMcpScopes(),
             'token_endpoint_auth_methods_supported' => ['none'],
             'client_id_metadata_document_supported' => false,
         ]);
@@ -148,7 +150,7 @@ final class AuthorizationServerController extends Controller
         return response()->json([
             'resource' => url('/mcp'),
             'authorization_servers' => [$this->issuer()],
-            'scopes_supported' => McpScope::values(),
+            'scopes_supported' => OAuthIdentityScope::withMcpScopes(),
             'bearer_methods_supported' => ['header'],
         ]);
     }
@@ -186,6 +188,53 @@ final class AuthorizationServerController extends Controller
                 ];
             })->values(),
         ])->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * OIDC UserInfo for OpenAI's plugin auth contract (Spec 22 / RUB-606).
+     * Requires the `openid` identity scope; `email` is included only when
+     * that scope was granted. `email_verified` follows `users.email_verified_at`.
+     */
+    public function userinfo(Request $request): JsonResponse
+    {
+        $header = $request->header('Authorization', '');
+        if (! str_starts_with($header, 'Bearer ')) {
+            return $this->userinfoTokenError();
+        }
+
+        try {
+            $claims = OrgJwtService::default()->verify(substr($header, 7));
+        } catch (\Throwable) {
+            return $this->userinfoTokenError();
+        }
+
+        $orgToken = OrgToken::query()->where('jti', $claims['jti'])->first();
+        $user = User::query()->find($claims['user_id']);
+        if ($orgToken === null || $orgToken->revoked_at !== null || ! $user instanceof User) {
+            return $this->userinfoTokenError();
+        }
+
+        $scopes = $this->scopesFromClaims($claims, $orgToken);
+        if (! in_array(OAuthIdentityScope::OpenId->value, $scopes, true)) {
+            return response()->json([
+                'error' => 'insufficient_scope',
+                'error_description' => 'The access token lacks the openid scope.',
+            ], 403)->withHeaders([
+                'WWW-Authenticate' => 'Bearer error="insufficient_scope"',
+                'Cache-Control' => 'no-store',
+            ]);
+        }
+
+        $payload = [
+            'sub' => (string) $user->id,
+            'email_verified' => $user->email_verified_at !== null,
+        ];
+
+        if (in_array(OAuthIdentityScope::Email->value, $scopes, true)) {
+            $payload['email'] = $user->email;
+        }
+
+        return response()->json($payload)->header('Cache-Control', 'no-store');
     }
 
     public function authorize(Request $request): Response|RedirectResponse
@@ -897,7 +946,7 @@ final class AuthorizationServerController extends Controller
         }
 
         $scopes = array_values(array_filter(explode(' ', $parameters['scope'])));
-        if ($scopes === [] || array_diff($scopes, McpScope::values()) !== []) {
+        if ($scopes === [] || array_diff($scopes, OAuthIdentityScope::withMcpScopes()) !== []) {
             throw ValidationException::withMessages(['scope' => 'The requested scope is not supported.']);
         }
 
@@ -1071,6 +1120,17 @@ final class AuthorizationServerController extends Controller
         $requested = [];
 
         foreach (array_filter(explode(' ', $scope)) as $value) {
+            $identity = OAuthIdentityScope::tryFrom($value);
+            if ($identity instanceof OAuthIdentityScope) {
+                $requested[] = [
+                    'value' => $identity->value,
+                    'label' => $identity->label(),
+                    'risk' => $identity->risk()->value,
+                ];
+
+                continue;
+            }
+
             $scopeCase = McpScope::from($value);
 
             $requested[] = [
@@ -1083,10 +1143,39 @@ final class AuthorizationServerController extends Controller
         return $requested;
     }
 
-    /** @return list<string> */
+    /**
+     * MCP scopes the role may grant, plus identity scopes (openid/email)
+     * which every role may grant when a client requests them.
+     *
+     * @return list<string>
+     */
     private function scopesForRole(TeamRole $role): array
     {
-        return McpScope::forRole($role);
+        return [...McpScope::forRole($role), ...OAuthIdentityScope::values()];
+    }
+
+    /**
+     * @param  array{jti: string, user_id: string, scope?: string}  $claims
+     * @return list<string>
+     */
+    private function scopesFromClaims(array $claims, OrgToken $orgToken): array
+    {
+        if (isset($claims['scope']) && $claims['scope'] !== '') {
+            return array_values(array_filter(explode(' ', $claims['scope'])));
+        }
+
+        return array_values(array_filter(
+            $orgToken->scopes ?? [],
+            static fn (string $scope): bool => $scope !== '',
+        ));
+    }
+
+    private function userinfoTokenError(): JsonResponse
+    {
+        return response()->json(['error' => 'invalid_token'], 401)->withHeaders([
+            'WWW-Authenticate' => 'Bearer error="invalid_token"',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     /** @param array<string, string> $parameters */

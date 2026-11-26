@@ -77,7 +77,7 @@ test('at_trial_end_plus_one_second_team_is_free_features_upgrade_prompt_artifact
         ->and(PlanGate::hasTeamFeatures($team))->toBeFalse();
 
     expect(fn () => PlanGate::requireTeam($team, 'Search by description'))
-        ->toThrow(PlanGateException::class, 'Upgrade');
+        ->toThrow(PlanGateException::class, "isn't available for this workspace");
 
     $response = test()->actingAs($admin)->get("/settings/teams/{$team->slug}/console");
     $response->assertOk();
@@ -266,5 +266,5 @@ test('free_plan_rejects_search_by_description_with_upgrade_prompt', function () 
     $team = Team::factory()->create(['plan' => Plan::Free]);
 
     expect(fn () => PlanGate::requireTeam($team, 'Search by description'))
-        ->toThrow(PlanGateException::class, 'Upgrade');
+        ->toThrow(PlanGateException::class, "isn't available for this workspace");
 });

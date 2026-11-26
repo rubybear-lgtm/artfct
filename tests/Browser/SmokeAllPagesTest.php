@@ -60,6 +60,8 @@ function notPages(): array
         'mcp.oauth.protected-resource.nested' => 'OAuth protected-resource discovery JSON',
         'oauth.metadata.nested' => 'OAuth discovery JSON (path-inserted)',
         'oauth.organizations' => 'OAuth organization context JSON',
+        'oauth.userinfo' => 'OIDC UserInfo JSON (OAuthUserInfoTest)',
+        'openai.apps-challenge' => 'plain text domain challenge (OAuthUserInfoTest)',
         'api.collections.index' => 'organization-scoped collection directory JSON',
         'oauth.authorize' => 'OAuth authorization handshake and consent flow',
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',

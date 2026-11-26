@@ -20,16 +20,22 @@ test('scope labels name the capability in plain team language', function () {
         ->and(McpScope::ArtifactsDelete->label())->toBe('Delete shared work')
         ->and(McpScope::CollectionsRead->label())->toBe("See your team's collections")
         ->and(McpScope::CollectionsWrite->label())->toBe('Create collections and add work to them')
-        ->and(McpScope::UsageRead->label())->toBe('See usage and plan limits')
+        ->and(McpScope::UsageRead->label())->toBe('See workspace limits')
         ->and(McpScope::DataRead->label())->toBe("Read the data kept inside your team's shared work")
         ->and(McpScope::DataWrite->label())->toBe("Change the data kept inside your team's shared work");
 });
 
-test('scope labels avoid workspace and deploy wording', function () {
+test('scope labels avoid deploy wording and plan wording', function () {
     foreach (McpScope::cases() as $scope) {
         $label = $scope->label();
 
-        expect(str_contains($label, 'workspace'))->toBeFalse()
-            ->and(str_contains($label, 'Deploy'))->toBeFalse();
+        // UsageRead may say "workspace" (Spec 22 / OpenAI content rules); other
+        // scopes keep team language. None may say Deploy or plan/upgrade.
+        expect(str_contains($label, 'Deploy'))->toBeFalse()
+            ->and(preg_match('/\b(upgrade|pricing|checkout|plans?|paid)\b/i', $label))->toBe(0);
+
+        if ($scope !== McpScope::UsageRead) {
+            expect(str_contains($label, 'workspace'))->toBeFalse();
+        }
     }
 });

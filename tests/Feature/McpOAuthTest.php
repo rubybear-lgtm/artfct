@@ -32,7 +32,10 @@ test('publishes MCP authorization metadata', function () {
                 'usage:read',
                 'data:read',
                 'data:write',
+                'openid',
+                'email',
             ])
+            ->where('userinfo_endpoint', route('oauth.userinfo'))
             ->where('registration_endpoint', route('oauth.register'))
             ->where('revocation_endpoint', route('oauth.revoke'))
             ->where('client_id_metadata_document_supported', false)
@@ -51,6 +54,8 @@ test('publishes MCP authorization metadata', function () {
             'usage:read',
             'data:read',
             'data:write',
+            'openid',
+            'email',
         ]);
 });
 

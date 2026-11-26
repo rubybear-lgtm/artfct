@@ -1,6 +1,6 @@
 ---
 name: artfct-search
-description: "Use when the person asks what the team agreed, a pricing decision, an announcement, or anything already in the library: search in their words, then read_artifact past the snippet, cite id and version, and say not found rather than guessing."
+description: "Use when the person asks what the team agreed, a product decision, an announcement, or anything already in the library: search in their words, then read_artifact past the snippet, cite id and version, and say not found rather than guessing."
 ---
 
 # Finding and reading from Artfct

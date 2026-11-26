@@ -27,7 +27,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Use when the person asks what the team agreed, about a pricing decision, an announcement, or anything the team already wrote or published. Search in their words, then read_artifact on a promising id and cite id and version; do not answer from a snippet alone. Rules in get_guidance (topic search) apply even if you have not read them. Searches by meaning, provenance, repository, agent or date and returns summaries, snippets and a view_url per result, never full contents. If the first search is thin, rephrase once or twice before saying not found. For a list by owner, date or collection, use list_artifacts instead.')]
+#[Description('Use when the person asks what the team agreed, about a product decision, an announcement, or anything the team already wrote or published. Search in their words, then read_artifact on a promising id and cite id and version; do not answer from a snippet alone. Rules in get_guidance (topic search) apply even if you have not read them. Searches by meaning, provenance, repository, agent or date and returns summaries, snippets and a view_url per result, never full contents. If the first search is thin, rephrase once or twice before saying not found. For a list by owner, date or collection, use list_artifacts instead.')]
 #[Name('search_artifacts')]
 #[Title('Search artifacts')]
 #[IsReadOnly]
@@ -47,7 +47,7 @@ final class SearchArtifactsTool extends Tool
             'compatibility' => 'stable',
             'examples' => [[
                 'description' => 'Find an existing dashboard before generating a new one.',
-                'arguments' => ['query' => 'billing dashboard', 'limit' => 5],
+                'arguments' => ['query' => 'status dashboard', 'limit' => 5],
             ]],
         ],
     ];

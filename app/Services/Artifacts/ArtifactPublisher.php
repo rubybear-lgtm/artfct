@@ -190,7 +190,7 @@ final class ArtifactPublisher
         }
 
         if ($created->status() === 403 && $created->json('error.code') === 'quota_exceeded') {
-            $this->fail($command, 'quota_exceeded', 'This workspace is over its plan limits. Use get_usage to inspect them.', false, 'get_usage', [], $partialId);
+            $this->fail($command, 'quota_exceeded', 'This workspace has reached a limit. Use get_usage to see which.', false, 'get_usage', [], $partialId);
         }
 
         if ($created->status() === 403 && $created->json('error.code') === 'public_sharing_disabled') {

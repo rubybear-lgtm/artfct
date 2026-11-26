@@ -62,7 +62,7 @@ test('OAuth consent identifies the client user workspace and requested scopes', 
         ->assertSee('Consent Workspace')
         ->assertSee('Read and search your team\'s shared work')
         ->assertSee('Delete shared work')
-        ->assertSee('See usage and plan limits')
+        ->assertSee('See workspace limits')
         ->assertNoAccessibilityIssues()
         ->assertNoJavaScriptErrors();
 });

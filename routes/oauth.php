@@ -33,3 +33,6 @@ Route::post('oauth/revoke', [AuthorizationServerController::class, 'revoke'])
 Route::get('oauth/organizations', [AuthorizationServerController::class, 'organizations'])
     ->middleware('throttle:auth')
     ->name('oauth.organizations');
+Route::get('oauth/userinfo', [AuthorizationServerController::class, 'userinfo'])
+    ->middleware('throttle:auth')
+    ->name('oauth.userinfo');
