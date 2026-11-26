@@ -210,5 +210,6 @@ test('an authkit sign_in reaches the workspace picker when the default workspace
         ->assertInertia(fn (AssertableJson $page) => $page
             ->component('oauth/authorize')
             ->where('team', null)
-            ->where('requiresTeamChoice', true));
+            ->where('requiresTeamChoice', true)
+            ->where('bots', []));
 });

@@ -219,7 +219,11 @@ final class AuthorizationServerController extends Controller
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
         $role = $user->teamRole($team);
-        $canInstallAsBot = $role instanceof TeamRole
+        // Bot options are only offered for a workspace the session can use.
+        // With the choice still open, the fallback workspace may be one the
+        // session cannot be admitted to, and its bot names must not leak.
+        $canInstallAsBot = TeamSignIn::admits($request, $user, $team)
+            && $role instanceof TeamRole
             && $role !== TeamRole::Viewer
             && ! $user->isBot();
 

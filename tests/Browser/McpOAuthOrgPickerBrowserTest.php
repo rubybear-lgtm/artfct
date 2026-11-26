@@ -56,3 +56,38 @@ test('RUB-598: consent without a hint forces a workspace choice before Allow acc
         'code_verifier' => $verifier,
     ])->assertOk()->assertJsonPath('organization', $pickedTeam->slug);
 });
+
+test('RUB-598: cancelling without picking a workspace still declines the grant', function () {
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default Workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked Workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+    test()->actingAs($user);
+
+    $callback = url('/oauth/callback');
+    oauthTestClient([$callback]);
+    $callbackPort = (string) parse_url($callback, PHP_URL_PORT);
+
+    $parameters = http_build_query([
+        'response_type' => 'code',
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $callback,
+        'scope' => 'artifacts:read artifacts:deploy',
+        'state' => 'rub598-cancel-state',
+        'code_challenge' => oauthChallenge(str_repeat('m', 64)),
+        'code_challenge_method' => 'S256',
+    ]);
+
+    visit('/oauth/authorize?'.$parameters)
+        ->assertSee('Choose below')
+        ->assertNoJavaScriptErrors()
+        ->click('Cancel')
+        ->assertHostIs('127.0.0.1')
+        ->assertPortIs($callbackPort)
+        ->assertPathIs('/oauth/callback')
+        ->assertQueryStringHas('error', 'access_denied')
+        ->assertQueryStringHas('state', 'rub598-cancel-state')
+        ->assertQueryStringMissing('code');
+});

@@ -169,7 +169,7 @@ function AuthorizeForm({
                             </div>
                         </div>
                         <div className="sm:col-span-2">
-                            <div className="font-medium">Team</div>
+                            <div className="font-medium">Workspace</div>
                             <div className="mt-1 break-words text-muted-foreground">
                                 {selectedTeam === ''
                                     ? 'Choose below'
@@ -282,7 +282,7 @@ function AuthorizeForm({
 
                         {teams.length > 1 && (
                             <div className="flex flex-col gap-1.5">
-                                <Label htmlFor="team">Team</Label>
+                                <Label htmlFor="team">Workspace</Label>
                                 <select
                                     id="team"
                                     name="team"
@@ -464,6 +464,7 @@ function AuthorizeForm({
                                 name="decision"
                                 value="deny"
                                 variant="outline"
+                                formNoValidate
                             >
                                 Cancel
                             </Button>
