@@ -38,7 +38,6 @@ interface ConnectShowProps {
     meta: { title: string; description: string };
     guide: Guide;
     mcpUrl: string;
-    quickInstall: string;
     prompt: string;
     related: AgentCard[];
     troubleshooting: Array<{ name: string; type: string; note: string }>;

@@ -12,7 +12,6 @@ interface ConnectIndexProps {
     meta: { title: string; description: string };
     guides: AgentCard[];
     prompt: string;
-    quickInstall: string;
     pluginRepoUrl: string;
 }
 
@@ -26,7 +25,6 @@ export default function ConnectIndex({
     meta,
     guides,
     prompt,
-    quickInstall,
     pluginRepoUrl,
 }: ConnectIndexProps) {
     const groups = AGENT_GROUPS.map((group) => ({
@@ -158,20 +156,6 @@ export default function ConnectIndex({
                         </p>
                     </div>
                     <CodeBlock code={pluginRepoUrl} />
-                </section>
-
-                <section className="mt-6 grid items-center gap-7 rounded-[14px] border border-border p-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-                    <div>
-                        <h2 className="font-serif text-[26px] leading-tight font-normal">
-                            No plugin support? Add the server to several agents
-                        </h2>
-                        <p className="mt-1.5 text-muted-foreground">
-                            Finds the agents on your computer and adds Artfct’s
-                            server to each one you pick, without the skills.
-                            Each still asks you to sign in the first time.
-                        </p>
-                    </div>
-                    <CodeBlock code={quickInstall} />
                 </section>
             </main>
         </SitePage>

@@ -88,7 +88,8 @@ test('the hub lists every guide by kind with the one setup prompt', function () 
             ->where('guides', fn ($cards): bool => collect($cards)->pluck('id')->all() === $guides->pluck('id')->all())
             ->where('guides.0.kind', 'terminal')
             ->where('prompt', $setup->agentSetupPrompt())
-            ->where('quickInstall', $setup->quickInstall()));
+            ->missing('quickInstall')
+            ->where('pluginRepoUrl', $setup->pluginRepoUrl()));
 
     expect($guides->pluck('kind')->unique()->sort()->values()->all())->toBe(['chat', 'editor', 'other', 'terminal']);
 });

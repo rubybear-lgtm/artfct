@@ -25,7 +25,6 @@ class ConnectController extends Controller
             ],
             'guides' => array_map($this->card(...), $setup->guides()),
             'prompt' => $setup->agentSetupPrompt(),
-            'quickInstall' => $setup->quickInstall(),
             'pluginRepoUrl' => $setup->pluginRepoUrl(),
         ]);
     }
@@ -45,7 +44,6 @@ class ConnectController extends Controller
             ],
             'guide' => $guide,
             'mcpUrl' => $setup->mcpUrl(),
-            'quickInstall' => $setup->quickInstall(),
             'prompt' => $setup->agentSetupPrompt(),
             'related' => $guides
                 ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)

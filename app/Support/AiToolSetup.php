@@ -65,15 +65,6 @@ class AiToolSetup
     }
 
     /**
-     * One command that adds Artfct to every supported AI tool it finds on the
-     * machine. Each tool still asks the person to sign in afterwards.
-     */
-    public function quickInstall(): string
-    {
-        return "npx add-mcp@latest {$this->mcpUrl()} --name artfct --global";
-    }
-
-    /**
      * The plugin repository every Agent Plugins client installs from. Not
      * trusted: anything that is not a plain `owner/repo` falls back to ours,
      * so a bad config value never reaches a command a person or agent runs.
@@ -577,7 +568,7 @@ class AiToolSetup
     public function skills(): array
     {
         return [
-            ['name' => 'artfct', 'install' => 'npx skills add rubybear-lgtm/artfct@artfct', 'note' => 'When and how to publish: writing self-contained HTML, choosing who can see it and handling errors.'],
+            ['name' => 'Artfct plugin', 'install' => $this->pluginRepoUrl(), 'note' => 'The Artfct skills (publishing, search, working together, templates and formats) and the connection, in one Agent Plugins package. Install it from this repository with your tool’s plugin install; each setup guide has the exact step.'],
         ];
     }
 
@@ -719,7 +710,6 @@ class AiToolSetup
             'mcpUrl' => $this->mcpUrl(),
             'llmsUrl' => "{$this->baseUrl}/llms.txt",
             'llmsFullUrl' => "{$this->baseUrl}/llms-full.txt",
-            'quickInstall' => $this->quickInstall(),
             'cursorInstallLink' => $this->cursorInstallLink(),
             'cursorWebInstallLink' => $this->cursorWebInstallLink(),
             'vscodeInstallLink' => $this->vscodeInstallLink(),

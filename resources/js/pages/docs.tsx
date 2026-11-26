@@ -36,7 +36,6 @@ type AiToolSetup = {
     mcpUrl: string;
     llmsUrl: string;
     llmsFullUrl: string;
-    quickInstall: string;
     guides: ConnectionGuide[];
     agentTokenSetup: AgentTokenSetup;
     tools: Array<{ name: string; does: string; permission: string }>;
@@ -744,7 +743,6 @@ export default function Docs({ contract, setup }: DocsProps) {
             title: 'Get started',
             items: [
                 { id: 'mcp', label: 'Connect your AI tool' },
-                { id: 'connect-quick', label: 'Set up several tools' },
                 { id: 'connect-check', label: 'Check that it works' },
                 {
                     id: 'connect-agent-token',
@@ -849,41 +847,6 @@ export default function Docs({ contract, setup }: DocsProps) {
                             tool’s own instructions.
                         </Prose>
                         <ConnectionTabs guides={setup.guides} />
-
-                        <SubHeading id="connect-quick">
-                            Or set up several tools at once
-                        </SubHeading>
-                        <Prose>
-                            If you use AI tools on your computer, this command
-                            finds the ones you have (Claude Code, Codex, Cursor,
-                            OpenCode, VS Code, Windsurf, Zed, Antigravity and
-                            more) and adds Artfct to each one you pick. It needs{' '}
-                            <a
-                                href="https://nodejs.org"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Node.js
-                            </a>{' '}
-                            and uses the open-source{' '}
-                            <a
-                                href="https://add-mcp.com"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                add-mcp
-                            </a>{' '}
-                            tool.
-                        </Prose>
-                        <CodeBlock code={setup.quickInstall} />
-                        <Prose>
-                            Each tool still asks you to sign in the first time
-                            you use it; follow the last steps for your tool
-                            above. Antigravity also needs{' '}
-                            <Code>"oauth": {'{}'}</Code> added to its entry. The
-                            Claude app and ChatGPT are set up in their own
-                            settings, not with this command.
-                        </Prose>
 
                         <SubHeading id="connect-check">
                             3. Check that it works
@@ -1027,10 +990,10 @@ export default function Docs({ contract, setup }: DocsProps) {
                         title="Skills for your AI tools"
                     >
                         <Prose>
-                            Skills give an AI tool that supports them (such as
-                            Claude Code, Codex or OpenCode) built-in guidance
-                            for a kind of task. The Artfct skill teaches your
-                            tool when and how to publish:
+                            The Artfct skills ship in the Artfct plugin,
+                            together with the connection. They teach your tool
+                            when and how to publish, how to search before it
+                            starts, and how to work on what teammates made.
                         </Prose>
                         {setup.skills.map((skill) => (
                             <div
@@ -1047,26 +1010,17 @@ export default function Docs({ contract, setup }: DocsProps) {
                             </div>
                         ))}
                         <Prose>
-                            Skills follow the{' '}
+                            The plugin follows the{' '}
                             <a
-                                href="https://skills.sh"
+                                href="https://agent-plugins.org"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="font-semibold text-primary underline-offset-4 hover:underline"
                             >
-                                skills.sh
+                                Agent Plugins
                             </a>{' '}
-                            format and are resolved from the{' '}
-                            <Code>skills/artfct/</Code> directory in the{' '}
-                            <a
-                                href={GITHUB}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-primary underline-offset-4 hover:underline"
-                            >
-                                Artfct repository
-                            </a>
-                            .
+                            format, so any compatible tool installs it with its
+                            own plugin install.
                         </Prose>
                     </Section>
 

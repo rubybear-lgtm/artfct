@@ -75,7 +75,10 @@ test('the MCP config block on the docs page is the hosted URL only', function ()
             ->where('setup.guides.0.id', 'connect-claude-code')
             ->where('setup.guides.0.steps.0.code', "/plugin marketplace add artfct-dev/artfct-plugin\n/plugin install artfct@artfct")
             ->where('setup.guides.0.fallback.steps.0.code', 'claude mcp add --transport http artfct https://staging.artfct.dev/mcp')
-            ->where('setup.quickInstall', 'npx add-mcp@latest https://staging.artfct.dev/mcp --name artfct --global'));
+            ->missing('setup.quickInstall')
+            ->where('setup.skills.0.install', 'https://github.com/artfct-dev/artfct-plugin'));
+
+    expect(file_get_contents(resource_path('js/pages/docs.tsx')))->not->toContain('add-mcp');
 
     expect(file_get_contents(resource_path('js/pages/docs.tsx')))
         ->toContain('<CodeBlock code={setup.mcpUrl} />')
@@ -311,7 +314,8 @@ test('llms-full.txt carries every setup guide, action and endpoint the docs page
     $body = $response->getContent();
 
     expect($body)
-        ->toContain($setup->quickInstall())
+        ->not->toContain('add-mcp')
+        ->toContain($setup->pluginRepoUrl())
         ->toContain($setup->projectInstructions())
         ->toContain("### ChatGPT\n")
         ->not->toContain('not yet tested')

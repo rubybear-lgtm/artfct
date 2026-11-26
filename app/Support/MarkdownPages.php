@@ -85,12 +85,6 @@ class MarkdownPages
             '## Guides',
             '',
             ...array_map(fn (array $guide): string => "- [{$guide['label']}]({$base}/connect/{$guide['id']}) ({$guide['method']}): {$guide['summary']}", $setup->guides()),
-            '',
-            '## Set up several agents at once',
-            '',
-            '```',
-            $setup->quickInstall(),
-            '```',
         ]);
     }
 
