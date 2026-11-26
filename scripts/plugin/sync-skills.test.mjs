@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
     existsSync,
     mkdirSync,
@@ -72,4 +73,28 @@ test('syncing makes the copy match, and --check sees later edits and stale files
     syncSkills(repoSkills, target);
     assert.deepEqual(skillDifferences(repoSkills, target), []);
     assert.ok(!existsSync(join(target, 'artfct-init')));
+});
+
+test('the command reads and writes skills/ at the plugin repo root, and keeps the deck skill', () => {
+    const pluginRepo = mkdtempSync(join(tmpdir(), 'artfct-plugin-repo-'));
+    mkdirSync(join(pluginRepo, '.claude-plugin'));
+    writeFileSync(join(pluginRepo, '.claude-plugin', 'marketplace.json'), '{}');
+    const script = join(
+        dirname(fileURLToPath(import.meta.url)),
+        'sync-skills.mjs',
+    );
+    const run = (...args) =>
+        spawnSync(process.execPath, [script, pluginRepo, ...args], {
+            encoding: 'utf8',
+        });
+
+    assert.equal(run().status, 0);
+    assert.ok(existsSync(join(pluginRepo, 'skills', 'onboard', 'SKILL.md')));
+    assert.ok(
+        existsSync(join(pluginRepo, 'skills', 'presentation', 'SKILL.md')),
+    );
+    assert.ok(!existsSync(join(pluginRepo, 'plugins')));
+
+    const check = run('--check');
+    assert.equal(check.status, 0, check.stderr);
 });

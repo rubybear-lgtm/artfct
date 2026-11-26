@@ -19,6 +19,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Fixed
 
+- The plugin skill sync script reads and writes `skills/` at the plugin repository's root, where the plugin has kept them since version 1.3.0, and includes the `presentation` skill, which a sync would otherwise have deleted from the plugin.
+
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
 
 ### Changed

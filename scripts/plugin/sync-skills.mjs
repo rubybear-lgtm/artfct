@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Copies the Artfct skills from this repo into the plugin repository
- * (artfct-dev/artfct-plugin). This repo owns the skills; the plugin repo only
- * holds copies, so nothing there is edited by hand.
+ * Compares this repo's copies of the Artfct skills with the plugin repository
+ * (artfct-dev/artfct-plugin), whose skills sit in `skills/` at its root.
  *
- *   node scripts/plugin/sync-skills.mjs <plugin-repo-dir>          copy the skills
+ * Since RUB-596 the plugin repository owns the skills, and this repo keeps
+ * copies until they are removed. Writing copies this repo's version over the
+ * plugin's, so check first: an edit made only in the plugin would be lost.
+ *
  *   node scripts/plugin/sync-skills.mjs <plugin-repo-dir> --check  exit 1 if they differ
+ *   node scripts/plugin/sync-skills.mjs <plugin-repo-dir>          overwrite the plugin's skills
  *
  * `artfct-init` is left out on purpose: it runs Node scripts, and the plugin
  * must work with no Node on the computer.
@@ -36,6 +39,7 @@ export const PLUGIN_SKILLS = [
     'artfct-team-doc',
     'artfct-handoff',
     'onboard',
+    'presentation',
 ];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -119,12 +123,7 @@ function main(argv) {
     }
 
     const sourceSkillsDir = join(repoRoot, 'skills');
-    const targetSkillsDir = join(
-        resolve(pluginRepo),
-        'plugins',
-        'artfct',
-        'skills',
-    );
+    const targetSkillsDir = join(resolve(pluginRepo), 'skills');
 
     if (
         !existsSync(
