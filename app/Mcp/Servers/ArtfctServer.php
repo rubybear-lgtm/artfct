@@ -38,7 +38,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Attributes\Version;
 
 #[Name('artfct')]
-#[Version('1.0.0')]
+#[Version('1.3.1')]
 #[Instructions(ArtifactGuidance::INSTRUCTIONS)]
 final class ArtfctServer extends Server
 {

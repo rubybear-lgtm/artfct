@@ -99,7 +99,7 @@ test('serves the native Streamable HTTP MCP transport with bearer authentication
         ->assertHeader('MCP-Session-Id')
         ->assertJsonPath('result.protocolVersion', '2025-11-25')
         ->assertJsonPath('result.serverInfo.name', 'artfct')
-        ->assertJsonPath('result.serverInfo.version', '1.0.0')
+        ->assertJsonPath('result.serverInfo.version', '1.3.1')
         ->assertJsonPath('result.capabilities.tools.listChanged', false)
         ->assertJsonPath('result.instructions', ArtifactGuidance::INSTRUCTIONS)
         ->assertJsonMissingPath('result.capabilities.resources');
