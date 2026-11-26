@@ -1,8 +1,10 @@
 # PRD — artfct for Teams
 
+> **Source of truth:** [Artfct PRD v6](https://artfct.dev/a/3q0cm4x4o746e) (approved by Ruben, A1). This file is superseded; the content below is historical only.
+
 > **Note (2026-11-22):** the free tool (`/free`, the Worker's anonymous ephemeral artifacts and their KV store) was removed. Sections below that describe it are historical.
 
-**Status:** draft for review · **Architecture:** see the [decision record](architecture-decisions.md) — this document does not restate it.
+**Status:** superseded · **Architecture:** see the [decision record](architecture-decisions.md) — this document does not restate it.
 
 ---
 
