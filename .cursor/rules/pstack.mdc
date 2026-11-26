@@ -1,0 +1,27 @@
+---
+description: pstack workflow trial for cloud agents (RUB-605)
+alwaysApply: true
+---
+
+# pstack workflow (trial)
+
+Trial through 2026-12-03 (RUB-605); Ruben decides keep or revert.
+
+Follow [pstack](https://github.com/cursor/plugins/tree/main/pstack) principles (Lauren Tan / poteto) on every change:
+
+- **subtract-before-you-add** — remove dead weight first, then build on the simpler base
+- **fix-root-causes** — fix the first place the system went wrong; a guard is a fix only when the state it handles is legitimate
+- **prove-it-works** — before declaring done, verify against the real artifact (run the feature, read the actual value, inspect the diff), not a proxy, self-report, or "it compiles"
+- **minimize-reader-load** — collapse one-caller wrappers and shrink mutable scope; keep diffs easy to review
+
+## Before declaring done
+
+Run the pstack verification step and put the evidence in the PR body:
+
+1. Exercise the changed behavior for real (feature run / mapped journey), not only lint or compile.
+2. Run the focused tests that cover the change.
+3. Follow the repo verification skill at `.omp/skills/verify-artfct/SKILL.md` and its feature map under `.omp/skills/verify-artfct/features/` when the change touches a mapped journey (or when proving browser / MCP / Worker behavior).
+
+## Artifacts are ARTFCT-only
+
+pstack relies on artifacts (evidence, reports, proofs). This team uses its own artifact system, ARTFCT (artfct.dev, via the Artfct MCP/plugin), and never a third-party artifact store. Proof media goes as hosted artifacts in the PR body, never committed into the branch.
