@@ -375,7 +375,7 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
                 warn("W15", "second-person imperative in a glean-formal page", s)
         if register == "artfct-human":
             for phrase in LAUNCH_SPEAK:
-                if phrase in low:
+                if re.search(r"\b" + re.escape(phrase) + r"\b", low):
                     warn("W16", 'launch-speak "' + phrase + '" in a human-voice page', s)
 
     lead_words = len(doc.lead.split())

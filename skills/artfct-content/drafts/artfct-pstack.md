@@ -51,7 +51,7 @@ It's two plugins: Artfct's own, which handles the connection, and the add-on. In
 
 Approve the Artfct sign-in page when it opens (no tokens to paste), then run `/setup-artfct` and `/setup-pstack-omp`. The second one works out which tool you're in and asks for a model pack and a reasoning budget. After that, `/poteto-mode` works the way it always has.
 
-Codex uses the same two repositories with `codex plugin marketplace add` and `codex plugin add`. In the Claude app it's Customize > Plugins > Add marketplace. The [artfct-pstack README](https://github.com/artfct-dev/artfct-pstack) has the add-on's line for Cursor, GitHub Copilot, OMP, OpenClaw, Hermes and Antigravity, and the [artfct-plugin README](https://github.com/artfct-dev/artfct-plugin) covers the connection for each tool it supports. If you'd rather connect by hand, there are step-by-step guides for [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp).
+Codex uses the same two repositories with `codex plugin marketplace add` and `codex plugin add`. In the Claude app it's Customize > Plugins > Add marketplace. The [artfct-pstack README](https://github.com/artfct-dev/artfct-pstack) has the add-on's line for Cursor, GitHub Copilot, OMP, OpenClaw and Hermes (Antigravity is in the matrix below), and the [artfct-plugin README](https://github.com/artfct-dev/artfct-plugin) covers the connection for each tool it supports. If you'd rather connect by hand, there are step-by-step guides for [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp).
 
 ## What's tested and what isn't
 
@@ -78,4 +78,4 @@ Both plugins are free. Publishing needs an Artfct workspace: new teams get a 90-
 
 My verification skill is still in `.omp/skills/`. The proof it produces doesn't have to stay there.
 
-*Checked against the artfct-plugin and artfct-pstack READMEs and the supported-clients matrix on 25 November 2026.*
+*Last updated 25 November 2026. Checked against the artfct-plugin and artfct-pstack READMEs and the supported-clients matrix.*

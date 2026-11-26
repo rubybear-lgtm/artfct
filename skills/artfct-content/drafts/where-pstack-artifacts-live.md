@@ -86,7 +86,7 @@ That gap is why we built [artfct-pstack](https://artfct.dev/blog/artfct-pstack).
 
 Verification and show-me-your-work runs publish on their own at the end while Artfct is connected. Then a teammate in any tool connected to the workspace can search the library and open the bundle, instead of asking whose laptop has the screenshot. Connecting is a plugin install, or by hand with the [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp) guides. The launch post has the rest.
 
-*pstack is MIT licensed, copyright 2026 Lauren Tan (poteto), and lives at [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack). artfct-pstack is an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan. Checked against the official pstack docs, the artfct-pstack README and its publish-evidence skill on 25 November 2026.*
+*pstack is MIT licensed, copyright 2026 Lauren Tan (poteto), and lives at [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack). artfct-pstack is an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan. Last updated 25 November 2026: checked against the official pstack docs, the artfct-pstack README and its publish-evidence skill.*
 
 ## Questions
 
