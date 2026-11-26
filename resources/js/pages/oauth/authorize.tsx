@@ -53,12 +53,51 @@ interface Props {
     teams: Team[];
     canInstallAsBot: boolean;
     bots: BotOption[];
+    connectedBots: BotOption[];
+    lastUsedBotId: number | null;
 }
 
 const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
     write: 'Can modify',
     destructive: 'Destructive',
 };
+
+function initialIdentityMode(
+    canInstallAsBot: boolean,
+    connectedBots: BotOption[],
+): IdentityMode {
+    if (!canInstallAsBot) {
+        return 'human';
+    }
+
+    // A2: one identity for this app → reuse it (preselect link). More than one
+    // → still ask, with last-used preselected. Never auto-approve.
+    if (connectedBots.length >= 1) {
+        return 'link';
+    }
+
+    return 'human';
+}
+
+function initialBotId(
+    connectedBots: BotOption[],
+    bots: BotOption[],
+    lastUsedBotId: number | null,
+): string {
+    if (lastUsedBotId !== null) {
+        return String(lastUsedBotId);
+    }
+
+    if (connectedBots[0] !== undefined) {
+        return String(connectedBots[0].id);
+    }
+
+    if (bots[0] !== undefined) {
+        return String(bots[0].id);
+    }
+
+    return '';
+}
 
 /**
  * Remount when the authorization request identity changes. Inertia reuses this
@@ -96,6 +135,8 @@ function AuthorizeForm({
     teams,
     canInstallAsBot,
     bots,
+    connectedBots,
+    lastUsedBotId,
 }: Props) {
     const redirectHost = (() => {
         try {
@@ -108,10 +149,12 @@ function AuthorizeForm({
     const [selectedTeam, setSelectedTeam] = useState(
         requiresTeamChoice ? '' : (team?.slug ?? ''),
     );
-    const [identityMode, setIdentityMode] = useState<IdentityMode>('human');
+    const [identityMode, setIdentityMode] = useState<IdentityMode>(() =>
+        initialIdentityMode(canInstallAsBot, connectedBots),
+    );
     const [botName, setBotName] = useState('');
-    const [botId, setBotId] = useState(
-        bots[0] !== undefined ? String(bots[0].id) : '',
+    const [botId, setBotId] = useState(() =>
+        initialBotId(connectedBots, bots, lastUsedBotId),
     );
     const selectedTeamName =
         teams.find((candidate) => candidate.slug === selectedTeam)?.name ??
@@ -126,6 +169,12 @@ function AuthorizeForm({
     const connectingAsBot =
         canInstallAsBot &&
         (identityMode === 'create' || identityMode === 'link');
+
+    const trimmedBotName = botName.trim();
+    const createReusesExisting =
+        identityMode === 'create' &&
+        trimmedBotName !== '' &&
+        bots.some((bot) => bot.name === trimmedBotName);
 
     return (
         <>
@@ -316,6 +365,28 @@ function AuthorizeForm({
                                 <legend className="px-1 text-sm font-medium">
                                     Connect as
                                 </legend>
+
+                                {connectedBots.length > 0 && (
+                                    <div
+                                        className="rounded-md border border-dashed p-3 text-sm"
+                                        data-testid="connected-bots-list"
+                                    >
+                                        <div className="font-medium">
+                                            Already connected through this app
+                                        </div>
+                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+                                            {connectedBots.map((bot) => (
+                                                <li key={bot.id}>{bot.name}</li>
+                                            ))}
+                                        </ul>
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            {connectedBots.length === 1
+                                                ? 'Reconnecting reuses that bot unless you create a new bot teammate below.'
+                                                : 'Choose which bot identity this connection should use. Nothing is approved until you allow access.'}
+                                        </p>
+                                    </div>
+                                )}
+
                                 <label className="flex items-start gap-2 text-sm">
                                     <input
                                         type="radio"
@@ -355,8 +426,10 @@ function AuthorizeForm({
                                             A new bot teammate
                                         </span>
                                         <span className="mt-0.5 block text-muted-foreground">
-                                            Free seat, no email. Reconnecting
-                                            the same app reuses this bot.
+                                            Free seat, no email. A new name
+                                            creates a new identity on this app;
+                                            an existing bot name reuses that
+                                            bot.
                                         </span>
                                     </span>
                                 </label>
@@ -379,7 +452,8 @@ function AuthorizeForm({
                                             </span>
                                             <span className="mt-0.5 block text-muted-foreground">
                                                 Link this app to a bot already
-                                                on the team.
+                                                on the team without replacing
+                                                other bots on the same app.
                                             </span>
                                         </span>
                                     </label>
@@ -402,6 +476,14 @@ function AuthorizeForm({
                                             maxLength={80}
                                             data-testid="bot-name-input"
                                         />
+                                        <p
+                                            className="text-xs text-muted-foreground"
+                                            data-testid="create-identity-hint"
+                                        >
+                                            {createReusesExisting
+                                                ? `This reuses the existing bot named ${trimmedBotName}.`
+                                                : 'This will create a new bot identity for this app.'}
+                                        </p>
                                     </div>
                                 )}
 

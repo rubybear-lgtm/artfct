@@ -9,7 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Binds one OAuth public client to one bot teammate inside a team (RUB-524).
- * Reinstalls with the same client reuse this row instead of minting a new bot.
+ * Several bots may share the same client on a team (RUB-610); uniqueness is
+ * (team_id, oauth_client_id, bot_user_id). Reinstalls with the same client and
+ * bot name reuse the matching row instead of minting a duplicate bot.
  *
  * @property int $id
  * @property int $team_id

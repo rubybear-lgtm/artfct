@@ -164,7 +164,9 @@ test('consent page offers bot install options to a non-viewer human', function (
         ->assertInertia(fn (Assert $page) => $page
             ->component('oauth/authorize')
             ->where('canInstallAsBot', true)
-            ->has('bots', 0));
+            ->has('bots', 0)
+            ->has('connectedBots', 0)
+            ->where('lastUsedBotId', null));
 });
 
 test('oauth create-bot install mints an agent credential for the bot not the human', function () {
@@ -216,7 +218,131 @@ test('deny consent creates no bot and no installation', function () {
         ->and(OrgToken::query()->count())->toBe(0);
 });
 
-test('reconnect create is idempotent and does not rotate a seeded hoku-like bot', function () {
+test('AC1 create librarian on shared cursor client returns librarian from get_connection', function () {
+    $fixture = botInstallOAuthFixture();
+
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+    $hoku = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+
+    $verifier2 = str_repeat('c', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    $librarianTokens = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'create', 'bot_name' => 'Librarian'],
+    );
+
+    $librarian = User::query()->where('name', 'Librarian')->where('is_bot', true)->sole();
+    expect($librarian->id)->not->toBe($hoku->id)
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->count())->toBe(2);
+
+    $connection = mcpGetConnection($librarianTokens['access_token']);
+    expect($connection['user_id'])->toBe((string) $librarian->id)
+        ->and($connection['agent'])->toBe(['name' => 'Librarian', 'bot' => true]);
+});
+
+test('AC2 installing librarian does not retarget or revoke hoku binding or tokens', function () {
+    $fixture = botInstallOAuthFixture();
+
+    $hokuTokens = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+    $hoku = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+    $hokuInstallationId = OAuthBotInstallation::query()
+        ->where('team_id', $fixture['team']->id)
+        ->where('oauth_client_id', $fixture['client_id'])
+        ->where('bot_user_id', $hoku->id)
+        ->sole()
+        ->id;
+    $hokuOrgToken = OrgToken::query()->where('user_id', $hoku->id)->where('kind', OrgTokenKind::Agent)->latest('id')->firstOrFail();
+
+    $verifier2 = str_repeat('d', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'create', 'bot_name' => 'Librarian'],
+    );
+
+    $hokuInstallation = OAuthBotInstallation::query()->findOrFail($hokuInstallationId);
+    expect($hokuInstallation->bot_user_id)->toBe($hoku->id)
+        ->and($hokuOrgToken->fresh()->revoked_at)->toBeNull();
+
+    $connection = mcpGetConnection($hokuTokens['access_token']);
+    expect($connection['user_id'])->toBe((string) $hoku->id)
+        ->and($connection['agent'])->toBe(['name' => 'Hoku', 'bot' => true]);
+});
+
+test('AC3 existing bot teammate pick still works on the shared client', function () {
+    $fixture = botInstallOAuthFixture();
+
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+
+    $librarian = User::factory()->bot()->create(['name' => 'Librarian']);
+    $fixture['team']->memberships()->create(['user_id' => $librarian->id, 'role' => TeamRole::Member]);
+
+    $verifier2 = str_repeat('e', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    $tokens = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'link', 'bot_id' => (string) $librarian->id],
+    );
+
+    expect(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->count())->toBe(2);
+
+    $connection = mcpGetConnection($tokens['access_token']);
+    expect($connection['user_id'])->toBe((string) $librarian->id)
+        ->and($connection['agent'])->toBe(['name' => 'Librarian', 'bot' => true]);
+});
+
+test('AC4 reconnect create is idempotent and same name reuses existing bot', function () {
     $fixture = botInstallOAuthFixture();
 
     $hoku = seedManualAgentBot($fixture['team'], $fixture['admin'], 'Hoku Seed', [
@@ -248,12 +374,11 @@ test('reconnect create is idempotent and does not rotate a seeded hoku-like bot'
         $fixture['client_id'],
         $fixture['redirect_uri'],
         $verifier2,
-        ['bot_mode' => 'create', 'bot_name' => 'Reconnect Bot Again'],
+        ['bot_mode' => 'create', 'bot_name' => 'Reconnect Bot'],
     );
 
     expect(User::query()->where('name', 'Reconnect Bot')->where('is_bot', true)->count())->toBe(1)
-        ->and(User::query()->where('name', 'Reconnect Bot Again')->exists())->toBeFalse()
-        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->count())->toBe(1)
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->where('bot_user_id', $bot->id)->count())->toBe(1)
         ->and(User::query()->find($hokuBotId)?->name)->toBe('Hoku Seed')
         ->and(OrgToken::query()->find($hoku['id'])?->revoked_at)->toBeNull();
 
@@ -261,10 +386,110 @@ test('reconnect create is idempotent and does not rotate a seeded hoku-like bot'
     expect($connection['user_id'])->toBe((string) $bot->id)
         ->and($connection['agent']['name'])->toBe('Reconnect Bot');
 
-    // First access token may still work until expiry; installation reuse is the guarantee.
     expect($first['access_token'])->not->toBe($second['access_token']);
 
     agentInitialize($hoku['token'])->assertOk();
+});
+
+test('AC6 revoke then reconnect with a different name does not resurrect the old bot', function () {
+    $fixture = botInstallOAuthFixture();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $first = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+    $hoku = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+
+    test()->postJson('/oauth/revoke', [
+        'token' => $first['refresh_token'],
+        'token_type_hint' => 'refresh_token',
+        'client_id' => $fixture['client_id'],
+    ])->assertOk();
+
+    $verifier2 = str_repeat('f', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    $second = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'create', 'bot_name' => 'Librarian'],
+    );
+
+    $librarian = User::query()->where('name', 'Librarian')->where('is_bot', true)->sole();
+    expect($librarian->id)->not->toBe($hoku->id)
+        ->and(User::query()->where('name', 'Hoku')->where('is_bot', true)->count())->toBe(1);
+
+    $connection = mcpGetConnection($second['access_token']);
+    expect($connection['user_id'])->toBe((string) $librarian->id)
+        ->and($connection['agent'])->toBe(['name' => 'Librarian', 'bot' => true])
+        ->and($connection['user_id'])->not->toBe((string) $hoku->id);
+});
+
+test('consent page lists bots already connected through this app', function () {
+    $fixture = botInstallOAuthFixture();
+
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+    $hoku = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+
+    $verifier2 = str_repeat('g', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'create', 'bot_name' => 'Librarian'],
+    );
+    $librarian = User::query()->where('name', 'Librarian')->where('is_bot', true)->sole();
+
+    $verifier3 = str_repeat('h', 64);
+    $parameters3 = oauthParameters(oauthChallenge($verifier3), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+
+    test()->actingAs($fixture['admin'])
+        ->get('/oauth/authorize?'.http_build_query(array_diff_key($parameters3, array_flip(['consent_token']))))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('oauth/authorize')
+            ->has('connectedBots', 2)
+            ->where('connectedBots.0.id', $librarian->id)
+            ->where('connectedBots.0.name', 'Librarian')
+            ->where('connectedBots.1.id', $hoku->id)
+            ->where('connectedBots.1.name', 'Hoku')
+            ->where('lastUsedBotId', $librarian->id));
 });
 
 test('a second oauth client can link a distinct bot in the same workspace', function () {

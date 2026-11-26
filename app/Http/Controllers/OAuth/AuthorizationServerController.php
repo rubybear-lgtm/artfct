@@ -240,6 +240,34 @@ final class AuthorizationServerController extends Controller
             ->all()
         : [];
 
+        // RUB-610 / A2: bots already bound through this OAuth client on the
+        // workspace. Exactly one → consent can reuse silently (preselect link).
+        // More than one → always ask, last-used preselected, never auto-approved.
+        $connectedBots = [];
+        $lastUsedBotId = null;
+        if ($canInstallAsBot) {
+            $installations = OAuthBotInstallation::query()
+                ->where('team_id', $team->id)
+                ->where('oauth_client_id', $parameters['client_id'])
+                ->with('bot:id,name,is_bot')
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get();
+
+            $connectedBots = $installations
+                ->filter(fn (OAuthBotInstallation $installation): bool => $installation->bot instanceof User
+                    && $installation->bot->isBot())
+                ->map(fn (OAuthBotInstallation $installation): array => [
+                    'id' => $installation->bot->id,
+                    'name' => $installation->bot->name,
+                ])
+                ->unique('id')
+                ->values()
+                ->all();
+
+            $lastUsedBotId = $connectedBots[0]['id'] ?? null;
+        }
+
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
             'clientName' => $client?->client_name ?: $parameters['client_id'],
@@ -263,6 +291,8 @@ final class AuthorizationServerController extends Controller
             // RUB-524: optional bot install alongside unchanged human OAuth.
             'canInstallAsBot' => $canInstallAsBot,
             'bots' => $bots,
+            'connectedBots' => $connectedBots,
+            'lastUsedBotId' => $lastUsedBotId,
         ]);
     }
 
