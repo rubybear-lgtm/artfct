@@ -106,7 +106,7 @@ npm run lint:check
 npm run types:check
 npm run routes:check
 npm run test:skills
-php -d memory_limit=512M vendor/bin/pest --parallel --compact
+php -d memory_limit=512M vendor/bin/pest --parallel --passthru-php='-d memory_limit=1G' --compact
 
 # pgvector suite when the e2e Postgres is already up (docker-compose.e2e / CI port).
 if command -v pg_isready &>/dev/null && pg_isready -h 127.0.0.1 -p 55432 -q; then
