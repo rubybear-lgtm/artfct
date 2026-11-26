@@ -95,6 +95,136 @@ test('consent shows the requested workspace selector and preserves the chosen wo
                 && $teams->contains('slug', $secondTeam->slug)));
 });
 
+test('RUB-598: consent without a workspace hint requires an explicit choice for members of several workspaces', function () {
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+
+    // Production MCP clients send no team hint, so the grant must not
+    // silently preselect the stale default workspace.
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($parameters))
+        ->assertOk()
+        ->assertInertia(fn (AssertableJson $page) => $page
+            ->component('oauth/authorize')
+            ->where('team', null)
+            ->where('requiresTeamChoice', true)
+            ->where('teams', fn ($teams): bool => $teams->count() === 2
+                && $teams->contains('slug', $defaultTeam->slug)
+                && $teams->contains('slug', $pickedTeam->slug)));
+});
+
+test('RUB-598: approving without a workspace issues no code for members of several workspaces', function () {
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
+test('RUB-598: approving for a non-default workspace binds the token to the picked workspace', function () {
+    $verifier = str_repeat('v', 64);
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+    configureSigning(testSigningKey());
+
+    $parameters = oauthParameters(oauthChallenge($verifier));
+
+    $authorization = $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $pickedTeam->slug,
+    ]);
+    $authorization->assertRedirect();
+    parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+
+    $token = $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'client_id' => 'test-native-client',
+        'redirect_uri' => $parameters['redirect_uri'],
+        'code_verifier' => $verifier,
+    ]);
+
+    $token->assertOk()->assertJsonPath('organization', $pickedTeam->slug);
+
+    $claims = (array) json_decode(base64_decode(explode('.', $token->json('access_token'))[1]), true);
+    expect($claims['org_id'])->toBe($pickedTeam->slug);
+});
+
+test('RUB-598: approving with an empty workspace issues no code', function () {
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => '',
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
+test('RUB-598: approving for a workspace the account cannot use issues no code', function () {
+    $user = User::factory()->create();
+    $ownTeam = Team::factory()->create();
+    $ownTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $stranger = User::factory()->create();
+    $foreignTeam = Team::factory()->create();
+    $foreignTeam->memberships()->create(['user_id' => $stranger->id, 'role' => TeamRole::Admin]);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $foreignTeam->slug,
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
+test('RUB-598: a single-workspace approval without a workspace issues no code', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($team);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
 test('consent falls back to the client id when the client has no name', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();

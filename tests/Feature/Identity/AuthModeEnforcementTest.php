@@ -10,6 +10,7 @@ use App\Services\AuthKit\AuthKitProfile;
 use App\Services\AuthKit\FakeAuthKitClient;
 use App\Services\Polis\FakePolisClient;
 use App\Support\TeamSignIn;
+use Illuminate\Testing\Fluent\AssertableJson;
 
 /**
  * @return array{0: Team, 1: User}
@@ -189,6 +190,26 @@ test('an authkit sign_in cannot approve the oauth consent for a polis team', fun
     signInThroughAuthKit($user);
 
     $parameters = oauthParameters(oauthChallenge('verifier'), ['team' => $team->slug]);
-    test()->post('/oauth/authorize', array_merge($parameters, ['decision' => 'approve']))
+    test()->post('/oauth/authorize', array_merge($parameters, ['decision' => 'approve', 'team' => $team->slug]))
         ->assertForbidden();
+});
+
+test('an authkit sign_in reaches the workspace picker when the default workspace is polis', function () {
+    [$polisTeam, $user] = enforcedTeam(AuthMode::Polis);
+
+    $dualTeam = Team::factory()->create(['name' => 'Dual workspace', 'auth_mode' => AuthMode::Dual]);
+    $dualTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+    $user->switchTeam($polisTeam);
+
+    signInThroughAuthKit($user);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    test()->get('/oauth/authorize?'.http_build_query($parameters))
+        ->assertOk()
+        ->assertInertia(fn (AssertableJson $page) => $page
+            ->component('oauth/authorize')
+            ->where('team', null)
+            ->where('requiresTeamChoice', true)
+            ->where('bots', []));
 });

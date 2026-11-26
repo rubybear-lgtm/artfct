@@ -201,11 +201,29 @@ final class AuthorizationServerController extends Controller
         $team = $this->teamFor($user, $parameters['team']);
 
         abort_if($team === null, 403, 'Create a team first, then start the connection again from your AI tool.');
-        $this->abortUnlessSignInAdmitted($request, $user, $team);
+
+        // RUB-598: without an explicit workspace hint, members of several
+        // workspaces must choose one on the consent screen. Preselecting the
+        // stale session default silently bound grants (and their tokens) to
+        // the wrong organization when the sign-in organization picker was the
+        // only place the user chose.
+        $requiresTeamChoice = ($parameters['team'] === null || $parameters['team'] === '')
+            && $user->teams()->count() > 1;
+
+        // Admission for the fallback workspace must not block the picker:
+        // the grant binds the chosen workspace and re-checks admission at
+        // approve time.
+        if (! $requiresTeamChoice) {
+            $this->abortUnlessSignInAdmitted($request, $user, $team);
+        }
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
         $role = $user->teamRole($team);
-        $canInstallAsBot = $role instanceof TeamRole
+        // Bot options are only offered for a workspace the session can use.
+        // With the choice still open, the fallback workspace may be one the
+        // session cannot be admitted to, and its bot names must not leak.
+        $canInstallAsBot = TeamSignIn::admits($request, $user, $team)
+            && $role instanceof TeamRole
             && $role !== TeamRole::Viewer
             && ! $user->isBot();
 
@@ -235,7 +253,8 @@ final class AuthorizationServerController extends Controller
             'consentToken' => $this->consentToken($parameters),
             // Native form POST needs the session CSRF token in the body (RUB-510).
             'csrfToken' => csrf_token(),
-            'team' => ['id' => $team->slug, 'name' => $team->name, 'slug' => $team->slug],
+            'team' => $requiresTeamChoice ? null : ['id' => $team->slug, 'name' => $team->name, 'slug' => $team->slug],
+            'requiresTeamChoice' => $requiresTeamChoice,
             'teams' => $user->teams()->get(['teams.id', 'teams.name', 'teams.slug'])->map(fn (Team $candidate): array => [
                 'id' => $candidate->slug,
                 'name' => $candidate->name,
@@ -273,7 +292,12 @@ final class AuthorizationServerController extends Controller
 
         /** @var User $user */
         $user = $request->user();
-        $team = $this->teamFor($user, $request->input('team'));
+        $submittedTeam = $request->input('team');
+        // RUB-598: an empty workspace never falls back to the session
+        // default. The grant must bind the workspace the user chose, so a
+        // missing choice is refused instead of minting for the wrong org.
+        abort_if(! is_string($submittedTeam) || $submittedTeam === '', 403, 'Choose a workspace for this connection, then approve again.');
+        $team = $this->teamFor($user, $submittedTeam);
 
         abort_if($team === null, 403, 'The selected team is not available to this account.');
         $this->abortUnlessSignInAdmitted($request, $user, $team);
