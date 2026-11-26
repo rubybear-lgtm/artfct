@@ -170,6 +170,61 @@ test('RUB-598: approving for a non-default workspace binds the token to the pick
     expect($claims['org_id'])->toBe($pickedTeam->slug);
 });
 
+test('RUB-598: approving with an empty workspace issues no code', function () {
+    $user = User::factory()->create();
+    $defaultTeam = Team::factory()->create(['name' => 'Default workspace']);
+    $pickedTeam = Team::factory()->create(['name' => 'Picked workspace']);
+    $defaultTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $pickedTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($defaultTeam);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => '',
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
+test('RUB-598: approving for a workspace the account cannot use issues no code', function () {
+    $user = User::factory()->create();
+    $ownTeam = Team::factory()->create();
+    $ownTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+
+    $stranger = User::factory()->create();
+    $foreignTeam = Team::factory()->create();
+    $foreignTeam->memberships()->create(['user_id' => $stranger->id, 'role' => TeamRole::Admin]);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+        'team' => $foreignTeam->slug,
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
+test('RUB-598: a single-workspace approval without a workspace issues no code', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
+    $user->switchTeam($team);
+
+    $parameters = oauthParameters(oauthChallenge('challenge'));
+
+    $this->actingAs($user)->post('/oauth/authorize', [
+        ...$parameters,
+        'decision' => 'approve',
+    ])->assertForbidden();
+
+    expect(OrgToken::query()->count())->toBe(0);
+});
+
 test('consent falls back to the client id when the client has no name', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();

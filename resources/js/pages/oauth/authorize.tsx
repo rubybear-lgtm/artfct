@@ -138,9 +138,9 @@ function AuthorizeForm({
                             : `${clientName} wants to connect to ${selectedTeamName}`}
                     </CardTitle>
                     <CardDescription>
-                        It will be able to do the things listed below with your
-                        team's shared work. Only continue if you started this
-                        from your AI tool.
+                        {selectedTeam === ''
+                            ? "It will be able to do the things listed below with the workspace's shared work. Choose a workspace below, and only continue if you started this from your AI tool."
+                            : "It will be able to do the things listed below with your team's shared work. Only continue if you started this from your AI tool."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-5">

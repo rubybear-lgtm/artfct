@@ -201,7 +201,21 @@ final class AuthorizationServerController extends Controller
         $team = $this->teamFor($user, $parameters['team']);
 
         abort_if($team === null, 403, 'Create a team first, then start the connection again from your AI tool.');
-        $this->abortUnlessSignInAdmitted($request, $user, $team);
+
+        // RUB-598: without an explicit workspace hint, members of several
+        // workspaces must choose one on the consent screen. Preselecting the
+        // stale session default silently bound grants (and their tokens) to
+        // the wrong organization when the sign-in organization picker was the
+        // only place the user chose.
+        $requiresTeamChoice = ($parameters['team'] === null || $parameters['team'] === '')
+            && $user->teams()->count() > 1;
+
+        // Admission for the fallback workspace must not block the picker:
+        // the grant binds the chosen workspace and re-checks admission at
+        // approve time.
+        if (! $requiresTeamChoice) {
+            $this->abortUnlessSignInAdmitted($request, $user, $team);
+        }
 
         $client = OAuthClient::query()->where('client_id', $parameters['client_id'])->first();
         $role = $user->teamRole($team);
@@ -221,14 +235,6 @@ final class AuthorizationServerController extends Controller
             ->values()
             ->all()
         : [];
-
-        // RUB-598: without an explicit workspace hint, members of several
-        // workspaces must choose one on the consent screen. Preselecting the
-        // stale session default silently bound grants (and their tokens) to
-        // the wrong organization when the sign-in organization picker was the
-        // only place the user chose.
-        $requiresTeamChoice = ($parameters['team'] === null || $parameters['team'] === '')
-            && $user->teams()->count() > 1;
 
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
