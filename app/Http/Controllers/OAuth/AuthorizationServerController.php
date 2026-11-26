@@ -269,6 +269,12 @@ final class AuthorizationServerController extends Controller
             $lastUsedBotId = $connectedBots[0]['id'] ?? null;
         }
 
+        // A2 defaults are server-authoritative so consent and Pest share one
+        // contract: exactly one → silent reuse via preselected link; more than
+        // one → ask with last-used link preselected; never auto-approve.
+        $preselectedBotMode = $canInstallAsBot && $connectedBots !== [] ? 'link' : 'human';
+        $preselectedBotId = $preselectedBotMode === 'link' ? $lastUsedBotId : null;
+
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
             'clientName' => $client?->client_name ?: $parameters['client_id'],
@@ -294,6 +300,8 @@ final class AuthorizationServerController extends Controller
             'bots' => $bots,
             'connectedBots' => $connectedBots,
             'lastUsedBotId' => $lastUsedBotId,
+            'preselectedBotMode' => $preselectedBotMode,
+            'preselectedBotId' => $preselectedBotId,
         ]);
     }
 

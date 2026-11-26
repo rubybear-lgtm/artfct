@@ -166,7 +166,9 @@ test('consent page offers bot install options to a non-viewer human', function (
             ->where('canInstallAsBot', true)
             ->has('bots', 0)
             ->has('connectedBots', 0)
-            ->where('lastUsedBotId', null));
+            ->where('lastUsedBotId', null)
+            ->where('preselectedBotMode', 'human')
+            ->where('preselectedBotId', null));
 });
 
 test('oauth create-bot install mints an agent credential for the bot not the human', function () {
@@ -444,7 +446,7 @@ test('AC6 revoke then reconnect with a different name does not resurrect the old
         ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->where('bot_user_id', $librarian->id)->exists())->toBeTrue();
 });
 
-test('consent page with exactly one connected bot preselects that identity via props', function () {
+test('A2 exactly one connected bot silently reuses it via preselected link', function () {
     $fixture = botInstallOAuthFixture();
 
     completeBotInstallOAuth(
@@ -465,7 +467,9 @@ test('consent page with exactly one connected bot preselects that identity via p
         'scope' => $fixture['parameters']['scope'],
     ]);
 
-    test()->actingAs($fixture['admin'])
+    // Consent asks nothing about which of many identities: link + Hoku is
+    // preselected. The page still renders (no auto-approve).
+    $consent = test()->actingAs($fixture['admin'])
         ->get('/oauth/authorize?'.http_build_query(array_diff_key($parameters2, array_flip(['consent_token']))))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
@@ -473,10 +477,32 @@ test('consent page with exactly one connected bot preselects that identity via p
             ->has('connectedBots', 1)
             ->where('connectedBots.0.id', $hoku->id)
             ->where('connectedBots.0.name', 'Hoku')
-            ->where('lastUsedBotId', $hoku->id));
+            ->where('lastUsedBotId', $hoku->id)
+            ->where('preselectedBotMode', 'link')
+            ->where('preselectedBotId', $hoku->id));
+
+    expect($consent->headers->get('Location'))->toBeNull();
+
+    // Approving with the silent-reuse default (link + that bot) reuses Hoku.
+    $tokens = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $parameters2,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $verifier2,
+        ['bot_mode' => 'link', 'bot_id' => (string) $hoku->id],
+    );
+
+    expect(User::query()->where('name', 'Hoku')->where('is_bot', true)->count())->toBe(1)
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->count())->toBe(1);
+
+    $connection = mcpGetConnection($tokens['access_token']);
+    expect($connection['user_id'])->toBe((string) $hoku->id)
+        ->and($connection['agent'])->toBe(['name' => 'Hoku', 'bot' => true]);
 });
 
-test('consent page lists bots already connected through this app', function () {
+test('A2 multiple connected bots preselect last used without auto-approving', function () {
     $fixture = botInstallOAuthFixture();
 
     completeBotInstallOAuth(
@@ -514,7 +540,9 @@ test('consent page lists bots already connected through this app', function () {
         'scope' => $fixture['parameters']['scope'],
     ]);
 
-    test()->actingAs($fixture['admin'])
+    // More than one → always ask. Last-used (Librarian) is preselected as link,
+    // but GET still returns the consent page (never auto-approved).
+    $consent = test()->actingAs($fixture['admin'])
         ->get('/oauth/authorize?'.http_build_query(array_diff_key($parameters3, array_flip(['consent_token']))))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
@@ -524,7 +552,12 @@ test('consent page lists bots already connected through this app', function () {
             ->where('connectedBots.0.name', 'Librarian')
             ->where('connectedBots.1.id', $hoku->id)
             ->where('connectedBots.1.name', 'Hoku')
-            ->where('lastUsedBotId', $librarian->id));
+            ->where('lastUsedBotId', $librarian->id)
+            ->where('preselectedBotMode', 'link')
+            ->where('preselectedBotId', $librarian->id));
+
+    expect($consent->headers->get('Location'))->toBeNull()
+        ->and($consent->status())->toBe(200);
 });
 
 test('a second oauth client can link a distinct bot in the same workspace', function () {

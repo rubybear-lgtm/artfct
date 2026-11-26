@@ -55,6 +55,8 @@ interface Props {
     bots: BotOption[];
     connectedBots: BotOption[];
     lastUsedBotId: number | null;
+    preselectedBotMode: IdentityMode;
+    preselectedBotId: number | null;
 }
 
 const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
@@ -62,30 +64,13 @@ const riskLabels: Record<Exclude<ScopeRisk, 'read'>, string> = {
     destructive: 'Destructive',
 };
 
-function initialIdentityMode(
-    canInstallAsBot: boolean,
-    connectedBots: BotOption[],
-): IdentityMode {
-    if (!canInstallAsBot) {
-        return 'human';
-    }
-
-    // A2: one identity for this app → reuse it (preselect link). More than one
-    // → still ask, with last-used preselected. Never auto-approve.
-    if (connectedBots.length >= 1) {
-        return 'link';
-    }
-
-    return 'human';
-}
-
 function initialBotId(
+    preselectedBotId: number | null,
     connectedBots: BotOption[],
     bots: BotOption[],
-    lastUsedBotId: number | null,
 ): string {
-    if (lastUsedBotId !== null) {
-        return String(lastUsedBotId);
+    if (preselectedBotId !== null) {
+        return String(preselectedBotId);
     }
 
     if (connectedBots[0] !== undefined) {
@@ -137,6 +122,8 @@ function AuthorizeForm({
     bots,
     connectedBots,
     lastUsedBotId,
+    preselectedBotMode,
+    preselectedBotId,
 }: Props) {
     const redirectHost = (() => {
         try {
@@ -149,12 +136,13 @@ function AuthorizeForm({
     const [selectedTeam, setSelectedTeam] = useState(
         requiresTeamChoice ? '' : (team?.slug ?? ''),
     );
-    const [identityMode, setIdentityMode] = useState<IdentityMode>(() =>
-        initialIdentityMode(canInstallAsBot, connectedBots),
-    );
+    // A2: server sends preselectedBotMode/Id (link + last-used when any
+    // connected bots exist). Never auto-approve — user still clicks Allow.
+    const [identityMode, setIdentityMode] =
+        useState<IdentityMode>(preselectedBotMode);
     const [botName, setBotName] = useState('');
     const [botId, setBotId] = useState(() =>
-        initialBotId(connectedBots, bots, lastUsedBotId),
+        initialBotId(preselectedBotId ?? lastUsedBotId, connectedBots, bots),
     );
     const selectedTeamName =
         teams.find((candidate) => candidate.slug === selectedTeam)?.name ??
@@ -409,107 +397,119 @@ function AuthorizeForm({
                                         </span>
                                     </span>
                                 </label>
-                                <label className="flex items-start gap-2 text-sm">
-                                    <input
-                                        type="radio"
-                                        name="bot_mode"
-                                        value="create"
-                                        className="mt-1"
-                                        checked={identityMode === 'create'}
-                                        onChange={() =>
-                                            setIdentityMode('create')
-                                        }
-                                        data-testid="bot-mode-create"
-                                    />
-                                    <span>
-                                        <span className="font-medium">
-                                            A new bot teammate
-                                        </span>
-                                        <span className="mt-0.5 block text-muted-foreground">
-                                            Free seat, no email. A new name
-                                            creates a new identity on this app;
-                                            an existing bot name reuses that
-                                            bot.
-                                        </span>
-                                    </span>
-                                </label>
-                                {bots.length > 0 && (
+                                <div className="flex flex-col gap-2">
                                     <label className="flex items-start gap-2 text-sm">
                                         <input
                                             type="radio"
                                             name="bot_mode"
-                                            value="link"
+                                            value="create"
                                             className="mt-1"
-                                            checked={identityMode === 'link'}
+                                            checked={identityMode === 'create'}
                                             onChange={() =>
-                                                setIdentityMode('link')
+                                                setIdentityMode('create')
                                             }
-                                            data-testid="bot-mode-link"
+                                            data-testid="bot-mode-create"
                                         />
                                         <span>
                                             <span className="font-medium">
-                                                An existing bot teammate
+                                                A new bot teammate
                                             </span>
                                             <span className="mt-0.5 block text-muted-foreground">
-                                                Link this app to a bot already
-                                                on the team without replacing
-                                                other bots on the same app.
+                                                Free seat, no email. A new name
+                                                creates a new identity on this
+                                                app; an existing bot name reuses
+                                                that bot.
                                             </span>
                                         </span>
                                     </label>
-                                )}
+                                    {identityMode === 'create' && (
+                                        <div className="flex flex-col gap-1.5 pl-6">
+                                            <Label htmlFor="bot_name">
+                                                Bot name
+                                            </Label>
+                                            <Input
+                                                id="bot_name"
+                                                name="bot_name"
+                                                placeholder="Grok Bot"
+                                                value={botName}
+                                                onChange={(event) =>
+                                                    setBotName(
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                required
+                                                maxLength={80}
+                                                data-testid="bot-name-input"
+                                            />
+                                            <p
+                                                className="text-xs text-muted-foreground"
+                                                data-testid="create-identity-hint"
+                                            >
+                                                {createReusesExisting
+                                                    ? `This reuses the existing bot named ${trimmedBotName}.`
+                                                    : 'This will create a new bot identity for this app.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
 
-                                {identityMode === 'create' && (
-                                    <div className="flex flex-col gap-1.5 pl-6">
-                                        <Label htmlFor="bot_name">
-                                            Bot name
-                                        </Label>
-                                        <Input
-                                            id="bot_name"
-                                            name="bot_name"
-                                            placeholder="Grok Bot"
-                                            value={botName}
-                                            onChange={(event) =>
-                                                setBotName(event.target.value)
-                                            }
-                                            required
-                                            maxLength={80}
-                                            data-testid="bot-name-input"
-                                        />
-                                        <p
-                                            className="text-xs text-muted-foreground"
-                                            data-testid="create-identity-hint"
-                                        >
-                                            {createReusesExisting
-                                                ? `This reuses the existing bot named ${trimmedBotName}.`
-                                                : 'This will create a new bot identity for this app.'}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {identityMode === 'link' && bots.length > 0 && (
-                                    <div className="flex flex-col gap-1.5 pl-6">
-                                        <Label htmlFor="bot_id">Bot</Label>
-                                        <select
-                                            id="bot_id"
-                                            name="bot_id"
-                                            className="h-10 rounded-md border bg-background px-3 text-sm"
-                                            value={botId}
-                                            onChange={(event) =>
-                                                setBotId(event.target.value)
-                                            }
-                                            required
-                                            data-testid="bot-link-select"
-                                        >
-                                            {bots.map((bot) => (
-                                                <option
-                                                    key={bot.id}
-                                                    value={bot.id}
+                                {bots.length > 0 && (
+                                    <div className="flex flex-col gap-2">
+                                        <label className="flex items-start gap-2 text-sm">
+                                            <input
+                                                type="radio"
+                                                name="bot_mode"
+                                                value="link"
+                                                className="mt-1"
+                                                checked={
+                                                    identityMode === 'link'
+                                                }
+                                                onChange={() =>
+                                                    setIdentityMode('link')
+                                                }
+                                                data-testid="bot-mode-link"
+                                            />
+                                            <span>
+                                                <span className="font-medium">
+                                                    An existing bot teammate
+                                                </span>
+                                                <span className="mt-0.5 block text-muted-foreground">
+                                                    Link this app to a bot
+                                                    already on the team without
+                                                    replacing other bots on the
+                                                    same app.
+                                                </span>
+                                            </span>
+                                        </label>
+                                        {identityMode === 'link' && (
+                                            <div className="flex flex-col gap-1.5 pl-6">
+                                                <Label htmlFor="bot_id">
+                                                    Bot
+                                                </Label>
+                                                <select
+                                                    id="bot_id"
+                                                    name="bot_id"
+                                                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                                                    value={botId}
+                                                    onChange={(event) =>
+                                                        setBotId(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    required
+                                                    data-testid="bot-link-select"
                                                 >
-                                                    {bot.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                                    {bots.map((bot) => (
+                                                        <option
+                                                            key={bot.id}
+                                                            value={bot.id}
+                                                        >
+                                                            {bot.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </fieldset>
