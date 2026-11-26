@@ -255,13 +255,22 @@ final class AuthorizationServerController extends Controller
                 ->get();
 
             $connectedBots = $installations
-                ->filter(fn (OAuthBotInstallation $installation): bool => $installation->bot instanceof User
-                    && $installation->bot->isBot()
-                    && $installation->bot->belongsToTeam($team))
-                ->map(fn (OAuthBotInstallation $installation): array => [
-                    'id' => $installation->bot->id,
-                    'name' => $installation->bot->name,
-                ])
+                ->filter(function (OAuthBotInstallation $installation) use ($team): bool {
+                    $bot = $installation->getRelation('bot');
+
+                    return $bot instanceof User
+                        && $bot->isBot()
+                        && $bot->belongsToTeam($team);
+                })
+                ->map(function (OAuthBotInstallation $installation): array {
+                    /** @var User $bot */
+                    $bot = $installation->getRelation('bot');
+
+                    return [
+                        'id' => $bot->id,
+                        'name' => $bot->name,
+                    ];
+                })
                 ->unique('id')
                 ->values()
                 ->all();
