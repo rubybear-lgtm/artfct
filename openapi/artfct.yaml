@@ -1514,11 +1514,10 @@
       "McpConnectionResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["connection_id", "organization", "organization_name", "user_id", "scopes", "last_used_at"],
+        "required": ["connection_id", "organization", "user_id", "scopes", "last_used_at"],
         "properties": {
           "connection_id": { "type": "string", "format": "uuid" },
-          "organization": { "type": "string", "description": "The team's permanent ID (slug). A rename does not change it." },
-          "organization_name": { "type": "string", "description": "The team's current display name." },
+          "organization": { "type": "string" },
           "user_id": { "type": "string" },
           "scopes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
           "last_used_at": { "type": "string", "format": "date-time" }

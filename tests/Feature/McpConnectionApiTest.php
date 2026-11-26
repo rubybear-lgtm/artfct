@@ -37,7 +37,6 @@ test('registering an MCP client creates a scoped connection without exposing cre
 
     $response->assertCreated()
         ->assertJsonPath('organization', $team->slug)
-        ->assertJsonPath('organization_name', $team->name)
         ->assertJsonPath('scopes.0', 'artifacts:read')
         ->assertJsonPath('scopes.1', 'artifacts:deploy')
         ->assertJsonMissingPath('credential_jti')
