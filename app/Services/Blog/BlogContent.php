@@ -19,7 +19,7 @@ final class BlogContent
 {
     private const string FAQ_HEADING = '/^(questions?|frequently asked)/i';
 
-    private const string LIMITS_HEADING = '/^(what this (does not do|does not fix|is not|does not include)|limits|out of scope)/i';
+    private const string LIMITS_HEADING = '/^(what this (does not do|does not fix|is not|does not include)|what (doesn\'t|does not) work|limits|out of scope)/i';
 
     public function __construct(
         private readonly BlogRenderer $renderer,

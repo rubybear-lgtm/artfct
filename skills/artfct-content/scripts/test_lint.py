@@ -172,6 +172,17 @@ def main() -> int:
     assert "W14" not in rules(res, "warnings") and "W15" not in rules(res, "warnings"), "register rules must not apply to artfct-terse"
     print("  ok  the register rules do not fire on artfct-terse")
 
+    # artfct-human drops the corpus's structural expectations (question H2s, an
+    # FAQ on explainers) and checks for launch-speak instead.
+    code, res = run(variant("We're excited to announce it. It doesn't cost anything."), "--register", "artfct-human")
+    assert "W16" in rules(res, "warnings"), "launch-speak must warn in artfct-human"
+    assert "W14" not in rules(res, "warnings"), "contractions are normal in artfct-human"
+    print("  ok  W16 catches launch-speak in artfct-human")
+
+    code, res = run(CLEAN, "--surface", "explainer", "--register", "artfct-human")
+    assert "W6" not in rules(res, "warnings") and "W4" not in rules(res, "warnings"), "artfct-human needs no FAQ or question headings"
+    print("  ok  artfct-human skips the FAQ and question-heading rules")
+
     code, res = run(CLEAN, "--surface", "explainer")
     assert "W13" in rules(res, "warnings"), "explainer should warn about a 300-word draft"
     print("  ok  surface-specific length warning fires")

@@ -5,7 +5,7 @@ to specify, and specific enough that a paragraph can be checked against it.
 
 ## Register is a named parameter
 
-Two registers are defined. Pick one per page and state which you used.
+Three registers are defined. Pick one per page and state which you used.
 
 **`glean-formal`** — the default. The measured enterprise voice below.
 
@@ -13,6 +13,11 @@ Two registers are defined. Pick one per page and state which you used.
 Use when the page sits beside the landing page rather than beside the blog.
 > Your AI makes things. Artfct
 > Set it up once. Then just share.
+
+**`artfct-human`** — one named engineer writing in the first person, modeled on
+engineering posts that reach the Hacker News front page. Use it for launches and for
+posts that should read like a person wrote them. Its rules live in
+`references/voice-human.md`, not here.
 
 These are not interchangeable within a page. A feature showcase written in
 `glean-formal` and closed in `artfct-terse` reads as two authors.

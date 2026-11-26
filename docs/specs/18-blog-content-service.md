@@ -54,7 +54,7 @@ Flat `key: value` between `---` fences. **No new dependency:** `symfony/yaml` is
 | `tag` | yes | the index badge (`search`, `governance`, `workflows`, `explainers`, …) |
 | `published` | yes | `true` or `false` |
 | `surface` | yes | one of the four values in `skills/artfct-content/scripts/lint-content.py:25` |
-| `register` | yes | `glean-formal` or `artfct-terse` |
+| `register` | yes | `glean-formal`, `artfct-terse` or `artfct-human` |
 | `target` | yes | the query the page answers; today's `data-target` |
 | `lint` | no | `run` (default) or `skip`; the front-matter form of the gate's `data-lint="skip"` override, which is otherwise unreachable once the source is Markdown |
 
