@@ -166,12 +166,12 @@ class AiToolSetup
                 'verified' => false,
                 'kind' => 'terminal',
                 'method' => 'Plugin',
-                'summary' => 'GitHub’s coding agent in the terminal. Add the Artfct marketplace and install the plugin.',
+                'summary' => 'GitHub’s coding agent in the terminal. Install the Artfct plugin from its repository.',
                 'maker' => 'GitHub',
                 'icon' => 'copilot',
                 'intro' => 'For the Copilot CLI. In VS Code, use the VS Code guide instead.',
                 'steps' => [
-                    ['text' => 'Add the Artfct marketplace and install the plugin:', 'code' => "copilot plugin marketplace add {$repo}\ncopilot plugin install artfct@artfct"],
+                    ['text' => 'Install the plugin straight from its repository:', 'code' => "copilot plugin install {$repo}"],
                     ['text' => 'Start Copilot and approve the Artfct sign-in when it asks.'],
                     ['text' => $onboard],
                 ],
@@ -641,7 +641,7 @@ class AiToolSetup
                  {$this->pluginInstallCommand()}
 
                  Then tell me to type `/reload-plugins`, then `/mcp` to sign in to `artfct` in my browser, then `/artfct:onboard`, and stop there: that skill does the rest of these steps. If the command fails (an older version, or my organization limits plugins), carry on with step 2.
-               - If your app installs Agent Plugins from a repository (for example Codex, the Claude app, Cursor, VS Code, GitHub Copilot, Hermes Agent, OpenClaw, Devin, Antigravity, Kiro or Perplexity Computer), install the Artfct plugin from `{$this->pluginRepo()}` instead of steps 2 and 3: one install brings the connection and the Artfct skills. Your app's section of {$this->baseUrl}/llms-full.txt has its exact install. Show me the command or the menu path, and run it only after I approve it. Then tell me to approve the sign-in in my browser, and carry on at step 4. If the install fails, carry on with step 2.
+               - If your app installs Agent Plugins from a repository (for example Codex, the Claude app, Cursor, VS Code, GitHub Copilot, Hermes Agent, OpenClaw, Devin, Antigravity, Kiro, OpenHands or Perplexity Computer), install the Artfct plugin from `{$this->pluginRepo()}` instead of steps 2 and 3: one install brings the connection and the Artfct skills. Your app's section of {$this->baseUrl}/llms-full.txt has its exact install. Show me the command or the menu path, and run it only after I approve it. Then tell me to approve the sign-in in my browser, and carry on at step 4. If the install fails, carry on with step 2.
             2. Read {$this->baseUrl}/llms-full.txt and follow the setup section for your app. The server is named `artfct` and lives at {$this->mcpUrl()}. In a JSON config file the entry looks like this; some apps use other key names (`servers`, `context_servers`, `serverUrl`), and that page has the exact entry for each:
 
             {$serverEntry}

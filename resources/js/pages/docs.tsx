@@ -603,8 +603,8 @@ function SetupPathSteps({ path, label }: { path: SetupPath; label: string }) {
                 </Prose>
             )}
             <Steps>
-                {path.steps.map((step) => (
-                    <Step key={step.text}>
+                {path.steps.map((step, index) => (
+                    <Step key={index}>
                         <span>
                             <Inline text={step.text} />
                         </span>
@@ -622,9 +622,9 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
             <SetupPathSteps path={guide} label={guide.label} />
             {guide.fallback && (
                 <>
-                    <Prose>
-                        <strong>Without the plugin</strong>
-                    </Prose>
+                    <h4 className="font-semibold text-foreground">
+                        Without the plugin
+                    </h4>
                     <SetupPathSteps path={guide.fallback} label={guide.label} />
                 </>
             )}

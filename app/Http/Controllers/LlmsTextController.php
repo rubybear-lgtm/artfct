@@ -28,7 +28,7 @@ class LlmsTextController extends Controller
             '## Docs',
             '',
             "- [Full documentation for AI tools]({$base}/llms-full.txt): every setup guide, the tools, permissions, troubleshooting and the REST API in one file",
-            "- [Connect your AI tool]({$base}/docs#mcp): install the Artfct plugin in any Agent Plugins client (Claude Code, Codex, Cursor, VS Code, GitHub Copilot, Hermes Agent, OpenClaw and more), or add the server to ChatGPT, OpenCode, OMP, Windsurf, Zed and any other tool",
+            "- [Connect your AI tool]({$base}/docs#mcp): install the Artfct plugin in any Agent Plugins client (Claude Code, Codex, Cursor, VS Code, GitHub Copilot, Antigravity and more), or add the server to ChatGPT, OpenCode, OMP, Windsurf, Zed and any other tool",
             "- [Connect with a header]({$base}/docs#connect-agent-token): agent tokens for bots and custom connectors",
             "- [What your AI tool can do]({$base}/docs#connect-tools): the tools a connected AI tool can call",
             "- [Skills]({$base}/docs#skills): optional guidance packs for AI tools",

@@ -122,6 +122,7 @@ test('the agent setup prompt connects, verifies and teaches the project, leaving
         ->not->toContain('npx skills add')
         ->not->toContain('artfct-init')
         ->toContain('If your app installs Agent Plugins from a repository')
+        ->toContain('Kiro, OpenHands or Perplexity Computer')
         ->toContain('offer to help connect them to the same workspace')
         ->not->toContain('not yet tested')
         ->toContain('https://staging.artfct.dev/mcp')
@@ -251,6 +252,7 @@ test('setup guides for tools we have not verified end to end carry their steps w
         ->toBe(['connect-copilot', 'connect-devin', 'connect-omp', 'connect-antigravity', 'connect-claude', 'connect-chatgpt', 'connect-perplexity', 'connect-grok-bot', 'connect-cursor', 'connect-vscode', 'connect-kiro', 'connect-windsurf', 'connect-zed', 'connect-openhands', 'connect-other'])
         ->and(json_decode(collect($guides['connect-omp']['steps'])->pluck('code')->filter()->values()->all()[0], true))->toBe(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and($guides['connect-omp']['steps'][0]['text'])->toContain('~/.omp/agent/mcp.json')
+        ->and(collect($guides['connect-copilot']['steps'])->pluck('code')->filter()->values()->all())->toBe(['copilot plugin install artfct-dev/artfct-plugin'])
         ->and(collect($guides['connect-cursor']['fallback']['steps'])->pluck('code')->filter()->all())->toContain('cursor-agent mcp login artfct')
         ->and(json_decode($guides['connect-vscode']['fallback']['steps'][0]['code'], true))->toBe(['servers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and(json_decode($guides['connect-windsurf']['steps'][0]['code'], true))->toBe(['mcpServers' => ['artfct' => ['serverUrl' => 'https://artfct.dev/mcp']]]);

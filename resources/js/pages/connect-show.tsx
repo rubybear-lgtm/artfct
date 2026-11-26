@@ -163,8 +163,8 @@ function SetupPathView({
                 </div>
             )}
             <Steps lit={lit}>
-                {path.steps.map((step) => (
-                    <div key={step.text}>
+                {path.steps.map((step, index) => (
+                    <div key={index}>
                         {renderStepText(step.text)}
                         {step.code && (
                             <div className="mt-3">
@@ -412,7 +412,7 @@ export default function ConnectShow({
 }: ConnectShowProps) {
     const name = guide.label === 'Other tools' ? 'Your agent' : guide.label;
     const stage = useStage();
-    const plugin = guide.method === 'Plugin';
+    const plugin = guide.method.startsWith('Plugin');
     const tags = [
         KIND_LABEL[guide.kind],
         guide.method,
