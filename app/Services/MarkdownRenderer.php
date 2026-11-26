@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Dom\Element;
+use Dom\HTMLDocument;
+use Dom\Node;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
@@ -35,10 +38,79 @@ final class MarkdownRenderer
 
     /**
      * Convert markdown to an HTML fragment (no wrapping document).
+     *
+     * Every h1-h6 carries a stable id so `/a/{id}#{slug}` links scroll to
+     * the section. Slug shape matches the Worker (`backend/src/markdown.rs`)
+     * and the blog TOC (both via `HeadingSlug`).
      */
     public function toFragment(string $markdown): string
     {
-        return trim($this->converter->convert($markdown)->getContent());
+        $html = trim($this->converter->convert($markdown)->getContent());
+
+        return self::addHeadingIds($html);
+    }
+
+    /**
+     * Give every heading a stable id, deduped across the fragment.
+     */
+    private static function addHeadingIds(string $fragment): string
+    {
+        if ($fragment === '' || stripos($fragment, '<h') === false) {
+            return $fragment;
+        }
+
+        $document = HTMLDocument::createFromString(
+            '<div id="artfct-markdown-root">'.$fragment.'</div>',
+            LIBXML_NOERROR,
+        );
+
+        $root = $document->getElementById('artfct-markdown-root');
+
+        if (! $root instanceof Element) {
+            return $fragment;
+        }
+
+        $headings = [];
+        self::collectHeadings($root, $headings);
+
+        if ($headings === []) {
+            return $fragment;
+        }
+
+        $used = [];
+
+        foreach ($headings as $heading) {
+            $heading->setAttribute(
+                'id',
+                HeadingSlug::unique(HeadingSlug::slugify($heading->textContent), $used),
+            );
+        }
+
+        $html = '';
+
+        foreach ($root->childNodes as $child) {
+            $html .= $document->saveHtml($child);
+        }
+
+        return trim($html);
+    }
+
+    /**
+     * @param  list<Element>  $headings
+     */
+    private static function collectHeadings(Node $node, array &$headings): void
+    {
+        foreach (iterator_to_array($node->childNodes) as $child) {
+            if (! $child instanceof Element) {
+                continue;
+            }
+
+            if (in_array(strtolower($child->nodeName), ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], true)) {
+                $headings[] = $child;
+            }
+
+            self::collectHeadings($child, $headings);
+        }
     }
 
     /**

@@ -11,9 +11,9 @@ beforeEach(function () {
 it('renders headings', function () {
     $html = $this->renderer->toFragment("# Hello\n\n## World\n\n### Sub");
 
-    expect($html)->toContain('<h1>Hello</h1>');
-    expect($html)->toContain('<h2>World</h2>');
-    expect($html)->toContain('<h3>Sub</h3>');
+    expect($html)->toContain('<h1 id="hello">Hello</h1>');
+    expect($html)->toContain('<h2 id="world">World</h2>');
+    expect($html)->toContain('<h3 id="sub">Sub</h3>');
 });
 
 it('renders paragraphs', function () {
@@ -144,7 +144,7 @@ it('toFullDocument returns complete HTML document', function () {
     expect($html)->toContain('<head>');
     expect($html)->toContain('<style>');
     expect($html)->toContain('<body>');
-    expect($html)->toContain('<h1>Test</h1>');
+    expect($html)->toContain('<h1 id="test">Test</h1>');
 });
 
 it('toFullDocument includes artfct badge', function () {

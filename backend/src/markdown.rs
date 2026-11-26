@@ -11,7 +11,8 @@
 //! so shared-origin preview CSP cannot execute injected script or follow
 //! `javascript:` / `data:` destinations.
 
-use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{HeadingLevel, html, CowStr, Event, Options, Parser, Tag, TagEnd};
+use std::collections::HashSet;
 
 const MARKDOWN_CSS: &str = r#"
 :root { color-scheme: light dark; }
@@ -174,15 +175,154 @@ where
     })
 }
 
+/// Heading slug shared with Laravel (`App\Services\HeadingSlug`, the shape
+/// `BlogContent::anchor` used to have): lowercase ASCII alphanumerics kept,
+/// every other byte run becomes one `-`, trimmed; empty falls back to
+/// `section`. Byte-wise so `é` (two UTF-8 bytes) collapses to one `-`, exactly
+/// like PHP's byte-level `preg_replace`.
+fn slugify_heading(text: &str) -> String {
+    let mut slug = String::with_capacity(text.len());
+    let mut separator = true;
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            slug.push(byte.to_ascii_lowercase() as char);
+            separator = false;
+        } else if !separator {
+            slug.push('-');
+            separator = true;
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        slug.push_str("section");
+    }
+    slug
+}
+
+/// First use keeps `base`; repeats take `base-2`, `base-3`, … — the same rule
+/// as `HeadingSlug::unique`, tracked per document.
+fn unique_heading_id(base: &str, used: &mut HashSet<String>) -> String {
+    let mut id = base.to_string();
+    let mut suffix = 2;
+    while used.contains(&id) {
+        id = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    used.insert(id.clone());
+    id
+}
+
+struct HeadingCapture<'a> {
+    level: HeadingLevel,
+    classes: Vec<CowStr<'a>>,
+    attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)>,
+    text: String,
+    inner: Vec<Event<'a>>,
+    image_depth: u32,
+}
+
+/// Give every heading a stable `id` so `/a/{id}#{slug}` links scroll to the
+/// section. Slug text is the heading's visible text: emphasis, links and code
+/// contribute their text; images contribute nothing (DOM `textContent` on the
+/// Laravel side has no image alt text either).
+fn add_heading_ids<'a>(events: Vec<Event<'a>>) -> Vec<Event<'a>> {
+    let mut out = Vec::with_capacity(events.len());
+    let mut used: HashSet<String> = HashSet::new();
+    let mut heading: Option<HeadingCapture> = None;
+    for event in events {
+        if heading.is_none() {
+            match event {
+                Event::Start(Tag::Heading {
+                    level,
+                    id: _,
+                    classes,
+                    attrs,
+                }) => {
+                    heading = Some(HeadingCapture {
+                        level,
+                        classes,
+                        attrs,
+                        text: String::new(),
+                        inner: Vec::new(),
+                        image_depth: 0,
+                    });
+                }
+                other => out.push(other),
+            }
+            continue;
+        }
+        if matches!(event, Event::End(TagEnd::Heading(_))) {
+            let capture = heading.take().expect("heading capture");
+            let base = slugify_heading(&capture.text);
+            let id = unique_heading_id(&base, &mut used);
+            out.push(Event::Start(Tag::Heading {
+                level: capture.level,
+                id: Some(CowStr::Boxed(id.into_boxed_str())),
+                classes: capture.classes,
+                attrs: capture.attrs,
+            }));
+            out.extend(capture.inner);
+            out.push(Event::End(TagEnd::Heading(capture.level)));
+            continue;
+        }
+        let capture = heading.as_mut().expect("heading capture");
+        match event {
+            Event::Start(Tag::Image { .. }) => {
+                capture.image_depth += 1;
+                capture.inner.push(event);
+            }
+            Event::End(TagEnd::Image) => {
+                capture.image_depth = capture.image_depth.saturating_sub(1);
+                capture.inner.push(event);
+            }
+            Event::Text(text) => {
+                if capture.image_depth == 0 {
+                    capture.text.push_str(&text);
+                }
+                capture.inner.push(Event::Text(text));
+            }
+            Event::Code(code) => {
+                if capture.image_depth == 0 {
+                    capture.text.push_str(&code);
+                }
+                capture.inner.push(Event::Code(code));
+            }
+            Event::SoftBreak => {
+                if capture.image_depth == 0 {
+                    capture.text.push('\n');
+                }
+                capture.inner.push(Event::SoftBreak);
+            }
+            other => capture.inner.push(other),
+        }
+    }
+    // Unclosed heading (cannot happen from the parser): flush without an id.
+    if let Some(capture) = heading.take() {
+        out.push(Event::Start(Tag::Heading {
+            level: capture.level,
+            id: None,
+            classes: capture.classes,
+            attrs: capture.attrs,
+        }));
+        out.extend(capture.inner);
+    }
+    out
+}
+
 /// Convert markdown source to a self-contained HTML document.
+///
+/// Every heading carries a stable `id` (see `add_heading_ids`).
 pub(crate) fn render_markdown_document(markdown: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(markdown, options);
+    let events: Vec<Event<'_>> = sanitize_markdown_events(parser).collect();
     let mut body = String::new();
-    html::push_html(&mut body, sanitize_markdown_events(parser));
+    html::push_html(&mut body, add_heading_ids(events).into_iter());
     format!(
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Markdown</title>\n<style>{MARKDOWN_CSS}</style>\n</head>\n<body>\n{body}\n</body>\n</html>"
     )
@@ -220,7 +360,7 @@ mod tests {
     #[test]
     fn renders_heading_and_table() {
         let html = render_markdown_document("# Hello\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n");
-        assert!(html.contains("<h1>Hello</h1>"));
+        assert!(html.contains("<h1 id=\"hello\">Hello</h1>"));
         assert!(html.contains("<table>"));
         assert!(html.contains("<td>1</td>"));
         assert!(html.starts_with("<!doctype html>"));
@@ -236,7 +376,7 @@ mod tests {
         );
         assert_eq!(ctype, "text/html; charset=utf-8");
         let html = String::from_utf8(body).unwrap();
-        assert!(html.contains("<h1>Title</h1>"));
+        assert!(html.contains("<h1 id=\"title\">Title</h1>"));
         assert!(!html.contains("application/octet-stream"));
     }
 
@@ -251,7 +391,7 @@ mod tests {
         assert_eq!(ctype, "text/html; charset=utf-8");
         assert!(!ctype.contains("octet-stream"));
         let html = String::from_utf8(body).unwrap();
-        assert!(html.contains("<h1>Quarterly</h1>"));
+        assert!(html.contains("<h1 id=\"quarterly\">Quarterly</h1>"));
         assert!(html.contains("<table>"));
         assert!(html.contains("<td>West</td>"));
     }
@@ -294,7 +434,7 @@ mod tests {
         let html = render_markdown_document(
             "# Safe\n\n<script>alert(1)</script>\n\nHello <img src=x onerror=alert(1)>\n\n<div onclick=\"evil()\">x</div>\n",
         );
-        assert!(html.contains("<h1>Safe</h1>"));
+        assert!(html.contains("<h1 id=\"safe\">Safe</h1>"));
         assert!(html.contains("Hello"));
         assert!(
             !html.contains("<script>"),
@@ -332,7 +472,7 @@ mod tests {
         let html = render_markdown_document(
             "# Links\n\n[bad](javascript:alert(1))\n\n[ok](https://artfct.dev)\n\n![x](data:image/png;base64,AAAA)\n\n![y](https://artfct.dev/og-image.svg)\n\n[html](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)\n",
         );
-        assert!(html.contains("<h1>Links</h1>"), "{html}");
+        assert!(html.contains("<h1 id=\"links\">Links</h1>"), "{html}");
         assert!(
             !html.contains("javascript:"),
             "javascript destinations must be emptied: {html}"
@@ -356,6 +496,36 @@ mod tests {
     }
 
     #[test]
+    fn heading_ids_match_shared_fixture() {
+        // tests/Fixtures/markdown-heading-ids.md is the cross-language
+        // contract: tests/Unit/MarkdownHeadingIdsTest.php asserts the same ids
+        // from Laravel. If the slug shape changes, update both sides together.
+        let source = include_str!("../../tests/Fixtures/markdown-heading-ids.md");
+        let html = render_markdown_document(source);
+        for expected in [
+            "<h1 id=\"hello-world\">Hello World</h1>",
+            "<h2 id=\"7-dated-cut-marketplace-launch\">7. Dated cut: marketplace launch</h2>",
+            "<h2 id=\"hello-world-2\">Hello World</h2>",
+            "<h3 id=\"fix-the-bold-bit\">Fix the <strong>bold</strong> bit</h3>",
+            "<h2 id=\"see-the-docs\">",
+            "<h2 id=\"use-artfct-deploy-today\">",
+            "<h2 id=\"caf-cr-me\">",
+            "<h2 id=\"section\">!!!</h2>",
+            "<h1 id=\"hello-world-3\">Hello World</h1>",
+        ] {
+            assert!(html.contains(expected), "missing {expected} in:\n{html}");
+        }
+    }
+
+    #[test]
+    fn heading_ids_dedupe_and_fall_back() {
+        let html = render_markdown_document("# Dup\n\n## Dup\n\n## !!!\n");
+        assert!(html.contains("<h1 id=\"dup\">Dup</h1>"), "{html}");
+        assert!(html.contains("<h2 id=\"dup-2\">Dup</h2>"), "{html}");
+        assert!(html.contains("<h2 id=\"section\">!!!</h2>"), "{html}");
+    }
+
+    #[test]
     fn browser_fixture_matches_worker_renderer() {
         // tests/Browser/Rub515BrowserTest.php serves this fixture. If the
         // Worker renderer changes, regenerate with UPDATE_RUB515_FIXTURE=1 —
@@ -374,7 +544,7 @@ mod tests {
             rendered, expected,
             "regenerate tests/Fixtures/rub515-markdown-rendered.html with UPDATE_RUB515_FIXTURE=1"
         );
-        assert!(rendered.contains("<h1>Hello</h1>"));
+        assert!(rendered.contains("<h1 id=\"hello\">Hello</h1>"));
         assert!(rendered.contains("<table>"));
         assert!(!rendered.contains("application/octet-stream"));
 

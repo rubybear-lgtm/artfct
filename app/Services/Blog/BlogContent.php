@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Blog;
 
+use App\Services\HeadingSlug;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -310,15 +311,7 @@ final class BlogContent
 
             // Two headings that slugify the same would give the review document
             // one anchor for two entries in its own table of contents.
-            $id = self::anchor($heading);
-            $suffix = 2;
-
-            while (isset($used[$id])) {
-                $id = self::anchor($heading).'-'.$suffix;
-                $suffix++;
-            }
-
-            $used[$id] = true;
+            $id = HeadingSlug::unique(HeadingSlug::slugify($heading), $used);
 
             $parsed[] = new BlogSection(
                 heading: $heading,
@@ -330,14 +323,6 @@ final class BlogContent
         }
 
         return [trim(implode("\n", $lead)), $parsed];
-    }
-
-    private static function anchor(string $heading): string
-    {
-        $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($heading)) ?? '';
-        $slug = trim($slug, '-');
-
-        return $slug === '' ? 'section' : $slug;
     }
 
     private static function name(string $path): string
