@@ -654,6 +654,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $token->assertOk()
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonPath('organization', $team->slug)
+        ->assertJsonPath('organization_name', $team->name)
         ->assertJsonPath('scope', 'artifacts:read artifacts:deploy')
         ->assertJsonStructure(['access_token', 'expires_in', 'refresh_token', 'refresh_token_expires_in']);
     expect(OrgToken::query()->where('team_id', $team->id)->count())->toBe(1);
@@ -675,6 +676,7 @@ test('approves a PKCE request and redeems its code once', function () {
     $refreshed->assertOk()
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonPath('organization', $team->slug)
+        ->assertJsonPath('organization_name', $team->name)
         ->assertJsonPath('scope', 'artifacts:read artifacts:deploy')
         ->assertJsonStructure(['access_token', 'refresh_token', 'expires_in']);
     expect(OAuthRefreshToken::query()->where('team_id', $team->id)->count())->toBe(2)
