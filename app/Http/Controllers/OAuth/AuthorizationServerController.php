@@ -1160,16 +1160,14 @@ final class AuthorizationServerController extends Controller
      */
     private function scopesFromClaims(array $claims, OrgToken $orgToken): array
     {
-        if (isset($claims['scope']) && is_string($claims['scope']) && $claims['scope'] !== '') {
+        if (isset($claims['scope']) && $claims['scope'] !== '') {
             return array_values(array_filter(explode(' ', $claims['scope'])));
         }
 
-        $stored = $orgToken->scopes;
-        if (is_array($stored)) {
-            return array_values(array_filter($stored, static fn (mixed $scope): bool => is_string($scope) && $scope !== ''));
-        }
-
-        return [];
+        return array_values(array_filter(
+            $orgToken->scopes ?? [],
+            static fn (string $scope): bool => $scope !== '',
+        ));
     }
 
     private function userinfoTokenError(): JsonResponse

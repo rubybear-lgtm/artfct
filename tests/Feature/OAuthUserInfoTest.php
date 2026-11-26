@@ -4,6 +4,7 @@ use App\Enums\McpScope;
 use App\Enums\OAuthIdentityScope;
 use App\Enums\OrgTokenKind;
 use App\Enums\TeamRole;
+use App\Mcp\Servers\ArtfctServer;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
@@ -12,6 +13,7 @@ use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\PlanGateException;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\Fluent\AssertableJson;
+use Laravel\Mcp\Server\Transport\FakeTransporter;
 
 /**
  * @param  list<string>  $scopes
@@ -340,35 +342,47 @@ test('plan_gate_message_has_no_plan_name_or_upgrade_text', function () {
 });
 
 test('mcp_surface_contains_no_pricing_or_plan_wording', function () {
-    $pattern = '/\b(upgrade|pricing|checkout|plans?|paid)\b/i';
+    // Spec 22 DoD: ChatGPT-reachable tool/consent/error surfaces must not
+    // carry plan/upgrade/pricing/checkout/paid/billing wording. Error codes
+    // such as plan_upgrade_required are out of scope for this check.
+    $pattern = '/\b(upgrade|pricing|checkout|plans?|paid|billing)\b/i';
     $violations = [];
 
-    foreach (McpScope::cases() as $scope) {
-        if (preg_match($pattern, $scope->label()) === 1) {
-            $violations[] = "McpScope::{$scope->name} label";
+    $flag = static function (string $where, string $text) use ($pattern, &$violations): void {
+        if (preg_match($pattern, $text) === 1) {
+            $violations[] = $where;
         }
+    };
+
+    foreach (McpScope::cases() as $scope) {
+        $flag("McpScope::{$scope->name} label", $scope->label());
     }
 
     foreach (OAuthIdentityScope::cases() as $scope) {
-        if (preg_match($pattern, $scope->label()) === 1) {
-            $violations[] = "OAuthIdentityScope::{$scope->name} label";
-        }
+        $flag("OAuthIdentityScope::{$scope->name} label", $scope->label());
     }
 
-    $planGate = (new PlanGateException('Feature'))->getMessage();
-    if (preg_match($pattern, $planGate) === 1) {
-        $violations[] = 'PlanGateException message';
-    }
+    $flag('PlanGateException message', (new PlanGateException('Feature'))->getMessage());
 
     $publisher = new ReflectionClass(ArtifactPublisher::class);
     $source = (string) file_get_contents($publisher->getFileName());
-    if (preg_match('/quota_exceeded.{0,80}\b(upgrade|pricing|checkout|plans?|paid)\b/is', $source) === 1) {
+    if (preg_match('/quota_exceeded.{0,120}\b(upgrade|pricing|checkout|plans?|paid|billing)\b/is', $source) === 1) {
         $violations[] = 'ArtifactPublisher quota_exceeded message';
     }
 
-    $getUsage = (string) file_get_contents(app_path('Mcp/Tools/GetUsageTool.php'));
-    if (preg_match($pattern, $getUsage) === 1) {
-        $violations[] = 'GetUsageTool description';
+    $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
+    $server->start();
+
+    foreach ($server->createContext()->tools() as $tool) {
+        $payload = $tool->toArray();
+        $name = $tool->name();
+        $flag("tool {$name} description", (string) ($payload['description'] ?? ''));
+
+        foreach ($payload['inputSchema']['properties'] ?? [] as $property => $schema) {
+            if (isset($schema['description']) && is_string($schema['description'])) {
+                $flag("tool {$name} schema.{$property}", $schema['description']);
+            }
+        }
     }
 
     expect($violations)->toBe([]);
