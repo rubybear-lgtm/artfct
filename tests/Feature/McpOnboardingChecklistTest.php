@@ -215,7 +215,7 @@ test('server-seen milestones come from this person\'s own successful calls in th
         ->and($milestones['first_search'])->toBe(['done' => false, 'at' => null]);
 });
 
-test('with no host there are no steps to track yet', function () {
+test('with the unknown host there are no steps to track yet', function () {
     [, , $token] = newcomer();
 
     $onboarding = onboardingFor($token, 'unknown');

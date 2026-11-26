@@ -74,8 +74,8 @@ final class GetGuidanceTool extends Tool
         }
 
         // Where this person left off, so a set-up that stopped resumes and a
-        // second run does not repeat finished steps. Only for a host the
-        // playbook knows: with no host there are no steps to track yet.
+        // second run does not repeat finished steps. With no host the default
+        // `portable` steps are tracked; only `unknown` (hybrid) has none yet.
         if ($validated['topic'] === 'onboarding' && ($guidance['mode'] ?? 'hybrid') !== 'hybrid') {
             $actorId = McpContext::actor();
             $actor = ctype_digit($actorId) ? User::query()->find((int) $actorId) : null;
