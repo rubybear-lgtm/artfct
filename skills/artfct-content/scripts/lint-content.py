@@ -108,6 +108,17 @@ CONTRACTIONS = re.compile(
     r"what's|you're|we're|they're|i'm|let's|we've|you've|they've|we'll|you'll|"
     r"they'll|i'll|i've|i'd|we'd|you'd|they'd)\b"
 )
+# artfct-human is an engineer writing in the first person (references/voice-human.md).
+# The structural rules borrowed from the enterprise corpus do not apply to it, so
+# what it gets checked for instead is the phrasing that gives a launch away.
+LAUNCH_SPEAK = [
+    "excited to announce", "thrilled to", "we're proud", "game-changing", "unlock",
+    "in this post", "in conclusion", "key takeaways", "without further ado",
+]
+
+# A human-voice post can be short; the lower bounds are about half the corpus's.
+HUMAN_WORDS = {"feature-showcase": (600, 1400), "explainer": (1000, 3000)}
+
 IMPERATIVE = re.compile(r"\byou (should|can|could|need to|will want|might want|may want|have to)\b")
 
 UNVERIFIED_TOOLS = ["chatgpt", "claude app", "cursor", "vs code", "copilot chat", "windsurf", "zed"]
@@ -278,13 +289,13 @@ def _markdown(doc: Doc, raw: str) -> None:
     doc.headings = [
         (lvl, t) for lvl, t in doc.headings
         if not re.match(
-            r"^(questions?|what this (does not|is not)|limits|out of scope)\b",
+            r"^(questions?|what this (does not|is not)|what (doesn't|does not) work|limits|out of scope)\b",
             t.strip(), re.I,
         )
     ]
     doc.faq_count = len(re.findall(r"^#{2,4}\s+.*\?$", body, re.M))
     doc.has_limits = bool(re.search(
-        r"^#{2,4}\s+.*(does not|what this (is not|does not)|limits|out of scope)",
+        r"^#{2,4}\s+.*(does not|doesn't work|what this (is not|does not)|limits|out of scope)",
         body, re.M | re.I,
     ))
     doc.has_updated = bool(re.search(r"last updated", raw, re.I))
@@ -362,12 +373,19 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
                 warn("W14", 'contraction "' + hit.group(0) + '" in a glean-formal page; the register spells it out', s)
             if IMPERATIVE.search(low):
                 warn("W15", "second-person imperative in a glean-formal page", s)
+        if register == "artfct-human":
+            for phrase in LAUNCH_SPEAK:
+                if phrase in low:
+                    warn("W16", 'launch-speak "' + phrase + '" in a human-voice page', s)
 
     lead_words = len(doc.lead.split())
     if doc.lead:
         if register == "artfct-terse":
             if lead_words > 30:
                 warn("W1", "terse lead is " + str(lead_words) + " words; keep it under 30", doc.lead)
+        elif register == "artfct-human":
+            if lead_words > 90:
+                warn("W1", "lead is " + str(lead_words) + " words; a human-voice opening lands within 90", doc.lead)
         elif not (35 <= lead_words <= 80):
             warn("W1", "lead is " + str(lead_words) + " words; the corpus runs 40-70", doc.lead)
         if re.match(r"^in this (article|post|guide|piece)", doc.lead.strip(), re.I):
@@ -384,11 +402,11 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
             1 for h in h2s
             if h.strip().endswith("?") or h.strip().lower().startswith(QUESTION_STARTS)
         )
-        if surface != "programmatic" and shaped / len(h2s) < 0.4:
+        if surface != "programmatic" and register != "artfct-human" and shaped / len(h2s) < 0.4:
             warn("W4", "only " + str(shaped) + "/" + str(len(h2s)) + " H2s are question-shaped; the corpus mean is 5.9 per page", "")
     if surface != "programmatic" and not doc.has_updated:
         warn("W5", 'no "Last updated" line; 43-46% of the corpus carries one', "")
-    if surface in ("comparison", "explainer") and doc.faq_count < 4:
+    if surface in ("comparison", "explainer") and register != "artfct-human" and doc.faq_count < 4:
         warn("W6", str(doc.faq_count) + " FAQ entries; " + surface + " pages always carry an FAQ", "")
     if surface == "feature-showcase" and not doc.has_limits:
         warn("W7", "no limits section; naming the constraint is the strongest trust signal on the page", "")
@@ -400,8 +418,9 @@ def lint(doc: Doc, surface: str, register: str) -> dict:
         mean = sum(len(s.split()) for s in sents) / len(sents)
         if mean > 25:
             warn("W8", "mean sentence length " + str(round(mean, 1)) + " words; the corpus runs 19.8", "")
-    if surface in SURFACE_WORDS and words:
-        lo, hi = SURFACE_WORDS[surface]
+    word_bands = HUMAN_WORDS if register == "artfct-human" and surface in HUMAN_WORDS else SURFACE_WORDS
+    if surface in word_bands and words:
+        lo, hi = word_bands[surface]
         if not (lo <= words <= hi):
             warn("W13", str(words) + " words; " + surface + " runs " + str(lo) + "-" + str(hi), "")
     if doc.body_links < 3 and surface != "programmatic":
@@ -457,7 +476,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Lint an artfct-content draft.")
     ap.add_argument("draft")
     ap.add_argument("--surface", choices=SURFACES)
-    ap.add_argument("--register", choices=("glean-formal", "artfct-terse"))
+    ap.add_argument("--register", choices=("glean-formal", "artfct-terse", "artfct-human"))
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args()
 

@@ -35,7 +35,7 @@ final class FrontMatter
     public const array SURFACES = ['feature-showcase', 'comparison', 'explainer', 'programmatic'];
 
     /** @var list<string> */
-    public const array REGISTERS = ['glean-formal', 'artfct-terse'];
+    public const array REGISTERS = ['glean-formal', 'artfct-terse', 'artfct-human'];
 
     /**
      * Split a draft into its front matter and its body.

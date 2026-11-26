@@ -6,7 +6,7 @@ date: {{YYYY-MM-DD}}
 tag: {{the badge shown on the blog index}}
 published: false
 surface: {{feature-showcase | comparison | explainer | programmatic}}
-register: {{glean-formal | artfct-terse}}
+register: {{glean-formal | artfct-terse | artfct-human}}
 target: {{the query this page answers}}
 ---
 

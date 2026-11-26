@@ -14,6 +14,8 @@ test('retired marketing shells permanently redirect to a live page', function (s
     ['/signup', '/login?screen_hint=sign-up'],
     ['/app', '/'],
     ['/dashboard', '/'],
+    ['/artfct-pstack', '/blog/artfct-pstack'],
+    ['/artfct-pstack/', '/blog/artfct-pstack'],
 ]);
 
 test('artifact viewer responses tell crawlers not to index them', function () {

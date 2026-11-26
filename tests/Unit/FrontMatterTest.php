@@ -75,7 +75,16 @@ test('it refuses a surface outside the four', function () {
     );
 })->throws(RuntimeException::class, 'unknown surface `blog-post`');
 
-test('it refuses a register outside the two', function () {
+test('it accepts the human register', function () {
+    [$meta] = FrontMatter::split(
+        blogDraftFile(str_replace('register: glean-formal', 'register: artfct-human', blogDraftFront())),
+        '/tmp/draft.md',
+    );
+
+    expect($meta['register'])->toBe('artfct-human');
+});
+
+test('it refuses a register outside the three', function () {
     FrontMatter::split(
         blogDraftFile(str_replace('register: glean-formal', 'register: casual', blogDraftFront())),
         '/tmp/draft.md',

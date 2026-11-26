@@ -6,117 +6,102 @@ date: 2026-11-27
 tag: workflows
 published: false
 surface: explainer
-register: glean-formal
+register: artfct-human
 target: pstack verification skill
 ---
 
-A pstack verification skill is a project skill that tells any agent how to launch, drive and check an application, together with a feature map of what the application does. It is one of three things a pstack run leaves behind, alongside a decision log and a folder of evidence, and most of that trail is written to local paths that a teammate on another agent will never see unless someone shares it on purpose.
+Run a pstack verification and you end up with three things: a decision log, a verification skill with a feature map, and a pile of evidence. All three are good. Most of them are on your machine, in folders a teammate's agent will never open unless somebody shares them on purpose.
 
-This guide maps where each piece lives in Cursor and in Claude Code, what the official docs say about committing it, and how to get the trail in front of the rest of a team.
+This is a map of where each one goes in Cursor and Claude Code, what the official docs say about committing it, and how to get it in front of the rest of your team.
 
-## Why does pstack produce so much proof?
+## Why pstack makes so much proof
 
-Because the proof is the point. In [All Code Is Slop (Except Mine)](https://www.youtube.com/watch?v=O_zcc6Xl12g), Lauren Tan argues that once agents write most of the code, human review moves away from reading every line and toward looking at what the agent can show: screenshots, recordings, diagrams of state, and in some cases formal proofs. [pstack](https://github.com/cursor/plugins/tree/main/pstack) is the working version of that idea. Its playbooks reproduce before they fix, measure before they claim, and keep a written account of every decision.
+Because proof is the whole idea. [pstack](https://github.com/cursor/plugins/tree/main/pstack) is Lauren Tan's skill pack for agents that have to show their work: its playbooks reproduce before they fix, measure before they claim, and write down every decision. (Lauren's AI Engineer talk, [All Code Is Slop (Except Mine)](https://www.youtube.com/watch?v=O_zcc6Xl12g), is the best explanation of why.)
 
-The talk explains why those artifacts matter. It does not say where the files should live. The official pstack docs do, and that is what the rest of this page covers.
+What pstack doesn't try to answer is where all that proof should live for a team. The docs answer where it lands by default, which is what the rest of this post covers.
 
-## What does a pstack run leave behind?
+## The decision log
 
-The official docs name three kinds of artifact:
+`/show-me-your-work` writes a tab-separated file, one row per decision, with the columns `ts`, `phase`, `decision`, `why`, `evidence` and `result`. The evidence cell is always a pointer: a commit, a pull request number, a `file:line`, or a path to a screenshot or trace. Never a paragraph.
 
-- **The decision log.** `/show-me-your-work` keeps a running table of what was decided, why, and what evidence supports it.
-- **The verification skill and its feature map.** `/create-verification-skill` writes a skill that tells any agent how to work with the application, plus a map of what the application does and what result proves each feature works.
-- **The evidence.** Screenshots, recordings and traces, saved wherever the verification skill says they go.
+It lives at `decisions.tsv` in the work directory, or `.audit/<task-slug>.tsv` when several efforts run at once. By default it's a working file and stays out of git. The skill says to commit it only when the work is big enough that a reviewer needs the trail to trust the result.
 
-Each has its own default location and its own answer to "should this be committed?" The sections below take them one at a time.
+So if nobody committed it, your teammate doesn't have it. Same repo or not.
 
-## Where does the decision log live?
+## The verification skill and its feature map
 
-`/show-me-your-work` writes a tab-separated file with one row per decision. Its columns are `ts`, `phase`, `decision`, `why`, `evidence` and `result`. The evidence cell is always a pointer, such as a commit, a pull request number, a `file:line` reference or a path to a screenshot or trace, never a paragraph.
+`/create-verification-skill` writes a folder called `verify-<app>` into your project's skills directory. Inside: instructions for any agent, with Launch, Doctor, Drive, Evidence and Cleanup sections, a Helpers section for any scripts it ships, and a feature map under `features/` listing what the app does and what result proves each feature works.
 
-The skill is specific about location. The log lives at `decisions.tsv` in the work directory, or at `.audit/<task-slug>.tsv` when several efforts run at once. By default it is a working file and stays out of git. The skill says to commit it only when the work is ambitious enough that a reviewer needs the trail to trust the result.
+The official *Verify and ship* guide is clear that this one should be shared. It calls the verification skill infrastructure, not a one-off, and says to commit it so every person and every agent drives the app the same way. I agree. I added one to Artfct's repo this week, and it went straight into git.
 
-For a teammate, the consequence is simple. If the log was not committed, they do not have it, even when they work in the same repository.
+Cleanup tears down running instances and scratch state but never touches evidence. The proof has to survive in the location the skill names.
 
-## What is a pstack verification skill, and where does it go?
+Two related skills write their own artifacts. `/create-formal-verification-skill` writes another project skill that proves a property tests rarely reach and records which code each check covers. `/statechart` draws a diagram of what the user sees, generated from a formal model, so a reviewer can line the intended states up against a recording of the real interface.
 
-The official guide page *Verify and ship* and the `/create-verification-skill` skill describe the second artifact. The generator writes a folder named `verify-<app>` inside the project's skills directory. Inside it are instructions with Launch, Doctor, Drive, Evidence and Cleanup sections, a Helpers section for any script it ships, and a feature map under `features/` that lists what the application does and what result proves each feature works.
+## The evidence
 
-The official guide is clear that this one should be shared. It describes the verification skill as infrastructure, not a one-off, and says to commit it so every person and every agent on the team drives the application the same way.
+Screenshots, recordings and traces go wherever the generated verification skill says. That's chosen per project, which is both the nice part and the trap. Point it at a folder in the repo, or an agreed shared location, and anyone can open the evidence. Leave it in a temp folder and it exists on one laptop.
 
-The Cleanup section removes running instances and scratch state, but it never removes evidence. Proof has to survive the teardown, in the location the skill names.
+The decision log refers to evidence by path. When the path only resolves on one machine, the log still reads fine, and every pointer in it leads nowhere for everyone else.
 
-Two related skills write artifacts of their own:
+## Cursor vs Claude Code paths
 
-- **`/create-formal-verification-skill`** writes another project skill that proves a property tests rarely reach, and records which code each check covers.
-- **`/statechart`** draws a diagram of what the user sees, generated from a formal model, so a reviewer can compare the intended states with a recording of the real interface.
+Skill paths change; the rest doesn't. The [Claude Code adapter](https://github.com/cursor/plugins/blob/main/pstack/docs/harness/claude-code.md) maps Cursor's folders to Claude Code's:
 
-## Where do screenshots, recordings and traces go?
-
-Wherever the generated verification skill names. That location is chosen per project, which is both the strength and the risk. A team that points it at a folder in the repository, or at an agreed shared location, gets evidence anyone can open. A team that leaves it in a temporary folder gets evidence that exists on one laptop.
-
-The decision log refers to evidence by path. When the path points somewhere only one machine can reach, the log still reads correctly, and the pointer leads nowhere for everyone else.
-
-## Do the paths change in Claude Code?
-
-Skill paths do. Official pstack also runs in Claude Code, and its [Claude Code adapter](https://github.com/cursor/plugins/blob/main/pstack/docs/harness/claude-code.md) maps Cursor's folders to Claude Code's. The full picture:
-
-| Artifact | In Cursor | In Claude Code | Shared by default? |
+| What | Cursor | Claude Code | Shared by default? |
 | --- | --- | --- | --- |
 | Decision log | `decisions.tsv` or `.audit/<task-slug>.tsv` in the work directory | Same | No, kept out of git |
 | Verification skill and feature map | `.cursor/skills/verify-<app>/` | `.claude/skills/verify-<app>/` | Only if committed |
-| Evidence | Where the verification skill names | Same | Only if that location is shared |
+| Evidence | Wherever the verification skill says | Same | Only if that location is shared |
 | Transcripts used by `/recall` | `~/.cursor/projects/<slug>/agent-transcripts/` | `~/.claude/projects/<slug>/` | No, local to one machine |
 
-If the team is not on Cursor at all, [using pstack without Cursor](https://artfct.dev/blog/pstack-without-cursor) covers the official Claude Code path and the community ports for Codex, OpenCode, Copilot and OMP.
+If you're not on Cursor at all, I covered the official Claude Code path and the community ports for Codex, OpenCode, Copilot and OMP in [using pstack without Cursor](https://artfct.dev/blog/pstack-without-cursor).
 
-## Why can a teammate on another agent not see any of it?
+## Why your teammate can't see any of it
 
-None of this is hidden. It is spread across places that only some tools look at.
+None of this is hidden. It's just spread across places only some tools look.
 
-Read the table from a teammate's seat. A decision log is usually kept out of git. A verification skill in `.cursor/skills/` is invisible to a tool that only reads `.claude/skills/`, and the reverse is also true. Evidence is a path, sometimes to a file on one laptop. A teammate on Codex, OpenCode or Copilot will not read Cursor's transcript folders at all.
+Read that table from a teammate's chair. The log is usually out of git. A verification skill in `.cursor/skills/` is invisible to a tool that only reads `.claude/skills/`, and the other way round. Evidence is a path, sometimes to a file on one laptop. And nobody on Codex, OpenCode or Copilot is reading Cursor's transcript folders.
 
-Here is how that plays out. One engineer runs a bug fix in Cursor. The agent reproduces the bug, verifies the fix with a recording, and logs its reasoning. The next day a second engineer asks Claude Code about a related bug. Their agent cannot read the first agent's log, does not look in `.cursor/skills/`, and has no way to reach the recording. It starts the investigation again from nothing, and may reach a slightly different conclusion. Nobody did anything wrong. The proof was simply in places the second agent does not look.
+Here's how it plays out. One engineer runs a bug fix in Cursor; the agent reproduces it, verifies the fix with a recording and logs its reasoning. Next day a second engineer asks Claude Code about a related bug. Their agent can't read the log, doesn't look in `.cursor/skills/`, can't reach the recording, and starts the investigation over. Maybe it lands on a slightly different answer. Nobody did anything wrong. The proof was just somewhere the second agent doesn't look.
 
-## How can a team share the trail with plain git?
+## Sharing it with plain git
 
-The official docs already point most of the way:
+The official docs get you most of the way:
 
-1. **Commit the verification skill.** The official guide says so, and it is the artifact every agent needs to drive the application the same way. On a team that uses both Cursor and Claude Code, decide which skills folder is canonical, or keep both in step.
-2. **Commit the decision log when a reviewer needs it.** GitHub renders a committed TSV file as a table, which makes the trail easy to read inside a pull request.
-3. **Put evidence somewhere shareable.** Point the verification skill at a folder in the repository or an agreed team location, not a temporary folder.
-4. **Do not assume another tool reads your folders.** A different agent will not look in `.cursor/skills/` or in Cursor's transcript folders unless it is told to.
+1. **Commit the verification skill.** The docs say so, and it's the piece every agent needs. If your team uses both Cursor and Claude Code, pick which skills folder is canonical, or keep both in step.
+2. **Commit the decision log when a reviewer needs it.** GitHub renders a committed TSV as a table, so the trail reads fine inside a pull request.
+3. **Point evidence somewhere shared.** A folder in the repo or an agreed team location, never a temp folder.
+4. **Don't assume another tool reads your folders.** It won't look in `.cursor/skills/` or Cursor's transcripts unless you tell it to.
 
-That covers a lot. It still leaves the trail in a repository, readable by people who know where to look, and only after someone remembers to commit it.
+That works. It still leaves the trail in a repo, readable by people who know where to look, after someone remembers to commit it.
 
-## Is there a way to share it without remembering to commit?
+## Sharing it without remembering to commit
 
-That is the gap [artfct-pstack](https://artfct.dev/blog/artfct-pstack) fills. It is a plugin that carries pstack's skills and adds `/publish-evidence`, which collects the pieces this guide has mapped and publishes them as one bundle to the team's Artfct library:
+That gap is why we built [artfct-pstack](https://artfct.dev/blog/artfct-pstack). It's a plugin that carries pstack's skills and adds `/publish-evidence`, which collects everything above and publishes it as one bundle to your team's Artfct library:
 
-- **It finds the trail.** Decision logs at `decisions.tsv` or `.audit/<task-slug>.tsv`, feature maps in `verify-*` folders under `.cursor/skills/`, `.claude/skills/` and `.omp/skills/`, and the evidence files named in the log's evidence column.
-- **It strips secrets first.** A filename denylist and a scan for token patterns run before anything leaves the machine, and `AGENTS.md` and `CLAUDE.md` are never published.
-- **It publishes once and updates in place.** The bundle is titled `[pstack] <task-slug> evidence`, shared with the team, never public unless someone asks, and re-runs add a new version at the same link.
+- **It finds the trail:** decision logs at `decisions.tsv` or `.audit/<task-slug>.tsv`, feature maps in `verify-*` folders under `.cursor/skills/`, `.claude/skills/` and `.omp/skills/`, and the evidence files named in the log.
+- **It strips secrets first:** a filename denylist and a scan for token patterns run before anything leaves the machine, and `AGENTS.md` and `CLAUDE.md` never go.
+- **It updates in place:** one bundle per task, titled `[pstack] <task-slug> evidence`, shared with your team, never public unless you ask. Re-runs add a new version at the same link.
 
-Verification and show-me-your-work runs publish at the end on their own while Artfct is connected. A teammate in any connected tool can then search the library and open the bundle, instead of asking which laptop holds the screenshot. The add-on is independent, not official pstack, and it is not endorsed by Cursor or Lauren Tan. The launch post has the setup for each tool.
+Verification and show-me-your-work runs publish on their own at the end while Artfct is connected. Then a teammate in any tool connected to the workspace can search the library and open the bundle, instead of asking whose laptop has the screenshot. Connecting is a plugin install, or by hand with the [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp) guides. The launch post has the rest.
+
+*pstack is MIT licensed, copyright 2026 Lauren Tan (poteto), and lives at [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack). artfct-pstack is an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan. Checked against the official pstack docs, the artfct-pstack README and its publish-evidence skill on 26 November 2026.*
 
 ## Questions
 
-### Where is the pstack decision log, and is it in git by default?
+### Where is the pstack decision log, and is it in git?
 
-It is at `decisions.tsv` in the work directory, or `.audit/<task-slug>.tsv` when several efforts run at once. It is not in git by default. The skill says to commit it only when a reviewer needs the trail to trust the result.
+`decisions.tsv` in the work directory, or `.audit/<task-slug>.tsv` when several efforts run at once. Not in git by default; commit it when a reviewer needs the trail.
 
-### Where does /create-verification-skill write files, and should the skill be committed?
+### Where does /create-verification-skill write, and should I commit it?
 
-It writes `.cursor/skills/verify-<app>/` in Cursor or `.claude/skills/verify-<app>/` in Claude Code, with a feature map under `features/`. Yes, the official guide says to commit it so every person and every agent drives the application the same way.
+`.cursor/skills/verify-<app>/` in Cursor or `.claude/skills/verify-<app>/` in Claude Code, with a feature map under `features/`. Yes, commit it. The official guide says so.
 
-### Where do screenshots, recordings and traces go?
+### Where do screenshots and recordings go?
 
-To the location the generated verification skill names. Cleanup leaves them in place. That location needs to be shared if a teammate is going to see them.
+Wherever the generated verification skill names. Cleanup leaves them alone. Make sure that location is shared if a teammate needs them.
 
 ### Can a teammate on Codex, OpenCode or Copilot see my pstack evidence automatically?
 
-No. Not unless the files are shared on purpose, by committing them, putting them in a shared location or publishing them somewhere the teammate's tool can read.
-
-### Did Lauren Tan's talk say where these files should be stored?
-
-No. The talk explains why verification artifacts matter. The official pstack docs specify the paths.
+No, not unless it's been committed, put somewhere shared, or published somewhere their tool can read.

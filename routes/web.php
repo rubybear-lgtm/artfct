@@ -90,6 +90,9 @@ Route::get('/free', fn () => redirect('/', 301));
 Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));
 Route::get('/app', fn () => redirect('/', 301));
 Route::get('/dashboard', fn () => redirect('/', 301));
+// People searching for the add-on by name type the product path; the launch
+// post is the page that answers it.
+Route::get('/artfct-pstack', fn () => redirect('/blog/artfct-pstack', 301));
 
 // ── artifact viewer (RUB-438 / RUB-439) ──────────────────────────────────────
 //
