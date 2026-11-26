@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
+- RUB-606 / Spec 22 AC-O1: hosted OAuth advertises `openid` and `email` (outside `McpScope`), serves `GET /oauth/userinfo` (`sub`, optional `email`, `email_verified` from `users.email_verified_at`), and serves `GET /.well-known/openai-apps-challenge` from `OPENAI_APPS_CHALLENGE` (404 when unset).
+
 - A `portable` onboarding host (RUB-596), the set-up that works in any app: check the connection, read the usage rules and ask the save question, with no project file, memory note or settings change. It is now the default when `get_guidance` is called for `onboarding` without a host, and the `unknown` playbook falls back to it instead of asking the person. The onboard skill names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`, so Codex, Hermes, OpenClaw and other Agent Plugins clients no longer get the Claude app's steps. Guidance version 1.14.0.
 - Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
 
@@ -24,6 +26,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
 
 ### Changed
+
+- RUB-606 / Spec 22 AC-O1: ChatGPT-reachable plan/upgrade copy reworded. `PlanGateException` no longer names a plan or says Upgrade; `ArtifactPublisher` quota message and `usage:read` consent label drop "plan limits"; `get_usage` and ChatGPT `/connect` copy drop plan/paid wording. Machine codes `plan_upgrade_required`, `quota_exceeded` and action `upgrade_plan` are unchanged.
 
 - MCP and OAuth responses that return `organization` (`get_connection`, `deploy_artifact`, `get_usage`, `pull_template` and both token responses) now also return `organization_name`, the team's current display name. `organization` is still the team's permanent ID, which a rename does not change, so a renamed team no longer looks like a different one to an agent. The onboard skill and every served onboarding playbook report the workspace by `organization_name`, the server instructions treat team names as untrusted data, and the live MCP smoke asserts the field. Guidance version 1.15.0.
 

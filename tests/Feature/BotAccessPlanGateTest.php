@@ -153,7 +153,7 @@ test('free_plan_require_bot_access_throws_upgrade_message', function () {
     $team = Team::factory()->create(['plan' => Plan::Free]);
 
     expect(fn () => PlanGate::requireBotAccess($team))
-        ->toThrow(PlanGateException::class, 'Upgrade');
+        ->toThrow(PlanGateException::class, "isn't available for this workspace");
 });
 
 test('pricing_copy_lists_ai_bot_teammates_on_pro_and_team_not_free', function () {

@@ -295,9 +295,9 @@ class AiToolSetup
                 'summary' => 'Add Artfct as a connector so ChatGPT can search and read what your team made in other tools.',
                 'maker' => 'OpenAI',
                 'icon' => 'chatgpt',
-                'intro' => 'ChatGPT adds custom connectors in developer mode, on paid plans. On business plans an administrator may need to allow it first.',
+                'intro' => 'ChatGPT adds custom connectors in developer mode. On a business account an administrator may need to allow it first.',
                 'steps' => [
-                    ['text' => 'In ChatGPT, open Settings, then Apps & Connectors (called Connectors on some plans), then Advanced settings, and turn on Developer mode.'],
+                    ['text' => 'In ChatGPT, open Settings, then Apps & Connectors (or Connectors), then Advanced settings, and turn on Developer mode.'],
                     ['text' => 'Back in Apps & Connectors, select Create. Name it `artfct`, choose OAuth for authentication and paste this address:', 'code' => $url],
                     ['text' => 'Tick the box saying you trust this connector, select Create, then approve the sign-in that opens.'],
                     ['text' => 'In a chat, select the + button, then More, and turn on artfct.'],

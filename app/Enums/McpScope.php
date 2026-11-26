@@ -3,11 +3,11 @@
 namespace App\Enums;
 
 /**
- * The scopes an MCP client can request. This is the server's only scope
- * definition: the authorization server advertises this list, gates role
- * access against it, and renders the consent screen from it, so a scope
- * cannot be added without also declaring the wording and the risk level the
- * user is shown.
+ * The MCP scopes a client can request. The authorization server advertises
+ * these plus the separate {@see OAuthIdentityScope} list, gates role access
+ * against this set for tool grants, and renders consent wording from both.
+ * Identity scopes stay outside this enum so they never enter default JWT
+ * claims or console scope pickers.
  */
 enum McpScope: string
 {
@@ -64,7 +64,7 @@ enum McpScope: string
             self::CommentsWrite => 'Comment on shared work',
             self::CollectionsRead => 'See your team\'s collections',
             self::CollectionsWrite => 'Create collections and add work to them',
-            self::UsageRead => 'See usage and plan limits',
+            self::UsageRead => 'See workspace limits',
             self::DataRead => 'Read the data kept inside your team\'s shared work',
             self::DataWrite => 'Change the data kept inside your team\'s shared work',
         };

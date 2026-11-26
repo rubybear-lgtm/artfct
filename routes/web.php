@@ -9,6 +9,7 @@ use App\Http\Controllers\LandingMediaController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LlmsTextController;
 use App\Http\Controllers\McpServerCardController;
+use App\Http\Controllers\OpenAiAppsChallengeController;
 use App\Http\Controllers\PolisWebhookController;
 use App\Http\Controllers\RobotsController;
 use App\Http\Controllers\SitemapController;
@@ -134,3 +135,5 @@ Route::post('webhooks/polis', PolisWebhookController::class)->name('webhooks.pol
 
 Route::get('.well-known/jwks.json', JwksController::class)->name('jwks');
 Route::get('.well-known/mcp/server-card.json', McpServerCardController::class)->name('mcp.server-card');
+Route::get('.well-known/openai-apps-challenge', OpenAiAppsChallengeController::class)
+    ->name('openai.apps-challenge');

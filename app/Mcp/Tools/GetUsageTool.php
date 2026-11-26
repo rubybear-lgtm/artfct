@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Use when the person asks how much of the plan, quota or indexing is left. Reads the workspace usage, quota limits and current indexing and rendering status. Does not expose billing credentials or payment details.')]
+#[Description('Use when the person asks how much usage or indexing is left. Reads the workspace usage, limits and current indexing and rendering status. Does not expose billing credentials or payment details.')]
 #[Name('get_usage')]
 #[Title('Get usage')]
 #[IsReadOnly]

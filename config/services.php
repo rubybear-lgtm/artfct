@@ -139,4 +139,11 @@ return [
         'staff_organization_id' => env('WORKOS_STAFF_ORGANIZATION_ID'),
     ],
 
+    // OpenAI plugin portal domain verification (Spec 22 / RUB-606). Empty
+    // serves 404 from `/.well-known/openai-apps-challenge`; set per
+    // environment from the portal-issued value at submission time.
+    'openai' => [
+        'apps_challenge' => env('OPENAI_APPS_CHALLENGE'),
+    ],
+
 ];
