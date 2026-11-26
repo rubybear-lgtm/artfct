@@ -704,6 +704,7 @@ test('remote usage returns customer-safe quota and render totals', function () {
         ],
     ])->assertOk()
         ->assertJsonPath('result.structuredContent.organization', $team->slug)
+        ->assertJsonPath('result.structuredContent.organization_name', $team->name)
         ->assertJsonPath('result.structuredContent.period.name', 'current')
         ->assertJsonPath('result.structuredContent.period.starts_at', McpTimestamp::format(now()->startOfMonth()))
         ->assertJsonPath('result.structuredContent.period.resets_at', McpTimestamp::format(now()->startOfMonth()->addMonth()))
@@ -1010,6 +1011,7 @@ test('deploy_artifact publishes a permanent org artifact in two steps', function
         ->assertJsonPath('result.structuredContent.sharing', 'team')
         ->assertJsonPath('result.structuredContent.title', 'Q3 report')
         ->assertJsonPath('result.structuredContent.organization', $team->slug)
+        ->assertJsonPath('result.structuredContent.organization_name', $team->name)
         ->assertJsonMissingPath('result.structuredContent.warnings');
 
     Http::assertSent(fn ($request): bool => $request->method() === 'POST'

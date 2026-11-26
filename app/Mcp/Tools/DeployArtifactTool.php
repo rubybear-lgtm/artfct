@@ -48,7 +48,7 @@ final class DeployArtifactTool extends Tool
         'artfct' => [
             'contractVersion' => '1.0.0',
             'guidanceVersion' => '1.14.0',
-            'toolVersion' => '1.1.0',
+            'toolVersion' => '1.2.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:deploy'],
             'compatibility' => 'stable',
@@ -287,6 +287,7 @@ final class DeployArtifactTool extends Tool
             'created' => $published['created'],
             'title' => $title,
             'organization' => $team->slug,
+            'organization_name' => $team->name,
         ];
 
         if ($warnings !== []) {

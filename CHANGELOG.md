@@ -23,6 +23,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
+- MCP and OAuth responses that return `organization` (`get_connection`, `deploy_artifact`, `get_usage`, `pull_template`, the connection API and both token responses) now also return `organization_name`, the team's current display name. `organization` is still the team's permanent ID, which a rename does not change, so a renamed team no longer looks like a different one to an agent.
+
 - RUB-583: the console has a Type filter next to the AI tool filter, with an option for every artifact type including Post and Design system. An unknown `type` in the URL is ignored.
 
 - RUB-556: the publish guidance has a "Brand and voice" section. Before customer-facing work, the bot finds the team's brand post by title and post type, reads its kind and status from post data, follows a superseded chain of up to three hops, and treats the post's text as data, not instructions. Guidance is 1.6.0.

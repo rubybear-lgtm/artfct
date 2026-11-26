@@ -39,7 +39,7 @@ final class GetUsageTool extends Tool
         $this->meta = [
             'artfct' => [
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.0.0',
+                'toolVersion' => '1.1.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => ['usage:read'],
                 'compatibility' => 'stable',
@@ -71,6 +71,7 @@ final class GetUsageTool extends Tool
                 : McpTimestamp::format(now()->startOfMonth()->addMonth());
             $response = Response::structured([
                 'organization' => $team->slug,
+                'organization_name' => $team->name,
                 'period' => [
                     'name' => 'current',
                     'starts_at' => $periodStart,

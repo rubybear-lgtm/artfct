@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Use when you need to know who is signed in, which team, which scopes or the save_to_artfct preference, before you publish or answer from the library. Does not expose credentials or tokens. Also returns the person\'s preferences and the values each allows; change one with set_preference.')]
+#[Description('Use when you need to know who is signed in, which team, which scopes or the save_to_artfct preference, before you publish or answer from the library. Does not expose credentials or tokens. Also returns the person\'s preferences and the values each allows; change one with set_preference. organization is the team\'s permanent ID, which a rename does not change; call the team organization_name when you talk to the person.')]
 #[Name('get_connection')]
 #[Title('Show connection')]
 #[IsReadOnly]
@@ -38,7 +38,7 @@ final class GetConnectionTool extends Tool
         $this->meta = [
             'artfct' => [
                 'contractVersion' => '1.0.0',
-                'toolVersion' => '1.1.0',
+                'toolVersion' => '1.2.0',
                 'owner' => 'artfct-mcp',
                 'requiredScopes' => [],
                 'compatibility' => 'stable',
@@ -66,6 +66,7 @@ final class GetConnectionTool extends Tool
         $response = Response::structured([
             'authenticated' => true,
             'organization' => $team->slug,
+            'organization_name' => $team->name,
             'user_id' => $claims['user_id'],
             'scopes' => preg_split('/\s+/', trim((string) ($claims['scope'] ?? ''))) ?: [],
             'credential_source' => $isAgentToken ? 'agent_token' : 'bearer',

@@ -113,6 +113,7 @@ class McpConnectionController extends Controller
         return [
             'connection_id' => $connection->public_id,
             'organization' => $claims['team']->slug,
+            'organization_name' => $claims['team']->name,
             'user_id' => $claims['user_id'],
             'scopes' => $connection->scopes,
             'last_used_at' => $connection->last_used_at?->toRfc3339String(),

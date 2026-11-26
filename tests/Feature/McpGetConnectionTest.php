@@ -5,11 +5,11 @@ use App\Models\ArtifactIndexEntry;
 use App\Models\Team;
 
 /**
- * Calls get_connection on the hosted server for a team and returns its search block.
+ * Calls get_connection on the hosted server for a team and returns its structured result.
  *
  * @return array<string, mixed>
  */
-function connectionSearchBlock(Team $team): array
+function connectionResult(Team $team): array
 {
     $token = remoteMcpToken($team);
 
@@ -28,8 +28,26 @@ function connectionSearchBlock(Team $team): array
             'method' => 'tools/call',
             'params' => ['name' => 'get_connection', 'arguments' => []],
         ])->assertOk()
-        ->json('result.structuredContent.search');
+        ->json('result.structuredContent');
 }
+
+/**
+ * @return array<string, mixed>
+ */
+function connectionSearchBlock(Team $team): array
+{
+    return connectionResult($team)['search'];
+}
+
+test('get_connection names a renamed team by its current name and keeps its permanent id', function () {
+    $team = Team::factory()->create(['name' => 'Old Name']);
+
+    $team->update(['name' => 'artfct-dev']);
+
+    expect(connectionResult($team))
+        ->organization->toBe('old-name')
+        ->organization_name->toBe('artfct-dev');
+});
 
 test('get_connection reports search enabled with indexed artifacts', function () {
     config(['indexing.enabled' => true]);

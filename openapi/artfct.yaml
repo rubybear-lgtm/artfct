@@ -1514,10 +1514,11 @@
       "McpConnectionResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["connection_id", "organization", "user_id", "scopes", "last_used_at"],
+        "required": ["connection_id", "organization", "organization_name", "user_id", "scopes", "last_used_at"],
         "properties": {
           "connection_id": { "type": "string", "format": "uuid" },
-          "organization": { "type": "string" },
+          "organization": { "type": "string", "description": "The team's permanent ID (slug). A rename does not change it." },
+          "organization_name": { "type": "string", "description": "The team's current display name." },
           "user_id": { "type": "string" },
           "scopes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
           "last_used_at": { "type": "string", "format": "date-time" }
@@ -1626,13 +1627,14 @@
       },
       "OAuthTokenResponse": {
         "type": "object",
-        "required": ["access_token", "token_type", "expires_in", "scope", "organization", "refresh_token"],
+        "required": ["access_token", "token_type", "expires_in", "scope", "organization", "organization_name", "refresh_token"],
         "properties": {
           "access_token": { "type": "string" },
           "token_type": { "type": "string", "enum": ["Bearer"] },
           "expires_in": { "type": "integer", "minimum": 1 },
           "scope": { "type": "string" },
-          "organization": { "type": "string" },
+          "organization": { "type": "string", "description": "The team's permanent ID (slug). A rename does not change it." },
+          "organization_name": { "type": "string", "description": "The team's current display name." },
           "refresh_token": { "type": "string" },
           "refresh_token_expires_in": { "type": "integer", "minimum": 1 }
         }

@@ -493,6 +493,7 @@ final class AuthorizationServerController extends Controller
             'expires_in' => max(0, $minted['expires_at']->timestamp - now()->timestamp),
             'scope' => implode(' ', $requestedScopes),
             'organization' => $team->slug,
+            'organization_name' => $team->name,
             'refresh_token' => $refreshToken,
             'refresh_token_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
         ])->header('Cache-Control', 'no-store')->header('Pragma', 'no-cache');
@@ -753,6 +754,7 @@ final class AuthorizationServerController extends Controller
             'expires_in' => max(0, $minted['expires_at']->timestamp - now()->timestamp),
             'scope' => implode(' ', $scopes),
             'organization' => $team->slug,
+            'organization_name' => $team->name,
             'refresh_token' => $newRefreshToken,
             'refresh_token_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
         ])->header('Cache-Control', 'no-store')->header('Pragma', 'no-cache');
