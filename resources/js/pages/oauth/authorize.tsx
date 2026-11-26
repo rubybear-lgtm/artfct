@@ -48,7 +48,8 @@ interface Props {
     codeChallengeMethod: string;
     consentToken: string;
     csrfToken: string;
-    team: Team;
+    team: Team | null;
+    requiresTeamChoice: boolean;
     teams: Team[];
     canInstallAsBot: boolean;
     bots: BotOption[];
@@ -91,6 +92,7 @@ function AuthorizeForm({
     consentToken,
     csrfToken,
     team,
+    requiresTeamChoice,
     teams,
     canInstallAsBot,
     bots,
@@ -103,7 +105,9 @@ function AuthorizeForm({
         }
     })();
 
-    const [selectedTeam, setSelectedTeam] = useState(team.slug);
+    const [selectedTeam, setSelectedTeam] = useState(
+        requiresTeamChoice ? '' : (team?.slug ?? ''),
+    );
     const [identityMode, setIdentityMode] = useState<IdentityMode>('human');
     const [botName, setBotName] = useState('');
     const [botId, setBotId] = useState(
@@ -111,7 +115,7 @@ function AuthorizeForm({
     );
     const selectedTeamName =
         teams.find((candidate) => candidate.slug === selectedTeam)?.name ??
-        team.name;
+        team?.name;
 
     const pageErrors = usePage().props.errors ?? {};
     const errorEntries = Object.entries(pageErrors).flatMap(
@@ -129,7 +133,9 @@ function AuthorizeForm({
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        {clientName} wants to connect to {selectedTeamName}
+                        {selectedTeam === ''
+                            ? `${clientName} wants to connect`
+                            : `${clientName} wants to connect to ${selectedTeamName}`}
                     </CardTitle>
                     <CardDescription>
                         It will be able to do the things listed below with your
@@ -165,7 +171,9 @@ function AuthorizeForm({
                         <div className="sm:col-span-2">
                             <div className="font-medium">Team</div>
                             <div className="mt-1 break-words text-muted-foreground">
-                                {selectedTeamName}
+                                {selectedTeam === ''
+                                    ? 'Choose below'
+                                    : selectedTeamName}
                             </div>
                         </div>
                     </div>
@@ -283,7 +291,11 @@ function AuthorizeForm({
                                     onChange={(event) =>
                                         setSelectedTeam(event.target.value)
                                     }
+                                    required
                                 >
+                                    <option value="">
+                                        Select a workspace…
+                                    </option>
                                     {teams.map((candidate) => (
                                         <option
                                             key={candidate.slug}

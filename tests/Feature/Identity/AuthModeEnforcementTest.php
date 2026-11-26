@@ -189,6 +189,6 @@ test('an authkit sign_in cannot approve the oauth consent for a polis team', fun
     signInThroughAuthKit($user);
 
     $parameters = oauthParameters(oauthChallenge('verifier'), ['team' => $team->slug]);
-    test()->post('/oauth/authorize', array_merge($parameters, ['decision' => 'approve']))
+    test()->post('/oauth/authorize', array_merge($parameters, ['decision' => 'approve', 'team' => $team->slug]))
         ->assertForbidden();
 });

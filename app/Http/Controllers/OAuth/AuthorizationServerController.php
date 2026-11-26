@@ -222,6 +222,14 @@ final class AuthorizationServerController extends Controller
             ->all()
         : [];
 
+        // RUB-598: without an explicit workspace hint, members of several
+        // workspaces must choose one on the consent screen. Preselecting the
+        // stale session default silently bound grants (and their tokens) to
+        // the wrong organization when the sign-in organization picker was the
+        // only place the user chose.
+        $requiresTeamChoice = ($parameters['team'] === null || $parameters['team'] === '')
+            && $user->teams()->count() > 1;
+
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
             'clientName' => $client?->client_name ?: $parameters['client_id'],
@@ -235,7 +243,8 @@ final class AuthorizationServerController extends Controller
             'consentToken' => $this->consentToken($parameters),
             // Native form POST needs the session CSRF token in the body (RUB-510).
             'csrfToken' => csrf_token(),
-            'team' => ['id' => $team->slug, 'name' => $team->name, 'slug' => $team->slug],
+            'team' => $requiresTeamChoice ? null : ['id' => $team->slug, 'name' => $team->name, 'slug' => $team->slug],
+            'requiresTeamChoice' => $requiresTeamChoice,
             'teams' => $user->teams()->get(['teams.id', 'teams.name', 'teams.slug'])->map(fn (Team $candidate): array => [
                 'id' => $candidate->slug,
                 'name' => $candidate->name,
@@ -273,7 +282,12 @@ final class AuthorizationServerController extends Controller
 
         /** @var User $user */
         $user = $request->user();
-        $team = $this->teamFor($user, $request->input('team'));
+        $submittedTeam = $request->input('team');
+        // RUB-598: an empty workspace never falls back to the session
+        // default. The grant must bind the workspace the user chose, so a
+        // missing choice is refused instead of minting for the wrong org.
+        abort_if(! is_string($submittedTeam) || $submittedTeam === '', 403, 'Choose a workspace for this connection, then approve again.');
+        $team = $this->teamFor($user, $submittedTeam);
 
         abort_if($team === null, 403, 'The selected team is not available to this account.');
         $this->abortUnlessSignInAdmitted($request, $user, $team);

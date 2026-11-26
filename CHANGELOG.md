@@ -14,6 +14,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - RUB-513: Search Console "not indexed" reasons on artfct.dev. Retired shells `/pricing`, `/signup`, `/app` and `/dashboard` permanently redirect to a live page. Production `robots.txt` disallows `/a/`, `/p/`, `/v1/` and `/login` for every crawler (marketing pages stay allowed). `/a/*` and `/login` send `X-Robots-Tag: noindex, nofollow`, and Worker `/p/*` HTML responses do the same. Sitemap still lists only live marketing URLs.
 
+- RUB-598: OAuth consent no longer silently binds the grant to the stale session workspace. Members of several workspaces see no preselected workspace unless the authorize request carries an explicit `team` hint, and approving without a chosen workspace is refused instead of minting a token for the wrong organization.
+
 ### Added
 
 - RUB-550 follow-up: the `onboard` skill no longer takes a shell and file tools for Claude Code. The Claude app can run code in a sandbox (`/home/claude`), and a run there wrote a `CLAUDE.md` into the sandbox and skipped the memory note. The skill now says an agent is `claude-code` only in a project folder on the person's own computer and defaults to `claude-app` when unsure; the `claude-code` and `coding-agent` playbooks send an agent in a scratch folder to the chat-app playbook before it writes anything, `claude-app` sends a real coding agent back, and the `unknown` playbook says a chat app with a code sandbox is still a chat app. The server itself does not pick a host. Guidance version `1.4.1`.
