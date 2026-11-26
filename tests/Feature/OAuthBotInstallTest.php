@@ -438,7 +438,42 @@ test('AC6 revoke then reconnect with a different name does not resurrect the old
     $connection = mcpGetConnection($second['access_token']);
     expect($connection['user_id'])->toBe((string) $librarian->id)
         ->and($connection['agent'])->toBe(['name' => 'Librarian', 'bot' => true])
-        ->and($connection['user_id'])->not->toBe((string) $hoku->id);
+        ->and($connection['user_id'])->not->toBe((string) $hoku->id)
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->count())->toBe(2)
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->where('bot_user_id', $hoku->id)->exists())->toBeTrue()
+        ->and(OAuthBotInstallation::query()->where('team_id', $fixture['team']->id)->where('oauth_client_id', $fixture['client_id'])->where('bot_user_id', $librarian->id)->exists())->toBeTrue();
+});
+
+test('consent page with exactly one connected bot preselects that identity via props', function () {
+    $fixture = botInstallOAuthFixture();
+
+    completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'Hoku'],
+    );
+    $hoku = User::query()->where('name', 'Hoku')->where('is_bot', true)->sole();
+
+    $verifier2 = str_repeat('i', 64);
+    $parameters2 = oauthParameters(oauthChallenge($verifier2), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+
+    test()->actingAs($fixture['admin'])
+        ->get('/oauth/authorize?'.http_build_query(array_diff_key($parameters2, array_flip(['consent_token']))))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('oauth/authorize')
+            ->has('connectedBots', 1)
+            ->where('connectedBots.0.id', $hoku->id)
+            ->where('connectedBots.0.name', 'Hoku')
+            ->where('lastUsedBotId', $hoku->id));
 });
 
 test('consent page lists bots already connected through this app', function () {

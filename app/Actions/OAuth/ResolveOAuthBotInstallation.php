@@ -91,14 +91,7 @@ class ResolveOAuthBotInstallation
         }
 
         $created = $this->createBotTeammate->handle($team, $consenter, $name, scopes: []);
-
-        $installation = OAuthBotInstallation::query()->create([
-            'team_id' => $team->id,
-            'oauth_client_id' => $oauthClientId,
-            'bot_user_id' => $created['bot']->id,
-            'consented_by_user_id' => $consenter->id,
-            'mcp_connection_id' => null,
-        ]);
+        $installation = $this->firstOrCreateInstallation($team, $oauthClientId, $created['bot'], $consenter);
 
         return ['bot' => $created['bot'], 'installation' => $installation, 'created' => true];
     }
@@ -151,15 +144,34 @@ class ResolveOAuthBotInstallation
             return ['bot' => $bot, 'installation' => $existing, 'created' => false];
         }
 
-        $installation = OAuthBotInstallation::query()->create([
-            'team_id' => $team->id,
-            'oauth_client_id' => $oauthClientId,
-            'bot_user_id' => $bot->id,
-            'consented_by_user_id' => $consenter->id,
-            'mcp_connection_id' => null,
-        ]);
+        $installation = $this->firstOrCreateInstallation($team, $oauthClientId, $bot, $consenter);
 
         return ['bot' => $bot, 'installation' => $installation, 'created' => false];
+    }
+
+    private function firstOrCreateInstallation(
+        Team $team,
+        string $oauthClientId,
+        User $bot,
+        User $consenter,
+    ): OAuthBotInstallation {
+        $installation = OAuthBotInstallation::query()->firstOrCreate(
+            [
+                'team_id' => $team->id,
+                'oauth_client_id' => $oauthClientId,
+                'bot_user_id' => $bot->id,
+            ],
+            [
+                'consented_by_user_id' => $consenter->id,
+                'mcp_connection_id' => null,
+            ],
+        );
+
+        if ($installation->consented_by_user_id !== $consenter->id) {
+            $installation->forceFill(['consented_by_user_id' => $consenter->id])->save();
+        }
+
+        return $installation;
     }
 
     private function findTeamBotByName(Team $team, string $name): ?User

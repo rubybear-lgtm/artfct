@@ -21,6 +21,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Restoring the old unique key fails once a team has more than one bot
+        // on the same oauth_client_id. Forward-fix with a data cleanup first.
         Schema::table('oauth_bot_installations', function (Blueprint $table) {
             $table->dropUnique(['team_id', 'oauth_client_id', 'bot_user_id']);
             $table->unique(['team_id', 'oauth_client_id']);

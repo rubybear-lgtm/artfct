@@ -256,7 +256,8 @@ final class AuthorizationServerController extends Controller
 
             $connectedBots = $installations
                 ->filter(fn (OAuthBotInstallation $installation): bool => $installation->bot instanceof User
-                    && $installation->bot->isBot())
+                    && $installation->bot->isBot()
+                    && $installation->bot->belongsToTeam($team))
                 ->map(fn (OAuthBotInstallation $installation): array => [
                     'id' => $installation->bot->id,
                     'name' => $installation->bot->name,
