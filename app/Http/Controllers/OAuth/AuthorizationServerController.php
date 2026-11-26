@@ -289,6 +289,50 @@ final class AuthorizationServerController extends Controller
             ->all()
         : [];
 
+        // RUB-610 / A2: bots already bound through this OAuth client on the
+        // workspace. Exactly one → consent can reuse silently (preselect link).
+        // More than one → always ask, last-used preselected, never auto-approved.
+        $connectedBots = [];
+        $lastUsedBotId = null;
+        if ($canInstallAsBot) {
+            $installations = OAuthBotInstallation::query()
+                ->where('team_id', $team->id)
+                ->where('oauth_client_id', $parameters['client_id'])
+                ->with('bot:id,name,is_bot')
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get();
+
+            $connectedBots = $installations
+                ->filter(function (OAuthBotInstallation $installation) use ($team): bool {
+                    $bot = $installation->getRelation('bot');
+
+                    return $bot instanceof User
+                        && $bot->isBot()
+                        && $bot->belongsToTeam($team);
+                })
+                ->map(function (OAuthBotInstallation $installation): array {
+                    /** @var User $bot */
+                    $bot = $installation->getRelation('bot');
+
+                    return [
+                        'id' => $bot->id,
+                        'name' => $bot->name,
+                    ];
+                })
+                ->unique('id')
+                ->values()
+                ->all();
+
+            $lastUsedBotId = $connectedBots[0]['id'] ?? null;
+        }
+
+        // A2 defaults are server-authoritative so consent and Pest share one
+        // contract: exactly one → silent reuse via preselected link; more than
+        // one → ask with last-used link preselected; never auto-approve.
+        $preselectedBotMode = $canInstallAsBot && $connectedBots !== [] ? 'link' : 'human';
+        $preselectedBotId = $preselectedBotMode === 'link' ? $lastUsedBotId : null;
+
         return Inertia::render('oauth/authorize', [
             'clientId' => $parameters['client_id'],
             'clientName' => $client?->client_name ?: $parameters['client_id'],
@@ -312,6 +356,10 @@ final class AuthorizationServerController extends Controller
             // RUB-524: optional bot install alongside unchanged human OAuth.
             'canInstallAsBot' => $canInstallAsBot,
             'bots' => $bots,
+            'connectedBots' => $connectedBots,
+            'lastUsedBotId' => $lastUsedBotId,
+            'preselectedBotMode' => $preselectedBotMode,
+            'preselectedBotId' => $preselectedBotId,
         ]);
     }
 
