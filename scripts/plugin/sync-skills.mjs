@@ -32,6 +32,9 @@ export const PLUGIN_SKILLS = [
     'artfct-kanban',
     'artfct-team-wiki',
     'artfct-announcements',
+    'artfct-context-post',
+    'artfct-team-doc',
+    'artfct-handoff',
     'onboard',
 ];
 

@@ -247,3 +247,60 @@ test('removing a bot revokes its tokens', function () {
         'params' => [],
     ])->assertUnauthorized();
 });
+
+test('a bot created without explicit scopes gets the data scopes', function () {
+    configureOrgJwt();
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bot-data-default']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
+        'name' => 'DataBot',
+    ])->assertCreated();
+
+    $bot = User::query()->where('name', 'DataBot')->where('is_bot', true)->sole();
+    $token = OrgToken::query()->where('user_id', $bot->id)->where('kind', OrgTokenKind::Agent)->sole();
+
+    expect($token->scopes)->toContain(McpScope::DataRead->value, McpScope::DataWrite->value);
+});
+
+test('rolling a bot without explicit scopes keeps the scopes it already has', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bot-roll-keep']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
+        'name' => 'KeepBot',
+        'scopes' => [McpScope::ArtifactsRead->value, McpScope::UsageRead->value],
+    ])->assertCreated();
+
+    $bot = User::query()->where('name', 'KeepBot')->where('is_bot', true)->sole();
+    test()->actingAs($member)->postJson(route('teams.bots.roll', [$team, $bot]))->assertOk();
+
+    $active = OrgToken::query()->where('user_id', $bot->id)->where('kind', OrgTokenKind::Agent)->whereNull('revoked_at')->sole();
+    expect($active->scopes)->toBe([McpScope::ArtifactsRead->value, McpScope::UsageRead->value]);
+});
+
+test('a roll with explicit data scopes upgrades the bot token to carry them', function () {
+    configureOrgJwt();
+    Http::fake([
+        'https://worker.test/v1/internal/revocations' => Http::response(['revoked' => true], 200),
+    ]);
+
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'bot-roll-upgrade']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    test()->actingAs($member)->postJson(route('teams.bots.store', $team), [
+        'name' => 'UpgradeBot',
+        'scopes' => [McpScope::ArtifactsRead->value],
+    ])->assertCreated();
+
+    $bot = User::query()->where('name', 'UpgradeBot')->where('is_bot', true)->sole();
+    test()->actingAs($member)->postJson(route('teams.bots.roll', [$team, $bot]), [
+        'scopes' => [McpScope::ArtifactsRead->value, McpScope::DataRead->value, McpScope::DataWrite->value],
+    ])->assertOk();
+
+    $active = OrgToken::query()->where('user_id', $bot->id)->where('kind', OrgTokenKind::Agent)->whereNull('revoked_at')->sole();
+    expect($active->scopes)->toContain(McpScope::DataRead->value, McpScope::DataWrite->value);
+});

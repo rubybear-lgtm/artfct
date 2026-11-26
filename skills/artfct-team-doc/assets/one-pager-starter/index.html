@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="artfct-starter" content="one-pager@1">
+  <title>One-pager title</title>
+  <!--
+    Artfct one-pager starter (one-pager@1). Fill the content slots and nothing else:
+      title   <header class="doc-title"> heading and kicker
+      byline  <p class="doc-byline"> author, date
+      body    <article class="doc-body"> text, one sheet
+      footer  <footer class="doc-footer"> source, contact
+    Tweak fields: each element marked with a data-tweak attribute shows a
+    declared field from tweaks.json. Keep the placeholder text; it is what a
+    reader sees with JavaScript off.
+    Upgrade rule: replace doc.css and tweaks.js and tweaks.json only, never this file.
+  -->
+  <link rel="stylesheet" href="doc.css">
+</head>
+<body>
+  <main class="sheet sheet--fixed">
+    <header class="doc-title">
+      <p class="doc-kicker">For <span data-tweak="customer_name">Customer name</span></p>
+      <h1>One-pager title</h1>
+      <div class="doc-logo" data-tweak="logo_path">Customer logo</div>
+    </header>
+    <p class="doc-byline">Tier: <span data-tweak="tier">Tier one</span></p>
+    <article class="doc-body">
+      <p>Write the one-pager here. Keep it to what fits one sheet and say what the reader should do next.</p>
+    </article>
+    <footer class="doc-footer">Source or contact line</footer>
+  </main>
+  <script src="tweaks.js" defer></script>
+</body>
+</html>

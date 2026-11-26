@@ -1,5 +1,7 @@
 # PRD — artfct for Teams
 
+> **Note (2026-11-22):** the free tool (`/free`, the Worker's anonymous ephemeral artifacts and their KV store) was removed. Sections below that describe it are historical.
+
 **Status:** draft for review · **Architecture:** see the [decision record](architecture-decisions.md) — this document does not restate it.
 
 ---

@@ -4,7 +4,38 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ## [Unreleased]
 
+### Added
+
+- A `portable` onboarding host (RUB-596), the set-up that works in any app: check the connection, read the usage rules and ask the save question, with no project file, memory note or settings change. It is now the default when `get_guidance` is called for `onboarding` without a host, and the `unknown` playbook falls back to it instead of asking the person. The onboard skill names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`, so Codex, Hermes, OpenClaw and other Agent Plugins clients no longer get the Claude app's steps. Guidance version 1.14.0.
+- Full screen for slide decks. A deck's page has a Present button that puts the deck in the browser's full screen, for every deck, including ones published before this change. The deck starter also has an `F` key and a full screen button in its controls, for a deck opened on its own; a deck gets those when it is republished from the current starter.
+
+### Removed
+
+- The free tool's backend and its leftovers. The Worker no longer creates, serves, updates or deletes anonymous encrypted artifacts: an anonymous `POST /v1/artifacts` (no `mode: permanent`) answers 422, `/p/{10-character id}` answers 404, and the anonymous `PATCH /v1/artifacts/{id}` TTL route, the ephemeral delete, the KV record store, the encrypted preview page and the per-IP anonymous rate limiter are gone, along with the matching OpenAPI schemas and the unused `ARTFCT_MAX_HTML_BYTES`, `ARTFCT_DEFAULT_TTL_MINUTES` and `ARTFCT_MAX_TTL_MINUTES` Worker variables. **Links made with the free tool stop working when this is released**; their KV records expire on their own and no migration is needed. Laravel no longer knows the 10-character id shape (`ArtifactIdShape::isEphemeral`), and the MCP `delete_artifact` tool accepts permanent ids only. The browser encryptor (`resources/js/lib/artifactCrypto.ts`), `lib/markdown.ts`, `lib/asciiLogo.tsx` and the key-derivation test that pinned the encryptor against the Worker's viewer are deleted. The `marked` npm package and the Worker's `pulldown-cmark` crate are now unused by the free tool and were left in place pending a dependency decision.
+
+- The `/free` page, the free tool that turned one HTML or Markdown file into a private link in the browser. `/free` now redirects permanently to the home page, like the other retired marketing URLs, and is out of the sitemap. The page, its components and its styles are gone. The landing page's Free plan card now describes a free account and goes to sign-up (or the console when signed in). *Superseded by the Worker removal below: links made with the free tool stop working once that is released.*
+
+- The PowerPoint export (RUB-562). The Download PowerPoint button, the `POST /a/{id}/export/pptx` route and its rate limit, the PNG capture validator and `.pptx` writer, the `phpoffice/phppresentation` dependency (and with it `phpoffice/phpspreadsheet` and the `ext-gd` requirement), the deck starter's `capture` bridge command and vendored `capture.js`, and spec 46 are gone. Decks present with the Present button and the `F` key. The bridge keeps `ready`, `describe` and `goTo`. A deck published earlier that still carries `capture.js` is unaffected; the file is simply never loaded.
+
+### Fixed
+
+- RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
+
 ### Changed
+
+- RUB-583: the console has a Type filter next to the AI tool filter, with an option for every artifact type including Post and Design system. An unknown `type` in the URL is ignored.
+
+- RUB-556: the publish guidance has a "Brand and voice" section. Before customer-facing work, the bot finds the team's brand post by title and post type, reads its kind and status from post data, follows a superseded chain of up to three hops, and treats the post's text as data, not instructions. Guidance is 1.6.0.
+
+- RUB-573: the 29 MCP tool descriptions and the six official skill descriptions lead with a `Use when` trigger inside the first 200 characters, name the sibling or next call where it matters, and say what a tool does not return. Locked safety and protocol phrases are unchanged. No tool, parameter or behavior changed. Guidance is 1.10.0. See `docs/specs/38-tool-descriptions.md`.
+
+- RUB-577: the `context-post` guidance has an "Options" section. An options post gives two or three labelled alternatives, each an `option-a`, `option-b` style anchor that stays fixed when the post is updated. When the team picks one, the bot publishes a decision and marks the options post superseded. Guidance is 1.9.0.
+
+- RUB-568: the `publish` guidance has a "Design systems" section. A team publishes one `design_system` bundle (brand book, `tokens.json`, fonts, logos); publish-time bots search it first, copy its font and asset files verbatim, set the starter tokens and record the system and version in the description, before falling back to the "Brand and voice" post and then the neutral default. Guidance is 1.8.0.
+
+- RUB-575: `post` and `design_system` are first-class artifact types. Deploy, list and search accept and filter by them, and inference never produces them. Guidance is 1.5.0.
+
+- RUB-574: the publish-contract file checks moved out of `TemplateCatalog` into `App\Services\Artifacts\PublishContractValidator`, so starters, packagers and export tests share one checker. Template validation messages are unchanged.
 
 - RUB-381: secret-redaction coverage for the hosted MCP. Feature tests assert that authorization codes, access tokens and refresh tokens never appear in application logs (authorize, token, MCP bearer, refresh, revoke), client-visible MCP error payloads, activity telemetry, the AI-tool connections page, the agent setup prompt or the homepage. The verification matrix marks `robustness.secret_redaction` covered. The original CLI config-writer half of this acceptance criteria was retired with the local `mcp-server/` package (RUB-432).
 

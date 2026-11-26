@@ -2,10 +2,11 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     ExternalLink,
+    Maximize,
     PanelRightClose,
     PanelRightOpen,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import ArtifactComments from '@/components/artifact-comments';
 import type { ArtifactComment } from '@/components/artifact-comments';
@@ -16,6 +17,7 @@ import type {
 } from '@/components/artifact-share-control';
 import { Button } from '@/components/ui/button';
 import ViewerLayout from '@/layouts/viewer-layout';
+import { useLocalDate } from '@/lib/local-date';
 import { home, login } from '@/routes';
 import artifacts from '@/routes/artifacts';
 import consoleRoutes from '@/routes/console';
@@ -52,25 +54,28 @@ interface Props {
     openUrl: string;
     /** Null when no download is offered — the public viewer. */
     downloadUrl: string | null;
+    /** True for a slide deck, which gets a Present (full screen) action. */
+    isSlideDeck: boolean;
     /** A signed-in member's discussion; absent in the public viewer. */
     comments?: ArtifactComment[];
+}
+
+/** Nothing to subscribe to: whether the browser offers full screen does not change while the page is open. */
+function subscribeToNothing(): () => void {
+    return () => undefined;
+}
+
+/** False on the server and on browsers without the Fullscreen API, so the first render matches the server's. */
+function browserCanPresent(): boolean {
+    return (
+        document.fullscreenEnabled === true &&
+        typeof HTMLElement.prototype.requestFullscreen === 'function'
+    );
 }
 
 /** The name a person reads: the title, or a short id when it has none. */
 function artifactName(title: string | null, id: string): string {
     return title && title !== '' ? title : id.slice(0, 8);
-}
-
-function formatDate(value: string | null): string | null {
-    if (!value) {
-        return null;
-    }
-
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime())
-        ? null
-        : date.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
 
 function versionLabel(version: number, count: number): string {
@@ -83,6 +88,9 @@ interface Freshness {
     sharing: ArtifactSharing | null;
     revoked: boolean;
 }
+
+/** The only fragments forwarded to the artifact frame: a plain anchor id. */
+const FRAME_FRAGMENT = /^#[A-Za-z0-9_.-]{1,128}$/;
 
 /** 45s between polls, ±10s so a fleet of open tabs does not poll in lockstep. */
 const FRESHNESS_INTERVAL_MS = 45_000;
@@ -98,6 +106,7 @@ export default function ArtifactShow({
     viewerUrl,
     openUrl,
     downloadUrl,
+    isSlideDeck,
     comments,
 }: Props) {
     const name = artifactName(artifact.title, artifact.id);
@@ -105,7 +114,7 @@ export default function ArtifactShow({
         ? `${name} — ${artifact.description}`
         : name;
     const shownVersion = selectedVersion ?? artifact.version;
-    const updated = formatDate(artifact.updatedAt);
+    const updated = useLocalDate(artifact.updatedAt);
     const meta = [
         versionLabel(shownVersion, artifact.versionCount),
         artifact.ownerName,
@@ -136,6 +145,32 @@ export default function ArtifactShow({
     const [revokedView, setRevokedView] = useState(false);
     const [newerAvailable, setNewerAvailable] = useState(false);
     const knownRef = useRef(false);
+
+    /*
+     * A link to one part of an artifact is the viewer URL plus a fragment,
+     * for example `/a/{id}#option-b`. The fragment never reaches the artifact
+     * on its own, because the page runs in this sandboxed frame on another
+     * origin, so it is read once here and added to the frame's src. It is read
+     * after mount, not during render: the server has no `window`, and a
+     * different value on the first client render would not match the server
+     * markup, so the src is set on the element directly. It runs again only
+     * when the frame URL changes, never on a hash change: resetting the src
+     * later could reload the page on an expired ?token=.
+     *
+     * Anyone can put a fragment in a link, and the artifact page can read it
+     * (and reaches its own data with the viewer's token), so only a plain
+     * anchor id is passed on: letters, digits and `_ . -`, at most 128.
+     * Anything else is ignored and the artifact opens at the top, as before.
+     */
+    const frameRef = useRef<HTMLIFrameElement>(null);
+
+    useEffect(() => {
+        const hash = window.location.hash;
+
+        if (frameRef.current !== null && FRAME_FRAGMENT.test(hash)) {
+            frameRef.current.src = `${frameUrl.split('#')[0]}${hash}`;
+        }
+    }, [frameUrl]);
 
     useEffect(() => {
         // The rendered props are the baseline: a verdict that differs from
@@ -253,11 +288,40 @@ export default function ArtifactShow({
         // baseline, and nothing else needs to.
     }, [artifact.id, artifact.version, artifact.sharing, selectedVersion]);
 
+    const canPresent =
+        useSyncExternalStore(
+            subscribeToNothing,
+            browserCanPresent,
+            () => false,
+        ) && isSlideDeck;
     const [panelOpen, setPanelOpen] = useState(false);
     const commentCount = comments?.length ?? 0;
     const backHref = publicView
         ? home.url()
         : consoleRoutes.index.url({ team: team.slug });
+
+    /**
+     * Full screen for the artifact frame itself, so it works for every deck,
+     * including ones that predate the starter's own button. The frame is focused
+     * afterwards so the deck's arrow keys work at once; Esc leaves full screen.
+     * A browser may refuse the request, and the page is fine either way.
+     */
+    function presentDeck(): void {
+        const frame = frameRef.current;
+
+        if (frame === null || !browserCanPresent()) {
+            return;
+        }
+
+        try {
+            void frame
+                .requestFullscreen()
+                .then(() => frame.focus())
+                .catch(() => undefined);
+        } catch {
+            // A browser that throws instead of rejecting is treated like a refusal.
+        }
+    }
 
     return (
         <>
@@ -364,6 +428,18 @@ export default function ArtifactShow({
                             </Button>
                         )}
 
+                        {canPresent && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={presentDeck}
+                                data-testid="present-artifact"
+                            >
+                                <Maximize className="size-3.5" /> Present
+                            </Button>
+                        )}
+
                         {canSignInToEdit && (
                             <a
                                 href={login.url()}
@@ -433,9 +509,11 @@ export default function ArtifactShow({
                     </div>
                 ) : (
                     <iframe
+                        ref={frameRef}
                         src={frameUrl}
                         title={name}
                         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                        allow={isSlideDeck ? 'fullscreen' : undefined}
                         referrerPolicy="no-referrer"
                         data-testid="artifact-frame"
                         className="h-full min-w-0 flex-1 border-0 bg-paper"

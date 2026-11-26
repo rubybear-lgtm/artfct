@@ -40,7 +40,6 @@ function assertPagesFitViewports(array $urls, ?string $expectedText = null): voi
 test('public reading pages fit every viewport without sideways scrolling', function () {
     assertPagesFitViewports([
         '/',
-        '/free',
         '/docs',
         '/blog',
         '/blog/what-is-an-ai-artifact',
@@ -122,6 +121,32 @@ test('phone controls meet touch and type sizes', function () {
         ->assertScript('parseFloat(getComputedStyle(document.querySelector(\'#email\')).fontSize) >= 16', true)
         ->assertScript('document.querySelector(\'button[type="submit"]\').getBoundingClientRect().height >= 44', true)
         ->assertNoJavaScriptErrors();
+});
+
+test('landing hero controls and demo stay within their containers', function () {
+    foreach ([320, 390, 427, 768, 1280, 1920] as $width) {
+        visit('/')
+            ->resize($width, 900)
+            ->assertScript(<<<'JS'
+                (() => {
+                    const within = (child, parent) => {
+                        const a = child.getBoundingClientRect();
+                        const b = parent.getBoundingClientRect();
+                        return a.left >= b.left - 1 && a.right <= b.right + 1;
+                    };
+                    const nav = document.querySelector('.landing nav');
+                    const stage = document.querySelector('.story-stage');
+                    return [...nav.querySelectorAll(':scope > *, .navright > *')]
+                        .filter((element) => element.getClientRects().length)
+                        .every((element) => within(element, nav))
+                        && [...document.querySelectorAll('.hero .cta .btn')]
+                            .every((element) => within(element, document.querySelector('.hero')) && element.scrollWidth <= element.clientWidth + 1)
+                        && within(document.querySelector('.story-win'), stage)
+                        && within(stage, document.documentElement);
+                })()
+                JS, true)
+            ->assertNoJavaScriptErrors();
+    }
 });
 
 test('docs code blocks scroll inside their containers at 320px', function () {

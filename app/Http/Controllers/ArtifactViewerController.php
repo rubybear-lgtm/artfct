@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Contracts\ArtifactContentSource;
 use App\Contracts\ArtifactDirectory;
 use App\Contracts\PublicArtifactSource;
+use App\Enums\ArtifactType;
 use App\Enums\AuditEventType;
 use App\Models\ArtifactComment;
 use App\Models\Team;
@@ -12,7 +13,12 @@ use App\Models\User;
 use App\Services\Analytics\ProductAnalytics;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactIdShape;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use App\Services\Artifacts\ArtifactViewLink;
+use App\Services\Artifacts\HandoffPackBuilder;
+use App\Services\Artifacts\HandoffPackException;
+use App\Services\Artifacts\StandaloneBundlePacker;
+use App\Services\Artifacts\StandalonePackException;
 use App\Services\Governance\AuditLogger;
 use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -25,6 +31,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * The artifact viewer (RUB-438), addressed by one short route for every sharing
@@ -227,6 +234,7 @@ final class ArtifactViewerController extends Controller
         }
 
         $versionCount = (int) ($artifact['version_count'] ?? 1);
+        $isSlideDeck = (app(ArtifactTypeResolver::class)->typesFor($team, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
 
         $props = [
             'publicView' => false,
@@ -254,6 +262,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => ArtifactViewLink::appOpenUrl($team->slug, $artifactId, $selectedVersion),
             'openUrl' => $openUrl,
             'downloadUrl' => route('artifacts.download', ['artifactId' => $artifactId]),
+            'isSlideDeck' => $isSlideDeck,
             'comments' => ArtifactComment::query()
                 ->where('team_id', $team->id)
                 ->where('artifact_id', $artifactId)
@@ -319,6 +328,12 @@ final class ArtifactViewerController extends Controller
         $versionCount = (int) ($artifact['version_count'] ?? 1);
         $version = (int) ($artifact['version'] ?? 1);
 
+        // The type is metadata about content the visitor may already read, so a
+        // public deck can offer Present like a member's view does.
+        $ownerTeam = Team::query()->where('slug', $org)->first();
+        $isSlideDeck = $ownerTeam !== null
+            && (app(ArtifactTypeResolver::class)->typesFor($ownerTeam, [$artifactId])[$artifactId] ?? null) === ArtifactType::SlideDeck->value;
+
         $props = [
             'publicView' => true,
             'canSignInToEdit' => $canSignInToEdit,
@@ -345,6 +360,7 @@ final class ArtifactViewerController extends Controller
             'viewerUrl' => $viewerUrl,
             'openUrl' => $frameUrl,
             'downloadUrl' => null,
+            'isSlideDeck' => $isSlideDeck,
         ];
 
         // The public read names no per-version history, only how many there
@@ -515,6 +531,102 @@ final class ArtifactViewerController extends Controller
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * The artifact packed into one HTML file that opens offline (RUB-563, spec
+     * 40). Visibility is decided as for `download`, and every refusal of
+     * visibility is the same 404. A bundle the publish contract refuses, or one
+     * whose files the Worker does not list, is answered with the reasons in JSON
+     * and nothing is packed.
+     */
+    public function downloadHtml(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        ArtifactContentSource $content,
+        StandaloneBundlePacker $packer,
+    ): Response|JsonResponse {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        Gate::authorize('view', $team);
+
+        $entry = $content->fetch($team->slug, $artifactId);
+
+        abort_if($entry === null, 404);
+
+        abort_unless(
+            ArtifactVisibility::canView($entry['sharing'] ?? null, $entry['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
+
+        try {
+            $html = $packer->pack($team->slug, $artifactId, $entry);
+        } catch (StandalonePackException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'errors' => $exception->errors,
+            ], $exception->status);
+        }
+
+        $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'.html';
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'X-Content-Type-Options' => 'nosniff',
+            // A backstop: the file is a download, but if it is ever rendered from
+            // the app origin its inline script must not run with the app's access.
+            'Content-Security-Policy' => 'sandbox',
+        ]);
+    }
+
+    /**
+     * The engineering handoff pack for a mockup (RUB-564, spec 41): a zip of the
+     * bundle with its HANDOFF.md promoted to README.md. Visibility is decided as
+     * for `download`, and every refusal of visibility is the same 404. A mockup
+     * the pack cannot be built for is answered in JSON with its `code`.
+     */
+    public function downloadHandoff(
+        Request $request,
+        string $artifactId,
+        ArtifactDirectory $artifacts,
+        ArtifactContentSource $content,
+        ArtifactTypeResolver $types,
+        HandoffPackBuilder $builder,
+    ): BinaryFileResponse|JsonResponse {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $user = $request->user();
+        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        Gate::authorize('view', $team);
+
+        $entry = $content->fetch($team->slug, $artifactId);
+
+        abort_if($entry === null, 404);
+
+        abort_unless(
+            ArtifactVisibility::canView($entry['sharing'] ?? null, $entry['owner_user_id'] ?? null, $user, $team),
+            404,
+        );
+
+        try {
+            $path = $builder->build($team->slug, $artifactId, $entry, $types->typesFor($team, [$artifactId])[$artifactId] ?? null);
+        } catch (HandoffPackException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+                'errors' => $exception->errors,
+            ], $exception->status);
+        }
+
+        $filename = (Str::slug((string) ($artifact['title'] ?? '')) ?: $artifactId).'-handoff.zip';
+
+        return response()->download($path, $filename)->deleteFileAfterSend();
     }
 
     /**

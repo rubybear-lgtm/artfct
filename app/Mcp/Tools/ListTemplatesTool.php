@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Rules in get_guidance (topic templates) apply even if you have not read them. List the Artfct-authored templates the workspace can pull into its library: a reviewed page plus, for data-backed templates, a database with seed rows. Each row says whether it is available to the team; a template whose required features are not released cannot be pulled yet. Pull with `pull_template`; read the templates guidance topic first.')]
+#[Description('Use when the person asks what starter boards or templates they can pull in, such as a kanban, wiki or announcements board. Rules in get_guidance (topic templates) apply even if you have not read them. Each row says whether the team can pull it now; a template whose required features are not released cannot be pulled yet. Then use pull_template to add one to the library.')]
 #[Name('list_templates')]
 #[Title('List templates')]
 #[IsReadOnly]
@@ -35,7 +35,7 @@ final class ListTemplatesTool extends FeatureFlaggedTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => ['artifacts:read'],

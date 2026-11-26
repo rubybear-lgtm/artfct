@@ -3,7 +3,7 @@
   "info": {
     "title": "artfct API",
     "version": "1.0.0",
-    "description": "The data-plane API for encrypted ephemeral artifacts and permanent artifact bundles.",
+    "description": "The data-plane API for permanent artifact bundles.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -74,10 +74,9 @@
       "post": {
         "tags": ["Artifacts"],
         "summary": "Create an artifact",
-        "description": "Creates an anonymous encrypted artifact or starts an authenticated permanent bundle upload. Anonymous access is allowed only when mode is ephemeral.",
+        "description": "Starts an authenticated permanent bundle upload. The mode must be permanent; anonymous artifact creation was removed.",
         "operationId": "createArtifact",
         "security": [
-          {},
           { "orgToken": [] },
           { "sessionJwt": [] }
         ],
@@ -134,39 +133,6 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
-      "patch": {
-        "tags": ["Artifacts"],
-        "summary": "Update an artifact expiration",
-        "operationId": "updateArtifact",
-        "security": [
-          { "orgToken": [] },
-          { "sessionJwt": [] }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/UpdateArtifactRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Artifact expiration updated.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/UpdateArtifactResponse" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
-          "500": { "$ref": "#/components/responses/InternalError" }
-        }
-      },
       "delete": {
         "tags": ["Artifacts"],
         "summary": "Delete an artifact",
@@ -202,7 +168,7 @@
       "get": {
         "tags": ["Previews"],
         "summary": "Read a public artifact's metadata",
-        "description": "Unauthenticated. Returns metadata only for a live, complete, public permanent artifact; everything else (missing, team, private, revoked, pending, ephemeral) is the same 404, so the endpoint never confirms that a non-public id exists. Used by the app's /a/{id} viewer for signed-out visitors and for visitors from other teams.",
+        "description": "Unauthenticated. Returns metadata only for a live, complete, public permanent artifact; everything else (missing, team, private, revoked, pending) is the same 404, so the endpoint never confirms that a non-public id exists. Used by the app's /a/{id} viewer for signed-out visitors and for visitors from other teams.",
         "operationId": "getPublicArtifactMetadata",
         "security": [],
         "responses": {
@@ -244,7 +210,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "HTML preview shell (ephemeral) or permanent artifact entrypoint on its isolated origin.",
+            "description": "Permanent artifact entrypoint on its isolated origin.",
             "headers": {
               "Content-Security-Policy": {
                 "schema": { "type": "string" }
@@ -260,7 +226,7 @@
             }
           },
           "302": {
-            "description": "On the shared origin, the entrypoint of a live public permanent artifact redirects to the app's viewer (`{app}/a/{id}`, or `{app}/a/{id}/v/{n}` for `/p/{id}/v:{n}/`). Bundle subresources (`/p/{id}/{path}`) and ephemeral artifacts are served as before; isolated origins never redirect.",
+            "description": "On the shared origin, the entrypoint of a live public permanent artifact redirects to the app's viewer (`{app}/a/{id}`, or `{app}/a/{id}/v/{n}` for `/p/{id}/v:{n}/`). Bundle subresources (`/p/{id}/{path}`) are served as before; isolated origins never redirect.",
             "headers": {
               "Location": { "schema": { "type": "string", "format": "uri" } }
             }
@@ -626,7 +592,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The entrypoint text and provenance.",
+            "description": "The entrypoint text, the bundle file list and provenance.",
             "content": {
               "application/json": {
                 "schema": {
@@ -638,6 +604,21 @@
                     "owner_user_id": { "type": ["string", "null"], "description": "Server-side callers (system reads with artifacts:read_private) must apply the Private rule themselves before showing or linking the artifact." },
                     "version": { "type": "integer", "minimum": 1, "description": "The current version whose entrypoint is returned." },
                     "content_type": { "type": "string" },
+                    "entrypoint": { "type": "string", "description": "The path of the entrypoint file in the current version's bundle." },
+                    "files": {
+                      "type": "array",
+                      "description": "Every file of the current version's bundle, sorted by path. Fetch a file's bytes with GET /v1/blobs/{sha256}.",
+                      "items": {
+                        "type": "object",
+                        "required": ["path", "sha256", "content_type", "size_bytes"],
+                        "properties": {
+                          "path": { "type": "string" },
+                          "sha256": { "type": "string", "description": "Lowercase hex SHA-256 of the file bytes." },
+                          "content_type": { "type": "string" },
+                          "size_bytes": { "type": "integer", "minimum": 0 }
+                        }
+                      }
+                    },
                     "provenance": {
                       "type": "object",
                       "properties": {
@@ -1389,10 +1370,10 @@
         "name": "id",
         "in": "path",
         "required": true,
-        "description": "Artifact identifier: a 10-character ephemeral id, a 13-character lowercase base36 stable id (new permanent artifacts), or a 32-character hex id (permanent artifacts published before versioning). The stable id survives new versions.",
+        "description": "Artifact identifier: a 13-character lowercase base36 stable id (new permanent artifacts), or a 32-character hex id (permanent artifacts published before versioning). The stable id survives new versions.",
         "schema": {
           "type": "string",
-          "pattern": "^(?:[A-Za-z0-9]{10}|[a-z0-9]{13}|[a-f0-9]{32})$"
+          "pattern": "^(?:[a-z0-9]{13}|[a-f0-9]{32})$"
         }
       },
       "OrganizationId": {
@@ -1685,7 +1666,7 @@
         "required": ["id", "tier", "entrypoint", "created_at", "expires_at", "title", "description", "version", "version_count", "updated_at", "sharing", "edit_access", "owner_user_id", "can_edit", "can_change_sharing", "provenance"],
         "properties": {
           "id": { "type": "string" },
-          "tier": { "type": "string", "enum": ["public", "secure", "private", "ephemeral"] },
+          "tier": { "type": "string", "enum": ["public", "secure", "private"] },
           "sharing": { "$ref": "#/components/schemas/Sharing" },
           "edit_access": { "$ref": "#/components/schemas/EditAccess" },
           "owner_user_id": { "type": ["string", "null"] },
@@ -1761,58 +1742,7 @@
         "artifact_id": { "type": "string" }
       }
     },
-      "CreateArtifactRequest": {
-        "oneOf": [
-          { "$ref": "#/components/schemas/EphemeralArtifactRequest" },
-          { "$ref": "#/components/schemas/PermanentArtifactRequest" }
-        ],
-        "discriminator": {
-          "propertyName": "mode",
-          "mapping": {
-            "ephemeral": "#/components/schemas/EphemeralArtifactRequest",
-            "permanent": "#/components/schemas/PermanentArtifactRequest"
-          }
-        }
-      },
-      "EphemeralArtifactRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "mode",
-          "body_ciphertext_b64",
-          "body_iv_b64",
-          "tier",
-          "title",
-          "description",
-          "thumbnail",
-          "preview_blurred",
-          "provenance"
-        ],
-        "properties": {
-          "mode": { "type": "string", "const": "ephemeral" },
-          "body_ciphertext_b64": {
-            "type": "string",
-            "minLength": 1,
-            "description": "AES-GCM ciphertext encoded as unpadded base64url."
-          },
-          "body_iv_b64": {
-            "type": "string",
-            "minLength": 1,
-            "description": "A 12-byte AES-GCM nonce encoded as unpadded base64url."
-          },
-          "tier": { "$ref": "#/components/schemas/ArtifactTier" },
-          "ttl_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 525600
-          },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "thumbnail": { "type": "string", "format": "uri" },
-          "preview_blurred": { "type": "boolean" },
-          "provenance": { "$ref": "#/components/schemas/Provenance" }
-        }
-      },
+      "CreateArtifactRequest": { "$ref": "#/components/schemas/PermanentArtifactRequest" },
       "PermanentArtifactRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -1837,10 +1767,6 @@
           "manifest": { "$ref": "#/components/schemas/Manifest" },
           "provenance": { "$ref": "#/components/schemas/Provenance" }
         }
-      },
-      "ArtifactTier": {
-        "type": "string",
-        "enum": ["public", "secure", "ephemeral"]
       },
       "PermanentArtifactTier": {
         "type": "string",
@@ -2027,36 +1953,7 @@
         "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
         "description": "A relative path with no leading slash, drive prefix, or parent traversal segment."
       },
-      "CreateArtifactResponse": {
-        "oneOf": [
-          { "$ref": "#/components/schemas/EphemeralArtifactResponse" },
-          { "$ref": "#/components/schemas/PermanentArtifactResponse" }
-        ]
-      },
-      "EphemeralArtifactResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "url",
-          "tier",
-          "expires_at",
-          "title",
-          "description",
-          "thumbnail",
-          "preview_blurred"
-        ],
-        "properties": {
-          "id": { "type": "string" },
-          "url": { "type": "string", "format": "uri" },
-          "tier": { "$ref": "#/components/schemas/ArtifactTier" },
-          "expires_at": { "type": "string", "format": "date-time" },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "thumbnail": { "type": "string", "format": "uri" },
-          "preview_blurred": { "type": "boolean" }
-        }
-      },
+      "CreateArtifactResponse": { "$ref": "#/components/schemas/PermanentArtifactResponse" },
       "PermanentArtifactResponse": {
         "type": "object",
         "additionalProperties": false,
@@ -2135,27 +2032,6 @@
           "id": { "type": "string" },
           "current_version": { "type": "integer", "minimum": 1 },
           "versions": { "type": "array", "items": { "$ref": "#/components/schemas/ArtifactVersion" }, "description": "Completed versions, newest first. Versions whose upload is still pending are omitted." }
-        }
-      },
-      "UpdateArtifactRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["ttl_minutes"],
-        "properties": {
-          "ttl_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 525600
-          }
-        }
-      },
-      "UpdateArtifactResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "expires_at"],
-        "properties": {
-          "id": { "type": "string" },
-          "expires_at": { "type": "string", "format": "date-time" }
         }
       },
       "SearchRequest": {

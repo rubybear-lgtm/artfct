@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 
 import { SitePage } from '@/components/site-chrome';
+import { formatCalendarDay } from '@/lib/local-date';
 import blogRoutes from '@/routes/blog';
 
 interface BlogPageProps {
@@ -42,9 +43,7 @@ export default function Blog({ posts }: BlogPageProps) {
                                         dateTime={post.date}
                                         className="font-semibold tracking-[0.08em] text-[var(--ink-quiet)] uppercase"
                                     >
-                                        {new Date(
-                                            post.date + 'T00:00:00',
-                                        ).toLocaleDateString('en-GB', {
+                                        {formatCalendarDay(post.date, 'en-GB', {
                                             day: 'numeric',
                                             month: 'long',
                                             year: 'numeric',

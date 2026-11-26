@@ -1,0 +1,93 @@
+:root {
+  --bone: #F7F5F2;
+  --paper: #FBFAF8;
+  --hairline: #DEDAD2;
+  --charcoal: #262624;
+  --oxblood: #701A24;
+  --serif: Georgia, "Times New Roman", serif;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bone);
+  color: var(--charcoal);
+  font-family: var(--sans);
+  line-height: 1.6;
+}
+
+.post {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  background: var(--paper);
+}
+
+.post-head {
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.post-kicker {
+  margin: 0 0 0.5rem;
+  color: var(--oxblood);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.post h1 {
+  margin: 0 0 0.5rem;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.post-summary {
+  margin: 0;
+  color: var(--charcoal);
+}
+
+dl.post-details {
+  margin: 0 0 2rem;
+}
+
+.post-details div {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.post-details dt {
+  width: 8rem;
+  flex-shrink: 0;
+  color: var(--charcoal);
+  opacity: 0.7;
+}
+
+.post-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.post-body p {
+  margin: 0 0 1rem;
+}
+
+@media (max-width: 40rem) {
+  .post h1 {
+    font-size: 1.6rem;
+  }
+
+  .post-details div {
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .post-details dt {
+    width: auto;
+  }
+}

@@ -247,8 +247,8 @@ Warm, editorial and calm: **Oxblood & Bone**. Bone ground `#F7F5F2`, Paper `#FBF
 ### Not this
 The previous Solarized Light / ASCII / retrofuturistic direction was for the free single-file tool. It is being replaced. Do not reintroduce ASCII art, Solarized colors, Instrument Sans, gradients, or terminal imagery in new work. The currently deployed free tool may still show the old look until it is redesigned.
 
-### Free tool behavior (unchanged)
-Free links are `secure` and `ephemeral` by default, with no tier selection on the free flow.
+### Free tool
+Removed (2026-11-22): the `/free` page and the Worker's anonymous ephemeral artifacts are gone. Every artifact is permanent and authenticated.
 
 ### Copy rules
 Plain language, sentence case, no invented customers, certifications, prices or statistics. Technical words are fine when the audience uses them ("agent", "index", "MCP"); avoid internal jargon such as "harness", "multi-hop" or "provenance".

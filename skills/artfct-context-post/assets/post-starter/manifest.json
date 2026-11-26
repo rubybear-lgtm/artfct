@@ -1,0 +1,15 @@
+{
+  "db": {
+    "collections": {
+      "post": { "index": "kind" },
+      "post.reads": { "index": "reader" }
+    },
+    "seed": [
+      {
+        "collection": "post",
+        "doc_id": "details",
+        "body": { "kind": "decision", "owner": "", "status": "draft", "replaced_by": null }
+      }
+    ]
+  }
+}

@@ -52,6 +52,13 @@ class HandleInertiaRequests extends Middleware
             'features' => function () use ($request): array {
                 $team = $request->attributes->get('feature_team') ?? $request->route('team') ?? $request->route('current_team');
 
+                // Team routes carry a raw slug unless the controller type-hints
+                // the Team model (e.g. the dashboard): resolve it so
+                // browser-exposed flags reach every team page.
+                if (is_string($team)) {
+                    $team = Team::where('slug', $team)->first();
+                }
+
                 return $team instanceof Team && $request->user()?->belongsToTeam($team)
                     ? app(FeatureFlags::class)->forBrowser($team)
                     : [];

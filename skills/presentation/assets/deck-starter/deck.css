@@ -1,0 +1,213 @@
+/* Artfct deck starter chrome (deck@1, spec 31). Replace this file on upgrade; never edit index.html for style. */
+
+:root {
+  --deck-ink: #1f2328;
+  --deck-muted: #5c636b;
+  --deck-paper: #ffffff;
+  --deck-ground: #e7e5e1;
+  --deck-accent: #2f4f6f;
+  --deck-rule: #d4d1cb;
+  --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --deck-unit: calc(100vw / 1920);
+  --type-kicker: calc(var(--deck-unit) * 28);
+  --type-title: calc(var(--deck-unit) * 120);
+  --type-heading: calc(var(--deck-unit) * 84);
+  --type-body: calc(var(--deck-unit) * 44);
+}
+
+html.deck-js {
+  --deck-unit: 1px;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--deck-ground);
+  color: var(--deck-ink);
+  font-family: var(--deck-font);
+}
+
+/* Stage: 1920 by 1080 in stage units. Without JavaScript it fills the width and stacks. */
+.deck-stage {
+  width: calc(var(--deck-unit) * 1920);
+  margin: 0 auto;
+}
+
+.slide {
+  box-sizing: border-box;
+  width: calc(var(--deck-unit) * 1920);
+  height: calc(var(--deck-unit) * 1080);
+  padding: calc(var(--deck-unit) * 120);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--deck-paper);
+  margin-bottom: calc(var(--deck-unit) * 24);
+}
+
+.slide .kicker {
+  margin: 0 0 calc(var(--deck-unit) * 24);
+  font-size: var(--type-kicker);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--deck-accent);
+}
+
+.slide h1 {
+  margin: 0 0 calc(var(--deck-unit) * 40);
+  font-size: var(--type-title);
+  line-height: 1.05;
+}
+
+.slide h2 {
+  margin: 0 0 calc(var(--deck-unit) * 40);
+  font-size: var(--type-heading);
+  line-height: 1.1;
+}
+
+.slide p,
+.slide li {
+  margin: 0 0 calc(var(--deck-unit) * 20);
+  font-size: var(--type-body);
+  line-height: 1.4;
+  color: var(--deck-muted);
+}
+
+.slide ul {
+  margin: 0;
+  padding-left: calc(var(--deck-unit) * 48);
+}
+
+.slide img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.notes {
+  display: none;
+}
+
+/* With JavaScript: stage is positioned and scaled by app.js; inactive slides stay laid out but hidden. */
+html.deck-js,
+html.deck-js body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html.deck-js .deck-stage {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: calc(var(--deck-unit) * 1920);
+  height: calc(var(--deck-unit) * 1080);
+  margin: 0;
+  transform-origin: 0 0;
+}
+
+html.deck-js .slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 0;
+  visibility: hidden;
+}
+
+html.deck-js .slide[data-deck-active] {
+  visibility: visible;
+}
+
+html.deck-js.deck-noscale,
+html.deck-js.deck-noscale body {
+  height: auto;
+  overflow: auto;
+}
+
+html.deck-js.deck-noscale .deck-stage {
+  position: absolute;
+}
+
+html.deck-js .deck-stage > .slide:not([data-deck-active]) {
+  pointer-events: none;
+}
+
+/* Navigation chrome, built by app.js. Not part of any slide. */
+.deck-controls {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--deck-font);
+  font-size: 14px;
+  color: var(--deck-ink);
+  background: var(--deck-paper);
+  border: 1px solid var(--deck-rule);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.deck-controls button {
+  font: inherit;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--deck-rule);
+  border-radius: 50%;
+  background: var(--deck-paper);
+  color: var(--deck-ink);
+  cursor: pointer;
+}
+
+.deck-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.deck-controls button:focus-visible {
+  outline: 2px solid var(--deck-accent);
+  outline-offset: 2px;
+}
+
+/* Print: one slide per page, no chrome, no transform, finished state forced. */
+@page { size: 1920px 1080px; margin: 0 }
+
+@media print {
+  html,
+  html body {
+    background: none;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  html.deck-js .deck-stage {
+    position: static;
+    width: 1920px;
+    transform: none !important;
+  }
+
+  .deck-stage .slide,
+  html.deck-js .deck-stage .slide {
+    position: relative;
+    left: auto;
+    top: auto;
+    visibility: visible !important;
+    width: 1920px;
+    height: 1080px;
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .deck-stage .slide:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .deck-controls,
+  .notes {
+    display: none !important;
+  }
+}

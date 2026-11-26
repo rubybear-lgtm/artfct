@@ -2022,44 +2022,41 @@ async fn direct_worker_artifact_writes_enforce_role_and_oauth_scopes() -> Result
 
 #[tokio::test]
 #[ignore = "requires an isolated local Wrangler Worker"]
-async fn ephemeral_mode_rejects_manifest_field() -> Result<(), Box<dyn Error>> {
-    let context = require_context()?;
-    let response = RetryingClient::new()
-        .post(format!("{}/v1/artifacts", context.base))
-        .json(&json!({"mode": "ephemeral", "manifest": {}}))
-        .send()
-        .await?;
-    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires an isolated local Wrangler Worker"]
-async fn ephemeral_roundtrip_unchanged() -> Result<(), Box<dyn Error>> {
+async fn anonymous_free_tool_endpoints_are_gone() -> Result<(), Box<dyn Error>> {
     let context = require_context()?;
     let client = RetryingClient::new();
+
+    // An anonymous create (no `mode: permanent`, no credential) is refused.
     let created = client
         .post(format!("{}/v1/artifacts", context.base))
         .json(&json!({
             "tier": "secure",
             "body_ciphertext_b64": "ZXBoZW1lcmFsLWludGVncmF0aW9u",
             "body_iv_b64": "AAAAAAAAAAAAAAAA",
-            "title": "Ephemeral integration"
+            "title": "Anonymous create"
         }))
         .send()
         .await?;
-    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
-    let created: Value = created.json().await?;
-    let preview_url = created["url"]
-        .as_str()
-        .ok_or("create response omitted url")?
-        .to_string();
-    assert!(preview_url.starts_with(&format!("{}/p/", context.base)));
-    let preview = client.get(preview_url).send().await?;
-    assert_eq!(preview.status(), reqwest::StatusCode::OK);
-    let body = preview.text().await?;
-    assert!(body.contains("bodyCiphertextB64"));
-    assert!(body.contains("Waiting for the decryption key"));
+    assert_eq!(created.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+
+    // The old ephemeral id shape no longer resolves, and the anonymous TTL
+    // update and delete routes do not exist for it.
+    let preview = client
+        .get(format!("{}/p/abcdefghij", context.base))
+        .send()
+        .await?;
+    assert_eq!(preview.status(), reqwest::StatusCode::NOT_FOUND);
+    let patched = client
+        .patch(format!("{}/v1/artifacts/abcdefghij", context.base))
+        .json(&json!({"ttl_minutes": 1}))
+        .send()
+        .await?;
+    assert_eq!(patched.status(), reqwest::StatusCode::NOT_FOUND);
+    let deleted = client
+        .delete(format!("{}/v1/artifacts/abcdefghij", context.base))
+        .send()
+        .await?;
+    assert_eq!(deleted.status(), reqwest::StatusCode::BAD_REQUEST);
     Ok(())
 }
 
@@ -2754,6 +2751,123 @@ async fn publishing_v2_keeps_the_id_and_serves_new_content() -> Result<(), Box<d
     assert_eq!(versions[0]["current"], true);
     assert_eq!(versions[1]["version"], 1);
     assert_eq!(versions[1]["current"], false);
+    Ok(())
+}
+
+/// Publishes a multi-file bundle as the artifact's next version and uploads
+/// every file the Worker reports missing.
+async fn publish_bundle_version(
+    context: &Context,
+    client: &RetryingClient,
+    artifact_id: &str,
+    files: &[(&str, &[u8], &str)],
+    entrypoint: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let response = client
+        .post(format!(
+            "{}/v1/artifacts/{artifact_id}/versions",
+            context.base
+        ))
+        .bearer_auth(&context.token)
+        .json(&json!({
+            "title": "Storage integration bundle version",
+            "description": "Storage integration bundle version",
+            "thumbnail": "https://example.com/thumbnail.png",
+            "preview_blurred": false,
+            "manifest": {"entrypoint": entrypoint, "external_origins": [], "files": files.iter().map(|(path, bytes, content_type)| json!({"path": path, "content_type": content_type, "size_bytes": bytes.len(), "sha256": sha256(bytes)})).collect::<Vec<_>>()},
+            "provenance": {}
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let body: Value = response.json().await?;
+    for hash in body["missing_files"]
+        .as_array()
+        .ok_or("missing_files omitted")?
+    {
+        let hash = hash.as_str().ok_or("invalid missing hash")?;
+        let (_, bytes, content_type) = files
+            .iter()
+            .find(|(_, bytes, _)| sha256(bytes) == hash)
+            .ok_or("missing local file")?;
+        let upload = client
+            .put(format!(
+                "{}/v1/artifacts/{artifact_id}/files/{hash}",
+                context.base
+            ))
+            .bearer_auth(&context.token)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .body(bytes.to_vec())
+            .send()
+            .await?;
+        assert_eq!(upload.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    Ok(body)
+}
+
+/// RUB-563: the org content read lists every file of the *current* version
+/// (path, sha256, content_type, size_bytes), sorted by path, so the standalone
+/// packager can fetch each one. After a new version is promoted the list must
+/// be that version's bundle, not v1's.
+#[tokio::test]
+#[ignore = "requires an isolated local Wrangler Worker"]
+async fn org_content_read_lists_the_current_versions_files() -> Result<(), Box<dyn Error>> {
+    let context = require_context()?;
+    let client = RetryingClient::new();
+    let html = unique_html("content-files-v1");
+    let script = format!("console.log('v1 {}');", sha256(&html)).into_bytes();
+    let id = create_and_upload_bundle(
+        &context,
+        &client,
+        &[
+            ("index.html", html.as_slice(), "text/html; charset=utf-8"),
+            ("app.js", script.as_slice(), "application/javascript"),
+        ],
+        "index.html",
+    )
+    .await?;
+
+    let content = org_content_read(&context, &client, &id).await?;
+    assert_eq!(content["version"], 1);
+    assert_eq!(content["entrypoint"], "index.html");
+    assert_eq!(
+        content["files"],
+        json!([
+            {"path": "app.js", "sha256": sha256(&script), "content_type": "application/javascript", "size_bytes": script.len()},
+            {"path": "index.html", "sha256": sha256(&html), "content_type": "text/html; charset=utf-8", "size_bytes": html.len()},
+        ]),
+        "v1 lists both files, sorted by path"
+    );
+
+    let next_html = unique_html("content-files-v2");
+    let next_style = format!("body{{color:#{}}}", &sha256(&next_html)[..6]).into_bytes();
+    let published = publish_bundle_version(
+        &context,
+        &client,
+        &id,
+        &[
+            (
+                "index.html",
+                next_html.as_slice(),
+                "text/html; charset=utf-8",
+            ),
+            ("style.css", next_style.as_slice(), "text/css"),
+        ],
+        "index.html",
+    )
+    .await?;
+    assert_eq!(published["version"], 2);
+
+    let content = org_content_read(&context, &client, &id).await?;
+    assert_eq!(content["version"], 2);
+    assert_eq!(
+        content["files"],
+        json!([
+            {"path": "index.html", "sha256": sha256(&next_html), "content_type": "text/html; charset=utf-8", "size_bytes": next_html.len()},
+            {"path": "style.css", "sha256": sha256(&next_style), "content_type": "text/css", "size_bytes": next_style.len()},
+        ]),
+        "v2 lists v2's files only; v1's app.js is gone from the current bundle"
+    );
     Ok(())
 }
 

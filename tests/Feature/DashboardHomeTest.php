@@ -1,11 +1,13 @@
 <?php
 
 use App\Contracts\ArtifactDirectory;
+use App\Enums\FeatureReleaseState;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Http\Middleware\EnsureTeamMembership;
 use App\Models\Collection;
 use App\Models\CollectionArtifact;
+use App\Models\FeatureRelease;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
@@ -14,6 +16,10 @@ use App\Services\Indexing\FakeVectorIndex;
 use App\Services\Indexing\VectorChunk;
 use App\Services\Indexing\VectorIndexContract;
 use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function () {
+    $this->withoutVite();
+});
 
 /**
  * @param  array<string, mixed>  $overrides
@@ -263,4 +269,61 @@ test('a_user_with_no_current_team_gets_a_null_home', function () {
             ->component('dashboard')
             ->where('home', null)
             ->where('setup', null));
+});
+
+test('the_unified_rail_flag_is_off_by_default_and_home_props_are_unchanged', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rail-off-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    Collection::create([
+        'team_id' => $team->id,
+        'name' => 'pinned-one',
+        'canonical' => true,
+        'created_by_user_id' => $member->id,
+    ]);
+
+    test()->actingAs($member)->get(route('dashboard', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('dashboard')
+            ->where('features.unified-rail', false)
+            ->has('home.collections', 1)
+            ->where('home.collections.0.name', 'pinned-one')
+            ->where('home.collections.0.canonical', true)
+            ->where('home.collections.0.artifactCount', 0));
+});
+
+test('the_unified_rail_flag_on_keeps_home_collections_for_the_shelf', function () {
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rail-on-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+
+    FeatureRelease::factory()->create([
+        'key' => 'unified-rail',
+        'state' => FeatureReleaseState::SelectedTeams,
+        'selected_team_ids' => [$team->id],
+    ]);
+
+    Collection::create([
+        'team_id' => $team->id,
+        'name' => 'pinned-one',
+        'canonical' => true,
+        'created_by_user_id' => $member->id,
+    ]);
+    Collection::create([
+        'team_id' => $team->id,
+        'name' => 'plain-one',
+        'canonical' => false,
+        'created_by_user_id' => $member->id,
+    ]);
+
+    test()->actingAs($member)->get(route('dashboard', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('dashboard')
+            ->where('features.unified-rail', true)
+            ->has('home.collections', 2)
+            ->where('home.collections.0.name', 'pinned-one')
+            ->where('home.collections.0.canonical', true)
+            ->where('home.collections.1.name', 'plain-one')
+            ->where('home.collections.1.canonical', false));
 });

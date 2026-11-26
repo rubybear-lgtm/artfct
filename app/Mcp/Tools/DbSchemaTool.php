@@ -15,7 +15,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List the collections an artifact\'s database declares, with each collection\'s index field. Call this first: it tells you which collections exist before you read or write. Only artifacts published with a `db` section have one. Rules in get_guidance (topic data) apply.')]
+#[Description('Use when you need to see which data collections a board, wiki or tracker has (cards, pages, rows) before you read or write them. Call this first; only artifacts published with a db section have one. Lists each collection\'s index field. Needs data:read. Rules in get_guidance (topic data) apply even if you have not read them. Then use db_list or db_get.')]
 #[Name('db_schema')]
 #[Title('Show artifact database')]
 #[IsReadOnly]
@@ -28,7 +28,7 @@ final class DbSchemaTool extends DatabaseTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [

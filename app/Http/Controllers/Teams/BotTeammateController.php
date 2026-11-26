@@ -66,6 +66,8 @@ class BotTeammateController extends Controller
                 McpScope::ArtifactsDeploy->value,
                 McpScope::CollectionsRead->value,
                 McpScope::UsageRead->value,
+                McpScope::DataRead->value,
+                McpScope::DataWrite->value,
             ],
         ));
         abort_if($scopes === [], 403, __('You cannot grant scopes beyond your team role.'));

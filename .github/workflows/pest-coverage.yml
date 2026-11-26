@@ -1,0 +1,60 @@
+name: Pest coverage
+
+on:
+  pull_request:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: PHP coverage baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.5'
+          coverage: pcov
+          tools: composer:v2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - run: npm ci
+      - run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          npm run build
+      - name: Measure unit and feature tests
+        run: php -d memory_limit=1G vendor/bin/pest --parallel --passthru-php='-d memory_limit=1G' --compact --testsuite=Unit,Feature --coverage --coverage-clover=coverage/clover.xml --coverage-html=coverage/html
+      - name: Upload PHP coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pest-php-coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 14
+
+  mutation:
+    name: Stripe signature mutation pilot
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.5'
+          coverage: pcov
+          tools: composer:v2
+      - run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Mutate signature verification
+        run: php -d memory_limit=1G vendor/bin/pest tests/Unit/StripeSignatureTest.php --mutate --class='App\Services\Billing\StripeSignature' --no-cache

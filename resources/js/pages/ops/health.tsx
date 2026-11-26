@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import OpsLayout from '@/layouts/ops-layout';
+import { useReader } from '@/lib/local-date';
 
 const readinessLabels: Record<ReadinessState, string> = {
     ready: 'Ready',
@@ -34,6 +35,8 @@ function Stat({
     value: number;
     tone?: 'default' | 'attention';
 }) {
+    const reader = useReader();
+
     return (
         <div className="border-b border-border py-3">
             <dt className="text-sm text-muted-foreground">{label}</dt>
@@ -42,7 +45,7 @@ function Stat({
                     tone === 'attention' && value > 0 ? 'text-destructive' : ''
                 }`}
             >
-                {formatNumber(value)}
+                {formatNumber(value, reader)}
             </dd>
         </div>
     );
@@ -57,6 +60,8 @@ export default function Health({
     readiness,
     staff_organization,
 }: HealthProps) {
+    const reader = useReader();
+
     return (
         <>
             <Head title="Health" />
@@ -93,12 +98,16 @@ export default function Health({
                     items={[
                         {
                             label: 'Stripe',
-                            value: formatDateTime(stripe.last_received_at),
+                            value: formatDateTime(
+                                stripe.last_received_at,
+                                reader,
+                            ),
                         },
                         {
                             label: 'Worker',
                             value: formatDateTime(
                                 worker_events.last_received_at,
+                                reader,
                             ),
                         },
                     ]}

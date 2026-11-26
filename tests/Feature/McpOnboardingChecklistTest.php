@@ -215,7 +215,7 @@ test('server-seen milestones come from this person\'s own successful calls in th
         ->and($milestones['first_search'])->toBe(['done' => false, 'at' => null]);
 });
 
-test('with no host there are no steps to track yet', function () {
+test('with the unknown host there are no steps to track yet', function () {
     [, , $token] = newcomer();
 
     $onboarding = onboardingFor($token, 'unknown');
@@ -600,3 +600,31 @@ test('the onboard skill says a finished set-up stops and a re-run changes nothin
         ->toContain('If it lists a step, check this project\'s own file for it before you stop')
         ->toContain('because `complete` never covers a step done once per project');
 });
+
+test('portable onboarding resumes the shared steps without offering project or memory changes', function () {
+    [, , $token] = newcomer();
+    checklistCall($token, 'get_connection');
+
+    $onboarding = onboardingFor($token, 'portable');
+    expect(array_keys(statuses($onboarding)))->toBe(['verify_connection', 'read_usage_rules', 'ask_save_preference'])
+        ->and($onboarding['per_project_steps'])->toBe([])
+        ->and($onboarding['next_step'])->toBe('read_usage_rules');
+
+    checklistCall($token, 'record_onboarding_step', ['step' => 'read_usage_rules', 'outcome' => 'done', 'host' => 'portable'])
+        ->assertJsonPath('result.structuredContent.next_step', 'ask_save_preference');
+
+    checklistCall($token, 'record_onboarding_step', ['step' => 'ask_save_preference', 'outcome' => 'skipped', 'host' => 'portable'])
+        ->assertJsonPath('result.structuredContent.complete', true);
+
+    // Moving to a fuller host later keeps what was done and asks only for the rest.
+    expect(onboardingFor($token, 'portable')['complete'])->toBeTrue()
+        ->and(onboardingFor($token, 'claude-app')['next_step'])->toBe('save_memory_note')
+        ->and(onboardingFor($token, 'coding-agent')['per_project_steps'])->toBe(['add_project_instructions']);
+});
+
+test('portable set-up has no memory note or tool-approvals step to record', function (string $step) {
+    [, , $token] = newcomer();
+
+    checklistCall($token, 'record_onboarding_step', ['step' => $step, 'outcome' => 'done', 'host' => 'portable'])
+        ->assertJsonPath('result.isError', true);
+})->with(['save_memory_note', 'explain_tool_approvals']);

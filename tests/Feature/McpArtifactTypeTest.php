@@ -134,3 +134,103 @@ test('search_artifacts filters by type and changed_since and returns version and
     $changed = callTypedTool($token, 'search_artifacts', ['query' => 'quarterly revenue overview', 'changed_since' => '2026-10-01T00:00:00Z'])->assertOk()->json('result.structuredContent.results');
     expect(array_column($changed, 'id'))->toBe(['new-table']);
 });
+
+test('post and design_system are declared types that deploy_artifact accepts and keeps', function (string $type) {
+    configureArtifactLinks();
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => $type === 'post' ? 'r575-post' : 'r575-design']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test']);
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake(['worker.test/v1/artifacts' => Http::response([
+        'id' => TYPED_ARTIFACT_ID, 'version' => 1, 'url' => 'https://worker.test/p/'.TYPED_ARTIFACT_ID.'/',
+        'created' => true, 'missing_files' => [], 'tier' => 'secure', 'sharing' => 'team',
+    ], 201)]);
+
+    $declared = callTypedTool($token, 'deploy_artifact', ['html' => '<p>x</p>', 'artifact_type' => $type])->assertOk();
+    expect($declared->json('result.structuredContent.artifact_type'))->toBe($type);
+
+    $kept = callTypedTool($token, 'deploy_artifact', ['html' => '<h1>A</h1><h2>B</h2><h2>C</h2>'])->assertOk();
+    expect($kept->json('result.structuredContent.artifact_type'))->toBe($type);
+})->with(['post' => ['post'], 'design_system' => ['design_system']]);
+
+test('the resolver never infers post or design_system', function () {
+    $resolver = new ArtifactTypeResolver;
+
+    foreach (['<h1>Decision</h1><p>We agreed on pricing.</p>', '<h1>Design system</h1><h2>Tokens</h2><h2>Type</h2><h2>Color</h2>', '<p>hello</p>'] as $html) {
+        expect($resolver->infer($html))->not->toBe(ArtifactType::Post)
+            ->and($resolver->infer($html))->not->toBe(ArtifactType::DesignSystem);
+    }
+});
+
+test('a declared post is kept on a later version without a type', function () {
+    $team = Team::factory()->create();
+    $resolver = new ArtifactTypeResolver;
+
+    $resolver->record($team, TYPED_ARTIFACT_ID, '<p>decided</p>', ArtifactType::Post);
+    $kept = $resolver->record($team, TYPED_ARTIFACT_ID, '<h1>A</h1><h2>B</h2><h2>C</h2>', null);
+
+    expect($kept)->toBe(ArtifactType::Post);
+});
+
+test('list filters by post and design_system and asks the Worker for the matching ids', function () {
+    config(['services.worker.base_url' => 'https://worker.test']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'rub-575-type-filter']);
+    $token = remoteMcpToken($team);
+    ArtifactTypeAssignment::factory()->create(['team_id' => $team->id, 'artifact_id' => 'postaaaaaaaaa', 'artifact_type' => ArtifactType::Post]);
+    ArtifactTypeAssignment::factory()->create(['team_id' => $team->id, 'artifact_id' => 'dsaaaaaaaaaaa', 'artifact_type' => ArtifactType::DesignSystem]);
+    $artifactFor = fn (string $id, string $title): array => [
+        'id' => $id, 'title' => $title, 'description' => 'd', 'created_at' => '2026-10-01T00:00:00Z', 'updated_at' => '2026-10-02T00:00:00Z',
+        'version' => 1, 'kind' => 'html', 'sharing' => 'team', 'owner_user_id' => 'u', 'can_edit' => false, 'provenance' => [], 'revoked_at' => null,
+    ];
+    Http::fake(['worker.test/v1/orgs/*' => function (Request $request) use ($artifactFor) {
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+        $artifacts = match ($query['ids'] ?? '') {
+            'postaaaaaaaaa' => [$artifactFor('postaaaaaaaaa', 'Pricing decision')],
+            'dsaaaaaaaaaaa' => [$artifactFor('dsaaaaaaaaaaa', 'Brand system')],
+            default => [],
+        };
+
+        return Http::response(['artifacts' => $artifacts, 'next_cursor' => null]);
+    }]);
+
+    $posts = callTypedTool($token, 'list_artifacts', ['artifact_type' => 'post'])->assertOk();
+    expect($posts->json('result.structuredContent.artifacts.0.id'))->toBe('postaaaaaaaaa')
+        ->and($posts->json('result.structuredContent.artifacts.0.artifact_type'))->toBe('post');
+
+    $designSystems = callTypedTool($token, 'list_artifacts', ['artifact_type' => 'design_system'])->assertOk();
+    expect($designSystems->json('result.structuredContent.artifacts.0.id'))->toBe('dsaaaaaaaaaaa')
+        ->and($designSystems->json('result.structuredContent.artifacts.0.artifact_type'))->toBe('design_system');
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'ids=dsaaaaaaaaaaa'));
+});
+
+test('search filters by post and design_system', function (string $type, string $expectedId) {
+    config(['indexing.enabled' => true, 'app.public_base_url' => 'https://artfct.dev']);
+    $team = Team::factory()->create(['plan' => Plan::Team, 'slug' => 'r575-search']);
+    $token = remoteMcpToken($team);
+
+    /** @var FakeArtifactDirectory $directory */
+    $directory = app(ArtifactDirectory::class);
+    /** @var FakeVectorIndex $index */
+    $index = app(VectorIndexContract::class);
+    foreach (['postaaaaaaaaa' => ArtifactType::Post, 'dsaaaaaaaaaaa' => ArtifactType::DesignSystem] as $id => $artifactType) {
+        $directory->seedArtifact([
+            'id' => $id, 'org_id' => $team->slug, 'user_id' => 1, 'title' => "Artifact {$id}", 'description' => 'd',
+            'content_hash' => md5($id), 'created_at' => '2026-08-01T00:00:00+00:00', 'updated_at' => '2026-10-10T00:00:00+00:00', 'version' => 1,
+            'revoked_at' => null, 'tier' => 'secure', 'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+        ]);
+        $text = 'team context overview '.$id;
+        $index->upsertChunks($team->slug, $id, [new VectorChunk(
+            text: $text, vector: app(EmbeddingsContract::class)->embed([$text])[0], artifactId: $id, orgId: $team->slug,
+            createdAt: '2026-08-01T00:00:00+00:00', agent: 'cursor', repoUrl: null, commitSha: null,
+        )]);
+        ArtifactTypeAssignment::factory()->create(['team_id' => $team->id, 'artifact_id' => $id, 'artifact_type' => $artifactType]);
+    }
+
+    $results = callTypedTool($token, 'search_artifacts', ['query' => 'team context overview', 'artifact_type' => $type])->assertOk()->json('result.structuredContent.results');
+
+    expect(array_column($results, 'id'))->toBe([$expectedId])
+        ->and($results[0]['artifact_type'])->toBe($type);
+})->with([
+    'post' => ['post', 'postaaaaaaaaa'],
+    'design_system' => ['design_system', 'dsaaaaaaaaaaa'],
+]);

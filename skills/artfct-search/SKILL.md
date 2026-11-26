@@ -1,6 +1,6 @@
 ---
 name: artfct-search
-description: "Use when answering from the team library with search_artifacts, read_artifact or get_artifact: phrasing and rephrasing, reading past a snippet, citing id and version, and saying not found."
+description: "Use when the person asks what the team agreed, a pricing decision, an announcement, or anything already in the library: search in their words, then read_artifact past the snippet, cite id and version, and say not found rather than guessing."
 ---
 
 # Finding and reading from Artfct

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import OpsLayout from '@/layouts/ops-layout';
+import { useReader } from '@/lib/local-date';
 import { index, update } from '@/routes/ops/features';
 
 type ReleaseState = 'off' | 'selected' | 'released';
@@ -51,6 +52,7 @@ export default function FeatureRelease({
     history,
     status,
 }: Props) {
+    const reader = useReader();
     const [teamText, setTeamText] = useState(team_slugs.join('\n'));
     const form = useForm({ state, team_slugs, reason: '', confirm: false });
 
@@ -245,7 +247,10 @@ export default function FeatureRelease({
                                 <p className="mt-2 text-xs text-muted-foreground">
                                     {entry.staff} ·{' '}
                                     <time dateTime={entry.created_at}>
-                                        {formatDateTime(entry.created_at)}
+                                        {formatDateTime(
+                                            entry.created_at,
+                                            reader,
+                                        )}
                                     </time>
                                 </p>
                             </li>

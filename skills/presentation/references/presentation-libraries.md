@@ -4,46 +4,13 @@
 
 | Approach | Use when |
 |----------|----------|
-| **Template** (`assets/presentation-template.html`) | Default — no dependencies, fast, solarized aesthetic matches artfct |
+| **Deck starter** (`assets/deck-starter/`) | Default — no dependencies, fast, passes the publish contract; see SKILL.md |
 | **Reveal.js** | User needs advanced features: fragments, themes, speaker notes, PDF export |
 | **Pure CSS** | Ultra-minimal, user specifies a specific aesthetic |
 
-## Default: Built-in Template
+## Default: Deck Starter
 
-Read `assets/presentation-template.html` as the starting point. Replace all `{{PLACEHOLDER}}` tokens and add/remove `<section class="slide">` blocks as needed. No external libraries required.
-
-### Slide types available
-
-- `.slide-title` — centered title slide with kicker line and subtitle
-- `.slide-content` — left-aligned content slide with heading + bullet list or paragraph
-- `.slide-content` with `<pre><code>` — code slide
-
-### Adding slides
-
-Copy a `<section class="slide">` block and insert it before the `<!-- Add more slides -->` comment. The JS counter updates automatically.
-
-### Customizing accent color
-
-The top accent bar uses a `linear-gradient` on `.accent-bar`. Change the color stops to match the content's theme:
-
-```css
-.accent-bar {
-  background: linear-gradient(to right, var(--orange), var(--red), var(--magenta));
-}
-```
-
-The `h2::after` underline uses `var(--blue)` — change to match:
-```css
-.slide-content h2::after { background: var(--orange); }
-```
-
-### List item prefix
-
-The `li::before` arrow (`→`) and the `h2::after` bar share a color. Override both if customizing:
-```css
-.slide-content li::before { color: var(--cyan); }
-.slide-content h2::after  { background: var(--cyan); }
-```
+Fill only `index.html` from `assets/deck-starter/` and copy `deck.css` and `app.js` unchanged. Add or remove `<section class="slide">` blocks as the outline needs. The starter's navigation, scaling and print rules come with `deck.css` and `app.js`. Theme it with `--deck-*` and `--type-*` tokens on the stage, as SKILL.md describes.
 
 ---
 

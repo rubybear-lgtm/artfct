@@ -28,7 +28,7 @@ function signedInPages(): array
 /** @return list<string> */
 function publicPages(): array
 {
-    return ['home', 'free', 'blog', 'docs', 'connect.index', 'terms', 'privacy', 'support', 'login'];
+    return ['home', 'blog', 'docs', 'connect.index', 'terms', 'privacy', 'support', 'login'];
 }
 
 /** @return array<string, string> route name => where it is covered */
@@ -65,6 +65,8 @@ function notPages(): array
         'sso.authenticate' => 'SSO callback (redirect)', 'sso.login' => 'SSO start (redirect)',
         'teams.audit.export' => 'file download', 'console.export' => 'zip download',
         'artifacts.download' => 'file download',
+        'artifacts.download.html' => 'file download (standalone HTML, StandaloneHtmlDownloadTest)',
+        'artifacts.download.handoff' => 'file download (handoff zip, HandoffPackDownloadTest)',
         'artifacts.freshness' => 'viewer freshness JSON poll (ArtifactViewerTest)',
         'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
@@ -121,6 +123,10 @@ test('a docs link to one AI tool opens that tool\'s setup steps', function () {
 
 test('every_page_route_is_accounted_for', function () {
     $known = array_merge(signedInPages(), publicPages(), array_keys(coveredElsewhere()), array_keys(notPages()));
+
+    $stale = collect($known)->reject(fn (string $name): bool => Route::has($name))->values()->all();
+    expect($stale)->toBe([], 'These smoke inventory routes no longer exist: '.implode(', ', $stale));
+    expect(count($known))->toBe(count(array_unique($known)), 'A route appears more than once in the smoke inventory.');
 
     $unlisted = collect(Route::getRoutes()->getRoutes())
         ->filter(fn ($route) => in_array('GET', $route->methods(), true))

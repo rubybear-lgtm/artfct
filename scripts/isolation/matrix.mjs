@@ -430,7 +430,6 @@ export async function matrix(world) {
         }
 
         const validBodies = {
-            'PATCH /v1/artifacts/{id}': JSON.stringify({ ttl_minutes: 60 }),
             'PATCH /v1/orgs/{org}/artifacts/{id}': JSON.stringify({
                 revoked_at: '2026-01-01T00:00:00Z',
             }),

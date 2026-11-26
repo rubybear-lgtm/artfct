@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Deck starter sibling fixture</title>
+</head>
+<body>
+  <script>
+    // Test fixture only. A frame that is not the parent: it sends a rogue ready
+    // to the deck and forwards anything the deck answers, so the test can see it.
+    window.addEventListener('message', function (event) {
+      if (event.source === window.parent && event.data && event.data.go) {
+        window.parent.frames.starter.postMessage(
+          { channel: 'artfct-export', v: 1, id: 'sibling', cmd: 'ready' },
+          event.data.starterOrigin
+        );
+        return;
+      }
+      if (event.source === window.parent.frames.starter) {
+        window.parent.postMessage({ fromSibling: true, id: event.data && event.data.id }, window.location.origin);
+      }
+    });
+  </script>
+</body>
+</html>

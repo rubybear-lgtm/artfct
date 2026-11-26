@@ -5,6 +5,9 @@
 const RAILWAY_CONTEXT = /^artfct\s*-/i;
 const RAILWAY_NAME = /railway/i;
 const RAILWAY_APPS = new Set(['railway', 'railway-app']);
+const MCP_E2E_CHECK_NAME =
+    'MCP local end-to-end (Postgres + Worker + hosted OAuth)';
+const RELEASE_CHECK_NAME = 'Release to production';
 
 /**
  * Check names that must appear and conclude successfully (or skipped for the
@@ -142,21 +145,35 @@ function isPending(check) {
  *   appSlug?: string,
  * }} check
  */
-function isAcceptable(check) {
+function isAcceptable(check, requiredNames) {
     if (check.conclusion === 'success') {
         return true;
     }
 
+    if (check.conclusion !== 'skipped') {
+        return false;
+    }
+
     // Path-filtered MCP e2e is skipped on purpose; treat that as acceptable.
-    if (
-        check.name ===
-            'MCP local end-to-end (Postgres + Worker + hosted OAuth)' &&
-        check.conclusion === 'skipped'
-    ) {
+    if (check.name === MCP_E2E_CHECK_NAME) {
         return true;
     }
 
-    return false;
+    // A non-required job skipped by its own `if:` (for example one that only
+    // runs on workflow_dispatch) is not a failure. Required checks must pass.
+    return !requiredNames.includes(check.name);
+}
+
+/**
+ * An earlier, finished run of the release Action is not CI evidence for the
+ * commit: a failed dry run must not block every later release of the same
+ * SHA. A release run that is still going is kept, so it is waited on.
+ *
+ * @param {{ name: string, status: string, conclusion: string | null }} check
+ * @returns {boolean}
+ */
+export function isFinishedReleaseRun(check) {
+    return check.name === RELEASE_CHECK_NAME && !isPending(check);
 }
 
 /**
@@ -198,7 +215,8 @@ export async function assertRequiredChecksSucceeded(options) {
             (await options.listCheckRuns(options.sha)).filter(
                 (check) =>
                     !isIgnoredCheck(check) &&
-                    !isOwnRun(check, options.ownRunId),
+                    !isOwnRun(check, options.ownRunId) &&
+                    !isFinishedReleaseRun(check),
             ),
         );
         const statuses = options.listCommitStatuses
@@ -223,7 +241,8 @@ export async function assertRequiredChecksSucceeded(options) {
                     ? 'success'
                     : status.state === 'failure' || status.state === 'error'
                       ? 'failure'
-                      : status.state === 'pending' || status.state === 'expected'
+                      : status.state === 'pending' ||
+                          status.state === 'expected'
                         ? null
                         : status.state,
             appSlug: undefined,
@@ -233,7 +252,7 @@ export async function assertRequiredChecksSucceeded(options) {
         const all = latestChecksByName([...checkRuns, ...normalizedStatuses]);
         const pending = all.filter(isPending).map((c) => c.name);
         const failed = all
-            .filter((c) => !isPending(c) && !isAcceptable(c))
+            .filter((c) => !isPending(c) && !isAcceptable(c, requiredNames))
             .map((c) => c.name);
 
         if (failed.length > 0) {

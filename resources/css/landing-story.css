@@ -774,7 +774,7 @@
 .landing .story-stage {
     position: relative;
     min-height: 0;
-    margin-right: min(0px, calc((1200px - 100vw) / 2));
+    margin-right: 0;
     overflow: hidden;
     background: var(--bone);
 }
@@ -881,9 +881,9 @@
     .landing.landing .herosplit {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr);
-        height: calc(100svh - 68px - var(--strip-h, 76px));
-        min-height: 520px;
+        grid-template-rows: auto auto;
+        height: auto;
+        min-height: 0;
     }
     .landing.landing .hero {
         display: block;
@@ -903,21 +903,21 @@
         line-height: 1.4;
     }
     .landing.landing .hero .cta {
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         gap: 10px;
         margin: 0;
     }
     .landing.landing .hero .cta .btn {
-        flex: 1;
+        flex: 1 1 190px;
         justify-content: center;
-        white-space: nowrap;
+        white-space: normal;
         padding-inline: 10px;
         font-size: 14px;
     }
     .landing.landing .story-stage {
-        aspect-ratio: auto;
-        max-height: none;
-        min-height: 0;
+        aspect-ratio: 4 / 5;
+        max-height: 620px;
+        min-height: 320px;
         height: auto;
     }
     .landing.landing .story-win .fs-win {

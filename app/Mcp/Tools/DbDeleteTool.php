@@ -15,7 +15,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('Delete one document from an artifact\'s database. Deleting a document that is already gone succeeds with deleted false. Pass `if_version` to refuse the delete if the document changed. Needs the data:write scope and edit access to the artifact.')]
+#[Description('Use when the person asks to delete one card, page or row from a board, not the artifact itself. Needs data:write and edit access. Pass if_version to refuse the delete if the document changed. Deleting a document that is already gone succeeds with deleted false. To delete the whole page, use delete_artifact.')]
 #[Name('db_delete')]
 #[Title('Delete a database document')]
 #[IsReadOnly(false)]
@@ -28,7 +28,7 @@ final class DbDeleteTool extends DatabaseTool
     protected ?array $meta = [
         'artfct' => [
             'contractVersion' => '1.0.0',
-            'guidanceVersion' => '1.4.1',
+            'guidanceVersion' => '1.14.0',
             'toolVersion' => '1.0.0',
             'owner' => 'artfct-mcp',
             'requiredScopes' => [

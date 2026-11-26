@@ -110,6 +110,35 @@ export default [
         },
     },
     {
+        // Dates and numbers are formatted in one place, `lib/local-date`: the
+        // server renders without knowing the reader's locale or time zone, and
+        // a page that formats them itself fails to hydrate (React error 418).
+        files: ['resources/js/**/*.{ts,tsx}'],
+        ignores: ['resources/js/lib/local-date.ts'],
+        rules: {
+            'no-restricted-properties': [
+                'error',
+                ...[
+                    'toLocaleString',
+                    'toLocaleDateString',
+                    'toLocaleTimeString',
+                ].map((property) => ({
+                    property,
+                    message:
+                        'Format dates and numbers with resources/js/lib/local-date (useReader, formatLocalDate, formatLocalNumber, or the LocalDate and LocalNumber components) so the server and browser renders match.',
+                })),
+                ...['DateTimeFormat', 'NumberFormat', 'RelativeTimeFormat'].map(
+                    (property) => ({
+                        object: 'Intl',
+                        property,
+                        message:
+                            'Format dates and numbers with resources/js/lib/local-date so the server and browser renders match.',
+                    }),
+                ),
+            ],
+        },
+    },
+    {
         ignores: [
             'vendor',
             'node_modules',

@@ -2,7 +2,7 @@
 <html
     lang="{{ str_replace('_', '-', app()->getLocale()) }}"
     @class([
-        'app-theme' => ! in_array($page['component'] ?? null, ['welcome', 'landing'], true),
+        'app-theme' => ! in_array($page['component'] ?? null, ['landing'], true),
         'dark' => ($appearance ?? 'system') == 'dark',
         'landing-page' => ($page['component'] ?? null) === 'landing',
     ])
@@ -40,7 +40,7 @@
         @php
             $meta = $page['props']['meta'] ?? [];
             $pageTitle = $meta['title'] ?? 'artfct';
-            $pageDescription = $meta['description'] ?? 'Share self-contained HTML files instantly. Drop a file, get a link. No sign-up required.';
+            $pageDescription = $meta['description'] ?? 'Artfct indexes the reports, specs, tables and mockups your agents make, so Claude, Cursor, Codex and ChatGPT can search, read and cite each other’s work.';
             $blogPost = ($page['component'] ?? null) === 'blog-show' ? ($page['props']['post'] ?? null) : null;
         @endphp
 
@@ -124,13 +124,6 @@
                     <h1>Every agent sees what the others made.</h1>
                     <p>Artfct indexes every AI artifact your agents publish: reports, specs, tables and mockups. Claude, Cursor, Codex and ChatGPT can search across your team's work, read the right part and cite where it came from.</p>
                     <p>{{ $pageDescription }}</p>
-                    @break
-
-                @case('welcome')
-                    <h1>{{ $fallbackTitle }}</h1>
-                    <p>{{ $pageDescription }}</p>
-                    <p>artfct turns a self-contained HTML or Markdown file into a private, shareable link in seconds. No sign-up, no accounts. Every free link is encrypted in your browser before upload, and the preview is blurred by default, so only someone with the full link can read it. Links expire 5 days after the last visit, and you can change that from Recent deployments.</p>
-                    <p>Perfect for sharing UI prototypes, dashboard previews, AI-generated visual outputs, HTML demos, slide decks, markdown documents, Mermaid diagrams, JSON tables, API diffs, env-diffs, regex testers, and any other self-contained web content. No accounts required. Works in the browser, and with AI tools that support adding a remote connection.</p>
                     @break
 
                 @case('docs')

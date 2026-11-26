@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="artfct-starter" content="doc@1">
+  <title>Doc starter images case</title>
+  <link rel="stylesheet" href="doc.css">
+</head>
+<body>
+  <!-- Test fixture only: one sheet whose images cover each bad src form and one good relative src. -->
+  <main class="sheet">
+    <header class="doc-title">
+      <p class="doc-kicker">Fixture</p>
+      <h1>Document title</h1>
+    </header>
+    <p class="doc-byline">Fixture author, date, audience</p>
+    <article class="doc-body">
+      <img src=" https://evil.example/x.png" alt="">
+      <img src="\\evil.com/x" alt="">
+      <img src="../../x" alt="">
+      <img src="/x" alt="">
+      <img src="images/a.png" alt="">
+    </article>
+  </main>
+  <script src="export.js" defer></script>
+</body>
+</html>

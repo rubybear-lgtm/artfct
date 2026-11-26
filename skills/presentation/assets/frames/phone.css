@@ -1,0 +1,45 @@
+/* Demo frame: phone (RUB-578, spec 44). Chrome is decorative and aria-hidden in the markup. */
+.frame-phone {
+  --frame-body: #262624;
+  --frame-screen: #FBFAF8;
+  box-sizing: border-box;
+  position: relative;
+  width: min(280px, 100%);
+  aspect-ratio: 9 / 19;
+  margin: 0 auto;
+  padding: 0;
+  border: 10px solid var(--frame-body);
+  border-radius: 36px;
+  overflow: hidden;
+  background: var(--frame-screen);
+}
+
+.frame-phone .frame-chrome {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 1;
+  width: 88px;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: 0 0 14px 14px;
+  background: var(--frame-body);
+}
+
+.frame-phone .frame-chrome + .frame-slot {
+  height: 100%;
+}
+
+.frame-phone .frame-slot {
+  margin: 0;
+  height: 100%;
+  line-height: 0;
+}
+
+.frame-phone .frame-slot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}

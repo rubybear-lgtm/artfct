@@ -1,3 +1,6 @@
+import { formatLocalDate, formatLocalNumber } from '@/lib/local-date';
+import type { Reader } from '@/lib/local-date';
+
 const units = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
 export function formatBytes(bytes: number): string {
@@ -21,26 +24,22 @@ export function humanize(value: string): string {
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-export function formatDateTime(value: string | null): string {
+export function formatDateTime(value: string | null, reader: Reader): string {
     if (!value) {
         return 'Never';
     }
 
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    return formatLocalDate(value, reader, {}, { time: true }) ?? value;
 }
 
-export function formatDate(value: string | null): string {
+export function formatDate(value: string | null, reader: Reader): string {
     if (!value) {
         return 'None';
     }
 
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+    return formatLocalDate(value, reader, {}) ?? value;
 }
 
-export function formatNumber(value: number): string {
-    return value.toLocaleString();
+export function formatNumber(value: number, reader: Reader): string {
+    return formatLocalNumber(value, reader);
 }
