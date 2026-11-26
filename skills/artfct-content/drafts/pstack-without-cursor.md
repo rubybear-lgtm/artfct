@@ -75,7 +75,7 @@ Not officially supported. Until that changes, you're using a port: someone else'
 | [ericlitman/open-pstack](https://github.com/ericlitman/open-pstack) | ericlitman | Claude Code and Codex (plus Grok and T3 Code paths), tracking upstream |
 | [chhoumann/t3-pstack](https://github.com/chhoumann/t3-pstack) | chhoumann | T3 Code |
 
-For Codex, any of the first three. For OpenCode, Copilot or OMP, michael-denyer's is the one that names them.
+For Codex, any of the first three. For Copilot or OMP, michael-denyer's is the one that names them. For OpenCode, michael-denyer's and backnotprop's both do.
 
 I haven't copied install commands for the ports, on purpose. They change faster than a blog post does, and a stale command is worse than none. Use the port's README on the day you install.
 
@@ -97,7 +97,7 @@ Wherever pstack runs, most of what a run produces stays on the machine that ran 
 
 That matters most for exactly the people reading this. If you run pstack in Claude Code and your teammate is in Codex, their agent won't read `.claude/skills/`, won't see an uncommitted log and can't open a screenshot on your laptop. I wrote up [where pstack keeps each piece](https://artfct.dev/blog/where-pstack-artifacts-live) and how to share it with plain git.
 
-The other option is the reason I wrote this at all: [artfct-pstack](https://artfct.dev/blog/artfct-pstack), a plugin that carries pstack's skills and publishes each verification run's log, feature maps and evidence to your team's Artfct library, where any agent connected to the workspace can find it. Setup is two plugins; the [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp) guides cover connecting Artfct by hand. It's an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan.
+The other option is the reason I wrote this at all: [artfct-pstack](https://artfct.dev/blog/artfct-pstack), a plugin that carries pstack's skills and publishes each verification run's log, feature maps and evidence to your team's Artfct library, where any agent connected to the workspace can find it. Setup is two plugins; the [Claude Code](https://artfct.dev/connect/connect-claude-code), [Codex](https://artfct.dev/connect/connect-codex), [Cursor](https://artfct.dev/connect/connect-cursor) and [OMP](https://artfct.dev/connect/connect-omp) connect guides walk through the Artfct side. It's an independent add-on, not official pstack, and not endorsed by Cursor or Lauren Tan.
 
 *pstack is MIT licensed, copyright 2026 Lauren Tan (poteto). Last updated 25 November 2026: checked against the pstack README, the Claude Code adapter and each port's README.*
 
