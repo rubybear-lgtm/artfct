@@ -10,7 +10,7 @@ Sources of truth, in order of authority:
 | `routes/teams.php`, `routes/web.php` | Whether a console capability is actually reachable. |
 | `app/Mcp/Tools/` | Tool argument surface — sharing levels, versioning, bundle limits. |
 | `DOCUMENTATION.md` | Storage, isolation, identity, governance mechanics. |
-| `docs/prd.md` | Positioning, non-goals, and what is deliberately out. |
+| [Artfct PRD v6](https://artfct.dev/a/3q0cm4x4o746e) (replaces `docs/prd.md`) | Positioning, non-goals, and what is deliberately out. |
 
 Anything from `docs/specs/` is a **plan**, not a shipped fact. Specs 12–16 describe Track F; the routes exist, but "the spec says so" is not evidence a customer can observe it. When you need a claim that only a spec supports, write it as a roadmap sentence and say so.
 
