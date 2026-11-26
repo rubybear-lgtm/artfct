@@ -224,13 +224,14 @@ Requires the `artifacts:read` scope. See [Connect your AI tool](#connect-your-ai
 
 ### Skills
 
-Install the artfct skill to give any compatible AI agent (such as Claude Code, Codex, or OpenCode) guidance on when and how to deploy artifacts:
+The Artfct skills ship in the Artfct plugin (`artfct-dev/artfct-plugin`), an [Agent Plugins](https://agent-plugins.org) package that also brings the connection. Install it with your tool's plugin install; the setup guide for each tool at `/connect` has the exact step. In Claude Code:
 
-```sh
-npx skills add rubybear-lgtm/artfct@artfct
+```
+/plugin marketplace add artfct-dev/artfct-plugin
+/plugin install artfct@artfct
 ```
 
-The skill teaches agents:
+The skills teach agents:
 
 - When to deploy vs. when to return a code block
 - How to choose the right sharing level (`private` / `team` / `public`)

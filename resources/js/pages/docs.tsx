@@ -10,14 +10,18 @@ import { login, privacy, terms } from '@/routes';
 // ── AI tool setup (from App\\Support\\AiToolSetup) ─────────────────────────
 type SetupStep = { text: string; code?: string };
 
-type ConnectionGuide = {
-    id: string;
-    label: string;
-    verified: boolean;
+type SetupPath = {
     intro?: string;
     installLink?: string;
     installLinkFallback?: string;
     steps: SetupStep[];
+};
+
+type ConnectionGuide = SetupPath & {
+    id: string;
+    label: string;
+    verified: boolean;
+    fallback?: SetupPath;
 };
 
 type AgentTokenSetup = {
@@ -32,7 +36,6 @@ type AiToolSetup = {
     mcpUrl: string;
     llmsUrl: string;
     llmsFullUrl: string;
-    quickInstall: string;
     guides: ConnectionGuide[];
     agentTokenSetup: AgentTokenSetup;
     tools: Array<{ name: string; does: string; permission: string }>;
@@ -573,17 +576,17 @@ function Inline({ text }: { text: string }) {
     );
 }
 
-function GuideSteps({ guide }: { guide: ConnectionGuide }) {
+function SetupPathSteps({ path, label }: { path: SetupPath; label: string }) {
     return (
-        <div className="flex flex-col gap-4">
-            {guide.installLink && (
+        <>
+            {path.installLink && (
                 <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" asChild>
-                        <a href={guide.installLink}>Add to {guide.label}</a>
+                        <a href={path.installLink}>Add to {label}</a>
                     </Button>
-                    {guide.installLinkFallback && (
+                    {path.installLinkFallback && (
                         <a
-                            href={guide.installLinkFallback}
+                            href={path.installLinkFallback}
                             target="_blank"
                             rel="noreferrer"
                             className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
@@ -593,14 +596,14 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     )}
                 </div>
             )}
-            {guide.intro && (
+            {path.intro && (
                 <Prose>
-                    <Inline text={guide.intro} />
+                    <Inline text={path.intro} />
                 </Prose>
             )}
             <Steps>
-                {guide.steps.map((step) => (
-                    <Step key={step.text}>
+                {path.steps.map((step, index) => (
+                    <Step key={index}>
                         <span>
                             <Inline text={step.text} />
                         </span>
@@ -608,6 +611,22 @@ function GuideSteps({ guide }: { guide: ConnectionGuide }) {
                     </Step>
                 ))}
             </Steps>
+        </>
+    );
+}
+
+function GuideSteps({ guide }: { guide: ConnectionGuide }) {
+    return (
+        <div className="flex flex-col gap-4">
+            <SetupPathSteps path={guide} label={guide.label} />
+            {guide.fallback && (
+                <>
+                    <h4 className="font-semibold text-foreground">
+                        Without the plugin
+                    </h4>
+                    <SetupPathSteps path={guide.fallback} label={guide.label} />
+                </>
+            )}
             <Prose>
                 If these steps do not match what you see, or the tool does not
                 connect,{' '}
@@ -724,7 +743,6 @@ export default function Docs({ contract, setup }: DocsProps) {
             title: 'Get started',
             items: [
                 { id: 'mcp', label: 'Connect your AI tool' },
-                { id: 'connect-quick', label: 'Set up several tools' },
                 { id: 'connect-check', label: 'Check that it works' },
                 {
                     id: 'connect-agent-token',
@@ -829,41 +847,6 @@ export default function Docs({ contract, setup }: DocsProps) {
                             tool’s own instructions.
                         </Prose>
                         <ConnectionTabs guides={setup.guides} />
-
-                        <SubHeading id="connect-quick">
-                            Or set up several tools at once
-                        </SubHeading>
-                        <Prose>
-                            If you use AI tools on your computer, this command
-                            finds the ones you have (Claude Code, Codex, Cursor,
-                            OpenCode, VS Code, Windsurf, Zed, Antigravity and
-                            more) and adds Artfct to each one you pick. It needs{' '}
-                            <a
-                                href="https://nodejs.org"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Node.js
-                            </a>{' '}
-                            and uses the open-source{' '}
-                            <a
-                                href="https://add-mcp.com"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                add-mcp
-                            </a>{' '}
-                            tool.
-                        </Prose>
-                        <CodeBlock code={setup.quickInstall} />
-                        <Prose>
-                            Each tool still asks you to sign in the first time
-                            you use it; follow the last steps for your tool
-                            above. Antigravity also needs{' '}
-                            <Code>"oauth": {'{}'}</Code> added to its entry. The
-                            Claude app and ChatGPT are set up in their own
-                            settings, not with this command.
-                        </Prose>
 
                         <SubHeading id="connect-check">
                             3. Check that it works
@@ -1007,10 +990,10 @@ export default function Docs({ contract, setup }: DocsProps) {
                         title="Skills for your AI tools"
                     >
                         <Prose>
-                            Skills give an AI tool that supports them (such as
-                            Claude Code, Codex or OpenCode) built-in guidance
-                            for a kind of task. The Artfct skill teaches your
-                            tool when and how to publish:
+                            The Artfct skills ship in the Artfct plugin,
+                            together with the connection. They teach your tool
+                            when and how to publish, how to search before it
+                            starts, and how to work on what teammates made.
                         </Prose>
                         {setup.skills.map((skill) => (
                             <div
@@ -1027,26 +1010,17 @@ export default function Docs({ contract, setup }: DocsProps) {
                             </div>
                         ))}
                         <Prose>
-                            Skills follow the{' '}
+                            The plugin follows the{' '}
                             <a
-                                href="https://skills.sh"
+                                href="https://agent-plugins.org"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="font-semibold text-primary underline-offset-4 hover:underline"
                             >
-                                skills.sh
+                                Agent Plugins
                             </a>{' '}
-                            format and are resolved from the{' '}
-                            <Code>skills/artfct/</Code> directory in the{' '}
-                            <a
-                                href={GITHUB}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-primary underline-offset-4 hover:underline"
-                            >
-                                Artfct repository
-                            </a>
-                            .
+                            format, so any compatible tool installs it with its
+                            own plugin install.
                         </Prose>
                     </Section>
 

@@ -21,11 +21,11 @@ class ConnectController extends Controller
         return Inertia::render('connect-index', [
             'meta' => [
                 'title' => 'Agent setup: connect Claude, Cursor, Codex and ChatGPT to Artfct',
-                'description' => 'Connect every AI agent your team uses to the same Artfct workspace, so what one agent publishes the others can search, read and cite. One prompt, or step-by-step guides.',
+                'description' => 'Install the Artfct plugin in every AI agent your team uses, on one workspace, so what one agent publishes the others can search, read and cite. One prompt, or step-by-step guides.',
             ],
             'guides' => array_map($this->card(...), $setup->guides()),
             'prompt' => $setup->agentSetupPrompt(),
-            'quickInstall' => $setup->quickInstall(),
+            'pluginRepoUrl' => $setup->pluginRepoUrl(),
         ]);
     }
 
@@ -44,7 +44,6 @@ class ConnectController extends Controller
             ],
             'guide' => $guide,
             'mcpUrl' => $setup->mcpUrl(),
-            'quickInstall' => $setup->quickInstall(),
             'prompt' => $setup->agentSetupPrompt(),
             'related' => $guides
                 ->reject(fn (array $candidate): bool => $candidate['id'] === $tool)

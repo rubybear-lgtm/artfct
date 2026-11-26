@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\AiToolSetup;
+
 test('the landing page hero stage plays the whole story', function () {
     visit('/')
         ->assertNoJavaScriptErrors()
@@ -100,5 +102,5 @@ test('the connect section copies the setup prompt and links to the setup guides'
         ->assertScript('[...document.querySelectorAll(".navlinks a")].some((a) => a.getAttribute("href") === "/connect")', true)
         ->assertScript('document.querySelectorAll("#connect [data-testid=copy-prompt] svg").length', 4)
         ->assertScript('document.querySelector("#connect a.btn").getAttribute("href")', '/connect')
-        ->assertScript('document.querySelectorAll(".sitemap > div:first-child a[href^=\"/connect/\"]").length', 12);
+        ->assertScript('document.querySelectorAll(".sitemap > div:first-child a[href^=\"/connect/\"]").length', count(AiToolSetup::forCurrentEnvironment()->guides()));
 });

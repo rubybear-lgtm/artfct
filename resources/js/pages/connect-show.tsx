@@ -16,7 +16,14 @@ interface GuideStep {
     code?: string;
 }
 
-interface Guide {
+interface SetupPath {
+    intro?: string;
+    installLink?: string;
+    installLinkFallback?: string;
+    steps: GuideStep[];
+}
+
+interface Guide extends SetupPath {
     id: string;
     label: string;
     kind: AgentKind;
@@ -24,18 +31,13 @@ interface Guide {
     summary: string;
     maker?: string;
     icon?: string;
-    initHost?: string;
-    intro?: string;
-    installLink?: string;
-    installLinkFallback?: string;
-    steps: GuideStep[];
+    fallback?: SetupPath;
 }
 
 interface ConnectShowProps {
     meta: { title: string; description: string };
     guide: Guide;
     mcpUrl: string;
-    quickInstall: string;
     prompt: string;
     related: AgentCard[];
     troubleshooting: Array<{ name: string; type: string; note: string }>;
@@ -116,6 +118,62 @@ function Section({
             )}
             {children}
         </section>
+    );
+}
+
+/**
+ * One way to set the tool up: an optional intro, optional one-click links,
+ * then numbered steps. The plugin path and the fallback share it.
+ */
+function SetupPathView({
+    path,
+    label,
+    lit,
+}: {
+    path: SetupPath;
+    label: string;
+    lit?: number;
+}) {
+    return (
+        <>
+            {path.intro && (
+                <p className="mb-5 border-l-2 border-primary bg-paper px-4 py-3 text-[15px] text-muted-foreground">
+                    {renderStepText(path.intro)}
+                </p>
+            )}
+            {path.installLink && (
+                <div className="mb-6 flex flex-wrap items-center gap-3">
+                    <a
+                        href={path.installLink}
+                        className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                        Add to {label}
+                    </a>
+                    {path.installLinkFallback && (
+                        <a
+                            href={path.installLinkFallback}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                            Open in browser instead
+                        </a>
+                    )}
+                </div>
+            )}
+            <Steps lit={lit}>
+                {path.steps.map((step, index) => (
+                    <div key={index}>
+                        {renderStepText(step.text)}
+                        {step.code && (
+                            <div className="mt-3">
+                                <CodeBlock code={step.code} />
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </Steps>
+        </>
     );
 }
 
@@ -244,10 +302,12 @@ function Note({ on, children }: { on: boolean; children: ReactNode }) {
 function WhatYouSee({
     name,
     chat,
+    plugin,
     stage,
 }: {
     name: string;
     chat: boolean;
+    plugin: boolean;
     stage: number;
 }) {
     return (
@@ -265,9 +325,11 @@ function WhatYouSee({
             </header>
             <div className="grid gap-3 p-4 text-sm">
                 <Note on={stage >= 0}>
-                    {chat
-                        ? 'Artfct added as a connector'
-                        : 'artfct added · needs sign-in'}
+                    {plugin
+                        ? 'Artfct plugin installed · needs sign-in'
+                        : chat
+                          ? 'Artfct added as a connector'
+                          : 'artfct added · needs sign-in'}
                 </Note>
                 <Note on={stage >= 1}>
                     Browser · Allow {name} to use Artfct? · Approved
@@ -349,8 +411,7 @@ export default function ConnectShow({
 }: ConnectShowProps) {
     const name = guide.label === 'Other tools' ? 'Your agent' : guide.label;
     const stage = useStage();
-    const initCall =
-        guide.initHost === 'codex' ? '$artfct-init' : '/artfct-init';
+    const plugin = guide.method.startsWith('Plugin');
     const tags = [
         KIND_LABEL[guide.kind],
         guide.method,
@@ -426,43 +487,11 @@ export default function ConnectShow({
                             <div className="mb-7">
                                 <CopyPrompt prompt={prompt} />
                             </div>
-                            {guide.intro && (
-                                <p className="mb-5 border-l-2 border-primary bg-paper px-4 py-3 text-[15px] text-muted-foreground">
-                                    {renderStepText(guide.intro)}
-                                </p>
-                            )}
-                            {guide.installLink && (
-                                <div className="mb-6 flex flex-wrap items-center gap-3">
-                                    <a
-                                        href={guide.installLink}
-                                        className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-                                    >
-                                        Add to {guide.label}
-                                    </a>
-                                    {guide.installLinkFallback && (
-                                        <a
-                                            href={guide.installLinkFallback}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
-                                        >
-                                            Open in browser instead
-                                        </a>
-                                    )}
-                                </div>
-                            )}
-                            <Steps lit={stage === 0 ? 1 : undefined}>
-                                {guide.steps.map((step) => (
-                                    <div key={step.text}>
-                                        {renderStepText(step.text)}
-                                        {step.code && (
-                                            <div className="mt-3">
-                                                <CodeBlock code={step.code} />
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </Steps>
+                            <SetupPathView
+                                path={guide}
+                                label={guide.label}
+                                lit={stage === 0 ? 1 : undefined}
+                            />
                         </Section>
 
                         <Section
@@ -476,37 +505,23 @@ export default function ConnectShow({
                             />
                         </Section>
 
-                        {guide.initHost && (
+                        {guide.fallback && (
                             <Section
-                                id="automatic"
-                                title="Make it automatic"
+                                id="without-plugin"
+                                title="Without the plugin"
                                 lede={
                                     <>
-                                        Set {name} up to search your team’s work
-                                        before it starts: for all your projects,
-                                        just you in this project, or the whole
-                                        team in this repo.
+                                        If you cannot install plugins, add
+                                        Artfct’s server to {name} by hand. You
+                                        get the same workspace without the
+                                        Artfct skills.
                                     </>
                                 }
                             >
-                                <Steps>
-                                    {[
-                                        <div key="add">
-                                            Add the setup skill:
-                                            <div className="mt-3">
-                                                <CodeBlock code="npx skills add rubybear-lgtm/artfct@artfct-init" />
-                                            </div>
-                                        </div>,
-                                        <div key="run">
-                                            In your project, run{' '}
-                                            {renderStepText(`\`${initCall}\``)}{' '}
-                                            or ask {name} to “set up Artfct”. It
-                                            asks where the setup should apply,
-                                            and asks again before it grants any
-                                            permission.
-                                        </div>,
-                                    ]}
-                                </Steps>
+                                <SetupPathView
+                                    path={guide.fallback}
+                                    label={guide.label}
+                                />
                             </Section>
                         )}
 
@@ -580,6 +595,7 @@ export default function ConnectShow({
                     <WhatYouSee
                         name={name}
                         chat={guide.kind === 'chat'}
+                        plugin={plugin}
                         stage={stage}
                     />
                 </div>
