@@ -23,7 +23,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Changed
 
-- MCP and OAuth responses that return `organization` (`get_connection`, `deploy_artifact`, `get_usage`, `pull_template`, the connection API and both token responses) now also return `organization_name`, the team's current display name. `organization` is still the team's permanent ID, which a rename does not change, so a renamed team no longer looks like a different one to an agent.
+- MCP and OAuth responses that return `organization` (`get_connection`, `deploy_artifact`, `get_usage`, `pull_template`, the connection API and both token responses) now also return `organization_name`, the team's current display name. `organization` is still the team's permanent ID, which a rename does not change, so a renamed team no longer looks like a different one to an agent. The onboard skill now reports the workspace by `organization_name`, and the live MCP smoke asserts the field.
 
 - RUB-583: the console has a Type filter next to the AI tool filter, with an option for every artifact type including Post and Design system. An unknown `type` in the URL is ignored.
 

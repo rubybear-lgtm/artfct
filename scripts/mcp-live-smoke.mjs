@@ -149,6 +149,10 @@ assert(
     'Usage resolved to the wrong organization',
 );
 assert(
+    hasTeamName(usage.result?.structuredContent),
+    'Usage response omitted the team name',
+);
+assert(
     typeof usage.result?.structuredContent?.period?.resets_at === 'string',
     'Usage response omitted the monthly reset timestamp',
 );
@@ -396,6 +400,10 @@ async function assertConcurrentSessionsKeepTheirTenant(concurrency) {
             connection.result?.structuredContent?.organization ===
                 expectedOrganization,
             `Concurrent session ${index + 1} resolved to the wrong organization`,
+        );
+        assert(
+            hasTeamName(connection.result?.structuredContent),
+            `Concurrent session ${index + 1} omitted the team name`,
         );
     });
 }
@@ -665,6 +673,17 @@ async function assertConnection(token, session, expectedOrganization) {
             expectedOrganization,
         `Connection resolved to the wrong organization; expected ${expectedOrganization}`,
     );
+    assert(
+        hasTeamName(response.result?.structuredContent),
+        `Connection omitted the team name for ${expectedOrganization}`,
+    );
+}
+
+/** `organization` is the permanent ID; this is the name a rename changes. */
+function hasTeamName(payload) {
+    const name = payload?.organization_name;
+
+    return typeof name === 'string' && name !== '';
 }
 
 async function rpc(token, session, method, params) {
@@ -980,6 +999,10 @@ async function devLoginConsent(email, organization) {
         token.organization === organization,
         `Consent resolved to "${token.organization}" instead of "${organization}"`,
     );
+    assert(
+        hasTeamName(token),
+        `Token response omitted the team name for ${organization}`,
+    );
 
     return {
         access: token.access_token,
@@ -1091,6 +1114,10 @@ async function oauthLogin(organization) {
     assert(
         token.organization === organization,
         `Consent resolved to "${token.organization}" instead of "${organization}"`,
+    );
+    assert(
+        hasTeamName(token),
+        `Token response omitted the team name for ${organization}`,
     );
 
     return {
