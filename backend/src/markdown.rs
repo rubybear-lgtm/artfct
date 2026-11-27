@@ -11,7 +11,7 @@
 //! so shared-origin preview CSP cannot execute injected script or follow
 //! `javascript:` / `data:` destinations.
 
-use pulldown_cmark::{HeadingLevel, html, CowStr, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{html, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::HashSet;
 
 const MARKDOWN_CSS: &str = r#"
