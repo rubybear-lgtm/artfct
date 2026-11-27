@@ -498,7 +498,7 @@ test('AC4 two MausBot bots on one OAuth client keep separate identities and toke
             ->where('oauth_client_id', $fixture['client_id'])
             ->count())->toBe(2);
 
-    $alphaConnection = mcpGetConnection($first['access_token']);
+    $alphaConnection = mcpGetConnection($reconnected['access_token']);
     $betaConnection = mcpGetConnection($second['access_token']);
 
     expect($alphaConnection['user_id'])->toBe((string) $alpha->id)
