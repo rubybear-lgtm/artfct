@@ -796,14 +796,25 @@ test('an_artifact_link_navigates_the_top_window_to_the_next_artifact', function 
         ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
         ->assertVisible('@artifact-frame');
 
-    // The shim's postMessage, delivered with the frame as its source: the
-    // parent navigates the top window instead of nesting a second viewer.
-    // The URL is built from the live origin so the same-origin check sees
-    // the address the shim would actually post (its own location.href).
+    // A real link click inside the frame to the next viewer URL: the frame
+    // is first replaced with a same-origin blank page (replace, not a new
+    // history entry), a link is written into it without a history entry,
+    // and the link is clicked for real — so the only new joint-history
+    // entry is the shim navigation itself, exactly like an artifact link.
+    // The server answers with the shim (Sec-Fetch-Dest: iframe), which posts
+    // to the parent, which navigates the top window instead of nesting a
+    // second viewer.
     $page->script(
-        "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
-        "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
-        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go\">go</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go').click()",
     );
 
     $page->waitForText('Target artifact')
@@ -1130,15 +1141,97 @@ test('a_first_real_frame_click_after_a_clean_frame_back_navigates_without_any_in
 });
 
 /**
+ * RUB-628 review round 3 follow-up: the first post after a back_forward
+ * load must be a real click, not a swallowed one — both dashboard → Back
+ * → click and Back → Forward → click navigate to B on the first real
+ * frame click. The harness restores a clean frame on traversal (no
+ * restored post arrives), so each leg clicks a real link in the frame and
+ * asserts the top window moves.
+ */
+test('a_real_dashboard_back_and_forward_frame_click_navigates', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Dash Back Fwd', 'viewer-dash-back-fwd@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+
+    $targetId = 'a1b2c3d4e5f67';
+    /** @var FakeArtifactDirectory $dashBackDirectory */
+    $dashBackDirectory = app(ArtifactDirectory::class);
+    $dashBackDirectory->seedArtifact([
+        'id' => $targetId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Target artifact',
+        'description' => 'Seeded for the dashboard Back/Forward click test.',
+        'content_hash' => md5($targetId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($owner);
+
+    // Dashboard first, then the viewer: Back returns to the dashboard.
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    $realFrameClick = <<<'JS'
+        const f = document.querySelector('[data-testid="artifact-frame"]');
+        f.contentWindow.location.replace('about:blank');
+        JS;
+
+    $writeAndClick = <<<JS
+        const f = document.querySelector('[data-testid="artifact-frame"]');
+        f.contentDocument.open();
+        f.contentDocument.write('<a href="/a/{$targetId}" id="real-go-dash">go</a>');
+        f.contentDocument.close();
+        f.contentDocument.querySelector('#real-go-dash').click();
+        JS;
+
+    // Dashboard -> Back -> click: Back restores the viewer clean, then a
+    // real frame click navigates to B on the first try.
+    $page->back()->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertPathIs('/');
+
+    $page->forward()->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        // The Forward restored this document, so the click below is the
+        // first post on a back_forward load — exactly the case that must
+        // navigate instead of being swallowed.
+        ->assertScript("(performance.getEntriesByType('navigation')[0]||{}).type", 'back_forward')
+        ->assertVisible('@artifact-frame');
+
+    $page->script($realFrameClick);
+    $page->wait(0.5)->script($writeAndClick);
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
  * RUB-628 review round 4 finding 1: in Firefox, Back cannot leave a viewer
  * after a same-artifact fragment link. Every restored same-path shim must
  * reset the frame — never assign and reload — or each Back reloads back to
  * the fragment and the dashboard is unreachable. No message is injected
- * here: the run clicks a real frame link, follows the real reload, and
- * walks back with real Backs. The frame navigation creates a joint-history
- * entry of its own, so reaching the dashboard takes three Backs
- * (fragment view, plain view, dashboard); what matters is that every Back
- * lands where it should with no reload loop and the frame ends clean.
+ * here: the run clicks a real same-artifact fragment link and goes Back
+ * with real Backs (the frame navigation creates a joint-history entry of
+ * its own, so reaching the dashboard takes three Backs); the second Back
+ * must reach the dashboard with a stable document (no loop) and a clean
+ * frame.
  */
 test('a_real_frame_navigation_to_the_same_artifact_fragment_then_back_to_the_dashboard', function () {
     configureViewerBrowserLinks();
