@@ -15,6 +15,7 @@ use App\Services\Indexing\ExtractionHeuristics;
 use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -45,6 +46,9 @@ final class ReadArtifactTool extends Tool
 
     /** Seconds the live current-version fetch may take; the indexer keeps its own longer default. */
     private const LIVE_FETCH_TIMEOUT_SECONDS = 8;
+
+    /** Live extraction cache TTL: long enough to cover one paginated read, short enough that a publish heals fast. */
+    private const LIVE_CACHE_TTL_SECONDS = 60;
 
     /** Live HTML above this size falls back to indexed text instead of extracting inline. */
     private const MAX_LIVE_HTML_BYTES = 2000000;
@@ -156,35 +160,60 @@ final class ReadArtifactTool extends Tool
         // needs a render pass — or cannot be fetched, is oversized, or is a
         // version that landed mid-read — the indexed text is served with
         // stale=true until the queue heals it.
+        // The index lags a fresh publish, so the live read below would rerun
+        // its fetch and extraction on every call — every page of a paginated
+        // read, and forever for content that never extracts (needs-render
+        // shells, oversized pages), null-versioned legacy fetches and
+        // dead-lettered versions. Cache the outcome, including the negative
+        // one, for a short TTL keyed by team, artifact and fetched version,
+        // so one read's pages stay consistent. A hit never skips the
+        // visibility check: sharing may have changed since the entry was
+        // stored, so it still runs against the current metadata values for
+        // this caller and call.
         $live = null;
         if ($currentVersion !== null && $indexedVersion !== $currentVersion
             && ($requestedVersion === null || $requestedVersion === $currentVersion)) {
             $team = McpContext::team();
-            $current = $this->fetchCurrentArtifact($team, $validated['id'], $content);
-            if ($current !== null) {
-                // The live read mints a system credential that sees private
-                // artifacts, so it applies the Private rule itself — before
-                // extracting anything. Deny with the same not-found as a
-                // missing artifact: falling back here would leak stale
-                // private text to a caller who lost access.
-                $caller = User::find(McpContext::actor());
-                if ($caller === null || ! ArtifactVisibility::canView($current['sharing'] ?? null, $current['owner_user_id'] ?? null, $caller, $team)) {
+            $cacheKey = self::liveCacheKey($team->id, $validated['id'], $currentVersion);
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && array_key_exists('extracted', $cached)) {
+                $live = is_array($cached['extracted']) ? $cached['extracted'] : null;
+                if ($live !== null && ! $this->callerCanViewLive($response->json('sharing'), $response->json('owner_user_id'), $team)) {
                     app(McpTelemetry::class)->record('read_artifact', 'not_found', $startedAt);
 
                     return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
                 }
-                $fetchedVersion = $current['version'] ?? null;
-                $fetchedVersion = is_numeric($fetchedVersion) ? (int) $fetchedVersion : null;
-                if ($fetchedVersion === null || $fetchedVersion !== $currentVersion) {
-                    // A publish landed between the metadata read and the
-                    // content fetch: label nothing as the requested version.
-                    // Keep the indexed text, stale, until the queue heals it.
-                } else {
-                    $html = $current['html'];
-                    $live = strlen($html) <= self::MAX_LIVE_HTML_BYTES
-                        ? ExtractionHeuristics::extractWithoutRender($html)
-                        : null;
+            } else {
+                $current = $this->fetchCurrentArtifact($team, $validated['id'], $content);
+                $extracted = null;
+                if ($current !== null) {
+                    // The live read mints a system credential that sees private
+                    // artifacts, so it applies the Private rule itself — before
+                    // extracting anything. Deny with the same not-found as a
+                    // missing artifact: falling back here would leak stale
+                    // private text to a caller who lost access. A denial is
+                    // caller-specific, so it is never cached.
+                    if (! $this->callerCanViewLive($current['sharing'] ?? null, $current['owner_user_id'] ?? null, $team)) {
+                        app(McpTelemetry::class)->record('read_artifact', 'not_found', $startedAt);
+
+                        return McpErrorResponse::error('That artifact was not found in the authenticated workspace.', 'artifact_not_found');
+                    }
+                    $fetchedVersion = $current['version'] ?? null;
+                    $fetchedVersion = is_numeric($fetchedVersion) ? (int) $fetchedVersion : null;
+                    if ($fetchedVersion === null || $fetchedVersion !== $currentVersion) {
+                        // A publish landed between the metadata read and the
+                        // content fetch, or a legacy fetch names no version:
+                        // label nothing as the requested version. Keep the
+                        // indexed text, stale, until the queue heals it.
+                    } else {
+                        $html = $current['html'];
+                        $extracted = strlen($html) <= self::MAX_LIVE_HTML_BYTES
+                            ? ExtractionHeuristics::extractWithoutRender($html)
+                            : null;
+                    }
                 }
+                Cache::put($cacheKey, ['extracted' => $extracted], self::LIVE_CACHE_TTL_SECONDS);
+                $live = $extracted;
             }
         }
 
@@ -203,8 +232,17 @@ final class ReadArtifactTool extends Tool
         // The version the text came from: the live one when served above,
         // else the last indexed. A caller must cite what it actually read.
         $servedVersion = $live !== null ? $currentVersion : $indexedVersion;
-        $title = ($live !== null ? $live['title'] : null) ?? $entry->title ?? $response->json('title');
-        $title = is_string($title) ? $title : null;
+        // On the live path the title is the extracted one, else the current
+        // Worker title — never the stale indexed title, which still names
+        // the older version. Off the live path the indexed title stays.
+        $workerTitle = $response->json('title');
+        $workerTitle = is_string($workerTitle) && $workerTitle !== '' ? $workerTitle : null;
+        if ($live !== null) {
+            $liveTitle = $live['title'] ?? null;
+            $title = is_string($liveTitle) && $liveTitle !== '' ? $liveTitle : $workerTitle;
+        } else {
+            $title = $entry->title ?? $workerTitle;
+        }
         $text = $live['text'] ?? $entry->extracted_text;
         // Indexing already strips a leading title; do it again so older rows
         // and a title that only appears as a prefix still avoid duplication.
@@ -265,6 +303,33 @@ final class ReadArtifactTool extends Tool
 
             return null;
         }
+    }
+
+    /**
+     * The cache key for one version's live extraction. The fetched version —
+     * the metadata's current version, validated against the fetch before
+     * anything is stored — is part of the key, so a publish never serves the
+     * previous version's text and one read's pages stay consistent.
+     */
+    private static function liveCacheKey(string|int $teamId, string $artifactId, int $version): string
+    {
+        return "read_artifact:live:v1:{$teamId}:{$artifactId}:{$version}";
+    }
+
+    /**
+     * The Private rule for live text, against the given sharing state. Null
+     * or unrecognised sharing fails closed, matching ArtifactVisibility.
+     */
+    private function callerCanViewLive(mixed $sharing, mixed $ownerUserId, Team $team): bool
+    {
+        $caller = User::find(McpContext::actor());
+
+        return $caller !== null && ArtifactVisibility::canView(
+            is_string($sharing) ? $sharing : null,
+            is_string($ownerUserId) ? $ownerUserId : null,
+            $caller,
+            $team,
+        );
     }
 
     /**
