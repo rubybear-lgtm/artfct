@@ -6,7 +6,7 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
-- RUB-621: the [Composio toolkit spec](https://github.com/rubybear-lgtm/artfct/pull/219) — `resources/composio/toolkit.json` defines the seven v1 tools (`deploy`, `search`, `get`, `read`, list/add comments, `get_connection`), their scopes and idempotency, and `docs/composio-toolkit.md` records the arguments held back from v1 and the executor behaviour RUB-622 must implement. `tests/Feature/ComposioToolkitTest.php` fails if the JSON drifts from the hosted MCP tool schemas. Why: RUB-619 needs one schema source for the listing and RUB-622 for execution. Impact: none at runtime — the file is data for a transport that does not ship yet.
+- RUB-621: the [Composio toolkit spec](https://github.com/rubybear-lgtm/artfct/pull/219) — `resources/composio/toolkit.json` defines the seven v1 tools (`deploy`, `search`, `get`, `read`, list/add comments, `get_connection`), their scopes and idempotency, and `docs/composio-toolkit.md` records the arguments held back from v1 and the executor behaviour RUB-622 must implement. `tests/Feature/ComposioToolkitTest.php` fails if the JSON drifts from the hosted MCP tool schemas. Why: RUB-619 needs one schema source for the listing and RUB-622 for execution. Impact: `search_artifacts` now advertises `limit` minimum 1 and maximum 50 in `tools/list`. Runtime validation already enforced those bounds, so existing valid calls are unchanged.
 
 - RUB-606 / Spec 22 AC-O1: hosted OAuth advertises `openid` and `email` (outside `McpScope`), serves `GET /oauth/userinfo` (`sub`, optional `email`, `email_verified` from `users.email_verified_at`), and serves `GET /.well-known/openai-apps-challenge` from `OPENAI_APPS_CHALLENGE` (404 when unset).
 

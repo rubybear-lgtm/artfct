@@ -91,9 +91,9 @@ a structured `code`.
 | `version_not_found`        | requested version missing                                    | 404    | stop, or read the live version                            |
 | `comment_not_found`        | `parent_id` names no comment on this artifact                | 404    | re-list comments                                          |
 | `collection_not_found`     | search collection filter names no collection                 | 404    | drop or fix the filter                                    |
-| `stale_base`               | `base_version` is behind the live version                    | 409    | read the live version; if it is `base_version + 1` and matches your content it already landed, else merge and retry |
+| `stale_base`               | `base_version` is behind the live version                    | 409    | do not replay; call `get_artifact(version=base_version + 1)` and reconcile provenance and time |
 | `version_conflict`         | concurrent version publish                                   | 409    | retry (returns `retryable: true`)                         |
-| `quota_exceeded`           | daily publish or storage cap                                 | 429    | wait for reset (see `details`/`get_usage`)               |
+| `quota_exceeded`           | daily publish or storage cap                                 | 429    | read `reset_at` and `details`; after an ambiguous timeout, reconcile because the write may have landed |
 | `rate_limited`             | per-minute cap                                               | 429    | retry after a short wait                                  |
 | `plan_upgrade_required`    | plan gate on search                                          | 402    | stop; surface the plan requirement                        |
 | `feature_not_enabled`      | feature flag off (for example artifact database)             | 422    | stop; do not retry                                        |
@@ -131,20 +131,34 @@ The Worker de-duplicates by content hash on both write paths.
   (`backend/tests/storage_integration.rs`) asserts no new version row; CI's MCP end-to-end
   job runs it with `--ignored`.
 
+A successful `deploy_artifact` response is the only confirmed success. An ambiguous timeout
+leaves the outcome unknown. `quota_exceeded` can mean the write already landed because Laravel
+quota and storage checks run before Worker de-duplication. The server's `next_action: get_usage`
+names a tool outside this v1 toolkit; use `reset_at` and the other error details instead.
+
 What an executor should do:
 
-- **New publish:** auto-retry after an ambiguous timeout. Content de-duplication makes the
-  repeat a no-op and a different bundle only appears if someone else published.
-- **Version publish:** do **not** blind-replay after an ambiguous timeout. The Laravel
-  `base_version` pre-check runs before the Worker call and compares version numbers only.
-  If the first attempt committed v4 and timed out, a retry with `base_version: 3` returns
-  `stale_base` even though the content is already live. Read the artifact first
-  (`get_artifact` or `read_artifact`): if `live_version == base_version + 1` and its content
-  matches what you sent, the publish landed — report success. If it differs, merge and
-  publish with the live version. Without `base_version`, an identical retry is a 200 no-op,
-  but a different bundle adds a version, so only retry when you know nothing else published.
-- **Comments:** never auto-retry `artfct_add_artifact_comment`; it is not idempotent and
-  would post twice. The five read tools are safe to retry.
+- **New publish.** After an ambiguous timeout, call `search_artifacts` with the exact intended
+  title. Add `agent` and `since` when available, then call `get_artifact` for each plausible
+  result. Title, provenance and time are heuristic. Search can be disabled or lag. No result does
+  not prove failure.
+- **Version publish.** Do **not** blind-replay after an ambiguous timeout. The Laravel
+  `base_version` pre-check runs before the Worker call and compares version numbers only. If the
+  first attempt committed v4 and timed out, call `get_artifact` with `version: base_version + 1`.
+  Compare `created_by` to the `user_id` returned by `get_connection` and `created_at` to the
+  attempt window. Agent provenance is only a hint: `get_connection.agent` is an object or null,
+  and its `client` can differ from the hosted connection name recorded by `deploy_artifact`.
+  Treat an agent mismatch as inconclusive. Without `base_version`, first read the current
+  version. An identical retry reaches the Worker's no-op only when quota and storage checks
+  still allow it. A different bundle adds a version, so retry only when you know nothing else
+  published.
+- **Comments.** Never auto-retry `artfct_add_artifact_comment`; it is not idempotent and would post
+  twice. The five read tools are safe to retry.
+
+For either publish path, a metadata match means the publish likely landed. It does not confirm
+success. `search_artifacts` and `get_artifact` cannot compare bundle bytes. `read_artifact` returns
+extracted, indexed text and cannot prove byte equality. A mismatch, missing metadata, or unavailable
+read means the outcome is uncertain. Do not merge or claim failure from that evidence.
 
 ## Endpoints behind the tools
 
@@ -194,8 +208,23 @@ Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST 
   `oneOf`/`required` (and `get_connection` accepts it), and search `limit`/`query` bounds
   match the server rule (`limit` 1–50, `query` 1–500);
 - a plain date and a date-time both validate (no `format` keyword).
+- `identical new publish retry returns quota_exceeded before a second worker create` in
+  `tests/Feature/Billing/DailyPublishLimitTest.php` proves that `per_user=1` consumes the slot on
+  the first publish and the identical retry returns structured `quota_exceeded` with
+  `retryable=false` before a second Worker create. Its `next_action=get_usage` points outside
+  this v1 toolkit, so an executor must use the returned reset and limit details instead.
+  `stale_base recovery exposes version provenance without content_hash` in
+  `tests/Feature/McpArtifactVersioningTest.php` proves that a `base_version=3` publish landing as
+  v4 makes the identical retry return `stale_base` with `live_version=4`, and
+  `get_artifact(version=4)` returns version, `created_by`, agent, `created_at`, `updated_at` and
+  current metadata without `content_hash`.
 
-Run: `php artisan test --compact --filter=ComposioToolkit`.
+Run:
+
+```sh
+php artisan test --compact tests/Feature/ComposioToolkitTest.php tests/Feature/Billing/DailyPublishLimitTest.php
+php artisan test --compact tests/Feature/McpArtifactVersioningTest.php --filter='deploy_artifact refuses a stale base_version|stale_base recovery'
+```
 
 Not covered here: Composio's own schema dialect and whether it enforces any keyword beyond
 what `toolkit.json` declares; a live staging dry-run (docs-only change, isolated CI is the

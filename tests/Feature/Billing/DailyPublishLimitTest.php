@@ -110,6 +110,51 @@ test('deploy_artifact returns quota_exceeded with reset_at when the daily user c
     Http::assertSentCount(2);
 });
 
+test('identical new publish retry returns quota_exceeded before a second worker create', function () {
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+    config(['billing.plans.free.daily_publish' => ['per_user' => 1, 'per_workspace' => 100]]);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $html = '<!doctype html><title>Daily retry</title><p>same bytes</p>';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'missing_files' => [],
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $arguments = ['html' => $html];
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', false)
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'quota_exceeded')
+        ->assertJsonPath('result.structuredContent.retryable', false)
+        ->assertJsonPath('result.structuredContent.next_action', 'get_usage')
+        ->assertJsonPath('result.structuredContent.scope', 'user')
+        ->assertJsonPath('result.structuredContent.limit', 1)
+        ->assertJsonPath('result.structuredContent.reset_at', app(DailyPublishLimiter::class)->resetAt()->toIso8601String());
+
+    expect(Http::recorded(fn ($request): bool => $request->method() === 'POST'
+        && str_ends_with((string) $request->url(), '/v1/artifacts')))->toHaveCount(1);
+});
+
 test('version publish with worker 200 identical-content no-op does not burn a daily slot', function () {
     // RUB-516: after created became always-false on versions, quota must key
     // off HTTP 201 (new version written), not the created flag.
