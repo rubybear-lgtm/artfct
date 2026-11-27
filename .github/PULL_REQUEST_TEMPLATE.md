@@ -2,6 +2,12 @@
 
 <!-- What changed and why. -->
 
+## Release changelog
+
+- [ ] Added this PR to the [Artfct Release Changelog](https://artfct.dev/a/y0qwyqfntnayc) and to `CHANGELOG.md` under **Unreleased**.
+- Ledger entry (artifact link and PR number):
+- User or operational impact, verification, and release notes:
+
 ## Screenshots (required for UI changes)
 
 <!--

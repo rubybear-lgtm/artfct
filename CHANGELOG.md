@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Artifact Engine will be recorded in this file.
+Every pull request adds an entry under Unreleased and in the [Artfct Release Changelog](https://artfct.dev/a/y0qwyqfntnayc).
 
 ## [Unreleased]
 
@@ -26,6 +26,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
 
 ### Changed
+
+- Documented delegated approval for low-risk PRs and required a release-ledger entry that explains each change and its rationale. This gives the release owner a record to reconcile against the candidate commit.
 
 - RUB-606 / Spec 22 AC-O1: ChatGPT-reachable plan/upgrade copy reworded. `PlanGateException` no longer names a plan or says Upgrade; `ArtifactPublisher` quota message and `usage:read` consent label drop "plan limits"; `get_usage` and ChatGPT `/connect` copy drop plan/paid wording. Machine codes `plan_upgrade_required`, `quota_exceeded` and action `upgrade_plan` are unchanged.
 

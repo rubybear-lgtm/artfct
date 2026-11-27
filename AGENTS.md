@@ -1,3 +1,13 @@
+## Pull request approval and release ledger
+
+Open every PR against `develop`. Ruben runs production releases. Rigel verifies the production result against the released commit.
+
+Ada can approve small, low-risk changes for `develop`, including isolated one-line fixes, documentation additions or edits, and icon swaps. Judge by impact as well as size. Route changes involving runtime contracts, permissions, billing, migrations, infrastructure, or release behavior to Ruben. Ada-authored changes need independent review. Required CI must be green before marking a PR ready for review. Existing review and evidence requirements still apply.
+
+Every PR, including docs and icon changes, must append one entry to the [Artfct Release Changelog](https://artfct.dev/a/y0qwyqfntnayc) and add the matching entry under `Unreleased` in `CHANGELOG.md`. Include the PR link, what changed, why, the user or operational impact, and any verification or release notes. Link the artifact from the PR description and identify the entry by PR number. The reviewer checks both entries before approval.
+
+Record entries as pending until the PR merges. After merge, the author records the merge SHA and marks the entry as merged to `develop`. Keep previous entries and use the current artifact version when updating. Before release, reconcile the ledger against the last production release and the exact candidate SHA. Record the release tag and date only for changes included in the verified production release.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
