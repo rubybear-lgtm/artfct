@@ -44,15 +44,15 @@ test('collection previews scale and stay inside their cards at all four widths',
     [$team, $user, $collection] = previewCollectionFixture(TeamRole::Admin, 3);
     test()->actingAs($user);
 
-    $page = visit(route('teams.collections.index', $team))->resize($width, 850)->wait(0.2);
-    $page->assertScript("getComputedStyle(document.querySelector('[data-testid=collection-rows]')).gridTemplateColumns.split(' ').length", $columns)
+    $page = visit(route('teams.collections.index', $team))->resize($width, 850);
+    $page->assertScript('new Promise((resolve) => { const started = Date.now(); const check = () => { const grid = document.querySelector("[data-testid=collection-rows]"); const count = grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : 0; if (count === '.$columns.' || Date.now() - started > 8000) { resolve(count); } else { setTimeout(check, 50); } }; check(); })', $columns)
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth')
         // Frames mount only near the viewport. With the sidebar the content
         // column is narrower, so the long fixture name wraps and pushes the
         // preview below the fold; bring it into view first.
         ->assertScript("document.querySelector('[data-testid=collection-toggle-{$collection->id}]').scrollIntoView() || true")
         // Frames also need hydration plus an IntersectionObserver tick, which
-        // can outlast the fixed wait above in a parallel CI run.
+        // can outlast a fixed wait in a parallel CI run.
         ->assertScript('new Promise((resolve) => { const started = Date.now(); const check = () => { const count = document.querySelectorAll("iframe").length; if (count > 0 || Date.now() - started > 8000) { resolve(count); } else { setTimeout(check, 50); } }; check(); })', 1)
         ->assertScript('document.querySelectorAll("iframe").length', 1)
         ->assertScript('document.querySelector("iframe").getAttribute("aria-hidden")', 'true')
