@@ -54,10 +54,14 @@ final class ExtractionHeuristics
      * inline JS pair with a later real `-->`, deleting the visible content
      * between them. Browsers also close comments at `<!-->`, `<!--->` and
      * `--!>`, so those closers are handled here too.
+     *
+     * Every branch is linear: unterminated comments and script/style blocks
+     * swallow to end-of-input possessively (`.*+`) instead of rescanning for
+     * a closer that never comes.
      */
     private static function withoutNonVisible(string $html): string
     {
-        return preg_replace('#<!--(?:-?>|.*?--!?>)|<(script|style)\b[^>]*>.*?</\1>#is', ' ', $html) ?? $html;
+        return preg_replace('#<!--(?:-?>|.*?--!?>|.*+)|<(script|style)\b[^>]*+>(?:.*?</\1\s*>|.*+)#is', ' ', $html) ?? $html;
     }
 
     /**
@@ -122,7 +126,12 @@ final class ExtractionHeuristics
     /** @return list<string> */
     public static function headingsFromHtml(string $html): array
     {
-        $html = self::withoutNonVisible($html);
+        return self::headingsFromStrippedHtml(self::withoutNonVisible($html));
+    }
+
+    /** @return list<string> */
+    private static function headingsFromStrippedHtml(string $html): array
+    {
         if (preg_match_all('/<h([12])\b[^>]*>(.*?)<\/h\1>/is', $html, $matches) === 0) {
             return [];
         }
@@ -164,7 +173,7 @@ final class ExtractionHeuristics
             }
         }
 
-        $headings = self::headingsFromHtml($html);
+        $headings = self::headingsFromStrippedHtml($html);
 
         return $headings[0] ?? null;
     }

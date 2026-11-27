@@ -394,6 +394,13 @@ test('extraction_heuristics_closes_comment_at_abrupt_closing', function () {
         ->and(ExtractionHeuristics::visibleText($html))->not->toContain('note');
 });
 
+test('extraction_heuristics_drops_unterminated_script_and_comment_tails', function () {
+    $html = '<p>Lead paragraph stays.</p><script>var s = 1;';
+
+    expect(ExtractionHeuristics::visibleText($html))->toBe('Lead paragraph stays.')
+        ->and(ExtractionHeuristics::visibleText($html.' trailing <!-- never closed'))->toBe('Lead paragraph stays.');
+});
+
 test('extraction_heuristics_detects_markdown_and_strips_markup', function () {
     $markdown = "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
 
