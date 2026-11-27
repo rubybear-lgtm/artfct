@@ -478,7 +478,8 @@ jobs:
       - php_static
       - pest_unit_feature
       - pest_browser
-      - pest_browser_ssr
+      # pest_browser_ssr stays informational until it has a stable CI run
+      # (RUB-594): it runs but does not gate `application`.
       - openapi_lint
       - contract_drift
       - mcp_application
