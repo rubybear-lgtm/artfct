@@ -124,11 +124,12 @@ final class ArtifactViewerController extends Controller
      * The framed-navigation shim (RUB-628): a minimal HTML page for a viewer
      * URL loaded as a subframe, so an artifact-to-artifact link followed
      * inside the sandboxed artifact frame never renders the full viewer
-     * (and its header) nested inside itself. The script tells the parent
-     * viewer to navigate the top window; the link stays for a parent that
-     * does not answer (a cross-environment embed) or a reader who opens it
-     * directly. The link opens a new tab: a same-tab click inside the frame
-     * would only load the shim again. Never cached, never indexed, and
+     * (and its header) nested inside itself. The script announces its URL to
+     * the parent viewer until acknowledged, so a post that fires before the
+     * parent hydrates (SSR pages) is not lost; the link stays for a parent
+     * that does not answer (a cross-environment embed) or a reader who opens
+     * it directly. The link opens a new tab: a same-tab click inside the
+     * frame would only load the shim again. Never cached, never indexed, and
      * deliberately branchless on freshness, previews, or downloads.
      */
     private function framedNavigationShim(Request $request): Response
@@ -142,7 +143,15 @@ final class ArtifactViewerController extends Controller
             '<meta name="referrer" content="no-referrer">'.
             '<title>Open this artifact</title></head>'.
             '<body><p><a href="'.$safeUrl.'" target="_blank" rel="noopener">Open this artifact</a></p>'.
-            "<script>try{var via='navigate';try{via=(performance.getEntriesByType('navigation')[0]||{}).type||'navigate';}catch(e){}window.parent.postMessage({type:'artfct:navigate',url:location.href,via:via},location.origin);}catch(e){}</script>".
+            '<script>(function(){var acked=false,tries=0,via="navigate";'.
+            'try{via=(performance.getEntriesByType("navigation")[0]||{}).type||"navigate";}catch(e){}'.
+            'function announce(){if(acked||tries>=20)return;tries++;'.
+            'try{window.parent.postMessage({type:"artfct:navigate",url:location.href,via:via},location.origin);}catch(e){}'.
+            'if(!acked&&tries<20)setTimeout(announce,500);}'.
+            'window.addEventListener("message",function(e){'.
+            'try{if(e.origin===location.origin&&e.data&&e.data.type==="artfct:ack")acked=true;}catch(err){}});'.
+            'window.addEventListener("pagehide",function(){acked=true;});'.
+            'announce();})();</script>'.
             '</body></html>';
 
         return response($html, 200, [

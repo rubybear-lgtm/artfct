@@ -797,6 +797,11 @@ test('a_framed_viewer_navigation_returns_the_shim_not_the_viewer', function () {
     expect($content)->toContain('target="_blank"')
         ->toContain('rel="noopener"');
 
+    // The shim re-announces until the parent acknowledges, so a post that
+    // fires before hydration is not lost; the parent answers artfct:ack.
+    expect($content)->toContain('artfct:ack')
+        ->toContain('setTimeout');
+
     // Never cached, never indexed, never the referrer.
     expect($response->headers->get('Cache-Control'))->toContain('no-store')
         ->and($response->headers->get('Referrer-Policy'))->toContain('no-referrer')

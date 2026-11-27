@@ -1130,10 +1130,164 @@ test('a_first_real_frame_click_after_a_clean_frame_back_navigates_without_any_in
 });
 
 /**
+ * RUB-628 review round 4 finding 1: in Firefox, Back cannot leave a viewer
+ * after a same-artifact fragment link. Every restored same-path shim must
+ * reset the frame — never assign and reload — or each Back reloads back to
+ * the fragment and the dashboard is unreachable. No message is injected
+ * here: the run clicks a real frame link, follows the real reload, and
+ * walks back with real Backs. The frame navigation creates a joint-history
+ * entry of its own, so reaching the dashboard takes three Backs
+ * (fragment view, plain view, dashboard); what matters is that every Back
+ * lands where it should with no reload loop and the frame ends clean.
+ */
+test('a_real_frame_navigation_to_the_same_artifact_fragment_then_back_to_the_dashboard', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Fragment Back', 'viewer-fragment-back@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Fragment artifact']);
+    test()->actingAs($owner);
+
+    // Dashboard first so real Backs have somewhere to go.
+    $page = visit('/dashboard');
+    $page->script("window.location.assign('".viewerBrowserArtifactUrl()."')");
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Fragment artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // A real navigation inside the frame to the same viewer with a fragment:
+    // the server answers with the shim, which posts, and the parent assigns
+    // and reloads so the fragment reaches the artifact.
+    $page->script(
+        "document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow.location.href = ".
+        "window.location.origin + '/a/".VIEWER_BROWSER_ARTIFACT_ID."#option-b'",
+    );
+
+    $page->wait(2)
+        ->assertNoJavaScriptErrors()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript('location.hash', '#option-b')
+        ->assertSee('Fragment artifact')
+        ->assertVisible('@artifact-frame');
+
+    // No reload loop behind the assertions above: the reloaded document stays
+    // put once loaded. A same-path loop would replace the document, so the
+    // time origin would change.
+    $settledLoad = $page->script('performance.timeOrigin');
+    $page->wait(1.5);
+    expect($page->script('performance.timeOrigin'))->toBe($settledLoad);
+
+    // First real Back: the frame is restored clean (a reload resets it to
+    // its src), so Back lands on A with no hash and the same document — a
+    // restored shim that re-posted would assign and reload instead, which
+    // the time-origin check below and the hash check would catch. Each Back
+    // gets its own wait: traversals commit asynchronously, so chained Backs
+    // would race each other.
+    $page->back()->wait(1);
+
+    $page->assertNoJavaScriptErrors()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript('location.hash', '')
+        ->assertSee('Fragment artifact')
+        ->assertVisible('@artifact-frame')
+        // The frame holds the clean artifact URL, and the top document never
+        // reloaded (no loop).
+        ->assertScript("document.querySelector('[data-testid=\"artifact-frame\"]').src.includes('.localhost')")
+        ->assertScript('performance.timeOrigin', $settledLoad);
+
+    // Second real Back: the frame navigation created a joint-history entry
+    // of its own, so one more Back lands on the plain viewer again.
+    $page->back()->wait(1);
+
+    $page->assertNoJavaScriptErrors()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID);
+
+    // Third real Back reaches the dashboard: Back is not trapped. (A new
+    // document, so the time origin is not comparable here.)
+    $page->back()->wait(1);
+
+    $page->assertNoJavaScriptErrors()
+        ->assertPathIs('/');
+});
+
+/**
+ * RUB-628 review round 4 finding 2: a shim that posts before hydration is
+ * never heard, so without a retry the frame would sit on "Open this
+ * artifact" with nothing left to recover it. The shim re-announces until
+ * the parent acknowledges. This models the SSR order for real: a same-origin
+ * page frames the viewer URL (a real shim, real posts), counts them with a
+ * passive observer that never acknowledges, then registers the acknowledging
+ * listener late — recovery without any injected message.
+ */
+test('a_shim_without_an_answering_parent_reannounces_until_acknowledged', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Shim Retry', 'viewer-shim-retry@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Retry artifact']);
+    test()->actingAs($owner);
+
+    $probeId = 'f6g7h8i9j0k12';
+
+    $page = visit('/dashboard')->assertNoJavaScriptErrors();
+
+    // A passive observer only: it records real shim posts, it never sends
+    // one and never acknowledges.
+    $page->script(
+        'window.__shimProbePosts = []; '.
+        'window.addEventListener("message", function (e) { '.
+        'if (e && e.data && e.data.type === "artfct:navigate") window.__shimProbePosts.push(e.data.via); '.
+        '});',
+    );
+
+    // A real subframe navigation to a viewer URL: the server answers with
+    // the shim (Sec-Fetch-Dest: iframe), which posts for real.
+    $page->script(
+        "const f = document.createElement('iframe'); ".
+        "f.setAttribute('data-testid', 'shim-probe'); ".
+        "f.src = '/a/{$probeId}'; ".
+        'document.body.appendChild(f);',
+    );
+
+    // While nothing answers, the shim re-announces (500ms cadence).
+    $page->wait(2);
+
+    $unanswered = json_decode((string) $page->script('JSON.stringify(window.__shimProbePosts)'), true);
+
+    expect($unanswered)->toBeArray()
+        ->and(count($unanswered))->toBeGreaterThanOrEqual(2)
+        ->and($unanswered[0])->toBe('navigate');
+
+    // The acknowledging listener registers late, as hydration does: the
+    // next announcement is answered and the shim goes quiet.
+    $page->script(
+        'window.addEventListener("message", function (e) { '.
+        'if (e && e.data && e.data.type === "artfct:navigate" && e.source) { '.
+        'try { e.source.postMessage({type: "artfct:ack"}, e.origin); } catch (e2) {} '.
+        '} '.
+        '});',
+    );
+
+    $page->wait(2.5);
+    $afterAck = json_decode((string) $page->script('JSON.stringify(window.__shimProbePosts)'), true);
+
+    $page->wait(2);
+    $settled = json_decode((string) $page->script('JSON.stringify(window.__shimProbePosts)'), true);
+
+    // The ack stopped the retries: nothing new arrived, and the burst
+    // stayed within the shim's cap instead of spamming forever.
+    expect($settled)->toBe($afterAck)
+        ->and(count($settled))->toBeLessThanOrEqual(20);
+
+    $page->assertNoJavaScriptErrors();
+});
+
+/**
  * RUB-628 review-6092991795 finding 2: a same-artifact fragment link must not
  * leave the shim stuck in the frame. /a/A -> /a/A#sec differs only by its
  * hash, so assign() alone never reloads; the parent forces a server round
- * trip and the fragment effect rebuilds the frame with the hash.
+ * trip and the fragment effect then rebuilds the frame with the hash.
  */
 test('a_real_frame_navigation_to_the_same_artifact_fragment_reloads_with_the_fragment', function () {
     configureViewerBrowserLinks();
