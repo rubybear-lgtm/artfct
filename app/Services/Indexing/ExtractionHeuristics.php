@@ -36,11 +36,23 @@ final class ExtractionHeuristics
      */
     public static function visibleText(string $html): string
     {
-        $withoutScripts = preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', ' ', $html) ?? $html;
+        $withoutComments = self::withoutComments($html);
+        $withoutScripts = preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', ' ', $withoutComments) ?? $withoutComments;
         $withoutTags = preg_replace('#<[^>]+>#', ' ', $withoutScripts) ?? $withoutScripts;
         $decoded = html_entity_decode($withoutTags, ENT_QUOTES | ENT_HTML5);
 
         return trim(preg_replace('/\s+/', ' ', $decoded) ?? $decoded);
+    }
+
+    /**
+     * HTML comments are never visible text. The starter templates open with
+     * a multi-line comment naming slot tags (`<header>`, `<h1>`), whose `>`
+     * characters break tag-stripping and leak comment prose into the
+     * indexed text (RUB-590).
+     */
+    private static function withoutComments(string $html): string
+    {
+        return preg_replace('/<!--[\s\S]*?-->/', ' ', $html) ?? $html;
     }
 
     /**
@@ -105,6 +117,7 @@ final class ExtractionHeuristics
     /** @return list<string> */
     public static function headingsFromHtml(string $html): array
     {
+        $html = self::withoutComments($html);
         if (preg_match_all('/<h([12])\b[^>]*>(.*?)<\/h\1>/is', $html, $matches) === 0) {
             return [];
         }
@@ -138,6 +151,7 @@ final class ExtractionHeuristics
 
     public static function titleFromHtml(string $html): ?string
     {
+        $html = self::withoutComments($html);
         if (preg_match('/<title\b[^>]*>(.*?)<\/title>/is', $html, $match) === 1) {
             $title = trim(html_entity_decode(strip_tags($match[1]), ENT_QUOTES | ENT_HTML5));
             if ($title !== '') {
