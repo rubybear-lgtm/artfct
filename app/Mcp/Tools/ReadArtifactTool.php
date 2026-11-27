@@ -180,8 +180,8 @@ final class ReadArtifactTool extends Tool
                     // content fetch: label nothing as the requested version.
                     // Keep the indexed text, stale, until the queue heals it.
                 } else {
-                    $html = $current['html'] ?? null;
-                    $live = is_string($html) && strlen($html) <= self::MAX_LIVE_HTML_BYTES
+                    $html = $current['html'];
+                    $live = strlen($html) <= self::MAX_LIVE_HTML_BYTES
                         ? ExtractionHeuristics::extractWithoutRender($html)
                         : null;
                 }
