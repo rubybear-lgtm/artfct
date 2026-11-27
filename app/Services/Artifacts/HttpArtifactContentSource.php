@@ -24,7 +24,7 @@ final class HttpArtifactContentSource implements ArtifactContentSource
         );
     }
 
-    public function fetch(string $orgSlug, string $artifactId): ?array
+    public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
     {
         if (! $this->baseUrl) {
             throw new \RuntimeException('Worker base URL not configured');
@@ -42,9 +42,12 @@ final class HttpArtifactContentSource implements ArtifactContentSource
         // under Octane's 30s `max_execution_time`, so a slow Worker releases
         // the thread with a handled 503 instead of being killed mid-request:
         // four threads each stuck waiting is a full outage of the web service.
+        // The request-path live read passes its own shorter bound; the queue
+        // indexer keeps the default by passing null.
+        $timeout = $timeoutSeconds ?? 15;
         $response = Http::withToken($token)
-            ->connectTimeout(5)
-            ->timeout(15)
+            ->connectTimeout(min(5, $timeout))
+            ->timeout($timeout)
             ->get(rtrim($this->baseUrl, '/')."/v1/orgs/{$orgSlug}/artifacts/{$artifactId}/content");
 
         if ($response->status() === 404) {

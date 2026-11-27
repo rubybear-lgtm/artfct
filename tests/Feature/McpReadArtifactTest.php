@@ -1,10 +1,14 @@
 <?php
 
+use App\Contracts\ArtifactContentSource;
+use App\Enums\TeamRole;
 use App\Mcp\Servers\ArtfctServer;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
+use App\Services\Artifacts\FakeArtifactContentSource;
+use App\Services\Auth\OrgJwtService;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
@@ -152,19 +156,206 @@ test('read_artifact forwards the caller token to the Worker', function () {
         && str_ends_with($request->url(), '/v1/artifacts/'.READ_ARTIFACT_ID));
 });
 
-test('read_artifact reports stale text when the index lags the live version', function () {
+test('read_artifact serves the live version when the index lags', function () {
     $team = Team::factory()->create(['slug' => 'rub-443-stale']);
     $token = remoteMcpToken($team);
     readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 3]);
+    app(ArtifactContentSource::class)->seed('rub-443-stale', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Migration plan</title></head><body><h1>Migration plan</h1><p>Version three text with enough visible words to skip the render pass entirely here.</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 3);
 
     $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
 
-    expect($content['indexed_version'])->toBe(1)
+    expect($content['content']['text'])->toContain('Version three text')
+        ->and($content['indexed_version'])->toBe(3)
         ->and($content['current_version'])->toBe(3)
-        ->and($content['stale'])->toBeTrue();
+        ->and($content['stale'])->toBeFalse();
 
-    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 3])->assertOk();
-    expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('version_not_indexed');
+    $explicit = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 3])->assertOk()->json('result.structuredContent');
+    expect($explicit['content']['text'])->toContain('Version three text')
+        ->and($explicit['indexed_version'])->toBe(3);
+});
+
+test('read_artifact returns the current version after a design system update', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-design']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'Ink is our only accent.', ['version' => 1], worker: ['version' => 2]);
+
+    $v2Html = '<!doctype html><html><head><title>Sample design system</title></head><body><h1>Sample design system</h1><p>Ink is our only accent. Paper joins it in version two with expanded tokens.</p></body></html>';
+    app(ArtifactContentSource::class)->seed('rub-591-design', READ_ARTIFACT_ID, $v2Html, ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toContain('Paper joins it in version two')
+        ->and($content['indexed_version'])->toBe(2)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeFalse();
+
+    $v1 = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 1])->assertOk()->json('result.structuredContent');
+    expect($v1['content']['text'])->toBe('Ink is our only accent.')
+        ->and($v1['indexed_version'])->toBe(1)
+        ->and($v1['stale'])->toBeTrue();
+});
+
+test('read_artifact refuses private live text to a caller who cannot view it', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-private-live']);
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $token = remoteMcpToken($team, TeamRole::Member);
+    readArtifactFixture($team, 'old indexed text stays hidden', ['version' => 1], worker: ['version' => 2]);
+    app(ArtifactContentSource::class)->seed('rub-591-private-live', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Private plan</title></head><body><h1>Private plan</h1><p>Private live text with enough visible words to skip the render pass entirely here.</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2, sharing: 'private', ownerUserId: (string) $owner->id);
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found')
+        ->and($response->getContent())->not->toContain('old indexed text')
+        ->and($response->getContent())->not->toContain('Private live text');
+});
+
+test('read_artifact serves private live text to the owning member', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-private-owner']);
+    $owner = memberOfTeam($team, TeamRole::Member);
+    configureSigning(testSigningKey());
+    $token = OrgJwtService::default()->mint($team, $owner, TeamRole::Member)['token'];
+    readArtifactFixture($team, 'old indexed text', ['version' => 1], worker: ['version' => 2]);
+    app(ArtifactContentSource::class)->seed('rub-591-private-owner', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Private plan</title></head><body><h1>Private plan</h1><p>Private live text with enough visible words to skip the render pass entirely here.</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2, sharing: 'private', ownerUserId: (string) $owner->id);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toContain('Private live text')
+        ->and($content['indexed_version'])->toBe(2)
+        ->and($content['stale'])->toBeFalse();
+});
+
+test('read_artifact serves private live text to a team admin', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-private-admin']);
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'old indexed text', ['version' => 1], worker: ['version' => 2]);
+    app(ArtifactContentSource::class)->seed('rub-591-private-admin', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Private plan</title></head><body><h1>Private plan</h1><p>Private live text with enough visible words to skip the render pass entirely here.</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2, sharing: 'private', ownerUserId: (string) $owner->id);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toContain('Private live text')
+        ->and($content['indexed_version'])->toBe(2)
+        ->and($content['stale'])->toBeFalse();
+});
+
+test('read_artifact fails closed when the live fetch reports no sharing', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-sharing-change']);
+    $token = remoteMcpToken($team, TeamRole::Member);
+    readArtifactFixture($team, 'old indexed text stays hidden', ['version' => 1], worker: ['version' => 2]);
+    // The metadata read came back readable, but by content-fetch time the
+    // artifact reports no sharing or owner: fail closed, leak nothing.
+    app()->instance(ArtifactContentSource::class, new class implements ArtifactContentSource
+    {
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            return [
+                'html' => '<!doctype html><html><body><p>Changed live text with enough visible words to skip the render pass entirely here.</p></body></html>',
+                'tier' => 'secure',
+                'sharing' => null,
+                'owner_user_id' => null,
+                'version' => 2,
+                'entrypoint' => 'index.html',
+                'files' => null,
+                'provenance' => ['agent' => null, 'repo_url' => null, 'commit_sha' => null],
+            ];
+        }
+    });
+
+    $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found')
+        ->and($response->getContent())->not->toContain('old indexed text')
+        ->and($response->getContent())->not->toContain('Changed live text');
+});
+
+test('read_artifact falls back to indexed text when a publish lands mid-read', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-midread']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    app(ArtifactContentSource::class)->seed('rub-591-midread', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Migration plan</title></head><body><h1>Migration plan</h1><p>Version three text with enough visible words to skip the render pass entirely here.</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 3);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toBe('version one text')
+        ->and($content['indexed_version'])->toBe(1)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeTrue();
+});
+
+test('read_artifact falls back to indexed text when the live page needs a render pass', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-shell']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    app(ArtifactContentSource::class)->seed('rub-591-shell', READ_ARTIFACT_ID, '<!doctype html><html><head><title>App</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toBe('version one text')
+        ->and($content['indexed_version'])->toBe(1)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeTrue();
+});
+
+test('read_artifact falls back to indexed text when the live fetch throws', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-throw']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    app()->instance(ArtifactContentSource::class, new class implements ArtifactContentSource
+    {
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            throw new RuntimeException('Worker down');
+        }
+    });
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toBe('version one text')
+        ->and($content['indexed_version'])->toBe(1)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeTrue();
+});
+
+test('read_artifact falls back to indexed text when the live page is oversized', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-oversize']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    $big = '<p>'.str_repeat('lorem ipsum dolor sit amet ', 100000).'</p>';
+    app(ArtifactContentSource::class)->seed('rub-591-oversize', READ_ARTIFACT_ID, $big, ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toBe('version one text')
+        ->and($content['indexed_version'])->toBe(1)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeTrue();
+});
+
+test('read_artifact bounds the live fetch below the indexer timeout', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-timeout']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    $spy = new class implements ArtifactContentSource
+    {
+        /** @var list<array{string, string, ?int}> */
+        public array $calls = [];
+
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            $this->calls[] = [$orgSlug, $artifactId, $timeoutSeconds];
+
+            return null;
+        }
+    };
+    app()->instance(ArtifactContentSource::class, $spy);
+
+    callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk();
+
+    expect($spy->calls)->toHaveCount(1)
+        ->and($spy->calls[0][2])->not->toBeNull()
+        ->and($spy->calls[0][2])->toBeLessThan(15);
 });
 
 test('read_artifact refuses a version request when the indexed version is unknown', function () {
@@ -271,11 +462,167 @@ test('read_artifact returns headings provenance and strips a duplicated title', 
         ->and($content['content']['text'])->not->toStartWith('Migration plan');
 });
 
-test('read_artifact documents that only the indexed version can be read', function () {
+test('read_artifact documents the live current-version path and the served version', function () {
     $server = app(ArtfctServer::class, ['transport' => new FakeTransporter]);
     $server->start();
     $tool = $server->createContext()->tools()->first(fn ($tool): bool => $tool->name() === 'read_artifact')->toArray();
 
-    expect($tool['description'])->toContain('last indexed version')
+    expect($tool['description'])->toContain('reads the current version')
+        ->and($tool['description'])->toContain('indexed_version names the version the returned text came from')
         ->and(json_encode($tool['inputSchema']))->toContain('older versions are not available');
+});
+
+test('read_artifact prefers the live Worker title over the stale indexed title', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-live-title']);
+    $token = remoteMcpToken($team);
+    config(['services.worker.base_url' => 'https://worker.test', 'indexing.enabled' => true]);
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => READ_ARTIFACT_ID,
+        'extracted_text' => 'old indexed text',
+        'title' => 'Stale indexed title',
+        'headings' => ['Old'],
+        'version' => 1,
+    ]);
+    Http::fake(['worker.test/v1/artifacts/*' => Http::response([
+        'id' => READ_ARTIFACT_ID,
+        'title' => 'Current Worker title',
+        'version' => 2,
+        'provenance' => ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null],
+    ], 200)]);
+    // Markdown with no heading: extraction succeeds but reports no title.
+    app(ArtifactContentSource::class)->seed('rub-591-live-title', READ_ARTIFACT_ID, 'Version two text with enough visible words to skip the render pass entirely here, and no heading at all.', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['indexed_version'])->toBe(2)
+        ->and($content['title'])->toBe('Current Worker title');
+});
+
+test('read_artifact serves every page of a lagging read from one live fetch', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-pages']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    $fake = app(ArtifactContentSource::class);
+    $fake->seed('rub-591-pages', READ_ARTIFACT_ID, '<!doctype html><html><head><title>Migration plan</title></head><body><h1>Migration plan</h1><p>'.str_repeat('Version three text with enough visible words. ', 200).'</p></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+    $spy = new class($fake) implements ArtifactContentSource
+    {
+        public int $calls = 0;
+
+        public function __construct(private readonly FakeArtifactContentSource $fake) {}
+
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            $this->calls++;
+
+            return $this->fake->fetch($orgSlug, $artifactId, $timeoutSeconds);
+        }
+    };
+    app()->instance(ArtifactContentSource::class, $spy);
+
+    $first = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'limit' => 100])->assertOk()->json('result.structuredContent');
+    expect($first['indexed_version'])->toBe(2)->and($first['stale'])->toBeFalse();
+    $second = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'offset' => $first['locator']['end_offset'], 'limit' => 100])->assertOk()->json('result.structuredContent');
+    $full = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'limit' => 8000])->assertOk()->json('result.structuredContent');
+
+    expect($spy->calls)->toBe(1)
+        ->and($second['indexed_version'])->toBe(2)
+        ->and($second['stale'])->toBeFalse()
+        ->and($second['locator']['offset'])->toBe($first['locator']['end_offset'])
+        ->and($first['content']['text'].$second['content']['text'])->toBe(mb_substr($full['content']['text'], 0, 200));
+});
+test('read_artifact rechecks sharing when serving a cached live read', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-recache']);
+    $owner = memberOfTeam($team, TeamRole::Member);
+    $member = memberOfTeam($team, TeamRole::Member);
+    configureSigning(testSigningKey());
+    $memberToken = OrgJwtService::default()->mint($team, $member, TeamRole::Member)['token'];
+    $ownerToken = OrgJwtService::default()->mint($team, $owner, TeamRole::Member)['token'];
+    config(['services.worker.base_url' => 'https://worker.test', 'indexing.enabled' => true]);
+    ArtifactIndexEntry::factory()->create([
+        'team_id' => $team->id,
+        'artifact_id' => READ_ARTIFACT_ID,
+        'extracted_text' => 'old indexed text stays hidden',
+        'title' => 'Migration plan',
+        'headings' => ['Overview'],
+        'version' => 1,
+    ]);
+    $meta = [
+        'id' => READ_ARTIFACT_ID,
+        'title' => 'Migration plan',
+        'version' => 2,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null],
+    ];
+    Http::fake(['worker.test/v1/artifacts/*' => function () use (&$meta) {
+        return Http::response($meta, 200);
+    }]);
+    $fake = app(ArtifactContentSource::class);
+    $liveHtml = '<!doctype html><html><head><title>Migration plan</title></head><body><h1>Migration plan</h1><p>Private live text with enough visible words to skip the render pass entirely here.</p></body></html>';
+    $fake->seed('rub-591-recache', READ_ARTIFACT_ID, $liveHtml, ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2, sharing: 'team', ownerUserId: (string) $owner->id);
+    $spy = new class($fake) implements ArtifactContentSource
+    {
+        public int $calls = 0;
+
+        public function __construct(private readonly FakeArtifactContentSource $fake) {}
+
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            $this->calls++;
+
+            return $this->fake->fetch($orgSlug, $artifactId, $timeoutSeconds);
+        }
+    };
+    app()->instance(ArtifactContentSource::class, $spy);
+
+    // Populates the live cache while the artifact is team-shared.
+    $first = callReadArtifact($memberToken, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+    expect($first['content']['text'])->toContain('Private live text');
+
+    // Sharing flips to private after the entry is cached. The metadata read
+    // still answers 200 here so the tool's own recheck is what must refuse.
+    $fake->seed('rub-591-recache', READ_ARTIFACT_ID, $liveHtml, ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2, sharing: 'private', ownerUserId: (string) $owner->id);
+    $meta['sharing'] = 'private';
+
+    $denied = callReadArtifact($memberToken, ['id' => READ_ARTIFACT_ID])->assertOk();
+    expect($denied->json('result.isError'))->toBeTrue()
+        ->and($denied->json('result.content.0._meta.artfct.errorCode'))->toBe('artifact_not_found')
+        ->and($denied->getContent())->not->toContain('Private live text')
+        ->and($denied->getContent())->not->toContain('old indexed text');
+
+    // The owner still reads the cached text without another fetch.
+    $cached = callReadArtifact($ownerToken, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+    expect($cached['content']['text'])->toContain('Private live text')
+        ->and($spy->calls)->toBe(1);
+});
+
+test('read_artifact caches a negative live outcome while the index lags', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-negshell']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'version one text', ['version' => 1], worker: ['version' => 2]);
+    $fake = app(ArtifactContentSource::class);
+    $fake->seed('rub-591-negshell', READ_ARTIFACT_ID, '<!doctype html><html><head><title>App</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>', ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+    $spy = new class($fake) implements ArtifactContentSource
+    {
+        public int $calls = 0;
+
+        public function __construct(private readonly FakeArtifactContentSource $fake) {}
+
+        public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
+        {
+            $this->calls++;
+
+            return $this->fake->fetch($orgSlug, $artifactId, $timeoutSeconds);
+        }
+    };
+    app()->instance(ArtifactContentSource::class, $spy);
+
+    $first = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+    $second = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($first['content']['text'])->toBe('version one text')
+        ->and($first['stale'])->toBeTrue()
+        ->and($second['content']['text'])->toBe('version one text')
+        ->and($spy->calls)->toBe(1);
 });

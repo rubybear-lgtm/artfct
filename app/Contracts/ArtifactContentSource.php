@@ -11,6 +11,9 @@ namespace App\Contracts;
 interface ArtifactContentSource
 {
     /**
+     * @param  ?int  $timeoutSeconds  total request timeout in seconds; null keeps the source default.
+     *                                Request-path callers (read_artifact serving the current version)
+     *                                pass a shorter bound; the queue indexer keeps the default.
      * @return array{
      *     html: string,
      *     tier: ?string,
@@ -22,5 +25,5 @@ interface ArtifactContentSource
      *     provenance: array{agent: ?string, repo_url: ?string, commit_sha: ?string}
      * }|null  `files` is null when the Worker did not list the bundle's files
      */
-    public function fetch(string $orgSlug, string $artifactId): ?array;
+    public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array;
 }

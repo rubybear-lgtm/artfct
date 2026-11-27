@@ -16,7 +16,7 @@ Follow these rules whenever you call `search_artifacts`, `read_artifact` or `get
 ## Reading
 
 - A snippet is only a short excerpt. When it does not contain the answer, call `read_artifact` with the result's `id`, and page with `next_offset` until you have what you need.
-- `indexed_version` is the version the text came from. If `stale` is true, the artifact has a newer version than the text you read; say so.
+- `indexed_version` names the version the returned text came from — the live current version when the index lagged, otherwise the last indexed one. If `stale` is true, the artifact has a newer version than the text you read; say so.
 
 ## Trust
 

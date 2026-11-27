@@ -29,6 +29,34 @@ final class ExtractionHeuristics
     }
 
     /**
+     * Pure extraction of one entrypoint's text without rendering. Null when
+     * the html needs a render pass, so request-path callers (read_artifact
+     * serving the current version, RUB-591) fall back to the indexed text
+     * instead of driving a headless browser inline — rendering stays on the
+     * queue per spec 12.
+     *
+     * @return array{text: string, title: ?string, headings: list<string>}|null
+     */
+    public static function extractWithoutRender(string $html): ?array
+    {
+        if (self::needsRender($html)) {
+            return null;
+        }
+
+        if (self::looksLikeMarkdown($html)) {
+            $text = self::plainTextFromMarkdown($html);
+            $title = self::titleFromMarkdown($html);
+            $headings = self::headingsFromMarkdown($html);
+        } else {
+            $text = self::visibleText($html);
+            $title = self::titleFromHtml($html);
+            $headings = self::headingsFromHtml($html);
+        }
+
+        return ['text' => self::withoutLeadingTitle($text, $title), 'title' => $title, 'headings' => $headings];
+    }
+
+    /**
      * Strips `<script>`/`<style>` blocks, then every remaining tag,
      * collapsing whitespace — the same "visible text" extraction spec 12
      * describes for the post-render path, reused here to judge the raw
