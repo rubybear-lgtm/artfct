@@ -86,7 +86,6 @@
         "globals": "^15.14.0",
         "laravel-vite-plugin": "^3.1",
         "lucide-react": "^1.47.0",
-        "marked": "^18.0.4",
         "posthog-js": "^1.447.9",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
