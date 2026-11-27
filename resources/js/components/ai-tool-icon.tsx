@@ -8,6 +8,8 @@ import type { ReactNode } from 'react';
  * @lobehub/icons-static-svg 1.95.1 (MIT), Zed from simple-icons (CC0), OMP
  * from omp.sh/favicon.svg and the MCP mark (used for "any other agent")
  * from the modelcontextprotocol/modelcontextprotocol repo's docs/logo;
+ * the MausBot mouse-face mark is original, drawn in the Oxblood & Bone
+ * palette (Oxblood #701A24 with Bone #F7F5F2 / Paper #FBFAF8 details);
  * one-colour marks draw in currentColor so they follow the theme.
  */
 const MARKS: Record<string, ReactNode> = {
@@ -714,6 +716,18 @@ const MARKS: Record<string, ReactNode> = {
             <path d="M76.2653 114.47L126.823 63.9117C136.196 54.5391 151.392 54.5391 160.765 63.9117L161.118 64.2652C170.491 73.6378 170.491 88.8338 161.118 98.2063L99.7248 159.6C96.6006 162.724 96.6006 167.789 99.7248 170.913L112.331 183.52" />
             <path d="M109.853 46.9411L59.6482 97.1457C50.2757 106.518 50.2757 121.714 59.6482 131.087V131.087C69.0208 140.459 84.2168 140.459 93.5894 131.087L143.794 80.8822" />
         </g>
+    ),
+    mausbot: (
+        <>
+            <circle cx="6.8" cy="7.2" r="3.6" fill="#701A24" />
+            <circle cx="17.2" cy="7.2" r="3.6" fill="#701A24" />
+            <circle cx="6.8" cy="7.2" r="1.6" fill="#F7F5F2" />
+            <circle cx="17.2" cy="7.2" r="1.6" fill="#F7F5F2" />
+            <ellipse cx="12" cy="14.5" rx="6.8" ry="6" fill="#701A24" />
+            <circle cx="9.6" cy="13.8" r="1.4" fill="#FBFAF8" />
+            <circle cx="14.4" cy="13.8" r="1.4" fill="#FBFAF8" />
+            <ellipse cx="12" cy="17" rx="1.7" ry="1.2" fill="#FBFAF8" />
+        </>
     ),
 };
 
