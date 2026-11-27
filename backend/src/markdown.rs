@@ -601,8 +601,10 @@ mod tests {
             assert!(html.contains(expected), "missing {expected} in:\n{html}");
         }
         // Leading punctuation must not shift the cap: PHP used to trim it
-        // after truncating and mint a 119-character id for this heading.
-        let capped = "x".repeat(MAX_SLUG_LEN);
+        // after truncating and mint a 119-character id for this heading. The
+        // literal, not `MAX_SLUG_LEN`, so the two languages' caps cannot drift
+        // apart while each side keeps checking itself.
+        let capped = "x".repeat(120);
         assert!(
             html.contains(&format!("<h2 id=\"{capped}\">(")),
             "capped id missing in:\n{html}"

@@ -35,8 +35,10 @@ it('emits the same heading ids as the Worker renderer for the shared fixture', f
         ->toContain('<h2 id="a-2-2">A-2</h2>')
         ->toContain('<h2 id="a-3">A</h2>')
         // Leading punctuation must not shift the cap: trimming it after the
-        // truncation minted a 119-character id the Worker never produces.
-        ->toContain('<h2 id="'.str_repeat('x', HeadingSlug::MAX_LENGTH).'">(')
+        // truncation minted a 119-character id the Worker never produces. The
+        // literal, not the constant, so the two languages' caps cannot drift
+        // apart while each side keeps checking itself.
+        ->toContain('<h2 id="'.str_repeat('x', 120).'">(')
         ->toContain('<h2 id="long-headings-are-truncated-so-the-viewer-still-forwards-the-fragment-and-scrolling-lands-on-the-intended-section-of-the">');
 });
 
