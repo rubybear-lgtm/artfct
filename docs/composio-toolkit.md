@@ -93,7 +93,7 @@ a structured `code`.
 | `collection_not_found`     | search collection filter names no collection                 | 404    | drop or fix the filter                                    |
 | `stale_base`               | `base_version` is behind the live version                    | 409    | do not replay; call `get_artifact(version=base_version + 1)` and reconcile provenance and time |
 | `version_conflict`         | concurrent version publish                                   | 409    | retry (returns `retryable: true`)                         |
-| `quota_exceeded`           | daily publish or storage cap                                 | 429    | read `reset_at` and `details`; after an ambiguous timeout, reconcile because the write may have landed |
+| `quota_exceeded`           | daily publish cap, past-due payment, storage or artifact-count quota, or Worker quota refusal | 429 | only the daily cap returns `reset_at`, `limit`, and `scope`; otherwise read the message text. `get_usage` is not in v1. After an ambiguous timeout, reconcile because the write may have landed |
 | `rate_limited`             | per-minute cap                                               | 429    | retry after a short wait                                  |
 | `plan_upgrade_required`    | plan gate on search                                          | 402    | stop; surface the plan requirement                        |
 | `feature_not_enabled`      | feature flag off (for example artifact database)             | 422    | stop; do not retry                                        |
@@ -133,8 +133,13 @@ The Worker de-duplicates by content hash on both write paths.
 
 A successful `deploy_artifact` response is the only confirmed success. An ambiguous timeout
 leaves the outcome unknown. `quota_exceeded` can mean the write already landed because Laravel
-quota and storage checks run before Worker de-duplication. The server's `next_action: get_usage`
-names a tool outside this v1 toolkit; use `reset_at` and the other error details instead.
+quota and storage checks run before Worker de-duplication.
+
+Only the daily publish cap returns `reset_at`, `limit`, and `scope`. Past-due payment,
+storage or artifact-count quota, and the Worker quota refusal return only `code`, `retryable`,
+and `next_action`. For those three cases, the error message text is the only signal. The
+`next_action: get_usage` names a tool outside this v1 toolkit, so an executor must not call it.
+Reconcile after an ambiguous timeout before reporting that the publish failed.
 
 What an executor should do:
 
@@ -211,13 +216,13 @@ Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST 
 - `identical new publish retry returns quota_exceeded before a second worker create` in
   `tests/Feature/Billing/DailyPublishLimitTest.php` proves that `per_user=1` consumes the slot on
   the first publish and the identical retry returns structured `quota_exceeded` with
-  `retryable=false` before a second Worker create. Its `next_action=get_usage` points outside
-  this v1 toolkit, so an executor must use the returned reset and limit details instead.
-  `stale_base recovery exposes version provenance without content_hash` in
-  `tests/Feature/McpArtifactVersioningTest.php` proves that a `base_version=3` publish landing as
-  v4 makes the identical retry return `stale_base` with `live_version=4`, and
-  `get_artifact(version=4)` returns version, `created_by`, agent, `created_at`, `updated_at` and
-  current metadata without `content_hash`.
+   `retryable=false` before a second Worker create. This daily-cap response includes `scope`,
+   `limit`, and `reset_at`. Other `quota_exceeded` sources do not include those details.
+   `stale_base recovery exposes version provenance` in
+   `tests/Feature/McpArtifactVersioningTest.php` proves that a `base_version=3` publish landing as
+   v4 makes the identical retry return `stale_base` with `live_version=4`, and
+   `get_artifact(version=4)` returns version, `created_by`, agent, `created_at`, `updated_at` and
+   current metadata.
 
 Run:
 

@@ -319,6 +319,15 @@ test('the validator treats an empty object as an object', function () {
         ->and(composioSchemaError(composioToolInputSchema('artfct_search_artifacts'), []))->toContain('missing required query');
 });
 
+test('the toolkit docs distinguish daily quota details from other quota errors', function () {
+    $doc = preg_replace('/\s+/', ' ', (string) file_get_contents(base_path('docs/composio-toolkit.md')));
+
+    expect($doc)->toContain('Only the daily publish cap returns `reset_at`, `limit`, and `scope`.')
+        ->toContain('Past-due payment, storage or artifact-count quota, and the Worker quota refusal return only `code`, `retryable`, and `next_action`.')
+        ->toContain('For those three cases, the error message text is the only signal.')
+        ->toContain('The `next_action: get_usage` names a tool outside this v1 toolkit, so an executor must not call it.');
+});
+
 test('search date filters and bounds validate like the server rules', function () {
     $search = composioToolInputSchema('artfct_search_artifacts');
 

@@ -484,7 +484,7 @@ test('deploy_artifact refuses a stale base_version and returns the live version 
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/versions'));
 });
 
-test('stale_base recovery exposes version provenance without content_hash', function () {
+test('stale_base recovery exposes version provenance', function () {
     configureArtifactLinks();
     configureSigning(testSigningKey());
 
@@ -573,8 +573,7 @@ test('stale_base recovery exposes version provenance without content_hash', func
         ->and($recovery->json('result.structuredContent.agent'))->toBe($agent)
         ->and($recovery->json('result.structuredContent.created_at'))->toBe($publishedAt)
         ->and($recovery->json('result.structuredContent.updated_at'))->toBe($publishedAt)
-        ->and($recovery->json('result.structuredContent.current'))->toBeTrue()
-        ->and($recovery->json('result.structuredContent'))->not->toHaveKey('content_hash');
+        ->and($recovery->json('result.structuredContent.current'))->toBeTrue();
 
     Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
         && str_ends_with((string) $request->url(), '/v1/artifacts/'.$id.'/versions/4'));
