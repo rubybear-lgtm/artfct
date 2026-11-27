@@ -343,6 +343,7 @@ class AiToolSetup
                 'method' => 'Remote MCP',
                 'summary' => 'OpenMausBot’s desktop app. Add Artfct as a remote server, approve the sign-in once, and its bots can search and publish.',
                 'maker' => 'OpenMausBot',
+                'icon' => 'mausbot',
                 'intro' => "MausBot connects to remote servers rather than installing plugins, so add Artfct’s hosted server and sign in once. To check the address, an unauthenticated `POST {$url}` answers `401` with a `WWW-Authenticate` header.",
                 'steps' => [
                     ['text' => 'In MausBot, open Apps, then MCP servers, and add a streamable HTTP server with this address:', 'code' => $url],

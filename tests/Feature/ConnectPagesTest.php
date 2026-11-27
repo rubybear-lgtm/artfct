@@ -126,6 +126,7 @@ test('the MausBot guide renders on /connect from the hosted server address', fun
             ->component('connect-show')
             ->where('guide.id', 'connect-mausbot')
             ->where('guide.label', 'MausBot')
+            ->where('guide.icon', 'mausbot')
             ->where('guide.kind', 'chat')
             ->where('guide.method', 'Remote MCP')
             ->where('guide.verified', false)
@@ -142,7 +143,7 @@ test('every guide icon names a mark the icon component draws', function () {
     $component = file_get_contents(resource_path('js/components/ai-tool-icon.tsx'));
     $icons = collect(AiToolSetup::forCurrentEnvironment()->guides())->pluck('icon')->filter()->unique();
 
-    expect($icons->all())->toContain('codex', 'opencode', 'windsurf', 'zed', 'antigravity', 'omp', 'mcp');
+    expect($icons->all())->toContain('codex', 'opencode', 'windsurf', 'zed', 'antigravity', 'omp', 'mcp', 'mausbot');
 
     foreach ($icons as $icon) {
         expect($component)->toContain("    {$icon}: (");
