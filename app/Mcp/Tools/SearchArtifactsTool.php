@@ -180,7 +180,7 @@ final class SearchArtifactsTool extends Tool
             'collection' => $schema->string()->max(100)->description('Optional collection name or numeric id. Unknown collections return collection_not_found (same as list_artifacts).')->nullable(),
             'artifact_type' => $schema->string()->enum(ArtifactType::values())->description('Optional type filter: report, table, document, mockup, slide_deck, dashboard, post, design_system or other.')->nullable(),
             'changed_since' => $schema->string()->description('Optional ISO-8601 time: only artifacts updated at or after it, to find sources that changed since you last read them.')->nullable(),
-            'limit' => $schema->integer()->description('Maximum number of results, from 1 to 50.')->nullable(),
+            'limit' => $schema->integer()->min(1)->max(50)->description('Maximum number of results, from 1 to 50.')->nullable(),
         ];
     }
 }

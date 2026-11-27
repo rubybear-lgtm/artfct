@@ -1,12 +1,12 @@
 {
     "name": "artfct",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "spec": "2020-12",
     "scopes": ["artifacts:deploy", "artifacts:read", "comments:write"],
     "tools": [
         {
             "name": "artfct_deploy_artifact",
-            "description": "Publish a self-contained HTML document or a multi-file bundle to Artfct, or publish a new version of an existing artifact with artifact_id. Returns a view_url. Search first for a page with the same title and update it with artifact_id and base_version instead of duplicating. Give exactly one of html or files. On a version publish, omitted title, description, sharing and edit_access keep their previous values. Re-publishing identical content returns the existing artifact instead of creating a duplicate.",
+            "description": "Publish a self-contained HTML document or a multi-file bundle to Artfct, or publish a new version of an existing artifact with artifact_id. Returns a view_url. Search first for a page with the same title and update it with artifact_id and base_version instead of duplicating. Give exactly one of html or files. On a version publish, omitted title, description, sharing and edit_access keep their previous values. Re-publishing identical content returns the existing artifact instead of creating a duplicate. The v1 input object is closed: collection, db and any other undeclared key are rejected.",
             "readOnly": false,
             "idempotent": true,
             "scopes": ["artifacts:deploy"],
@@ -54,7 +54,7 @@
                         "type": ["string", "null"]
                     },
                     "artifact_id": {
-                        "description": "To update an artifact you published before, pass its id; this publishes a new version with the same link instead of a new artifact. Omitted title, description, sharing, edit_access and collection keep their previous values.",
+                        "description": "To update an artifact published before, pass its id; this publishes a new version with the same link instead of a new artifact. Omitted title, description, sharing and edit_access keep their previous values.",
                         "maxLength": 128,
                         "type": ["string", "null"]
                     },
@@ -110,12 +110,14 @@
                     }
                 },
                 "type": "object",
+                "additionalProperties": false,
                 "oneOf": [
                     {
                         "required": ["html"],
                         "properties": {
                             "html": {
-                                "type": "string"
+                                "type": "string",
+                                "pattern": "\\S"
                             }
                         },
                         "not": {
@@ -138,7 +140,8 @@
                             "required": ["html"],
                             "properties": {
                                 "html": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "pattern": "\\S"
                                 }
                             }
                         }
@@ -200,11 +203,14 @@
                     },
                     "limit": {
                         "description": "Maximum number of results, from 1 to 50.",
+                        "minimum": 1,
+                        "maximum": 50,
                         "type": ["integer", "null"]
                     }
                 },
                 "type": "object",
-                "required": ["query"]
+                "required": ["query"],
+                "additionalProperties": false
             }
         },
         {
@@ -228,7 +234,8 @@
                     }
                 },
                 "type": "object",
-                "required": ["id"]
+                "required": ["id"],
+                "additionalProperties": false
             }
         },
         {
@@ -263,7 +270,8 @@
                     }
                 },
                 "type": "object",
-                "required": ["id"]
+                "required": ["id"],
+                "additionalProperties": false
             }
         },
         {
@@ -286,7 +294,8 @@
                     }
                 },
                 "type": "object",
-                "required": ["id"]
+                "required": ["id"],
+                "additionalProperties": false
             }
         },
         {
@@ -316,7 +325,8 @@
                     }
                 },
                 "type": "object",
-                "required": ["id", "body"]
+                "required": ["id", "body"],
+                "additionalProperties": false
             }
         },
         {
@@ -327,7 +337,8 @@
             "scopes": [],
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {},
+                "additionalProperties": false
             }
         }
     ]

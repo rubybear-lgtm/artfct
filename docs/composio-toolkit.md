@@ -38,6 +38,10 @@ Two deploy arguments are **out of v1 without adding scopes**:
   and the `db_*` tools are out of v1. `db` is removed from the deploy schema; there is no
   partial v1 surface for it.
 
+The v1 input object is **closed** (`additionalProperties: false`), so `collection`, `db` and
+any other undeclared key are rejected by the schema and never reach the server. Only declared
+arguments are forwarded.
+
 `search_artifacts.collection` stays: it is a **read-only filter**.
 `SearchArtifactsTool` requires only `artifacts:read`, and an unknown collection returns
 `collection_not_found` — no `collections:*` scope is consulted.
@@ -87,7 +91,7 @@ a structured `code`.
 | `version_not_found`        | requested version missing                                    | 404    | stop, or read the live version                            |
 | `comment_not_found`        | `parent_id` names no comment on this artifact                | 404    | re-list comments                                          |
 | `collection_not_found`     | search collection filter names no collection                 | 404    | drop or fix the filter                                    |
-| `stale_base`               | `base_version` is behind the live version                    | 409    | re-read, merge, retry with the live version               |
+| `stale_base`               | `base_version` is behind the live version                    | 409    | read the live version; if it is `base_version + 1` and matches your content it already landed, else merge and retry |
 | `version_conflict`         | concurrent version publish                                   | 409    | retry (returns `retryable: true`)                         |
 | `quota_exceeded`           | daily publish or storage cap                                 | 429    | wait for reset (see `details`/`get_usage`)               |
 | `rate_limited`             | per-minute cap                                               | 429    | retry after a short wait                                  |
@@ -113,22 +117,34 @@ re-auth. A code absent from this table must still be treated as fatal unless its
 
 ## Idempotency and retries
 
-`artfct_deploy_artifact` is idempotent for an **identical new publish**: the Worker
-de-duplicates by content hash (RUB-371, `backend/src/artifact_routes.rs`), returns the
-existing artifact, and ignores changed `title`, `sharing` and other metadata on the repeat.
-Two documented exceptions and one shape matter to an executor:
+The Worker de-duplicates by content hash on both write paths.
 
-- **Never de-duplicated:** a publish that declares `db` (out of v1) always creates a new
-  artifact with fresh seed rows. Not reachable through this schema.
-- **Visibility:** content that matches an artifact the caller cannot see creates a new one
-  instead of returning the invisible one.
-- **Version publishes** (`artifact_id`) are not content-de-duplicated. Retrying one after a
-  timeout can add a second version. Send `base_version` and the retry fails as `stale_base`
-  instead of duplicating.
+- **New publish** (`POST /v1/artifacts`): identical bytes in the same workspace return the
+  existing artifact (`created: false`), and changed `title`, `sharing` and other metadata on
+  the repeat are ignored. The match must be visible to the caller; content that matches an
+  artifact the caller cannot see creates a new one. A `db` publish is never de-duplicated,
+  but `db` is not declared in v1 and the closed schema rejects it.
+- **Version publish** (`POST /v1/artifacts/{id}/versions`): if the bundle hash equals the
+  artifact's current content, the Worker returns 200 with `created: false` and the current
+  version and writes nothing (`backend/src/version_routes.rs`). The integration test
+  `reposting_identical_bytes_creates_no_new_version`
+  (`backend/tests/storage_integration.rs`) asserts no new version row; CI's MCP end-to-end
+  job runs it with `--ignored`.
 
-So: auto-retry a failed **new** publish; auto-retry a **version** publish only when it
-carried `base_version`; **never** auto-retry `artfct_add_artifact_comment` (not idempotent —
-it would post twice). All five read tools are safe to retry.
+What an executor should do:
+
+- **New publish:** auto-retry after an ambiguous timeout. Content de-duplication makes the
+  repeat a no-op and a different bundle only appears if someone else published.
+- **Version publish:** do **not** blind-replay after an ambiguous timeout. The Laravel
+  `base_version` pre-check runs before the Worker call and compares version numbers only.
+  If the first attempt committed v4 and timed out, a retry with `base_version: 3` returns
+  `stale_base` even though the content is already live. Read the artifact first
+  (`get_artifact` or `read_artifact`): if `live_version == base_version + 1` and its content
+  matches what you sent, the publish landed — report success. If it differs, merge and
+  publish with the live version. Without `base_version`, an identical retry is a 200 no-op,
+  but a different bundle adds a version, so only retry when you know nothing else published.
+- **Comments:** never auto-retry `artfct_add_artifact_comment`; it is not idempotent and
+  would post twice. The five read tools are safe to retry.
 
 ## Endpoints behind the tools
 
@@ -164,13 +180,20 @@ Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST 
 
 `tests/Feature/ComposioToolkitTest.php` asserts, against the live tool classes:
 
-- every toolkit `inputSchema` equals the hosted MCP tool's `inputSchema` after the two
-  documented transforms — deploy drops `collection` and `db`, and adds `minItems: 1` to
-  `files` with a null-aware `oneOf` for `html`/`files`;
+- every toolkit `inputSchema` matches the hosted MCP tool's schema after the documented
+  transforms — every tool adds `additionalProperties: false`; deploy drops `collection` and
+  `db`, adds `minItems: 1` to `files`, and adds a null-aware `oneOf` whose `html` branch
+  rejects blank/whitespace-only values (matching `trim(...) !== ''`). Descriptions are
+  curated and compared separately, so the stale `collection` wording cannot return;
 - `readOnly`, `idempotent` and `scopes` match the tool's annotations and
   `_meta.artfct.requiredScopes`, and no tool requires a scope the toolkit does not request;
-- fixture payloads are classified as the server would: `files: []` rejected, explicit
-  `null`s accepted, a plain date and a date-time both accepted (no `format` keyword).
+- negative fixtures prove undeclared `collection`, `db` and unknown keys are rejected, and
+  the schema is closed on every tool;
+- payload fixtures are classified as the server would: `files: []` rejected, explicit
+  `null`s accepted, blank `html` treated as absent when `files` is present, `{}` reaches
+  `oneOf`/`required` (and `get_connection` accepts it), and search `limit`/`query` bounds
+  match the server rule (`limit` 1–50, `query` 1–500);
+- a plain date and a date-time both validate (no `format` keyword).
 
 Run: `php artisan test --compact --filter=ComposioToolkit`.
 

@@ -17,7 +17,10 @@ function composioSchemaError(array $schema, mixed $value, string $path = '$'): ?
         $matched = false;
         foreach ((array) $schema['type'] as $type) {
             $matched = $matched || match ($type) {
-                'object' => is_array($value) && ! array_is_list($value),
+                // PHP's [] is both an empty list and an empty object; treat it as
+                // an object when the schema allows one, so {} reaches required,
+                // additionalProperties and oneOf instead of failing the type.
+                'object' => is_array($value) && ($value === [] || ! array_is_list($value)),
                 'array' => is_array($value) && ($value === [] || array_is_list($value)),
                 'string' => is_string($value),
                 'integer' => is_int($value),
@@ -47,6 +50,9 @@ function composioSchemaError(array $schema, mixed $value, string $path = '$'): ?
         }
         if (isset($schema['maxLength']) && mb_strlen($value) > $schema['maxLength']) {
             return "{$path}: longer than maxLength";
+        }
+        if (isset($schema['pattern']) && preg_match('/'.$schema['pattern'].'/u', $value) !== 1) {
+            return "{$path}: does not match pattern";
         }
     }
 
@@ -119,6 +125,23 @@ function composioSchemaError(array $schema, mixed $value, string $path = '$'): ?
     }
 
     return null;
+}
+
+function composioWithoutDescriptions(mixed $value): mixed
+{
+    if (! is_array($value)) {
+        return $value;
+    }
+
+    $stripped = [];
+    foreach ($value as $key => $child) {
+        if ($key === 'description') {
+            continue;
+        }
+        $stripped[$key] = composioWithoutDescriptions($child);
+    }
+
+    return $stripped;
 }
 
 /**
@@ -200,22 +223,33 @@ test('the Composio toolkit mirrors the hosted MCP tool contract', function () {
         $oneOf = $declared['oneOf'] ?? null;
         unset($declared['oneOf']);
 
+        // Every tool input is closed; undeclared arguments never reach the server.
+        expect($declared['additionalProperties'])->toBeFalse();
+        $schema['additionalProperties'] = false;
+
         if ($mcpName === 'deploy_artifact') {
             unset($schema['properties']['collection'], $schema['properties']['db']);
             $schema['properties']['files']['minItems'] = 1;
 
             expect($oneOf)->not->toBeNull()
                 ->and($declared['properties'])->not->toHaveKey('collection')
-                ->and($declared['properties'])->not->toHaveKey('db');
+                ->and($declared['properties'])->not->toHaveKey('db')
+                ->and($declared['properties']['artifact_id']['description'])->not->toContain('collection')
+                ->and($declared['properties']['artifact_id']['description'])->not->toContain('db');
         } else {
             expect($oneOf)->toBeNull();
         }
 
-        expect($declared)->toEqual($schema)
+        // Descriptions are curated; structure, types, enums and limits must match.
+        expect(composioWithoutDescriptions($declared))->toEqual(composioWithoutDescriptions($schema))
             ->and($tool['readOnly'])->toBe($mcp['annotations']['readOnlyHint'])
             ->and($tool['idempotent'])->toBe($mcp['annotations']['idempotentHint'])
             ->and($tool['scopes'])->toBe($mcp['_meta']['artfct']['requiredScopes'])
             ->and($tool['description'])->not->toBeEmpty();
+
+        foreach ($declared['properties'] as $name => $property) {
+            expect($property['description'] ?? '')->not->toBeEmpty("{$tool['name']}.{$name} has no description");
+        }
     }
 });
 
@@ -242,6 +276,16 @@ test('the toolkit never requires a scope the connection does not request', funct
     expect($names)->not->toContain('artfct_list_collections', 'artfct_list_templates');
 });
 
+test('the deploy schema rejects fields outside v1', function () {
+    $deploy = composioToolInputSchema('artfct_deploy_artifact');
+    $html = ['html' => '<p>x</p>'];
+
+    expect(composioSchemaError($deploy, $html))->toBeNull()
+        ->and(composioSchemaError($deploy, $html + ['collection' => 'Roadmap']))->not->toBeNull()
+        ->and(composioSchemaError($deploy, $html + ['db' => ['collections' => ['cards' => []]]]))->not->toBeNull()
+        ->and(composioSchemaError($deploy, $html + ['unknown_argument' => 'x']))->not->toBeNull();
+});
+
 test('the deploy schema rejects what the server rejects and accepts explicit nulls', function () {
     $deploy = composioToolInputSchema('artfct_deploy_artifact');
 
@@ -257,7 +301,25 @@ test('the deploy schema rejects what the server rejects and accepts explicit nul
         ->and(composioSchemaError($deploy, ['html' => null, 'files' => null]))->not->toBeNull();
 });
 
-test('the search date filters validate like the server date rule', function () {
+test('blank html is treated as absent when files is given', function () {
+    $deploy = composioToolInputSchema('artfct_deploy_artifact');
+    $file = ['path' => 'index.html', 'content' => '<p>x</p>'];
+
+    expect(composioSchemaError($deploy, ['html' => '', 'files' => [$file]]))->toBeNull()
+        ->and(composioSchemaError($deploy, ['html' => '   ', 'files' => [$file]]))->toBeNull()
+        ->and(composioSchemaError($deploy, ['html' => '']))->not->toBeNull()
+        ->and(composioSchemaError($deploy, ['html' => '   ']))->not->toBeNull()
+        ->and(composioSchemaError($deploy, ['html' => '', 'files' => []]))->not->toBeNull();
+});
+
+test('the validator treats an empty object as an object', function () {
+    expect(composioSchemaError(composioToolInputSchema('artfct_get_connection'), []))->toBeNull()
+        ->and(composioSchemaError(composioToolInputSchema('artfct_get_connection'), ['x' => 1]))->not->toBeNull()
+        ->and(composioSchemaError(composioToolInputSchema('artfct_deploy_artifact'), []))->toContain('oneOf')
+        ->and(composioSchemaError(composioToolInputSchema('artfct_search_artifacts'), []))->toContain('missing required query');
+});
+
+test('search date filters and bounds validate like the server rules', function () {
     $search = composioToolInputSchema('artfct_search_artifacts');
 
     expect($search['properties']['since'])->not->toHaveKey('format')
@@ -265,5 +327,13 @@ test('the search date filters validate like the server date rule', function () {
         ->and(composioSchemaError($search, ['query' => 'launch', 'since' => '2026-11-01']))->toBeNull()
         ->and(composioSchemaError($search, ['query' => 'launch', 'since' => '2026-11-01T09:30:00Z']))->toBeNull()
         ->and(composioSchemaError($search, ['query' => 'launch', 'since' => null]))->toBeNull()
-        ->and(composioSchemaError($search, []))->not->toBeNull();
+        ->and(composioSchemaError($search, []))->not->toBeNull()
+        ->and(composioSchemaError($search, ['query' => 'q', 'limit' => 0]))->not->toBeNull()
+        ->and(composioSchemaError($search, ['query' => 'q', 'limit' => 51]))->not->toBeNull()
+        ->and(composioSchemaError($search, ['query' => 'q', 'limit' => 1]))->toBeNull()
+        ->and(composioSchemaError($search, ['query' => 'q', 'limit' => 50]))->toBeNull()
+        ->and(composioSchemaError($search, ['query' => 'q', 'limit' => null]))->toBeNull()
+        ->and(composioSchemaError($search, ['query' => '']))->not->toBeNull()
+        ->and(composioSchemaError($search, ['query' => str_repeat('a', 501)]))->not->toBeNull()
+        ->and(composioSchemaError($search, ['query' => str_repeat('a', 500)]))->toBeNull();
 });
