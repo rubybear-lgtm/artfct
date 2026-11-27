@@ -25,7 +25,7 @@ test('a_markdown_document_renders_h1_and_table_inside_a_sandboxed_viewer_frame',
     $source = file_get_contents(base_path('tests/Fixtures/rub515-markdown-source.md'));
     $rendered = file_get_contents(base_path('tests/Fixtures/rub515-markdown-rendered.html'));
     expect($source)->toContain('# Hello')
-        ->and($rendered)->toContain('<h1>Hello</h1>')
+        ->and($rendered)->toContain('<h1 id="hello">Hello</h1>')
         ->and($rendered)->toContain('<table>')
         ->and($rendered)->toContain('<td>1</td>')
         ->and($rendered)->not->toContain('application/octet-stream')

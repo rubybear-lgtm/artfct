@@ -11,7 +11,8 @@
 //! so shared-origin preview CSP cannot execute injected script or follow
 //! `javascript:` / `data:` destinations.
 
-use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{html, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const MARKDOWN_CSS: &str = r#"
 :root { color-scheme: light dark; }
@@ -174,7 +175,221 @@ where
     })
 }
 
+/// Longest base slug kept. The viewer (`FRAME_FRAGMENT` in
+/// `resources/js/pages/artifacts/show.tsx`) forwards at most 128 characters
+/// after `#`, so this leaves room for a `-N` suffix (at most 7 digits: the
+/// 25 MB artifact cap holds ~6.5M `# a` headings). `HeadingSlug::MAX_LENGTH`
+/// in PHP is the same.
+const MAX_SLUG_LEN: usize = 120;
+
+/// Heading slug shared with Laravel (`App\Services\HeadingSlug`): lowercase
+/// ASCII alphanumerics kept, every other byte run becomes one `-`, truncated
+/// to `MAX_SLUG_LEN`, trimmed; empty falls back to `section`. Byte-wise so
+/// `é` (two UTF-8 bytes) collapses to one `-`, exactly like PHP's byte-level
+/// `preg_replace`.
+fn slugify_heading(text: &str) -> String {
+    let mut slug = String::with_capacity(text.len());
+    let mut separator = true;
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            slug.push(byte.to_ascii_lowercase() as char);
+            separator = false;
+        } else if !separator {
+            slug.push('-');
+            separator = true;
+        }
+    }
+    if slug.len() > MAX_SLUG_LEN {
+        slug.truncate(MAX_SLUG_LEN);
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        slug.push_str("section");
+    }
+    slug
+}
+
+/// Per-document heading ids: first use keeps the base, repeats take
+/// `base-2`, `base-3`, … The same state as PHP `HeadingSlug`.
+///
+/// `next` remembers the suffix the last repeat of each base landed on, so N
+/// repeats of one heading cost N steps instead of N²; `used` is still checked
+/// because a literal heading can spell a candidate (`a-2` before a third `a`).
+#[derive(Default)]
+struct HeadingIds {
+    used: HashSet<String>,
+    next: HashMap<String, u32>,
+}
+
+impl HeadingIds {
+    fn id(&mut self, base: &str) -> String {
+        if self.used.insert(base.to_string()) {
+            return base.to_string();
+        }
+        let mut suffix = *self.next.get(base).unwrap_or(&2);
+        loop {
+            let candidate = format!("{base}-{suffix}");
+            suffix += 1;
+            if self.used.insert(candidate.clone()) {
+                self.next.insert(base.to_string(), suffix);
+                return candidate;
+            }
+        }
+    }
+}
+
+struct HeadingCapture<'a> {
+    level: HeadingLevel,
+    classes: Vec<CowStr<'a>>,
+    attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)>,
+    text: String,
+    inner: Vec<Event<'a>>,
+    image_depth: u32,
+}
+
+/// Gives every heading a stable `id` so `/a/{id}#{slug}` links scroll to the
+/// section. Slug text is the heading's visible text: emphasis, links and code
+/// contribute their text; images contribute nothing (DOM `textContent` on the
+/// Laravel side has no image alt text either). Soft and hard breaks read as a
+/// separator because PHP's `textContent` sees the newline CommonMark writes
+/// after `<br />`; a hard break that added nothing made the two renderers
+/// disagree (`firstsecond` vs `first-second`).
+///
+/// Only the heading being read is buffered, so memory stays O(1) in the
+/// document size instead of collecting every event of a 25 MB file.
+struct WithHeadingIds<'a, I> {
+    events: I,
+    ids: HeadingIds,
+    heading: Option<HeadingCapture<'a>>,
+    /// `Start` + inner + `End` of the heading just closed, drained before the
+    /// next source event.
+    ready: VecDeque<Event<'a>>,
+}
+
+impl<'a, I: Iterator<Item = Event<'a>>> WithHeadingIds<'a, I> {
+    fn new(events: I) -> Self {
+        Self {
+            events,
+            ids: HeadingIds::default(),
+            heading: None,
+            ready: VecDeque::new(),
+        }
+    }
+
+    fn finish_heading(&mut self, capture: HeadingCapture<'a>) {
+        let id = self.ids.id(&slugify_heading(&capture.text));
+        self.ready.push_back(Event::Start(Tag::Heading {
+            level: capture.level,
+            id: Some(CowStr::Boxed(id.into_boxed_str())),
+            classes: capture.classes,
+            attrs: capture.attrs,
+        }));
+        self.ready.extend(capture.inner);
+        self.ready
+            .push_back(Event::End(TagEnd::Heading(capture.level)));
+    }
+}
+
+impl<'a, I: Iterator<Item = Event<'a>>> Iterator for WithHeadingIds<'a, I> {
+    type Item = Event<'a>;
+
+    fn next(&mut self) -> Option<Event<'a>> {
+        loop {
+            if let Some(event) = self.ready.pop_front() {
+                return Some(event);
+            }
+            let event = match self.events.next() {
+                Some(event) => event,
+                None => {
+                    // Unclosed heading (cannot happen from the parser): flush
+                    // it without an id.
+                    if let Some(capture) = self.heading.take() {
+                        self.ready.push_back(Event::Start(Tag::Heading {
+                            level: capture.level,
+                            id: None,
+                            classes: capture.classes,
+                            attrs: capture.attrs,
+                        }));
+                        self.ready.extend(capture.inner);
+                        // Close it, or the rest of the document nests inside.
+                        self.ready
+                            .push_back(Event::End(TagEnd::Heading(capture.level)));
+                        continue;
+                    }
+                    return None;
+                }
+            };
+            if self.heading.is_none() {
+                match event {
+                    Event::Start(Tag::Heading {
+                        level,
+                        id: _,
+                        classes,
+                        attrs,
+                    }) => {
+                        self.heading = Some(HeadingCapture {
+                            level,
+                            classes,
+                            attrs,
+                            text: String::new(),
+                            inner: Vec::new(),
+                            image_depth: 0,
+                        });
+                    }
+                    other => return Some(other),
+                }
+                continue;
+            }
+            if matches!(event, Event::End(TagEnd::Heading(_))) {
+                let capture = self.heading.take().expect("heading capture");
+                self.finish_heading(capture);
+                continue;
+            }
+            let capture = self.heading.as_mut().expect("heading capture");
+            match event {
+                Event::Start(Tag::Image { .. }) => {
+                    capture.image_depth += 1;
+                    capture.inner.push(event);
+                }
+                Event::End(TagEnd::Image) => {
+                    capture.image_depth = capture.image_depth.saturating_sub(1);
+                    capture.inner.push(event);
+                }
+                Event::Text(text) => {
+                    if capture.image_depth == 0 {
+                        capture.text.push_str(&text);
+                    }
+                    capture.inner.push(Event::Text(text));
+                }
+                Event::Code(code) => {
+                    if capture.image_depth == 0 {
+                        capture.text.push_str(&code);
+                    }
+                    capture.inner.push(Event::Code(code));
+                }
+                Event::SoftBreak => {
+                    if capture.image_depth == 0 {
+                        capture.text.push('\n');
+                    }
+                    capture.inner.push(Event::SoftBreak);
+                }
+                Event::HardBreak => {
+                    if capture.image_depth == 0 {
+                        capture.text.push('\n');
+                    }
+                    capture.inner.push(Event::HardBreak);
+                }
+                other => capture.inner.push(other),
+            }
+        }
+    }
+}
+
 /// Convert markdown source to a self-contained HTML document.
+///
+/// Every heading carries a stable `id` (see `WithHeadingIds`).
 pub(crate) fn render_markdown_document(markdown: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -182,7 +397,10 @@ pub(crate) fn render_markdown_document(markdown: &str) -> String {
     options.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(markdown, options);
     let mut body = String::new();
-    html::push_html(&mut body, sanitize_markdown_events(parser));
+    html::push_html(
+        &mut body,
+        WithHeadingIds::new(sanitize_markdown_events(parser)),
+    );
     format!(
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Markdown</title>\n<style>{MARKDOWN_CSS}</style>\n</head>\n<body>\n{body}\n</body>\n</html>"
     )
@@ -220,7 +438,7 @@ mod tests {
     #[test]
     fn renders_heading_and_table() {
         let html = render_markdown_document("# Hello\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n");
-        assert!(html.contains("<h1>Hello</h1>"));
+        assert!(html.contains("<h1 id=\"hello\">Hello</h1>"));
         assert!(html.contains("<table>"));
         assert!(html.contains("<td>1</td>"));
         assert!(html.starts_with("<!doctype html>"));
@@ -236,7 +454,7 @@ mod tests {
         );
         assert_eq!(ctype, "text/html; charset=utf-8");
         let html = String::from_utf8(body).unwrap();
-        assert!(html.contains("<h1>Title</h1>"));
+        assert!(html.contains("<h1 id=\"title\">Title</h1>"));
         assert!(!html.contains("application/octet-stream"));
     }
 
@@ -251,7 +469,7 @@ mod tests {
         assert_eq!(ctype, "text/html; charset=utf-8");
         assert!(!ctype.contains("octet-stream"));
         let html = String::from_utf8(body).unwrap();
-        assert!(html.contains("<h1>Quarterly</h1>"));
+        assert!(html.contains("<h1 id=\"quarterly\">Quarterly</h1>"));
         assert!(html.contains("<table>"));
         assert!(html.contains("<td>West</td>"));
     }
@@ -294,7 +512,7 @@ mod tests {
         let html = render_markdown_document(
             "# Safe\n\n<script>alert(1)</script>\n\nHello <img src=x onerror=alert(1)>\n\n<div onclick=\"evil()\">x</div>\n",
         );
-        assert!(html.contains("<h1>Safe</h1>"));
+        assert!(html.contains("<h1 id=\"safe\">Safe</h1>"));
         assert!(html.contains("Hello"));
         assert!(
             !html.contains("<script>"),
@@ -332,7 +550,7 @@ mod tests {
         let html = render_markdown_document(
             "# Links\n\n[bad](javascript:alert(1))\n\n[ok](https://artfct.dev)\n\n![x](data:image/png;base64,AAAA)\n\n![y](https://artfct.dev/og-image.svg)\n\n[html](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)\n",
         );
-        assert!(html.contains("<h1>Links</h1>"), "{html}");
+        assert!(html.contains("<h1 id=\"links\">Links</h1>"), "{html}");
         assert!(
             !html.contains("javascript:"),
             "javascript destinations must be emptied: {html}"
@@ -356,6 +574,98 @@ mod tests {
     }
 
     #[test]
+    fn heading_ids_match_shared_fixture() {
+        // tests/Fixtures/markdown-heading-ids.md is the cross-language
+        // contract: tests/Unit/MarkdownHeadingIdsTest.php asserts the same ids
+        // from Laravel. If the slug shape changes, update both sides together.
+        let source = include_str!("../../tests/Fixtures/markdown-heading-ids.md");
+        let html = render_markdown_document(source);
+        for expected in [
+            "<h1 id=\"hello-world\">Hello World</h1>",
+            "<h2 id=\"7-dated-cut-marketplace-launch\">7. Dated cut: marketplace launch</h2>",
+            "<h2 id=\"hello-world-2\">Hello World</h2>",
+            "<h3 id=\"fix-the-bold-bit\">Fix the <strong>bold</strong> bit</h3>",
+            "<h2 id=\"see-the-docs\">",
+            "<h2 id=\"use-artfct-deploy-today\">",
+            "<h2 id=\"caf-cr-me\">",
+            "<h2 id=\"section\">!!!</h2>",
+            "<h1 id=\"hello-world-3\">Hello World</h1>",
+            "<h2 id=\"see\">",
+            "<h1 id=\"first-second\">First<br />\nsecond</h1>",
+            "<h1 id=\"a\">A</h1>",
+            "<h2 id=\"a-2\">A</h2>",
+            "<h2 id=\"a-2-2\">A-2</h2>",
+            "<h2 id=\"a-3\">A</h2>",
+            "<h2 id=\"long-headings-are-truncated-so-the-viewer-still-forwards-the-fragment-and-scrolling-lands-on-the-intended-section-of-the\">",
+        ] {
+            assert!(html.contains(expected), "missing {expected} in:\n{html}");
+        }
+        // Leading punctuation must not shift the cap: PHP used to trim it
+        // after truncating and mint a 119-character id for this heading. The
+        // literal, not `MAX_SLUG_LEN`, so the two languages' caps cannot drift
+        // apart while each side keeps checking itself.
+        let capped = "x".repeat(120);
+        assert!(
+            html.contains(&format!("<h2 id=\"{capped}\">(")),
+            "capped id missing in:\n{html}"
+        );
+    }
+
+    #[test]
+    fn heading_ids_dedupe_and_fall_back() {
+        let html = render_markdown_document("# Dup\n\n## Dup\n\n## !!!\n");
+        assert!(html.contains("<h1 id=\"dup\">Dup</h1>"), "{html}");
+        assert!(html.contains("<h2 id=\"dup-2\">Dup</h2>"), "{html}");
+        assert!(html.contains("<h2 id=\"section\">!!!</h2>"), "{html}");
+    }
+
+    #[test]
+    fn heading_ids_treat_hard_breaks_as_separators() {
+        // PHP's DOM `textContent` of `<h1>First<br />\nsecond</h1>` is
+        // "First\nsecond", so a hard break separates words on both sides.
+        for source in ["First  \nsecond\n===\n", "First\\\nsecond\n===\n"] {
+            let html = render_markdown_document(source);
+            assert!(html.contains("id=\"first-second\""), "{html}");
+        }
+    }
+
+    #[test]
+    fn long_headings_fit_the_viewer_fragment_limit() {
+        // FRAME_FRAGMENT drops anything over 128 characters after `#`, so an
+        // uncapped slug would give an id the viewer never forwards. The
+        // deduped id adds a suffix on top of the cap.
+        let heading = "word ".repeat(100);
+        let html = render_markdown_document(&format!("# {heading}\n\n# {heading}\n"));
+        let ids: Vec<&str> = html
+            .split("id=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split_once('"').map(|(id, _)| id))
+            .collect();
+        assert_eq!(ids.len(), 2, "{html}");
+        assert!(ids[0].len() >= 100, "{}", ids[0]);
+        assert!(ids[0].len() <= 128, "{}", ids[0]);
+        assert!(ids[1].ends_with("-2"), "{}", ids[1]);
+        assert!(ids[1].len() <= 128, "{}", ids[1]);
+    }
+
+    #[test]
+    fn repeated_headings_do_not_make_rendering_quadratic() {
+        // The suffix search restarted at `-2` for every repeat, so N repeats
+        // cost N²: 20k took minutes there. It takes milliseconds here, so a
+        // generous bound still catches a return of the rescans.
+        let markdown = "# a\n\n".repeat(20_000);
+        let started = std::time::Instant::now();
+        let html = render_markdown_document(&markdown);
+        let elapsed = started.elapsed();
+        assert!(html.contains("<h1 id=\"a\">a</h1>"), "{html}");
+        assert!(html.contains("<h1 id=\"a-20000\">a</h1>"), "{html}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "20k duplicate headings took {elapsed:?}"
+        );
+    }
+
+    #[test]
     fn browser_fixture_matches_worker_renderer() {
         // tests/Browser/Rub515BrowserTest.php serves this fixture. If the
         // Worker renderer changes, regenerate with UPDATE_RUB515_FIXTURE=1 —
@@ -374,7 +684,7 @@ mod tests {
             rendered, expected,
             "regenerate tests/Fixtures/rub515-markdown-rendered.html with UPDATE_RUB515_FIXTURE=1"
         );
-        assert!(rendered.contains("<h1>Hello</h1>"));
+        assert!(rendered.contains("<h1 id=\"hello\">Hello</h1>"));
         assert!(rendered.contains("<table>"));
         assert!(!rendered.contains("application/octet-stream"));
 
@@ -386,5 +696,48 @@ mod tests {
         );
         assert_eq!(ctype, "text/html; charset=utf-8");
         assert_eq!(String::from_utf8(body).unwrap(), expected);
+    }
+
+    /// What `tests/Browser/Rub603HeadingIdsTest.php` serves: the Worker's own
+    /// render of the shared heading fixture with enough paragraphs before the
+    /// anchor to put it below the frame's first viewport, and enough after it
+    /// that the browser can align it to the top instead of clamping at the
+    /// document end. The filler has no headings, so every id still comes from
+    /// `tests/Fixtures/markdown-heading-ids.md`.
+    fn rub603_browser_document() -> String {
+        let mut source = String::new();
+        for _ in 0..24 {
+            source.push_str("Depth paragraph for the browser scroll proof.\n\n");
+        }
+        source.push_str(include_str!("../../tests/Fixtures/markdown-heading-ids.md"));
+        source.push('\n');
+        for _ in 0..24 {
+            source.push_str("Trailing paragraph so the anchor can reach the top.\n\n");
+        }
+        render_markdown_document(&source)
+    }
+
+    #[test]
+    fn rub603_browser_fixture_matches_worker_renderer() {
+        // The browser proof must run the production renderer, not the PHP
+        // test helper (it has no non-test callers). Regenerate with
+        // UPDATE_RUB603_FIXTURE=1; never hand-edit the fixture.
+        let fixture_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/Fixtures/rub603-markdown-rendered.html"
+        );
+        let rendered = rub603_browser_document();
+        if std::env::var_os("UPDATE_RUB603_FIXTURE").is_some() {
+            std::fs::write(fixture_path, &rendered).expect("write rub603 browser fixture");
+        }
+        let expected = std::fs::read_to_string(fixture_path).expect("read rub603 browser fixture");
+        assert_eq!(
+            rendered, expected,
+            "regenerate tests/Fixtures/rub603-markdown-rendered.html with UPDATE_RUB603_FIXTURE=1"
+        );
+        assert!(
+            rendered.contains("<h2 id=\"use-artfct-deploy-today\">"),
+            "browser anchor heading missing"
+        );
     }
 }
