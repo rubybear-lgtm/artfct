@@ -913,6 +913,114 @@ test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', 
 });
 
 /**
+ * RUB-628 Ada review (2026-11-27): the back_forward guard must swallow only
+ * the restored shim, not every later click. A -> B -> Back -> click B again
+ * is all real frame navigations except the restored post (which the harness
+ * cannot serve): the restored B post stays on A, then a real second frame
+ * click to the same B navigates the top window to B again.
+ */
+test('a_real_frame_click_after_back_navigates_again_instead_of_being_swallowed', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Back Click Again', 'viewer-back-again@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+
+    $targetId = 'def456ghi7890';
+    /** @var FakeArtifactDirectory $backAgainDirectory */
+    $backAgainDirectory = app(ArtifactDirectory::class);
+    $backAgainDirectory->seedArtifact([
+        'id' => $targetId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Target artifact',
+        'description' => 'Seeded to prove a post-Back click still navigates.',
+        'content_hash' => md5($targetId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // First real artifact link: blank the frame (replace, no history entry),
+    // write a link without a history entry, click it for real. The server
+    // answers with the shim, which posts and the parent top-navigates to B.
+    $page->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go\">go</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go').click()",
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    // Real Back: A reloads with a back_forward type and the frame restored
+    // to the shim, which would re-post B.
+    $page->back()
+        ->wait(1)
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript("(performance.getEntriesByType('navigation')[0]||{}).type", 'back_forward')
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame');
+
+    // The restored shim post: swallowed, the top window stays on A.
+    $page->script(
+        "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
+        "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+    );
+
+    $page->wait(1)
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    // A second real artifact link to the same B, after the guard was
+    // consumed: blank, write, click for real. Without the single-use fix the
+    // sticky back_forward check would swallow this too; with it the top
+    // window navigates to B again.
+    $page->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go-again\">go again</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go-again').click()",
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
  * RUB-628 review-6092991795 finding 2: a same-artifact fragment link must not
  * leave the shim stuck in the frame. /a/A -> /a/A#sec differs only by its
  * hash, so assign() alone never reloads; the parent forces a server round
