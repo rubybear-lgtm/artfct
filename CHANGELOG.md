@@ -6,6 +6,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 ### Added
 
+- RUB-621: the [Composio toolkit spec](https://github.com/rubybear-lgtm/artfct/pull/219) — `resources/composio/toolkit.json` defines the seven v1 tools (`deploy`, `search`, `get`, `read`, list/add comments, `get_connection`), their scopes and idempotency, and `docs/composio-toolkit.md` records the arguments held back from v1 and the executor behaviour RUB-622 must implement. `tests/Feature/ComposioToolkitTest.php` fails if the JSON drifts from the hosted MCP tool schemas. Why: RUB-619 needs one schema source for the listing and RUB-622 for execution. Impact: none at runtime — the file is data for a transport that does not ship yet.
+
 - RUB-606 / Spec 22 AC-O1: hosted OAuth advertises `openid` and `email` (outside `McpScope`), serves `GET /oauth/userinfo` (`sub`, optional `email`, `email_verified` from `users.email_verified_at`), and serves `GET /.well-known/openai-apps-challenge` from `OPENAI_APPS_CHALLENGE` (404 when unset).
 
 - A `portable` onboarding host (RUB-596), the set-up that works in any app: check the connection, read the usage rules and ask the save question, with no project file, memory note or settings change. It is now the default when `get_guidance` is called for `onboarding` without a host, and the `unknown` playbook falls back to it instead of asking the person. The onboard skill names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`, so Codex, Hermes, OpenClaw and other Agent Plugins clients no longer get the Claude app's steps. Guidance version 1.14.0.
