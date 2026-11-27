@@ -52,3 +52,21 @@ test('storage_integration_fails_closed_when_member_tokens_are_missing', function
         ->and($source)->toContain('fn require_sharing_actors(')
         ->and($source)->not->toContain('Every test skips with `Ok(())` when its optional token is absent');
 });
+
+test('ci_runs_the_hydration_browser_tests_against_the_inertia_ssr_daemon', function () use ($repoRoot) {
+    $workflow = file_get_contents($repoRoot.'/.github/workflows/ci.yml');
+
+    expect($workflow)->toContain('pest_browser_ssr')
+        ->and($workflow)->toContain('npm run build:ssr')
+        ->and($workflow)->toContain('php artisan inertia:start-ssr')
+        ->and($workflow)->toContain('php artisan inertia:check-ssr')
+        ->and($workflow)->toContain('TEST_INERTIA_SSR')
+        ->and($workflow)->toContain('--testsuite=Browser');
+});
+
+test('ssr_hydration_tests_fail_closed_when_the_daemon_is_missing', function () use ($repoRoot) {
+    $testCase = file_get_contents($repoRoot.'/tests/TestCase.php');
+
+    expect($testCase)->toContain("getenv('TEST_INERTIA_SSR') !== 'true'")
+        ->and($testCase)->toContain('inertia.ssr.throw_on_error');
+});

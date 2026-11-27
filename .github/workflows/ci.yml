@@ -306,6 +306,99 @@ jobs:
       - name: Run Pest (browser)
         run: php -d memory_limit=512M vendor/bin/pest --parallel --passthru-php='-d memory_limit=512M' --compact --testsuite=Browser
 
+  # The React #418 hydration errors fixed in PRs #182, #184, #185 and #186
+  # only show up with server rendering, because they come from the server
+  # (UTC, en-US) text and the browser text differing. pest_browser runs with
+  # SSR off, so this job builds the SSR bundle, starts the daemon, and runs
+  # the hydration browser tests with TEST_INERTIA_SSR=true. TestCase sets
+  # inertia.ssr.throw_on_error under that flag, so a dead daemon errors
+  # instead of silently rendering client-only and passing without hydrating.
+  # Pin 24.04: same Playwright/Chromium reason as pest_browser.
+  pest_browser_ssr:
+    name: Pest (browser, Inertia SSR)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          ini-values: opcache.enable_cli=1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      # Same best-effort system packages as pest_browser.
+      - name: Install Playwright browsers
+        run: |
+          npx playwright install chromium
+          printf 'Acquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAcquire::Retries "0";\n' | sudo tee /etc/apt/apt.conf.d/99fail-fast >/dev/null
+          npx playwright install-deps chromium || echo "::warning::Playwright system dependencies could not be installed; continuing with the runner image's packages."
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Build frontend with SSR bundle
+        run: npm run build:ssr
+
+      - name: Start Inertia SSR server
+        run: |
+          set -euo pipefail
+          php artisan inertia:start-ssr > /tmp/inertia-ssr.log 2>&1 &
+          echo $! > /tmp/inertia-ssr.pid
+          for i in $(seq 1 60); do
+            if curl -sf -m 2 http://127.0.0.1:13714/health > /dev/null; then
+              echo "SSR server is up"
+              break
+            fi
+            if [ "$i" = "60" ]; then
+              echo "SSR server did not start in 60s"
+              cat /tmp/inertia-ssr.log
+              exit 1
+            fi
+            sleep 1
+          done
+          php artisan inertia:check-ssr
+
+      - name: Run Pest (browser hydration with SSR)
+        env:
+          TEST_INERTIA_SSR: 'true'
+        run: php -d memory_limit=512M vendor/bin/pest --compact --testsuite=Browser --filter=hydrates
+
+      - name: Stop Inertia SSR server
+        if: always()
+        run: php artisan inertia:stop-ssr || kill "$(cat /tmp/inertia-ssr.pid)" || true
+
   # RUB-517: gate/poller/notes unit tests for the manual production release
   # Action. Kept outside php_static so a Node-only change is cheap to re-run.
   release_scripts:
@@ -385,6 +478,8 @@ jobs:
       - php_static
       - pest_unit_feature
       - pest_browser
+      # pest_browser_ssr stays informational until it has a stable CI run
+      # (RUB-594): it runs but does not gate `application`.
       - openapi_lint
       - contract_drift
       - mcp_application
