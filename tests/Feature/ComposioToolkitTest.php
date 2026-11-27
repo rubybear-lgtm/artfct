@@ -324,8 +324,11 @@ test('the toolkit docs distinguish daily quota details from other quota errors',
 
     expect($doc)->toContain('Only the daily publish cap returns `reset_at`, `limit`, and `scope`.')
         ->toContain('Past-due payment, storage or artifact-count quota, and the Worker quota refusal return only `code`, `retryable`, and `next_action`.')
-        ->toContain('For those three cases, the error message text is the only signal.')
-        ->toContain('The `next_action: get_usage` names a tool outside this v1 toolkit, so an executor must not call it.');
+        ->toContain('For those three cases, the error message text is the only source-specific signal.')
+        ->toContain('It cannot distinguish storage quota from artifact-count quota, and the Worker refusal names no specific limit.')
+        ->toContain('Remove that sentence before passing the message to the model or person.')
+        ->toContain('| `bundle_too_large`')
+        ->toContain('the plan ceiling can be lower than 8 MB');
 });
 
 test('search date filters and bounds validate like the server rules', function () {

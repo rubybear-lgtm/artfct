@@ -189,6 +189,37 @@ test('non-daily quota errors return only the base error fields', function (Payme
     'artifact-count quota' => [PaymentStatus::Active, 0, PHP_INT_MAX, 'over its quota'],
 ]);
 
+test('free plan bundle above tenant ceiling returns bundle_too_large before Worker', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake();
+    $ceiling = (int) config('billing.plans.free.bundle_size_ceiling_bytes');
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'files' => [['path' => 'index.html', 'content' => str_repeat('a', $ceiling + 1)]],
+        ]],
+    ])->assertOk();
+
+    expect($ceiling)->toBe(5 * 1024 * 1024)
+        ->and($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'bundle_too_large',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain("exceeds this tenant's {$ceiling}-byte ceiling");
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertNothingSent();
+});
+
 test('worker quota refusal returns only the base error fields', function () {
     configureSigning(testSigningKey());
     config(['services.worker.base_url' => 'https://worker.test']);
