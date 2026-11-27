@@ -27,7 +27,7 @@ Every pull request adds an entry under Unreleased and in the [Artfct Release Cha
 
 ### Changed
 
-- Documented delegated approval for low-risk PRs and required a release-ledger entry that explains each change and its rationale. This gives the release owner a record to reconcile against the candidate commit.
+- [#221](https://github.com/rubybear-lgtm/artfct/pull/221) Documented delegated approval for low-risk PRs and required a release-ledger entry that explains each change and its rationale. This gives the release owner a record to reconcile against the candidate commit.
 
 - RUB-606 / Spec 22 AC-O1: ChatGPT-reachable plan/upgrade copy reworded. `PlanGateException` no longer names a plan or says Upgrade; `ArtifactPublisher` quota message and `usage:read` consent label drop "plan limits"; `get_usage` and ChatGPT `/connect` copy drop plan/paid wording. Machine codes `plan_upgrade_required`, `quota_exceeded` and action `upgrade_plan` are unchanged.
 
