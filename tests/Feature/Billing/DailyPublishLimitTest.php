@@ -229,7 +229,9 @@ test('worker quota refusal returns only the base error fields', function () {
     $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
     app()->bind(UsageContract::class, FakeUsage::class);
     Http::fake([
-        'worker.test/v1/artifacts' => Http::response(['error' => ['code' => 'quota_exceeded']], 403),
+        'worker.test/v1/artifacts' => Http::response([
+            'error' => ['code' => 'quota_exceeded', 'details' => ['reason' => 'storage']],
+        ], 403),
     ]);
 
     $response = $this->withToken($token)->postJson('/mcp', [
@@ -244,6 +246,36 @@ test('worker quota refusal returns only the base error fields', function () {
             'next_action' => 'get_usage',
         ])
         ->and($response->json('result.content.0.text'))->toContain('This workspace has reached a limit.');
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertSentCount(1);
+});
+
+test('worker bundle refusal maps to deployment_rejected', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'error' => ['code' => 'bundle_too_large', 'details' => ['limit_bytes' => 1024]],
+        ], 413),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>worker bundle probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'deployment_rejected',
+            'retryable' => false,
+        ])
+        ->and($response->json('result.content.0.text'))->toContain('The artifact service could not accept this deployment.');
 
     $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
     Http::assertSentCount(1);

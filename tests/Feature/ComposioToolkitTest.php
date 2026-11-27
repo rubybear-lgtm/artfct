@@ -325,10 +325,12 @@ test('the toolkit docs distinguish daily quota details from other quota errors',
     expect($doc)->toContain('Only the daily publish cap returns `reset_at`, `limit`, and `scope`.')
         ->toContain('Past-due payment, storage or artifact-count quota, and the Worker quota refusal return only `code`, `retryable`, and `next_action`.')
         ->toContain('For those three cases, the error message text is the only source-specific signal.')
-        ->toContain('It cannot distinguish storage quota from artifact-count quota, and the Worker refusal names no specific limit.')
+        ->toContain('It cannot distinguish storage quota from artifact-count quota.')
+        ->toContain('The Worker sends `error.details.reason` as `storage`, `artifacts`, or `past_due`, but `ArtifactPublisher` drops that field, so the v1 refusal names no specific limit.')
         ->toContain('Remove that sentence before passing the message to the model or person.')
         ->toContain('| `bundle_too_large`')
-        ->toContain('the plan ceiling can be lower than 8 MB');
+        ->toContain('the plan ceiling can be lower than 8 MB')
+        ->toContain("If the Worker's own bundle ceiling is lower than Laravel's, its 413 `bundle_too_large` reaches the executor as `deployment_rejected` with `retryable: false`");
 });
 
 test('search date filters and bounds validate like the server rules', function () {

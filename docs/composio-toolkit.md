@@ -94,7 +94,7 @@ a structured `code`.
 | `stale_base`               | `base_version` is behind the live version                    | 409    | do not replay; call `get_artifact(version=base_version + 1)` and reconcile provenance and time |
 | `version_conflict`         | concurrent version publish                                   | 409    | retry (returns `retryable: true`)                         |
 | `quota_exceeded`           | daily publish cap, past-due payment, storage or artifact-count quota, or Worker quota refusal | 429 | only the daily cap returns `reset_at`, `limit`, and `scope`; otherwise read the message text. The cause may be indeterminate in v1. Remove the `Use get_usage ...` sentence. After an ambiguous timeout, reconcile because the write may have landed |
-| `bundle_too_large`         | one bundle exceeds the plan's per-artifact ceiling         | 413    | shrink the bundle; the plan ceiling can be lower than 8 MB |
+| `bundle_too_large`         | one bundle exceeds Laravel's plan ceiling                  | 413    | shrink the bundle; the plan ceiling can be lower than 8 MB. Remove the `Use get_usage ...` suffix |
 | `rate_limited`             | per-minute cap                                               | 429    | retry after a short wait                                  |
 | `plan_upgrade_required`    | plan gate on search                                          | 402    | stop; surface the plan requirement                        |
 | `feature_not_enabled`      | feature flag off (for example artifact database)             | 422    | stop; do not retry                                        |
@@ -108,13 +108,18 @@ a structured `code`.
 | `artifact_retrieval_failed`| upstream failed to return the artifact                       | 502    | retry (`retryable: true`)                                 |
 | `edit_forbidden`           | version publish without edit access                          | 403    | publish a new artifact instead                            |
 | `public_sharing_disabled`  | team disabled public links                                   | 403    | publish as `team` or `private`                            |
-| `deployment_rejected`      | Worker refused or failed the deploy                          | 422/503| read `retryable`; a 503 contention is safe to retry       |
+| `deployment_rejected`      | Worker refused or failed the deploy, including a Worker 413 bundle refusal | 413/422/503 | read `retryable`; shrink the bundle after a 413          |
 | `collection_mutation_failed`| published, but not added to the collection                   | 500    | retry `add_collection_artifact` (v2); artifact exists     |
 | `signed_link_unavailable`  | artifact stored but no view link could be minted             | 500    | retry `get_artifact` for a fresh link                     |
 
 `insufficient_scope` (text, shape 2) is the 403 for a missing scope; HTTP 401 (shape 1) is
 re-auth. A code absent from this table must still be treated as fatal unless its
 `retryable` flag says otherwise.
+
+Laravel's `bundle_too_large` includes `next_action: get_usage`, but `get_usage` is outside v1.
+Remove the trailing `Use get_usage ...` sentence. If the Worker's own bundle ceiling is lower
+than Laravel's, its 413 `bundle_too_large` reaches the executor as `deployment_rejected` with
+`retryable: false` because `ArtifactPublisher` maps other non-success responses generically.
 
 ## Idempotency and retries
 
@@ -139,10 +144,12 @@ quota and storage checks run before Worker de-duplication.
 Only the daily publish cap returns `reset_at`, `limit`, and `scope`. Past-due payment,
 storage or artifact-count quota, and the Worker quota refusal return only `code`, `retryable`,
 and `next_action`. For those three cases, the error message text is the only source-specific
-signal. It cannot distinguish storage quota from artifact-count quota, and the Worker refusal
-names no specific limit. Each message ends with a `Use get_usage ...` sentence, but `get_usage`
-is outside this v1 toolkit. Remove that sentence before passing the message to the model or
-person. Reconcile after an ambiguous timeout before reporting that the publish failed.
+signal. It cannot distinguish storage quota from artifact-count quota. The Worker sends
+`error.details.reason` as `storage`, `artifacts`, or `past_due`, but `ArtifactPublisher` drops
+that field, so the v1 refusal names no specific limit. Each message ends with a
+`Use get_usage ...` sentence, but `get_usage` is outside this v1 toolkit. Remove that sentence
+before passing the message to the model or person. Reconcile after an ambiguous timeout before
+reporting that the publish failed.
 
 What an executor should do:
 
@@ -222,10 +229,12 @@ Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST 
    `retryable=false` before a second Worker create. This daily-cap response includes `scope`,
    `limit`, and `reset_at`. `non-daily quota errors return only the base error fields` probes
    past-due payment, storage quota, and artifact-count quota through `/mcp`.
-   `worker quota refusal returns only the base error fields` probes the Worker 403. Each returns
-   only `code`, `retryable`, and `next_action`. `free plan bundle above tenant ceiling returns
-   bundle_too_large before Worker` proves that the default 5 MB Free ceiling applies below the
-   8 MB transport maximum.
+   `worker quota refusal returns only the base error fields` sends the Worker's real
+   `error.details.reason: storage` and proves Laravel drops it. Each quota case returns only
+   `code`, `retryable`, and `next_action`. `free plan bundle above tenant ceiling returns
+   `bundle_too_large` before Worker` proves that the default 5 MB Free ceiling applies below the
+   8 MB transport maximum. `worker bundle refusal maps to deployment_rejected` sends the real
+   Worker 413 shape and proves the generic mapping.
    `stale_base recovery exposes version provenance` in
    `tests/Feature/McpArtifactVersioningTest.php` proves that a `base_version=3` publish landing as
    v4 makes the identical retry return `stale_base` with `live_version=4`, and
