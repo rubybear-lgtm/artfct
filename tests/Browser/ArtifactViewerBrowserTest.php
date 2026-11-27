@@ -757,3 +757,65 @@ test('a_later_hash_change_does_not_reset_the_artifact_frame_src', function () {
         ->assertScript('location.hash', '#option-c')
         ->assertScript("{$frameSrc}.endsWith('#option-b')");
 });
+
+/**
+ * RUB-628: an artifact-to-artifact link followed inside the sandboxed frame
+ * must navigate the top window to the next viewer — one header, the next
+ * title, URL `/a/B` — with Back returning to A. The frame's shim posts its
+ * URL to the parent; the parent only honors a message from its own frame,
+ * on its own origin, naming an http(s) URL on its own origin.
+ */
+test('an_artifact_link_navigates_the_top_window_to_the_next_artifact', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Cross Link', 'viewer-cross-link@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+
+    $targetId = 'bcd234efg5678';
+    /** @var FakeArtifactDirectory $browserDirectory */
+    $browserDirectory = app(ArtifactDirectory::class);
+    $browserDirectory->seedArtifact([
+        'id' => $targetId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Target artifact',
+        'description' => 'Seeded as the link target for the cross-artifact browser test.',
+        'content_hash' => md5($targetId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // The shim's postMessage, delivered with the frame as its source: the
+    // parent navigates the top window instead of nesting a second viewer.
+    // The URL is built from the live origin so the same-origin check sees
+    // the address the shim would actually post (its own location.href).
+    $page->script(
+        "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
+        "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    $page->back()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});

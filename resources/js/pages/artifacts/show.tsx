@@ -172,6 +172,64 @@ export default function ArtifactShow({
         }
     }, [frameUrl]);
 
+    /*
+     * An artifact-to-artifact link followed inside the sandboxed frame loads
+     * the next viewer URL as a subframe (RUB-628). The server answers that
+     * framed navigation with a shim that posts its URL here, and the top
+     * window navigates itself, so one viewer replaces the other: one header,
+     * the next title, and Back returning here. The frame has no top-navigation
+     * permission and stays that way; only a message from this frame, on this
+     * origin, naming an http(s) URL on this origin, is honored.
+     */
+    useEffect(() => {
+        const onMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) {
+                return;
+            }
+
+            if (event.source !== frameRef.current?.contentWindow) {
+                return;
+            }
+
+            const data = event.data as { type?: unknown; url?: unknown } | null;
+
+            if (data === null || typeof data !== 'object') {
+                return;
+            }
+
+            if (
+                data.type !== 'artfct:navigate' ||
+                typeof data.url !== 'string'
+            ) {
+                return;
+            }
+
+            let target: URL;
+
+            try {
+                target = new URL(data.url, window.location.origin);
+            } catch {
+                return;
+            }
+
+            if (target.origin !== window.location.origin) {
+                return;
+            }
+
+            if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+                return;
+            }
+
+            window.location.assign(target.href);
+        };
+
+        window.addEventListener('message', onMessage);
+
+        return () => {
+            window.removeEventListener('message', onMessage);
+        };
+    }, []);
+
     useEffect(() => {
         // The rendered props are the baseline: a verdict that differs from
         // them means the artifact changed since this page was served.

@@ -25,6 +25,8 @@ All notable changes to Artifact Engine will be recorded in this file.
 
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
 
+- RUB-628: an artifact-to-artifact link, such as the Engineering Wiki linking to a source doc, now replaces the viewer instead of nesting a second header inside the artifact frame. A viewer URL loaded as a subframe gets a minimal shim that tells the parent viewer to navigate the top window (`/a/B`, Back returns to A); unanswered it stays a working "Open this artifact" link. The frame sandbox is unchanged.
+
 ### Changed
 
 - RUB-606 / Spec 22 AC-O1: ChatGPT-reachable plan/upgrade copy reworded. `PlanGateException` no longer names a plan or says Upgrade; `ArtifactPublisher` quota message and `usage:read` consent label drop "plan limits"; `get_usage` and ChatGPT `/connect` copy drop plan/paid wording. Machine codes `plan_upgrade_required`, `quota_exceeded` and action `upgrade_plan` are unchanged.
