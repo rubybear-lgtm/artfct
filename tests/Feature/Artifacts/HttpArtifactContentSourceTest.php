@@ -59,3 +59,23 @@ test('the content read reports the file list as unknown when an older Worker omi
     expect($entry)->toHaveKey('files')
         ->and($entry['files'])->toBeNull();
 });
+
+test('the content read accepts a shorter request-path timeout without changing the default', function () {
+    configureOrgJwt();
+
+    Http::fake([
+        'worker.test/v1/orgs/acme/artifacts/abc/content' => Http::response([
+            'id' => 'abc',
+            'version' => 3,
+            'content' => '<h1>Deck</h1>',
+            'sharing' => 'team',
+            'owner_user_id' => '7',
+            'tier' => 'secure',
+            'provenance' => ['agent' => null, 'repo_url' => null, 'commit_sha' => null],
+        ], 200),
+    ]);
+
+    $entry = (new HttpArtifactContentSource('https://worker.test'))->fetch('acme', 'abc', 8);
+
+    expect($entry['version'])->toBe(3);
+});

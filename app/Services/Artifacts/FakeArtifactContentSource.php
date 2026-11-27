@@ -46,8 +46,9 @@ final class FakeArtifactContentSource implements ArtifactContentSource
         ];
     }
 
-    public function fetch(string $orgSlug, string $artifactId): ?array
+    public function fetch(string $orgSlug, string $artifactId, ?int $timeoutSeconds = null): ?array
     {
+        // In-memory: no network, so the request-path timeout bound is accepted and ignored.
         return $this->artifacts[$orgSlug][$artifactId] ?? null;
     }
 
