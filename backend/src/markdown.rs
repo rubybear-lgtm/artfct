@@ -512,6 +512,7 @@ mod tests {
             "<h2 id=\"caf-cr-me\">",
             "<h2 id=\"section\">!!!</h2>",
             "<h1 id=\"hello-world-3\">Hello World</h1>",
+            "<h2 id=\"see\">",
         ] {
             assert!(html.contains(expected), "missing {expected} in:\n{html}");
         }

@@ -27,7 +27,8 @@ it('emits the same heading ids as the Worker renderer for the shared fixture', f
         ->toContain('<h2 id="use-artfct-deploy-today">Use <code>artfct deploy</code> today</h2>')
         ->toContain('<h2 id="caf-cr-me">Café &amp; crème</h2>')
         ->toContain('<h2 id="section">!!!</h2>')
-        ->toContain('<h1 id="hello-world-3">Hello World</h1>');
+        ->toContain('<h1 id="hello-world-3">Hello World</h1>')
+        ->toContain('<h2 id="see">See ');
 });
 
 it('dedupes repeated slugs with -2 and -3 suffixes', function () {

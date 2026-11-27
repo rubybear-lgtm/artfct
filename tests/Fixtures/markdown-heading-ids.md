@@ -15,3 +15,5 @@
 ## !!!
 
 # Hello World
+
+## See ![the chart](https://example.com/chart.png)

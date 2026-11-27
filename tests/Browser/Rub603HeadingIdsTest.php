@@ -55,6 +55,21 @@ function rub603BrowserSeed(): array
     return [$team, $owner];
 }
 
+/**
+ * Visit a path carrying a hash fragment. `visit()` rebuilds relative URLs
+ * from path plus query only (`LaravelHttpServer::rewrite()`), so the probe
+ * load learns the server origin and the real load goes in absolute — with
+ * the fragment present from the first byte, the way a teammate opens
+ * `/a/{id}#{slug}`.
+ */
+function rub603VisitWithFragment(string $path, string $fragment)
+{
+    $parts = parse_url(visit($path)->url());
+    $origin = $parts['scheme'].'://'.$parts['host'].':'.$parts['port'];
+
+    return visit($origin.$path.$fragment);
+}
+
 test('the_viewer_forwards_a_valid_hash_into_the_frame_src', function () {
     // `.localhost` resolves to loopback so the frame's own fetch fails fast;
     // this test is about the src the viewer sets, not about fetching it.
@@ -66,12 +81,10 @@ test('the_viewer_forwards_a_valid_hash_into_the_frame_src', function () {
     [, $owner] = rub603BrowserSeed();
     test()->actingAs($owner);
 
-    // `visit()` rebuilds relative URLs from path plus query only
-    // (`LaravelHttpServer::rewrite()`), so the fragment rides in after the
-    // page exists: same-document navigate sets it, `refresh()` reloads with
-    // it — exactly how a teammate opens `/a/{id}#{slug}` fresh.
-    $page = visit('/a/'.RUB603_BROWSER_ARTIFACT_ID);
-    $page->navigate($page->url().'#'.RUB603_BROWSER_ANCHOR)->refresh();
+    // Fragment rides in on an absolute URL, which `visit()` passes through
+    // untouched — a fresh load carrying the hash, exactly how a teammate
+    // opens `/a/{id}#{slug}`.
+    $page = rub603VisitWithFragment('/a/'.RUB603_BROWSER_ARTIFACT_ID, '#'.RUB603_BROWSER_ANCHOR);
 
     $page
         ->assertNoJavaScriptErrors()
@@ -107,8 +120,7 @@ test('a_fragment_link_scrolls_the_rendered_markdown_to_the_section', function ()
     [, $owner] = rub603BrowserSeed();
     test()->actingAs($owner);
 
-    $page = visit('/__rub603-viewer');
-    $page->navigate($page->url().'#'.RUB603_BROWSER_ANCHOR)->refresh();
+    $page = rub603VisitWithFragment('/__rub603-viewer', '#'.RUB603_BROWSER_ANCHOR);
 
     $page
         ->assertNoJavaScriptErrors()
