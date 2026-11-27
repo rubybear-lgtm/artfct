@@ -127,8 +127,9 @@ final class ArtifactViewerController extends Controller
      * (and its header) nested inside itself. The script tells the parent
      * viewer to navigate the top window; the link stays for a parent that
      * does not answer (a cross-environment embed) or a reader who opens it
-     * directly. Never cached, never indexed, and deliberately branchless on
-     * freshness, previews, or downloads.
+     * directly. The link opens a new tab: a same-tab click inside the frame
+     * would only load the shim again. Never cached, never indexed, and
+     * deliberately branchless on freshness, previews, or downloads.
      */
     private function framedNavigationShim(Request $request): Response
     {
@@ -140,7 +141,7 @@ final class ArtifactViewerController extends Controller
             '<meta name="viewport" content="width=device-width, initial-scale=1">'.
             '<meta name="referrer" content="no-referrer">'.
             '<title>Open this artifact</title></head>'.
-            '<body><p><a href="'.$safeUrl.'">Open this artifact</a></p>'.
+            '<body><p><a href="'.$safeUrl.'" target="_blank" rel="noopener">Open this artifact</a></p>'.
             "<script>try{window.parent.postMessage({type:'artfct:navigate',url:location.href},location.origin);}catch(e){}</script>".
             '</body></html>';
 

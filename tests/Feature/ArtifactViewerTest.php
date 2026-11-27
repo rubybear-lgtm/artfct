@@ -788,6 +788,11 @@ test('a_framed_viewer_navigation_returns_the_shim_not_the_viewer', function () {
         ->not->toContain('artifacts/show')
         ->not->toContain('artifact-frame');
 
+    // The fallback link escapes the frame in a new tab: a same-tab click
+    // would only load the shim again instead of opening the artifact.
+    expect($content)->toContain('target="_blank"')
+        ->toContain('rel="noopener"');
+
     // Never cached, never indexed, never the referrer.
     expect($response->headers->get('Cache-Control'))->toContain('no-store')
         ->and($response->headers->get('Referrer-Policy'))->toContain('no-referrer')
