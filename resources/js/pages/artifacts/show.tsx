@@ -180,6 +180,15 @@ export default function ArtifactShow({
      * the next title, and Back returning here. The frame has no top-navigation
      * permission and stays that way; only a message from this frame, on this
      * origin, naming an http(s) URL on this origin, is honored.
+     *
+     * Two history edge cases (review-6092991795):
+     * - Back from B restores A with the frame still on the shim, which
+     *   re-posts and bounces straight back to B. On a back_forward load the
+     *   message is from restored history, so the frame is reset to the clean
+     *   artifact URL instead of navigating the top window.
+     * - A same-artifact fragment link (e.g. /a/A -> /a/A#sec) assigns a URL
+     *   that differs only by its hash, so the browser skips the reload and
+     *   the frame stays on the shim. That case forces a server round trip.
      */
     useEffect(() => {
         const onMessage = (event: MessageEvent) => {
@@ -220,6 +229,49 @@ export default function ArtifactShow({
                 return;
             }
 
+            // Same viewer apart from its hash (RUB-577 table of contents,
+            // e.g. /a/A -> /a/A#sec): assign() alone is a fragment navigation
+            // with no reload, so the frame would stay on the shim. Force a
+            // server round trip; the fragment effect then rebuilds the frame
+            // with the hash. The frame src is never reset here: its ?token=
+            // may have expired.
+            const current = new URL(window.location.href);
+
+            if (
+                target.pathname === current.pathname &&
+                target.search === current.search
+            ) {
+                window.location.assign(target.href);
+                window.location.reload();
+
+                return;
+            }
+
+            // Back/forward-restored shim: the frame's navigation to the shim
+            // created a joint-history entry [A, A(shim=B), B], so Back reloads
+            // A with the frame restored to the shim URL, which re-posts and
+            // bounces the top window straight back to B. Undo the restored
+            // frame instead of navigating. The shim is same-origin, so the
+            // parent may replace it; the replacement is the clean artifact
+            // URL, never a viewer URL.
+            try {
+                const entries = performance.getEntriesByType(
+                    'navigation',
+                ) as PerformanceNavigationTiming[];
+
+                if (entries[0]?.type === 'back_forward') {
+                    const frame = frameRef.current;
+
+                    if (frame?.contentWindow) {
+                        frame.contentWindow.location.replace(frameUrl);
+
+                        return;
+                    }
+                }
+            } catch {
+                // Fall through to the top-level navigation.
+            }
+
             window.location.assign(target.href);
         };
 
@@ -228,7 +280,7 @@ export default function ArtifactShow({
         return () => {
             window.removeEventListener('message', onMessage);
         };
-    }, []);
+    }, [frameUrl]);
 
     useEffect(() => {
         // The rendered props are the baseline: a verdict that differs from

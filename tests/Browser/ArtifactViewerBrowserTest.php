@@ -819,3 +819,142 @@ test('an_artifact_link_navigates_the_top_window_to_the_next_artifact', function 
         ->assertVisible('@artifact-frame')
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * RUB-628 review-6092991795 finding 1: Back from B must not bounce back to B.
+ * A real frame navigation to the shim creates the joint-history middle entry
+ * [A, A(shim=B), B]; Back reloads A with the frame restored to the shim URL,
+ * which re-posts. The parent must reset the restored frame instead of
+ * navigating the top window again. The first half is a real link click inside
+ * the frame; the restored shim post is simulated after a real Back (which the
+ * harness serves with a real back_forward navigation type) because the test
+ * server answers the restored frame with a clean URL.
+ */
+test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Real Back', 'viewer-real-back@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+
+    $targetId = 'cde345fga6789';
+    /** @var FakeArtifactDirectory $realBackDirectory */
+    $realBackDirectory = app(ArtifactDirectory::class);
+    $realBackDirectory->seedArtifact([
+        'id' => $targetId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Target artifact',
+        'description' => 'Seeded as the real-navigation link target.',
+        'content_hash' => md5($targetId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // A real link click inside the frame to the next viewer URL: the server
+    // answers with the shim (Sec-Fetch-Dest: iframe), which posts to the
+    // parent, which navigates the top window. The frame is first replaced
+    // with a same-origin blank page (replace, not a new history entry), a
+    // link is written into it without a history entry, and the link is
+    // clicked for real — so the only new joint-history entry is the shim
+    // navigation itself, exactly like an artifact link.
+    $page->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go\">go</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go').click()",
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    // A real Back: the reloaded A reports a back_forward navigation type.
+    // The restored shim would re-post B here; simulate that post with the
+    // frame as its source. Without the guard the parent bounces straight
+    // back to B; with it the frame is reset and the top window stays on A.
+    $page->back()
+        ->wait(1)
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript("(performance.getEntriesByType('navigation')[0]||{}).type", 'back_forward')
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame');
+
+    $page->script(
+        "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
+        "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+    );
+
+    $page->wait(1)
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * RUB-628 review-6092991795 finding 2: a same-artifact fragment link must not
+ * leave the shim stuck in the frame. /a/A -> /a/A#sec differs only by its
+ * hash, so assign() alone never reloads; the parent forces a server round
+ * trip and the fragment effect rebuilds the frame with the hash.
+ */
+test('a_real_frame_navigation_to_the_same_artifact_fragment_reloads_with_the_fragment', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Real Fragment', 'viewer-real-fragment@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+    test()->actingAs($owner);
+
+    $frameSrc = "document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src')";
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // A real navigation inside the frame to the same viewer with a fragment:
+    // the server answers the frame request with the shim (Sec-Fetch-Dest:
+    // iframe), which posts the fragment URL back to the parent. Setting the
+    // child location from the parent is allowed cross-origin; the frame's own
+    // request still carries the iframe destination, so the shim branch runs
+    // for real.
+    $page->script(
+        "document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow.location.href = ".
+        "window.location.origin + '/a/".VIEWER_BROWSER_ARTIFACT_ID."#option-b'",
+    );
+
+    $page->wait(2)
+        ->assertNoJavaScriptErrors()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript('location.hash', '#option-b')
+        ->assertSee('Source artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        // The reloaded viewer forwards the fragment to the frame src (with
+        // the token ahead of it); a stuck shim would leave the src without
+        // the hash.
+        ->assertScript("{$frameSrc}.endsWith('#option-b')")
+        ->assertScript("{$frameSrc}.includes('token=')")
+        ->assertNoJavaScriptErrors();
+});
