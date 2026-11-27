@@ -1,286 +1,162 @@
 # Composio toolkit — Artfct tool spec (RUB-621)
 
-Status: **draft spec**. Schemas here are the source of truth for the Composio toolkit;
-execution and transport are RUB-622. Mirrors `app/Mcp/Tools/*` (Laravel MCP server).
+Status: **draft spec** for RUB-619 (listing) and RUB-622 (execution). Transport is RUB-622.
+
+**`resources/composio/toolkit.json` is the only schema source.** This page records the
+decisions behind it and the behaviour an executor must implement; it deliberately does not
+repeat the schemas. Change the JSON and the parity test together —
+`tests/Feature/ComposioToolkitTest.php` fails when either drifts from the hosted MCP tools.
 
 ## v1 tool set (7)
 
-| Composio tool                   | MCP tool                 | Scope              | Kind  | Idempotent                              |
-| ------------------------------- | ------------------------ | ------------------ | ----- | --------------------------------------- |
-| `artfct_deploy_artifact`        | `deploy_artifact`        | `artifacts:deploy` | write | yes (identical content → same artifact) |
-| `artfct_search_artifacts`       | `search_artifacts`       | `artifacts:read`   | read  | yes                                     |
-| `artfct_get_artifact`           | `get_artifact`           | `artifacts:read`   | read  | yes                                     |
-| `artfct_read_artifact`          | `read_artifact`          | `artifacts:read`   | read  | yes                                     |
-| `artfct_list_artifact_comments` | `list_artifact_comments` | `artifacts:read`   | read  | yes                                     |
-| `artfct_add_artifact_comment`   | `add_artifact_comment`   | `comments:write`   | write | no                                      |
-| `artfct_get_connection`         | `get_connection`         | —                  | read  | yes                                     |
+| Composio tool                   | MCP tool                 | Scope              | Kind  | Idempotent                            |
+| ------------------------------- | ------------------------ | ------------------ | ----- | ------------------------------------- |
+| `artfct_deploy_artifact`        | `deploy_artifact`        | `artifacts:deploy` | write | yes for a new publish (see below)     |
+| `artfct_search_artifacts`       | `search_artifacts`       | `artifacts:read`   | read  | yes                                   |
+| `artfct_get_artifact`           | `get_artifact`           | `artifacts:read`   | read  | yes                                   |
+| `artfct_read_artifact`          | `read_artifact`          | `artifacts:read`   | read  | yes                                   |
+| `artfct_list_artifact_comments` | `list_artifact_comments` | `artifacts:read`   | read  | yes                                   |
+| `artfct_add_artifact_comment`   | `add_artifact_comment`   | `comments:write`   | write | **no**                                |
+| `artfct_get_connection`         | `get_connection`         | —                  | read  | yes                                   |
 
 ## Scope decision (needs a yes)
 
 The hosted MCP server already uses **`artifacts:deploy`**, **`artifacts:read`** and
-**`comments:write`**, so none are new scopes. But the C1 listing copy and C2 OAuth
-config currently name only `artifacts:deploy` + `artifacts:read`. To ship **commenting**
-in v1, add **`comments:write`** to both (it is an existing Artfct scope, not a new
-surface). Otherwise drop `artfct_add_artifact_comment` from v1 and keep the two scopes.
+**`comments:write`**, so none are new scopes. The C1 listing copy and C2 OAuth config
+currently name only `artifacts:deploy` + `artifacts:read`. Shipping **commenting** in v1
+means adding **`comments:write`** to both (an existing Artfct scope, not a new surface).
+Otherwise drop `artfct_add_artifact_comment` from v1 and keep two scopes.
 
-`list_collections` / `list_templates` / `get_guidance` / the `db_*` tools are **out of
-v1** to keep the scope set small. They can be a v2 follow-up.
+Two deploy arguments are **out of v1 without adding scopes**:
 
-## Error mapping
+- **`collection`** — a new publish that names a collection calls
+  `McpContext::requireScope('collections:write', 'deploy_artifact')`
+  (`app/Mcp/Tools/DeployArtifactTool.php:167`). The v1 connection does not request
+  `collections:write`, so the argument is removed from `artfct_deploy_artifact` rather than
+  widening the scope set. A caller that needs it uses the v2 collection tools.
+- **`db`** — the artifact database is behind a workspace feature flag (`feature_not_enabled`)
+  and the `db_*` tools are out of v1. `db` is removed from the deploy schema; there is no
+  partial v1 surface for it.
 
-MCP currently returns a structured error object `{ error, code, ... }`. Composio tools
-should surface the same `code` and a matching HTTP-ish status so the harness can act.
+`search_artifacts.collection` stays: it is a **read-only filter**.
+`SearchArtifactsTool` requires only `artifacts:read`, and an unknown collection returns
+`collection_not_found` — no `collections:*` scope is consulted.
 
-| `code`                                                                  | Meaning                                           | Suggested status | Retryable          |
-| ----------------------------------------------------------------------- | ------------------------------------------------- | ---------------- | ------------------ |
-| `invalid_request`                                                       | bad argument shape                                | 400              | no                 |
-| `unauthorized` / `insufficient_scope`                                   | missing/expired token or scope                    | 401 / 403        | re-auth            |
-| `artifact_not_found` / `version_not_found`                              | not visible or missing (same shape, Private-safe) | 404              | no                 |
-| `comment_not_found` / `collection_not_found`                            | referenced object missing                         | 404              | no                 |
-| `stale_base`                                                            | `base_version` conflicts with live version        | 409              | re-read then retry |
-| `quota_exceeded`                                                        | daily publish cap                                 | 429              | after `reset_at`   |
-| `rate_limited`                                                          | per-minute comment cap                            | 429              | after a short wait |
-| `plan_upgrade_required` / `feature_not_enabled`                         | plan/flag gate                                    | 402 / 422        | no                 |
-| `payload_too_large`                                                     | html > 1 MB or bundle > 8 MB                      | 413              | no                 |
-| `search_not_configured` / `content_not_indexed` / `version_not_indexed` | indexing off/lagging                              | 409 / 503        | maybe              |
-| `upstream_unavailable`                                                  | artifact service down                             | 503              | yes                |
-| `configuration_error`                                                   | server misconfigured                              | 500              | no                 |
+`list_collections` / `list_templates` / `get_guidance` / the `db_*` tools are a v2 follow-up.
 
-## Transport note (for RUB-622, not solved here)
+## Connection and multi-account routing
 
-The MCP surface is **JSON-RPC at `/mcp`**; the Worker API at `/v1/*` expects an **org
-JWT**, not the MCP OAuth bearer. So Composio cannot simply Proxy-Execute to `/v1`. C4 must
-pick one of:
+The workspace is resolved **from the credential, never from a request parameter**
+(`AuthenticateOrgToken`; spec 13: "resolved from the credential, never from a parameter").
+No tool takes an organization or account id, and none should: an input that named a
+workspace would be a caller-written claim and a cross-account hazard.
+
+Composio selects one **connected account** before a tool runs. One connected account is one
+Artfct workspace and user, with the scopes fixed at connection time. Multi-account therefore
+means multiple connected accounts, each routed by Composio; a model cannot switch workspace
+inside a call. `artfct_get_connection` reports the account actually in use: `organization`
+(permanent id), `organization_name`, `user_id`, `scopes`, `credential_source`.
+
+## Auth and error contract
+
+There are three failure shapes, and an executor must handle all three. Only the third carries
+a structured `code`.
+
+1. **HTTP 401, before JSON-RPC.** A missing, invalid, expired or revoked token; an unknown
+   org; or a revoked/expired MCP connection. `AuthenticateOrgToken.php:35-75` returns
+   `{"error": "..."}` with bodies such as `Invalid token`, `Missing bearer token`,
+   `Token revoked`, `Token expired`, `Unknown org`, `MCP connection revoked`,
+   `MCP connection expired`. **No `code` field.** Map the HTTP status to re-auth.
+2. **Scope refusal, inside a JSON-RPC result.** `McpContext::requireScope` throws
+   `AuthorizationException`; Laravel MCP returns a normal result with `isError: true` and
+   `result.content[0].text` starting `insufficient_scope: ...`. **No `structuredContent`
+   and no `code`.** Treat as 403: re-auth with that scope, or tell the person which scope
+   the connection is missing.
+3. **Tool and publish errors.** `result.structuredContent` is
+   `{ code, retryable, next_action?, ...details }` (also `_meta.artfct.errorCode`). Read
+   `retryable`; do not key retries off the code. The same code carries both values: a
+   failed version probe returns `deployment_rejected` with `retryable: true`, while a
+   refused create returns `deployment_rejected` with `retryable: false`.
+
+### Codes these 7 tools return
+
+| `code`                     | Meaning                                                     | Status | Action                                                    |
+| -------------------------- | ----------------------------------------------------------- | ------ | --------------------------------------------------------- |
+| `invalid_request`          | bad argument shape, or `base_version` ahead of live          | 400    | fix the call; do not retry unchanged                      |
+| `artifact_not_found`       | not visible, or missing (same shape, private-safe)           | 404    | stop                                                      |
+| `version_not_found`        | requested version missing                                    | 404    | stop, or read the live version                            |
+| `comment_not_found`        | `parent_id` names no comment on this artifact                | 404    | re-list comments                                          |
+| `collection_not_found`     | search collection filter names no collection                 | 404    | drop or fix the filter                                    |
+| `stale_base`               | `base_version` is behind the live version                    | 409    | re-read, merge, retry with the live version               |
+| `version_conflict`         | concurrent version publish                                   | 409    | retry (returns `retryable: true`)                         |
+| `quota_exceeded`           | daily publish or storage cap                                 | 429    | wait for reset (see `details`/`get_usage`)               |
+| `rate_limited`             | per-minute cap                                               | 429    | retry after a short wait                                  |
+| `plan_upgrade_required`    | plan gate on search                                          | 402    | stop; surface the plan requirement                        |
+| `feature_not_enabled`      | feature flag off (for example artifact database)             | 422    | stop; do not retry                                        |
+| `payload_too_large`        | `html` > 1 MB or bundle > 8 MB                               | 413    | shrink the payload                                        |
+| `search_not_configured`    | indexing not enabled for the workspace                       | 409    | stop; `next_action: enable_indexing`                      |
+| `content_not_indexed`      | text not indexed yet                                         | 409    | retry shortly (`retryable: true`)                         |
+| `version_not_indexed`      | only the last indexed version can be read                    | 409    | stop; read the indexed version or the live one            |
+| `content_not_available`    | text cannot be indexed at all                                | 422    | stop                                                      |
+| `upstream_unavailable`     | artifact service down                                        | 503    | retry                                                     |
+| `configuration_error`      | server misconfigured                                         | 500    | stop; report                                              |
+| `artifact_retrieval_failed`| upstream failed to return the artifact                       | 502    | retry (`retryable: true`)                                 |
+| `edit_forbidden`           | version publish without edit access                          | 403    | publish a new artifact instead                            |
+| `public_sharing_disabled`  | team disabled public links                                   | 403    | publish as `team` or `private`                            |
+| `deployment_rejected`      | Worker refused or failed the deploy                          | 422/503| read `retryable`; a 503 contention is safe to retry       |
+| `collection_mutation_failed`| published, but not added to the collection                   | 500    | retry `add_collection_artifact` (v2); artifact exists     |
+| `signed_link_unavailable`  | artifact stored but no view link could be minted             | 500    | retry `get_artifact` for a fresh link                     |
+
+`insufficient_scope` (text, shape 2) is the 403 for a missing scope; HTTP 401 (shape 1) is
+re-auth. A code absent from this table must still be treated as fatal unless its
+`retryable` flag says otherwise.
+
+## Idempotency and retries
+
+`artfct_deploy_artifact` is idempotent for an **identical new publish**: the Worker
+de-duplicates by content hash (RUB-371, `backend/src/artifact_routes.rs`), returns the
+existing artifact, and ignores changed `title`, `sharing` and other metadata on the repeat.
+Two documented exceptions and one shape matter to an executor:
+
+- **Never de-duplicated:** a publish that declares `db` (out of v1) always creates a new
+  artifact with fresh seed rows. Not reachable through this schema.
+- **Visibility:** content that matches an artifact the caller cannot see creates a new one
+  instead of returning the invisible one.
+- **Version publishes** (`artifact_id`) are not content-de-duplicated. Retrying one after a
+  timeout can add a second version. Send `base_version` and the retry fails as `stale_base`
+  instead of duplicating.
+
+So: auto-retry a failed **new** publish; auto-retry a **version** publish only when it
+carried `base_version`; **never** auto-retry `artfct_add_artifact_comment` (not idempotent —
+it would post twice). All five read tools are safe to retry.
+
+## Transport note (RUB-622, not solved here)
+
+The MCP surface is **JSON-RPC at `/mcp`**; the Worker API at `/v1/*` expects an **org JWT**,
+not the MCP OAuth bearer, so Composio cannot simply Proxy-Execute to `/v1`. C4 must pick one:
 
 1. **Native Composio tools** that POST JSON-RPC `tools/call` to `https://artfct.dev/mcp`
    with the connected account's OAuth bearer.
-2. A thin **REST facade** on the Artfct app that accepts the MCP OAuth token and maps to
-   the tools — then auth-only + Proxy Execute works.
-3. Custom executor that holds the token server-side and calls the Laravel MCP path.
+2. A thin **REST facade** on the Artfct app that accepts the MCP OAuth token and maps to the
+   tools — then auth-only + Proxy Execute works.
+3. A custom executor that holds the token server-side and calls the Laravel MCP path.
 
-Recommendation: (1) first for the spike; revisit (2) only if the catalog needs a REST
-surface. Recorded as an open item, not a blocker for these schemas.
+Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST surface.
 
-## Per-tool input schemas (JSON Schema 2020-12)
+## Validation evidence
 
-`artifact_type` enum everywhere: `report | table | document | mockup | slide_deck |
-dashboard | post | design_system | other`.
+`tests/Feature/ComposioToolkitTest.php` asserts, against the live tool classes:
 
-### `artfct_deploy_artifact`
+- every toolkit `inputSchema` equals the hosted MCP tool's `inputSchema` after the two
+  documented transforms — deploy drops `collection` and `db`, and adds `minItems: 1` to
+  `files` with a null-aware `oneOf` for `html`/`files`;
+- `readOnly`, `idempotent` and `scopes` match the tool's annotations and
+  `_meta.artfct.requiredScopes`, and no tool requires a scope the toolkit does not request;
+- fixture payloads are classified as the server would: `files: []` rejected, explicit
+  `null`s accepted, a plain date and a date-time both accepted (no `format` keyword).
 
-Exactly one of `html` **or** `files`. `html` is one self-contained document (no inline
-`<script>`, `onclick=`, `data:` images or outside resources — put them in `files`).
-Markdown is refused in `html`; publish it as `files` with a `.md` entrypoint.
+Run: `php artisan test --compact --filter=ComposioToolkit`.
 
-```json
-{
-    "type": "object",
-    "properties": {
-        "html": { "type": "string", "maxLength": 1048576 },
-        "files": {
-            "type": "array",
-            "maxItems": 500,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "maxLength": 255 },
-                    "content": { "type": "string" },
-                    "encoding": {
-                        "type": "string",
-                        "enum": ["utf8", "base64"]
-                    },
-                    "content_type": { "type": "string", "maxLength": 100 }
-                },
-                "required": ["path", "content"],
-                "additionalProperties": false
-            }
-        },
-        "entrypoint": {
-            "type": "string",
-            "maxLength": 255,
-            "default": "index.html"
-        },
-        "artifact_id": {
-            "type": "string",
-            "maxLength": 128,
-            "description": "Publish a new version of an existing artifact."
-        },
-        "base_version": { "type": "integer", "minimum": 1 },
-        "artifact_type": { "$ref": "#/$defs/artifactType" },
-        "sharing": { "type": "string", "enum": ["private", "team", "public"] },
-        "edit_access": { "type": "string", "enum": ["view", "edit"] },
-        "tier": {
-            "type": "string",
-            "enum": ["public", "secure"],
-            "description": "Deprecated alias for sharing."
-        },
-        "title": { "type": "string", "maxLength": 200 },
-        "description": { "type": "string", "maxLength": 1000 },
-        "model": { "type": "string", "maxLength": 100 },
-        "collection": { "type": "string", "maxLength": 100 },
-        "db": {
-            "type": "object",
-            "properties": {
-                "collections": {
-                    "type": "object",
-                    "description": "Map of collection name to { index }."
-                },
-                "seed": {
-                    "type": "array",
-                    "maxItems": 200,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "collection": { "type": "string" },
-                            "doc_id": { "type": "string" },
-                            "body": { "type": "object" }
-                        },
-                        "required": ["collection", "doc_id", "body"]
-                    }
-                }
-            },
-            "required": ["collections"]
-        }
-    },
-    "oneOf": [
-        { "required": ["html"], "not": { "required": ["files"] } },
-        { "required": ["files"], "not": { "required": ["html"] } }
-    ],
-    "$defs": {
-        "artifactType": {
-            "type": "string",
-            "enum": [
-                "report",
-                "table",
-                "document",
-                "mockup",
-                "slide_deck",
-                "dashboard",
-                "post",
-                "design_system",
-                "other"
-            ]
-        }
-    }
-}
-```
-
-Returns: `{ id, artifact_type, view_url, sharing, version, created, title, organization,
-organization_name, warnings?, collection_id?, collection?, base_version_checked? }`.
-
-### `artfct_search_artifacts`
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "query": { "type": "string", "minLength": 1, "maxLength": 500 },
-        "repo": { "type": "string", "maxLength": 500 },
-        "agent": { "type": "string", "maxLength": 100 },
-        "since": { "type": "string", "format": "date-time" },
-        "collection": { "type": "string", "maxLength": 100 },
-        "artifact_type": { "$ref": "#/$defs/artifactType" },
-        "changed_since": { "type": "string", "format": "date-time" },
-        "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 50,
-            "default": 10
-        }
-    },
-    "required": ["query"],
-    "$defs": {
-        "artifactType": {
-            "type": "string",
-            "enum": [
-                "report",
-                "table",
-                "document",
-                "mockup",
-                "slide_deck",
-                "dashboard",
-                "post",
-                "design_system",
-                "other"
-            ]
-        }
-    }
-}
-```
-
-Returns: `{ results: [{ id, title, artifact_type, version, updated_at, description,
-view_url, snippet, provenance, score }], hint? }`.
-
-### `artfct_get_artifact`
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "version": { "type": "integer", "minimum": 1 }
-    },
-    "required": ["id"]
-}
-```
-
-Returns: metadata + `view_url`, `version`, `sharing`, `edit_access`, `database`, `provenance`.
-
-### `artfct_read_artifact`
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "version": { "type": "integer", "minimum": 1 },
-        "offset": { "type": "integer", "minimum": 0 },
-        "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 8000,
-            "default": 4000
-        }
-    },
-    "required": ["id"]
-}
-```
-
-Returns: paged text with `content.untrusted: true`, `locator`, `next_offset`, `stale`.
-
-### `artfct_list_artifact_comments`
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "include_resolved": { "type": "boolean", "default": false }
-    },
-    "required": ["id"]
-}
-```
-
-### `artfct_add_artifact_comment`
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "body": { "type": "string", "minLength": 1, "maxLength": 4000 },
-        "parent_id": { "type": "integer", "minimum": 1 }
-    },
-    "required": ["id", "body"]
-}
-```
-
-### `artfct_get_connection`
-
-```json
-{ "type": "object", "properties": {}, "additionalProperties": false }
-```
-
-Returns: `{ authenticated, organization, organization_name, user_id, scopes,
-credential_source, agent, client, session_id, search, preferences }`. Use for the
-"Which Artfct workspace am I connected to?" check and to read `save_to_artfct`.
+Not covered here: Composio's own schema dialect and whether it enforces any keyword beyond
+what `toolkit.json` declares; a live staging dry-run (docs-only change, isolated CI is the
+gate).
