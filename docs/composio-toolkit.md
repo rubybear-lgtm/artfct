@@ -130,6 +130,23 @@ So: auto-retry a failed **new** publish; auto-retry a **version** publish only w
 carried `base_version`; **never** auto-retry `artfct_add_artifact_comment` (not idempotent —
 it would post twice). All five read tools are safe to retry.
 
+## Endpoints behind the tools
+
+Confirmed in the tool classes; this is what a transport must reach.
+
+| Tool                                           | Backing call                                                                                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy_artifact`                              | Worker REST: `POST /v1/artifacts`, `POST /v1/artifacts/{id}/versions`, `PUT /v1/artifacts/{id}/files/{sha256}` (plus `GET /v1/artifacts/{id}` for the `base_version` pre-check) |
+| `get_artifact`                                 | Worker REST: `GET /v1/artifacts/{id}`, `GET /v1/artifacts/{id}/versions/{version}`                                                 |
+| `read_artifact`                                | Worker REST `GET /v1/artifacts/{id}` + the Laravel `ArtifactIndexEntry` row (indexed text)                                           |
+| `search_artifacts`                             | Laravel `SearchService` (vector + lexical index); no Worker REST endpoint                                                            |
+| `list_artifact_comments` / `add_artifact_comment` | Laravel `ArtifactComment` table; no Worker REST endpoint                                                                        |
+| `get_connection`                               | Laravel session claims, team and preferences; no endpoint                                                                            |
+
+**Flag for RUB-622:** comments, search and `get_connection` have no `/v1` REST route, so a
+Proxy-Execute-only transport cannot implement three of the seven tools. That is the strongest
+argument for option (1), JSON-RPC `tools/call`, below.
+
 ## Transport note (RUB-622, not solved here)
 
 The MCP surface is **JSON-RPC at `/mcp`**; the Worker API at `/v1/*` expects an **org JWT**,
