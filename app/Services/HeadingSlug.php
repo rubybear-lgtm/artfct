@@ -35,11 +35,16 @@ final class HeadingSlug
     {
         $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($text)) ?? '';
 
+        // Drop the leading separator before truncating: the Worker never
+        // emits one, so leaving it in shifts the cut by a byte and the two
+        // renderers mint different ids for the same long heading.
+        $slug = ltrim($slug, '-');
+
         if (strlen($slug) > self::MAX_LENGTH) {
             $slug = substr($slug, 0, self::MAX_LENGTH);
         }
 
-        $slug = trim($slug, '-');
+        $slug = rtrim($slug, '-');
 
         return $slug === '' ? 'section' : $slug;
     }

@@ -30,6 +30,13 @@ it('emits the same heading ids as the Worker renderer for the shared fixture', f
         ->toContain('<h1 id="hello-world-3">Hello World</h1>')
         ->toContain('<h2 id="see">See ')
         ->toContain('<h1 id="first-second">First<br>')
+        ->toContain('<h1 id="a">A</h1>')
+        ->toContain('<h2 id="a-2">A</h2>')
+        ->toContain('<h2 id="a-2-2">A-2</h2>')
+        ->toContain('<h2 id="a-3">A</h2>')
+        // Leading punctuation must not shift the cap: trimming it after the
+        // truncation minted a 119-character id the Worker never produces.
+        ->toContain('<h2 id="'.str_repeat('x', HeadingSlug::MAX_LENGTH).'">(')
         ->toContain('<h2 id="long-headings-are-truncated-so-the-viewer-still-forwards-the-fragment-and-scrolling-lands-on-the-intended-section-of-the">');
 });
 
@@ -69,14 +76,18 @@ it('keeps repeated heading ids linear', function () {
 });
 
 it('caps slugs so the viewer still forwards the fragment', function () {
-    // FRAME_FRAGMENT drops anything over 128 characters after `#`.
+    // FRAME_FRAGMENT drops anything over 128 characters after `#`. The
+    // deduped id adds a suffix on top of the cap.
     $long = str_repeat('word ', 100);
-    $html = (new MarkdownRenderer)->toFragment("# {$long}");
+    $html = (new MarkdownRenderer)->toFragment("# {$long}\n\n# {$long}");
 
-    preg_match('/<h1 id="([^"]+)"/', $html, $matches);
+    preg_match_all('/id="([^"]+)"/', $html, $matches);
 
-    expect($matches[1] ?? '')->toBe(HeadingSlug::slugify($long))
-        ->and(strlen($matches[1]))->toBeLessThanOrEqual(128);
+    expect($matches[1])->toHaveCount(2)
+        ->and($matches[1][0])->toBe(HeadingSlug::slugify($long))
+        ->and(strlen($matches[1][0]))->toBeLessThanOrEqual(128)
+        ->and($matches[1][1])->toBe(HeadingSlug::slugify($long).'-2')
+        ->and(strlen($matches[1][1]))->toBeLessThanOrEqual(128);
 });
 
 it('dedupes repeated slugs with -2 and -3 suffixes', function () {

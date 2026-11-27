@@ -97,6 +97,18 @@ test('the_viewer_forwards_a_valid_hash_into_the_frame_src', function () {
             'document.querySelector("[data-testid=\\"artifact-frame\\"]").getAttribute("src").endsWith("#'.RUB603_BROWSER_ANCHOR.'")',
             true,
         );
+
+    // The real component's FRAME_FRAGMENT rejects anything the renderers
+    // cannot mint: 129 characters is one past the forwarded limit, so the
+    // frame must stay on the bare document.
+    $rejected = rub603VisitWithFragment('/a/'.RUB603_BROWSER_ARTIFACT_ID, '#'.str_repeat('a', 129));
+
+    $rejected
+        ->assertNoJavaScriptErrors()
+        ->assertScript(
+            'document.querySelector("[data-testid=\\"artifact-frame\\"]").getAttribute("src").includes("#")',
+            false,
+        );
 });
 
 test('a_fragment_link_scrolls_the_rendered_markdown_to_the_section', function () {

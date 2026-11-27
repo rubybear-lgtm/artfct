@@ -177,8 +177,9 @@ where
 
 /// Longest base slug kept. The viewer (`FRAME_FRAGMENT` in
 /// `resources/js/pages/artifacts/show.tsx`) forwards at most 128 characters
-/// after `#`, so this leaves room for a `-N` suffix (at most 8 digits under
-/// the 25 MB artifact cap). `HeadingSlug::MAX_LENGTH` in PHP is the same.
+/// after `#`, so this leaves room for a `-N` suffix (at most 7 digits: the
+/// 25 MB artifact cap holds ~6.5M `# a` headings). `HeadingSlug::MAX_LENGTH`
+/// in PHP is the same.
 const MAX_SLUG_LEN: usize = 120;
 
 /// Heading slug shared with Laravel (`App\Services\HeadingSlug`): lowercase
@@ -312,6 +313,9 @@ impl<'a, I: Iterator<Item = Event<'a>>> Iterator for WithHeadingIds<'a, I> {
                             attrs: capture.attrs,
                         }));
                         self.ready.extend(capture.inner);
+                        // Close it, or the rest of the document nests inside.
+                        self.ready
+                            .push_back(Event::End(TagEnd::Heading(capture.level)));
                         continue;
                     }
                     return None;
@@ -588,10 +592,21 @@ mod tests {
             "<h1 id=\"hello-world-3\">Hello World</h1>",
             "<h2 id=\"see\">",
             "<h1 id=\"first-second\">First<br />\nsecond</h1>",
+            "<h1 id=\"a\">A</h1>",
+            "<h2 id=\"a-2\">A</h2>",
+            "<h2 id=\"a-2-2\">A-2</h2>",
+            "<h2 id=\"a-3\">A</h2>",
             "<h2 id=\"long-headings-are-truncated-so-the-viewer-still-forwards-the-fragment-and-scrolling-lands-on-the-intended-section-of-the\">",
         ] {
             assert!(html.contains(expected), "missing {expected} in:\n{html}");
         }
+        // Leading punctuation must not shift the cap: PHP used to trim it
+        // after truncating and mint a 119-character id for this heading.
+        let capped = "x".repeat(MAX_SLUG_LEN);
+        assert!(
+            html.contains(&format!("<h2 id=\"{capped}\">(")),
+            "capped id missing in:\n{html}"
+        );
     }
 
     #[test]
@@ -615,15 +630,20 @@ mod tests {
     #[test]
     fn long_headings_fit_the_viewer_fragment_limit() {
         // FRAME_FRAGMENT drops anything over 128 characters after `#`, so an
-        // uncapped slug would give an id the viewer never forwards.
-        let html = render_markdown_document(&format!("# {}\n", "word ".repeat(100)));
-        let id = html
-            .split_once("id=\"")
-            .and_then(|(_, rest)| rest.split_once('"'))
-            .map(|(id, _)| id)
-            .expect("heading id");
-        assert!(id.len() >= 100, "{id}");
-        assert!(id.len() <= 128, "{id}");
+        // uncapped slug would give an id the viewer never forwards. The
+        // deduped id adds a suffix on top of the cap.
+        let heading = "word ".repeat(100);
+        let html = render_markdown_document(&format!("# {heading}\n\n# {heading}\n"));
+        let ids: Vec<&str> = html
+            .split("id=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split_once('"').map(|(id, _)| id))
+            .collect();
+        assert_eq!(ids.len(), 2, "{html}");
+        assert!(ids[0].len() >= 100, "{}", ids[0]);
+        assert!(ids[0].len() <= 128, "{}", ids[0]);
+        assert!(ids[1].ends_with("-2"), "{}", ids[1]);
+        assert!(ids[1].len() <= 128, "{}", ids[1]);
     }
 
     #[test]
