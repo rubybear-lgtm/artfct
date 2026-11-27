@@ -121,9 +121,9 @@ test('an_owner_can_change_sharing_and_edit_access_from_the_viewer', function () 
     visit(viewerBrowserArtifactUrl())
         ->click('@share-control')
         ->assertChecked('@share-option-team')
-        ->check('@share-option-private')
+        ->click('@share-option-private')
         ->assertChecked('@share-option-private')
-        ->check('@edit-option-edit')
+        ->click('@edit-option-edit')
         ->assertChecked('@edit-option-edit')
         ->click('@share-close')
         ->click('@share-control')
@@ -164,12 +164,12 @@ test('an_owner_can_switch_between_public_and_team_sharing', function () {
     $page = visit(viewerBrowserArtifactUrl())
         ->click('@share-control')
         ->assertEnabled('@share-option-public')
-        ->check('@share-option-public')
+        ->click('@share-option-public')
         ->assertChecked('@share-option-public');
 
     expect(app(ArtifactDirectory::class)->getArtifact($team->slug, VIEWER_BROWSER_ARTIFACT_ID)['sharing'])->toBe('public');
 
-    $page->check('@share-option-team')
+    $page->click('@share-option-team')
         ->assertChecked('@share-option-team')
         ->click('@share-close')
         ->click('@share-control')
