@@ -807,6 +807,10 @@ test('a_framed_viewer_navigation_returns_the_shim_not_the_viewer', function () {
         ->and($response->headers->get('Referrer-Policy'))->toContain('no-referrer')
         ->and($response->headers->get('X-Robots-Tag'))->toContain('noindex');
 
+    // No Content-Security-Policy on the shim: the re-announce script is
+    // inline, and a script-src without 'unsafe-inline' would silence it.
+    expect($response->headers->has('Content-Security-Policy'))->toBeFalse();
+
     // The nested load mints no link and audits nothing.
     expect(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
 });
