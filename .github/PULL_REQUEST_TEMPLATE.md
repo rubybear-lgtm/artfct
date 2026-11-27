@@ -35,3 +35,10 @@ If this is not a big change, write: Not a big change — independent review not 
 -->
 
 Not a big change — independent review not required
+
+## Ready to approve (reviewer)
+
+- [ ] Required CI is green at the head SHA; none failed, cancelled, or bypassed
+- [ ] Every review finding is fixed or has a written reason it does not apply, and its thread is resolved
+- [ ] Description is current for the head, with the `#### Guidance Sources:` footer
+- [ ] Ledger and CHANGELOG entries link this PR; big changes summarize the independent review
