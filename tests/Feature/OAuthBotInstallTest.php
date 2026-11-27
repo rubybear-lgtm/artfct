@@ -29,7 +29,7 @@ function botInstallOAuthFixture(array $scopes = [
     'artifacts:deploy',
     'collections:read',
     'usage:read',
-]): array
+], string $clientName = 'Grok Bot Harness'): array
 {
     configureSigning(testSigningKey());
     configureOrgJwt();
@@ -41,7 +41,7 @@ function botInstallOAuthFixture(array $scopes = [
 
     $redirectUri = 'https://client.example.test/oauth/callback';
     $registration = test()->postJson('/oauth/register', [
-        'client_name' => 'Grok Bot Harness',
+        'client_name' => $clientName,
         'redirect_uris' => [$redirectUri],
     ])->assertCreated();
     $clientId = $registration->json('client_id');
@@ -393,8 +393,8 @@ test('AC4 reconnect create is idempotent and same name reuses existing bot', fun
     agentInitialize($hoku['token'])->assertOk();
 });
 
-test('AC4 MausBot bots own their artifacts, reconnect is idempotent, and a second bot keeps its own token', function () {
-    $fixture = botInstallOAuthFixture();
+test('AC4 two MausBot bots on one OAuth client keep separate identities and tokens', function () {
+    $fixture = botInstallOAuthFixture(clientName: 'MausBot');
     configureArtifactLinks();
     config(['services.worker.base_url' => 'https://worker.test']);
     Http::fake([
