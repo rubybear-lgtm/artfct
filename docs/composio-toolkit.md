@@ -217,7 +217,9 @@ Recommendation: (1) for the spike; revisit (2) only if the catalog needs a REST 
   `tests/Feature/Billing/DailyPublishLimitTest.php` proves that `per_user=1` consumes the slot on
   the first publish and the identical retry returns structured `quota_exceeded` with
    `retryable=false` before a second Worker create. This daily-cap response includes `scope`,
-   `limit`, and `reset_at`. Other `quota_exceeded` sources do not include those details.
+   `limit`, and `reset_at`. `non-daily quota errors return only the base error fields` probes
+   past-due payment, storage quota, artifact-count quota, and the Worker quota refusal through
+   `/mcp`; each returns only `code`, `retryable`, and `next_action`.
    `stale_base recovery exposes version provenance` in
    `tests/Feature/McpArtifactVersioningTest.php` proves that a `base_version=3` publish landing as
    v4 makes the identical retry return `stale_base` with `live_version=4`, and

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -153,6 +154,68 @@ test('identical new publish retry returns quota_exceeded before a second worker 
 
     expect(Http::recorded(fn ($request): bool => $request->method() === 'POST'
         && str_ends_with((string) $request->url(), '/v1/artifacts')))->toHaveCount(1);
+});
+
+test('non-daily quota errors return only the base error fields', function (PaymentStatus $paymentStatus, int $storageBytes, int $artifactsThisPeriod, string $message) {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free, 'payment_status' => $paymentStatus]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $usage = new FakeUsage;
+    app()->instance(UsageContract::class, $usage);
+    $usage->setUsage($team->slug, storageBytes: $storageBytes, artifactsThisPeriod: $artifactsThisPeriod);
+    Http::fake();
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>quota probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'quota_exceeded',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain($message);
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertNothingSent();
+})->with([
+    'past-due payment' => [PaymentStatus::PastDue, 0, 0, 'payment is past due'],
+    'storage quota' => [PaymentStatus::Active, PHP_INT_MAX, 0, 'over its quota'],
+    'artifact-count quota' => [PaymentStatus::Active, 0, PHP_INT_MAX, 'over its quota'],
+]);
+
+test('worker quota refusal returns only the base error fields', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response(['error' => ['code' => 'quota_exceeded']], 403),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>worker quota probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'quota_exceeded',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain('This workspace has reached a limit.');
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertSentCount(1);
 });
 
 test('version publish with worker 200 identical-content no-op does not burn a daily slot', function () {
