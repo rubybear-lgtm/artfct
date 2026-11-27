@@ -252,7 +252,7 @@ test('setup guides for tools we have not verified end to end carry their steps w
     $guides = collect((new AiToolSetup('https://artfct.dev'))->guides())->keyBy('id');
 
     expect($guides->where('verified', false)->keys()->all())
-        ->toBe(['connect-copilot', 'connect-devin', 'connect-omp', 'connect-antigravity', 'connect-claude', 'connect-chatgpt', 'connect-perplexity', 'connect-grok-bot', 'connect-cursor', 'connect-vscode', 'connect-kiro', 'connect-windsurf', 'connect-zed', 'connect-openhands', 'connect-other'])
+        ->toBe(['connect-copilot', 'connect-devin', 'connect-omp', 'connect-antigravity', 'connect-claude', 'connect-chatgpt', 'connect-perplexity', 'connect-grok-bot', 'connect-mausbot', 'connect-cursor', 'connect-vscode', 'connect-kiro', 'connect-windsurf', 'connect-zed', 'connect-openhands', 'connect-other'])
         ->and(json_decode(collect($guides['connect-omp']['steps'])->pluck('code')->filter()->values()->all()[0], true))->toBe(['mcpServers' => ['artfct' => ['type' => 'http', 'url' => 'https://artfct.dev/mcp']]])
         ->and($guides['connect-omp']['steps'][0]['text'])->toContain('~/.omp/agent/mcp.json')
         ->and(collect($guides['connect-copilot']['steps'])->pluck('code')->filter()->values()->all())->toBe(['copilot plugin install artfct-dev/artfct-plugin'])
@@ -347,6 +347,39 @@ test('llms-full.txt carries every setup guide, action and endpoint the docs page
     foreach (['GET /v1/artifacts', 'POST /v1/artifacts', 'POST /v1/search'] as $endpoint) {
         expect($body)->toContain("`{$endpoint}");
     }
+});
+
+test('the MausBot guide and its failure check appear on the docs page and in llms-full.txt', function () {
+    config(['app.url' => 'https://staging.artfct.dev']);
+
+    $guide = collect(AiToolSetup::forCurrentEnvironment()->guides())->firstWhere('id', 'connect-mausbot');
+
+    expect($guide)->not->toBeNull()
+        ->and($guide['method'])->toBe('Remote MCP')
+        ->and($guide['kind'])->toBe('chat')
+        ->and($guide['verified'])->toBeFalse()
+        ->and($guide['steps'][0]['code'])->toBe('https://staging.artfct.dev/mcp')
+        ->and($guide['steps'][2]['text'])->toContain('Which Artfct workspace am I connected to?');
+
+    $body = $this->get('/llms-full.txt')->assertOk()->getContent();
+
+    expect($body)->toContain("### {$guide['label']}");
+
+    foreach ($guide['steps'] as $step) {
+        expect($body)->toContain($step['text']);
+
+        foreach (explode("\n", $step['code'] ?? '') as $line) {
+            expect($body)->toContain($line);
+        }
+    }
+
+    expect($body)
+        ->toContain('`POST https://staging.artfct.dev/mcp`')
+        ->toContain('`401`')
+        ->toContain('`WWW-Authenticate`');
+
+    expect(docsCopy())
+        ->toContain('an unauthenticated `POST https://staging.artfct.dev/mcp` answers `401` with a `WWW-Authenticate` header');
 });
 
 test('the connections page links to the setup guide that exists on the docs page', function () {

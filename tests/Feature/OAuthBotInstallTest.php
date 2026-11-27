@@ -393,6 +393,121 @@ test('AC4 reconnect create is idempotent and same name reuses existing bot', fun
     agentInitialize($hoku['token'])->assertOk();
 });
 
+test('AC4 MausBot bots own their artifacts, reconnect is idempotent, and a second bot keeps its own token', function () {
+    $fixture = botInstallOAuthFixture();
+    configureArtifactLinks();
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/orgs/*/usage' => Http::response(['storage_bytes' => 0, 'artifacts_this_period' => 0], 200),
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'missing_files' => [],
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $first = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $fixture['parameters'],
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $fixture['verifier'],
+        ['bot_mode' => 'create', 'bot_name' => 'MausBot Alpha'],
+    );
+    $alpha = User::query()->where('name', 'MausBot Alpha')->where('is_bot', true)->sole();
+
+    test()->withToken($first['access_token'])
+        ->withHeaders([
+            'MCP-Client-Name' => 'MausBot',
+            'MCP-Client-Version' => '0.0.1',
+        ])
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'deploy_artifact',
+                'arguments' => [
+                    'html' => '<!doctype html><title>MausBot owned</title><p>ok</p>',
+                ],
+            ],
+        ])
+        ->assertOk();
+
+    Http::assertSent(function ($request): bool {
+        if ($request->method() !== 'POST' || ! str_ends_with((string) $request->url(), '/v1/artifacts')) {
+            return false;
+        }
+
+        $provenance = $request['provenance'] ?? null;
+
+        return is_array($provenance)
+            && ($provenance['agent'] ?? null) === 'MausBot Alpha'
+            && ($provenance['sources']['agent'] ?? null) === 'credential';
+    });
+
+    $reconnectVerifier = str_repeat('f', 64);
+    $reconnectParameters = oauthParameters(oauthChallenge($reconnectVerifier), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    $reconnected = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $reconnectParameters,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $reconnectVerifier,
+        ['bot_mode' => 'create', 'bot_name' => 'MausBot Alpha'],
+    );
+
+    expect(User::query()->where('name', 'MausBot Alpha')->where('is_bot', true)->count())->toBe(1)
+        ->and(OAuthBotInstallation::query()
+            ->where('team_id', $fixture['team']->id)
+            ->where('oauth_client_id', $fixture['client_id'])
+            ->where('bot_user_id', $alpha->id)
+            ->count())->toBe(1)
+        ->and($reconnected['access_token'])->not->toBe($first['access_token']);
+
+    $secondVerifier = str_repeat('a', 64);
+    $secondParameters = oauthParameters(oauthChallenge($secondVerifier), [
+        'client_id' => $fixture['client_id'],
+        'redirect_uri' => $fixture['redirect_uri'],
+        'scope' => $fixture['parameters']['scope'],
+    ]);
+    $second = completeBotInstallOAuth(
+        $fixture['admin'],
+        $fixture['team'],
+        $secondParameters,
+        $fixture['client_id'],
+        $fixture['redirect_uri'],
+        $secondVerifier,
+        ['bot_mode' => 'create', 'bot_name' => 'MausBot Beta'],
+    );
+    $beta = User::query()->where('name', 'MausBot Beta')->where('is_bot', true)->sole();
+
+    expect($beta->id)->not->toBe($alpha->id)
+        ->and($second['access_token'])->not->toBe($first['access_token'])
+        ->and($second['access_token'])->not->toBe($reconnected['access_token'])
+        ->and(OAuthBotInstallation::query()
+            ->where('team_id', $fixture['team']->id)
+            ->where('oauth_client_id', $fixture['client_id'])
+            ->count())->toBe(2);
+
+    $alphaConnection = mcpGetConnection($first['access_token']);
+    $betaConnection = mcpGetConnection($second['access_token']);
+
+    expect($alphaConnection['user_id'])->toBe((string) $alpha->id)
+        ->and($alphaConnection['agent'])->toBe(['name' => 'MausBot Alpha', 'bot' => true])
+        ->and($betaConnection['user_id'])->toBe((string) $beta->id)
+        ->and($betaConnection['agent'])->toBe(['name' => 'MausBot Beta', 'bot' => true])
+        ->and($betaConnection['user_id'])->not->toBe($alphaConnection['user_id']);
+});
+
 test('AC6 revoke then reconnect with a different name does not resurrect the old bot', function () {
     $fixture = botInstallOAuthFixture();
     Http::fake([

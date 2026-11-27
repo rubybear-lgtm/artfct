@@ -112,6 +112,28 @@ test('a guide page carries the setup prompt and only its own troubleshooting sen
             ->where('guide.kind', 'chat'));
 });
 
+test('the MausBot guide renders on /connect from the hosted server address', function () {
+    config(['app.url' => 'https://staging.artfct.dev']);
+
+    $this->get(route('connect.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('guides', fn ($cards): bool => collect($cards)->pluck('id')->contains('connect-mausbot')));
+
+    $this->get(route('connect.show', ['tool' => 'connect-mausbot']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('connect-show')
+            ->where('guide.id', 'connect-mausbot')
+            ->where('guide.label', 'MausBot')
+            ->where('guide.kind', 'chat')
+            ->where('guide.method', 'Remote MCP')
+            ->where('guide.verified', false)
+            ->where('guide.steps.0.code', 'https://staging.artfct.dev/mcp')
+            ->where('guide.steps.2.text', 'Ask the bot “Which Artfct workspace am I connected to?” It should answer with your team’s name.')
+            ->missing('guide.fallback'));
+});
+
 test('the sitemap lists the hub', function () {
     $this->get(route('sitemap'))->assertSee(route('connect.index'), escape: false);
 });
