@@ -926,6 +926,54 @@ test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', 
 });
 
 /**
+ * RUB-628 review round 4, coverage gap (Rigel review): both `via` tests
+ * inject a cross-path `/a/B`, so moving the `via` check back below the
+ * same-path branch would fail nothing. A restored shim whose URL is the
+ * same path (`/a/A#sec`) must reset the frame, not assign and reload — the
+ * reload is what trapped Back in Firefox. The harness cannot serve a
+ * natural restored re-post (a reload resets the frame to its src and
+ * traversals restore it clean), so the restored post is simulated with the
+ * frame as its source and the shim's own back_forward signal; the order
+ * check, the reset, and the absent reload are the real code path. Fails if
+ * the via check moves below the same-path branch: the top would assign the
+ * fragment and reload instead of staying put.
+ */
+test('a_restored_same_path_shim_resets_the_frame_instead_of_reloading', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Same Path', 'viewer-same-path@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    $settledLoad = $page->script('performance.timeOrigin');
+
+    // A restored same-path shim: reset the frame, never assign + reload.
+    $page->script(
+        "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
+        "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/".VIEWER_BROWSER_ARTIFACT_ID."#option-b', via: 'back_forward'}}))"
+    );
+
+    $page->wait(1)
+        ->assertNoJavaScriptErrors()
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript('location.hash', '')
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame')
+        // The frame holds the clean artifact URL, and the top document never
+        // reloaded: with the via check below the same-path branch this
+        // would assign `#option-b` and reload instead.
+        ->assertScript("document.querySelector('[data-testid=\"artifact-frame\"]').src.includes('.localhost')")
+        ->assertScript('performance.timeOrigin', $settledLoad);
+});
+
+/**
  * RUB-628 Ada review (2026-11-27): the guard must swallow only the restored
  * shim, not every later click. A -> B -> Back -> click B again is all real
  * frame navigations except the restored post (which the harness cannot
